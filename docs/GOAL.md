@@ -1,6 +1,6 @@
 # Goal
 
-**Status: planned MVP for a new application.** The local `sample/` is a separate runnable prototype; its features and tests do not count as new-app implementation.
+**Status: MVP in local development.** Seller authentication and the seller shell are the first implemented slice; the other product journeys remain planned. The local `sample/` is a separate runnable prototype; its features and tests do not count as new-app implementation.
 
 ## Outcome
 

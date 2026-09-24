@@ -1,10 +1,12 @@
 # Design specification
 
-**Status: proposed, not implemented.** This document describes the new MVP, not the `sample/` prototype.
+**Status: proposed end-state with a local seller-authentication slice implemented.** This document describes the new MVP, not the `sample/` prototype.
 
 ## Verified repository state
 
-The root has planning documents but no new application entry point, package/build configuration, tests, CI, migration, or release workflow. The local `sample/` is a separate Node HTTP/SQLite PWA prototype: `src/server.js` routes its API and static pages, service modules own Commerce/Logistics/Fulfillment rules, and `src/db.js` owns its demo schema and seed. Its in-memory sessions, fictional customer links, credentials, PWA cache, and logistics workflow are not new-app design decisions.
+The new root application now has a Node 24 HTTP entry point, a versioned private SQLite schema, a persistent seller session, a responsive seller login shell, and targeted tests. The root still has no product/order implementation, CI, release workflow, or deployed runtime. The local `sample/` is a separate Node HTTP/SQLite PWA prototype: its Commerce/Logistics/Fulfillment rules are business references, while its in-memory sessions, fictional customer links, credentials, PWA cache, and logistics workflow are not new-app design decisions.
+
+The local development stack uses Node 24 built-ins and `node:sqlite`, with the database outside `public/` under the ignored `.local/` directory by default. This is a reversible local choice; production hosting, backup, retention, and recovery remain DEC-04. The current `GET /health` liveness endpoint is independent of the `GET /ready` schema check. The first schema owns exactly one configured admin and hashed, expiring sessions. The seller login UI uses the API; no browser code reads the database. See [API.md](API.md) for implemented paths and [PROGRESS.md](PROGRESS.md) for proof and limits.
 
 ## Users and journeys
 

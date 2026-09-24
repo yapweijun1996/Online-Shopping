@@ -1,6 +1,12 @@
 # Online Shopping MVP
 
-**Status: planning baseline.** The new application has not been implemented or deployed. The local `sample/` prototype is a reference for business rules only; its code, UI, database, and demo credentials are not the new application.
+**Status: MVP implementation in progress.** Seller sign-in/session and a responsive seller shell run locally. Product management, shopping, checkout, order review, complete PWA/i18n flows, and release operations remain unfinished. The local `sample/` prototype is a separate business-rule reference; its code, UI, database, and demo credentials are not the new application.
+
+## Run the current slice
+
+Use Node 24.15 or later in the 24.x line. Copy `.env.example` to ignored `.env`, set a unique `ADMIN_USERNAME` and a non-default `ADMIN_PASSWORD` of at least 16 characters with letters and numbers, and keep `DB_PATH` outside `public/`. Do not reuse example or sample credentials. Then run `npm start` with Node 24. On this machine, where the default Node is older, use `npx --yes node@24 --env-file=.env src/server.js`.
+
+Open `/seller/` for the seller login or `/shop/` for the current storefront placeholder. `/health` is liveness; `/ready` checks the local database schema. The default private database path is `.local/online-shopping.db`. Run `npm test` with Node 24, or `npx --yes node@24 --test` on this machine. The application is for local development only until the production decisions and release gates in [PROGRESS.md](docs/PROGRESS.md) are resolved.
 
 ## Goal
 
@@ -39,4 +45,4 @@ Both web surfaces are designed as installable PWAs with a safe offline shell; ch
 - [Draft API contract](docs/API.md)
 - [Roadmap](docs/ROADMAP.md), [task ledger](docs/TASK.md), and [evidence-based progress](docs/PROGRESS.md)
 
-Implementation and run commands will be added when the new application exists. Do not use commands or credentials from `sample/` for the new application.
+Do not use commands or credentials from `sample/` for the new application.

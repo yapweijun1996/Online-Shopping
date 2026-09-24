@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0c2940">
+  <title>Seller portal · Online Shopping</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/seller/style.css">
+  <script type="module" src="/seller/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-button mobile-only" id="open-menu" type="button" data-i18n-aria="openMenu" aria-controls="sidebar" aria-expanded="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <a class="brand" href="/seller/"><span class="brand-mark">OS</span><span data-i18n="sellerPortal">Seller portal</span></a>
+    <div class="top-actions">
+      <label class="language-control"><span data-i18n="selectLanguage">Language</span><select id="language" data-i18n-aria="selectLanguage"></select></label>
+      <div class="account-wrap" id="account-wrap" hidden>
+        <button id="account-button" class="account-button" type="button" data-i18n-aria="account" aria-expanded="false" aria-controls="account-menu"><span class="avatar">A</span><span data-i18n="account">Account</span><span aria-hidden="true">⌄</span></button>
+        <div id="account-menu" class="account-menu" hidden>
+          <button id="profile-button" type="button" data-i18n="profile">View profile</button>
+          <button id="sign-out-button" type="button" data-i18n="signOut">Sign out</button>
+        </div>
+      </div>
+    </div>
+  </header>
+  <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+  <aside id="sidebar" class="sidebar" hidden>
+    <div class="sidebar-head"><span data-i18n="sellerPortal">Seller portal</span><button id="close-menu" class="icon-button mobile-only" type="button" data-i18n-aria="closeMenu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg></button></div>
+    <nav aria-label="Seller">
+      <button class="nav-item active" type="button" data-view="dashboard" data-i18n-aria="dashboard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5V21H3zM9 21v-7h6v7"/></svg><span data-i18n="dashboard">Dashboard</span></button>
+      <button class="nav-item" type="button" data-view="products" data-i18n-aria="products"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v14H4zM3 7l2-4h14l2 4M9 12h6"/></svg><span data-i18n="products">Products</span></button>
+      <div class="nav-group" data-i18n="salesManager">Sales Manager</div>
+      <button class="nav-item" type="button" data-view="orders" data-i18n-aria="salesOrders"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18l-3-2-4 2-4-2-3 2zM8 8h8M8 12h8"/></svg><span data-i18n="salesOrders">Sales Orders</span></button>
+      <button class="nav-item" type="button" data-view="review" data-i18n-aria="orderReview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM8 12l3 3 5-6"/></svg><span data-i18n="orderReview">Sales Order Confirmation</span></button>
+    </nav>
+    <button id="collapse-nav" class="collapse-button" type="button" data-i18n-aria="collapse"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5 7 12l7 7M20 5l-7 7 7 7"/></svg><span data-i18n="collapse">Collapse navigation</span></button>
+  </aside>
+  <main id="main" class="main">
+    <section id="login-view" class="login-layout" hidden>
+      <div class="login-intro"><div class="brand-mark large">OS</div><p class="eyebrow" data-i18n="loginPrompt">Seller access only</p><h1 data-i18n="signInTitle">Welcome back</h1><p data-i18n="signInIntro">Sign in to manage products and orders.</p></div>
+      <form id="login-form" class="login-card">
+        <label for="username" data-i18n="username">Username</label><input id="username" name="username" autocomplete="username" required maxlength="64">
+        <label for="password" data-i18n="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="256">
+        <p id="login-message" class="message" role="alert"></p>
+        <button id="login-submit" class="primary-button" type="submit" data-i18n="signIn">Sign in</button>
+        <p class="privacy-note" data-i18n="protected">Your catalog and orders are private.</p>
+      </form>
+    </section>
+    <section id="workspace" hidden>
+      <div class="page-heading"><p class="eyebrow" data-i18n="sellerPortal">Seller portal</p><h1 id="page-title" data-i18n="dashboard">Dashboard</h1></div>
+      <div id="workspace-content" class="panel"><p data-i18n="notReady">This area is being prepared.</p></div>
+      <p id="workspace-message" class="message" role="status"></p>
+    </section>
+  </main>
+</body>
+</html>

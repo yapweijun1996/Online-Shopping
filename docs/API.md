@@ -1,6 +1,18 @@
 # Draft API contract
 
-**Status: proposed, not implemented.** Paths and payloads are reviewable design targets. The implementation must keep this file aligned with actual behavior.
+**Status: partially implemented.** Seller session, liveness, and readiness paths run locally; product and order paths below remain proposed targets. Keep this file aligned with actual behavior.
+
+## Implemented local endpoints
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| `GET` | `/health` | Process liveness, without database readiness claims. |
+| `GET` | `/ready` | Checks the expected private SQLite schema and a query. |
+| `POST` | `/api/v1/seller/session` | Same-origin JSON login, rate limited, using the configured single admin; returns username, role and CSRF token and sets an `HttpOnly`, `SameSite=Strict` session cookie. |
+| `GET` | `/api/v1/seller/session` | Requires a valid session; returns username, role and CSRF token with `no-store`. |
+| `DELETE` | `/api/v1/seller/session` | Requires session, same origin and CSRF token; invalidates the session and expires the cookie. |
+
+The local session is stored by token hash in SQLite and expires after 12 hours. Production cookies add `Secure`; production startup requires an HTTPS `PUBLIC_ORIGIN`. The initial admin is provisioned once from ignored server configuration and startup fails if later configuration does not match it. Product and order endpoints in the tables below are **not yet live**.
 
 ## Principles
 

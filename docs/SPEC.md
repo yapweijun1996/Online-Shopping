@@ -1,6 +1,6 @@
 # MVP specification
 
-**Status: proposed acceptance contract.** No row below is implemented by the new application. Each `AC` is one progress unit; a row becomes **Implemented** when code and a runnable path exist, **Verified** only when its listed observable checks pass, and **Released** only when verified in the deployed release. See [PROGRESS.md](PROGRESS.md).
+**Status: acceptance contract with AC-01 implemented and locally verified.** The other items remain incomplete. Each `AC` is one progress unit; a row becomes **Implemented** when code and a runnable path exist, **Verified** only when its listed observable checks pass, and **Released** only when verified in the deployed release. See [PROGRESS.md](PROGRESS.md).
 
 ## Users and scope
 
@@ -31,15 +31,15 @@ The super admin configures a seller catalog and decides on submitted orders. A g
 
 ## Proposed API and error contract
 
-[API.md](API.md) is the detailed **draft**, not a live implementation. Public catalog and guest checkout are public; seller session, catalog management, queue/detail, and confirm/reject endpoints are private. Request/response schemas, stable error codes, `Idempotency-Key`, revision handling, no-store private responses, and rate limiting must be covered by contract tests when implemented. `INVALID_INPUT`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `STALE_REVISION`, `IDEMPOTENCY_CONFLICT`, and `RATE_LIMITED` are proposed codes, not observed behavior of the new app.
+[API.md](API.md) identifies the live seller session/health paths and draft commerce paths. Public catalog and guest checkout will be public; seller catalog management, queue/detail, and confirm/reject will be private. Request/response schemas, `Idempotency-Key`, revision handling, and rate limiting still need contract tests as their endpoints are implemented. `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `INVALID_INPUT`, and `RATE_LIMITED` are observed in the current local server; `STALE_REVISION` and `IDEMPOTENCY_CONFLICT` remain proposed.
 
 ## Verification matrix
 
 | Area | New MVP gate | Current evidence |
 | --- | --- | --- |
-| Static/config/build | Source lint/type/build and production configuration rejection appropriate to chosen stack. | No new-app stack or build exists. |
-| Domain/API/data | Unit, integration, contract, transaction, authorization, idempotency, failure and concurrency checks for AC-01–14. | No new-app tests exist. |
-| Browser | Seller setup, guest multi-destination checkout, receipt, review, loading/error states, keyboard, 390px/mobile and desktop, console/overflow; seven-language UI checks. | No new-app UI exists. |
+| Static/config/build | Source lint/type/build and production configuration rejection appropriate to chosen stack. | Node 24 syntax checks and production credential-startup tests pass; no production build/artifact gate yet. |
+| Domain/API/data | Unit, integration, contract, transaction, authorization, idempotency, failure and concurrency checks for AC-01–14. | Seller session, CSRF, startup, and persistence tests pass; commerce tests do not exist yet. |
+| Browser | Seller setup, guest multi-destination checkout, receipt, review, loading/error states, keyboard, 390px/mobile and desktop, console/overflow; seven-language UI checks. | Seller login/reload/logout, navigation and mobile drawer were smoke-tested; no commerce UI exists yet. |
 | PWA/offline | Both surfaces: install/launch, service-worker private-cache boundaries, offline shell, update, and online-only mutations. | Selected and specified in [PWA_I18N.md](PWA_I18N.md); no implementation. |
 | Release/data | Private schema/migrations, backup/restore, retention, secret scan, artifact inspection, health/readiness, deployed version and rollback. | No deployment, migration, artifact, or release exists. |
 

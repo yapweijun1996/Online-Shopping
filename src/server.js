@@ -1,0 +1,79 @@
+import { fileURLToPath } from 'node:url';
+import { readConfig } from './config.js';
+import { openDatabase, ready } from './db.js';
+import { authenticate, cookieFor, createSession, deleteSession, ensureAdmin, LoginLimiter, readSession, sessionCookieFrom } from './auth.js';
+import { ApiError, handleErrors, json, readJson, requireOrigin } from './http.js';
+import { serveStatic } from './static.js';
+
+export function createApp(config) {
+  const database = openDatabase(config.dbPath);
+  try {
+    ensureAdmin(database, config.username, config.password);
+  } catch (error) {
+    database.close();
+    throw error;
+  }
+  const limiter = new LoginLimiter();
+  const server = handleErrors(async (request, response) => {
+    const host = request.headers.host;
+    const url = new URL(request.url, `http://${host || 'localhost'}`);
+    const pathname = url.pathname;
+    const expectedOrigin = config.publicOrigin || `http://${host}`;
+    if (request.method === 'GET' && pathname === '/health') return json(response, 200, { status: 'alive' });
+    if (request.method === 'GET' && pathname === '/ready') {
+      const healthy = ready(database);
+      return json(response, healthy ? 200 : 503, { status: healthy ? 'ready' : 'unavailable' });
+    }
+    if (!pathname.startsWith('/api/')) return serveStatic(request, response, pathname);
+    if (!pathname.startsWith('/api/v1/seller/')) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+
+    if (request.method === 'POST' && pathname === '/api/v1/seller/session') {
+      requireOrigin(request, expectedOrigin);
+      const key = request.socket.remoteAddress || 'unknown';
+      if (!limiter.allowed(key)) throw new ApiError(429, 'RATE_LIMITED', 'Too many attempts. Try later.');
+      const body = await readJson(request);
+      if (typeof body.username !== 'string' || typeof body.password !== 'string' ||
+          body.username.length > 64 || body.password.length > 256 || !authenticate(database, body.username, body.password)) {
+        limiter.recordFailure(key);
+        throw new ApiError(401, 'UNAUTHORIZED', 'Invalid credentials.');
+      }
+      limiter.clear(key);
+      const session = createSession(database);
+      return json(response, 200, { username: config.username, role: 'SUPER_ADMIN', csrfToken: session.csrfToken }, {
+        'Set-Cookie': cookieFor(session.token, session.maxAge, config.production),
+      });
+    }
+
+    const token = sessionCookieFrom(request.headers.cookie);
+    const session = readSession(database, token);
+    if (!session) throw new ApiError(401, 'UNAUTHORIZED', 'Sign in required.');
+    if (request.method === 'GET' && pathname === '/api/v1/seller/session') {
+      return json(response, 200, { username: config.username, role: 'SUPER_ADMIN', csrfToken: session.csrf_token });
+    }
+    if (request.method === 'DELETE' && pathname === '/api/v1/seller/session') {
+      requireOrigin(request, expectedOrigin);
+      if (request.headers['x-csrf-token'] !== session.csrf_token) throw new ApiError(403, 'FORBIDDEN', 'CSRF token is required.');
+      deleteSession(database, token);
+      return json(response, 200, { signedOut: true }, { 'Set-Cookie': cookieFor('', 0, config.production) });
+    }
+    throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+  });
+  server.requestTimeout = 10_000;
+  server.headersTimeout = 10_000;
+  return { server, database, close: () => new Promise((resolve, reject) => server.close((error) => {
+    database.close();
+    if (error) reject(error);
+    else resolve();
+  })) };
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === fileURLToPath(new URL(`file://${process.argv[1]}`))) {
+  try {
+    const config = readConfig();
+    const app = createApp(config);
+    app.server.listen(config.port, () => console.log(`Online Shopping listening on port ${app.server.address().port}`));
+  } catch (error) {
+    console.error(`Startup failed: ${error.message}`);
+    process.exitCode = 1;
+  }
+}
