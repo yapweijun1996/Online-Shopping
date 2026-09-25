@@ -18,6 +18,8 @@ let username = '';
 let role = '';
 let productsPage = null;
 let ordersPage = null;
+let loginMessageKey = '';
+let workspaceMessageKey = '';
 const sessionHintKey = 'online-shopping-seller-session-hint';
 
 function sessionHint(value) {
@@ -29,9 +31,20 @@ function sessionHint(value) {
 }
 
 setupLanguageSelect(byId('language'));
+document.title = `${t('sellerPortal')} · Online Shopping`;
 registerWorker('/seller/sw.js', '/seller/').catch(() => console.warn('Seller offline shell unavailable.'));
 
-function showLogin(message = '', clearHint = true) {
+function setLoginMessage(key) {
+  loginMessageKey = key;
+  byId('login-message').textContent = key ? t(key) : '';
+}
+
+function setWorkspaceMessage(key) {
+  workspaceMessageKey = key;
+  byId('workspace-message').textContent = key ? t(key) : '';
+}
+
+function showLogin(messageKey = '', clearHint = true) {
   if (clearHint) sessionHint(false);
   csrfToken = null;
   username = '';
@@ -45,7 +58,7 @@ function showLogin(message = '', clearHint = true) {
   sidebar.hidden = true;
   menuButton.hidden = true;
   accountWrap.hidden = true;
-  byId('login-message').textContent = message;
+  setLoginMessage(messageKey);
   closeDrawer();
 }
 
@@ -54,6 +67,8 @@ function showWorkspace(session) {
   csrfToken = session.csrfToken;
   username = session.username;
   role = session.role;
+  setLoginMessage('');
+  setWorkspaceMessage('');
   loginView.hidden = true;
   workspace.hidden = false;
   sidebar.hidden = false;
@@ -82,7 +97,7 @@ function renderView() {
       ordersPage = mountOrders(content, {
         mode: currentView,
         csrfToken: () => csrfToken,
-        onUnauthorized: () => showLogin(t('authError')),
+        onUnauthorized: () => showLogin('authError'),
       });
     }
     return;
@@ -90,7 +105,7 @@ function renderView() {
   ordersPage?.dispose();
   ordersPage = null;
   if (currentView === 'products') {
-    if (!productsPage) productsPage = mountProducts(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin(t('authError')) });
+    if (!productsPage) productsPage = mountProducts(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError') });
     return;
   }
   productsPage = null;
@@ -162,9 +177,9 @@ byId('sign-out-button').addEventListener('click', async () => {
   try {
     const response = await fetch('/api/v1/seller/session', { method: 'DELETE', headers: { 'X-CSRF-Token': csrfToken } });
     if (!response.ok) throw new Error('sign out failed');
-    showLogin(t('signedOut'));
+    showLogin('signedOut');
   } catch {
-    byId('workspace-message').textContent = t('networkError');
+    setWorkspaceMessage('networkError');
   }
 });
 
@@ -172,7 +187,7 @@ byId('login-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const submit = byId('login-submit');
   submit.disabled = true;
-  byId('login-message').textContent = '';
+  setLoginMessage('');
   try {
     const response = await fetch('/api/v1/seller/session', {
       method: 'POST',
@@ -180,12 +195,12 @@ byId('login-form').addEventListener('submit', async (event) => {
       body: JSON.stringify({ username: byId('username').value, password: byId('password').value }),
     });
     if (!response.ok) {
-      byId('login-message').textContent = t('authError');
+      setLoginMessage('authError');
       return;
     }
     showWorkspace(await response.json());
   } catch {
-    byId('login-message').textContent = t('networkError');
+    setLoginMessage('networkError');
   } finally {
     submit.disabled = false;
   }
@@ -196,15 +211,18 @@ document.addEventListener('localechange', () => {
   else if (ordersPage) ordersPage.refreshLocale();
   else renderView();
   document.documentElement.lang = locale();
+  document.title = `${t('sellerPortal')} · Online Shopping`;
+  setLoginMessage(loginMessageKey);
+  setWorkspaceMessage(workspaceMessageKey);
   if (byId('profile-dialog').open) byId('profile-role').textContent = role === 'SUPER_ADMIN' ? t('superAdmin') : role;
 });
 
 if (sessionHint()) {
-  showLogin(t('loading'), false);
+  showLogin('loading', false);
   fetch('/api/v1/seller/session').then(async (response) => {
     if (response.ok) showWorkspace(await response.json());
     else showLogin();
-  }).catch(() => showLogin(t('networkError')));
+  }).catch(() => showLogin('networkError'));
 } else {
   showLogin();
 }

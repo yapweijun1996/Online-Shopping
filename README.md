@@ -1,6 +1,6 @@
 # Online Shopping MVP
 
-**Status: MVP implementation in progress.** Seller sign-in/session, MYR product management, public catalog/cart, guest multi-destination checkout, seller order review, and responsive PWA shells run locally. Complete release-quality checks and production operations remain unfinished. The local `sample/` prototype is a separate business-rule reference; its code, UI, database, and demo credentials are not the new application.
+**Status: MVP implementation in progress.** Seller sign-in/session, MYR product management, public catalog/cart, guest multi-destination checkout, seller order review, and responsive PWA shells run locally. AC-01–15 and AC-18 are locally verified; PWA installation and production operations remain unfinished, and nothing is released. The local `sample/` prototype is a separate business-rule reference; its code, UI, database, and demo credentials are not the new application.
 
 ## Run the current slice
 
@@ -28,7 +28,7 @@ There is no customer-facing cross-device history lookup in the MVP. A phone numb
 
 Checkout offers optional same-browser history for buyer and recipient phones and destination addresses: after an explicit save choice on a confirmed order, customers can type or select previous values and clear that history. Saved suggestions expire 90 days after the most recent save; storage failure leaves them in the current page only. The server does not expose a public contact-history lookup. MYR is the only shop currency; the MVP has no shipping-charge calculation or delivery-area enforcement. Destination addresses are collected for seller review.
 
-Both web surfaces have separate local PWA manifests/scopes, versioned public-shell caches, and offline pages. Local checkout and seller decisions require a server response; offline seller actions are disabled and the offline shell contains no private order data. Installation across target browsers remains unverified. The UI defaults to English and offers, in order, English, Malay, Mandarin, Vietnamese, Thai, Japanese, and Korean. See the [seller desktop/mobile previews](docs/UI_SPEC.md) and [PWA/i18n requirements](docs/PWA_I18N.md).
+Both web surfaces have separate local PWA manifests/scopes, versioned public-shell caches, and offline pages. Local checkout and seller decisions require a server response; offline seller actions are disabled and the offline shell contains no private order data. Installation across target browsers remains unverified. The UI defaults to English and offers, in order, English, Malay, Mandarin, Vietnamese, Thai, Japanese, and Korean; local phone/desktop browser checks cover core flows, errors, focus and layout in all seven. See the [seller desktop/mobile previews](docs/UI_SPEC.md) and [PWA/i18n requirements](docs/PWA_I18N.md).
 
 The [verification workflow](.github/workflows/verify.yml) runs the new application's Node 24 syntax checks, tests, and dependency audit on future GitHub pushes and pull requests. It has not run remotely for this local work.
 

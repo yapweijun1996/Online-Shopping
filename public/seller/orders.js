@@ -46,6 +46,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
   let detailStatusKey = 'selectOrder';
   let dialogAction = null;
   let dialogTrigger = null;
+  let dialogErrorKey = '';
   let listRequest = 0;
   let detailRequest = 0;
   let deciding = false;
@@ -62,6 +63,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
     message.classList.toggle('is-error', ['copyFailure', 'orderChanged', 'decisionUnknown', 'decisionFailed', 'offlineMessage'].includes(key));
   }
   function setListStatus(key) { listStatusKey = key; listStatus.textContent = key ? t(key) : ''; }
+  function setDialogError(key) { dialogErrorKey = key; dialogError.textContent = key ? t(key) : ''; }
   function showDetailStatus(key) {
     detailStatusKey = key;
     detailContent.replaceChildren();
@@ -249,6 +251,8 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
       const actions = node('div', 'order-review-actions');
       const confirm = actionButton(t('confirmOrder'), (event) => openDecision('confirm', event.currentTarget), 'primary-button');
       const reject = actionButton(t('rejectOrder'), (event) => openDecision('reject', event.currentTarget), 'secondary-button');
+      confirm.dataset.action = 'confirm';
+      reject.dataset.action = 'reject';
       confirm.disabled = !navigator.onLine;
       reject.disabled = !navigator.onLine;
       if (!navigator.onLine) actions.append(node('p', 'order-offline-hint', t('offlineMessage')));
@@ -285,7 +289,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
     dialogAction = action;
     dialogTrigger = trigger;
     reason.value = '';
-    dialogError.textContent = '';
+    setDialogError('');
     reasonLabel.hidden = action !== 'reject';
     reason.required = action === 'reject';
     find('#decision-title').textContent = t(action === 'confirm' ? 'confirmOrder' : 'rejectOrder');
@@ -325,7 +329,10 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
   window.addEventListener('online', onOnline);
   find('#decision-cancel').addEventListener('click', () => dialog.close());
   dialog.addEventListener('close', () => {
-    if (dialogTrigger?.isConnected) dialogTrigger.focus();
+    if (isCurrent()) {
+      const trigger = dialogTrigger?.isConnected ? dialogTrigger : find(`.order-review-actions [data-action="${dialogAction}"]`);
+      (trigger || find('#order-detail-title')).focus();
+    }
     dialogTrigger = null;
     dialogAction = null;
   });
@@ -338,12 +345,12 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
     const body = { expectedRevision };
     if (action === 'reject') {
       const trimmed = reason.value.trim();
-      if (!trimmed) { dialogError.textContent = t('reasonRequired'); reason.focus(); return; }
+      if (!trimmed) { setDialogError('reasonRequired'); reason.focus(); return; }
       body.reason = trimmed;
     }
     deciding = true;
     decisionSubmit.disabled = true;
-    dialogError.textContent = '';
+    setDialogError('');
     try {
       const updated = await request('POST', `/api/v1/seller/orders/${encodeURIComponent(id)}/${action}`, body);
       if (!isCurrent()) return;
@@ -363,7 +370,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
         await Promise.all([loadQueue(), openOrder(id)]);
         setMessage('decisionUnknown');
       } else {
-        dialogError.textContent = t(error.field === 'reason' ? 'reasonRequired' : 'decisionFailed');
+        setDialogError(error.field === 'reason' ? 'reasonRequired' : 'decisionFailed');
       }
     } finally {
       deciding = false;
@@ -389,6 +396,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
       else showDetailStatus(detailStatusKey);
       setMessage(messageKey);
       setListStatus(listStatusKey);
+      setDialogError(dialogErrorKey);
       if (dialog.open && dialogAction) {
         find('#decision-title').textContent = t(dialogAction === 'confirm' ? 'confirmOrder' : 'rejectOrder');
         find('#decision-intro').textContent = t(dialogAction === 'confirm' ? 'confirmQuestion' : 'rejectQuestion');

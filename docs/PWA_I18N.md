@@ -1,6 +1,6 @@
 # PWA and internationalization requirements
 
-**Status: both local PWA shells and seven-language seller/shop core UI run in Chromium.** Distinct manifests/service-worker scopes, public-shell caches, offline pages, and seller/catalog/cart/checkout resources exist. Target-device installation and complete cross-flow accessibility/language acceptance remain unverified.
+**Status: both local PWA shells and seven-language seller/shop core UI run in Chromium.** Distinct manifests/service-worker scopes, public-shell caches and offline pages exist. Local 320/1280px seller, catalog, cart, checkout, receipt, error, status, focus and accessible-label checks support AC-15/18. Target-device installation and deployed update acceptance remain unverified under AC-17.
 
 ## PWA
 
@@ -34,5 +34,5 @@ The initial Mandarin written form is Simplified Chinese, matching the owner's cu
 - The language selector changes labels, validation messages, empty/error states, accessibility names, order status wording, and navigation without altering server status codes, IDs, customer-entered values, or authoritative prices.
 - Language choice is independent of phone calling code: a customer using any supported UI language can enter a Malaysia `+60` or Singapore `+65` buyer/recipient phone.
 - Remember the chosen language for that browser; a first visit defaults to English. Do not infer an account identity from the language choice.
-- Keep product names and descriptions as seller-authored content. The catalog model should allow optional localized text per supported language with English fallback, so multilingual catalog content can be added without redesigning product identity or order snapshots.
+- Keep product names and descriptions as seller-authored content. The current catalog stores one seller-authored text set, shown unchanged in every UI language. Optional localized product text with English fallback and stable order snapshots is deferred as [LATER-02](TASK.md).
 - Allow text expansion and appropriate fonts for all scripts. Do not use flags to stand for languages. Test desktop and mobile layouts in every language, including long labels, line wrapping, copy controls, and screen-reader language announcement.

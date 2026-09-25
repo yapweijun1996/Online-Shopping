@@ -100,7 +100,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
     });
     if (response.status === 401) { onUnauthorized(); throw new Error('unauthorized'); }
     const data = await response.json();
-    if (!response.ok) throw Object.assign(new Error('request'), { field: data.error?.field });
+    if (!response.ok) throw Object.assign(new Error('request'), { field: data.error?.field, code: data.error?.code });
     return data;
   }
 
@@ -206,8 +206,8 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
       resetForm();
       if (await load()) setStatus('productSaved');
     } catch (failure) {
-      setError('productError');
-      const field = failure.field === 'priceMinor' ? 'price' : failure.field === 'imageDataUrl' ? 'image' : failure.field;
+      setError(failure.code === 'DUPLICATE_SKU' ? 'duplicateSku' : 'productError');
+      const field = failure.code === 'DUPLICATE_SKU' ? 'sku' : failure.field === 'priceMinor' ? 'price' : failure.field === 'imageDataUrl' ? 'image' : failure.field;
       if (field && form.elements[field]) form.elements[field].focus();
     } finally { save.disabled = false; }
   });
