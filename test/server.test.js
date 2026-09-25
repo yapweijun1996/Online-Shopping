@@ -51,7 +51,7 @@ test('configuration rejects missing, weak, and unsafe production values', () => 
 test('readiness fails closed when schema version changes while liveness stays up', async () => {
   const f = await fixture();
   try {
-    f.app.database.exec('PRAGMA user_version = 3');
+    f.app.database.exec('PRAGMA user_version = 4');
     assert.equal((await f.request('GET', '/health')).response.status, 200);
     assert.equal((await f.request('GET', '/ready')).response.status, 503);
   } finally {

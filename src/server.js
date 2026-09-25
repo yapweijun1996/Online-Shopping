@@ -5,6 +5,7 @@ import { authenticate, cookieFor, createSession, deleteSession, ensureAdmin, Log
 import { ApiError, handleErrors, json, readJson, requireOrigin } from './http.js';
 import { serveStatic } from './static.js';
 import { createProduct, getProduct, getProductImage, listProducts, updateProduct } from './products.js';
+import { createOrder } from './orders.js';
 
 const productIdPath = /^\/api\/v1\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
 const sellerProductIdPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
@@ -18,6 +19,21 @@ function image(response, value) {
   response.end(value.data);
 }
 
+class CheckoutLimiter {
+  #attempts = new Map();
+  allowed(key) {
+    const now = Date.now();
+    const attempts = (this.#attempts.get(key) || []).filter((time) => now - time < 15 * 60 * 1000);
+    if (attempts.length >= 30) return false;
+    if (!this.#attempts.has(key) && this.#attempts.size >= 5000) {
+      this.#attempts.delete(this.#attempts.keys().next().value);
+    }
+    attempts.push(now);
+    this.#attempts.set(key, attempts);
+    return true;
+  }
+}
+
 export function createApp(config) {
   const database = openDatabase(config.dbPath);
   try {
@@ -27,6 +43,7 @@ export function createApp(config) {
     throw error;
   }
   const limiter = new LoginLimiter();
+  const checkoutLimiter = new CheckoutLimiter();
   const server = handleErrors(async (request, response) => {
     const host = request.headers.host;
     const url = new URL(request.url, `http://${host || 'localhost'}`);
@@ -45,6 +62,15 @@ export function createApp(config) {
       const product = getProduct(database, publicProduct[1]);
       if (!product) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
       return json(response, 200, product);
+    }
+    if (request.method === 'POST' && pathname === '/api/v1/orders') {
+      requireOrigin(request, expectedOrigin);
+      if (!checkoutLimiter.allowed(request.socket.remoteAddress || 'unknown')) {
+        throw new ApiError(429, 'RATE_LIMITED', 'Too many submissions. Try again later.');
+      }
+      const body = await readJson(request, 128 * 1024);
+      const result = createOrder(database, request.headers['idempotency-key'], body);
+      return json(response, result.replayed ? 200 : 201, result.receipt);
     }
     if (!pathname.startsWith('/api/v1/seller/')) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
 

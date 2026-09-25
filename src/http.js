@@ -60,7 +60,7 @@ export function handleErrors(handler) {
         error: {
           code: invalidField ? 'INVALID_INPUT' : known ? error.code : 'INTERNAL_ERROR',
           message: known ? error.message : 'An unexpected error occurred.',
-          ...(invalidField ? { field: error.field } : {}),
+          ...(error.field ? { field: error.field } : {}),
         },
       });
     }

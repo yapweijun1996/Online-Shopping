@@ -1,6 +1,6 @@
 # Draft API contract
 
-**Status: partially implemented.** Seller session, liveness/readiness and product paths run locally; order paths below remain proposed targets. Keep this file aligned with actual behavior.
+**Status: partially implemented.** Seller session, liveness/readiness, product and guest order-create paths run locally; seller order review paths remain proposed targets. Keep this file aligned with actual behavior.
 
 ## Implemented local endpoints
 
@@ -18,8 +18,9 @@
 | `POST` | `/api/v1/seller/products` | Authorized same-origin/CSRF product create; MYR only. |
 | `PATCH` | `/api/v1/seller/products/{id}` | Authorized same-origin/CSRF partial edit or availability change. |
 | `GET` | `/api/v1/seller/products/{id}/image` | Authorized image read, including inactive products. |
+| `POST` | `/api/v1/orders` | Same-origin guest checkout with a bounded JSON body and `Idempotency-Key`; creates an atomic order and returns a receipt. |
 
-The local session is stored by token hash in SQLite and expires after 12 hours. Production cookies add `Secure`; production startup requires an HTTPS `PUBLIC_ORIGIN` and rejects missing, too-short, or known-placeholder admin passwords. The initial admin is provisioned once from ignored server configuration and startup fails if later configuration does not match it. **Order endpoints below are not yet live.**
+The local session is stored by token hash in SQLite and expires after 12 hours. Production cookies add `Secure`; production startup requires an HTTPS `PUBLIC_ORIGIN` and rejects missing, too-short, or known-placeholder admin passwords. The initial admin is provisioned once from ignored server configuration and startup fails if later configuration does not match it. **Seller order endpoints below are not yet live.**
 
 ## Principles
 
@@ -29,21 +30,18 @@ The local session is stored by token hash in SQLite and expires after 12 hours. 
 - State-changing requests validate input and are bounded. The server records the actual authenticated seller as the review actor.
 - Current product responses return seller-authored English name/description. Optional localized catalog text is planned; language changes never alter IDs, prices, order states, or authorization. See [PWA_I18N.md](PWA_I18N.md).
 
-## Public endpoints
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/v1/orders` | Save a guest order and return its receipt. |
+## Public checkout
 
 Example checkout request (illustrative; no real personal data):
 
 ```json
 {
-  "buyer": { "fullName": "Demo Buyer", "whatsappPhone": "+60100000000", "email": null },
+  "buyer": { "fullName": "Demo Buyer", "whatsappPhone": "+60123456789", "email": null },
   "whatsappOrderContactOptIn": true,
+  "locale": "en",
   "deliveries": [
     {
-      "recipient": { "fullName": "Demo Recipient", "phone": "+60100000001" },
+      "recipient": { "fullName": "Demo Recipient", "phone": "+6581234567" },
       "address": { "line1": "Example Street", "postcode": "47810", "country": "MY" },
       "items": [{ "productId": "product-example", "quantity": 2 }]
     }
@@ -53,13 +51,13 @@ Example checkout request (illustrative; no real personal data):
 
 Buyer WhatsApp and recipient phone fields accept valid international numbers with Malaysia (`+60`) or Singapore (`+65`) calling codes for the MVP. The server normalizes them to E.164 before persistence and rejects malformed input with a field-specific `INVALID_INPUT` error. Phone country does not have to match UI language or destination address country. The shop uses MYR; the MVP does not calculate shipping charges or GST, enforce a delivery area, or integrate logistics. The address and postcode are collected for seller review, without an automatic serviceability promise.
 
-Server-side contact validators now check strict `+60`/`+65` input with pinned `libphonenumber-js` maximum metadata, normalize it to E.164, bound buyer/recipient names and optional email, require a boolean WhatsApp order-contact choice, and identify the invalid field. They are not connected to an order endpoint yet. A structurally valid number is not proof of ownership, reachability, or WhatsApp registration.
+Server-side contact validators check strict `+60`/`+65` input with pinned `libphonenumber-js` maximum metadata, normalize it to E.164, bound buyer/recipient names and optional email, require a boolean WhatsApp order-contact choice, and identify the invalid field. A structurally valid number is not proof of ownership, reachability, or WhatsApp registration. Addresses require line 1, postcode and a two-letter country code; line 2, city and region are optional. The country code is recorded for manual seller review and does not enforce a delivery area.
 
-The client sends one fresh `Idempotency-Key` per intended order and reuses it only when retrying that same submission. The backend persists the key with the result and rejects reuse with different content. The server loads current available products, computes integer minor-unit prices and totals, saves immutable order snapshots, then responds after the transaction commits:
+The client sends one fresh 16–128 character `Idempotency-Key` per intended order and reuses it only when retrying that same submission. The backend stores its hash with the normalized request hash and order, returns the original `SUBMITTED` receipt on same-intent retry (`200`), and rejects reuse with different content (`409`). A new order returns `201`. The server loads current active products inside one SQLite transaction, computes integer minor-unit prices and totals, saves immutable order snapshots and consent time/version, then responds after commit. Up to 10 destinations and 100 item lines are accepted; quantities are 1–100. Client price, total, shipping and GST fields do not contribute to the saved amount. A failed transaction returns no receipt and does not reserve the idempotency key. The local public checkout limit is 30 attempts per remote address per 15 minutes; production multi-instance behavior remains open:
 
 ```json
 {
-  "orderNo": "ORDER-EXAMPLE",
+  "orderNo": "OS-00000001",
   "status": "SUBMITTED",
   "currency": "MYR",
   "totalMinor": 900,
@@ -67,7 +65,7 @@ The client sends one fresh `Idempotency-Key` per intended order and reuses it on
 }
 ```
 
-The order number is an illustrative format, not a finalized numbering scheme. There is no public endpoint to enumerate orders by phone, email, or order number in the MVP. Optional prior phone/address choices will be held only in the same browser after an explicit save choice, with a clear-history control; the server does not expose contact history lookup.
+The order number is allocated by a private sequence; the example is illustrative. There is no public endpoint to enumerate orders by phone, email, or order number in the MVP. Optional prior phone/address choices will be held only in the same browser after an explicit save choice, with a clear-history control; the server does not expose contact history lookup.
 
 ## Seller endpoints
 
@@ -95,7 +93,7 @@ The seller web app may build an official click-to-chat link from the authorized 
 { "error": { "code": "STALE_REVISION", "message": "The order changed. Reload and try again." } }
 ```
 
-Planned codes include `INVALID_INPUT` (400), `UNAUTHORIZED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404), `STALE_REVISION` (409), `IDEMPOTENCY_CONFLICT` (409), and `RATE_LIMITED` (429). Do not reveal whether an unverified phone or email exists through a public lookup response.
+Observed codes include `INVALID_INPUT` (400), `UNAUTHORIZED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404), `PRODUCT_UNAVAILABLE` (409), `IDEMPOTENCY_CONFLICT` (409), and `RATE_LIMITED` (429). `STALE_REVISION` (409) remains planned for seller decisions. Do not reveal whether an unverified phone or email exists through a public lookup response.
 
 ## Deferred APIs
 
