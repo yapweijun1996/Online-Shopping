@@ -30,10 +30,10 @@ function hashToken(token) {
 }
 
 export function ensureAdmin(database, username, password) {
-  const existing = database.prepare('SELECT username, password_hash FROM admin WHERE id = 1').get();
+  const existing = database.get('SELECT username, password_hash FROM admin WHERE id = 1');
   if (!existing) {
-    database.prepare('INSERT INTO admin(id, username, password_hash, created_at) VALUES (1, ?, ?, ?)')
-      .run(username, encodePassword(password), new Date().toISOString());
+    database.run('INSERT INTO admin(id, username, password_hash, created_at) VALUES (1, ?, ?, ?)',
+      username, encodePassword(password), new Date().toISOString());
     return;
   }
   if (existing.username !== username || !verifyPassword(password, existing.password_hash)) {
@@ -42,7 +42,7 @@ export function ensureAdmin(database, username, password) {
 }
 
 export async function authenticate(database, username, password) {
-  const admin = database.prepare('SELECT username, password_hash FROM admin WHERE id = 1').get();
+  const admin = database.get('SELECT username, password_hash FROM admin WHERE id = 1');
   if (!admin) return false;
   const passwordOk = await verifyPasswordAsync(password, admin.password_hash);
   return admin.username === username && passwordOk;
@@ -52,21 +52,20 @@ export function createSession(database) {
   const token = randomBytes(32).toString('base64url');
   const csrfToken = randomBytes(32).toString('base64url');
   const now = Date.now();
-  database.prepare('DELETE FROM session WHERE expires_at <= ?').run(new Date(now).toISOString());
-  database.prepare('INSERT INTO session(token_hash, csrf_token, expires_at, created_at) VALUES (?, ?, ?, ?)')
-    .run(hashToken(token), csrfToken, new Date(now + SESSION_MS).toISOString(), new Date(now).toISOString());
+  database.run('DELETE FROM session WHERE expires_at <= ?', new Date(now).toISOString());
+  database.run('INSERT INTO session(token_hash, csrf_token, expires_at, created_at) VALUES (?, ?, ?, ?)',
+    hashToken(token), csrfToken, new Date(now + SESSION_MS).toISOString(), new Date(now).toISOString());
   return { token, csrfToken, maxAge: SESSION_MS / 1000 };
 }
 
 export function readSession(database, token) {
   if (!token || token.length > 128) return null;
-  const row = database.prepare('SELECT token_hash, csrf_token, expires_at FROM session WHERE token_hash = ?')
-    .get(hashToken(token));
+  const row = database.get('SELECT token_hash, csrf_token, expires_at FROM session WHERE token_hash = ?', hashToken(token));
   return row && row.expires_at > new Date().toISOString() ? row : null;
 }
 
 export function deleteSession(database, token) {
-  if (token) database.prepare('DELETE FROM session WHERE token_hash = ?').run(hashToken(token));
+  if (token) database.run('DELETE FROM session WHERE token_hash = ?', hashToken(token));
 }
 
 export function cookieFor(token, maxAge, secure) {

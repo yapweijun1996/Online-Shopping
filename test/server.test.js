@@ -69,7 +69,7 @@ test('file-backed credentials are read without a trailing newline', () => {
 test('readiness fails closed when schema version changes while liveness stays up', async () => {
   const f = await fixture();
   try {
-    f.app.database.exec('PRAGMA user_version = 4');
+    f.app.database.setSchemaVersion(4);
     assert.equal((await f.request('GET', '/health')).response.status, 200);
     assert.equal((await f.request('GET', '/ready')).response.status, 503);
   } finally {

@@ -137,7 +137,7 @@ test('schema version one upgrades without losing the provisioned seller', async 
     const origin = `http://127.0.0.1:${migrated.server.address().port}`;
     assert.equal((await fetch(`${origin}/ready`)).status, 200);
     assert.equal((await fetch(`${origin}/api/v1/seller/session`, { headers: { cookie } })).status, 200);
-    assert.equal(migrated.database.prepare('PRAGMA user_version').get().user_version, 3);
+    assert.equal(migrated.database.schemaVersion(), 3);
   } finally {
     await migrated.close();
     rmSync(directory, { recursive: true, force: true });

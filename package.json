@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node --env-file-if-exists=.env src/server.js",
-    "test": "node --test test/cart.test.js test/checkout-input.test.js test/history.test.js test/i18n.test.js test/orders.test.js test/phone.test.js test/product-input.test.js test/products.test.js test/pwa.test.js test/seller-orders.test.js test/server.test.js",
+    "test": "node --test test/cart.test.js test/checkout-input.test.js test/history.test.js test/i18n.test.js test/orders.test.js test/phone.test.js test/product-input.test.js test/products.test.js test/pwa.test.js test/seller-orders.test.js test/server.test.js test/store.test.js",
     "check": "node scripts/check.js"
   },
   "dependencies": {

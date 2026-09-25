@@ -1,29 +1,30 @@
-import { DatabaseSync } from 'node:sqlite';
-import { chmodSync, mkdirSync } from 'node:fs';
-import path from 'node:path';
+import { openNodeStore } from './store.js';
 
 export const SCHEMA_VERSION = 3;
 
-function migrate(database, version, sql) {
-  database.exec('BEGIN IMMEDIATE');
-  try {
-    database.exec(sql);
-    database.exec(`PRAGMA user_version = ${version}`);
-    database.exec('COMMIT');
-  } catch (error) {
-    database.exec('ROLLBACK');
-    throw error;
-  }
+function migrate(store, version, sql) {
+  store.transaction(() => {
+    store.exec(sql);
+    store.setSchemaVersion(version);
+  });
 }
 
 export function openDatabase(file) {
-  if (file !== ':memory:') mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  const database = new DatabaseSync(file, { timeout: 5000 });
-  if (file !== ':memory:') chmodSync(file, 0o600);
-  database.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
-  let version = database.prepare('PRAGMA user_version').get().user_version;
+  const store = openNodeStore(file);
+  try {
+    migrateStore(store);
+  } catch (error) {
+    store.close();
+    throw error;
+  }
+  return store;
+}
+
+/* Applies pending migrations through the storage contract so every runtime shares one schema. */
+export function migrateStore(store) {
+  let version = store.schemaVersion();
   if (version === 0) {
-    migrate(database, 1, `
+    migrate(store, 1, `
       CREATE TABLE admin (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         username TEXT NOT NULL UNIQUE,
@@ -40,7 +41,7 @@ export function openDatabase(file) {
     version = 1;
   }
   if (version === 1) {
-    migrate(database, 2, `
+    migrate(store, 2, `
       CREATE TABLE product (
         id TEXT PRIMARY KEY,
         sku TEXT NOT NULL UNIQUE,
@@ -62,7 +63,7 @@ export function openDatabase(file) {
     version = 2;
   }
   if (version === 2) {
-    migrate(database, 3, `
+    migrate(store, 3, `
       CREATE TABLE order_sequence (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         value INTEGER NOT NULL CHECK (value >= 0)
@@ -135,25 +136,16 @@ export function openDatabase(file) {
       ) STRICT;`);
     version = 3;
   }
-  if (version !== SCHEMA_VERSION) {
-    database.close();
-    throw new Error(`Unsupported database schema version ${version}.`);
-  }
-  return database;
+  if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }
 
-export function ready(database) {
+export function ready(store) {
   try {
-    return database.prepare('PRAGMA user_version').get().user_version === SCHEMA_VERSION &&
-      Boolean(database.prepare('SELECT id FROM admin WHERE id = 1').get()) &&
-      Array.isArray(database.prepare('SELECT token_hash FROM session LIMIT 1').all()) &&
-      Array.isArray(database.prepare('SELECT id FROM product LIMIT 1').all()) &&
-      Boolean(database.prepare('SELECT id FROM order_sequence WHERE id = 1').get()) &&
-      Array.isArray(database.prepare('SELECT id FROM shop_order LIMIT 1').all()) &&
-      Array.isArray(database.prepare('SELECT id FROM delivery LIMIT 1').all()) &&
-      Array.isArray(database.prepare('SELECT id FROM order_item LIMIT 1').all()) &&
-      Array.isArray(database.prepare('SELECT id FROM order_event LIMIT 1').all()) &&
-      Array.isArray(database.prepare('SELECT key_hash FROM checkout_idempotency LIMIT 1').all());
+    return store.schemaVersion() === SCHEMA_VERSION &&
+      Boolean(store.get('SELECT id FROM admin WHERE id = 1')) &&
+      Boolean(store.get('SELECT id FROM order_sequence WHERE id = 1')) &&
+      ['session', 'product', 'shop_order', 'delivery', 'order_item', 'order_event', 'checkout_idempotency']
+        .every((table) => Array.isArray(store.all(`SELECT * FROM ${table} LIMIT 0`)));
   } catch {
     return false;
   }

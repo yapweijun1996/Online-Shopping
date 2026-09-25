@@ -65,24 +65,24 @@ test('checkout snapshots two destinations and server prices in one private order
     assert.equal(result.data.status, 'SUBMITTED');
     assert.equal(result.data.currency, 'MYR');
     assert.equal(result.data.totalMinor, 2300);
-    const order = f.app.database.prepare('SELECT * FROM shop_order').get();
+    const order = f.app.database.get('SELECT * FROM shop_order');
     assert.equal(order.buyer_phone, '+6581234567');
     assert.equal(order.whatsapp_opt_in, 1);
     assert.equal(order.whatsapp_consent_at, order.submitted_at);
     assert.equal(order.whatsapp_consent_version, 'order-contact-v1');
     assert.equal(order.revision, 1);
-    assert.equal(f.app.database.prepare('SELECT COUNT(*) AS count FROM delivery').get().count, 2);
-    const recipients = f.app.database.prepare('SELECT recipient_phone, address_country FROM delivery ORDER BY position').all();
+    assert.equal(f.app.database.get('SELECT COUNT(*) AS count FROM delivery').count, 2);
+    const recipients = f.app.database.all('SELECT recipient_phone, address_country FROM delivery ORDER BY position');
     assert.deepEqual(recipients.map(({ recipient_phone, address_country }) => [recipient_phone, address_country]),
       [['+60123456789', 'MY'], ['+6581234567', 'SG']]);
-    const items = f.app.database.prepare('SELECT sku_snapshot, name_snapshot, price_minor, quantity, line_total_minor FROM order_item ORDER BY price_minor DESC').all();
+    const items = f.app.database.all('SELECT sku_snapshot, name_snapshot, price_minor, quantity, line_total_minor FROM order_item ORDER BY price_minor DESC');
     assert.deepEqual(items.map(({ sku_snapshot, price_minor, quantity, line_total_minor }) => [sku_snapshot, price_minor, quantity, line_total_minor]),
       [['ITEM-A', 900, 2, 1800], ['ITEM-B', 500, 1, 500]]);
-    assert.equal(f.app.database.prepare('SELECT COUNT(*) AS count FROM order_event').get().count, 1);
+    assert.equal(f.app.database.get('SELECT COUNT(*) AS count FROM order_event').count, 1);
     updateProduct(f.app.database, f.first.id, { name: 'Renamed item', priceMinor: 1200, active: false });
-    assert.equal(f.app.database.prepare('SELECT name_snapshot, price_minor FROM order_item WHERE product_id = ?').get(f.first.id).name_snapshot,
+    assert.equal(f.app.database.get('SELECT name_snapshot, price_minor FROM order_item WHERE product_id = ?', f.first.id).name_snapshot,
       'Example item A');
-    assert.equal(f.app.database.prepare('SELECT price_minor FROM order_item WHERE product_id = ?').get(f.first.id).price_minor, 900);
+    assert.equal(f.app.database.get('SELECT price_minor FROM order_item WHERE product_id = ?', f.first.id).price_minor, 900);
     assert.equal((await f.submit('order-intent-00000002')).data.error.code, 'PRODUCT_UNAVAILABLE');
     assert.equal((await fetch(`${f.origin}/api/v1/orders?phone=%2B6581234567`)).status, 404);
     assert.equal((await fetch(`${f.origin}/api/v1/orders/${result.data.orderNo}`)).status, 404);
@@ -97,8 +97,8 @@ test('checkout rejects a changed price instead of charging the new amount', asyn
     assert.equal(changed.response.status, 409);
     assert.equal(changed.data.error.code, 'PRICE_CHANGED');
     assert.equal(changed.data.error.field, 'deliveries.1.items.0.expectedPriceMinor');
-    assert.equal(f.app.database.prepare('SELECT COUNT(*) AS count FROM shop_order').get().count, 0);
-    assert.equal(f.app.database.prepare('SELECT COUNT(*) AS count FROM checkout_idempotency').get().count, 0);
+    assert.equal(f.app.database.get('SELECT COUNT(*) AS count FROM shop_order').count, 0);
+    assert.equal(f.app.database.get('SELECT COUNT(*) AS count FROM checkout_idempotency').count, 0);
     const original = orderInput(f.first.id, f.second.id);
     const missing = await f.submit('order-intent-00000012', {
       ...original,
@@ -128,8 +128,8 @@ test('idempotent retries return the original receipt and reject changed intent',
     const changed = await f.submit(key, { ...orderInput(f.first.id, f.second.id), whatsappOrderContactOptIn: false });
     assert.equal(changed.response.status, 409);
     assert.equal(changed.data.error.code, 'IDEMPOTENCY_CONFLICT');
-    assert.equal(f.app.database.prepare('SELECT COUNT(*) AS count FROM shop_order').get().count, 1);
-    const stored = f.app.database.prepare('SELECT key_hash, request_hash FROM checkout_idempotency').get();
+    assert.equal(f.app.database.get('SELECT COUNT(*) AS count FROM shop_order').count, 1);
+    const stored = f.app.database.get('SELECT key_hash, request_hash FROM checkout_idempotency');
     assert.equal(stored.key_hash.length, 64);
     assert.notEqual(stored.key_hash, key);
   } finally { await f.close(); }
@@ -143,7 +143,7 @@ test('concurrent submissions with one intent create only one order', async () =>
     ]);
     assert.deepEqual([first.response.status, second.response.status].sort(), [200, 201]);
     assert.deepEqual(first.data, second.data);
-    assert.equal(f.app.database.prepare('SELECT COUNT(*) AS count FROM shop_order').get().count, 1);
+    assert.equal(f.app.database.get('SELECT COUNT(*) AS count FROM shop_order').count, 1);
   } finally { await f.close(); }
 });
 
@@ -179,8 +179,8 @@ test('checkout rejects invalid contact, assignment and unavailable product witho
     assert.equal(unavailable.response.status, 409);
     assert.equal(unavailable.data.error.code, 'PRODUCT_UNAVAILABLE');
     assert.equal(unavailable.data.error.field, 'deliveries.1.items.0.productId');
-    assert.equal(f.app.database.prepare('SELECT COUNT(*) AS count FROM shop_order').get().count, 0);
-    assert.equal(f.app.database.prepare('SELECT COUNT(*) AS count FROM checkout_idempotency').get().count, 0);
+    assert.equal(f.app.database.get('SELECT COUNT(*) AS count FROM shop_order').count, 0);
+    assert.equal(f.app.database.get('SELECT COUNT(*) AS count FROM checkout_idempotency').count, 0);
   } finally { await f.close(); }
 });
 
@@ -192,8 +192,8 @@ test('a failed persistence transaction returns no receipt and permits safe retry
     const failed = await f.submit('order-intent-00000007');
     assert.equal(failed.response.status, 500);
     assert.equal(failed.data.error.code, 'INTERNAL_ERROR');
-    assert.equal(f.app.database.prepare('SELECT COUNT(*) AS count FROM shop_order').get().count, 0);
-    assert.equal(f.app.database.prepare('SELECT COUNT(*) AS count FROM checkout_idempotency').get().count, 0);
+    assert.equal(f.app.database.get('SELECT COUNT(*) AS count FROM shop_order').count, 0);
+    assert.equal(f.app.database.get('SELECT COUNT(*) AS count FROM checkout_idempotency').count, 0);
     f.app.database.exec('DROP TRIGGER fail_fixture_item');
     const retry = await f.submit('order-intent-00000007');
     assert.equal(retry.response.status, 201);
@@ -210,9 +210,9 @@ test('schema version two upgrades without losing catalog records', async () => {
   old.close();
   const migrated = createApp(f.config);
   try {
-    assert.equal(migrated.database.prepare('PRAGMA user_version').get().user_version, 3);
-    assert.equal(migrated.database.prepare('SELECT COUNT(*) AS count FROM product').get().count, 2);
-    assert.equal(migrated.database.prepare('SELECT COUNT(*) AS count FROM shop_order').get().count, 0);
+    assert.equal(migrated.database.schemaVersion(), 3);
+    assert.equal(migrated.database.get('SELECT COUNT(*) AS count FROM product').count, 2);
+    assert.equal(migrated.database.get('SELECT COUNT(*) AS count FROM shop_order').count, 0);
   } finally {
     migrated.database.close();
     rmSync(f.directory, { recursive: true, force: true });
