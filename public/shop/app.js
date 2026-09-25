@@ -20,6 +20,7 @@ let catalogStatus = '';
 let cartStatus = '';
 let shopStatus = '';
 let cartReady = false;
+let priceChangedNotice = false;
 let checkoutPage = null;
 let lastReceipt = null;
 let receiptNotes = [];
@@ -274,7 +275,8 @@ async function refreshCart() {
     resolvedCart = results;
     cartReady = results.every(({ product }) => Boolean(product));
     renderCart();
-    setCartStatus(results.some(({ product }) => !product) ? 'cartUnavailable' : '');
+    setCartStatus(results.some(({ product }) => !product) ? 'cartUnavailable' : priceChangedNotice ? 'cartPriceChanged' : '');
+    priceChangedNotice = false;
     return cartReady;
   } catch {
     if (request === cartRequest) setCartStatus('networkError');
@@ -366,7 +368,13 @@ byId('catalog-search').placeholder = t('searchProducts');
 registerWorker('/shop/sw.js', '/shop/').catch(() => console.warn('Shop offline shell unavailable.'));
 const cartStore = await createCartStore();
 lastReceipt = readReceipt();
-checkoutPage = mountCheckout({ onSuccess: completeOrder });
+checkoutPage = mountCheckout({
+  onSuccess: completeOrder,
+  onPriceChanged() {
+    priceChangedNotice = true;
+    location.hash = '#cart';
+  },
+});
 updateCount();
 updatePersistence();
 byId('catalog-search-form').addEventListener('submit', (event) => { event.preventDefault(); applyCatalogFilters(); });

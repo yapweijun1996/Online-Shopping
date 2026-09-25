@@ -5,9 +5,15 @@ import { validateProductInput } from './product-input.js';
 
 const columns = 'id, sku, name, description, category, price_minor, currency, active, image_mime, created_at, updated_at';
 
+/* Public image URLs carry this token so browsers may cache them until the product changes. */
+export function imageVersion(updatedAt) {
+  return Date.parse(updatedAt).toString(36);
+}
+
 function productFromRow(row, seller = false) {
   if (!row) return null;
-  const imagePath = seller ? `/api/v1/seller/products/${row.id}/image` : `/api/v1/products/${row.id}/image`;
+  const imagePath = seller ? `/api/v1/seller/products/${row.id}/image`
+    : `/api/v1/products/${row.id}/image?v=${imageVersion(row.updated_at)}`;
   return {
     id: row.id, sku: row.sku, name: row.name, description: row.description,
     category: row.category, priceMinor: row.price_minor, currency: row.currency,
@@ -69,8 +75,9 @@ export function getProduct(database, id, seller = false) {
 }
 
 export function getProductImage(database, id, seller = false) {
-  return database.prepare(`SELECT image_mime AS mime, image_data AS data FROM product
+  const row = database.prepare(`SELECT image_mime AS mime, image_data AS data, updated_at FROM product
     WHERE id = ? ${seller ? '' : 'AND active = 1'}`).get(id);
+  return row && { mime: row.mime, data: row.data, version: imageVersion(row.updated_at) };
 }
 
 export function listProducts(database, params, seller = false) {

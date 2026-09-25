@@ -13,7 +13,7 @@
 | `DELETE` | `/api/v1/seller/session` | Requires session, same origin and CSRF token; invalidates the session and expires the cookie. |
 | `GET` | `/api/v1/products` | Public active-only list, with `search`, `category`, `limit` and `offset`; returns `{items, nextOffset, categories}`. |
 | `GET` | `/api/v1/products/{id}` | Public active-only product detail. |
-| `GET` | `/api/v1/products/{id}/image` | Bounded image bytes for an active product; returns 404 for absent/inactive images. |
+| `GET` | `/api/v1/products/{id}/image` | Bounded image bytes for an active product; returns 404 for absent/inactive images. Cacheable for a year when `v` matches the `imageUrl` version token. |
 | `GET` | `/api/v1/seller/products` | Authorized seller list, including inactive products; `search`, `category`, `limit`, `offset`. |
 | `POST` | `/api/v1/seller/products` | Authorized same-origin/CSRF product create; MYR only. |
 | `PATCH` | `/api/v1/seller/products/{id}` | Authorized same-origin/CSRF partial edit or availability change. |
@@ -49,7 +49,7 @@ Example checkout request (illustrative; no real personal data):
     {
       "recipient": { "fullName": "Demo Recipient", "phone": "+6581234567" },
       "address": { "line1": "Example Street", "postcode": "47810", "country": "MY" },
-      "items": [{ "productId": "product-example", "quantity": 2 }]
+      "items": [{ "productId": "product-example", "quantity": 2, "expectedPriceMinor": 450 }]
     }
   ]
 }
@@ -59,7 +59,7 @@ Buyer WhatsApp and recipient phone fields accept valid international numbers wit
 
 Server-side contact validators check strict `+60`/`+65` input with pinned `libphonenumber-js` maximum metadata, normalize it to E.164, bound buyer/recipient names and optional email, require a boolean WhatsApp order-contact choice, and identify the invalid field. A structurally valid number is not proof of ownership, reachability, or WhatsApp registration. Addresses require line 1, postcode and a two-letter country code; line 2, city and region are optional. The country code is recorded for manual seller review and does not enforce a delivery area.
 
-The client sends one fresh 16–128 character `Idempotency-Key` per intended order and reuses it only when retrying that same submission. The backend stores its hash with the normalized request hash and order, returns the original `SUBMITTED` receipt on same-intent retry (`200`), and rejects reuse with different content (`409`). A new order returns `201`. The server loads current active products inside one SQLite transaction, computes integer minor-unit prices and totals, saves immutable order snapshots and consent time/version, then responds after commit. Up to 10 destinations and 100 item lines are accepted; quantities are 1–100. Client price, total, shipping and GST fields do not contribute to the saved amount. A failed transaction returns no receipt and does not reserve the idempotency key. The public checkout limit is 30 attempts per client address per 15 minutes in one backend process; multi-instance operation would require a shared limiter and a different SQLite strategy. Example receipt:
+The client sends one fresh 16–128 character `Idempotency-Key` per intended order and reuses it only when retrying that same submission. The backend stores its hash with the normalized request hash and order, returns the original `SUBMITTED` receipt on same-intent retry (`200`), and rejects reuse with different content (`409`). A new order returns `201`. The server loads current active products inside one SQLite transaction, computes integer minor-unit prices and totals, saves immutable order snapshots and consent time/version, then responds after commit. Up to 10 destinations and 100 item lines are accepted; quantities are 1–100. Each item must carry `expectedPriceMinor`, the unit price the buyer saw in the cart; if it differs from the current price the server rejects the order with `PRICE_CHANGED` (409) and the item field, saves nothing, and the shop returns the buyer to the refreshed cart. The expected price only guards against silent price changes: the saved amount is always the server price, and client total, shipping and GST fields do not contribute to it. A failed transaction returns no receipt and does not reserve the idempotency key. The public checkout limit is 30 attempts per client address per 15 minutes in one backend process; multi-instance operation would require a shared limiter and a different SQLite strategy. Example receipt:
 
 ```json
 {
@@ -91,7 +91,7 @@ Confirm body is `{ "expectedRevision": 1 }`; reject body is `{ "expectedRevision
 
 The planned localized catalog extension would accept text keyed by supported language tags, return English when a translation is absent, and snapshot the checkout display name and locale. No translation write field is implemented yet. Current orders snapshot the seller-authored English name and the selected UI locale.
 
-Seller product requests require SKU, English name/description, category, integer `priceMinor`, `currency: "MYR"` and boolean `active` on create. PATCH accepts a nonempty subset. Optional `imageDataUrl` is a PNG/JPEG/WebP base64 data URL up to 512 KB decoded; `null` removes an image. The server validates signature and size, stores decoded bytes in private SQLite, and returns an `imageUrl` path rather than embedding base64 in product lists. The seller page uses a placeholder when no image exists. Localized product text remains a planned extension; English is the current public fallback. Duplicate SKU returns `DUPLICATE_SKU` (409). Product responses use `Cache-Control: no-store`.
+Seller product requests require SKU, English name/description, category, integer `priceMinor`, `currency: "MYR"` and boolean `active` on create. PATCH accepts a nonempty subset. Optional `imageDataUrl` is a PNG/JPEG/WebP base64 data URL up to 512 KB decoded; `null` removes an image. The server validates signature and size, stores decoded bytes in private SQLite, and returns an `imageUrl` path rather than embedding base64 in product lists. The seller page uses a placeholder when no image exists. Localized product text remains a planned extension; English is the current public fallback. Duplicate SKU returns `DUPLICATE_SKU` (409). Product JSON and seller image responses use `Cache-Control: no-store`. Public `imageUrl` values include a `v` token derived from the product's `updated_at`; a public image requested with the current token is served with `Cache-Control: public, max-age=31536000, immutable`, and any product update issues a new URL. Requests without the current token receive `no-store`. A browser that already cached an image may keep showing it from cache after the product is deactivated.
 
 The seller web app builds an official `https://wa.me/<international-digits>` click-to-chat link from the authorized buyer phone only when that buyer opted in to order-related WhatsApp contact. It copies individual buyer and recipient contact/address fields from that authorized response, with visible clipboard success/failure feedback. The link has no prefilled message; sending remains manual. The API does not send WhatsApp messages or export courier files in the MVP. `Sales Orders` and `Sales Order Confirmation` are UI views over the same order endpoints and order state. The confirmation view reloads the queue/detail after a stale 409 and keeps mutations online only.
 
@@ -101,7 +101,7 @@ The seller web app builds an official `https://wa.me/<international-digits>` cli
 { "error": { "code": "STALE_REVISION", "message": "The order changed. Reload and try again." } }
 ```
 
-Observed codes include `INVALID_INPUT` (400), `UNAUTHORIZED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404), `PRODUCT_UNAVAILABLE` (409), `IDEMPOTENCY_CONFLICT` (409), `STALE_REVISION` (409), and `RATE_LIMITED` (429). Do not reveal whether an unverified phone or email exists through a public lookup response.
+Observed codes include `INVALID_INPUT` (400), `UNAUTHORIZED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404), `PRODUCT_UNAVAILABLE` (409), `PRICE_CHANGED` (409), `IDEMPOTENCY_CONFLICT` (409), `STALE_REVISION` (409), and `RATE_LIMITED` (429). Do not reveal whether an unverified phone or email exists through a public lookup response.
 
 ## Deferred APIs
 
