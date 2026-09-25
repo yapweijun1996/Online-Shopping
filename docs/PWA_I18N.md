@@ -1,6 +1,6 @@
 # PWA and internationalization requirements
 
-**Status: design requirement, not implemented.** Applies to both the public shop and seller panel.
+**Status: design requirement with local shell implementation in progress.** Both surfaces now have distinct manifests/service-worker scopes, public-shell caches, offline pages, and seven-language shell resources. Full installation, checkout/review, and all-language acceptance remain unverified.
 
 ## PWA
 
@@ -9,6 +9,8 @@
 - Do not cache seller sessions, private API responses, buyer details, or order responses in the service worker. Seller and checkout mutations require a live server response. If offline, show a clear unavailable state and let the user retry when online; do not claim an order or review decision was saved.
 - Preserve the planned IndexedDB boundary: customer cart and minimal same-browser receipts may be local; authoritative orders stay on the server. An installable PWA does not make browser storage permanent.
 - Verify install/launch, navigation, offline fallback, safe update behavior, and authenticated-data boundaries on mobile and desktop before release.
+
+The current workers use an explicit public-file allowlist and separate seller/shop cache versions. Bump the affected worker version whenever its precached files change; bump both when a shared file changes. A controlled page keeps its current cached shell while a new worker waits, so navigation does not mix new HTML with old scripts. The new worker activates after old controlled pages close, then removes its prior cache. This local behavior was exercised in Chromium; target-device installation and update checks remain.
 
 ## Language order and codes
 

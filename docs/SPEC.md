@@ -40,7 +40,7 @@ The super admin configures a seller catalog and decides on submitted orders. A g
 | Static/config/build | Source lint/type/build and production configuration rejection appropriate to chosen stack. | Node 24 syntax checks and production credential-startup tests pass; no production build/artifact gate yet. |
 | Domain/API/data | Unit, integration, contract, transaction, authorization, idempotency, failure and concurrency checks for AC-01–14. | Seller session, CSRF, startup, and persistence tests pass; commerce tests do not exist yet. |
 | Browser | Seller setup, guest multi-destination checkout, receipt, review, loading/error states, keyboard, 390px/mobile and desktop, console/overflow; seven-language UI checks. | Seller login/reload/logout, navigation and mobile drawer were smoke-tested; no commerce UI exists yet. |
-| PWA/offline | Both surfaces: install/launch, service-worker private-cache boundaries, offline shell, update, and online-only mutations. | Selected and specified in [PWA_I18N.md](PWA_I18N.md); no implementation. |
+| PWA/offline | Both surfaces: install/launch, service-worker private-cache boundaries, offline shell, update, and online-only mutations. | Local Chromium confirmed distinct scopes/caches, offline pages, and a waiting-then-activated worker update; target-device install and order/review mutation checks remain. |
 | Release/data | Private schema/migrations, backup/restore, retention, secret scan, artifact inspection, health/readiness, deployed version and rollback. | No deployment, migration, artifact, or release exists. |
 
 Tests in `sample/` are scoped to its prototype and do not satisfy these gates.

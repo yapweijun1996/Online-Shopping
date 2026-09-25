@@ -6,7 +6,7 @@
 
 Use Node 24.15 or later in the 24.x line. Copy `.env.example` to ignored `.env`, set a unique `ADMIN_USERNAME` and a non-default `ADMIN_PASSWORD` of at least 16 characters with letters and numbers, and keep `DB_PATH` outside `public/`. Do not reuse example or sample credentials. Then run `npm start` with Node 24. On this machine, where the default Node is older, use `npx --yes node@24 --env-file=.env src/server.js`.
 
-Open `/seller/` for the seller login or `/shop/` for the current storefront placeholder. `/health` is liveness; `/ready` checks the local database schema. The default private database path is `.local/online-shopping.db`. Run `npm test` with Node 24, or `npx --yes node@24 --test` on this machine. The application is for local development only until the production decisions and release gates in [PROGRESS.md](docs/PROGRESS.md) are resolved.
+Open `/seller/` for the seller login or `/shop/` for the current storefront placeholder. `/health` is liveness; `/ready` checks the local database schema. The default private database path is `.local/online-shopping.db`. Run `npm test` with Node 24, or `npx --yes node@24 --test test/pwa.test.js test/server.test.js` on this machine. The test script deliberately excludes the separate `sample/` suite. The application is for local development only until the production decisions and release gates in [PROGRESS.md](docs/PROGRESS.md) are resolved.
 
 ## Goal
 
@@ -26,7 +26,7 @@ Start with the seller login and product management panel. Then build the public 
 
 There is no customer-facing cross-device history lookup in the MVP. A phone number or email supplied without verification is contact data, not proof of ownership.
 
-Both web surfaces are designed as installable PWAs with a safe offline shell; checkout and seller decisions still require a live server. The UI defaults to English and offers, in order, English, Malay, Mandarin, Vietnamese, Thai, Japanese, and Korean. See the [seller desktop/mobile previews](docs/UI_SPEC.md) and [PWA/i18n requirements](docs/PWA_I18N.md).
+Both web surfaces now have separate local PWA manifests/scopes, versioned public-shell caches, and offline pages. Installation across target browsers and online-only checkout/review behavior remain unverified until those journeys exist. The UI defaults to English and offers, in order, English, Malay, Mandarin, Vietnamese, Thai, Japanese, and Korean. See the [seller desktop/mobile previews](docs/UI_SPEC.md) and [PWA/i18n requirements](docs/PWA_I18N.md).
 
 ## MVP boundaries
 

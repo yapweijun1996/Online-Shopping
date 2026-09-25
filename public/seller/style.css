@@ -1,20 +1,5 @@
-:root{font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#133248;background:#f5f8fa;font-synthesis:none}
-*{box-sizing:border-box}
-body{margin:0;min-width:280px}
-button,input,select{font:inherit}
-button{cursor:pointer}
-button:disabled{cursor:not-allowed;opacity:.58}
-[hidden]{display:none!important}
-a{color:inherit}
-svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid #42b9b5;outline-offset:2px}
-.topbar{height:72px;position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:16px;padding:0 28px;background:#fff;border-bottom:1px solid #dce7eb}
-.brand{text-decoration:none;font-weight:750;display:flex;align-items:center;gap:11px;white-space:nowrap}
-.brand-mark{width:34px;height:34px;display:grid;place-items:center;border-radius:10px;background:#087f83;color:#fff;font-size:13px;font-weight:800}
-.brand-mark.large{width:52px;height:52px;border-radius:15px;font-size:19px}
+@import url('/shared/base.css');
 .top-actions{margin-left:auto;display:flex;align-items:center;gap:18px}
-.language-control{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:650;color:#536b79}
-.language-control select{max-width:170px;border:1px solid #cfdee3;border-radius:10px;background:#fff;padding:9px 10px;color:#173950}
 .account-wrap{position:relative}
 .account-button,.icon-button,.collapse-button{border:0;background:transparent;color:#1d465a}
 .account-button{display:flex;align-items:center;gap:9px;padding:7px;border-radius:10px;font-weight:650}
@@ -38,8 +23,6 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{ou
 .sidebar.collapsed .nav-item,.sidebar.collapsed .collapse-button{justify-content:center;padding:9px}
 .sidebar.collapsed+.main{margin-left:74px}
 .page-heading{margin-bottom:24px}
-.eyebrow{color:#087f83;text-transform:uppercase;letter-spacing:.08em;font-size:12px;font-weight:800;margin:0 0 8px}
-h1{font-size:clamp(29px,3vw,40px);letter-spacing:-.035em;line-height:1.14;margin:0}
 .panel,.login-card{background:#fff;border:1px solid #dce7eb;border-radius:17px;box-shadow:0 8px 28px #1d465a0b}
 .panel{padding:28px;min-height:230px}
 .panel p{color:#58717d}
@@ -49,18 +32,14 @@ h1{font-size:clamp(29px,3vw,40px);letter-spacing:-.035em;line-height:1.14;margin
 .login-card{padding:34px;display:grid;gap:10px}
 .login-card label{font-weight:700;font-size:13px;margin-top:8px}
 .login-card input{width:100%;height:46px;border:1px solid #c9d9df;border-radius:9px;padding:0 13px;background:#fff;color:#173950}
-.primary-button{border:0;border-radius:10px;background:#087f83;color:#fff;min-height:46px;padding:11px 18px;font-weight:700}
-.primary-button:hover{background:#066f73}
 .message{min-height:20px;color:#aa3946;margin:5px 0;font-size:13px}
 .privacy-note{text-align:center;font-size:12px;color:#8295a0;margin:6px 0 0}
 .icon-button{display:grid;place-items:center;width:42px;height:42px;border-radius:9px}
 .mobile-only{display:none}
 .drawer-backdrop{display:none}
-@media(max-width:760px){.topbar{height:64px;padding:0 13px;gap:7px}
-.brand{font-size:14px}
+@media(max-width:760px){
 .top-actions{gap:8px}
-.language-control>span,.account-button>span:not(.avatar){display:none}
-.language-control select{max-width:130px;padding:7px}
+.account-button>span:not(.avatar){display:none}
 .account-button{padding:4px}
 .mobile-only{display:grid}
 .sidebar{top:64px;width:min(300px,86vw);transform:translateX(-105%);transition:transform .18s ease;z-index:30;box-shadow:0 10px 28px #15354c24}

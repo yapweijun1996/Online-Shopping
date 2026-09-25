@@ -25,7 +25,7 @@
 | WEB-04 | P0 / Planned | API-06 | Build `Sales Manager`, `Sales Orders`, and `Sales Order Confirmation` over one order state; phone/desktop review checks. |
 | WEB-05 | P1 / Planned | WEB-04, AC-06 consent | Add seller-only official click-to-chat for an opted-in buyer; verify normalized URL and no automatic send. |
 | WEB-06 | P1 / Planned | WEB-04 | Add individual contact/address copy controls with permission-sensitive visibility and success/failure feedback; browser clipboard checks. |
-| PWA-01 | P0 / Planned | WEB-00–03 | Make seller and shop surfaces installable over HTTPS with separate manifests/scopes and correct icons; add safe offline shells, online-only order/review mutations, private-cache exclusion, and update/install checks for AC-17. |
+| PWA-01 | P0 / In progress | WEB-00–03 | Seller and shop have separate manifests/scopes, 192/512 icons, versioned public-shell caches and local Chromium offline/update checks. Verify target-browser installation and online-only order/review mutation behavior; keep private data outside caches before AC-17. |
 | I18N-01 | P0 / In progress | WEB-00–03, API-03 | Seller shell has ordered seven-language resources and remembers a local preference. Both complete flows, locale formatting, product text and all-language browser checks remain before AC-18. |
 | QA-01 | P0 / Planned | WEB-00–06, API-07, PWA-01, I18N-01 | Run main seller setup, guest checkout, receipt and seller review journeys in real browsers at phone and desktop widths; keyboard, overflow, console, PWA and seven-language checks for AC-15/17/18. |
 | QA-02 | P0 / Planned | API-07, QA-01 | Verify frontend/API contracts and sensitive-data boundaries, including no public contact lookup and no private API caching. |

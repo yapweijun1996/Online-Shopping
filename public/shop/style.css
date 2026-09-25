@@ -1,2 +1,4 @@
-@import url('/seller/style.css');
-.shop-main { margin-left: 0; }
+@import url('/shared/base.css');
+.shop-main { margin: 0; padding: 40px clamp(20px, 4vw, 64px); }
+.shop-language { margin-left: auto; }
+@media(max-width:760px){.shop-main{padding:27px 18px}}

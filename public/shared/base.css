@@ -1,0 +1,28 @@
+:root{font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#133248;background:#f5f8fa;font-synthesis:none}
+*{box-sizing:border-box}
+body{margin:0;min-width:280px}
+button,input,select{font:inherit}
+button{cursor:pointer}
+button:disabled{cursor:not-allowed;opacity:.58}
+[hidden]{display:none!important}
+a{color:inherit}
+svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid #42b9b5;outline-offset:2px}
+.topbar{height:72px;position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:16px;padding:0 28px;background:#fff;border-bottom:1px solid #dce7eb}
+.brand{text-decoration:none;font-weight:750;display:flex;align-items:center;gap:11px;white-space:nowrap}
+.brand-mark{width:34px;height:34px;display:grid;place-items:center;border-radius:10px;background:#087f83;color:#fff;font-size:13px;font-weight:800}
+.brand-mark.large{width:52px;height:52px;border-radius:15px;font-size:19px}
+.language-control{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:650;color:#536b79}
+.language-control select{max-width:170px;border:1px solid #cfdee3;border-radius:10px;background:#fff;padding:9px 10px;color:#173950}
+.eyebrow{color:#087f83;text-transform:uppercase;letter-spacing:.08em;font-size:12px;font-weight:800;margin:0 0 8px}
+h1{font-size:clamp(29px,3vw,40px);letter-spacing:-.035em;line-height:1.14;margin:0}
+.primary-button{border:0;border-radius:10px;background:#087f83;color:#fff;min-height:46px;padding:11px 18px;font-weight:700}
+.primary-button:hover{background:#066f73}
+.offline-language{margin-left:auto}
+.offline-main{max-width:650px;margin:clamp(30px,8vh,100px) auto;padding:30px}
+.offline-main p:not(.eyebrow){color:#58717d;line-height:1.6}
+@media(max-width:760px){.topbar{height:64px;padding:0 13px;gap:7px}
+.brand{font-size:14px}
+.language-control>span{display:none}
+.language-control select{max-width:130px;padding:7px}
+}

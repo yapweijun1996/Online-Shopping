@@ -1,4 +1,5 @@
 import { locale, setupLanguageSelect, t } from '../shared/i18n.js';
+import { registerWorker } from '../shared/pwa.js';
 
 const byId = (id) => document.getElementById(id);
 const loginView = byId('login-view');
@@ -23,6 +24,7 @@ function sessionHint(value) {
 }
 
 setupLanguageSelect(byId('language'));
+registerWorker('/seller/sw.js', '/seller/').catch(() => console.warn('Seller offline shell unavailable.'));
 
 function showLogin(message = '', clearHint = true) {
   if (clearHint) sessionHint(false);

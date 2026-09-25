@@ -20,6 +20,7 @@ const messages = {
     loading: 'Loading…', noProducts: 'No products yet.', notReady: 'This area is being prepared.',
     noOrders: 'No orders yet.', selectLanguage: 'Language', signedOut: 'You have signed out.',
     loginPrompt: 'Seller access only', protected: 'Your catalog and orders are private.',
+    offlineTitle: "You're offline", offlineMessage: 'Connect to the internet to continue. Orders and seller decisions cannot be saved offline.', retry: 'Try again',
   },
   ms: {
     brand: 'Online Shopping', sellerPortal: 'Portal penjual', shop: 'Kedai', signInTitle: 'Selamat kembali',
@@ -32,6 +33,7 @@ const messages = {
     loading: 'Memuatkan…', noProducts: 'Belum ada produk.', notReady: 'Bahagian ini sedang disediakan.',
     noOrders: 'Belum ada pesanan.', selectLanguage: 'Bahasa', signedOut: 'Anda telah log keluar.',
     loginPrompt: 'Akses penjual sahaja', protected: 'Katalog dan pesanan anda adalah peribadi.',
+    offlineTitle: 'Anda di luar talian', offlineMessage: 'Sambung ke internet untuk meneruskan. Pesanan dan keputusan penjual tidak boleh disimpan di luar talian.', retry: 'Cuba lagi',
   },
   'zh-Hans': {
     brand: 'Online Shopping', sellerPortal: '卖家后台', shop: '商店', signInTitle: '欢迎回来',
@@ -44,6 +46,7 @@ const messages = {
     loading: '加载中…', noProducts: '暂无商品。', notReady: '此区域正在准备中。',
     noOrders: '暂无订单。', selectLanguage: '语言', signedOut: '你已退出登录。',
     loginPrompt: '仅限卖家访问', protected: '你的商品和订单为私有数据。',
+    offlineTitle: '当前离线', offlineMessage: '请连接网络后继续。离线时无法保存订单或卖家决定。', retry: '重试',
   },
   vi: {
     brand: 'Online Shopping', sellerPortal: 'Cổng người bán', shop: 'Cửa hàng', signInTitle: 'Chào mừng trở lại',
@@ -56,6 +59,7 @@ const messages = {
     loading: 'Đang tải…', noProducts: 'Chưa có sản phẩm.', notReady: 'Khu vực này đang được chuẩn bị.',
     noOrders: 'Chưa có đơn hàng.', selectLanguage: 'Ngôn ngữ', signedOut: 'Bạn đã đăng xuất.',
     loginPrompt: 'Chỉ dành cho người bán', protected: 'Sản phẩm và đơn hàng của bạn là riêng tư.',
+    offlineTitle: 'Bạn đang ngoại tuyến', offlineMessage: 'Kết nối internet để tiếp tục. Không thể lưu đơn hàng hoặc quyết định của người bán khi ngoại tuyến.', retry: 'Thử lại',
   },
   th: {
     brand: 'Online Shopping', sellerPortal: 'ระบบผู้ขาย', shop: 'ร้านค้า', signInTitle: 'ยินดีต้อนรับกลับ',
@@ -68,6 +72,7 @@ const messages = {
     loading: 'กำลังโหลด…', noProducts: 'ยังไม่มีสินค้า', notReady: 'ส่วนนี้กำลังเตรียมพร้อม',
     noOrders: 'ยังไม่มีคำสั่งซื้อ', selectLanguage: 'ภาษา', signedOut: 'คุณออกจากระบบแล้ว',
     loginPrompt: 'สำหรับผู้ขายเท่านั้น', protected: 'สินค้าและคำสั่งซื้อของคุณเป็นข้อมูลส่วนตัว',
+    offlineTitle: 'คุณออฟไลน์อยู่', offlineMessage: 'เชื่อมต่ออินเทอร์เน็ตเพื่อดำเนินการต่อ ไม่สามารถบันทึกคำสั่งซื้อหรือการตัดสินใจของผู้ขายขณะออฟไลน์ได้', retry: 'ลองอีกครั้ง',
   },
   ja: {
     brand: 'Online Shopping', sellerPortal: '販売者ポータル', shop: 'ショップ', signInTitle: 'おかえりなさい',
@@ -80,6 +85,7 @@ const messages = {
     loading: '読み込み中…', noProducts: '商品はまだありません。', notReady: 'この機能は準備中です。',
     noOrders: '注文はまだありません。', selectLanguage: '言語', signedOut: 'ログアウトしました。',
     loginPrompt: '販売者専用', protected: '商品と注文は非公開です。',
+    offlineTitle: 'オフラインです', offlineMessage: '続けるにはインターネットに接続してください。オフラインでは注文や販売者の判断を保存できません。', retry: '再試行',
   },
   ko: {
     brand: 'Online Shopping', sellerPortal: '판매자 포털', shop: '쇼핑몰', signInTitle: '다시 오신 것을 환영합니다',
@@ -92,6 +98,7 @@ const messages = {
     loading: '불러오는 중…', noProducts: '아직 상품이 없습니다.', notReady: '이 기능은 준비 중입니다.',
     noOrders: '아직 주문이 없습니다.', selectLanguage: '언어', signedOut: '로그아웃했습니다.',
     loginPrompt: '판매자 전용', protected: '상품과 주문 정보는 비공개입니다.',
+    offlineTitle: '오프라인 상태입니다', offlineMessage: '계속하려면 인터넷에 연결하세요. 오프라인에서는 주문이나 판매자 결정을 저장할 수 없습니다.', retry: '다시 시도',
   },
 };
 
