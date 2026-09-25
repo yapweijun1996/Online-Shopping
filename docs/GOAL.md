@@ -1,6 +1,6 @@
 # Goal
 
-**Status: MVP in local development.** Seller authentication and the seller shell are the first implemented slice; the other product journeys remain planned. The local `sample/` is a separate runnable prototype; its features and tests do not count as new-app implementation.
+**Status: MVP in local development.** Seller authentication and MYR product management now run locally; public catalog UI, checkout, and order review remain. The local `sample/` is a separate runnable prototype; its features and tests do not count as new-app implementation.
 
 ## Outcome
 
@@ -30,5 +30,6 @@ Payment, GST calculation, customer accounts, contact verification, cross-device 
 - Treat `sample/` as domain reference only. Build a new implementation rather than copying its code or appearance.
 - Keep source, identifiers, and technical documentation in English. Explain progress to the owner in Mandarin.
 - Keep real personal data, access tokens, credentials, and database files out of the public repository. Read initial super admin credentials from a local, ignored `.env`; production must reject missing or weak development credentials.
+- Use MYR prices and no shipping-charge or logistics calculation in the MVP. Collect destination addresses for seller review without a delivery-area promise. Accept bounded base64 product images through the seller API. Optional prior phone/address suggestions stay on the same browser with a clear control.
 - Update design, API, tasks, progress, and this goal when decisions or implemented behavior change.
 - Resolve the open commerce and hosting/data choices in [TASK.md](TASK.md) before implementing behavior that depends on them.

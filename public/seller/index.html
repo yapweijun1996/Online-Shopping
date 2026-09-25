@@ -61,5 +61,34 @@
     <dl><dt data-i18n="username">Username</dt><dd id="profile-username"></dd><dt data-i18n="role">Role</dt><dd id="profile-role"></dd></dl>
     <button id="close-profile" class="primary-button" type="button" data-i18n="close">Close</button>
   </dialog>
+  <template id="products-template">
+    <div class="product-toolbar">
+      <form id="product-search-form" class="product-search">
+        <label class="sr-only" for="product-search" data-i18n="searchProducts">Search products</label>
+        <input id="product-search" type="search" maxlength="100" data-i18n-aria="searchProducts">
+        <button type="submit" class="secondary-button" data-i18n="applySearch">Search</button>
+      </form>
+      <button id="product-new" type="button" class="primary-button" data-i18n="addProduct">Add product</button>
+    </div>
+    <form id="product-form" class="product-form" hidden>
+      <div class="product-form-heading"><h2 id="product-form-title" data-i18n="addProduct">Add product</h2><button id="product-cancel" type="button" class="text-button" data-i18n="cancelEdit">Cancel edit</button></div>
+      <div class="product-fields">
+        <label><span data-i18n="sku">SKU</span><input name="sku" maxlength="40" required autocomplete="off"></label>
+        <label><span data-i18n="name">Name</span><input name="name" maxlength="120" required></label>
+        <label class="full"><span data-i18n="description">Description</span><textarea name="description" maxlength="2000" rows="3" required></textarea></label>
+        <label><span data-i18n="category">Category</span><input name="category" maxlength="80" required></label>
+        <label><span data-i18n="priceMyr">Price (MYR)</span><input name="price" inputmode="decimal" required></label>
+        <label class="full"><span data-i18n="image">Product image</span><input name="image" type="file" accept="image/png,image/jpeg,image/webp"><small data-i18n="imageHelp">PNG, JPEG or WebP, up to 512 KB.</small></label>
+        <img id="product-image-preview" class="product-image-preview" alt="" hidden>
+        <label id="remove-image-label" class="check-row full" hidden><input name="removeImage" type="checkbox"><span data-i18n="removeImage">Remove current image</span></label>
+        <label class="check-row full"><input name="active" type="checkbox"><span data-i18n="available">Active in shop</span></label>
+      </div>
+      <p id="product-form-error" class="message" role="alert"></p>
+      <button id="product-save" type="submit" class="primary-button" data-i18n="saveProduct">Save product</button>
+    </form>
+    <p id="product-status" class="message" role="status"></p>
+    <div id="product-list" class="product-list"></div>
+    <button id="product-more" type="button" class="secondary-button" data-i18n="loadMore" hidden>Load more</button>
+  </template>
 </body>
 </html>

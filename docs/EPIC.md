@@ -11,4 +11,4 @@
 
 ## Dependency order
 
-E1 authentication and catalog API precede the public catalog and E2 checkout. E2 durable order records precede E3 review. E4 checks run incrementally but its release gate follows E1–E3. Currency, shipping, delivery geography, and image handling must be settled before affected E1/E2 contracts; hosting, persistence, session durability, retention, and recovery must be settled before E4 production release. See [TASK.md](TASK.md) for executable work and [ROADMAP.md](ROADMAP.md) for milestone gates.
+E1 authentication and catalog API precede the public catalog and E2 checkout. E2 durable order records precede E3 review. E4 checks run incrementally but its release gate follows E1–E3. MYR, no shipping charges or delivery-area enforcement, and bounded base64 images are recorded local-MVP choices. Hosting, multi-instance session behavior, retention, and recovery remain open before E4 production release. See [TASK.md](TASK.md) for executable work and [ROADMAP.md](ROADMAP.md) for milestone gates.

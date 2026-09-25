@@ -4,6 +4,19 @@ import { openDatabase, ready } from './db.js';
 import { authenticate, cookieFor, createSession, deleteSession, ensureAdmin, LoginLimiter, readSession, sessionCookieFrom } from './auth.js';
 import { ApiError, handleErrors, json, readJson, requireOrigin } from './http.js';
 import { serveStatic } from './static.js';
+import { createProduct, getProduct, getProductImage, listProducts, updateProduct } from './products.js';
+
+const productIdPath = /^\/api\/v1\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
+const sellerProductIdPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
+
+function image(response, value) {
+  if (!value?.mime || !value?.data) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+  response.writeHead(200, {
+    'Content-Type': value.mime, 'Content-Length': value.data.length,
+    'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+  });
+  response.end(value.data);
+}
 
 export function createApp(config) {
   const database = openDatabase(config.dbPath);
@@ -25,6 +38,14 @@ export function createApp(config) {
       return json(response, healthy ? 200 : 503, { status: healthy ? 'ready' : 'unavailable' });
     }
     if (!pathname.startsWith('/api/')) return serveStatic(request, response, pathname);
+    if (request.method === 'GET' && pathname === '/api/v1/products') return json(response, 200, listProducts(database, url.searchParams));
+    const publicProduct = productIdPath.exec(pathname);
+    if (request.method === 'GET' && publicProduct) {
+      if (publicProduct[2] === 'image') return image(response, getProductImage(database, publicProduct[1]));
+      const product = getProduct(database, publicProduct[1]);
+      if (!product) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+      return json(response, 200, product);
+    }
     if (!pathname.startsWith('/api/v1/seller/')) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
 
     if (request.method === 'POST' && pathname === '/api/v1/seller/session') {
@@ -55,6 +76,26 @@ export function createApp(config) {
       if (request.headers['x-csrf-token'] !== session.csrf_token) throw new ApiError(403, 'FORBIDDEN', 'CSRF token is required.');
       deleteSession(database, token);
       return json(response, 200, { signedOut: true }, { 'Set-Cookie': cookieFor('', 0, config.production) });
+    }
+    if (request.method === 'GET' && pathname === '/api/v1/seller/products') {
+      return json(response, 200, listProducts(database, url.searchParams, true));
+    }
+    const sellerProduct = sellerProductIdPath.exec(pathname);
+    if (request.method === 'GET' && sellerProduct?.[2] === 'image') {
+      return image(response, getProductImage(database, sellerProduct[1], true));
+    }
+    if ((request.method === 'POST' && pathname === '/api/v1/seller/products') ||
+        (request.method === 'PATCH' && sellerProduct && !sellerProduct[2])) {
+      requireOrigin(request, expectedOrigin);
+      if (request.headers['x-csrf-token'] !== session.csrf_token) throw new ApiError(403, 'FORBIDDEN', 'CSRF token is required.');
+      const body = await readJson(request, 750_000);
+      if (request.method === 'POST') {
+        const product = createProduct(database, body);
+        return json(response, 201, product, { Location: `/api/v1/seller/products/${product.id}` });
+      }
+      const product = updateProduct(database, sellerProduct[1], body);
+      if (!product) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+      return json(response, 200, product);
     }
     throw new ApiError(404, 'NOT_FOUND', 'Not found.');
   });

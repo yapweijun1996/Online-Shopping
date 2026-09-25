@@ -1,12 +1,12 @@
 # Online Shopping MVP
 
-**Status: MVP implementation in progress.** Seller sign-in/session, responsive PWA shells, and a browser cart storage module run locally. Product management, catalog/cart UI, checkout, order review, complete i18n flows, and release operations remain unfinished. The local `sample/` prototype is a separate business-rule reference; its code, UI, database, and demo credentials are not the new application.
+**Status: MVP implementation in progress.** Seller sign-in/session, MYR product management, responsive PWA shells, and a browser cart storage module run locally. Public catalog/cart UI, checkout, order review, complete i18n flows, and release operations remain unfinished. The local `sample/` prototype is a separate business-rule reference; its code, UI, database, and demo credentials are not the new application.
 
 ## Run the current slice
 
 Use Node 24.15 or later in the 24.x line. Copy `.env.example` to ignored `.env`, set a unique `ADMIN_USERNAME` and a non-default `ADMIN_PASSWORD` of at least 16 characters with letters and numbers, and keep `DB_PATH` outside `public/`. Production startup also rejects known placeholder words. Do not reuse example or sample credentials. Then run `npm start` with Node 24. On this machine, where the default Node is older, use `npx --yes node@24 --env-file=.env src/server.js`.
 
-Open `/seller/` for the seller login or `/shop/` for the current storefront placeholder. `/health` is liveness; `/ready` checks the local database schema. The default private database path is `.local/online-shopping.db`. Run `npm ci && npm test` with Node 24, or `npx --yes node@24 --test test/cart.test.js test/checkout-input.test.js test/i18n.test.js test/phone.test.js test/product-input.test.js test/pwa.test.js test/server.test.js` on this machine after `npm ci`. The test script deliberately excludes the separate `sample/` suite. The application is for local development only until the production decisions and release gates in [PROGRESS.md](docs/PROGRESS.md) are resolved.
+Open `/seller/` for seller login and product management, or `/shop/` for the current storefront placeholder. Seller product images may be uploaded as PNG, JPEG, or WebP up to 512 KB; the browser sends base64 to the API, which stores decoded bytes in the private database. The public product API shows only active MYR products and serves their images at active-only URLs. `/health` is liveness; `/ready` checks the local database schema. The default private database path is `.local/online-shopping.db`. Run `npm ci && npm test` with Node 24, or `npx --yes node@24 --test test/cart.test.js test/checkout-input.test.js test/i18n.test.js test/phone.test.js test/product-input.test.js test/products.test.js test/pwa.test.js test/server.test.js` on this machine after `npm ci`. The test script deliberately excludes the separate `sample/` suite. The application is for local development only until the production decisions and release gates in [PROGRESS.md](docs/PROGRESS.md) are resolved.
 
 ## Goal
 
@@ -22,9 +22,11 @@ Make it easy for a seller to set up products, for a customer to shop without reg
 
 ## Implementation order
 
-Start with the seller login and product management panel. Then build the public catalog, cart, checkout, and order review against the backend API. The initial super admin username and password will come from a local, ignored `.env` file. There is no built-in credential in source or committed configuration. Production startup must reject known development defaults and missing or weak credentials.
+Seller login and basic product management now run locally. Next build the public catalog, cart, checkout, and order review against the backend API. The initial super admin username and password come from a local, ignored `.env` file. There is no built-in credential in source or committed configuration. Production startup rejects known development defaults and missing or weak credentials.
 
 There is no customer-facing cross-device history lookup in the MVP. A phone number or email supplied without verification is contact data, not proof of ownership.
+
+Checkout will offer optional same-browser history for buyer and recipient phones and destination addresses: customers can type or select previous values after an explicit save choice and clear that history. The server does not expose a public contact-history lookup. MYR is the only shop currency; the MVP has no shipping-charge calculation or delivery-area enforcement. Destination addresses are collected for seller review.
 
 Both web surfaces now have separate local PWA manifests/scopes, versioned public-shell caches, and offline pages. Installation across target browsers and online-only checkout/review behavior remain unverified until those journeys exist. The UI defaults to English and offers, in order, English, Malay, Mandarin, Vietnamese, Thai, Japanese, and Korean. See the [seller desktop/mobile previews](docs/UI_SPEC.md) and [PWA/i18n requirements](docs/PWA_I18N.md).
 

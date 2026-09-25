@@ -1,6 +1,8 @@
 import { FieldError, boundedText } from './validation.js';
+import { decodeProductImage } from './product-image.js';
 
-const fields = ['sku', 'name', 'description', 'category', 'priceMinor', 'currency', 'active'];
+const requiredFields = ['sku', 'name', 'description', 'category', 'priceMinor', 'currency', 'active'];
+const fields = [...requiredFields, 'imageDataUrl'];
 
 export function validateProductInput(input, allowedCurrencies, { partial = false } = {}) {
   if (!Array.isArray(allowedCurrencies) || allowedCurrencies.length === 0 ||
@@ -11,7 +13,7 @@ export function validateProductInput(input, allowedCurrencies, { partial = false
     throw new FieldError('product', 'Enter product details.');
   }
   const keys = Object.keys(input);
-  if ((partial && keys.length === 0) || (!partial && fields.some((field) => !keys.includes(field)))) {
+  if ((partial && keys.length === 0) || (!partial && requiredFields.some((field) => !keys.includes(field)))) {
     throw new FieldError('product', 'Complete the product details.');
   }
   for (const key of keys) {
@@ -40,5 +42,6 @@ export function validateProductInput(input, allowedCurrencies, { partial = false
     if (typeof input.active !== 'boolean') throw new FieldError('active', 'Choose product availability.');
     result.active = input.active;
   }
+  if (keys.includes('imageDataUrl')) result.image = decodeProductImage(input.imageDataUrl);
   return result;
 }

@@ -1,5 +1,6 @@
 import { locale, setupLanguageSelect, t } from '../shared/i18n.js';
 import { registerWorker } from '../shared/pwa.js';
+import { mountProducts } from './products.js';
 
 const byId = (id) => document.getElementById(id);
 const loginView = byId('login-view');
@@ -14,6 +15,7 @@ let csrfToken = null;
 let currentView = 'dashboard';
 let username = '';
 let role = '';
+let productsPage = null;
 const sessionHintKey = 'online-shopping-seller-session-hint';
 
 function sessionHint(value) {
@@ -32,6 +34,8 @@ function showLogin(message = '', clearHint = true) {
   csrfToken = null;
   username = '';
   role = '';
+  productsPage = null;
+  byId('workspace-content').replaceChildren();
   loginView.hidden = false;
   workspace.hidden = true;
   sidebar.hidden = true;
@@ -67,6 +71,11 @@ function renderView() {
   byId('page-title').dataset.i18n = titleKey;
   byId('page-title').textContent = t(titleKey);
   const content = byId('workspace-content');
+  if (currentView === 'products') {
+    if (!productsPage) productsPage = mountProducts(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin(t('authError')) });
+    return;
+  }
+  productsPage = null;
   content.replaceChildren();
   const p = document.createElement('p');
   p.dataset.i18n = currentView === 'products' ? 'noProducts' : currentView === 'orders' || currentView === 'review' ? 'noOrders' : 'notReady';
@@ -165,7 +174,8 @@ byId('login-form').addEventListener('submit', async (event) => {
 });
 
 document.addEventListener('localechange', () => {
-  renderView();
+  if (currentView === 'products' && productsPage) productsPage.refreshLocale();
+  else renderView();
   document.documentElement.lang = locale();
   if (byId('profile-dialog').open) byId('profile-role').textContent = role === 'SUPER_ADMIN' ? t('superAdmin') : role;
 });

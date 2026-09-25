@@ -1,16 +1,16 @@
 # Design specification
 
-**Status: proposed end-state with local seller authentication, PWA shells, and validation groundwork implemented.** This document describes the new MVP, not the `sample/` prototype.
+**Status: proposed end-state with local seller authentication, product API/editor, PWA shells, and validation groundwork implemented.** This document describes the new MVP, not the `sample/` prototype.
 
 ## Verified repository state
 
-The new root application now has a Node 24 HTTP entry point, a versioned private SQLite schema, a persistent seller session, responsive seller login and shop shells, pure product/contact validators, a cart storage module, and targeted tests. A Node 24 CI workflow is configured but has not run remotely. The root still has no product/order persistence or APIs, release workflow, or deployed runtime. The local `sample/` is a separate Node HTTP/SQLite PWA prototype: its Commerce/Logistics/Fulfillment rules are business references, while its in-memory sessions, fictional customer links, credentials, PWA cache, and logistics workflow are not new-app design decisions.
+The new root application now has a Node 24 HTTP entry point, private SQLite schema v2, a persistent seller session, seller product API/editor, responsive seller and shop shells, contact validators, a cart storage module, and targeted tests. The product API owns MYR prices, active-only public visibility, and authenticated image access. A Node 24 CI workflow is configured but has not run remotely. The root still has no order persistence/API, public catalog UI, release workflow, or deployed runtime. The local `sample/` is a separate Node HTTP/SQLite PWA prototype: its Commerce/Logistics/Fulfillment rules are business references, while its in-memory sessions, fictional customer links, credentials, PWA cache, and logistics workflow are not new-app design decisions.
 
 The local development stack uses Node 24 built-ins and `node:sqlite`, with the database outside `public/` under the ignored `.local/` directory by default. This is a reversible local choice; production hosting, backup, retention, and recovery remain DEC-04. The current `GET /health` liveness endpoint is independent of the `GET /ready` schema check. The first schema owns exactly one configured admin and hashed, expiring sessions. The seller login UI uses the API; no browser code reads the database. A new customer cart module stores only product IDs and quantities in IndexedDB and falls back to page memory when storage fails; it never owns prices or orders. See [API.md](API.md) for implemented paths and [PROGRESS.md](PROGRESS.md) for proof and limits.
 
 The planned checkout will call the server's contact validators for both buyer and recipient fields. They use pinned `libphonenumber-js` number-plan metadata for +60/+65 validation and E.164 output, bound names/email, require an explicit boolean WhatsApp order-contact choice, and identify invalid fields without echoing contact values. These helpers are not connected to an order endpoint yet. The dependency validates number structure only; neither the helpers nor the future checkout may treat an unverified number as identity proof.
 
-A preliminary server-side product input validator bounds core catalog fields and requires an explicit allowed-currency list from its future API caller. It does not choose a shop currency or persist products; DEC-02 and DEC-05 still govern priced writes and image handling.
+The server product validator bounds SKU, English name/description, category, MYR integer minor-unit price, status and optional base64 image input. The seller API persists decoded image bytes in private SQLite and serves images only through authenticated seller or active-only public paths; product list JSON contains an image URL, not image bytes. No image means a local placeholder. Localized product text and order snapshot regressions still need implementation.
 
 ## Users and journeys
 
@@ -34,6 +34,7 @@ The two web surfaces can live in one repository but must build and evolve separa
 - Checkout requires buyer full name and WhatsApp phone. Email is optional. All contacts are unverified in the MVP and may be edited before submission.
 - Buyer WhatsApp and recipient phone inputs support Malaysia `+60` and Singapore `+65`. Show a country-code selector and accept common local spacing, but normalize and validate the complete number on the server before saving or building a WhatsApp link. Keep phone country independent from buyer identity, selected UI language, and delivery address country. Do not use an unverified phone as authentication.
 - Each delivery destination has its own recipient name, phone, address, and postcode. Items are assigned to a destination. Buyer contact and recipient contact are distinct.
+- The MVP records an address country and postcode without shipping charges, delivery eligibility checks, or logistics integration. The seller handles fulfillment manually. After an explicit same-device save choice, checkout may offer earlier phone/address values in typing-friendly selection controls; the customer can clear that browser history. It is never a public identity or order lookup.
 - Record a clear opt-in for order-related WhatsApp contact before using the number to message a buyer. Marketing consent, if ever needed, is separate. See the [WhatsApp Business Messaging Policy](https://whatsappbusiness.com/policy/).
 - After the API confirms the write, show the server-generated order number. Keep only a minimal receipt in IndexedDB. If local browser data disappears, the seller still has the authoritative order; customer self-service recovery is deferred.
 
@@ -80,9 +81,7 @@ A failed database transaction returns an error and no order number. After a netw
 
 Browser verification must cover seller setup, guest checkout, receipt and seller review at phone and desktop widths, including loading/empty/error/success states, keyboard access, labels/focus/error messages, safe areas, overflow, and console errors. Both new web surfaces have local manifests, separate service-worker scopes, and explicit public-static-asset caches; their offline pages are locally verified in Chromium. Workers bypass all `/api/` requests. Verify actual installation, offline mutation behavior, and update behavior on target devices before AC-17. Both surfaces have seven-language shell resources, but full core-flow translations and verification in [PWA_I18N.md](PWA_I18N.md) remain. See [UI_SPEC.md](UI_SPEC.md) for desktop/mobile layout and previews.
 
-## Open decisions before dependent implementation or release
+## Open decisions before release
 
-- Product image storage and initial catalog presentation details.
-- Shop currency, shipping charges, and supported delivery countries/postcodes. GST calculation is excluded from the MVP.
 - Production hosting, database and seller-session durability across instances; local development already uses private SQLite and persisted session hashes.
 - Retention and deletion policy for real customer contact and address data before any production launch.

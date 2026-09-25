@@ -1,6 +1,6 @@
 # Seller UI specification
 
-**Status: design reference with seller shell navigation and profile partly implemented; order review is not implemented.** The images are conceptual previews with fictional example orders. Layout and behavior below are the implementation target; image text and numbers are not live data or a final currency decision.
+**Status: design reference with seller navigation, profile, and product management running locally; order review is not implemented.** The images are conceptual previews with fictional example orders. Layout and behavior below are the implementation target; image text and numbers are not live data or a current-currency label.
 
 ## Approved visual direction
 

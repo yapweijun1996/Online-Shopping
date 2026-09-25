@@ -20,6 +20,12 @@ export const messages = {
     loading: 'Loading…', noProducts: 'No products yet.', notReady: 'This area is being prepared.',
     noOrders: 'No orders yet.', selectLanguage: 'Language', signedOut: 'You have signed out.',
     loginPrompt: 'Seller access only', protected: 'Your catalog and orders are private.', role: 'Role', superAdmin: 'Super admin', close: 'Close',
+    addProduct: 'Add product', editProduct: 'Edit product', saveProduct: 'Save product', cancelEdit: 'Cancel edit',
+    sku: 'SKU', name: 'Name', description: 'Description', category: 'Category', priceMyr: 'Price (MYR)', available: 'Active in shop',
+    active: 'Active', inactive: 'Inactive', image: 'Product image', removeImage: 'Remove current image',
+    activateProduct: 'Activate', deactivateProduct: 'Deactivate',
+    imageHelp: 'PNG, JPEG or WebP, up to 512 KB.', productSaved: 'Product saved.', productError: 'Could not save product. Check the fields and try again.',
+    loadMore: 'Load more', searchProducts: 'Search products', applySearch: 'Search', imageMissing: 'No image', productInvalid: 'Check this field.',
     offlineTitle: "You're offline", offlineMessage: 'Connect to the internet to continue. Orders and seller decisions cannot be saved offline.', retry: 'Try again',
   },
   ms: {
@@ -33,6 +39,12 @@ export const messages = {
     loading: 'Memuatkan…', noProducts: 'Belum ada produk.', notReady: 'Bahagian ini sedang disediakan.',
     noOrders: 'Belum ada pesanan.', selectLanguage: 'Bahasa', signedOut: 'Anda telah log keluar.',
     loginPrompt: 'Akses penjual sahaja', protected: 'Katalog dan pesanan anda adalah peribadi.', role: 'Peranan', superAdmin: 'Pentadbir utama', close: 'Tutup',
+    addProduct: 'Tambah produk', editProduct: 'Edit produk', saveProduct: 'Simpan produk', cancelEdit: 'Batal edit',
+    sku: 'SKU', name: 'Nama', description: 'Penerangan', category: 'Kategori', priceMyr: 'Harga (MYR)', available: 'Aktif di kedai',
+    active: 'Aktif', inactive: 'Tidak aktif', image: 'Imej produk', removeImage: 'Buang imej semasa',
+    activateProduct: 'Aktifkan', deactivateProduct: 'Nyahaktifkan',
+    imageHelp: 'PNG, JPEG atau WebP, sehingga 512 KB.', productSaved: 'Produk disimpan.', productError: 'Produk tidak dapat disimpan. Semak medan dan cuba lagi.',
+    loadMore: 'Muat lagi', searchProducts: 'Cari produk', applySearch: 'Cari', imageMissing: 'Tiada imej', productInvalid: 'Semak medan ini.',
     offlineTitle: 'Anda di luar talian', offlineMessage: 'Sambung ke internet untuk meneruskan. Pesanan dan keputusan penjual tidak boleh disimpan di luar talian.', retry: 'Cuba lagi',
   },
   'zh-Hans': {
@@ -46,6 +58,12 @@ export const messages = {
     loading: '加载中…', noProducts: '暂无商品。', notReady: '此区域正在准备中。',
     noOrders: '暂无订单。', selectLanguage: '语言', signedOut: '你已退出登录。',
     loginPrompt: '仅限卖家访问', protected: '你的商品和订单为私有数据。', role: '角色', superAdmin: '超级管理员', close: '关闭',
+    addProduct: '添加商品', editProduct: '编辑商品', saveProduct: '保存商品', cancelEdit: '取消编辑',
+    sku: '商品编号', name: '名称', description: '描述', category: '类别', priceMyr: '价格（MYR）', available: '在商店上架',
+    active: '已上架', inactive: '未上架', image: '商品图片', removeImage: '移除当前图片',
+    activateProduct: '上架', deactivateProduct: '下架',
+    imageHelp: 'PNG、JPEG 或 WebP，最大 512 KB。', productSaved: '商品已保存。', productError: '无法保存商品，请检查字段后重试。',
+    loadMore: '加载更多', searchProducts: '搜索商品', applySearch: '搜索', imageMissing: '无图片', productInvalid: '请检查此字段。',
     offlineTitle: '当前离线', offlineMessage: '请连接网络后继续。离线时无法保存订单或卖家决定。', retry: '重试',
   },
   vi: {
@@ -59,6 +77,12 @@ export const messages = {
     loading: 'Đang tải…', noProducts: 'Chưa có sản phẩm.', notReady: 'Khu vực này đang được chuẩn bị.',
     noOrders: 'Chưa có đơn hàng.', selectLanguage: 'Ngôn ngữ', signedOut: 'Bạn đã đăng xuất.',
     loginPrompt: 'Chỉ dành cho người bán', protected: 'Sản phẩm và đơn hàng của bạn là riêng tư.', role: 'Vai trò', superAdmin: 'Quản trị viên cao cấp', close: 'Đóng',
+    addProduct: 'Thêm sản phẩm', editProduct: 'Sửa sản phẩm', saveProduct: 'Lưu sản phẩm', cancelEdit: 'Hủy sửa',
+    sku: 'SKU', name: 'Tên', description: 'Mô tả', category: 'Danh mục', priceMyr: 'Giá (MYR)', available: 'Đang bán',
+    active: 'Đang bán', inactive: 'Ngừng bán', image: 'Ảnh sản phẩm', removeImage: 'Xóa ảnh hiện tại',
+    activateProduct: 'Mở bán', deactivateProduct: 'Ngừng bán',
+    imageHelp: 'PNG, JPEG hoặc WebP, tối đa 512 KB.', productSaved: 'Đã lưu sản phẩm.', productError: 'Không thể lưu sản phẩm. Kiểm tra thông tin và thử lại.',
+    loadMore: 'Tải thêm', searchProducts: 'Tìm sản phẩm', applySearch: 'Tìm', imageMissing: 'Chưa có ảnh', productInvalid: 'Kiểm tra trường này.',
     offlineTitle: 'Bạn đang ngoại tuyến', offlineMessage: 'Kết nối internet để tiếp tục. Không thể lưu đơn hàng hoặc quyết định của người bán khi ngoại tuyến.', retry: 'Thử lại',
   },
   th: {
@@ -72,6 +96,12 @@ export const messages = {
     loading: 'กำลังโหลด…', noProducts: 'ยังไม่มีสินค้า', notReady: 'ส่วนนี้กำลังเตรียมพร้อม',
     noOrders: 'ยังไม่มีคำสั่งซื้อ', selectLanguage: 'ภาษา', signedOut: 'คุณออกจากระบบแล้ว',
     loginPrompt: 'สำหรับผู้ขายเท่านั้น', protected: 'สินค้าและคำสั่งซื้อของคุณเป็นข้อมูลส่วนตัว', role: 'บทบาท', superAdmin: 'ผู้ดูแลระบบหลัก', close: 'ปิด',
+    addProduct: 'เพิ่มสินค้า', editProduct: 'แก้ไขสินค้า', saveProduct: 'บันทึกสินค้า', cancelEdit: 'ยกเลิกการแก้ไข',
+    sku: 'SKU', name: 'ชื่อ', description: 'รายละเอียด', category: 'หมวดหมู่', priceMyr: 'ราคา (MYR)', available: 'เปิดขายในร้าน',
+    active: 'เปิดขาย', inactive: 'ไม่เปิดขาย', image: 'รูปสินค้า', removeImage: 'ลบรูปปัจจุบัน',
+    activateProduct: 'เปิดขาย', deactivateProduct: 'หยุดขาย',
+    imageHelp: 'PNG, JPEG หรือ WebP ไม่เกิน 512 KB', productSaved: 'บันทึกสินค้าแล้ว', productError: 'บันทึกสินค้าไม่ได้ ตรวจสอบข้อมูลแล้วลองอีกครั้ง',
+    loadMore: 'โหลดเพิ่ม', searchProducts: 'ค้นหาสินค้า', applySearch: 'ค้นหา', imageMissing: 'ไม่มีรูป', productInvalid: 'ตรวจสอบช่องนี้',
     offlineTitle: 'คุณออฟไลน์อยู่', offlineMessage: 'เชื่อมต่ออินเทอร์เน็ตเพื่อดำเนินการต่อ ไม่สามารถบันทึกคำสั่งซื้อหรือการตัดสินใจของผู้ขายขณะออฟไลน์ได้', retry: 'ลองอีกครั้ง',
   },
   ja: {
@@ -85,6 +115,12 @@ export const messages = {
     loading: '読み込み中…', noProducts: '商品はまだありません。', notReady: 'この機能は準備中です。',
     noOrders: '注文はまだありません。', selectLanguage: '言語', signedOut: 'ログアウトしました。',
     loginPrompt: '販売者専用', protected: '商品と注文は非公開です。', role: '役割', superAdmin: '最高管理者', close: '閉じる',
+    addProduct: '商品を追加', editProduct: '商品を編集', saveProduct: '商品を保存', cancelEdit: '編集を中止',
+    sku: 'SKU', name: '名前', description: '説明', category: 'カテゴリー', priceMyr: '価格（MYR）', available: 'ショップで公開',
+    active: '公開中', inactive: '非公開', image: '商品画像', removeImage: '現在の画像を削除',
+    activateProduct: '公開する', deactivateProduct: '非公開にする',
+    imageHelp: 'PNG、JPEG、WebP、最大512 KB。', productSaved: '商品を保存しました。', productError: '商品を保存できません。入力内容を確認してください。',
+    loadMore: 'さらに表示', searchProducts: '商品を検索', applySearch: '検索', imageMissing: '画像なし', productInvalid: 'この項目を確認してください。',
     offlineTitle: 'オフラインです', offlineMessage: '続けるにはインターネットに接続してください。オフラインでは注文や販売者の判断を保存できません。', retry: '再試行',
   },
   ko: {
@@ -98,6 +134,12 @@ export const messages = {
     loading: '불러오는 중…', noProducts: '아직 상품이 없습니다.', notReady: '이 기능은 준비 중입니다.',
     noOrders: '아직 주문이 없습니다.', selectLanguage: '언어', signedOut: '로그아웃했습니다.',
     loginPrompt: '판매자 전용', protected: '상품과 주문 정보는 비공개입니다.', role: '역할', superAdmin: '최고 관리자', close: '닫기',
+    addProduct: '상품 추가', editProduct: '상품 수정', saveProduct: '상품 저장', cancelEdit: '수정 취소',
+    sku: 'SKU', name: '이름', description: '설명', category: '카테고리', priceMyr: '가격 (MYR)', available: '상점에 공개',
+    active: '판매 중', inactive: '비활성', image: '상품 이미지', removeImage: '현재 이미지 삭제',
+    activateProduct: '판매 시작', deactivateProduct: '판매 중지',
+    imageHelp: 'PNG, JPEG 또는 WebP, 최대 512 KB.', productSaved: '상품을 저장했습니다.', productError: '상품을 저장할 수 없습니다. 입력값을 확인하고 다시 시도하세요.',
+    loadMore: '더 보기', searchProducts: '상품 검색', applySearch: '검색', imageMissing: '이미지 없음', productInvalid: '이 항목을 확인하세요.',
     offlineTitle: '오프라인 상태입니다', offlineMessage: '계속하려면 인터넷에 연결하세요. 오프라인에서는 주문이나 판매자 결정을 저장할 수 없습니다.', retry: '다시 시도',
   },
 };
@@ -126,9 +168,13 @@ export function setLocale(code) {
   current = code;
   document.documentElement.lang = code;
   try { localStorage.setItem('online-shopping-language', code); } catch { /* Optional. */ }
-  document.querySelectorAll('[data-i18n]').forEach((node) => { node.textContent = t(node.dataset.i18n); });
-  document.querySelectorAll('[data-i18n-aria]').forEach((node) => { node.setAttribute('aria-label', t(node.dataset.i18nAria)); });
+  translate(document);
   document.dispatchEvent(new CustomEvent('localechange'));
+}
+
+export function translate(root) {
+  root.querySelectorAll('[data-i18n]').forEach((node) => { node.textContent = t(node.dataset.i18n); });
+  root.querySelectorAll('[data-i18n-aria]').forEach((node) => { node.setAttribute('aria-label', t(node.dataset.i18nAria)); });
 }
 
 export function setupLanguageSelect(select) {
