@@ -45,6 +45,7 @@ function setWorkspaceMessage(key) {
 }
 
 function showLogin(messageKey = '', clearHint = true) {
+  const leavingWorkspace = !workspace.hidden;
   if (clearHint) sessionHint(false);
   csrfToken = null;
   username = '';
@@ -59,7 +60,8 @@ function showLogin(messageKey = '', clearHint = true) {
   menuButton.hidden = true;
   accountWrap.hidden = true;
   setLoginMessage(messageKey);
-  closeDrawer();
+  closeDrawer(false);
+  if (leavingWorkspace) byId('username').focus();
 }
 
 function showWorkspace(session) {
@@ -116,13 +118,13 @@ function renderView() {
   content.append(p);
 }
 
-function closeDrawer() {
+function closeDrawer(restoreFocus = true) {
   const wasOpen = sidebar.classList.contains('drawer-open');
   sidebar.classList.remove('drawer-open');
   backdrop.hidden = true;
   menuButton.setAttribute('aria-expanded', 'false');
   syncDrawerAccess();
-  if (wasOpen) menuButton.focus();
+  if (wasOpen && restoreFocus) menuButton.focus();
 }
 
 function syncDrawerAccess() {
@@ -141,11 +143,13 @@ menuButton.addEventListener('click', () => {
   menuButton.setAttribute('aria-expanded', 'true');
   byId('close-menu').focus();
 });
-byId('close-menu').addEventListener('click', closeDrawer);
-backdrop.addEventListener('click', closeDrawer);
+byId('close-menu').addEventListener('click', () => closeDrawer());
+backdrop.addEventListener('click', () => closeDrawer());
 window.addEventListener('resize', syncDrawerAccess);
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') { closeDrawer(); closeAccount(); }
+  if (event.key !== 'Escape' || document.querySelector('dialog[open]')) return;
+  if (!accountMenu.hidden) { closeAccount(); accountButton.focus(); return; }
+  if (sidebar.classList.contains('drawer-open')) closeDrawer();
 });
 byId('collapse-nav').addEventListener('click', () => {
   const collapsed = sidebar.classList.toggle('collapsed');
@@ -155,7 +159,9 @@ byId('collapse-nav').addEventListener('click', () => {
 document.querySelectorAll('.nav-item').forEach((button) => button.addEventListener('click', () => {
   currentView = button.dataset.view;
   renderView();
-  closeDrawer();
+  closeDrawer(false);
+  window.scrollTo(0, 0);
+  byId('page-title').focus({ preventScroll: true });
 }));
 accountButton.addEventListener('click', () => {
   accountMenu.hidden = !accountMenu.hidden;

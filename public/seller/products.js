@@ -148,7 +148,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
     find('#product-form-title').dataset.i18n = 'editProduct';
     find('#product-form-title').textContent = t('editProduct');
     setError('');
-    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    form.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
     form.elements.sku.focus();
   }
 
