@@ -1,6 +1,7 @@
 import { locale, setupLanguageSelect, t } from '../shared/i18n.js';
 import { registerWorker } from '../shared/pwa.js';
 import { mountProducts } from './products.js';
+import { mountOrders } from './orders.js';
 
 const byId = (id) => document.getElementById(id);
 const loginView = byId('login-view');
@@ -16,6 +17,7 @@ let currentView = 'dashboard';
 let username = '';
 let role = '';
 let productsPage = null;
+let ordersPage = null;
 const sessionHintKey = 'online-shopping-seller-session-hint';
 
 function sessionHint(value) {
@@ -35,6 +37,8 @@ function showLogin(message = '', clearHint = true) {
   username = '';
   role = '';
   productsPage = null;
+  ordersPage?.dispose();
+  ordersPage = null;
   byId('workspace-content').replaceChildren();
   loginView.hidden = false;
   workspace.hidden = true;
@@ -71,6 +75,20 @@ function renderView() {
   byId('page-title').dataset.i18n = titleKey;
   byId('page-title').textContent = t(titleKey);
   const content = byId('workspace-content');
+  if (currentView === 'orders' || currentView === 'review') {
+    productsPage = null;
+    if (ordersPage?.mode !== currentView) {
+      ordersPage?.dispose();
+      ordersPage = mountOrders(content, {
+        mode: currentView,
+        csrfToken: () => csrfToken,
+        onUnauthorized: () => showLogin(t('authError')),
+      });
+    }
+    return;
+  }
+  ordersPage?.dispose();
+  ordersPage = null;
   if (currentView === 'products') {
     if (!productsPage) productsPage = mountProducts(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin(t('authError')) });
     return;
@@ -78,7 +96,7 @@ function renderView() {
   productsPage = null;
   content.replaceChildren();
   const p = document.createElement('p');
-  p.dataset.i18n = currentView === 'products' ? 'noProducts' : currentView === 'orders' || currentView === 'review' ? 'noOrders' : 'notReady';
+  p.dataset.i18n = 'notReady';
   p.textContent = t(p.dataset.i18n);
   content.append(p);
 }
@@ -175,6 +193,7 @@ byId('login-form').addEventListener('submit', async (event) => {
 
 document.addEventListener('localechange', () => {
   if (currentView === 'products' && productsPage) productsPage.refreshLocale();
+  else if (ordersPage) ordersPage.refreshLocale();
   else renderView();
   document.documentElement.lang = locale();
   if (byId('profile-dialog').open) byId('profile-role').textContent = role === 'SUPER_ADMIN' ? t('superAdmin') : role;

@@ -15,7 +15,7 @@
     <button class="icon-button mobile-only" id="open-menu" type="button" data-i18n-aria="openMenu" aria-controls="sidebar" aria-expanded="false">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
-    <a class="brand" href="/seller/"><span class="brand-mark">OS</span><span data-i18n="sellerPortal">Seller portal</span></a>
+    <a class="brand" href="/seller/" data-i18n-aria="sellerPortal"><span class="brand-mark">OS</span><span data-i18n="sellerPortal">Seller portal</span></a>
     <div class="top-actions">
       <label class="language-control"><span data-i18n="selectLanguage">Language</span><select id="language" data-i18n-aria="selectLanguage"></select></label>
       <div class="account-wrap" id="account-wrap" hidden>
@@ -89,6 +89,38 @@
     <p id="product-status" class="message" role="status"></p>
     <div id="product-list" class="product-list"></div>
     <button id="product-more" type="button" class="secondary-button" data-i18n="loadMore" hidden>Load more</button>
+  </template>
+  <template id="orders-template">
+    <div class="order-toolbar">
+      <form id="order-filter" class="order-filter">
+        <label><span data-i18n="searchOrderNo">Order number</span><input id="order-search" name="search" type="search" maxlength="40" autocomplete="off"></label>
+        <label id="order-status-label"><span data-i18n="orderStatus">Status</span><select id="order-status" name="status"><option value="" data-i18n="allStatuses">All statuses</option><option value="SUBMITTED" data-i18n="statusSubmitted">Submitted</option><option value="CONFIRMED" data-i18n="statusConfirmed">Confirmed</option><option value="REJECTED" data-i18n="statusRejected">Rejected</option></select></label>
+        <button type="submit" class="secondary-button" data-i18n="applySearch">Search</button>
+      </form>
+    </div>
+    <p id="order-message" class="message order-message" role="status" aria-live="polite"></p>
+    <div class="order-layout">
+      <section class="order-queue" aria-labelledby="order-queue-title">
+        <h2 id="order-queue-title" data-i18n="orderQueue">Order queue</h2>
+        <p id="order-list-status" class="order-list-status" role="status"></p>
+        <div id="order-list" class="order-list"></div>
+        <button id="order-more" class="secondary-button" type="button" data-i18n="loadMore" hidden>Load more</button>
+      </section>
+      <section class="order-detail" id="order-detail" aria-labelledby="order-detail-title">
+        <button id="order-back" class="secondary-button order-back" type="button" data-i18n="backToOrders">Back to orders</button>
+        <h2 id="order-detail-title" data-i18n="orderDetails">Order details</h2>
+        <div id="order-detail-content" data-i18n="selectOrder">Select an order to review.</div>
+      </section>
+    </div>
+    <dialog id="decision-dialog" class="decision-dialog" aria-labelledby="decision-title">
+      <form id="decision-form">
+        <h2 id="decision-title"></h2>
+        <p id="decision-intro"></p>
+        <label id="decision-reason-label" for="decision-reason" hidden><span data-i18n="rejectionReason">Reason for rejection</span><textarea id="decision-reason" name="reason" maxlength="500" rows="4"></textarea></label>
+        <p id="decision-error" class="message" role="alert"></p>
+        <div class="decision-actions"><button id="decision-cancel" class="secondary-button" type="button" data-i18n="cancelDecision">Cancel</button><button id="decision-submit" class="primary-button" type="submit"></button></div>
+      </form>
+    </dialog>
   </template>
 </body>
 </html>

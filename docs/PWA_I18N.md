@@ -1,6 +1,6 @@
 # PWA and internationalization requirements
 
-**Status: design requirement with local shell and storefront implementation in progress.** Both surfaces now have distinct manifests/service-worker scopes, public-shell caches, offline pages, and seven-language UI resources for the seller/catalog/cart/checkout views. Full installation, seller review, and all-language acceptance remain unverified.
+**Status: both local PWA shells and seven-language seller/shop core UI run in Chromium.** Distinct manifests/service-worker scopes, public-shell caches, offline pages, and seller/catalog/cart/checkout resources exist. Target-device installation and complete cross-flow accessibility/language acceptance remain unverified.
 
 ## PWA
 
@@ -8,7 +8,7 @@
 - Use a service worker for an offline app shell and a clear offline page. A service worker is an offline capability choice, not a universal prerequisite for installation. Cache versioned public static assets and translation bundles; refresh safely after deployment. See [MDN offline guidance](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Offline_and_background_operation).
 - Do not cache seller sessions, private API responses, buyer details, or order responses in the service worker. Seller and checkout mutations require a live server response. If offline, show a clear unavailable state and let the user retry when online; do not claim an order or review decision was saved.
 - Preserve the IndexedDB boundary: the current cart module keeps product IDs and quantities locally with an in-memory fallback; the latest minimal same-browser receipt is kept in localStorage. Authoritative prices and orders stay on the server. An installable PWA does not make browser storage permanent.
-- Verify install/launch, navigation, offline fallback, safe update behavior, and authenticated-data boundaries on mobile and desktop before release.
+- Verify install/launch, navigation, offline fallback, safe update behavior, and authenticated-data boundaries on mobile and desktop before release. Local Chromium already showed the seller offline page, disabled offline review controls, failed-offline decision without a success claim, and public-only static cache entries; target-device installation remains.
 
 The current workers use an explicit public-file allowlist and separate seller/shop cache versions. Bump the affected worker version whenever its precached files change; bump both when a shared file changes. A controlled page keeps its current cached shell while a new worker waits, so navigation does not mix new HTML with old scripts. The new worker activates after old controlled pages close, then removes its prior cache. This local behavior was exercised in Chromium; target-device installation and update checks remain.
 

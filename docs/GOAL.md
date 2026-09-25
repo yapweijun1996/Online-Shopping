@@ -1,6 +1,6 @@
 # Goal
 
-**Status: MVP in local development.** Seller authentication, MYR product management, public catalog/cart and atomic guest checkout now run locally; seller order review remains. The local `sample/` is a separate runnable prototype; its features and tests do not count as new-app implementation.
+**Status: MVP in local development.** Seller authentication, MYR product management, public catalog/cart, atomic guest checkout, and seller order review now run locally. Release-quality and production gates remain. The local `sample/` is a separate runnable prototype; its features and tests do not count as new-app implementation.
 
 ## Outcome
 
