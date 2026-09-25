@@ -1,6 +1,12 @@
-# Seller UI specification
+# Web UI specification
 
-**Status: seller navigation, profile, product management, and order review run locally.** The images are conceptual previews with fictional example orders. The browser-tested interface uses actual MYR order snapshots; image text and numbers are design references only.
+**Status: seller navigation, product management, order review, and public shopping journeys run locally.** The seller images below are conceptual previews with fictional example orders. The browser-tested interface uses actual MYR order snapshots; image text and numbers are design references only.
+
+## Public shop layout
+
+The shop uses the owner-supplied storefront image and standalone HTML as layout references. Its header places product search beside Browse, Cart, and language selection. A static message banner uses the first active product image returned by the public API when one exists; the category rail and category selector use the API's active categories. The catalog shows compact cards with active-product images, seller-authored names/descriptions, MYR prices, detail access, and cart actions. Search and category selection load public API results; the count describes the products currently shown, including paged results. Cart and checkout retain their existing server-backed behavior.
+
+At wide widths, category filtering sits beside a four-column catalog. At smaller widths it becomes a compact row, the header search takes a second line, and product cards use two columns or one at the narrowest phone width. The category rail scrolls horizontally within its own bounds. The product detail dialog keeps a close control, keyboard dismissal, and full description. Unsupported mock content from the reference—ratings, discounts, sales counts, wishlists, accounts, and free-delivery promises—does not appear in the live shop. Only active products and their images come from the backend; the banner does not create a second product source of truth.
 
 ## Approved visual direction
 

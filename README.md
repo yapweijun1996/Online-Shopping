@@ -8,6 +8,8 @@ Use Node 24.15 or later in the 24.x line. Copy `.env.example` to ignored `.env`,
 
 Open `/seller/` for seller login, product management, all-status order search/detail, and a pending-order confirmation queue. The seller can confirm or reject with an audit record, copy individual authorized contact/address fields, and open a manual WhatsApp chat only when the buyer opted in. Open `/shop/` for active-product discovery, a same-browser cart, and guest checkout. Checkout accepts buyer and per-destination +60/+65 contacts, optional email, and WhatsApp order-contact consent, then shows a server-issued order number after commit. Saved phone/address suggestions require an explicit choice and can be typed, selected, or cleared. Seller product images may be uploaded as PNG, JPEG, or WebP up to 512 KB; the browser sends base64 to the API, which stores decoded bytes in the private database. The public product API shows only active MYR products and serves their images at active-only URLs. `/health` is liveness; `/ready` checks the local database schema. The default private database path is `.local/online-shopping.db`. Run `npm ci && npm run check && npm test` with Node 24. The test script deliberately excludes the separate `sample/` suite. The application is for local development only until the production decisions and release gates in [PROGRESS.md](docs/PROGRESS.md) are resolved.
 
+The shop catalog now has a responsive header search, a discovery banner using an active product image, API-backed category navigation, and compact product cards. The reference layout's mock ratings, discounts, wishlists, account controls, and delivery promises are not implemented. See the [web UI specification](docs/UI_SPEC.md).
+
 ## Goal
 
 Make it easy for a seller to set up products, for a customer to shop without registering, and for the seller to review each submitted order on a phone or desktop. Keep the customer and seller web interfaces separate from the server API and private database so UI changes do not silently change order behavior.
@@ -61,7 +63,7 @@ After starting the loopback Compose stack, run `npx --yes node@24 --env-file=.lo
 
 - [Goal](docs/GOAL.md), [MVP specification](docs/SPEC.md), and [epics](docs/EPIC.md)
 - [Proposed design](docs/DESIGN.md) and [goal prompt](docs/GOAL_PROMPT.md)
-- [Seller UI specification and previews](docs/UI_SPEC.md) and [PWA/i18n requirements](docs/PWA_I18N.md)
+- [Web UI specification and seller previews](docs/UI_SPEC.md) and [PWA/i18n requirements](docs/PWA_I18N.md)
 - [Draft API contract](docs/API.md)
 - [Roadmap](docs/ROADMAP.md), [task ledger](docs/TASK.md), and [evidence-based progress](docs/PROGRESS.md)
 

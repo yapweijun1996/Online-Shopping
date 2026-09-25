@@ -147,6 +147,8 @@ export const messages = {
 const shopMessages = {
   en: {
     browse: 'Browse', cart: 'Cart', browseProducts: 'Browse products', allCategories: 'All categories',
+    heroEyebrow: 'Everyday finds', heroTitle: 'Good finds for brighter days.', heroDescription: 'Discover useful products for home, work, and your daily routine.',
+    catalogSubtitle: 'Find something useful for every day.', showingProducts: 'Products shown: {count}',
     viewDetails: 'View details', addToCart: 'Add to cart', yourCart: 'Your cart', estimatedTotal: 'Estimated total',
     cartPriceNote: 'Prices are checked again by the server when you place an order.', continueShopping: 'Continue shopping',
     checkoutSoon: 'Checkout coming soon', cartMemoryOnly: 'This cart stays in this tab because browser storage is unavailable.',
@@ -156,6 +158,8 @@ const shopMessages = {
   },
   ms: {
     browse: 'Lihat produk', cart: 'Troli', browseProducts: 'Lihat produk', allCategories: 'Semua kategori',
+    heroEyebrow: 'Pilihan harian', heroTitle: 'Pilihan baik untuk hari yang lebih ceria.', heroDescription: 'Temui produk berguna untuk rumah, kerja dan rutin harian anda.',
+    catalogSubtitle: 'Cari sesuatu yang berguna untuk setiap hari.', showingProducts: 'Produk dipaparkan: {count}',
     viewDetails: 'Lihat butiran', addToCart: 'Tambah ke troli', yourCart: 'Troli anda', estimatedTotal: 'Jumlah anggaran',
     cartPriceNote: 'Harga akan disemak semula oleh pelayan semasa pesanan dibuat.', continueShopping: 'Terus membeli-belah',
     checkoutSoon: 'Daftar keluar akan datang', cartMemoryOnly: 'Troli ini kekal dalam tab ini kerana storan pelayar tidak tersedia.',
@@ -165,6 +169,8 @@ const shopMessages = {
   },
   'zh-Hans': {
     browse: '浏览', cart: '购物车', browseProducts: '浏览商品', allCategories: '所有类别',
+    heroEyebrow: '日常精选', heroTitle: '发现好物，点亮每一天。', heroDescription: '探索适合居家、工作和日常生活的实用商品。',
+    catalogSubtitle: '发现适合每天使用的好物。', showingProducts: '已显示商品：{count}',
     viewDetails: '查看详情', addToCart: '加入购物车', yourCart: '购物车', estimatedTotal: '预计总额',
     cartPriceNote: '下单时服务器会重新核对价格。', continueShopping: '继续购物',
     checkoutSoon: '结账功能即将推出', cartMemoryOnly: '浏览器存储不可用，购物车仅保留在此标签页。',
@@ -174,6 +180,8 @@ const shopMessages = {
   },
   vi: {
     browse: 'Xem sản phẩm', cart: 'Giỏ hàng', browseProducts: 'Xem sản phẩm', allCategories: 'Tất cả danh mục',
+    heroEyebrow: 'Đồ dùng mỗi ngày', heroTitle: 'Khám phá điều hay cho ngày tươi sáng.', heroDescription: 'Tìm sản phẩm hữu ích cho nhà cửa, công việc và sinh hoạt hằng ngày.',
+    catalogSubtitle: 'Tìm món đồ hữu ích cho mỗi ngày.', showingProducts: 'Sản phẩm hiển thị: {count}',
     viewDetails: 'Xem chi tiết', addToCart: 'Thêm vào giỏ', yourCart: 'Giỏ hàng của bạn', estimatedTotal: 'Tổng tạm tính',
     cartPriceNote: 'Máy chủ sẽ kiểm tra lại giá khi bạn đặt hàng.', continueShopping: 'Tiếp tục mua sắm',
     checkoutSoon: 'Sắp có thanh toán', cartMemoryOnly: 'Giỏ hàng chỉ tồn tại trong thẻ này vì bộ nhớ trình duyệt không khả dụng.',
@@ -183,6 +191,8 @@ const shopMessages = {
   },
   th: {
     browse: 'ดูสินค้า', cart: 'ตะกร้า', browseProducts: 'ดูสินค้า', allCategories: 'ทุกหมวดหมู่',
+    heroEyebrow: 'ของใช้ทุกวัน', heroTitle: 'พบของดี ๆ เพื่อวันที่สดใสกว่า', heroDescription: 'ค้นพบสินค้าที่มีประโยชน์สำหรับบ้าน งาน และชีวิตประจำวัน',
+    catalogSubtitle: 'พบของที่ใช่สำหรับทุกวัน', showingProducts: 'สินค้าที่แสดง: {count}',
     viewDetails: 'ดูรายละเอียด', addToCart: 'เพิ่มลงตะกร้า', yourCart: 'ตะกร้าของคุณ', estimatedTotal: 'ยอดรวมโดยประมาณ',
     cartPriceNote: 'เซิร์ฟเวอร์จะตรวจสอบราคาอีกครั้งเมื่อสั่งซื้อ', continueShopping: 'เลือกซื้อต่อ',
     checkoutSoon: 'ระบบสั่งซื้อกำลังมา', cartMemoryOnly: 'ตะกร้านี้อยู่ในแท็บนี้เท่านั้นเพราะที่เก็บข้อมูลเบราว์เซอร์ไม่พร้อมใช้งาน',
@@ -192,6 +202,8 @@ const shopMessages = {
   },
   ja: {
     browse: '商品を見る', cart: 'カート', browseProducts: '商品を見る', allCategories: 'すべてのカテゴリー',
+    heroEyebrow: '毎日のおすすめ', heroTitle: 'お気に入りで、毎日をもっと明るく。', heroDescription: '家や仕事、日々の暮らしに役立つ商品を見つけましょう。',
+    catalogSubtitle: '毎日に役立つ商品を探しましょう。', showingProducts: '表示中の商品: {count} 件',
     viewDetails: '詳細を見る', addToCart: 'カートに追加', yourCart: 'カート', estimatedTotal: '概算合計',
     cartPriceNote: '注文時にサーバーが価格を再確認します。', continueShopping: '買い物を続ける',
     checkoutSoon: '注文機能は準備中', cartMemoryOnly: 'ブラウザーの保存領域を利用できないため、このカートはこのタブでのみ保持されます。',
@@ -201,6 +213,8 @@ const shopMessages = {
   },
   ko: {
     browse: '상품 보기', cart: '장바구니', browseProducts: '상품 보기', allCategories: '모든 카테고리',
+    heroEyebrow: '매일의 발견', heroTitle: '좋은 물건으로 더 밝은 하루를.', heroDescription: '집과 일터, 일상에 유용한 상품을 만나보세요.',
+    catalogSubtitle: '매일 쓰기 좋은 상품을 찾아보세요.', showingProducts: '표시된 상품: {count}개',
     viewDetails: '상세 보기', addToCart: '장바구니에 담기', yourCart: '장바구니', estimatedTotal: '예상 합계',
     cartPriceNote: '주문할 때 서버에서 가격을 다시 확인합니다.', continueShopping: '쇼핑 계속하기',
     checkoutSoon: '주문 기능 준비 중', cartMemoryOnly: '브라우저 저장소를 사용할 수 없어 이 장바구니는 현재 탭에만 유지됩니다.',

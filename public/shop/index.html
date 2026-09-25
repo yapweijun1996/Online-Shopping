@@ -11,25 +11,45 @@
   <script type="module" src="/shop/app.js"></script>
 </head>
 <body>
+  <a class="skip-link" href="#catalog-results" data-i18n="browseProducts">Browse products</a>
   <header class="topbar shop-topbar">
     <a class="brand" href="/shop/"><span class="brand-mark">OS</span><span data-i18n="shop">Shop</span></a>
+    <form id="catalog-search-form" class="header-search" role="search">
+      <label class="sr-only" for="catalog-search" data-i18n="searchProducts">Search products</label>
+      <input id="catalog-search" type="search" maxlength="100" autocomplete="off" placeholder="Search products">
+      <button type="submit" aria-label="Search" data-i18n-aria="applySearch"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.4"/><path d="m16 16 4.5 4.5"/></svg></button>
+    </form>
     <nav class="shop-nav" data-i18n-aria="shop" aria-label="Shop">
       <a href="#catalog" data-i18n="browse">Browse</a>
-      <a href="#cart"><span data-i18n="cart">Cart</span> <span id="cart-count" class="cart-count">0</span></a>
+      <a href="#cart" data-i18n-aria="cart" aria-label="Cart"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 4h2l2.3 11.5h11.7L21 7H5"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg><span data-i18n="cart">Cart</span> <span id="cart-count" class="cart-count">0</span></a>
     </nav>
     <label class="language-control shop-language"><span data-i18n="selectLanguage">Language</span><select id="language" data-i18n-aria="selectLanguage"></select></label>
   </header>
   <main class="shop-main">
     <section id="catalog-view" aria-labelledby="catalog-title">
-      <div class="shop-heading"><p class="eyebrow" data-i18n="shop">Shop</p><h1 id="catalog-title" data-i18n="browseProducts">Browse products</h1></div>
-      <form id="catalog-search-form" class="catalog-toolbar" role="search">
-        <label><span data-i18n="searchProducts">Search products</span><input id="catalog-search" type="search" maxlength="100"></label>
-        <label><span data-i18n="category">Category</span><select id="catalog-category"><option value="" data-i18n="allCategories">All categories</option></select></label>
-        <button class="primary-button" type="submit" data-i18n="applySearch">Search</button>
-      </form>
-      <p id="catalog-status" class="shop-status" role="status"></p>
-      <div id="catalog-grid" class="catalog-grid"></div>
-      <button id="catalog-more" class="outline-button" type="button" data-i18n="loadMore" hidden>Load more</button>
+      <div class="shop-hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow" data-i18n="heroEyebrow">Everyday finds</p>
+          <h1 id="hero-title" data-i18n="heroTitle">Good finds for brighter days.</h1>
+          <p data-i18n="heroDescription">Discover useful products for home, work, and your daily routine.</p>
+          <a class="primary-button hero-action" href="#catalog-results" data-i18n="browseProducts">Browse products</a>
+        </div>
+        <div class="hero-visual" aria-hidden="true"><img id="hero-image" alt="" hidden></div>
+      </div>
+      <nav class="category-rail" aria-label="Category" data-i18n-aria="category" id="category-rail"></nav>
+      <div class="catalog-layout">
+        <aside class="catalog-sidebar" aria-labelledby="filter-title">
+          <h2 id="filter-title" data-i18n="category">Category</h2>
+          <label class="sr-only" for="catalog-category" data-i18n="category">Category</label>
+          <select id="catalog-category"><option value="" data-i18n="allCategories">All categories</option></select>
+        </aside>
+        <div class="catalog-results" id="catalog-results" tabindex="-1">
+          <div class="catalog-intro"><div><p class="eyebrow" data-i18n="shop">Shop</p><h2 id="catalog-title" data-i18n="browseProducts">Browse products</h2><p data-i18n="catalogSubtitle">Find something useful for every day.</p></div><p id="catalog-count" class="catalog-count" aria-live="polite"></p></div>
+          <p id="catalog-status" class="shop-status" role="status"></p>
+          <div id="catalog-grid" class="catalog-grid"></div>
+          <button id="catalog-more" class="outline-button" type="button" data-i18n="loadMore" hidden>Load more</button>
+        </div>
+      </div>
     </section>
     <section id="cart-view" aria-labelledby="cart-title" hidden>
       <div class="shop-heading"><p class="eyebrow" data-i18n="shop">Shop</p><h1 id="cart-title" data-i18n="yourCart">Your cart</h1></div>
