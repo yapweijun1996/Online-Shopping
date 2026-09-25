@@ -37,7 +37,7 @@ The super admin configures a seller catalog and decides on submitted orders. A g
 
 | Area | New MVP gate | Current evidence |
 | --- | --- | --- |
-| Static/config/build | Source lint/type/build and production configuration rejection appropriate to chosen stack. | Node 24 syntax checks and production credential-startup tests pass; no production build/artifact gate yet. |
+| Static/config/build | Source lint/type/build and production configuration rejection appropriate to chosen stack. | Node 24 syntax checks and production credential-startup tests pass. A SHA-pinned Node 24 CI workflow is configured but has not run remotely; no production build/artifact gate yet. |
 | Domain/API/data | Unit, integration, contract, transaction, authorization, idempotency, failure and concurrency checks for AC-01–14. | Seller session, CSRF, startup, and persistence tests pass; commerce tests do not exist yet. |
 | Browser | Seller setup, guest multi-destination checkout, receipt, review, loading/error states, keyboard, 390px/mobile and desktop, console/overflow; seven-language UI checks. | Seller login/reload/logout, navigation and mobile drawer were smoke-tested; no commerce UI exists yet. |
 | PWA/offline | Both surfaces: install/launch, service-worker private-cache boundaries, offline shell, update, and online-only mutations. | Local Chromium confirmed distinct scopes/caches, offline pages, and a waiting-then-activated worker update; target-device install and order/review mutation checks remain. |

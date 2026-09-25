@@ -28,6 +28,8 @@ There is no customer-facing cross-device history lookup in the MVP. A phone numb
 
 Both web surfaces now have separate local PWA manifests/scopes, versioned public-shell caches, and offline pages. Installation across target browsers and online-only checkout/review behavior remain unverified until those journeys exist. The UI defaults to English and offers, in order, English, Malay, Mandarin, Vietnamese, Thai, Japanese, and Korean. See the [seller desktop/mobile previews](docs/UI_SPEC.md) and [PWA/i18n requirements](docs/PWA_I18N.md).
 
+The [verification workflow](.github/workflows/verify.yml) runs the new application's Node 24 syntax checks, tests, and dependency audit on future GitHub pushes and pull requests. It has not run remotely for this local work.
+
 ## MVP boundaries
 
 - No online payment or payment verification workflow.
