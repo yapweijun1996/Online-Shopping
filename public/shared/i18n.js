@@ -155,6 +155,7 @@ const shopMessages = {
     quantityLimit: 'Choose a quantity from 1 to 100.', addedToCart: 'Added to cart.', quantityUpdated: 'Quantity updated.', removedFromCart: 'Removed from cart.', quantity: 'Quantity', remove: 'Remove',
     productUnavailable: 'Product unavailable', emptyCart: 'Your cart is empty.', noResults: 'No matching products.',
     cartUnavailable: 'One or more products are unavailable. Remove them before checkout.',
+    cartPriceChanged: 'Some prices changed since you opened the cart. Review the updated total, then check out again.',
   },
   ms: {
     browse: 'Lihat produk', cart: 'Troli', browseProducts: 'Lihat produk', allCategories: 'Semua kategori',
@@ -166,6 +167,7 @@ const shopMessages = {
     quantityLimit: 'Pilih kuantiti 1 hingga 100.', addedToCart: 'Ditambah ke troli.', quantityUpdated: 'Kuantiti dikemas kini.', removedFromCart: 'Dibuang daripada troli.', quantity: 'Kuantiti', remove: 'Buang',
     productUnavailable: 'Produk tidak tersedia', emptyCart: 'Troli anda kosong.', noResults: 'Tiada produk yang sepadan.',
     cartUnavailable: 'Satu atau lebih produk tidak tersedia. Buangnya sebelum daftar keluar.',
+    cartPriceChanged: 'Sesetengah harga telah berubah sejak anda membuka troli. Semak jumlah terkini, kemudian daftar keluar semula.',
   },
   'zh-Hans': {
     browse: '浏览', cart: '购物车', browseProducts: '浏览商品', allCategories: '所有类别',
@@ -177,6 +179,7 @@ const shopMessages = {
     quantityLimit: '数量须为 1 至 100。', addedToCart: '已加入购物车。', quantityUpdated: '数量已更新。', removedFromCart: '已从购物车移除。', quantity: '数量', remove: '移除',
     productUnavailable: '商品不可用', emptyCart: '购物车是空的。', noResults: '没有匹配的商品。',
     cartUnavailable: '有商品不可用，请在结账前移除。',
+    cartPriceChanged: '购物车中部分商品价格已变动。请查看最新总价后重新结账。',
   },
   vi: {
     browse: 'Xem sản phẩm', cart: 'Giỏ hàng', browseProducts: 'Xem sản phẩm', allCategories: 'Tất cả danh mục',
@@ -188,6 +191,7 @@ const shopMessages = {
     quantityLimit: 'Chọn số lượng từ 1 đến 100.', addedToCart: 'Đã thêm vào giỏ.', quantityUpdated: 'Đã cập nhật số lượng.', removedFromCart: 'Đã xóa khỏi giỏ.', quantity: 'Số lượng', remove: 'Xóa',
     productUnavailable: 'Sản phẩm không có sẵn', emptyCart: 'Giỏ hàng của bạn đang trống.', noResults: 'Không tìm thấy sản phẩm phù hợp.',
     cartUnavailable: 'Một số sản phẩm không có sẵn. Hãy xóa trước khi đặt hàng.',
+    cartPriceChanged: 'Một số giá đã thay đổi kể từ khi bạn mở giỏ hàng. Hãy xem lại tổng mới rồi đặt hàng lại.',
   },
   th: {
     browse: 'ดูสินค้า', cart: 'ตะกร้า', browseProducts: 'ดูสินค้า', allCategories: 'ทุกหมวดหมู่',
@@ -199,6 +203,7 @@ const shopMessages = {
     quantityLimit: 'เลือกจำนวนตั้งแต่ 1 ถึง 100', addedToCart: 'เพิ่มลงตะกร้าแล้ว', quantityUpdated: 'อัปเดตจำนวนแล้ว', removedFromCart: 'นำออกจากตะกร้าแล้ว', quantity: 'จำนวน', remove: 'นำออก',
     productUnavailable: 'สินค้าไม่พร้อมขาย', emptyCart: 'ตะกร้าของคุณว่างเปล่า', noResults: 'ไม่พบสินค้าที่ตรงกัน',
     cartUnavailable: 'มีสินค้าที่ไม่พร้อมขาย โปรดนำออกก่อนสั่งซื้อ',
+    cartPriceChanged: 'ราคาสินค้าบางรายการมีการเปลี่ยนแปลง โปรดตรวจสอบยอดรวมใหม่แล้วสั่งซื้ออีกครั้ง',
   },
   ja: {
     browse: '商品を見る', cart: 'カート', browseProducts: '商品を見る', allCategories: 'すべてのカテゴリー',
@@ -210,6 +215,7 @@ const shopMessages = {
     quantityLimit: '数量は1～100で選択してください。', addedToCart: 'カートに追加しました。', quantityUpdated: '数量を更新しました。', removedFromCart: 'カートから削除しました。', quantity: '数量', remove: '削除',
     productUnavailable: '商品を利用できません', emptyCart: 'カートは空です。', noResults: '一致する商品がありません。',
     cartUnavailable: '利用できない商品があります。注文前に削除してください。',
+    cartPriceChanged: 'カートを開いた後に一部の価格が変更されました。新しい合計を確認してから、もう一度注文してください。',
   },
   ko: {
     browse: '상품 보기', cart: '장바구니', browseProducts: '상품 보기', allCategories: '모든 카테고리',
@@ -221,6 +227,7 @@ const shopMessages = {
     quantityLimit: '수량은 1에서 100 사이로 선택하세요.', addedToCart: '장바구니에 담았습니다.', quantityUpdated: '수량을 변경했습니다.', removedFromCart: '장바구니에서 삭제했습니다.', quantity: '수량', remove: '삭제',
     productUnavailable: '구매할 수 없는 상품', emptyCart: '장바구니가 비어 있습니다.', noResults: '일치하는 상품이 없습니다.',
     cartUnavailable: '구매할 수 없는 상품이 있습니다. 주문 전에 삭제하세요.',
+    cartPriceChanged: '장바구니를 연 후 일부 가격이 변경되었습니다. 변경된 합계를 확인한 뒤 다시 주문하세요.',
   },
 };
 for (const { code } of languages) Object.assign(messages[code], shopMessages[code]);
