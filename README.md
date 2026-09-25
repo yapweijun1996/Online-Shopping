@@ -1,6 +1,6 @@
 # Online Shopping MVP
 
-**Status: MVP implementation in progress.** Seller sign-in/session, MYR product management, public catalog/cart, guest multi-destination checkout, seller order review, and responsive PWA shells run locally. AC-01–15 and AC-18 are locally verified; PWA installation and production operations remain unfinished, and nothing is released. The local `sample/` prototype is a separate business-rule reference; its code, UI, database, and demo credentials are not the new application.
+**Status: MVP implementation in progress.** Seller sign-in/session, MYR product management, public catalog/cart, guest multi-destination checkout, seller order review, and responsive PWA shells run locally. A two-container Docker Compose stack passed local smoke checks. AC-01–15 and AC-18 are locally verified; PWA installation and production operations remain unfinished, and nothing is released. The local `sample/` prototype is a separate business-rule reference; its code, UI, database, and demo credentials are not the new application.
 
 ## Run the current slice
 
@@ -22,7 +22,7 @@ Make it easy for a seller to set up products, for a customer to shop without reg
 
 ## Implementation order
 
-Seller login, product management, public catalog/cart, guest checkout, and seller order queue/detail/decision views now run locally against the documented API. A decision uses the current server revision; another tab's decision triggers a 409 and reloads the latest state. The initial super admin username and password come from a local, ignored `.env` file. There is no built-in credential in source or committed configuration. Production startup rejects known development defaults and missing or weak credentials.
+Seller login, product management, public catalog/cart, guest checkout, and seller order queue/detail/decision views now run locally against the documented API. A decision uses the current server revision; another tab's decision triggers a 409 and reloads the latest state. The initial super admin username and password come from ignored server configuration: `.env` for direct Node development or an ignored Docker environment file plus Compose secret. There is no built-in credential in source or committed configuration. Production startup rejects known development defaults and missing or weak credentials.
 
 There is no customer-facing cross-device history lookup in the MVP. A phone number or email supplied without verification is contact data, not proof of ownership.
 
@@ -31,6 +31,14 @@ Checkout offers optional same-browser history for buyer and recipient phones and
 Both web surfaces have separate local PWA manifests/scopes, versioned public-shell caches, and offline pages. Local checkout and seller decisions require a server response; offline seller actions are disabled and the offline shell contains no private order data. Installation across target browsers remains unverified. The UI defaults to English and offers, in order, English, Malay, Mandarin, Vietnamese, Thai, Japanese, and Korean; local phone/desktop browser checks cover core flows, errors, focus and layout in all seven. See the [seller desktop/mobile previews](docs/UI_SPEC.md) and [PWA/i18n requirements](docs/PWA_I18N.md).
 
 The [verification workflow](.github/workflows/verify.yml) runs the new application's Node 24 syntax checks, tests, and dependency audit on future GitHub pushes and pull requests. It has not run remotely for this local work.
+
+## Run with Docker Compose
+
+The [Compose stack](compose.yaml) runs **two containers**: Caddy serves both PWA shells and proxies `/api/*`, `/health`, and `/ready`; one Node backend owns the API and private SQLite database. SQLite is a file in the `db_data` named volume, not a third container. The backend has no published host port. The default frontend binding is `127.0.0.1:8080` for local testing.
+
+Create an ignored `.local/admin-password` file containing a unique 16–256 character secret with letters and numbers; restrict it to the deployment operator. For a local synthetic-data setup, run `mkdir -p .local` and `(umask 077; openssl rand -base64 32 > .local/admin-password)`. Copy [the Compose environment example](deploy/docker.env.example) with `cp deploy/docker.env.example .local/docker.env`, set `ADMIN_USERNAME`, and review the bind and origin values. Then run `docker compose --env-file .local/docker.env up --build -d`, check `docker compose --env-file .local/docker.env ps`, and visit `http://127.0.0.1:8080/shop/` and `/seller/`. Keep the secret file, `.local/docker.env`, and database volume out of source control and public static paths. Restart with `docker compose --env-file .local/docker.env restart`; do not remove `db_data` with `down -v` without an approved data recovery or disposal procedure.
+
+For a future HTTPS host, set `SITE_ADDRESS` to the hostname, `PUBLIC_ORIGIN` to its exact `https://` origin, `NODE_ENV=production`, and bind the frontend to public ports 80 and 443 after DNS, TLS reachability, data retention, backups, and rollback are settled. Caddy obtains certificates for a reachable domain. Do not expose the backend port; its trusted proxy setting assumes only the Caddy container can reach it. Production startup fails if the secret is missing or weak. Local Docker smoke checks do not establish a released service. See [deployment operations](docs/DEPLOY.md) for data and release gates.
 
 ## MVP boundaries
 

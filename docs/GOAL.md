@@ -29,7 +29,8 @@ Payment, GST calculation, customer accounts, contact verification, cross-device 
 
 - Treat `sample/` as domain reference only. Build a new implementation rather than copying its code or appearance.
 - Keep source, identifiers, and technical documentation in English. Explain progress to the owner in Mandarin.
-- Keep real personal data, access tokens, credentials, and database files out of the public repository. Read initial super admin credentials from a local, ignored `.env`; production must reject missing or weak development credentials.
+- Keep real personal data, access tokens, credentials, and database files out of the public repository. Read initial super admin credentials from a local, ignored `.env` or server-only secret file; production must reject missing or weak development credentials.
+- Use one Docker frontend proxy/PWA container and one private Node API container with a persistent SQLite volume. Keep the backend at one instance and unpublished until a different persistence/rate-limit design is verified.
 - Use MYR prices and no shipping-charge or logistics calculation in the MVP. Collect destination addresses for seller review without a delivery-area promise. Accept bounded base64 product images through the seller API. Optional prior phone/address suggestions stay on the same browser with a clear control.
 - Update design, API, tasks, progress, and this goal when decisions or implemented behavior change.
-- Resolve the open commerce and hosting/data choices in [TASK.md](TASK.md) before implementing behavior that depends on them.
+- Resolve the open HTTPS-host, contact-retention, backup and recovery choices in [TASK.md](TASK.md) before a real-data release.

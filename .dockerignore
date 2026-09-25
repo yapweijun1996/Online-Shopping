@@ -1,0 +1,16 @@
+.git
+.env
+.env.*
+!.env.example
+.local
+node_modules
+coverage
+dist
+sample
+test
+docs
+.github
+*.db
+*.db-shm
+*.db-wal
+*.log

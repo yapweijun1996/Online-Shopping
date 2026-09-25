@@ -1,0 +1,25 @@
+# Docker deployment and data boundary
+
+**Status: local Compose smoke verified; no production release.** See [README](../README.md) for local startup. This document records the chosen deployment shape and gates, not a claim that a public host exists.
+
+## Topology
+
+`frontend` is Caddy with only `public/` and a Caddyfile in its image. It serves `/shop/` and `/seller/` as separate PWA scopes and forwards `/api/*`, `/health`, and `/ready` to `backend` on the private Compose network. Its local default binds only loopback. `backend` is one Node 24 API process with private SQLite v3 in the persistent `db_data` volume. Seller session hashes, product image bytes, order contacts, addresses, snapshots, idempotency records, and audit events live there. No SQLite port or backend HTTP port is published. Caddy's `caddy_data` volume preserves TLS state when a real HTTPS hostname is configured.
+
+The backend accepts a trusted `X-Real-IP` only in this private-proxy topology. Caddy overwrites the incoming header with its direct client address. Do not expose backend port 3000 or add untrusted containers to the private network. If a load balancer is added in front of Caddy, reassess real-client IP and rate limits. Scale the backend at one instance: the in-process limiters are not shared and the SQLite file is a single-writer store.
+
+## Secrets and startup
+
+The operator supplies an ignored file at `ADMIN_PASSWORD_FILE_HOST` (default `.local/admin-password`), mounted as a Compose secret at `/run/secrets/admin_password`. The backend reads it as nonroot, validates it, and provisions exactly one seller admin. The same secret must remain available across restarts; changing it without an explicit credential migration fails startup against the existing admin record. `ADMIN_USERNAME` is also required. Do not print either secret or copy it into the image, `.env.example`, frontend files, logs, or Git. Production requires `NODE_ENV=production`, an exact HTTPS `PUBLIC_ORIGIN`, a private `DB_PATH`, and a strong non-placeholder password. The local default is development mode on loopback; it is not appropriate for real contacts.
+
+## Data lifetime and release gate
+
+The current API has no order/contact/address deletion endpoint or automatic server retention job. Restarting containers preserves SQLite data in `db_data`. This matches the requested **no automatic deletion of submitted order contacts**. The optional browser input-suggestion history is separate: it is user-controlled, clearable, and expires after 90 days. A blanket claim that server phone/address data may never be deleted needs a documented legal/business basis and retention schedule before processing real customer data. If Malaysia's PDPA applies, its [Retention Principle (Act 709, section 10)](https://www.pdp.gov.my/ppdpv1/wp-content/uploads/2024/07/UNDANG-UNDANG-MALAYSIA_AKTA_PERLINDUNGAN_DATA_PERIBADI_2010_709_MALAY_AND-ENG_V2022.pdf) and the official [Personal Data Protection Standard](https://www.pdp.gov.my/ppdpv1/wp-content/uploads/2024/07/LatestStandard.pdf) require a purpose and disposal controls. Other statutory obligations may set specific periods; the owner must resolve the applicable rule. Do not interpret a persistent Docker volume as a retention policy. Restrict operator and backup access, and define a lawful disposal, correction, and recovery procedure before public launch.
+
+`docker compose down -v` removes named volumes and must not be used as a routine stop. Pin a Compose project name so volume identity remains stable. Before any upgrade or schema migration, take a recoverable, access-restricted backup of the entire SQLite volume while the backend is stopped, including any WAL/SHM files; test restore into an isolated Compose project with synthetic data before relying on it. Define backup frequency, encryption, storage location, access, restore time, and retention with the owner. The repository has not yet verified a production backup/restore or rollback.
+
+## Local evidence and outstanding release checks
+
+With a synthetic ignored secret and test order, the two pinned-base images built and started. `/ready`, both PWA assets, proxy API, seller authorization, product create/public visibility, guest order and idempotent replay passed through Caddy. The private SQLite file and secret were mode `0600` under the nonroot backend user. The frontend image lacked backend source/private files and the backend image lacked `public/` and `sample/`. After restarting the backend, the product and order remained; spoofed incoming `X-Real-IP` values did not bypass the login limiter. Missing/weak production credentials exited with status 1. These are local checks only.
+
+Before a public release, settle the exact hostname and server access, HTTPS certificate reachability, retention/legal basis, backup/restore and rollback, production secret management, and target-browser PWA installation/update. Verify the exact built artifact, secure cookie/origin behavior on HTTPS, readiness, migration, logs without PII, and deployed version. Record those results in [PROGRESS.md](PROGRESS.md); only then consider AC-16/17 verified or any item Released.

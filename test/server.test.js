@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, statSync } from 'node:fs';
+import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -46,6 +46,22 @@ test('configuration rejects missing, weak, and unsafe production values', () => 
   assert.throws(() => readConfig({ ADMIN_USERNAME: username, ADMIN_PASSWORD: productionPassword, NODE_ENV: 'production', DB_PATH: '/tmp/private.db', PUBLIC_ORIGIN: 'https://shop.example/path' }), /PUBLIC_ORIGIN/);
   assert.equal(readConfig({ ADMIN_USERNAME: username, ADMIN_PASSWORD: productionPassword, NODE_ENV: 'production', DB_PATH: '/tmp/private.db', PUBLIC_ORIGIN: 'https://shop.example' }).production, true);
   assert.throws(() => readConfig({ ADMIN_USERNAME: username, ADMIN_PASSWORD: password, DB_PATH: 'public/leak.db' }), /outside the public/);
+  assert.throws(() => readConfig({ ADMIN_USERNAME: username, ADMIN_PASSWORD: password, ADMIN_PASSWORD_FILE: '/tmp/secret' }), /only one/);
+  assert.throws(() => readConfig({ ADMIN_USERNAME: username, ADMIN_PASSWORD_FILE: '/not/a/real/secret' }), /cannot be read/);
+  assert.throws(() => readConfig({ ADMIN_USERNAME: username, ADMIN_PASSWORD: password, TRUST_PROXY: 'true' }), /TRUST_PROXY/);
+});
+
+test('file-backed credentials are read without a trailing newline', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'online-shopping-secret-test-'));
+  try {
+    const secretPath = path.join(directory, 'password');
+    writeFileSync(secretPath, `${productionPassword}\n`, { mode: 0o600 });
+    assert.equal(readConfig({ ADMIN_USERNAME: username, ADMIN_PASSWORD_FILE: secretPath }).password, productionPassword);
+    writeFileSync(secretPath, 'password123\n');
+    assert.throws(() => readConfig({ ADMIN_USERNAME: username, ADMIN_PASSWORD_FILE: secretPath }), /ADMIN_PASSWORD must/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('readiness fails closed when schema version changes while liveness stays up', async () => {

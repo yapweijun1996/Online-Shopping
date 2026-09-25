@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
 
 const weakPasswords = new Set(['password', 'password123', 'changeme', 'admin123', 'testpassword', 'replace-me']);
 const placeholderWords = /password|changeme|replace[-_]?me|example|sample|default/i;
@@ -6,7 +7,17 @@ const placeholderWords = /password|changeme|replace[-_]?me|example|sample|defaul
 export function readConfig(env = process.env) {
   const production = env.NODE_ENV === 'production';
   const username = (env.ADMIN_USERNAME || '').trim();
-  const password = env.ADMIN_PASSWORD || '';
+  if (env.ADMIN_PASSWORD && env.ADMIN_PASSWORD_FILE) {
+    throw new Error('Set only one of ADMIN_PASSWORD and ADMIN_PASSWORD_FILE.');
+  }
+  let password = env.ADMIN_PASSWORD || '';
+  if (env.ADMIN_PASSWORD_FILE) {
+    try {
+      password = readFileSync(env.ADMIN_PASSWORD_FILE, 'utf8').replace(/\r?\n$/, '');
+    } catch {
+      throw new Error('ADMIN_PASSWORD_FILE cannot be read.');
+    }
+  }
   if (!/^[A-Za-z0-9._-]{3,64}$/.test(username)) {
     throw new Error('ADMIN_USERNAME must contain 3-64 safe characters.');
   }
@@ -32,5 +43,7 @@ export function readConfig(env = process.env) {
   }
   const port = Number(env.PORT || 3000);
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('PORT must be a valid port.');
-  return { production, username, password, dbPath, publicOrigin, port };
+  const trustProxy = env.TRUST_PROXY === '1';
+  if (env.TRUST_PROXY && !trustProxy) throw new Error('TRUST_PROXY must be 1 when set.');
+  return { production, username, password, dbPath, publicOrigin, port, trustProxy };
 }

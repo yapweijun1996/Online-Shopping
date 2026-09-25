@@ -1,4 +1,5 @@
 import { fileURLToPath } from 'node:url';
+import { isIP } from 'node:net';
 import { readConfig } from './config.js';
 import { openDatabase, ready } from './db.js';
 import { authenticate, cookieFor, createSession, deleteSession, ensureAdmin, LoginLimiter, readSession, sessionCookieFrom } from './auth.js';
@@ -19,6 +20,12 @@ function image(response, value) {
     'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
   });
   response.end(value.data);
+}
+
+function clientAddress(request, config) {
+  const forwarded = request.headers['x-real-ip'];
+  if (config.trustProxy && typeof forwarded === 'string' && isIP(forwarded)) return forwarded;
+  return request.socket.remoteAddress || 'unknown';
 }
 
 class CheckoutLimiter {
@@ -67,7 +74,7 @@ export function createApp(config) {
     }
     if (request.method === 'POST' && pathname === '/api/v1/orders') {
       requireOrigin(request, expectedOrigin);
-      if (!checkoutLimiter.allowed(request.socket.remoteAddress || 'unknown')) {
+      if (!checkoutLimiter.allowed(clientAddress(request, config))) {
         throw new ApiError(429, 'RATE_LIMITED', 'Too many submissions. Try again later.');
       }
       const body = await readJson(request, 128 * 1024);
@@ -78,7 +85,7 @@ export function createApp(config) {
 
     if (request.method === 'POST' && pathname === '/api/v1/seller/session') {
       requireOrigin(request, expectedOrigin);
-      const key = request.socket.remoteAddress || 'unknown';
+      const key = clientAddress(request, config);
       if (!limiter.allowed(key)) throw new ApiError(429, 'RATE_LIMITED', 'Too many attempts. Try later.');
       const body = await readJson(request);
       if (typeof body.username !== 'string' || typeof body.password !== 'string' ||
