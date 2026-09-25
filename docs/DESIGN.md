@@ -10,6 +10,8 @@ The local development stack uses Node 24 built-ins and `node:sqlite`, with the d
 
 The planned checkout will call the server's contact validators for both buyer and recipient fields. They use pinned `libphonenumber-js` number-plan metadata for +60/+65 validation and E.164 output, bound names/email, require an explicit boolean WhatsApp order-contact choice, and identify invalid fields without echoing contact values. These helpers are not connected to an order endpoint yet. The dependency validates number structure only; neither the helpers nor the future checkout may treat an unverified number as identity proof.
 
+A preliminary server-side product input validator bounds core catalog fields and requires an explicit allowed-currency list from its future API caller. It does not choose a shop currency or persist products; DEC-02 and DEC-05 still govern priced writes and image handling.
+
 ## Users and journeys
 
 - Customer: discover products, manage a cart, enter buyer contact, assign items to one or more delivery destinations, submit, and view the resulting order number and same-browser receipt.

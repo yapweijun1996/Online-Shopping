@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { FieldError, validateBuyer, validateRecipient } from '../src/checkout-input.js';
+import { validateBuyer, validateRecipient } from '../src/checkout-input.js';
+import { FieldError } from '../src/validation.js';
 
 const buyer = { fullName: ' Example Buyer ', whatsappPhone: '+60 12-345 6789', email: ' buyer@example.test ' };
 

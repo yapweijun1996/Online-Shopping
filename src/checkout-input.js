@@ -1,21 +1,5 @@
 import { normalizeContactPhone } from './phone.js';
-
-export class FieldError extends Error {
-  constructor(field, message) {
-    super(message);
-    this.field = field;
-  }
-}
-
-function boundedText(value, field, maxLength, required = true) {
-  if (value === null || value === undefined) value = '';
-  if (typeof value !== 'string' || /\p{Cc}/u.test(value)) throw new FieldError(field, 'Enter valid text.');
-  const text = value.trim().normalize('NFC');
-  if ((required && !text) || text.length > maxLength) {
-    throw new FieldError(field, 'Enter valid text.');
-  }
-  return text;
-}
+import { FieldError, boundedText } from './validation.js';
 
 function phone(value, field) {
   try { return normalizeContactPhone(value); }

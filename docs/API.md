@@ -83,6 +83,8 @@ Seller browser sessions use a server-controlled, `HttpOnly` cookie with producti
 
 Seller product writes require English catalog text and may include translated text keyed by the supported language tags. Public product reads return the requested translation when available and English otherwise. Order creation snapshots the display name and locale shown at checkout alongside the stable product identity and price; translations changed later do not rewrite existing orders. The exact locale negotiation field/header is finalized with the frontend contract before implementation.
 
+A server-side product input validator now bounds SKU, English name/description, category, integer minor-unit price and active status, and rejects unknown fields. Its caller must provide an explicit allowed-currency policy; none is wired into a write endpoint while DEC-02 remains open. Image and translated-text fields are still outside this preliminary validator pending their contracts. No product API path is live yet.
+
 The seller web app may build an official click-to-chat link from the authorized buyer phone in an order detail response when the buyer opted in to order-related WhatsApp contact. It may also copy individual buyer and recipient contact/address fields from that authorized response. The API does not send WhatsApp messages or export courier files in the MVP. `Sales Orders` and `Sales Order Confirmation` are UI views over the same order endpoints and order state.
 
 ## Error contract
