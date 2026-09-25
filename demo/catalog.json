@@ -1,0 +1,162 @@
+[
+  {
+    "sku": "DEMO-001",
+    "name": "Sage Insulated Bottle",
+    "description": "A reusable bottle for the commute, desk, or day out. Details: 750 mL capacity; double-wall stainless steel body; screw-top lid; matte sage finish. Hand wash and dry with the lid removed.",
+    "category": "Everyday",
+    "priceMinor": 4990,
+    "image": "sage-bottle.webp"
+  },
+  {
+    "sku": "DEMO-002",
+    "name": "Cream Ceramic Coffee Mug",
+    "description": "A simple everyday mug with a comfortable handle and warm cream glaze. Details: approximately 350 mL capacity; glazed ceramic; 9 cm tall. Wash before first use and avoid sudden temperature changes.",
+    "category": "Kitchen",
+    "priceMinor": 2890,
+    "image": "ceramic-mug.webp"
+  },
+  {
+    "sku": "DEMO-003",
+    "name": "A5 Linen Notebook",
+    "description": "A compact notebook for lists, notes, and sketches. Details: A5 size; linen-look hardcover; 160 ruled pages; elastic closure. Keep dry and store flat.",
+    "category": "Work",
+    "priceMinor": 2490,
+    "image": "linen-notebook.webp"
+  },
+  {
+    "sku": "DEMO-004",
+    "name": "Adjustable Desk Lamp",
+    "description": "A neat task light for a home desk or reading corner. Details: adjustable metal shade and arm; matte sand finish; compact base. Indoor use only; bulb and socket specification must be confirmed before any real sale.",
+    "category": "Home",
+    "priceMinor": 8990,
+    "image": "desk-lamp.webp"
+  },
+  {
+    "sku": "DEMO-005",
+    "name": "Natural Canvas Tote",
+    "description": "A roomy reusable tote for groceries or daily essentials. Details: natural cotton canvas; long shoulder handles; approximately 38 × 40 cm body. Spot clean and air dry.",
+    "category": "Everyday",
+    "priceMinor": 3290,
+    "image": "canvas-tote.webp"
+  },
+  {
+    "sku": "DEMO-006",
+    "name": "Glass Lunch Container",
+    "description": "A clear container for packing a simple lunch. Details: approximately 1 L glass base with bamboo-look lid; rectangular shape; reusable design. Remove the lid before warming food; hand wash the lid.",
+    "category": "Kitchen",
+    "priceMinor": 4590,
+    "image": "glass-lunch-box.webp"
+  },
+  {
+    "sku": "DEMO-007",
+    "name": "Bamboo Cutting Board",
+    "description": "A lightweight board for everyday food preparation. Details: bamboo surface; approximately 30 × 20 × 1.5 cm; rounded edges and hanging hole. Hand wash, dry upright, and do not soak.",
+    "category": "Kitchen",
+    "priceMinor": 3590,
+    "image": "bamboo-board.webp"
+  },
+  {
+    "sku": "DEMO-008",
+    "name": "Ribbed Planter with Pothos",
+    "description": "A small green accent for a bright indoor shelf. Details: approximately 12 cm ribbed ceramic pot with a pothos plant; appearance and leaf shape vary. This is a fictional display item; confirm live-plant availability before a real sale.",
+    "category": "Home",
+    "priceMinor": 3990,
+    "image": "ceramic-planter.webp"
+  },
+  {
+    "sku": "DEMO-009",
+    "name": "Terracotta Yoga Mat",
+    "description": "A comfortable surface for stretching and floor exercises. Details: approximately 183 × 61 cm; 6 mm thickness; muted terracotta colour; fabric carry strap. Wipe clean and air dry before rolling.",
+    "category": "Wellness",
+    "priceMinor": 7990,
+    "image": "yoga-mat.webp"
+  },
+  {
+    "sku": "DEMO-010",
+    "name": "Cotton Sleep Mask",
+    "description": "A soft cover for rest at home or on a trip. Details: charcoal cotton outer fabric; elastic head strap; lightweight shape. Gentle hand wash and air dry.",
+    "category": "Wellness",
+    "priceMinor": 1990,
+    "image": "sleep-mask.webp"
+  },
+  {
+    "sku": "DEMO-011",
+    "name": "Navy Travel Organizer",
+    "description": "Keep small travel accessories together in one zippered pouch. Details: approximately 24 × 16 cm; navy fabric exterior; single main compartment. Spot clean and dry fully before storage.",
+    "category": "Travel",
+    "priceMinor": 2990,
+    "image": "travel-pouch.webp"
+  },
+  {
+    "sku": "DEMO-012",
+    "name": "Minimal Wireless Mouse",
+    "description": "A compact mouse for a tidy workstation. Details: warm white finish; right- or left-hand friendly shape; wireless design. Connectivity, power source, and compatibility are demo details to confirm before a real sale.",
+    "category": "Work",
+    "priceMinor": 5990,
+    "image": "wireless-mouse.webp"
+  },
+  {
+    "sku": "DEMO-013",
+    "name": "Folding Phone Stand",
+    "description": "Prop a phone up for video calls or recipes while keeping the desk clear. Details: folding brushed-metal frame; adjustable viewing angle; non-slip contact pads. This stand does not include a charger or phone.",
+    "category": "Work",
+    "priceMinor": 3490,
+    "image": "charging-stand.webp"
+  },
+  {
+    "sku": "DEMO-014",
+    "name": "Silicone Cable Clips — Set of 3",
+    "description": "Keep charging cables within reach on a desk or bedside table. Details: three reusable silicone clips in muted earth tones; flexible cable channels. Wipe the placement surface before use.",
+    "category": "Work",
+    "priceMinor": 1590,
+    "image": "cable-organizer.webp"
+  },
+  {
+    "sku": "DEMO-015",
+    "name": "Olive Compact Umbrella",
+    "description": "A portable umbrella that fits in a day bag. Details: muted olive canopy; matching sleeve; curved wood-look handle; compact folding frame. Dry fully before storing in the sleeve.",
+    "category": "Travel",
+    "priceMinor": 4290,
+    "image": "compact-umbrella.webp"
+  },
+  {
+    "sku": "DEMO-016",
+    "name": "Cotton Hand Towels — Set of 3",
+    "description": "A coordinated towel set for a bathroom or guest washroom. Details: three cotton towels in cream, sand, and sage; folded presentation as shown. Machine wash with similar colours.",
+    "category": "Home",
+    "priceMinor": 3690,
+    "image": "cotton-towels.webp"
+  },
+  {
+    "sku": "DEMO-017",
+    "name": "Stainless Tea Infuser",
+    "description": "Brew loose-leaf tea directly in a cup or small pot. Details: stainless steel basket with side handles and a matching lid; fine perforations; reusable design. Rinse after each use and dry completely.",
+    "category": "Kitchen",
+    "priceMinor": 2690,
+    "image": "tea-infuser.webp"
+  },
+  {
+    "sku": "DEMO-018",
+    "name": "Charcoal Laptop Sleeve",
+    "description": "A slim cover for carrying a small laptop in a bag. Details: charcoal felt-look padded exterior; zipper closure; designed around a 13-inch device. Check device dimensions before purchase; spot clean only.",
+    "category": "Work",
+    "priceMinor": 5490,
+    "image": "laptop-sleeve.webp"
+  },
+  {
+    "sku": "DEMO-019",
+    "name": "Cream Desktop Clock",
+    "description": "A small analog clock for a desk or bedside table. Details: round matte cream case; dark hands; freestanding design. Battery type and movement specification are demo details to confirm before a real sale.",
+    "category": "Home",
+    "priceMinor": 4890,
+    "image": "desktop-clock.webp"
+  },
+  {
+    "sku": "DEMO-020",
+    "name": "Foldable Reusable Shopping Bag",
+    "description": "A lightweight spare bag for everyday errands. Details: muted blue ripstop-look fabric; foldable body; approximately 45 × 35 cm when open. Wipe clean and air dry.",
+    "category": "Everyday",
+    "priceMinor": 2290,
+    "image": "reusable-bag.webp"
+  }
+]
