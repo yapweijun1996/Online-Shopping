@@ -20,6 +20,7 @@ let catalogStatus = '';
 let cartStatus = '';
 let shopStatus = '';
 let cartReady = false;
+let priceChangedNotice = false;
 let checkoutPage = null;
 let lastReceipt = null;
 let receiptNotes = [];
@@ -278,7 +279,8 @@ async function refreshCart() {
     const currencies = new Set(results.map(({ product }) => product?.currency).filter(Boolean));
     cartReady = results.every(({ product }) => Boolean(product)) && currencies.size === 1;
     renderCart();
-    setCartStatus(results.some(({ product }) => !product) ? 'cartUnavailable' : currencies.size > 1 ? 'mixedCurrencies' : '');
+    setCartStatus(results.some(({ product }) => !product) ? 'cartUnavailable' : currencies.size > 1 ? 'mixedCurrencies' : priceChangedNotice ? 'cartPriceChanged' : '');
+    priceChangedNotice = false;
     return cartReady;
   } catch {
     if (request === cartRequest) setCartStatus('networkError');
@@ -370,7 +372,13 @@ byId('catalog-search').placeholder = t('searchProducts');
 registerWorker('/shop/sw.js', '/shop/').catch(() => console.warn('Shop offline shell unavailable.'));
 const cartStore = await createCartStore();
 lastReceipt = readReceipt();
-checkoutPage = mountCheckout({ onSuccess: completeOrder });
+checkoutPage = mountCheckout({
+  onSuccess: completeOrder,
+  onPriceChanged() {
+    priceChangedNotice = true;
+    location.hash = '#cart';
+  },
+});
 updateCount();
 updatePersistence();
 byId('catalog-search-form').addEventListener('submit', (event) => { event.preventDefault(); applyCatalogFilters(); });

@@ -42,7 +42,7 @@ async function fixture() {
         deliveries: [{
           recipient: { fullName: 'Example Recipient', phone: '+60123456789' },
           address: { line1: 'Example Street', line2: 'Unit 1', city: 'Example City', postcode: '50000', country: 'MY' },
-          items: [{ productId: product.id, quantity: 2 }],
+          items: [{ productId: product.id, quantity: 2, expectedPriceMinor: product.priceMinor }],
         }],
       };
       return request('POST', '/api/v1/orders', body, {

@@ -16,12 +16,12 @@ const orderInput = (firstId, secondId) => ({
     {
       recipient: { fullName: 'Example Recipient One', phone: '+60 12-345 6789' },
       address: { line1: 'Example Street 1', postcode: '47810', country: 'MY' },
-      items: [{ productId: firstId, quantity: 2 }],
+      items: [{ productId: firstId, quantity: 2, expectedPriceMinor: 900 }],
     },
     {
       recipient: { fullName: 'Example Recipient Two', phone: '+65 8123 4567' },
       address: { line1: 'Example Avenue 2', line2: 'Unit 03-01', city: 'Singapore', postcode: '123456', country: 'SG' },
-      items: [{ productId: secondId, quantity: 1 }],
+      items: [{ productId: secondId, quantity: 1, expectedPriceMinor: 500 }],
     },
   ],
 });
@@ -91,6 +91,32 @@ test('checkout snapshots two destinations and server prices in one private order
   } finally { await f.close(); }
 });
 
+test('checkout rejects a changed price instead of charging the new amount', async () => {
+  const f = await fixture();
+  try {
+    updateProduct(f.app.database, f.second.id, { priceMinor: 750 });
+    const changed = await f.submit('order-intent-00000011');
+    assert.equal(changed.response.status, 409);
+    assert.equal(changed.data.error.code, 'PRICE_CHANGED');
+    assert.equal(changed.data.error.field, 'deliveries.1.items.0.expectedPriceMinor');
+    assert.equal(f.app.database.prepare('SELECT COUNT(*) AS count FROM shop_order').get().count, 0);
+    assert.equal(f.app.database.prepare('SELECT COUNT(*) AS count FROM checkout_idempotency').get().count, 0);
+    const original = orderInput(f.first.id, f.second.id);
+    const missing = await f.submit('order-intent-00000012', {
+      ...original,
+      deliveries: [original.deliveries[0], { ...original.deliveries[1], items: [{ productId: f.second.id, quantity: 1 }] }],
+    });
+    assert.equal(missing.response.status, 400);
+    assert.equal(missing.data.error.field, 'deliveries.1.items.0.expectedPriceMinor');
+    const accepted = await f.submit('order-intent-00000013', {
+      ...original,
+      deliveries: [original.deliveries[0], { ...original.deliveries[1], items: [{ productId: f.second.id, quantity: 1, expectedPriceMinor: 750 }] }],
+    });
+    assert.equal(accepted.response.status, 201);
+    assert.equal(accepted.data.totalMinor, 2550);
+  } finally { await f.close(); }
+});
+
 test('idempotent retries return the original receipt and reject changed intent', async () => {
   const f = await fixture();
   try {
@@ -120,7 +146,10 @@ test('SGD orders retain SGD snapshots and mixed-currency orders make no writes',
     assert.equal(mixed.data.error.code, 'MIXED_CURRENCY');
     assert.equal(f.app.database.prepare('SELECT COUNT(*) AS count FROM shop_order').get().count, 0);
     const single = orderInput(f.second.id, f.first.id);
-    const receipt = await f.submit('sgd-order-intent-0002', { ...single, deliveries: [single.deliveries[0]] });
+    const receipt = await f.submit('sgd-order-intent-0002', {
+      ...single,
+      deliveries: [{ ...single.deliveries[0], items: [{ ...single.deliveries[0].items[0], expectedPriceMinor: 500 }] }],
+    });
     assert.equal(receipt.response.status, 201);
     assert.equal(receipt.data.currency, 'SGD');
     assert.equal(f.app.database.prepare('SELECT currency FROM shop_order').get().currency, 'SGD');

@@ -126,7 +126,7 @@ function historyCombobox(control, choices, selectChoice) {
   return { refresh: () => { if (document.activeElement === control) show(); else close(); } };
 }
 
-export function mountCheckout({ onSuccess }) {
+export function mountCheckout({ onSuccess, onPriceChanged }) {
   const form = document.getElementById('checkout-form');
   const deliveryList = document.getElementById('delivery-list');
   const assignmentList = document.getElementById('assignment-list');
@@ -271,7 +271,9 @@ export function mountCheckout({ onSuccess }) {
     });
     for (const item of cartItems) {
       const index = cards.findIndex((card) => card.dataset.deliveryId === assignments.get(item.productId));
-      deliveries[index < 0 ? 0 : index].items.push({ productId: item.productId, quantity: item.quantity });
+      deliveries[index < 0 ? 0 : index].items.push({
+        productId: item.productId, quantity: item.quantity, expectedPriceMinor: item.product?.priceMinor,
+      });
     }
     return {
       buyer: {
@@ -328,6 +330,11 @@ export function mountCheckout({ onSuccess }) {
       if (!response.ok) {
         if (result.error?.code === 'IDEMPOTENCY_CONFLICT') pendingIntent = null;
         setStatus('');
+        if (result.error?.code === 'PRICE_CHANGED') {
+          pendingIntent = null;
+          onPriceChanged();
+          return;
+        }
         setError(result.error?.code === 'MIXED_CURRENCY' ? 'mixedCurrencies' :
           result.error?.code === 'PRODUCT_UNAVAILABLE' ? 'cartUnavailable' :
           result.error?.code === 'INVALID_INPUT' ? 'checkoutInvalid' : 'orderError', result.error?.field);

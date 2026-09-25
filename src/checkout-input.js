@@ -85,10 +85,13 @@ export function validateOrderInput(input) {
       if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 100) {
         throw new FieldError(`${itemField}.quantity`, 'Choose a quantity from 1 to 100.');
       }
+      if (!Number.isSafeInteger(item.expectedPriceMinor) || item.expectedPriceMinor < 1) {
+        throw new FieldError(`${itemField}.expectedPriceMinor`, 'Supply the price shown in the cart.');
+      }
       const productId = item.productId.toLowerCase();
       if (seen.has(productId)) throw new FieldError(`${itemField}.productId`, 'Assign a product once per destination.');
       seen.add(productId);
-      return { productId, quantity: item.quantity };
+      return { productId, quantity: item.quantity, expectedPriceMinor: item.expectedPriceMinor };
     });
     return {
       recipient: validateRecipient(delivery.recipient, index),

@@ -53,6 +53,11 @@ export function createOrder(database, idempotencyKey, input) {
         throw error;
       }
       currency = product.currency;
+      if (product.price_minor !== item.expectedPriceMinor) {
+        const error = new ApiError(409, 'PRICE_CHANGED', 'A product price changed. Review the cart.');
+        error.field = `deliveries.${deliveryIndex}.items.${itemIndex}.expectedPriceMinor`;
+        throw error;
+      }
       const lineTotalMinor = product.price_minor * item.quantity;
       totalMinor += lineTotalMinor;
       if (!Number.isSafeInteger(lineTotalMinor) || !Number.isSafeInteger(totalMinor)) {

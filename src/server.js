@@ -14,11 +14,11 @@ const productIdPath = /^\/api\/v1\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
 const sellerProductIdPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
 const sellerOrderIdPath = /^\/api\/v1\/seller\/orders\/([0-9a-f-]{36})(?:\/(confirm|reject))?$/;
 
-function image(response, value) {
+function image(response, value, cacheable = false) {
   if (!value?.mime || !value?.data) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
   response.writeHead(200, {
     'Content-Type': value.mime, 'Content-Length': value.data.length,
-    'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+    'Cache-Control': cacheable ? 'public, max-age=31536000, immutable' : 'no-store', 'X-Content-Type-Options': 'nosniff',
   });
   response.end(value.data);
 }
@@ -68,7 +68,10 @@ export function createApp(config) {
     if (request.method === 'GET' && pathname === '/api/v1/products') return json(response, 200, listProducts(database, url.searchParams));
     const publicProduct = productIdPath.exec(pathname);
     if (request.method === 'GET' && publicProduct) {
-      if (publicProduct[2] === 'image') return image(response, getProductImage(database, publicProduct[1]));
+      if (publicProduct[2] === 'image') {
+        const value = getProductImage(database, publicProduct[1]);
+        return image(response, value, Boolean(value) && url.searchParams.get('v') === value.version);
+      }
       const product = getProduct(database, publicProduct[1]);
       if (!product) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
       return json(response, 200, product);
@@ -87,11 +90,10 @@ export function createApp(config) {
     if (request.method === 'POST' && pathname === '/api/v1/seller/session') {
       requireOrigin(request, expectedOrigin);
       const key = clientAddress(request, config);
-      if (!limiter.allowed(key)) throw new ApiError(429, 'RATE_LIMITED', 'Too many attempts. Try later.');
+      if (!limiter.attempt(key)) throw new ApiError(429, 'RATE_LIMITED', 'Too many attempts. Try later.');
       const body = await readJson(request);
       if (typeof body.username !== 'string' || typeof body.password !== 'string' ||
-          body.username.length > 64 || body.password.length > 256 || !authenticate(database, body.username, body.password)) {
-        limiter.recordFailure(key);
+          body.username.length > 64 || body.password.length > 256 || !(await authenticate(database, body.username, body.password))) {
         throw new ApiError(401, 'UNAUTHORIZED', 'Invalid credentials.');
       }
       limiter.clear(key);

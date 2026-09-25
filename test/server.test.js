@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import net from 'node:net';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import { readConfig } from '../src/config.js';
+import { LoginLimiter } from '../src/auth.js';
 import { createApp } from '../src/server.js';
 
 const username = 'local_owner';
@@ -144,6 +146,41 @@ test('login attempts are rate limited', async () => {
   } finally {
     await f.close();
   }
+});
+
+test('concurrent login attempts cannot bypass the rate limit', async () => {
+  const f = await fixture();
+  const sockets = [];
+  try {
+    const { port } = f.app.server.address();
+    const body = JSON.stringify({ username, password: 'wrong' });
+    for (let index = 0; index < 12; index++) {
+      const socket = net.connect(port, '127.0.0.1');
+      await new Promise((resolve) => socket.once('connect', resolve));
+      let received = '';
+      socket.on('data', (chunk) => { received += chunk; });
+      socket.status = new Promise((resolve) => socket.once('end', () => resolve(Number(received.split(' ')[1]))));
+      socket.write(`POST /api/v1/seller/session HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nOrigin: ${f.origin}\r\n` +
+        `Content-Type: application/json\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n`);
+      sockets.push(socket);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    for (const socket of sockets) socket.write(body);
+    const statuses = await Promise.all(sockets.map((socket) => socket.status));
+    assert.equal(statuses.filter((status) => status === 401).length, 5);
+    assert.equal(statuses.filter((status) => status === 429).length, 7);
+  } finally {
+    for (const socket of sockets) socket.destroy();
+    await f.close();
+  }
+});
+
+test('login limiter bounds the number of tracked clients', () => {
+  const limiter = new LoginLimiter();
+  for (let index = 0; index < 5; index++) assert.equal(limiter.attempt('first'), true);
+  assert.equal(limiter.attempt('first'), false);
+  for (let index = 0; index < 5000; index++) limiter.attempt(`client-${index}`);
+  assert.equal(limiter.attempt('first'), true);
 });
 
 test('public shell is served without exposing private files', async () => {
