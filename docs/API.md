@@ -26,6 +26,8 @@
 
 The local session is stored by token hash in SQLite and expires after 12 hours. Production cookies add `Secure`; production startup requires an HTTPS `PUBLIC_ORIGIN` and rejects missing, too-short, or known-placeholder admin passwords. The initial admin is provisioned once from ignored server configuration (`ADMIN_PASSWORD` or `ADMIN_PASSWORD_FILE`, never both) and startup fails if later configuration does not match it. In Compose, Caddy serves the PWAs and proxies these same-origin endpoints; the backend and SQLite volume are private. `TRUST_PROXY=1` is valid only while the backend is unreachable except through the Caddy private network, where Caddy overwrites `X-Real-IP` for rate limiting.
 
+There is no order or contact deletion API or automatic purge. An authorized `DELETE /api/v1/seller/orders/{orderId}` returns 404 without changing the order, delivery, item, event, or idempotency records. The owner requests permanent server retention of order records; this has not passed the lawful-basis or recovery release gate. Expired seller sessions are a different data class and are deleted. Optional same-browser phone/address suggestions remain user-clearable and expire after 90 days.
+
 ## Principles
 
 - All order and product facts come from the server. The browser may cache a cart and minimal receipt, but never supplies an authoritative price, total, status, or buyer identity.

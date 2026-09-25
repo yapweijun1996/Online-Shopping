@@ -104,6 +104,24 @@ test('seller queue and detail expose one authorized order snapshot with no publi
   } finally { await f.close(); }
 });
 
+test('submitted orders have no deletion endpoint and remain readable', async () => {
+  const f = await fixture();
+  try {
+    const submitted = await f.submit();
+    assert.equal(submitted.response.status, 201);
+    const id = f.app.database.prepare('SELECT id FROM shop_order WHERE order_no = ?').get(submitted.data.orderNo).id;
+    const { cookie, csrf } = await f.login();
+    const deleted = await f.request('DELETE', `/api/v1/seller/orders/${id}`, null, {
+      origin: f.origin, cookie, 'x-csrf-token': csrf,
+    });
+    assert.equal(deleted.response.status, 404);
+    for (const table of ['shop_order', 'delivery', 'order_item', 'order_event', 'checkout_idempotency']) {
+      assert.equal(f.app.database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get().count, 1, table);
+    }
+    assert.equal((await f.request('GET', `/api/v1/seller/orders/${id}`, null, { cookie })).response.status, 200);
+  } finally { await f.close(); }
+});
+
 test('seller decisions require origin, CSRF, current revision, and append audit once', async () => {
   const f = await fixture();
   try {

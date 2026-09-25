@@ -84,4 +84,4 @@ Browser verification covers seller setup, guest checkout, receipt and seller rev
 ## Open decisions before release
 
 - Exact production HTTPS host and certificate reachability; the chosen one-backend Docker topology already uses private SQLite and persisted session hashes.
-- Lawful retention basis/schedule, backup/restore and rollback for real customer contact and address data before any production launch. The server currently has no automatic order-contact deletion.
+- The owner requests permanent retention of server orders and their contact/address snapshots. The server currently has no automatic order deletion, but the lawful basis or exception and recovery guarantee remain unresolved before any real-data launch. Browser suggestion history is a separate, clearable 90-day convenience store.
