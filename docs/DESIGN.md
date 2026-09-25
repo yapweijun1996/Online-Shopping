@@ -1,10 +1,10 @@
 # Design specification
 
-**Status: proposed end-state with a local seller-authentication slice implemented.** This document describes the new MVP, not the `sample/` prototype.
+**Status: proposed end-state with local seller authentication, PWA shells, and validation groundwork implemented.** This document describes the new MVP, not the `sample/` prototype.
 
 ## Verified repository state
 
-The new root application now has a Node 24 HTTP entry point, a versioned private SQLite schema, a persistent seller session, a responsive seller login shell, and targeted tests. The root still has no product/order implementation, CI, release workflow, or deployed runtime. The local `sample/` is a separate Node HTTP/SQLite PWA prototype: its Commerce/Logistics/Fulfillment rules are business references, while its in-memory sessions, fictional customer links, credentials, PWA cache, and logistics workflow are not new-app design decisions.
+The new root application now has a Node 24 HTTP entry point, a versioned private SQLite schema, a persistent seller session, responsive seller login and shop shells, pure product/contact validators, a cart storage module, and targeted tests. A Node 24 CI workflow is configured but has not run remotely. The root still has no product/order persistence or APIs, release workflow, or deployed runtime. The local `sample/` is a separate Node HTTP/SQLite PWA prototype: its Commerce/Logistics/Fulfillment rules are business references, while its in-memory sessions, fictional customer links, credentials, PWA cache, and logistics workflow are not new-app design decisions.
 
 The local development stack uses Node 24 built-ins and `node:sqlite`, with the database outside `public/` under the ignored `.local/` directory by default. This is a reversible local choice; production hosting, backup, retention, and recovery remain DEC-04. The current `GET /health` liveness endpoint is independent of the `GET /ready` schema check. The first schema owns exactly one configured admin and hashed, expiring sessions. The seller login UI uses the API; no browser code reads the database. A new customer cart module stores only product IDs and quantities in IndexedDB and falls back to page memory when storage fails; it never owns prices or orders. See [API.md](API.md) for implemented paths and [PROGRESS.md](PROGRESS.md) for proof and limits.
 
@@ -80,9 +80,9 @@ A failed database transaction returns an error and no order number. After a netw
 
 Browser verification must cover seller setup, guest checkout, receipt and seller review at phone and desktop widths, including loading/empty/error/success states, keyboard access, labels/focus/error messages, safe areas, overflow, and console errors. Both new web surfaces have local manifests, separate service-worker scopes, and explicit public-static-asset caches; their offline pages are locally verified in Chromium. Workers bypass all `/api/` requests. Verify actual installation, offline mutation behavior, and update behavior on target devices before AC-17. Both surfaces have seven-language shell resources, but full core-flow translations and verification in [PWA_I18N.md](PWA_I18N.md) remain. See [UI_SPEC.md](UI_SPEC.md) for desktop/mobile layout and previews.
 
-## Open decisions before implementation
+## Open decisions before dependent implementation or release
 
 - Product image storage and initial catalog presentation details.
 - Shop currency, shipping charges, and supported delivery countries/postcodes. GST calculation is excluded from the MVP.
-- Seller session persistence, hosting, and database choice.
+- Production hosting, database and seller-session durability across instances; local development already uses private SQLite and persisted session hashes.
 - Retention and deletion policy for real customer contact and address data before any production launch.
