@@ -40,6 +40,8 @@ Create an ignored `.local/admin-password` file containing a unique 16–256 char
 
 For a future HTTPS host, set `SITE_ADDRESS` to the hostname, `PUBLIC_ORIGIN` to its exact `https://` origin, `NODE_ENV=production`, and bind the frontend to public ports 80 and 443 after DNS, TLS reachability, data retention, backups, and rollback are settled. Caddy obtains certificates for a reachable domain. Do not expose the backend port; its trusted proxy setting assumes only the Caddy container can reach it. Production startup fails if the secret is missing or weak. Local Docker smoke checks do not establish a released service. See [deployment operations](docs/DEPLOY.md) for data and release gates.
 
+For a local restricted backup, run `./deploy/backup.sh`. It pauses both containers, archives the full SQLite volume under ignored `.local/backups/` with mode `0600`, verifies the archive, writes a SHA-256 checksum, and restarts the stack. The script accepts an environment file and Compose project name as optional arguments. This local snapshot is unencrypted; settle encrypted storage, off-host copies, schedule, and retention before using real customer data. An isolated synthetic-data restore rehearsal passed; see [DEPLOY.md](docs/DEPLOY.md).
+
 ## MVP boundaries
 
 - No online payment or payment verification workflow.
