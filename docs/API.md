@@ -12,7 +12,7 @@
 | `GET` | `/api/v1/seller/session` | Requires a valid session; returns username, role and CSRF token with `no-store`. |
 | `DELETE` | `/api/v1/seller/session` | Requires session, same origin and CSRF token; invalidates the session and expires the cookie. |
 
-The local session is stored by token hash in SQLite and expires after 12 hours. Production cookies add `Secure`; production startup requires an HTTPS `PUBLIC_ORIGIN`. The initial admin is provisioned once from ignored server configuration and startup fails if later configuration does not match it. Product and order endpoints in the tables below are **not yet live**.
+The local session is stored by token hash in SQLite and expires after 12 hours. Production cookies add `Secure`; production startup requires an HTTPS `PUBLIC_ORIGIN` and rejects missing, too-short, or known-placeholder admin passwords. The initial admin is provisioned once from ignored server configuration and startup fails if later configuration does not match it. Product and order endpoints in the tables below are **not yet live**.
 
 ## Principles
 

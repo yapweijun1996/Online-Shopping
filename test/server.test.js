@@ -9,6 +9,7 @@ import { createApp } from '../src/server.js';
 
 const username = 'local_owner';
 const password = 'PrivateExamplePass123!';
+const productionPassword = 'Q7z!rK8mP4vN2tL6';
 
 async function fixture() {
   const directory = mkdtempSync(path.join(tmpdir(), 'online-shopping-test-'));
@@ -38,8 +39,12 @@ async function fixture() {
 test('configuration rejects missing, weak, and unsafe production values', () => {
   assert.throws(() => readConfig({}), /ADMIN_USERNAME/);
   assert.throws(() => readConfig({ ADMIN_USERNAME: username, ADMIN_PASSWORD: 'password123' }), /ADMIN_PASSWORD/);
-  assert.throws(() => readConfig({ ADMIN_USERNAME: username, ADMIN_PASSWORD: password, NODE_ENV: 'production', DB_PATH: '/tmp/private.db' }), /PUBLIC_ORIGIN/);
-  assert.throws(() => readConfig({ ADMIN_USERNAME: username, ADMIN_PASSWORD: password, NODE_ENV: 'production', DB_PATH: '/tmp/private.db', PUBLIC_ORIGIN: 'https://shop.example/path' }), /PUBLIC_ORIGIN/);
+  assert.throws(() => readConfig({ ADMIN_USERNAME: username, ADMIN_PASSWORD: password, NODE_ENV: 'production', DB_PATH: '/tmp/private.db', PUBLIC_ORIGIN: 'https://shop.example' }), /placeholder/);
+  assert.throws(() => readConfig({ ADMIN_USERNAME: username, ADMIN_PASSWORD: 'passwordpassword123', NODE_ENV: 'production', DB_PATH: '/tmp/private.db', PUBLIC_ORIGIN: 'https://shop.example' }), /placeholder/);
+  assert.throws(() => readConfig({ ADMIN_USERNAME: username, ADMIN_PASSWORD: `Strong${username}123!`, NODE_ENV: 'production', DB_PATH: '/tmp/private.db', PUBLIC_ORIGIN: 'https://shop.example' }), /username/);
+  assert.throws(() => readConfig({ ADMIN_USERNAME: username, ADMIN_PASSWORD: productionPassword, NODE_ENV: 'production', DB_PATH: '/tmp/private.db' }), /PUBLIC_ORIGIN/);
+  assert.throws(() => readConfig({ ADMIN_USERNAME: username, ADMIN_PASSWORD: productionPassword, NODE_ENV: 'production', DB_PATH: '/tmp/private.db', PUBLIC_ORIGIN: 'https://shop.example/path' }), /PUBLIC_ORIGIN/);
+  assert.equal(readConfig({ ADMIN_USERNAME: username, ADMIN_PASSWORD: productionPassword, NODE_ENV: 'production', DB_PATH: '/tmp/private.db', PUBLIC_ORIGIN: 'https://shop.example' }).production, true);
   assert.throws(() => readConfig({ ADMIN_USERNAME: username, ADMIN_PASSWORD: password, DB_PATH: 'public/leak.db' }), /outside the public/);
 });
 

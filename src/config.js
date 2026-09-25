@@ -1,6 +1,7 @@
 import path from 'node:path';
 
 const weakPasswords = new Set(['password', 'password123', 'changeme', 'admin123', 'testpassword', 'replace-me']);
+const placeholderWords = /password|changeme|replace[-_]?me|example|sample|default/i;
 
 export function readConfig(env = process.env) {
   const production = env.NODE_ENV === 'production';
@@ -11,6 +12,9 @@ export function readConfig(env = process.env) {
   }
   if (password.length < 16 || password.length > 256 || weakPasswords.has(password.toLowerCase()) || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
     throw new Error('ADMIN_PASSWORD must be a non-default 16-256 character secret with letters and numbers.');
+  }
+  if (production && (placeholderWords.test(password) || password.toLowerCase().includes(username.toLowerCase()))) {
+    throw new Error('ADMIN_PASSWORD must not contain a known placeholder or the username in production.');
   }
   const dbPath = path.resolve(env.DB_PATH || '.local/online-shopping.db');
   const publicDir = path.resolve('public');
