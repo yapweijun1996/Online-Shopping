@@ -86,11 +86,10 @@ export function createApp(config) {
     if (request.method === 'POST' && pathname === '/api/v1/seller/session') {
       requireOrigin(request, expectedOrigin);
       const key = clientAddress(request, config);
-      if (!limiter.allowed(key)) throw new ApiError(429, 'RATE_LIMITED', 'Too many attempts. Try later.');
+      if (!limiter.attempt(key)) throw new ApiError(429, 'RATE_LIMITED', 'Too many attempts. Try later.');
       const body = await readJson(request);
       if (typeof body.username !== 'string' || typeof body.password !== 'string' ||
-          body.username.length > 64 || body.password.length > 256 || !authenticate(database, body.username, body.password)) {
-        limiter.recordFailure(key);
+          body.username.length > 64 || body.password.length > 256 || !(await authenticate(database, body.username, body.password))) {
         throw new ApiError(401, 'UNAUTHORIZED', 'Invalid credentials.');
       }
       limiter.clear(key);

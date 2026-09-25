@@ -1,6 +1,8 @@
-import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, scrypt, scryptSync, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
 
 const SESSION_MS = 12 * 60 * 60 * 1000;
+const scryptAsync = promisify(scrypt);
 
 function passwordHash(password, salt) {
   return scryptSync(password, salt, 64);
@@ -14,6 +16,12 @@ function encodePassword(password) {
 function verifyPassword(password, stored) {
   const [salt, expected] = stored.split(':');
   const candidate = passwordHash(password, salt);
+  return timingSafeEqual(candidate, Buffer.from(expected, 'hex'));
+}
+
+async function verifyPasswordAsync(password, stored) {
+  const [salt, expected] = stored.split(':');
+  const candidate = await scryptAsync(password, salt, 64);
   return timingSafeEqual(candidate, Buffer.from(expected, 'hex'));
 }
 
@@ -33,10 +41,10 @@ export function ensureAdmin(database, username, password) {
   }
 }
 
-export function authenticate(database, username, password) {
+export async function authenticate(database, username, password) {
   const admin = database.prepare('SELECT username, password_hash FROM admin WHERE id = 1').get();
   if (!admin) return false;
-  const passwordOk = verifyPassword(password, admin.password_hash);
+  const passwordOk = await verifyPasswordAsync(password, admin.password_hash);
   return admin.username === username && passwordOk;
 }
 
@@ -70,16 +78,22 @@ export function sessionCookieFrom(header = '') {
   return match?.[1] || null;
 }
 
+/* Each attempt reserves a slot before the password check, so concurrent requests cannot exceed the limit. */
 export class LoginLimiter {
   #attempts = new Map();
-  allowed(key) {
+  attempt(key) {
     const now = Date.now();
     const attempts = (this.#attempts.get(key) || []).filter((time) => now - time < 15 * 60 * 1000);
+    if (attempts.length >= 5) {
+      this.#attempts.set(key, attempts);
+      return false;
+    }
+    if (!this.#attempts.has(key) && this.#attempts.size >= 5000) {
+      this.#attempts.delete(this.#attempts.keys().next().value);
+    }
+    attempts.push(now);
     this.#attempts.set(key, attempts);
-    return attempts.length < 5;
-  }
-  recordFailure(key) {
-    this.#attempts.get(key)?.push(Date.now());
+    return true;
   }
   clear(key) {
     this.#attempts.delete(key);
