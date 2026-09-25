@@ -37,6 +37,12 @@
 .icon-button{display:grid;place-items:center;width:42px;height:42px;border-radius:9px}
 .mobile-only{display:none}
 .drawer-backdrop{display:none}
+.profile-dialog{width:min(420px,calc(100% - 32px));border:1px solid #dce7eb;border-radius:17px;padding:27px;color:#173950;box-shadow:0 18px 70px #15354c33}
+.profile-dialog::backdrop{background:#0c294066}
+.profile-dialog h2{margin:0 0 20px}
+.profile-dialog dl{display:grid;grid-template-columns:auto 1fr;gap:10px 22px;margin:0 0 24px}
+.profile-dialog dt{font-weight:700}
+.profile-dialog dd{margin:0;overflow-wrap:anywhere}
 @media(max-width:760px){
 .top-actions{gap:8px}
 .account-button>span:not(.avatar){display:none}

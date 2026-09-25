@@ -8,7 +8,7 @@ export const languages = [
   { code: 'ko', label: '한국어' },
 ];
 
-const messages = {
+export const messages = {
   en: {
     brand: 'Online Shopping', sellerPortal: 'Seller portal', shop: 'Shop', signInTitle: 'Welcome back',
     signInIntro: 'Sign in to manage products and orders.', username: 'Username', password: 'Password',
@@ -19,7 +19,7 @@ const messages = {
     authError: 'Sign in failed. Check your details and try again.', networkError: 'Connection failed. Try again.',
     loading: 'Loading…', noProducts: 'No products yet.', notReady: 'This area is being prepared.',
     noOrders: 'No orders yet.', selectLanguage: 'Language', signedOut: 'You have signed out.',
-    loginPrompt: 'Seller access only', protected: 'Your catalog and orders are private.',
+    loginPrompt: 'Seller access only', protected: 'Your catalog and orders are private.', role: 'Role', superAdmin: 'Super admin', close: 'Close',
     offlineTitle: "You're offline", offlineMessage: 'Connect to the internet to continue. Orders and seller decisions cannot be saved offline.', retry: 'Try again',
   },
   ms: {
@@ -32,7 +32,7 @@ const messages = {
     authError: 'Log masuk gagal. Semak butiran dan cuba lagi.', networkError: 'Sambungan gagal. Cuba lagi.',
     loading: 'Memuatkan…', noProducts: 'Belum ada produk.', notReady: 'Bahagian ini sedang disediakan.',
     noOrders: 'Belum ada pesanan.', selectLanguage: 'Bahasa', signedOut: 'Anda telah log keluar.',
-    loginPrompt: 'Akses penjual sahaja', protected: 'Katalog dan pesanan anda adalah peribadi.',
+    loginPrompt: 'Akses penjual sahaja', protected: 'Katalog dan pesanan anda adalah peribadi.', role: 'Peranan', superAdmin: 'Pentadbir utama', close: 'Tutup',
     offlineTitle: 'Anda di luar talian', offlineMessage: 'Sambung ke internet untuk meneruskan. Pesanan dan keputusan penjual tidak boleh disimpan di luar talian.', retry: 'Cuba lagi',
   },
   'zh-Hans': {
@@ -45,7 +45,7 @@ const messages = {
     authError: '登录失败，请检查信息后重试。', networkError: '连接失败，请重试。',
     loading: '加载中…', noProducts: '暂无商品。', notReady: '此区域正在准备中。',
     noOrders: '暂无订单。', selectLanguage: '语言', signedOut: '你已退出登录。',
-    loginPrompt: '仅限卖家访问', protected: '你的商品和订单为私有数据。',
+    loginPrompt: '仅限卖家访问', protected: '你的商品和订单为私有数据。', role: '角色', superAdmin: '超级管理员', close: '关闭',
     offlineTitle: '当前离线', offlineMessage: '请连接网络后继续。离线时无法保存订单或卖家决定。', retry: '重试',
   },
   vi: {
@@ -58,7 +58,7 @@ const messages = {
     authError: 'Đăng nhập thất bại. Kiểm tra thông tin rồi thử lại.', networkError: 'Lỗi kết nối. Thử lại.',
     loading: 'Đang tải…', noProducts: 'Chưa có sản phẩm.', notReady: 'Khu vực này đang được chuẩn bị.',
     noOrders: 'Chưa có đơn hàng.', selectLanguage: 'Ngôn ngữ', signedOut: 'Bạn đã đăng xuất.',
-    loginPrompt: 'Chỉ dành cho người bán', protected: 'Sản phẩm và đơn hàng của bạn là riêng tư.',
+    loginPrompt: 'Chỉ dành cho người bán', protected: 'Sản phẩm và đơn hàng của bạn là riêng tư.', role: 'Vai trò', superAdmin: 'Quản trị viên cao cấp', close: 'Đóng',
     offlineTitle: 'Bạn đang ngoại tuyến', offlineMessage: 'Kết nối internet để tiếp tục. Không thể lưu đơn hàng hoặc quyết định của người bán khi ngoại tuyến.', retry: 'Thử lại',
   },
   th: {
@@ -71,7 +71,7 @@ const messages = {
     authError: 'เข้าสู่ระบบไม่สำเร็จ ตรวจสอบข้อมูลแล้วลองอีกครั้ง', networkError: 'เชื่อมต่อไม่สำเร็จ ลองอีกครั้ง',
     loading: 'กำลังโหลด…', noProducts: 'ยังไม่มีสินค้า', notReady: 'ส่วนนี้กำลังเตรียมพร้อม',
     noOrders: 'ยังไม่มีคำสั่งซื้อ', selectLanguage: 'ภาษา', signedOut: 'คุณออกจากระบบแล้ว',
-    loginPrompt: 'สำหรับผู้ขายเท่านั้น', protected: 'สินค้าและคำสั่งซื้อของคุณเป็นข้อมูลส่วนตัว',
+    loginPrompt: 'สำหรับผู้ขายเท่านั้น', protected: 'สินค้าและคำสั่งซื้อของคุณเป็นข้อมูลส่วนตัว', role: 'บทบาท', superAdmin: 'ผู้ดูแลระบบหลัก', close: 'ปิด',
     offlineTitle: 'คุณออฟไลน์อยู่', offlineMessage: 'เชื่อมต่ออินเทอร์เน็ตเพื่อดำเนินการต่อ ไม่สามารถบันทึกคำสั่งซื้อหรือการตัดสินใจของผู้ขายขณะออฟไลน์ได้', retry: 'ลองอีกครั้ง',
   },
   ja: {
@@ -84,7 +84,7 @@ const messages = {
     authError: 'ログインできませんでした。入力内容を確認してください。', networkError: '接続できません。再試行してください。',
     loading: '読み込み中…', noProducts: '商品はまだありません。', notReady: 'この機能は準備中です。',
     noOrders: '注文はまだありません。', selectLanguage: '言語', signedOut: 'ログアウトしました。',
-    loginPrompt: '販売者専用', protected: '商品と注文は非公開です。',
+    loginPrompt: '販売者専用', protected: '商品と注文は非公開です。', role: '役割', superAdmin: '最高管理者', close: '閉じる',
     offlineTitle: 'オフラインです', offlineMessage: '続けるにはインターネットに接続してください。オフラインでは注文や販売者の判断を保存できません。', retry: '再試行',
   },
   ko: {
@@ -97,7 +97,7 @@ const messages = {
     authError: '로그인에 실패했습니다. 정보를 확인하고 다시 시도하세요.', networkError: '연결에 실패했습니다. 다시 시도하세요.',
     loading: '불러오는 중…', noProducts: '아직 상품이 없습니다.', notReady: '이 기능은 준비 중입니다.',
     noOrders: '아직 주문이 없습니다.', selectLanguage: '언어', signedOut: '로그아웃했습니다.',
-    loginPrompt: '판매자 전용', protected: '상품과 주문 정보는 비공개입니다.',
+    loginPrompt: '판매자 전용', protected: '상품과 주문 정보는 비공개입니다.', role: '역할', superAdmin: '최고 관리자', close: '닫기',
     offlineTitle: '오프라인 상태입니다', offlineMessage: '계속하려면 인터넷에 연결하세요. 오프라인에서는 주문이나 판매자 결정을 저장할 수 없습니다.', retry: '다시 시도',
   },
 };
@@ -110,6 +110,17 @@ try {
 
 export function locale() { return current; }
 export function t(key) { return messages[current]?.[key] || messages.en[key] || key; }
+export function formatMoney(minor, currency) {
+  if (!Number.isSafeInteger(minor) || minor < 0) throw new RangeError('minor must be a non-negative safe integer');
+  const formatter = new Intl.NumberFormat(current, { style: 'currency', currency });
+  const scale = 10 ** formatter.resolvedOptions().maximumFractionDigits;
+  return formatter.format(minor / scale);
+}
+export function formatDate(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) throw new TypeError('Invalid date');
+  return new Intl.DateTimeFormat(current, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+}
 export function setLocale(code) {
   if (!languages.some(({ code: supported }) => supported === code)) return;
   current = code;

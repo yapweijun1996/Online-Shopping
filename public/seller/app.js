@@ -13,6 +13,7 @@ const backdrop = byId('drawer-backdrop');
 let csrfToken = null;
 let currentView = 'dashboard';
 let username = '';
+let role = '';
 const sessionHintKey = 'online-shopping-seller-session-hint';
 
 function sessionHint(value) {
@@ -30,6 +31,7 @@ function showLogin(message = '', clearHint = true) {
   if (clearHint) sessionHint(false);
   csrfToken = null;
   username = '';
+  role = '';
   loginView.hidden = false;
   workspace.hidden = true;
   sidebar.hidden = true;
@@ -43,6 +45,7 @@ function showWorkspace(session) {
   sessionHint(true);
   csrfToken = session.csrfToken;
   username = session.username;
+  role = session.role;
   loginView.hidden = true;
   workspace.hidden = false;
   sidebar.hidden = false;
@@ -121,8 +124,12 @@ document.addEventListener('click', (event) => {
 });
 byId('profile-button').addEventListener('click', () => {
   closeAccount();
-  byId('workspace-message').textContent = `${t('username')}: ${username} · SUPER_ADMIN`;
+  byId('profile-username').textContent = username;
+  byId('profile-role').textContent = role === 'SUPER_ADMIN' ? t('superAdmin') : role;
+  byId('profile-dialog').showModal();
 });
+byId('close-profile').addEventListener('click', () => byId('profile-dialog').close());
+byId('profile-dialog').addEventListener('close', () => accountButton.focus());
 byId('sign-out-button').addEventListener('click', async () => {
   closeAccount();
   try {
@@ -160,6 +167,7 @@ byId('login-form').addEventListener('submit', async (event) => {
 document.addEventListener('localechange', () => {
   renderView();
   document.documentElement.lang = locale();
+  if (byId('profile-dialog').open) byId('profile-role').textContent = role === 'SUPER_ADMIN' ? t('superAdmin') : role;
 });
 
 if (sessionHint()) {

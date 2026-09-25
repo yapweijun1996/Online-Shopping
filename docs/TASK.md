@@ -16,7 +16,7 @@
 | API-03 | P0 / Planned | API-01–02, DEC-02 currency, DEC-05 if images used | Implement validated seller product CRUD/status and public active-only list/detail/search/category; AC-03–04 contract tests. |
 | WEB-00 | P0 / In progress | API-02–03 | Seller login, SVG-icon collapsible side bar/mobile drawer, session-backed profile/sign-out menu and seven-language shell run locally; browser login/reload/logout and mobile drawer checks pass. Product management and full state checks remain. |
 | WEB-01 | P1 / Planned | API-03 | Build original public discovery and product detail UI against the API; active-only and responsive browser checks. |
-| WEB-02 | P1 / Planned | WEB-01 | Build cart and IndexedDB convenience persistence; reload and cache-failure browser checks for AC-05. |
+| WEB-02 | P1 / In progress | WEB-01 | IndexedDB cart storage and page-memory fallback for product IDs/quantities pass local tests and reload browser smoke. Build add/change/remove UI against real products and verify cache-failure checkout before AC-05. |
 | API-04 | P0 / Planned | API-03, DEC-02 | Validate buyer, destination, recipient, +60/+65 phones, assignments, quantities and consent; normalize phones, calculate server totals/snapshots without GST; AC-06–08 tests. |
 | API-05 | P0 / Planned | API-04 | Commit order number, snapshots, first event and idempotency result atomically; retries/conflicts/failure tests for AC-09–10. |
 | WEB-03 | P0 / Planned | WEB-02, API-04–05 | Build guest multi-destination checkout with Malaysia/Singapore phone country selection, field errors and confirmed same-browser receipt; AC-06–11 browser checks. |

@@ -1,12 +1,12 @@
 # Online Shopping MVP
 
-**Status: MVP implementation in progress.** Seller sign-in/session and a responsive seller shell run locally. Product management, shopping, checkout, order review, complete PWA/i18n flows, and release operations remain unfinished. The local `sample/` prototype is a separate business-rule reference; its code, UI, database, and demo credentials are not the new application.
+**Status: MVP implementation in progress.** Seller sign-in/session, responsive PWA shells, and a browser cart storage module run locally. Product management, catalog/cart UI, checkout, order review, complete i18n flows, and release operations remain unfinished. The local `sample/` prototype is a separate business-rule reference; its code, UI, database, and demo credentials are not the new application.
 
 ## Run the current slice
 
 Use Node 24.15 or later in the 24.x line. Copy `.env.example` to ignored `.env`, set a unique `ADMIN_USERNAME` and a non-default `ADMIN_PASSWORD` of at least 16 characters with letters and numbers, and keep `DB_PATH` outside `public/`. Do not reuse example or sample credentials. Then run `npm start` with Node 24. On this machine, where the default Node is older, use `npx --yes node@24 --env-file=.env src/server.js`.
 
-Open `/seller/` for the seller login or `/shop/` for the current storefront placeholder. `/health` is liveness; `/ready` checks the local database schema. The default private database path is `.local/online-shopping.db`. Run `npm test` with Node 24, or `npx --yes node@24 --test test/pwa.test.js test/server.test.js` on this machine. The test script deliberately excludes the separate `sample/` suite. The application is for local development only until the production decisions and release gates in [PROGRESS.md](docs/PROGRESS.md) are resolved.
+Open `/seller/` for the seller login or `/shop/` for the current storefront placeholder. `/health` is liveness; `/ready` checks the local database schema. The default private database path is `.local/online-shopping.db`. Run `npm test` with Node 24, or `npx --yes node@24 --test test/cart.test.js test/i18n.test.js test/pwa.test.js test/server.test.js` on this machine. The test script deliberately excludes the separate `sample/` suite. The application is for local development only until the production decisions and release gates in [PROGRESS.md](docs/PROGRESS.md) are resolved.
 
 ## Goal
 
