@@ -28,7 +28,7 @@ Use a light background, navy text, teal primary actions, subtle borders, clear s
 
 The implemented seller workspace now uses separate panels for the order queue and detail. Each wide-screen panel scrolls within the available viewport height, with its title visible while scrolling. The product list uses two columns where space allows and one column on narrower screens. Product search and add controls sit in their own toolbar. The dashboard remains a placeholder; the conceptual image's counts and global search are not live features.
 
-- At wide widths, show a persistent left side bar and top bar. The side bar contains `Dashboard`, `Products`, and `Sales Manager` with `Sales Orders` and `Sales Order Confirmation`. Highlight the current route.
+- At wide widths, show a persistent side bar from the top to the bottom of the viewport. The top bar and content start at its right edge, including when it collapses. The side bar contains `Dashboard`, `Products`, and `Sales Manager` with `Sales Orders` and `Sales Order Confirmation`. Long translated labels wrap inside the rail without creating horizontal scrolling. Highlight the current route.
 - A labeled toggle collapses the side bar to an icon rail; it remains usable by keyboard and screen reader. Collapsing does not navigate away or erase the selected order.
 - The top bar includes global search where supported, language selection, and an account menu with `View profile` and `Sign out`. The profile shows the authenticated username and role; sign-out invalidates the server session.
 - The order confirmation view has a pending-order list on the left and the selected order detail on the right. The page scrolls to the review actions without covering them. `Sales Orders` includes all statuses with order-number search and status filtering; confirmation lists submitted orders only.
@@ -38,7 +38,7 @@ The implemented seller workspace now uses separate panels for the order queue an
 ## Mobile layout
 
 - At widths up to 1080px, selecting an order replaces the queue with a detail page and a Back control. At phone widths, the Back control remains reachable while scrolling. The signed-out layout stacks its introduction and login form without reserving space for the hidden side bar.
-- At narrow widths, replace the side bar with a drawer opened by a hamburger button. Dismiss via close button, outside tap, or Escape. Return focus to the trigger when closed.
+- At narrow widths, keep the top bar full width and replace the side bar with a full-height drawer opened by a hamburger button. Dismiss via close button, outside tap, or Escape. Return focus to the trigger when closed.
 - The top bar keeps navigation, language selection, and account access. Default UI language is English. The language menu uses the exact order in [PWA and i18n](PWA_I18N.md).
 - Present the selected order in one column: total and timestamps, buyer contact, one section per delivery with its item snapshots, history, then review actions. Use vertical scrolling and no horizontal page overflow. Selecting a pending order switches from the list to detail; `Back to orders` restores the list and focus.
 - Copy buttons and review actions use comfortable touch targets with explicit accessible names. The bottom review bar may remain visible while scrolling, but must not cover the total or the last field; account for safe-area insets.

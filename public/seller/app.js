@@ -68,6 +68,7 @@ function showLogin(messageKey = '', clearHint = true) {
   sidebar.hidden = true;
   menuButton.hidden = true;
   accountWrap.hidden = true;
+  document.body.classList.remove('seller-signed-in');
   setPasswordVisible(false);
   setLoginMessage(messageKey);
   closeDrawer(false);
@@ -86,6 +87,7 @@ function showWorkspace(session) {
   sidebar.hidden = false;
   menuButton.hidden = false;
   accountWrap.hidden = false;
+  document.body.classList.add('seller-signed-in');
   byId('password').value = '';
   syncDrawerAccess();
   renderView();
@@ -163,6 +165,7 @@ document.addEventListener('keydown', (event) => {
 });
 byId('collapse-nav').addEventListener('click', () => {
   const collapsed = sidebar.classList.toggle('collapsed');
+  document.body.classList.toggle('seller-nav-collapsed', collapsed);
   byId('collapse-nav').dataset.i18nAria = collapsed ? 'expand' : 'collapse';
   byId('collapse-nav').setAttribute('aria-label', t(collapsed ? 'expand' : 'collapse'));
 });

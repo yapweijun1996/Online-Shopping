@@ -10,7 +10,7 @@ Open `/seller/` for seller login, product management, all-status order search/de
 
 The shop catalog now has a responsive header search, a discovery banner using an active product image, API-backed category navigation, and compact product cards. The reference layout's mock ratings, discounts, wishlists, account controls, and delivery promises are not implemented. See the [web UI specification](docs/UI_SPEC.md).
 
-The seller portal groups product search and editing controls, shows compact product cards, and presents the order queue and detail in separate panels on wide screens. Narrow screens show one order surface at a time. The signed-out page has a responsive photo introduction, factual capability notes, a focused login card, and a keyboard-accessible password visibility button. The photo is decorative; login still uses the server session API. These layout changes do not change seller permissions or server-owned order decisions.
+The seller portal groups product search and editing controls, shows compact product cards, and presents the order queue and detail in separate panels on wide screens. Its signed-in desktop side bar fills the viewport height, wraps long navigation names, and owns the left edge; the top bar and content begin beside it. On phones, the side bar becomes a full-height drawer and the top bar spans the screen. Narrow screens show one order surface at a time. The signed-out page has a responsive photo introduction, factual capability notes, a focused login card, and a keyboard-accessible password visibility button. The photo is decorative; login still uses the server session API. These layout changes do not change seller permissions or server-owned order decisions.
 
 ## Goal
 
