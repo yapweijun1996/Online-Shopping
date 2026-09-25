@@ -144,6 +144,73 @@ export const messages = {
   },
 };
 
+const shopMessages = {
+  en: {
+    browse: 'Browse', cart: 'Cart', browseProducts: 'Browse products', allCategories: 'All categories',
+    viewDetails: 'View details', addToCart: 'Add to cart', yourCart: 'Your cart', estimatedTotal: 'Estimated total',
+    cartPriceNote: 'Prices are checked again by the server when you place an order.', continueShopping: 'Continue shopping',
+    checkoutSoon: 'Checkout coming soon', cartMemoryOnly: 'This cart stays in this tab because browser storage is unavailable.',
+    quantityLimit: 'Choose a quantity from 1 to 100.', addedToCart: 'Added to cart.', quantityUpdated: 'Quantity updated.', removedFromCart: 'Removed from cart.', quantity: 'Quantity', remove: 'Remove',
+    productUnavailable: 'Product unavailable', emptyCart: 'Your cart is empty.', noResults: 'No matching products.',
+    cartUnavailable: 'One or more products are unavailable. Remove them before checkout.',
+  },
+  ms: {
+    browse: 'Lihat produk', cart: 'Troli', browseProducts: 'Lihat produk', allCategories: 'Semua kategori',
+    viewDetails: 'Lihat butiran', addToCart: 'Tambah ke troli', yourCart: 'Troli anda', estimatedTotal: 'Jumlah anggaran',
+    cartPriceNote: 'Harga akan disemak semula oleh pelayan semasa pesanan dibuat.', continueShopping: 'Terus membeli-belah',
+    checkoutSoon: 'Daftar keluar akan datang', cartMemoryOnly: 'Troli ini kekal dalam tab ini kerana storan pelayar tidak tersedia.',
+    quantityLimit: 'Pilih kuantiti 1 hingga 100.', addedToCart: 'Ditambah ke troli.', quantityUpdated: 'Kuantiti dikemas kini.', removedFromCart: 'Dibuang daripada troli.', quantity: 'Kuantiti', remove: 'Buang',
+    productUnavailable: 'Produk tidak tersedia', emptyCart: 'Troli anda kosong.', noResults: 'Tiada produk yang sepadan.',
+    cartUnavailable: 'Satu atau lebih produk tidak tersedia. Buangnya sebelum daftar keluar.',
+  },
+  'zh-Hans': {
+    browse: '浏览', cart: '购物车', browseProducts: '浏览商品', allCategories: '所有类别',
+    viewDetails: '查看详情', addToCart: '加入购物车', yourCart: '购物车', estimatedTotal: '预计总额',
+    cartPriceNote: '下单时服务器会重新核对价格。', continueShopping: '继续购物',
+    checkoutSoon: '结账功能即将推出', cartMemoryOnly: '浏览器存储不可用，购物车仅保留在此标签页。',
+    quantityLimit: '数量须为 1 至 100。', addedToCart: '已加入购物车。', quantityUpdated: '数量已更新。', removedFromCart: '已从购物车移除。', quantity: '数量', remove: '移除',
+    productUnavailable: '商品不可用', emptyCart: '购物车是空的。', noResults: '没有匹配的商品。',
+    cartUnavailable: '有商品不可用，请在结账前移除。',
+  },
+  vi: {
+    browse: 'Xem sản phẩm', cart: 'Giỏ hàng', browseProducts: 'Xem sản phẩm', allCategories: 'Tất cả danh mục',
+    viewDetails: 'Xem chi tiết', addToCart: 'Thêm vào giỏ', yourCart: 'Giỏ hàng của bạn', estimatedTotal: 'Tổng tạm tính',
+    cartPriceNote: 'Máy chủ sẽ kiểm tra lại giá khi bạn đặt hàng.', continueShopping: 'Tiếp tục mua sắm',
+    checkoutSoon: 'Sắp có thanh toán', cartMemoryOnly: 'Giỏ hàng chỉ tồn tại trong thẻ này vì bộ nhớ trình duyệt không khả dụng.',
+    quantityLimit: 'Chọn số lượng từ 1 đến 100.', addedToCart: 'Đã thêm vào giỏ.', quantityUpdated: 'Đã cập nhật số lượng.', removedFromCart: 'Đã xóa khỏi giỏ.', quantity: 'Số lượng', remove: 'Xóa',
+    productUnavailable: 'Sản phẩm không có sẵn', emptyCart: 'Giỏ hàng của bạn đang trống.', noResults: 'Không tìm thấy sản phẩm phù hợp.',
+    cartUnavailable: 'Một số sản phẩm không có sẵn. Hãy xóa trước khi đặt hàng.',
+  },
+  th: {
+    browse: 'ดูสินค้า', cart: 'ตะกร้า', browseProducts: 'ดูสินค้า', allCategories: 'ทุกหมวดหมู่',
+    viewDetails: 'ดูรายละเอียด', addToCart: 'เพิ่มลงตะกร้า', yourCart: 'ตะกร้าของคุณ', estimatedTotal: 'ยอดรวมโดยประมาณ',
+    cartPriceNote: 'เซิร์ฟเวอร์จะตรวจสอบราคาอีกครั้งเมื่อสั่งซื้อ', continueShopping: 'เลือกซื้อต่อ',
+    checkoutSoon: 'ระบบสั่งซื้อกำลังมา', cartMemoryOnly: 'ตะกร้านี้อยู่ในแท็บนี้เท่านั้นเพราะที่เก็บข้อมูลเบราว์เซอร์ไม่พร้อมใช้งาน',
+    quantityLimit: 'เลือกจำนวนตั้งแต่ 1 ถึง 100', addedToCart: 'เพิ่มลงตะกร้าแล้ว', quantityUpdated: 'อัปเดตจำนวนแล้ว', removedFromCart: 'นำออกจากตะกร้าแล้ว', quantity: 'จำนวน', remove: 'นำออก',
+    productUnavailable: 'สินค้าไม่พร้อมขาย', emptyCart: 'ตะกร้าของคุณว่างเปล่า', noResults: 'ไม่พบสินค้าที่ตรงกัน',
+    cartUnavailable: 'มีสินค้าที่ไม่พร้อมขาย โปรดนำออกก่อนสั่งซื้อ',
+  },
+  ja: {
+    browse: '商品を見る', cart: 'カート', browseProducts: '商品を見る', allCategories: 'すべてのカテゴリー',
+    viewDetails: '詳細を見る', addToCart: 'カートに追加', yourCart: 'カート', estimatedTotal: '概算合計',
+    cartPriceNote: '注文時にサーバーが価格を再確認します。', continueShopping: '買い物を続ける',
+    checkoutSoon: '注文機能は準備中', cartMemoryOnly: 'ブラウザーの保存領域を利用できないため、このカートはこのタブでのみ保持されます。',
+    quantityLimit: '数量は1～100で選択してください。', addedToCart: 'カートに追加しました。', quantityUpdated: '数量を更新しました。', removedFromCart: 'カートから削除しました。', quantity: '数量', remove: '削除',
+    productUnavailable: '商品を利用できません', emptyCart: 'カートは空です。', noResults: '一致する商品がありません。',
+    cartUnavailable: '利用できない商品があります。注文前に削除してください。',
+  },
+  ko: {
+    browse: '상품 보기', cart: '장바구니', browseProducts: '상품 보기', allCategories: '모든 카테고리',
+    viewDetails: '상세 보기', addToCart: '장바구니에 담기', yourCart: '장바구니', estimatedTotal: '예상 합계',
+    cartPriceNote: '주문할 때 서버에서 가격을 다시 확인합니다.', continueShopping: '쇼핑 계속하기',
+    checkoutSoon: '주문 기능 준비 중', cartMemoryOnly: '브라우저 저장소를 사용할 수 없어 이 장바구니는 현재 탭에만 유지됩니다.',
+    quantityLimit: '수량은 1에서 100 사이로 선택하세요.', addedToCart: '장바구니에 담았습니다.', quantityUpdated: '수량을 변경했습니다.', removedFromCart: '장바구니에서 삭제했습니다.', quantity: '수량', remove: '삭제',
+    productUnavailable: '구매할 수 없는 상품', emptyCart: '장바구니가 비어 있습니다.', noResults: '일치하는 상품이 없습니다.',
+    cartUnavailable: '구매할 수 없는 상품이 있습니다. 주문 전에 삭제하세요.',
+  },
+};
+for (const { code } of languages) Object.assign(messages[code], shopMessages[code]);
+
 let current = 'en';
 try {
   const saved = localStorage.getItem('online-shopping-language');

@@ -1,6 +1,6 @@
 # PWA and internationalization requirements
 
-**Status: design requirement with local shell implementation in progress.** Both surfaces now have distinct manifests/service-worker scopes, public-shell caches, offline pages, and seven-language shell resources. Full installation, checkout/review, and all-language acceptance remain unverified.
+**Status: design requirement with local shell and storefront implementation in progress.** Both surfaces now have distinct manifests/service-worker scopes, public-shell caches, offline pages, and seven-language UI resources for the current seller/catalog/cart views. Full installation, checkout/review, and all-language acceptance remain unverified.
 
 ## PWA
 

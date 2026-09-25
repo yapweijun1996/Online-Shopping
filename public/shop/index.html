@@ -1,3 +1,50 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Online Shopping</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="manifest" href="/shop/manifest.webmanifest"><link rel="stylesheet" href="/shop/style.css"><script type="module" src="/shop/app.js"></script></head>
-<body><header class="topbar"><a class="brand" href="/shop/"><span class="brand-mark">OS</span><span data-i18n="shop">Shop</span></a><label class="language-control shop-language"><span data-i18n="selectLanguage">Language</span><select id="language" data-i18n-aria="selectLanguage"></select></label></header><main class="main shop-main"><h1 data-i18n="shop">Shop</h1><p data-i18n="notReady">This area is being prepared.</p></main></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0c2940">
+  <title>Online Shopping</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/shop/manifest.webmanifest">
+  <link rel="stylesheet" href="/shop/style.css">
+  <script type="module" src="/shop/app.js"></script>
+</head>
+<body>
+  <header class="topbar shop-topbar">
+    <a class="brand" href="/shop/"><span class="brand-mark">OS</span><span data-i18n="shop">Shop</span></a>
+    <nav class="shop-nav" data-i18n-aria="shop" aria-label="Shop">
+      <a href="#catalog" data-i18n="browse">Browse</a>
+      <a href="#cart"><span data-i18n="cart">Cart</span> <span id="cart-count" class="cart-count">0</span></a>
+    </nav>
+    <label class="language-control shop-language"><span data-i18n="selectLanguage">Language</span><select id="language" data-i18n-aria="selectLanguage"></select></label>
+  </header>
+  <main class="shop-main">
+    <section id="catalog-view" aria-labelledby="catalog-title">
+      <div class="shop-heading"><p class="eyebrow" data-i18n="shop">Shop</p><h1 id="catalog-title" data-i18n="browseProducts">Browse products</h1></div>
+      <form id="catalog-search-form" class="catalog-toolbar" role="search">
+        <label><span data-i18n="searchProducts">Search products</span><input id="catalog-search" type="search" maxlength="100"></label>
+        <label><span data-i18n="category">Category</span><select id="catalog-category"><option value="" data-i18n="allCategories">All categories</option></select></label>
+        <button class="primary-button" type="submit" data-i18n="applySearch">Search</button>
+      </form>
+      <p id="catalog-status" class="shop-status" role="status"></p>
+      <div id="catalog-grid" class="catalog-grid"></div>
+      <button id="catalog-more" class="outline-button" type="button" data-i18n="loadMore" hidden>Load more</button>
+    </section>
+    <section id="cart-view" aria-labelledby="cart-title" hidden>
+      <div class="shop-heading"><p class="eyebrow" data-i18n="shop">Shop</p><h1 id="cart-title" data-i18n="yourCart">Your cart</h1></div>
+      <p id="cart-persistence" class="shop-note" hidden></p>
+      <p id="cart-status" class="shop-status" role="status"></p>
+      <div id="cart-list" class="cart-list"></div>
+      <div id="cart-summary" class="cart-summary" hidden><span data-i18n="estimatedTotal">Estimated total</span><strong id="cart-total"></strong></div>
+      <p class="shop-note" data-i18n="cartPriceNote">Prices are checked again by the server when you place an order.</p>
+      <div class="cart-actions"><a class="outline-button" href="#catalog" data-i18n="continueShopping">Continue shopping</a><button id="checkout-button" class="primary-button" type="button" disabled data-i18n="checkoutSoon">Checkout coming soon</button></div>
+    </section>
+  </main>
+  <dialog id="product-dialog" class="product-dialog" aria-labelledby="detail-title">
+    <button id="detail-close" class="dialog-close" type="button" data-i18n="close">Close</button>
+    <div id="detail-content"></div>
+  </dialog>
+  <p id="shop-message" class="sr-only" role="status" aria-live="polite"></p>
+</body>
+</html>

@@ -1,5 +1,278 @@
-import { setupLanguageSelect } from '../shared/i18n.js';
+import { formatMoney, setupLanguageSelect, t, translate } from '../shared/i18n.js';
 import { registerWorker } from '../shared/pwa.js';
+import { createCartStore } from './cart.js';
+
+const byId = (id) => document.getElementById(id);
+const grid = byId('catalog-grid');
+const list = byId('cart-list');
+const dialog = byId('product-dialog');
+const detailContent = byId('detail-content');
+const category = byId('catalog-category');
+let products = [];
+let categories = [];
+let nextOffset = null;
+let catalogRequest = 0;
+let cartRequest = 0;
+let resolvedCart = [];
+let detailProduct = null;
+let catalogStatus = '';
+let cartStatus = '';
+let shopStatus = '';
+
+function element(tag, className, content) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (content !== undefined) node.textContent = content;
+  return node;
+}
+
+function action(label, handler, className = 'outline-button') {
+  const button = element('button', className, label);
+  button.type = 'button';
+  button.addEventListener('click', handler);
+  return button;
+}
+
+function imageFor(product, className) {
+  if (!product.imageUrl) return element('div', `${className} image-placeholder`, t('imageMissing'));
+  const image = element('img', className);
+  image.src = product.imageUrl;
+  image.alt = product.name;
+  image.loading = 'lazy';
+  return image;
+}
+
+function setCatalogStatus(key) {
+  catalogStatus = key;
+  byId('catalog-status').textContent = key ? t(key) : '';
+}
+
+function setCartStatus(key) {
+  cartStatus = key;
+  byId('cart-status').textContent = key ? t(key) : '';
+}
+
+function setMessage(key) {
+  shopStatus = key;
+  byId('shop-message').textContent = key ? t(key) : '';
+}
+
+async function api(path) {
+  const response = await fetch(path);
+  if (!response.ok) throw Object.assign(new Error('Request failed'), { status: response.status });
+  return response.json();
+}
+
+function renderCategories() {
+  const chosen = category.value;
+  category.replaceChildren(new Option(t('allCategories'), ''));
+  for (const value of categories) category.add(new Option(value, value));
+  category.value = categories.includes(chosen) ? chosen : '';
+}
+
+function renderCatalog() {
+  grid.replaceChildren();
+  for (const product of products) {
+    const card = element('article', 'catalog-card');
+    card.append(imageFor(product, 'catalog-image'));
+    const body = element('div', 'catalog-card-body');
+    body.append(element('p', 'catalog-category', product.category), element('h2', '', product.name),
+      element('p', 'catalog-description', product.description), element('strong', 'catalog-price', formatMoney(product.priceMinor, product.currency)));
+    const actions = element('div', 'catalog-card-actions');
+    actions.append(action(t('viewDetails'), () => openDetail(product.id)), action(t('addToCart'), () => addToCart(product), 'primary-button'));
+    body.append(actions);
+    card.append(body);
+    grid.append(card);
+  }
+  byId('catalog-more').hidden = nextOffset === null;
+}
+
+async function loadCatalog(reset = true) {
+  const request = ++catalogRequest;
+  if (reset) { products = []; nextOffset = null; renderCatalog(); }
+  setCatalogStatus('loading');
+  try {
+    const params = new URLSearchParams({
+      limit: '24', offset: String(reset ? 0 : nextOffset),
+      search: byId('catalog-search').value.trim(), category: category.value,
+    });
+    const data = await api(`/api/v1/products?${params}`);
+    if (request !== catalogRequest) return;
+    products = reset ? data.items : [...products, ...data.items];
+    categories = data.categories;
+    nextOffset = data.nextOffset;
+    renderCategories();
+    renderCatalog();
+    setCatalogStatus(products.length ? '' : (params.get('search') || params.get('category') ? 'noResults' : 'noProducts'));
+  } catch {
+    if (request === catalogRequest) setCatalogStatus('networkError');
+  }
+}
+
+function renderDetail() {
+  if (!detailProduct) return;
+  detailContent.replaceChildren();
+  detailContent.append(imageFor(detailProduct, 'detail-image'));
+  const body = element('div', 'detail-body');
+  const title = element('h2', '', detailProduct.name);
+  title.id = 'detail-title';
+  body.append(element('p', 'catalog-category', detailProduct.category), title,
+    element('p', 'detail-description', detailProduct.description),
+    element('strong', 'catalog-price', formatMoney(detailProduct.priceMinor, detailProduct.currency)),
+    action(t('addToCart'), () => addToCart(detailProduct), 'primary-button'));
+  detailContent.append(body);
+}
+
+async function openDetail(id) {
+  detailProduct = null;
+  detailContent.replaceChildren(element('h2', '', t('loading')));
+  detailContent.firstChild.id = 'detail-title';
+  dialog.showModal();
+  try {
+    const product = await api(`/api/v1/products/${id}`);
+    if (!dialog.open) return;
+    detailProduct = product;
+    renderDetail();
+  } catch (error) {
+    if (!dialog.open) return;
+    const heading = element('h2', '', t(error.status === 404 ? 'productUnavailable' : 'networkError'));
+    heading.id = 'detail-title';
+    detailContent.replaceChildren(heading);
+  }
+}
+
+function updateCount() {
+  byId('cart-count').textContent = String(cartStore.list().reduce((sum, line) => sum + line.quantity, 0));
+}
+
+function updatePersistence() {
+  const note = byId('cart-persistence');
+  note.hidden = cartStore.persistent;
+  note.textContent = cartStore.persistent ? '' : t('cartMemoryOnly');
+}
+
+async function addToCart(product) {
+  const existing = cartStore.list().find((line) => line.productId === product.id)?.quantity || 0;
+  if (existing >= 100) {
+    setMessage('quantityLimit');
+    return;
+  }
+  await cartStore.set(product.id, existing + 1);
+  updateCount();
+  updatePersistence();
+  setMessage('addedToCart');
+  if (!byId('cart-view').hidden) refreshCart();
+}
+
+async function changeQuantity(productId, value) {
+  if (!Number.isInteger(value) || value < 1 || value > 100) {
+    setMessage('quantityLimit');
+    renderCart();
+    return;
+  }
+  await cartStore.set(productId, value);
+  updateCount();
+  updatePersistence();
+  setMessage('quantityUpdated');
+  refreshCart();
+}
+
+async function removeLine(productId) {
+  await cartStore.set(productId, 0);
+  updateCount();
+  updatePersistence();
+  setMessage('removedFromCart');
+  refreshCart();
+}
+
+function renderCart() {
+  list.replaceChildren();
+  let total = 0;
+  let missing = false;
+  for (const { productId, quantity, product } of resolvedCart) {
+    const row = element('article', 'cart-row');
+    row.append(product ? imageFor(product, 'cart-image') : element('div', 'cart-image image-placeholder', t('imageMissing')));
+    const detail = element('div', 'cart-row-detail');
+    detail.append(element('h2', '', product?.name || t('productUnavailable')));
+    if (product) {
+      detail.append(element('p', '', `${product.category} · ${formatMoney(product.priceMinor, product.currency)}`));
+      total += product.priceMinor * quantity;
+    } else missing = true;
+    const controls = element('div', 'cart-row-controls');
+    const label = element('label', '', t('quantity'));
+    const input = element('input');
+    input.type = 'number'; input.min = '1'; input.max = '100'; input.step = '1'; input.inputMode = 'numeric';
+    input.value = String(quantity);
+    input.setAttribute('aria-label', `${t('quantity')}: ${product?.name || t('productUnavailable')}`);
+    input.addEventListener('change', () => changeQuantity(productId, input.valueAsNumber));
+    label.append(input);
+    controls.append(label, action(t('remove'), () => removeLine(productId)));
+    detail.append(controls);
+    row.append(detail);
+    list.append(row);
+  }
+  const summary = byId('cart-summary');
+  summary.hidden = resolvedCart.length === 0;
+  byId('cart-total').textContent = !missing && Number.isSafeInteger(total) ? formatMoney(total, 'MYR') : '—';
+}
+
+async function refreshCart() {
+  const request = ++cartRequest;
+  const lines = cartStore.list();
+  updateCount();
+  updatePersistence();
+  if (!lines.length) {
+    resolvedCart = [];
+    renderCart();
+    setCartStatus('emptyCart');
+    return;
+  }
+  setCartStatus('loading');
+  try {
+    const results = await Promise.all(lines.map(async (line) => {
+      try { return { ...line, product: await api(`/api/v1/products/${encodeURIComponent(line.productId)}`) }; }
+      catch (error) {
+        if (error.status === 404) return { ...line, product: null };
+        throw error;
+      }
+    }));
+    if (request !== cartRequest) return;
+    resolvedCart = results;
+    renderCart();
+    setCartStatus(results.some(({ product }) => !product) ? 'cartUnavailable' : '');
+  } catch {
+    if (request === cartRequest) setCartStatus('networkError');
+  }
+}
+
+function showRoute() {
+  const cart = location.hash === '#cart';
+  byId('catalog-view').hidden = cart;
+  byId('cart-view').hidden = !cart;
+  if (cart) refreshCart();
+}
 
 setupLanguageSelect(document.getElementById('language'));
 registerWorker('/shop/sw.js', '/shop/').catch(() => console.warn('Shop offline shell unavailable.'));
+const cartStore = await createCartStore();
+updateCount();
+updatePersistence();
+byId('catalog-search-form').addEventListener('submit', (event) => { event.preventDefault(); loadCatalog(); });
+category.addEventListener('change', () => loadCatalog());
+byId('catalog-more').addEventListener('click', () => loadCatalog(false));
+byId('detail-close').addEventListener('click', () => dialog.close());
+dialog.addEventListener('close', () => { detailProduct = null; });
+window.addEventListener('hashchange', showRoute);
+document.addEventListener('localechange', () => {
+  translate(document);
+  renderCategories();
+  renderCatalog();
+  renderCart();
+  renderDetail();
+  byId('catalog-status').textContent = catalogStatus ? t(catalogStatus) : '';
+  byId('cart-status').textContent = cartStatus ? t(cartStatus) : '';
+  byId('shop-message').textContent = shopStatus ? t(shopStatus) : '';
+  updatePersistence();
+});
+showRoute();
+loadCatalog();
