@@ -44,6 +44,15 @@ function setWorkspaceMessage(key) {
   byId('workspace-message').textContent = key ? t(key) : '';
 }
 
+function setPasswordVisible(visible) {
+  byId('password').type = visible ? 'text' : 'password';
+  const toggle = byId('password-toggle');
+  toggle.classList.toggle('is-visible', visible);
+  toggle.setAttribute('aria-pressed', String(visible));
+  toggle.dataset.i18nAria = visible ? 'hidePassword' : 'showPassword';
+  toggle.setAttribute('aria-label', t(toggle.dataset.i18nAria));
+}
+
 function showLogin(messageKey = '', clearHint = true) {
   const leavingWorkspace = !workspace.hidden;
   if (clearHint) sessionHint(false);
@@ -59,6 +68,7 @@ function showLogin(messageKey = '', clearHint = true) {
   sidebar.hidden = true;
   menuButton.hidden = true;
   accountWrap.hidden = true;
+  setPasswordVisible(false);
   setLoginMessage(messageKey);
   closeDrawer(false);
   if (leavingWorkspace) byId('username').focus();
@@ -187,6 +197,10 @@ byId('sign-out-button').addEventListener('click', async () => {
   } catch {
     setWorkspaceMessage('networkError');
   }
+});
+
+byId('password-toggle').addEventListener('click', () => {
+  setPasswordVisible(byId('password').type === 'password');
 });
 
 byId('login-form').addEventListener('submit', async (event) => {

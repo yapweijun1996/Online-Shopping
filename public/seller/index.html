@@ -41,14 +41,33 @@
   </aside>
   <main id="main" class="main">
     <section id="login-view" class="login-layout" hidden>
-      <div class="login-intro"><div class="brand-mark large">OS</div><p class="eyebrow" data-i18n="loginPrompt">Seller access only</p><h1 data-i18n="signInTitle">Welcome back</h1><p data-i18n="signInIntro">Sign in to manage products and orders.</p></div>
-      <form id="login-form" class="login-card">
-        <label for="username" data-i18n="username">Username</label><input id="username" name="username" autocomplete="username" required maxlength="64">
-        <label for="password" data-i18n="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="256">
-        <p id="login-message" class="message" role="alert"></p>
-        <button id="login-submit" class="primary-button" type="submit" data-i18n="signIn">Sign in</button>
-        <p class="privacy-note" data-i18n="protected">Your catalog and orders are private.</p>
-      </form>
+      <div class="login-intro">
+        <img class="login-photo" src="/seller/assets/login-workspace.webp" alt="" aria-hidden="true" width="1200" height="800">
+        <div class="login-intro-content">
+          <div class="brand-mark large" aria-hidden="true">OS</div>
+          <p class="eyebrow" data-i18n="loginPrompt">Seller access only</p>
+          <h1 data-i18n="signInTitle">Welcome back</h1>
+          <p class="login-intro-lead" data-i18n="signInIntro">Sign in to manage products and orders.</p>
+          <ul class="login-features">
+            <li><span class="login-feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.3 8.4 8 10 4.7-1.6 8-5 8-10V6zM9 12l2 2 4-4"/></svg></span><span><strong data-i18n="loginPrompt">Seller access only</strong><small data-i18n="accessFeature">Only signed-in sellers can manage the catalog and orders.</small></span></li>
+            <li><span class="login-feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 7h18v13H3zM3 7l3-4h12l3 4M9 12h6"/></svg></span><span><strong data-i18n="products">Products</strong><small data-i18n="catalogFeature">Add products, update details and control availability.</small></span></li>
+            <li><span class="login-feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 3h14v18l-3-2-4 2-4-2-3 2zM8 9h8M8 13h6"/></svg></span><span><strong data-i18n="salesOrders">Sales Orders</strong><small data-i18n="ordersFeature">Review submitted orders and record decisions.</small></span></li>
+          </ul>
+        </div>
+      </div>
+      <div class="login-area">
+        <form id="login-form" class="login-card">
+          <h2 data-i18n="signInAccount">Sign in to your account</h2>
+          <p class="login-card-lead" data-i18n="signInCardIntro">Use your seller credentials to continue.</p>
+          <label for="username" data-i18n="username">Username</label>
+          <div class="login-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20v-2a7 7 0 0 1 14 0v2"/></svg><input id="username" name="username" autocomplete="username" required maxlength="64"></div>
+          <label for="password" data-i18n="password">Password</label>
+          <div class="login-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 15v2"/></svg><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="256"><button id="password-toggle" class="password-toggle" type="button" data-i18n-aria="showPassword" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="3"/><path class="password-hidden-mark" d="M3 3l18 18"/></svg></button></div>
+          <p id="login-message" class="message" role="alert"></p>
+          <button id="login-submit" class="primary-button" type="submit"><span data-i18n="signIn">Sign in</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg></button>
+          <p class="privacy-note"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="10" width="12" height="10" rx="2"/><path d="M9 10V7a3 3 0 0 1 6 0v3"/></svg><span data-i18n="protected">Your catalog and orders are private.</span></p>
+        </form>
+      </div>
     </section>
     <section id="workspace" hidden>
       <div class="page-heading"><p class="eyebrow" data-i18n="sellerPortal">Seller portal</p><h1 id="page-title" tabindex="-1" data-i18n="dashboard">Dashboard</h1></div>
