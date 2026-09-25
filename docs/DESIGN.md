@@ -8,7 +8,7 @@ The new root application now has a Node 24 HTTP entry point, a versioned private
 
 The local development stack uses Node 24 built-ins and `node:sqlite`, with the database outside `public/` under the ignored `.local/` directory by default. This is a reversible local choice; production hosting, backup, retention, and recovery remain DEC-04. The current `GET /health` liveness endpoint is independent of the `GET /ready` schema check. The first schema owns exactly one configured admin and hashed, expiring sessions. The seller login UI uses the API; no browser code reads the database. A new customer cart module stores only product IDs and quantities in IndexedDB and falls back to page memory when storage fails; it never owns prices or orders. See [API.md](API.md) for implemented paths and [PROGRESS.md](PROGRESS.md) for proof and limits.
 
-The planned checkout will call the server's `normalizeContactPhone` helper for both buyer and recipient fields. It uses pinned `libphonenumber-js` number-plan metadata for +60/+65 validation and E.164 output. This dependency validates number structure only; neither the helper nor the future checkout may treat an unverified number as identity proof.
+The planned checkout will call the server's contact validators for both buyer and recipient fields. They use pinned `libphonenumber-js` number-plan metadata for +60/+65 validation and E.164 output, bound names/email, require an explicit boolean WhatsApp order-contact choice, and identify invalid fields without echoing contact values. These helpers are not connected to an order endpoint yet. The dependency validates number structure only; neither the helpers nor the future checkout may treat an unverified number as identity proof.
 
 ## Users and journeys
 

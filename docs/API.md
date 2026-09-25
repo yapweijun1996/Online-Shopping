@@ -48,7 +48,7 @@ Example checkout request (illustrative; no real personal data):
 
 Buyer WhatsApp and recipient phone fields accept valid international numbers with Malaysia (`+60`) or Singapore (`+65`) calling codes for the MVP. The server normalizes them to E.164 before persistence and rejects malformed input with a field-specific `INVALID_INPUT` error. Phone country does not have to match UI language or the destination address country. GST is not calculated in the MVP; currency, delivery charges, and delivery-area policy still need a business decision.
 
-A server-side `normalizeContactPhone` module now checks strict `+60`/`+65` input with pinned `libphonenumber-js` maximum metadata and returns E.164; it is not connected to an order endpoint yet. A structurally valid number is not proof of ownership, reachability, or WhatsApp registration.
+Server-side contact validators now check strict `+60`/`+65` input with pinned `libphonenumber-js` maximum metadata, normalize it to E.164, bound buyer/recipient names and optional email, require a boolean WhatsApp order-contact choice, and identify the invalid field. They are not connected to an order endpoint yet. A structurally valid number is not proof of ownership, reachability, or WhatsApp registration.
 
 The client sends one fresh `Idempotency-Key` per intended order and reuses it only when retrying that same submission. The backend persists the key with the result and rejects reuse with different content. The server loads current available products, computes integer minor-unit prices and totals, saves immutable order snapshots, then responds after the transaction commits:
 
