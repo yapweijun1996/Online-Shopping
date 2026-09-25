@@ -88,10 +88,13 @@ export function validateOrderInput(input) {
       if (!Number.isSafeInteger(item.expectedPriceMinor) || item.expectedPriceMinor < 1) {
         throw new FieldError(`${itemField}.expectedPriceMinor`, 'Supply the price shown in the cart.');
       }
+      if (typeof item.expectedCurrency !== 'string' || !/^[A-Z]{3}$/.test(item.expectedCurrency)) {
+        throw new FieldError(`${itemField}.expectedCurrency`, 'Supply the currency shown in the cart.');
+      }
       const productId = item.productId.toLowerCase();
       if (seen.has(productId)) throw new FieldError(`${itemField}.productId`, 'Assign a product once per destination.');
       seen.add(productId);
-      return { productId, quantity: item.quantity, expectedPriceMinor: item.expectedPriceMinor };
+      return { productId, quantity: item.quantity, expectedPriceMinor: item.expectedPriceMinor, expectedCurrency: item.expectedCurrency };
     });
     return {
       recipient: validateRecipient(delivery.recipient, index),

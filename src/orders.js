@@ -53,6 +53,11 @@ export function createOrder(database, idempotencyKey, input) {
         throw error;
       }
       currency = product.currency;
+      if (product.currency !== item.expectedCurrency) {
+        const error = new ApiError(409, 'PRICE_CHANGED', 'A product price changed. Review the cart.');
+        error.field = `deliveries.${deliveryIndex}.items.${itemIndex}.expectedCurrency`;
+        throw error;
+      }
       if (product.price_minor !== item.expectedPriceMinor) {
         const error = new ApiError(409, 'PRICE_CHANGED', 'A product price changed. Review the cart.');
         error.field = `deliveries.${deliveryIndex}.items.${itemIndex}.expectedPriceMinor`;

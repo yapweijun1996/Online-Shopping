@@ -272,7 +272,8 @@ export function mountCheckout({ onSuccess, onPriceChanged }) {
     for (const item of cartItems) {
       const index = cards.findIndex((card) => card.dataset.deliveryId === assignments.get(item.productId));
       deliveries[index < 0 ? 0 : index].items.push({
-        productId: item.productId, quantity: item.quantity, expectedPriceMinor: item.product?.priceMinor,
+        productId: item.productId, quantity: item.quantity,
+        expectedPriceMinor: item.product?.priceMinor, expectedCurrency: item.product?.currency,
       });
     }
     return {
