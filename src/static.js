@@ -14,16 +14,10 @@ const types = {
   '.webmanifest': 'application/manifest+json',
 };
 
-export async function serveStatic(request, response, pathname) {
+export async function serveStatic(request, pathname) {
   if (request.method !== 'GET' && request.method !== 'HEAD') throw new ApiError(405, 'METHOD_NOT_ALLOWED', 'Method not allowed.');
-  if (pathname === '/') {
-    response.writeHead(302, { Location: '/shop/', 'Cache-Control': 'no-store' });
-    return response.end();
-  }
-  if (pathname === '/seller' || pathname === '/shop') {
-    response.writeHead(302, { Location: `${pathname}/`, 'Cache-Control': 'no-store' });
-    return response.end();
-  }
+  if (pathname === '/') return redirect('/shop/');
+  if (pathname === '/seller' || pathname === '/shop') return redirect(`${pathname}/`);
   let decoded;
   try {
     decoded = decodeURIComponent(pathname);
@@ -45,13 +39,18 @@ export async function serveStatic(request, response, pathname) {
   const type = types[path.extname(actual)];
   if (!type) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
   const body = await readFile(actual);
-  response.writeHead(200, {
-    'Content-Type': type,
-    'Content-Length': body.length,
-    'Cache-Control': 'no-cache',
-    'X-Content-Type-Options': 'nosniff',
-    'Referrer-Policy': 'strict-origin-when-cross-origin',
-    'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+  return new Response(request.method === 'HEAD' ? null : body, {
+    headers: {
+      'Content-Type': type,
+      'Content-Length': String(body.length),
+      'Cache-Control': 'no-cache',
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
+      'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+    },
   });
-  response.end(request.method === 'HEAD' ? undefined : body);
+}
+
+function redirect(location) {
+  return new Response(null, { status: 302, headers: { Location: location, 'Cache-Control': 'no-store' } });
 }

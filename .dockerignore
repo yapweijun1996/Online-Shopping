@@ -14,3 +14,6 @@ docs
 *.db-shm
 *.db-wal
 *.log
+.dev.vars
+.dev.vars.*
+.wrangler

@@ -6,7 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import { readConfig } from '../src/config.js';
-import { LoginLimiter } from '../src/auth.js';
+import { SCHEMA_VERSION } from '../src/db.js';
 import { createApp } from '../src/server.js';
 
 const username = 'local_owner';
@@ -69,7 +69,7 @@ test('file-backed credentials are read without a trailing newline', () => {
 test('readiness fails closed when schema version changes while liveness stays up', async () => {
   const f = await fixture();
   try {
-    f.app.database.setSchemaVersion(4);
+    f.app.database.setSchemaVersion(SCHEMA_VERSION + 1);
     assert.equal((await f.request('GET', '/health')).response.status, 200);
     assert.equal((await f.request('GET', '/ready')).response.status, 503);
   } finally {
@@ -173,14 +173,6 @@ test('concurrent login attempts cannot bypass the rate limit', async () => {
     for (const socket of sockets) socket.destroy();
     await f.close();
   }
-});
-
-test('login limiter bounds the number of tracked clients', () => {
-  const limiter = new LoginLimiter();
-  for (let index = 0; index < 5; index++) assert.equal(limiter.attempt('first'), true);
-  assert.equal(limiter.attempt('first'), false);
-  for (let index = 0; index < 5000; index++) limiter.attempt(`client-${index}`);
-  assert.equal(limiter.attempt('first'), true);
 });
 
 test('public shell is served without exposing private files', async () => {

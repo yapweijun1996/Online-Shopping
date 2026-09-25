@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
+import { SCHEMA_VERSION } from '../src/db.js';
 import { createApp } from '../src/server.js';
 
 const username = 'product_owner';
@@ -127,7 +128,7 @@ test('schema version one upgrades without losing the provisioned seller', async 
   const { cookie } = await f.login();
   await f.app.close();
   const old = new DatabaseSync(config.dbPath);
-  old.exec(`DROP TABLE checkout_idempotency; DROP TABLE order_event; DROP TABLE order_item;
+  old.exec(`DROP TABLE rate_limit_attempt; DROP TABLE checkout_idempotency; DROP TABLE order_event; DROP TABLE order_item;
     DROP TABLE delivery; DROP TABLE shop_order; DROP TABLE order_sequence;
     DROP TABLE product; PRAGMA user_version = 1`);
   old.close();
@@ -137,7 +138,7 @@ test('schema version one upgrades without losing the provisioned seller', async 
     const origin = `http://127.0.0.1:${migrated.server.address().port}`;
     assert.equal((await fetch(`${origin}/ready`)).status, 200);
     assert.equal((await fetch(`${origin}/api/v1/seller/session`, { headers: { cookie } })).status, 200);
-    assert.equal(migrated.database.schemaVersion(), 3);
+    assert.equal(migrated.database.schemaVersion(), SCHEMA_VERSION);
   } finally {
     await migrated.close();
     rmSync(directory, { recursive: true, force: true });

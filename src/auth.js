@@ -76,25 +76,3 @@ export function sessionCookieFrom(header = '') {
   const match = header.match(/(?:^|;\s*)seller_session=([^;]+)/);
   return match?.[1] || null;
 }
-
-/* Each attempt reserves a slot before the password check, so concurrent requests cannot exceed the limit. */
-export class LoginLimiter {
-  #attempts = new Map();
-  attempt(key) {
-    const now = Date.now();
-    const attempts = (this.#attempts.get(key) || []).filter((time) => now - time < 15 * 60 * 1000);
-    if (attempts.length >= 5) {
-      this.#attempts.set(key, attempts);
-      return false;
-    }
-    if (!this.#attempts.has(key) && this.#attempts.size >= 5000) {
-      this.#attempts.delete(this.#attempts.keys().next().value);
-    }
-    attempts.push(now);
-    this.#attempts.set(key, attempts);
-    return true;
-  }
-  clear(key) {
-    this.#attempts.delete(key);
-  }
-}

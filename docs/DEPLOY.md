@@ -6,7 +6,7 @@
 
 `frontend` is Caddy with only `public/` and a Caddyfile in its image. It serves `/shop/` and `/seller/` as separate PWA scopes and forwards `/api/*`, `/health`, and `/ready` to `backend` on the private Compose network. Its local default binds only loopback. `backend` is one Node 24 API process with private SQLite v3 in the persistent `db_data` volume. Seller session hashes, product image bytes, order contacts, addresses, snapshots, idempotency records, and audit events live there. No SQLite port or backend HTTP port is published. Caddy's `caddy_data` volume preserves TLS state when a real HTTPS hostname is configured.
 
-The backend accepts a trusted `X-Real-IP` only in this private-proxy topology. Caddy overwrites the incoming header with its direct client address. Do not expose backend port 3000 or add untrusted containers to the private network. If a load balancer is added in front of Caddy, reassess real-client IP and rate limits. Scale the backend at one instance: the in-process limiters are not shared and the SQLite file is a single-writer store.
+The backend accepts a trusted `X-Real-IP` only in this private-proxy topology. Caddy overwrites the incoming header with its direct client address. Do not expose backend port 3000 or add untrusted containers to the private network. If a load balancer is added in front of Caddy, reassess real-client IP and rate limits. Scale the backend at one instance: the SQLite file is a single-writer store. Login and checkout limits are stored in the database (`rate_limit_attempt`, hashed client keys) and survive restarts.
 
 ## Secrets and startup
 
@@ -29,3 +29,23 @@ An isolated synthetic-data rehearsal backed up a stopped test volume, recorded a
 With a synthetic ignored secret and test order, the two pinned-base images built and started. `/ready`, both PWA assets, proxy API, seller authorization, product create/public visibility, guest order and idempotent replay passed through Caddy. The private SQLite file and secret were mode `0600` under the nonroot backend user. The frontend image lacked backend source/private files and the backend image lacked `public/` and `sample/`. After restarting the backend, the product and order remained; spoofed incoming `X-Real-IP` values did not bypass the login limiter. Missing/weak production credentials exited with status 1. Local backup/restore evidence is recorded above. These are local checks only.
 
 Before a public release, settle the exact hostname and server access, HTTPS certificate reachability, the lawful basis for the requested permanent retention, backup/restore and rollback, production secret management, and target-browser PWA installation/update. Verify the exact built artifact, secure cookie/origin behavior on HTTPS, readiness, migration, logs without PII, and deployed version. Record those results in [PROGRESS.md](PROGRESS.md); only then consider AC-16/17 verified or any item Released.
+
+## Cloudflare Workers deployment (alternative)
+
+**Status: local `wrangler dev` smoke verified; not deployed.** The same API runs on Cloudflare Workers with a SQLite Durable Object instead of Docker. It uses the Workers Free plan and needs no server or custom domain (`*.workers.dev` works).
+
+- `src/worker.js` serves `public/` as static assets (`public/_headers` adds the same CSP and security headers; `public/_redirects` sends `/` to `/shop/`) and forwards `/api/*`, `/health` and `/ready` to one `ShopStore` Durable Object.
+- The Worker overwrites `X-Real-IP` with Cloudflare's `CF-Connecting-IP` and buffers request bodies up to 1 MB before forwarding; larger bodies get 413 from the Worker. Only the Worker can reach the object.
+- `ShopStore` runs the shared routes (`src/app.js`) against `src/durable-store.js`, which implements the store contract in `src/store.js` with `ctx.storage.sql` and `transactionSync`. Migrations and business logic are the same code as Node; the schema version is kept in a `schema_meta` table.
+- Configuration comes from `NODE_ENV` in `wrangler.jsonc` (production) and three secrets. Production requires `PUBLIC_ORIGIN` to be the exact HTTPS origin, e.g. `https://online-shopping.<account>.workers.dev`.
+
+Local development: copy `.dev.vars.example` to ignored `.dev.vars`, set a synthetic username and password, then run `npm run worker:dev` and open `http://127.0.0.1:8787/shop/`. Local Durable Object data lives in ignored `.wrangler/state`. With it running, `npm run worker:smoke` exercises the main API flows with synthetic data; add `-- --rate-limit` to also check login limiting, which locks seller login for 15 minutes.
+
+First deployment:
+
+1. `npx wrangler login` (or set `CLOUDFLARE_API_TOKEN`).
+2. `npx wrangler secret put ADMIN_USERNAME`, `npx wrangler secret put ADMIN_PASSWORD` and `npx wrangler secret put PUBLIC_ORIGIN`. Keep the password available: changing it later fails startup against the provisioned admin, like the Docker deployment.
+3. `npm run worker:deploy`, then check `https://<origin>/ready` returns `ready`. If configuration is invalid, every API request returns 503 and the Worker log shows `Startup failed` with the reason.
+4. Optional: connect the GitHub repository in the Cloudflare dashboard (Workers Builds) to deploy on pushes to `main`. CI already runs `npm run worker:check`, a dry-run bundle build.
+
+Evidence so far: with synthetic data on local workerd, static shells, redirects, CSP headers, seller login/CSRF/origin checks, product create with image, duplicate SKU, versioned image caching, 413 limits, `PRICE_CHANGED`, idempotent checkout, seller confirm and stale revision, logout, and parallel login limiting (5 × 401, 7 × 429) passed. After a restart, products and the login lockout persisted. A browser checkout with a mid-checkout price change passed. Not yet verified: a real Cloudflare deployment, Free-plan CPU limits for password hashing, off-platform backups and restore, and the data-retention release gate above, which applies equally to this deployment.

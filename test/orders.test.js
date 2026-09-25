@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
+import { SCHEMA_VERSION } from '../src/db.js';
 import { createApp } from '../src/server.js';
 import { createProduct, updateProduct } from '../src/products.js';
 
@@ -205,12 +206,12 @@ test('schema version two upgrades without losing catalog records', async () => {
   const f = await fixture();
   await f.app.close();
   const old = new DatabaseSync(f.config.dbPath);
-  old.exec(`DROP TABLE checkout_idempotency; DROP TABLE order_event; DROP TABLE order_item;
+  old.exec(`DROP TABLE rate_limit_attempt; DROP TABLE checkout_idempotency; DROP TABLE order_event; DROP TABLE order_item;
     DROP TABLE delivery; DROP TABLE shop_order; DROP TABLE order_sequence; PRAGMA user_version = 2;`);
   old.close();
   const migrated = createApp(f.config);
   try {
-    assert.equal(migrated.database.schemaVersion(), 3);
+    assert.equal(migrated.database.schemaVersion(), SCHEMA_VERSION);
     assert.equal(migrated.database.get('SELECT COUNT(*) AS count FROM product').count, 2);
     assert.equal(migrated.database.get('SELECT COUNT(*) AS count FROM shop_order').count, 0);
   } finally {

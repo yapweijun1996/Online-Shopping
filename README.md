@@ -46,6 +46,10 @@ For a future HTTPS host, set `SITE_ADDRESS` to the hostname, `PUBLIC_ORIGIN` to 
 
 For a local restricted backup, run `./deploy/backup.sh`. It pauses both containers, archives the full SQLite volume under ignored `.local/backups/` with mode `0600`, verifies the archive, writes a SHA-256 checksum, and restarts the stack. The script accepts an environment file and Compose project name as optional arguments. This local snapshot is unencrypted; settle encrypted storage, off-host copies, schedule, and retention before using real customer data. An isolated synthetic-data restore rehearsal passed; see [DEPLOY.md](docs/DEPLOY.md).
 
+## Run on Cloudflare Workers
+
+The same API also runs on Cloudflare Workers with a SQLite Durable Object, with no server to maintain. Copy `.dev.vars.example` to ignored `.dev.vars`, then run `npm run worker:dev`. See [deployment operations](docs/DEPLOY.md#cloudflare-workers-deployment-alternative) for secrets, the first deploy, and what has been verified.
+
 ## Local demo catalog
 
 After starting the loopback Compose stack, run `npx --yes node@24 --env-file=.local/docker.env scripts/seed-demo-products.js` to add the [20 fictional products](demo/catalog.json) with generated product photos, English descriptions/details, six categories, and MYR prices. The script signs in through the seller API using the ignored username and password file, creates active `DEMO-001`–`DEMO-020` products, and signs out. It accepts only a local HTTP origin, which can be supplied as its first argument when the frontend uses a different loopback port. Re-running it skips matching SKUs and stops on a conflicting existing product. Images are sent as bounded base64 and stored in private SQLite; the source WebP files are reusable local demo assets, not the public runtime image source. Demo specifications and prices are fictional and need seller confirmation before any real sale. Do not seed a real-data deployment.

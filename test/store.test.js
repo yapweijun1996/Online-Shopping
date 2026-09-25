@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 import { migrateStore, ready, SCHEMA_VERSION } from '../src/db.js';
+import { SqlLimiter } from '../src/limiter.js';
 import { openNodeStore } from '../src/store.js';
 
 test('store transactions return results and roll back on failure', () => {
@@ -45,4 +46,28 @@ test('application modules use only the portable store contract', () => {
   for (const name of readdirSync(directory).filter((entry) => entry.endsWith('.js') && entry !== 'store.js')) {
     assert.doesNotMatch(readFileSync(new URL(name, directory), 'utf8'), forbidden, name);
   }
+});
+
+test('database limiter reserves slots per client, expires them, and stores no raw keys', () => {
+  const store = openNodeStore(':memory:');
+  try {
+    migrateStore(store);
+    let now = 1_000_000;
+    const limiter = new SqlLimiter(store, 'login', { limit: 2, windowMs: 1000, now: () => now });
+    const other = new SqlLimiter(store, 'checkout', { limit: 1, windowMs: 1000, now: () => now });
+    assert.equal(limiter.attempt('203.0.113.7'), true);
+    assert.equal(limiter.attempt('203.0.113.7'), true);
+    assert.equal(limiter.attempt('203.0.113.7'), false);
+    assert.equal(limiter.attempt('198.51.100.1'), true);
+    assert.equal(other.attempt('203.0.113.7'), true);
+    assert.equal(store.all('SELECT key_hash FROM rate_limit_attempt').some(({ key_hash }) => key_hash.includes('203.0.113.7')), false);
+    now += 1000;
+    assert.equal(limiter.attempt('203.0.113.7'), true);
+    limiter.clear('203.0.113.7');
+    assert.equal(limiter.attempt('203.0.113.7'), true);
+    assert.equal(limiter.attempt('203.0.113.7'), true);
+    assert.equal(limiter.attempt('203.0.113.7'), false);
+    // The other client's expired attempt was pruned; only the two live reservations remain.
+    assert.equal(store.get("SELECT COUNT(*) AS count FROM rate_limit_attempt WHERE bucket = 'login'").count, 2);
+  } finally { store.close(); }
 });

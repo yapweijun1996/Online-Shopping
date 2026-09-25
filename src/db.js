@@ -1,6 +1,6 @@
 import { openNodeStore } from './store.js';
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 function migrate(store, version, sql) {
   store.transaction(() => {
@@ -136,6 +136,18 @@ export function migrateStore(store) {
       ) STRICT;`);
     version = 3;
   }
+  if (version === 3) {
+    migrate(store, 4, `
+      CREATE TABLE rate_limit_attempt (
+        id INTEGER PRIMARY KEY,
+        bucket TEXT NOT NULL,
+        key_hash TEXT NOT NULL,
+        attempted_at INTEGER NOT NULL
+      ) STRICT;
+      CREATE INDEX rate_limit_lookup ON rate_limit_attempt(bucket, key_hash);
+      CREATE INDEX rate_limit_expiry ON rate_limit_attempt(bucket, attempted_at);`);
+    version = 4;
+  }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }
 
@@ -144,7 +156,7 @@ export function ready(store) {
     return store.schemaVersion() === SCHEMA_VERSION &&
       Boolean(store.get('SELECT id FROM admin WHERE id = 1')) &&
       Boolean(store.get('SELECT id FROM order_sequence WHERE id = 1')) &&
-      ['session', 'product', 'shop_order', 'delivery', 'order_item', 'order_event', 'checkout_idempotency']
+      ['session', 'product', 'shop_order', 'delivery', 'order_item', 'order_event', 'checkout_idempotency', 'rate_limit_attempt']
         .every((table) => Array.isArray(store.all(`SELECT * FROM ${table} LIMIT 0`)));
   } catch {
     return false;
