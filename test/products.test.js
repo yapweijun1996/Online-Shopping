@@ -104,6 +104,17 @@ test('base64 images stay private until activation and can be removed', async () 
     const publicImage = await fetch(`${f.origin}/api/v1/products/${id}/image`);
     assert.equal(publicImage.status, 200);
     assert.equal(publicImage.headers.get('cache-control'), 'no-store');
+    const listed = (await f.request('GET', '/api/v1/products')).data.items.find((item) => item.id === id);
+    assert.match(listed.imageUrl, new RegExp(`^/api/v1/products/${id}/image\\?v=[0-9a-z]+$`));
+    const versioned = await fetch(`${f.origin}${listed.imageUrl}`);
+    assert.equal(versioned.status, 200);
+    assert.equal(versioned.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+    assert.deepEqual(Buffer.from(await versioned.arrayBuffer()), bytes);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await f.request('PATCH', `/api/v1/seller/products/${id}`, { name: 'Renamed product' }, headers);
+    const renamed = (await f.request('GET', `/api/v1/products/${id}`)).data;
+    assert.notEqual(renamed.imageUrl, listed.imageUrl);
+    assert.equal((await fetch(`${f.origin}${listed.imageUrl}`)).headers.get('cache-control'), 'no-store');
     await f.request('PATCH', `/api/v1/seller/products/${id}`, { imageDataUrl: null }, headers);
     assert.equal((await f.request('GET', `/api/v1/products/${id}/image`)).response.status, 404);
   } finally { await f.close(); }
