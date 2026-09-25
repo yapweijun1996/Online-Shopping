@@ -12,6 +12,8 @@
 
 The current workers use an explicit public-file allowlist and separate seller/shop cache versions. Bump the affected worker version whenever its precached files change; bump both when a shared file changes. A controlled page keeps its current cached shell while a new worker waits, so navigation does not mix new HTML with old scripts. The new worker activates after old controlled pages close, then removes its prior cache. This local behavior was exercised in Chromium; target-device installation and update checks remain.
 
+In a dedicated persistent desktop Chrome test profile on local loopback, DevTools reported zero installability errors for each manifest and both pages were service-worker controlled. An incognito profile reported only `in-incognito`. These checks do not establish actual installation or production HTTPS behavior.
+
 ## Language order and codes
 
 English is the default. Show languages in this exact sequence everywhere, including the selector and translation file organization:
