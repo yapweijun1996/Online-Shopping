@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { createApp } from '../src/server.js';
 import { createProduct } from '../src/products.js';
+import { createCategory } from '../src/settings.js';
 
 async function fixture() {
   const directory = mkdtempSync(path.join(tmpdir(), 'online-shopping-review-'));
@@ -13,11 +14,12 @@ async function fixture() {
     dbPath: path.join(directory, 'private.db'), production: false, publicOrigin: null,
   };
   const app = createApp(config);
+  createCategory(app.database, { code: 'EXAMPLES', label: 'Examples' });
   await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve));
   const origin = `http://127.0.0.1:${app.server.address().port}`;
   const product = createProduct(app.database, {
     sku: 'REVIEW-ITEM', name: 'Example review item', description: 'Fictional item',
-    category: 'Examples', priceMinor: 1250, currency: 'MYR', active: true,
+    category: 'EXAMPLES', priceMinor: 1250, currency: 'MYR', active: true,
   });
   let orderKey = 0;
 

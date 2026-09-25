@@ -38,6 +38,7 @@ export function createOrder(database, idempotencyKey, input) {
     }
 
     let totalMinor = 0;
+    let currency = null;
     const snapshots = order.deliveries.map((delivery, deliveryIndex) => delivery.items.map((item, itemIndex) => {
       const product = database.prepare(`SELECT id, sku, name, price_minor, currency FROM product
         WHERE id = ? AND active = 1`).get(item.productId);
@@ -46,6 +47,12 @@ export function createOrder(database, idempotencyKey, input) {
         error.field = `deliveries.${deliveryIndex}.items.${itemIndex}.productId`;
         throw error;
       }
+      if (currency && product.currency !== currency) {
+        const error = new ApiError(409, 'MIXED_CURRENCY', 'Checkout one currency at a time. Review the cart.');
+        error.field = `deliveries.${deliveryIndex}.items.${itemIndex}.productId`;
+        throw error;
+      }
+      currency = product.currency;
       const lineTotalMinor = product.price_minor * item.quantity;
       totalMinor += lineTotalMinor;
       if (!Number.isSafeInteger(lineTotalMinor) || !Number.isSafeInteger(totalMinor)) {
@@ -61,10 +68,10 @@ export function createOrder(database, idempotencyKey, input) {
     database.prepare(`INSERT INTO shop_order
       (id, order_no, buyer_name, buyer_phone, buyer_email, whatsapp_opt_in, whatsapp_consent_at,
        whatsapp_consent_version, locale, status, revision, currency, total_minor, submitted_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'SUBMITTED', 1, 'MYR', ?, ?, ?)`).run(
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'SUBMITTED', 1, ?, ?, ?, ?)`).run(
       id, orderNo, order.buyer.fullName, order.buyer.whatsappPhone, order.buyer.email,
       Number(order.buyer.whatsappOrderContactOptIn), order.buyer.whatsappOrderContactOptIn ? now : null,
-      order.buyer.whatsappOrderContactOptIn ? 'order-contact-v1' : null, order.locale, totalMinor, now, now,
+      order.buyer.whatsappOrderContactOptIn ? 'order-contact-v1' : null, order.locale, currency, totalMinor, now, now,
     );
 
     for (const [index, delivery] of order.deliveries.entries()) {
@@ -80,9 +87,9 @@ export function createOrder(database, idempotencyKey, input) {
       for (const [itemIndex, snapshot] of snapshots[index].entries()) {
         database.prepare(`INSERT INTO order_item
           (id, delivery_id, position, product_id, sku_snapshot, name_snapshot, price_minor, quantity, line_total_minor, currency)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'MYR')`).run(
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
           randomUUID(), deliveryId, itemIndex, snapshot.product.id, snapshot.product.sku, snapshot.product.name,
-          snapshot.product.price_minor, snapshot.quantity, snapshot.lineTotalMinor,
+          snapshot.product.price_minor, snapshot.quantity, snapshot.lineTotalMinor, snapshot.product.currency,
         );
       }
     }
@@ -92,7 +99,7 @@ export function createOrder(database, idempotencyKey, input) {
     database.prepare(`INSERT INTO checkout_idempotency(key_hash, request_hash, order_id, created_at)
       VALUES (?, ?, ?, ?)`).run(keyHash, requestHash, id, now);
     database.exec('COMMIT');
-    return { receipt: { orderNo, status: 'SUBMITTED', currency: 'MYR', totalMinor, submittedAt: now }, replayed: false };
+    return { receipt: { orderNo, status: 'SUBMITTED', currency, totalMinor, submittedAt: now }, replayed: false };
   } catch (error) {
     database.exec('ROLLBACK');
     throw error;

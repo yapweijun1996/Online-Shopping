@@ -15,9 +15,9 @@
     <button class="icon-button mobile-only" id="open-menu" type="button" data-i18n-aria="openMenu" aria-controls="sidebar" aria-expanded="false">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
-    <a class="brand" href="/seller/" data-i18n-aria="sellerPortal"><span class="brand-mark">OS</span><span data-i18n="sellerPortal">Seller portal</span></a>
+    <a class="brand" href="/seller/" data-i18n-aria="sellerPortal"><img class="brand-mark" src="/favicon.svg" alt=""><span data-i18n="sellerPortal">Seller portal</span></a>
     <div class="top-actions">
-      <label class="language-control"><span data-i18n="selectLanguage">Language</span><select id="language" data-i18n-aria="selectLanguage"></select></label>
+      <div id="language" class="language-menu"></div>
       <div class="account-wrap" id="account-wrap" hidden>
         <button id="account-button" class="account-button" type="button" data-i18n-aria="account" aria-expanded="false" aria-controls="account-menu"><span class="avatar">A</span><span data-i18n="account">Account</span><span aria-hidden="true">⌄</span></button>
         <div id="account-menu" class="account-menu" hidden>
@@ -29,22 +29,24 @@
   </header>
   <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
   <aside id="sidebar" class="sidebar" hidden>
-    <div class="sidebar-head"><a class="sidebar-brand" href="/seller/" data-i18n-aria="sellerPortal"><span class="brand-mark" aria-hidden="true">OS</span><span data-i18n="sellerPortal">Seller portal</span></a><button id="close-menu" class="icon-button mobile-only" type="button" data-i18n-aria="closeMenu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg></button></div>
+    <div class="sidebar-head"><button id="collapse-nav" class="sidebar-brand" type="button" data-i18n-aria="collapse" aria-controls="sidebar" aria-expanded="true"><img class="brand-mark" src="/favicon.svg" alt=""><span data-i18n="sellerPortal">Seller portal</span><svg class="brand-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button><button id="close-menu" class="icon-button mobile-only" type="button" data-i18n-aria="closeMenu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg></button></div>
     <nav aria-label="Seller portal" data-i18n-aria="sellerPortal">
       <button class="nav-item active" type="button" data-view="dashboard" data-i18n-aria="dashboard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5V21H3zM9 21v-7h6v7"/></svg><span data-i18n="dashboard">Dashboard</span></button>
       <button class="nav-item" type="button" data-view="products" data-i18n-aria="products"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v14H4zM3 7l2-4h14l2 4M9 12h6"/></svg><span data-i18n="products">Products</span></button>
       <div class="nav-group" data-i18n="salesManager">Sales Manager</div>
       <button class="nav-item" type="button" data-view="orders" data-i18n-aria="salesOrders"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18l-3-2-4 2-4-2-3 2zM8 8h8M8 12h8"/></svg><span data-i18n="salesOrders">Sales Orders</span></button>
       <button class="nav-item" type="button" data-view="review" data-i18n-aria="orderReview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM8 12l3 3 5-6"/></svg><span data-i18n="orderReview">Sales Order Confirmation</span></button>
+      <div class="nav-group" data-i18n="configuration">Configuration</div>
+      <button class="nav-item" type="button" data-view="categories" data-i18n-aria="categoryCodes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h6"/></svg><span data-i18n="categoryCodes">Category codes</span></button>
+      <button class="nav-item" type="button" data-view="company" data-i18n-aria="companySettings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V7l8-4 8 4v14M2 21h20M9 21v-6h6v6"/></svg><span data-i18n="companySettings">Company settings</span></button>
     </nav>
-    <button id="collapse-nav" class="collapse-button" type="button" data-i18n-aria="collapse"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5 7 12l7 7M20 5l-7 7 7 7"/></svg><span data-i18n="collapse">Collapse navigation</span></button>
   </aside>
   <main id="main" class="main">
     <section id="login-view" class="login-layout" hidden>
       <div class="login-intro">
         <img class="login-photo" src="/seller/assets/login-workspace.webp" alt="" aria-hidden="true" width="1200" height="800">
         <div class="login-intro-content">
-          <div class="brand-mark large" aria-hidden="true">OS</div>
+          <img class="brand-mark large" src="/favicon.svg" alt="">
           <p class="eyebrow" data-i18n="loginPrompt">Seller access only</p>
           <h1 data-i18n="signInTitle">Welcome back</h1>
           <p class="login-intro-lead" data-i18n="signInIntro">Sign in to manage products and orders.</p>
@@ -95,11 +97,11 @@
         <label><span data-i18n="sku">SKU</span><input name="sku" maxlength="40" required autocomplete="off"></label>
         <label><span data-i18n="name">Name</span><input name="name" maxlength="120" required></label>
         <label class="full"><span data-i18n="description">Description</span><textarea name="description" maxlength="2000" rows="3" required></textarea></label>
-        <label><span data-i18n="category">Category</span><input name="category" maxlength="80" required></label>
-        <label><span data-i18n="priceMyr">Price (MYR)</span><input name="price" inputmode="decimal" required></label>
+        <label><span data-i18n="category">Category</span><select name="category" required></select></label>
+        <label><span data-i18n="price">Price</span><input name="price" inputmode="decimal" required></label>
+        <label><span data-i18n="currency">Currency</span><select name="currency"><option value="MYR">MYR</option><option value="SGD">SGD</option></select></label>
         <label class="full"><span data-i18n="image">Product image</span><input name="image" type="file" accept="image/png,image/jpeg,image/webp"><small data-i18n="imageHelp">PNG, JPEG or WebP, up to 512 KB.</small></label>
-        <img id="product-image-preview" class="product-image-preview" alt="" hidden>
-        <label id="remove-image-label" class="check-row full" hidden><input name="removeImage" type="checkbox"><span data-i18n="removeImage">Remove current image</span></label>
+        <div id="product-image-panel" class="product-image-panel full" hidden><img id="product-image-preview" class="product-image-preview" alt=""><div><p id="product-image-status" data-i18n="currentImage">Current image</p><button id="product-remove-image" class="secondary-button" type="button" data-i18n="removeImage">Remove image</button><button id="product-restore-image" class="text-button" type="button" data-i18n="restoreImage" hidden>Undo removal</button></div></div>
         <label class="check-row full"><input name="active" type="checkbox"><span data-i18n="available">Active in shop</span></label>
       </div>
       <p id="product-form-error" class="message" role="alert"></p>

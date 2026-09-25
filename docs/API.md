@@ -15,9 +15,14 @@
 | `GET` | `/api/v1/products/{id}` | Public active-only product detail. |
 | `GET` | `/api/v1/products/{id}/image` | Bounded image bytes for an active product; returns 404 for absent/inactive images. |
 | `GET` | `/api/v1/seller/products` | Authorized seller list, including inactive products; `search`, `category`, `limit`, `offset`. |
-| `POST` | `/api/v1/seller/products` | Authorized same-origin/CSRF product create; MYR only. |
+| `POST` | `/api/v1/seller/products` | Authorized same-origin/CSRF product create in MYR or SGD with a managed category code. |
 | `PATCH` | `/api/v1/seller/products/{id}` | Authorized same-origin/CSRF partial edit or availability change. |
 | `GET` | `/api/v1/seller/products/{id}/image` | Authorized image read, including inactive products. |
+| `GET` | `/api/v1/seller/categories` | Authorized list of category codes, labels and active states. |
+| `POST` | `/api/v1/seller/categories` | Same-origin/CSRF create with immutable uppercase `code` and `label`; returns 409 for a duplicate. |
+| `PATCH` | `/api/v1/seller/categories/{code}` | Same-origin/CSRF update of `label` and/or `active`; no deletion endpoint. |
+| `GET` | `/api/v1/seller/company-settings` | Authorized `{ "defaultCurrency": "MYR" | "SGD" }` read. |
+| `PATCH` | `/api/v1/seller/company-settings` | Same-origin/CSRF update of `defaultCurrency`; existing prices and orders are unchanged. |
 | `POST` | `/api/v1/orders` | Same-origin guest checkout with a bounded JSON body and `Idempotency-Key`; creates an atomic order and returns a receipt. |
 | `GET` | `/api/v1/seller/orders` | Authorized seller queue with `status`, order-number `search`, `limit` and `offset`; returns `{items, nextOffset}`. |
 | `GET` | `/api/v1/seller/orders/{orderId}` | Authorized complete order snapshot and audit history. |
@@ -55,7 +60,7 @@ Example checkout request (illustrative; no real personal data):
 }
 ```
 
-Buyer WhatsApp and recipient phone fields accept valid international numbers with Malaysia (`+60`) or Singapore (`+65`) calling codes for the MVP. The server normalizes them to E.164 before persistence and rejects malformed input with a field-specific `INVALID_INPUT` error. Phone country does not have to match UI language or destination address country. The shop uses MYR; the MVP does not calculate shipping charges or GST, enforce a delivery area, or integrate logistics. The address and postcode are collected for seller review, without an automatic serviceability promise.
+Buyer WhatsApp and recipient phone fields accept valid international numbers with Malaysia (`+60`) or Singapore (`+65`) calling codes for the MVP. The server normalizes them to E.164 before persistence and rejects malformed input with a field-specific `INVALID_INPUT` error. Phone country does not have to match UI language or destination address country. Products can use MYR or SGD, initially defaulting to MYR. A checkout must contain one currency: `MIXED_CURRENCY` (409) is returned before any order write, and the cart disables checkout until items are separated. There is no automatic currency conversion. The MVP does not calculate shipping charges or GST, enforce a delivery area, or integrate logistics. The address and postcode are collected for seller review, without an automatic serviceability promise.
 
 Server-side contact validators check strict `+60`/`+65` input with pinned `libphonenumber-js` maximum metadata, normalize it to E.164, bound buyer/recipient names and optional email, require a boolean WhatsApp order-contact choice, and identify the invalid field. A structurally valid number is not proof of ownership, reachability, or WhatsApp registration. Addresses require line 1, postcode and a two-letter country code; line 2, city and region are optional. The country code is recorded for manual seller review and does not enforce a delivery area.
 
@@ -85,15 +90,19 @@ The order number is allocated by a private sequence; the example is illustrative
 | `POST` | `/api/v1/seller/orders/{orderId}/confirm` | Confirm a submitted order using `expectedRevision`. |
 | `POST` | `/api/v1/seller/orders/{orderId}/reject` | Reject a submitted order using `expectedRevision` and a bounded reason. |
 
-Queue items contain order ID/number, buyer name, status, revision, MYR total and timestamps; phone and address appear only in the authorized detail. Detail returns `buyer` with full name, normalized WhatsApp phone, optional email, opt-in boolean and consent evidence; ordered `deliveries` with recipient, address and item price snapshots; and ordered `events` with actor, previous/new status, reason and time. A detail read uses one SQLite snapshot. Seller browser sessions use a server-controlled, `HttpOnly` cookie with production `Secure` and appropriate `SameSite` settings. Mutating requests require same origin and a CSRF token. Login responses are generic on failure and rate limited. Later catalog edits do not rewrite existing order snapshots.
+Queue items contain order ID/number, buyer name, status, revision, stored-currency total and timestamps; phone and address appear only in the authorized detail. Detail returns `buyer` with full name, normalized WhatsApp phone, optional email, opt-in boolean and consent evidence; ordered `deliveries` with recipient, address and item price snapshots; and ordered `events` with actor, previous/new status, reason and time. A detail read uses one SQLite snapshot. Seller browser sessions use a server-controlled, `HttpOnly` cookie with production `Secure` and appropriate `SameSite` settings. Mutating requests require same origin and a CSRF token. Login responses are generic on failure and rate limited. Later catalog edits do not rewrite existing order snapshots.
 
 Confirm body is `{ "expectedRevision": 1 }`; reject body is `{ "expectedRevision": 1, "reason": "Cannot fulfill this order." }` with a required reason of at most 500 characters. Only `SUBMITTED` can move to `CONFIRMED` or `REJECTED`. A decision increments the revision and appends an event with the authenticated seller username in the same transaction. An outdated revision or already-decided order returns `STALE_REVISION` (409) without another event. Unknown order IDs return 404. The seller UI must reload after a stale response.
 
 The planned localized catalog extension would accept text keyed by supported language tags, return English when a translation is absent, and snapshot the checkout display name and locale. No translation write field is implemented yet. Current orders snapshot the seller-authored English name and the selected UI locale.
 
-Seller product requests require SKU, English name/description, category, integer `priceMinor`, `currency: "MYR"` and boolean `active` on create. PATCH accepts a nonempty subset. Optional `imageDataUrl` is a PNG/JPEG/WebP base64 data URL up to 512 KB decoded; `null` removes an image. The server validates signature and size, stores decoded bytes in private SQLite, and returns an `imageUrl` path rather than embedding base64 in product lists. The seller page uses a placeholder when no image exists. Localized product text remains a planned extension; English is the current public fallback. Duplicate SKU returns `DUPLICATE_SKU` (409). Product responses use `Cache-Control: no-store`.
+Seller product requests require SKU, English name/description, an active category `code` in `category`, integer `priceMinor`, `currency: "MYR" | "SGD"` and boolean `active` on create. PATCH accepts a nonempty subset. Optional `imageDataUrl` is a PNG/JPEG/WebP base64 data URL up to 512 KB decoded; `null` removes an image. The server validates signature and size, stores decoded bytes in private SQLite, and returns an `imageUrl` path rather than embedding base64 in product lists. The seller page uses a placeholder when no image exists. Localized product text remains a planned extension; English is the current public fallback. Duplicate SKU returns `DUPLICATE_SKU` (409). Product responses use `Cache-Control: no-store`.
 
 The seller web app builds an official `https://wa.me/<international-digits>` click-to-chat link from the authorized buyer phone only when that buyer opted in to order-related WhatsApp contact. It copies individual buyer and recipient contact/address fields from that authorized response, with visible clipboard success/failure feedback. The link has no prefilled message; sending remains manual. The API does not send WhatsApp messages or export courier files in the MVP. `Sales Orders` and `Sales Order Confirmation` are UI views over the same order endpoints and order state. The confirmation view reloads the queue/detail after a stale 409 and keeps mutations online only.
+
+## Managed categories and company settings
+
+`general_code` currently has only `PRODUCT_CATEGORY` rows. Creating a category requires `{ "code": "HOME_GOODS", "label": "Home goods" }`; `code` is immutable and accepts uppercase letters, digits, `_` and `-`. PATCH accepts a nonempty subset of `label` and `active`. Deactivating a category prevents new assignments but does not delete or hide products already assigned to it. The public product `category` and public list `categories` contain display labels. Seller product responses add `categoryCode` so the editor can select the stable code. The optional product-list `category` query filters by current display label. Company settings change the default currency shown for new product drafts; each product's submitted currency remains authoritative. Existing products and order snapshots are never converted by this setting.
 
 ## Error contract
 
@@ -101,7 +110,7 @@ The seller web app builds an official `https://wa.me/<international-digits>` cli
 { "error": { "code": "STALE_REVISION", "message": "The order changed. Reload and try again." } }
 ```
 
-Observed codes include `INVALID_INPUT` (400), `UNAUTHORIZED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404), `PRODUCT_UNAVAILABLE` (409), `IDEMPOTENCY_CONFLICT` (409), `STALE_REVISION` (409), and `RATE_LIMITED` (429). Do not reveal whether an unverified phone or email exists through a public lookup response.
+Observed codes include `INVALID_INPUT` (400), `UNAUTHORIZED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404), `PRODUCT_UNAVAILABLE` (409), `MIXED_CURRENCY` (409), `DUPLICATE_CATEGORY` (409), `IDEMPOTENCY_CONFLICT` (409), `STALE_REVISION` (409), and `RATE_LIMITED` (429). Do not reveal whether an unverified phone or email exists through a public lookup response.
 
 ## Deferred APIs
 

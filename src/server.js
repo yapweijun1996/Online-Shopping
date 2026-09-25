@@ -8,6 +8,7 @@ import { serveStatic } from './static.js';
 import { createProduct, getProduct, getProductImage, listProducts, updateProduct } from './products.js';
 import { createOrder } from './orders.js';
 import { decideSellerOrder, getSellerOrder, listSellerOrders } from './seller-orders.js';
+import { createCategory, getCompanySettings, listCategories, updateCategory, updateCompanySettings } from './settings.js';
 
 const productIdPath = /^\/api\/v1\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
 const sellerProductIdPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
@@ -114,6 +115,26 @@ export function createApp(config) {
     }
     if (request.method === 'GET' && pathname === '/api/v1/seller/products') {
       return json(response, 200, listProducts(database, url.searchParams, true));
+    }
+    if (request.method === 'GET' && pathname === '/api/v1/seller/categories') {
+      return json(response, 200, { items: listCategories(database) });
+    }
+    if (request.method === 'GET' && pathname === '/api/v1/seller/company-settings') {
+      return json(response, 200, getCompanySettings(database));
+    }
+    if ((request.method === 'POST' && pathname === '/api/v1/seller/categories') ||
+        (request.method === 'PATCH' && pathname.startsWith('/api/v1/seller/categories/')) ||
+        (request.method === 'PATCH' && pathname === '/api/v1/seller/company-settings')) {
+      requireOrigin(request, expectedOrigin);
+      if (request.headers['x-csrf-token'] !== session.csrf_token) throw new ApiError(403, 'FORBIDDEN', 'CSRF token is required.');
+      const body = await readJson(request);
+      if (pathname === '/api/v1/seller/company-settings') return json(response, 200, updateCompanySettings(database, body));
+      if (request.method === 'POST') return json(response, 201, createCategory(database, body));
+      let code;
+      try { code = decodeURIComponent(pathname.slice('/api/v1/seller/categories/'.length)); }
+      catch { throw new ApiError(404, 'NOT_FOUND', 'Category not found.'); }
+      if (!code || code.includes('/')) throw new ApiError(404, 'NOT_FOUND', 'Category not found.');
+      return json(response, 200, updateCategory(database, code, body));
     }
     if (request.method === 'GET' && pathname === '/api/v1/seller/orders') {
       return json(response, 200, listSellerOrders(database, url.searchParams));

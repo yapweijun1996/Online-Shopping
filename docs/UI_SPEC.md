@@ -4,7 +4,7 @@
 
 ## Public shop layout
 
-The shop uses the owner-supplied storefront image and standalone HTML as layout references. Its header places product search beside Browse, Cart, and language selection. A static message banner uses the first active product image returned by the public API when one exists; the category rail and category selector use the API's active categories. The catalog shows compact cards with active-product images, seller-authored names/descriptions, MYR prices, detail access, and cart actions. Search and category selection load public API results; the count describes the products currently shown, including paged results. Cart and checkout retain their existing server-backed behavior.
+The shop uses the owner-supplied storefront image and standalone HTML as layout references. Its header places product search beside Browse, Cart, and language selection. A static message banner uses the first active product image returned by the public API when one exists; the category rail and category selector use the API's active categories. The catalog shows compact cards with active-product images, seller-authored names/descriptions, per-product MYR or SGD prices, detail access, and cart actions. Search and category selection load public API results; the count describes the products currently shown, including paged results. Cart and checkout retain their existing server-backed behavior.
 
 At wide widths, category filtering sits beside a four-column catalog. At smaller widths it becomes a compact row, the header search takes a second line, and product cards use two columns or one at the narrowest phone width. The category rail scrolls horizontally within its own bounds. The product detail dialog keeps a close control, keyboard dismissal, and full description. Unsupported mock content from the reference—ratings, discounts, sales counts, wishlists, accounts, and free-delivery promises—does not appear in the live shop. Only active products and their images come from the backend; the banner does not create a second product source of truth.
 
@@ -23,6 +23,8 @@ The seller login uses the owner-supplied image and standalone HTML as visual ref
 ![Seller mobile order confirmation preview](assets/seller-mobile-preview.png)
 
 Use a light background, navy text, teal primary actions, subtle borders, clear status chips, and consistent outline SVG icons. Use a compact set of reusable components: app bar, side navigation, account menu, language menu, order list/card, detail section, copy button, status chip, item list, and action bar. Final implementation must use real SVG assets or inline SVG elements; bitmap icons in these images are visual references only.
+
+The live seller rail starts at the top of the viewport. Its SVG brand button collapses or expands the desktop rail and closes the phone drawer; the current view remains selected. The top bar sits beside the rail on desktop and spans the screen on phones. Visible shop, seller and login marks use the shared SVG logo. A compact globe button opens the seven-language menu, closes with Escape/outside click, and restores focus after selection. The product editor selects a server-managed category code and a per-product MYR/SGD currency; Company settings controls only the default for new products. A current or newly selected product image is previewed beside an explicit Remove image button; removal is pending until Save and can be undone. Category codes can be created, relabeled or deactivated without deleting products.
 
 ## Desktop layout
 

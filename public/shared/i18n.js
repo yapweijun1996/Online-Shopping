@@ -485,6 +485,22 @@ const sellerOrderMessages = {
 };
 for (const { code } of languages) Object.assign(messages[code], sellerOrderMessages[code]);
 
+const settingsMessages = {
+  en: { configuration: 'Configuration', categoryCodes: 'Category codes', companySettings: 'Company settings', categoryIntro: 'Manage categories available in product forms. Codes stay fixed; deactivate unused categories.', categoryCode: 'Code', categoryLabel: 'Display name', addCategory: 'Add category', saveCategory: 'Save', categorySaved: 'Category saved.', duplicateCategory: 'Code or name already exists.', currencyIntro: 'Choose the default currency for new products. Existing product prices and orders keep their own currency.', defaultCurrency: 'Default currency', saveSettings: 'Save settings', settingsSaved: 'Settings saved.', price: 'Price', currency: 'Currency', chooseCategory: 'Choose a category', currentImage: 'Current image', newImage: 'New image selected', imagePendingRemoval: 'Image will be removed when you save.', restoreImage: 'Undo removal', mixedCurrencies: 'This cart contains MYR and SGD products. Check out one currency at a time.', removeImage: 'Remove image' },
+  ms: { configuration: 'Konfigurasi', categoryCodes: 'Kod kategori', companySettings: 'Tetapan syarikat', categoryIntro: 'Urus kategori dalam borang produk. Kod kekal; nyahaktifkan kategori yang tidak digunakan.', categoryCode: 'Kod', categoryLabel: 'Nama paparan', addCategory: 'Tambah kategori', saveCategory: 'Simpan', categorySaved: 'Kategori disimpan.', duplicateCategory: 'Kod atau nama sudah wujud.', currencyIntro: 'Pilih mata wang lalai untuk produk baharu. Harga produk dan pesanan sedia ada kekal.', defaultCurrency: 'Mata wang lalai', saveSettings: 'Simpan tetapan', settingsSaved: 'Tetapan disimpan.', price: 'Harga', currency: 'Mata wang', chooseCategory: 'Pilih kategori', currentImage: 'Imej semasa', newImage: 'Imej baharu dipilih', imagePendingRemoval: 'Imej akan dibuang selepas disimpan.', restoreImage: 'Batalkan pembuangan', mixedCurrencies: 'Troli ini mengandungi produk MYR dan SGD. Selesaikan satu mata wang setiap kali.', removeImage: 'Buang imej' },
+  'zh-Hans': { configuration: '配置', categoryCodes: '分类代码', companySettings: '公司设置', categoryIntro: '管理商品可选分类。代码保持不变；不再使用时可停用。', categoryCode: '代码', categoryLabel: '显示名称', addCategory: '新增分类', saveCategory: '保存', categorySaved: '分类已保存。', duplicateCategory: '代码或名称已存在。', currencyIntro: '选择新商品的默认币种。现有商品价格和订单保留原币种。', defaultCurrency: '默认币种', saveSettings: '保存设置', settingsSaved: '设置已保存。', price: '价格', currency: '币种', chooseCategory: '选择分类', currentImage: '当前图片', newImage: '已选择新图片', imagePendingRemoval: '保存后将移除图片。', restoreImage: '撤销移除', mixedCurrencies: '购物车同时包含 MYR 和 SGD 商品。请按币种分别结账。', removeImage: '移除图片' },
+  vi: { configuration: 'Cấu hình', categoryCodes: 'Mã danh mục', companySettings: 'Cài đặt công ty', categoryIntro: 'Quản lý danh mục trong biểu mẫu sản phẩm. Mã không đổi; có thể ngừng dùng danh mục.', categoryCode: 'Mã', categoryLabel: 'Tên hiển thị', addCategory: 'Thêm danh mục', saveCategory: 'Lưu', categorySaved: 'Đã lưu danh mục.', duplicateCategory: 'Mã hoặc tên đã tồn tại.', currencyIntro: 'Chọn tiền tệ mặc định cho sản phẩm mới. Giá và đơn hàng cũ giữ nguyên tiền tệ.', defaultCurrency: 'Tiền tệ mặc định', saveSettings: 'Lưu cài đặt', settingsSaved: 'Đã lưu cài đặt.', price: 'Giá', currency: 'Tiền tệ', chooseCategory: 'Chọn danh mục', currentImage: 'Ảnh hiện tại', newImage: 'Đã chọn ảnh mới', imagePendingRemoval: 'Ảnh sẽ bị xóa khi lưu.', restoreImage: 'Hoàn tác', mixedCurrencies: 'Giỏ hàng có MYR và SGD. Vui lòng thanh toán riêng từng loại tiền.', removeImage: 'Xóa ảnh' },
+  th: { configuration: 'การตั้งค่า', categoryCodes: 'รหัสหมวดหมู่', companySettings: 'ตั้งค่าบริษัท', categoryIntro: 'จัดการหมวดหมู่ในแบบฟอร์มสินค้า รหัสคงที่ และปิดใช้งานหมวดหมู่ที่ไม่ใช้', categoryCode: 'รหัส', categoryLabel: 'ชื่อที่แสดง', addCategory: 'เพิ่มหมวดหมู่', saveCategory: 'บันทึก', categorySaved: 'บันทึกหมวดหมู่แล้ว', duplicateCategory: 'รหัสหรือชื่อมีอยู่แล้ว', currencyIntro: 'เลือกสกุลเงินเริ่มต้นของสินค้าใหม่ ราคาสินค้าและคำสั่งซื้อเดิมคงสกุลเงินเดิม', defaultCurrency: 'สกุลเงินเริ่มต้น', saveSettings: 'บันทึกการตั้งค่า', settingsSaved: 'บันทึกแล้ว', price: 'ราคา', currency: 'สกุลเงิน', chooseCategory: 'เลือกหมวดหมู่', currentImage: 'รูปปัจจุบัน', newImage: 'เลือกรูปใหม่แล้ว', imagePendingRemoval: 'รูปจะถูกลบเมื่อบันทึก', restoreImage: 'ยกเลิกการลบ', mixedCurrencies: 'ตะกร้ามีสินค้า MYR และ SGD กรุณาสั่งซื้อแยกตามสกุลเงิน', removeImage: 'ลบรูป' },
+  ja: { configuration: '設定', categoryCodes: 'カテゴリコード', companySettings: '会社設定', categoryIntro: '商品フォームのカテゴリを管理します。コードは固定で、未使用カテゴリは無効化できます。', categoryCode: 'コード', categoryLabel: '表示名', addCategory: 'カテゴリを追加', saveCategory: '保存', categorySaved: 'カテゴリを保存しました。', duplicateCategory: 'コードまたは名前が既にあります。', currencyIntro: '新商品の既定通貨を選びます。既存商品の価格と注文の通貨は変わりません。', defaultCurrency: '既定通貨', saveSettings: '設定を保存', settingsSaved: '設定を保存しました。', price: '価格', currency: '通貨', chooseCategory: 'カテゴリを選択', currentImage: '現在の画像', newImage: '新しい画像を選択', imagePendingRemoval: '保存すると画像を削除します。', restoreImage: '削除を取り消す', mixedCurrencies: 'カートに MYR と SGD の商品があります。通貨ごとに注文してください。', removeImage: '画像を削除' },
+  ko: { configuration: '설정', categoryCodes: '카테고리 코드', companySettings: '회사 설정', categoryIntro: '상품 양식의 카테고리를 관리합니다. 코드는 고정되며 사용하지 않는 카테고리는 비활성화합니다.', categoryCode: '코드', categoryLabel: '표시 이름', addCategory: '카테고리 추가', saveCategory: '저장', categorySaved: '카테고리를 저장했습니다.', duplicateCategory: '코드 또는 이름이 이미 있습니다.', currencyIntro: '새 상품의 기본 통화를 선택합니다. 기존 상품 가격과 주문 통화는 유지됩니다.', defaultCurrency: '기본 통화', saveSettings: '설정 저장', settingsSaved: '설정을 저장했습니다.', price: '가격', currency: '통화', chooseCategory: '카테고리 선택', currentImage: '현재 이미지', newImage: '새 이미지 선택됨', imagePendingRemoval: '저장하면 이미지가 제거됩니다.', restoreImage: '제거 취소', mixedCurrencies: '장바구니에 MYR과 SGD 상품이 있습니다. 통화별로 따로 주문하세요.', removeImage: '이미지 제거' },
+};
+for (const { code } of languages) Object.assign(messages[code], settingsMessages[code]);
+const categoryAvailability = {
+  en: 'Available for new products', ms: 'Tersedia untuk produk baharu', 'zh-Hans': '可供新商品使用',
+  vi: 'Dùng cho sản phẩm mới', th: 'ใช้กับสินค้าใหม่', ja: '新商品で使用可能', ko: '새 상품에 사용 가능',
+};
+for (const { code } of languages) messages[code].categoryActive = categoryAvailability[code];
+
 let current = 'en';
 try {
   const saved = localStorage.getItem('online-shopping-language');
@@ -528,4 +544,43 @@ export function setupLanguageSelect(select) {
   select.value = current;
   select.addEventListener('change', () => setLocale(select.value));
   setLocale(current);
+}
+
+export function setupLanguageMenu(host) {
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'language-trigger';
+  trigger.dataset.i18nAria = 'selectLanguage';
+  trigger.setAttribute('aria-haspopup', 'true');
+  trigger.setAttribute('aria-expanded', 'false');
+  trigger.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>';
+  const options = document.createElement('div');
+  options.className = 'language-options';
+  options.hidden = true;
+  function close() { options.hidden = true; trigger.setAttribute('aria-expanded', 'false'); }
+  for (const { code, label } of languages) {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.textContent = label;
+    option.lang = code;
+    option.addEventListener('click', () => { setLocale(code); close(); trigger.focus(); });
+    options.append(option);
+  }
+  function sync() {
+    trigger.setAttribute('aria-label', `${t('selectLanguage')}: ${languages.find(({ code }) => code === current).label}`);
+    for (const option of options.children) option.setAttribute('aria-current', String(option.lang === current));
+  }
+  trigger.addEventListener('click', () => {
+    options.hidden = !options.hidden;
+    trigger.setAttribute('aria-expanded', String(!options.hidden));
+    if (!options.hidden) options.querySelector('[aria-current="true"]').focus();
+  });
+  host.append(trigger, options);
+  document.addEventListener('click', (event) => { if (!host.contains(event.target)) close(); });
+  host.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !options.hidden) { close(); trigger.focus(); }
+  });
+  document.addEventListener('localechange', sync);
+  setLocale(current);
+  sync();
 }

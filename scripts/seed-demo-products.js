@@ -54,6 +54,19 @@ try {
     offset = body.nextOffset;
   }
 
+  const { body: categoryResponse } = await request('/api/v1/seller/categories', { headers: { Cookie: cookie } });
+  const categoryCodes = new Map(categoryResponse.items.map((category) => [category.label, category.code]));
+  for (const label of new Set(products.map((product) => product.category))) {
+    if (categoryCodes.has(label)) continue;
+    const code = label.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '');
+    await request('/api/v1/seller/categories', {
+      method: 'POST',
+      headers: { Origin: origin, Cookie: cookie, 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, label }),
+    });
+    categoryCodes.set(label, code);
+  }
+
   for (const product of products) {
     const { image, ...fields } = product;
     if (!/^[a-z0-9-]+\.webp$/.test(image)) throw new Error(`Invalid demo image name for ${product.sku}.`);
@@ -71,7 +84,7 @@ try {
     const { body } = await request('/api/v1/seller/products', {
       method: 'POST',
       headers: { Origin: origin, Cookie: cookie, 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...fields, currency: 'MYR', active: true,
+      body: JSON.stringify({ ...fields, category: categoryCodes.get(fields.category), currency: 'MYR', active: true,
         imageDataUrl: `data:image/webp;base64,${bytes.toString('base64')}` }),
     });
     if (!body.imageUrl || body.sku !== product.sku) throw new Error(`Product ${product.sku} was not created correctly.`);

@@ -5,11 +5,12 @@ import path from 'node:path';
 import test from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/server.js';
+import { createCategory } from '../src/settings.js';
 
 const username = 'product_owner';
 const password = 'LocalProductPass123!';
 const draft = {
-  sku: 'item-1', name: 'Example item', description: 'Example description', category: 'Example category',
+  sku: 'item-1', name: 'Example item', description: 'Example description', category: 'EXAMPLE',
   priceMinor: 900, currency: 'MYR', active: false,
 };
 
@@ -17,6 +18,7 @@ async function fixture() {
   const directory = mkdtempSync(path.join(tmpdir(), 'online-shopping-products-'));
   const config = { username, password, dbPath: path.join(directory, 'private.db'), production: false, publicOrigin: null };
   const app = createApp(config);
+  createCategory(app.database, { code: 'EXAMPLE', label: 'Example category' });
   await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve));
   const origin = `http://127.0.0.1:${app.server.address().port}`;
   return {
@@ -74,7 +76,7 @@ test('product API rejects invalid writes and duplicate SKUs without changing the
     const duplicate = await f.request('POST', '/api/v1/seller/products', { ...draft, sku: 'ITEM-1' }, headers);
     assert.equal(duplicate.response.status, 409);
     assert.equal(duplicate.data.error.code, 'DUPLICATE_SKU');
-    const wrongCurrency = await f.request('POST', '/api/v1/seller/products', { ...draft, sku: 'item-2', currency: 'SGD' }, headers);
+    const wrongCurrency = await f.request('POST', '/api/v1/seller/products', { ...draft, sku: 'item-2', currency: 'USD' }, headers);
     assert.equal(wrongCurrency.response.status, 400);
     assert.equal(wrongCurrency.data.error.field, 'currency');
     const invalidPrice = await f.request('PATCH', `/api/v1/seller/products/${created.data.id}`, { priceMinor: -1 }, headers);
@@ -109,6 +111,37 @@ test('base64 images stay private until activation and can be removed', async () 
   } finally { await f.close(); }
 });
 
+test('seller manages category codes and default currency without rewriting existing products', async () => {
+  const f = await fixture();
+  try {
+    assert.equal((await f.request('GET', '/api/v1/seller/categories')).response.status, 401);
+    const { cookie, csrf } = await f.login();
+    const headers = { cookie, 'x-csrf-token': csrf };
+    assert.equal((await f.request('POST', '/api/v1/seller/categories', { code: 'WORK', label: 'Work' }, { cookie })).response.status, 403);
+    const category = await f.request('POST', '/api/v1/seller/categories', { code: 'WORK', label: 'Work' }, headers);
+    assert.equal(category.response.status, 201);
+    assert.equal((await f.request('POST', '/api/v1/seller/categories', { code: 'WORK', label: 'Work' }, headers)).response.status, 409);
+    assert.equal((await f.request('GET', '/api/v1/seller/company-settings', null, { cookie })).data.defaultCurrency, 'MYR');
+    const settings = await f.request('PATCH', '/api/v1/seller/company-settings', { defaultCurrency: 'SGD' }, headers);
+    assert.equal(settings.data.defaultCurrency, 'SGD');
+    const myr = await f.request('POST', '/api/v1/seller/products', draft, headers);
+    const sgd = await f.request('POST', '/api/v1/seller/products', { ...draft, sku: 'item-sgd', category: 'WORK', currency: 'SGD' }, headers);
+    assert.equal(myr.response.status, 201);
+    assert.equal(sgd.response.status, 201);
+    assert.equal(myr.data.currency, 'MYR');
+    assert.equal(sgd.data.currency, 'SGD');
+    assert.equal(sgd.data.category, 'Work');
+    assert.equal(sgd.data.categoryCode, 'WORK');
+    assert.equal((await f.request('PATCH', '/api/v1/seller/categories/WORK', { label: 'Office', active: false }, headers)).data.active, false);
+    assert.equal((await f.request('GET', `/api/v1/seller/products`, null, { cookie })).data.items.find((item) => item.id === sgd.data.id).category, 'Office');
+    assert.equal((await f.request('PATCH', `/api/v1/seller/products/${sgd.data.id}`, { category: 'WORK', priceMinor: 1100 }, headers)).response.status, 200);
+    const blocked = await f.request('POST', '/api/v1/seller/products', { ...draft, sku: 'item-next', category: 'WORK' }, headers);
+    assert.equal(blocked.response.status, 400);
+    assert.equal(blocked.data.error.field, 'category');
+    assert.equal((await f.request('DELETE', '/api/v1/seller/categories/WORK', null, headers)).response.status, 404);
+  } finally { await f.close(); }
+});
+
 test('schema version one upgrades without losing the provisioned seller', async () => {
   const f = await fixture();
   const config = f.config;
@@ -116,7 +149,8 @@ test('schema version one upgrades without losing the provisioned seller', async 
   const { cookie } = await f.login();
   await f.app.close();
   const old = new DatabaseSync(config.dbPath);
-  old.exec(`DROP TABLE checkout_idempotency; DROP TABLE order_event; DROP TABLE order_item;
+  old.exec(`DROP TABLE company_setting; DROP TABLE general_code;
+    DROP TABLE checkout_idempotency; DROP TABLE order_event; DROP TABLE order_item;
     DROP TABLE delivery; DROP TABLE shop_order; DROP TABLE order_sequence;
     DROP TABLE product; PRAGMA user_version = 1`);
   old.close();
@@ -126,7 +160,7 @@ test('schema version one upgrades without losing the provisioned seller', async 
     const origin = `http://127.0.0.1:${migrated.server.address().port}`;
     assert.equal((await fetch(`${origin}/ready`)).status, 200);
     assert.equal((await fetch(`${origin}/api/v1/seller/session`, { headers: { cookie } })).status, 200);
-    assert.equal(migrated.database.prepare('PRAGMA user_version').get().user_version, 3);
+    assert.equal(migrated.database.prepare('PRAGMA user_version').get().user_version, 5);
   } finally {
     await migrated.close();
     rmSync(directory, { recursive: true, force: true });

@@ -32,6 +32,8 @@ The initial Mandarin written form is Simplified Chinese, matching the owner's cu
 
 ## Translation behavior
 
+Both online shells and their offline pages use a compact SVG globe button for language selection. It opens a keyboard-accessible list in the required order, announces the selected language, closes with Escape or an outside click, and returns focus after a choice. Visible brand marks are the shared SVG asset; the manifests retain PNG sizes for installation compatibility. Seller category/settings and image-removal states have translations in all seven locales.
+
 - Both customer and seller interfaces support all seven languages. Keep interface strings in locale resources, not duplicated across components. English is the source and fallback when a noncritical translation is missing during development; complete and review every core flow in all seven languages before release.
 - The language selector changes labels, validation messages, empty/error states, accessibility names, order status wording, and navigation without altering server status codes, IDs, customer-entered values, or authoritative prices.
 - Language choice is independent of phone calling code: a customer using any supported UI language can enter a Malaysia `+60` or Singapore `+65` buyer/recipient phone.

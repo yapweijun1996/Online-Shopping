@@ -328,7 +328,8 @@ export function mountCheckout({ onSuccess }) {
       if (!response.ok) {
         if (result.error?.code === 'IDEMPOTENCY_CONFLICT') pendingIntent = null;
         setStatus('');
-        setError(result.error?.code === 'PRODUCT_UNAVAILABLE' ? 'cartUnavailable' :
+        setError(result.error?.code === 'MIXED_CURRENCY' ? 'mixedCurrencies' :
+          result.error?.code === 'PRODUCT_UNAVAILABLE' ? 'cartUnavailable' :
           result.error?.code === 'INVALID_INPUT' ? 'checkoutInvalid' : 'orderError', result.error?.field);
         return;
       }

@@ -13,7 +13,7 @@
 <body>
   <a class="skip-link" href="#catalog-results" data-i18n="browseProducts">Browse products</a>
   <header class="topbar shop-topbar">
-    <a class="brand" href="/shop/"><span class="brand-mark">OS</span><span data-i18n="shop">Shop</span></a>
+    <a class="brand" href="/shop/"><img class="brand-mark" src="/favicon.svg" alt=""><span data-i18n="shop">Shop</span></a>
     <form id="catalog-search-form" class="header-search" role="search">
       <label class="sr-only" for="catalog-search" data-i18n="searchProducts">Search products</label>
       <input id="catalog-search" type="search" maxlength="100" autocomplete="off" placeholder="Search products">
@@ -23,7 +23,7 @@
       <a href="#catalog" data-i18n="browse">Browse</a>
       <a href="#cart" data-i18n-aria="cart" aria-label="Cart"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 4h2l2.3 11.5h11.7L21 7H5"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg><span data-i18n="cart">Cart</span> <span id="cart-count" class="cart-count">0</span></a>
     </nav>
-    <label class="language-control shop-language"><span data-i18n="selectLanguage">Language</span><select id="language" data-i18n-aria="selectLanguage"></select></label>
+    <div id="language" class="language-menu shop-language"></div>
   </header>
   <main class="shop-main">
     <section id="catalog-view" aria-labelledby="catalog-title">

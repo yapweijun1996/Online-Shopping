@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { chmodSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 5;
 
 function migrate(database, version, sql) {
   database.exec('BEGIN IMMEDIATE');
@@ -135,6 +135,65 @@ export function openDatabase(file) {
       ) STRICT;`);
     version = 3;
   }
+  if (version === 3) {
+    migrate(database, 4, `
+      CREATE TABLE general_code (
+        type TEXT NOT NULL CHECK (type = 'PRODUCT_CATEGORY'),
+        code TEXT NOT NULL,
+        label TEXT NOT NULL,
+        active INTEGER NOT NULL CHECK (active IN (0, 1)),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (type, code),
+        UNIQUE (type, label)
+      ) STRICT;
+      INSERT INTO general_code(type, code, label, active, created_at, updated_at)
+        SELECT 'PRODUCT_CATEGORY', category, category, 1, datetime('now'), datetime('now')
+        FROM product GROUP BY category;`);
+    version = 4;
+  }
+  if (version === 4) {
+    // SQLite cannot relax a CHECK constraint in place. Rebuild each affected table
+    // with foreign-key checking disabled only for this atomic migration.
+    database.exec('PRAGMA foreign_keys = OFF');
+    try {
+      database.exec('BEGIN IMMEDIATE');
+      for (const table of ['product', 'shop_order', 'order_item']) {
+        const schema = database.prepare('SELECT sql FROM sqlite_schema WHERE type = ? AND name = ?').get('table', table)?.sql;
+        if (!schema || !schema.includes("currency = 'MYR'")) throw new Error(`Unexpected ${table} currency schema.`);
+        database.exec(schema.replace(new RegExp(`^CREATE TABLE ["\x60]?${table}["\x60]?`, 'i'), `CREATE TABLE ${table}_new`)
+          .replace("currency = 'MYR'", "currency IN ('MYR', 'SGD')"));
+        const columns = database.prepare(`PRAGMA table_info(${table})`).all().map((column) => column.name).join(', ');
+        database.exec(`INSERT INTO ${table}_new (${columns}) SELECT ${columns} FROM ${table}`);
+        database.exec(`DROP TABLE ${table}`);
+        database.exec(`ALTER TABLE ${table}_new RENAME TO ${table}`);
+      }
+      database.exec('CREATE INDEX product_public ON product(active, category, updated_at)');
+      database.exec('CREATE INDEX shop_order_queue ON shop_order(status, submitted_at DESC)');
+      database.exec(`CREATE TABLE company_setting (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        default_currency TEXT NOT NULL CHECK (default_currency IN ('MYR', 'SGD')),
+        updated_at TEXT NOT NULL
+      ) STRICT;
+      INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', datetime('now'));
+      CREATE TRIGGER product_category_insert BEFORE INSERT ON product
+        WHEN NOT EXISTS (SELECT 1 FROM general_code WHERE type = 'PRODUCT_CATEGORY' AND code = NEW.category AND active = 1)
+        BEGIN SELECT RAISE(ABORT, 'Unknown active product category'); END;
+      CREATE TRIGGER product_category_update BEFORE UPDATE OF category ON product
+        WHEN NEW.category <> OLD.category AND NOT EXISTS
+          (SELECT 1 FROM general_code WHERE type = 'PRODUCT_CATEGORY' AND code = NEW.category AND active = 1)
+        BEGIN SELECT RAISE(ABORT, 'Unknown active product category'); END;`);
+      if (database.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Currency migration failed foreign-key check.');
+      database.exec('PRAGMA user_version = 5');
+      database.exec('COMMIT');
+      version = 5;
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    } finally {
+      database.exec('PRAGMA foreign_keys = ON');
+    }
+  }
   if (version !== SCHEMA_VERSION) {
     database.close();
     throw new Error(`Unsupported database schema version ${version}.`);
@@ -148,6 +207,8 @@ export function ready(database) {
       Boolean(database.prepare('SELECT id FROM admin WHERE id = 1').get()) &&
       Array.isArray(database.prepare('SELECT token_hash FROM session LIMIT 1').all()) &&
       Array.isArray(database.prepare('SELECT id FROM product LIMIT 1').all()) &&
+      Array.isArray(database.prepare('SELECT code FROM general_code LIMIT 1').all()) &&
+      Boolean(database.prepare('SELECT id FROM company_setting WHERE id = 1').get()) &&
       Boolean(database.prepare('SELECT id FROM order_sequence WHERE id = 1').get()) &&
       Array.isArray(database.prepare('SELECT id FROM shop_order LIMIT 1').all()) &&
       Array.isArray(database.prepare('SELECT id FROM delivery LIMIT 1').all()) &&

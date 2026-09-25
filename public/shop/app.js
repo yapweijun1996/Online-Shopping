@@ -1,4 +1,4 @@
-import { formatDate, formatMoney, setupLanguageSelect, t, translate } from '../shared/i18n.js';
+import { formatDate, formatMoney, setupLanguageMenu, t, translate } from '../shared/i18n.js';
 import { registerWorker } from '../shared/pwa.js';
 import { createCartStore } from './cart.js';
 import { mountCheckout } from './checkout.js';
@@ -220,6 +220,7 @@ function renderCart() {
   list.replaceChildren();
   let total = 0;
   let missing = false;
+  const currencies = new Set();
   for (const { productId, quantity, product } of resolvedCart) {
     const row = element('article', 'cart-row');
     row.append(product ? imageFor(product, 'cart-image') : element('div', 'cart-image image-placeholder', t('imageMissing')));
@@ -228,6 +229,7 @@ function renderCart() {
     if (product) {
       detail.append(element('p', '', `${product.category} · ${formatMoney(product.priceMinor, product.currency)}`));
       total += product.priceMinor * quantity;
+      currencies.add(product.currency);
     } else missing = true;
     const controls = element('div', 'cart-row-controls');
     const label = element('label', '', t('quantity'));
@@ -244,8 +246,9 @@ function renderCart() {
   }
   const summary = byId('cart-summary');
   summary.hidden = resolvedCart.length === 0;
-  byId('cart-total').textContent = !missing && Number.isSafeInteger(total) ? formatMoney(total, 'MYR') : '—';
-  byId('checkout-button').disabled = !cartReady || missing || resolvedCart.length === 0;
+  byId('cart-total').textContent = !missing && currencies.size === 1 && Number.isSafeInteger(total)
+    ? formatMoney(total, [...currencies][0]) : '—';
+  byId('checkout-button').disabled = !cartReady || missing || currencies.size > 1 || resolvedCart.length === 0;
 }
 
 async function refreshCart() {
@@ -272,9 +275,10 @@ async function refreshCart() {
     }));
     if (request !== cartRequest) return;
     resolvedCart = results;
-    cartReady = results.every(({ product }) => Boolean(product));
+    const currencies = new Set(results.map(({ product }) => product?.currency).filter(Boolean));
+    cartReady = results.every(({ product }) => Boolean(product)) && currencies.size === 1;
     renderCart();
-    setCartStatus(results.some(({ product }) => !product) ? 'cartUnavailable' : '');
+    setCartStatus(results.some(({ product }) => !product) ? 'cartUnavailable' : currencies.size > 1 ? 'mixedCurrencies' : '');
     return cartReady;
   } catch {
     if (request === cartRequest) setCartStatus('networkError');
@@ -286,7 +290,7 @@ function readReceipt() {
   try {
     const saved = JSON.parse(localStorage.getItem('online-shopping-last-receipt-v1') || 'null');
     if (saved && /^OS-\d{8,}$/.test(saved.orderNo) && Number.isSafeInteger(saved.totalMinor) &&
-        saved.currency === 'MYR' && !Number.isNaN(Date.parse(saved.submittedAt))) return saved;
+        ['MYR', 'SGD'].includes(saved.currency) && !Number.isNaN(Date.parse(saved.submittedAt))) return saved;
   } catch { /* A receipt is optional browser convenience. */ }
   return null;
 }
@@ -361,7 +365,7 @@ function applyCatalogFilters() {
   });
 }
 
-setupLanguageSelect(document.getElementById('language'));
+setupLanguageMenu(document.getElementById('language'));
 byId('catalog-search').placeholder = t('searchProducts');
 registerWorker('/shop/sw.js', '/shop/').catch(() => console.warn('Shop offline shell unavailable.'));
 const cartStore = await createCartStore();
