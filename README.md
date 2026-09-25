@@ -22,7 +22,7 @@ Make it easy for a seller to set up products, for a customer to shop without reg
 
 ## Implementation order
 
-Seller login, product management, public catalog/cart, and guest checkout now run locally. Next build seller order review against the backend API. The initial super admin username and password come from a local, ignored `.env` file. There is no built-in credential in source or committed configuration. Production startup rejects known development defaults and missing or weak credentials.
+Seller login, product management, public catalog/cart, guest checkout, and authorized seller order queue/detail/decision APIs now run locally. Next connect the seller order views to those APIs. The initial super admin username and password come from a local, ignored `.env` file. There is no built-in credential in source or committed configuration. Production startup rejects known development defaults and missing or weak credentials.
 
 There is no customer-facing cross-device history lookup in the MVP. A phone number or email supplied without verification is contact data, not proof of ownership.
 

@@ -6,9 +6,11 @@ import { ApiError, handleErrors, json, readJson, requireOrigin } from './http.js
 import { serveStatic } from './static.js';
 import { createProduct, getProduct, getProductImage, listProducts, updateProduct } from './products.js';
 import { createOrder } from './orders.js';
+import { decideSellerOrder, getSellerOrder, listSellerOrders } from './seller-orders.js';
 
 const productIdPath = /^\/api\/v1\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
 const sellerProductIdPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
+const sellerOrderIdPath = /^\/api\/v1\/seller\/orders\/([0-9a-f-]{36})(?:\/(confirm|reject))?$/;
 
 function image(response, value) {
   if (!value?.mime || !value?.data) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
@@ -105,6 +107,21 @@ export function createApp(config) {
     }
     if (request.method === 'GET' && pathname === '/api/v1/seller/products') {
       return json(response, 200, listProducts(database, url.searchParams, true));
+    }
+    if (request.method === 'GET' && pathname === '/api/v1/seller/orders') {
+      return json(response, 200, listSellerOrders(database, url.searchParams));
+    }
+    const sellerOrder = sellerOrderIdPath.exec(pathname);
+    if (request.method === 'GET' && sellerOrder && !sellerOrder[2]) {
+      const order = getSellerOrder(database, sellerOrder[1]);
+      if (!order) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+      return json(response, 200, order);
+    }
+    if (request.method === 'POST' && sellerOrder?.[2]) {
+      requireOrigin(request, expectedOrigin);
+      if (request.headers['x-csrf-token'] !== session.csrf_token) throw new ApiError(403, 'FORBIDDEN', 'CSRF token is required.');
+      const body = await readJson(request);
+      return json(response, 200, decideSellerOrder(database, sellerOrder[1], sellerOrder[2], body, config.username));
     }
     const sellerProduct = sellerProductIdPath.exec(pathname);
     if (request.method === 'GET' && sellerProduct?.[2] === 'image') {

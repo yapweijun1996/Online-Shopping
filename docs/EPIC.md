@@ -1,6 +1,6 @@
 # MVP epics
 
-**Status: E1 and E2 in progress with guest checkout locally verified; E4 PWA groundwork in progress; E3 planned.** Epics group the 18 acceptance items in [SPEC.md](SPEC.md); they are not separate proof of completion. AC-01 is the first locally verified item.
+**Status: E1 and E2 in progress with guest checkout locally verified; E3 seller API in progress; E4 PWA groundwork in progress.** Epics group the 18 acceptance items in [SPEC.md](SPEC.md); they are not separate proof of completion. AC-01 is the first locally verified item.
 
 | Epic | Outcome and boundary | Acceptance items | Exit evidence |
 | --- | --- | --- | --- |

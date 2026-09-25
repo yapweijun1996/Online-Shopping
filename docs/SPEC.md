@@ -1,6 +1,6 @@
 # MVP specification
 
-**Status: acceptance contract with AC-01 and AC-03–11 locally verified.** The other items remain incomplete. Each `AC` is one progress unit; a row becomes **Implemented** when code and a runnable path exist, **Verified** only when its listed observable checks pass, and **Released** only when verified in the deployed release. See [PROGRESS.md](PROGRESS.md).
+**Status: acceptance contract with AC-01–11 locally verified.** The other items remain incomplete. Each `AC` is one progress unit; a row becomes **Implemented** when code and a runnable path exist, **Verified** only when its listed observable checks pass, and **Released** only when verified in the deployed release. See [PROGRESS.md](PROGRESS.md).
 
 ## Users and scope
 
@@ -31,14 +31,14 @@ The super admin configures a seller catalog and decides on submitted orders. A g
 
 ## Proposed API and error contract
 
-[API.md](API.md) identifies the live seller session, product, and guest order-create paths; seller queue/detail and decisions remain draft. Public catalog and guest checkout are public; seller management is private. Order-create contract tests cover validation, `Idempotency-Key`, atomicity, and a local rate limit. `PRODUCT_UNAVAILABLE` and `IDEMPOTENCY_CONFLICT` are observed; `STALE_REVISION` remains proposed.
+[API.md](API.md) identifies the live seller session, product, guest order-create, and seller queue/detail/decision paths; seller review UI remains. Public catalog and guest checkout are public; seller management is private. Order-create contract tests cover validation, `Idempotency-Key`, atomicity, and a local rate limit. `PRODUCT_UNAVAILABLE`, `IDEMPOTENCY_CONFLICT`, and `STALE_REVISION` are observed.
 
 ## Verification matrix
 
 | Area | New MVP gate | Current evidence |
 | --- | --- | --- |
 | Static/config/build | Source lint/type/build and production configuration rejection appropriate to chosen stack. | Node 24 syntax checks and production credential-startup tests pass. A SHA-pinned Node 24 CI workflow is configured but has not run remotely; no production build/artifact gate yet. |
-| Domain/API/data | Unit, integration, contract, transaction, authorization, idempotency, failure and concurrency checks for AC-01–14. | Seller session, CSRF, startup, product API, schema v1→v3/v2→v3, order-create transaction, failure, idempotency and concurrency tests pass. Seller review is pending. |
+| Domain/API/data | Unit, integration, contract, transaction, authorization, idempotency, failure and concurrency checks for AC-01–14. | Seller session, CSRF, startup, product API, schema v1→v3/v2→v3, order-create transaction, failure, idempotency and concurrency tests pass. Seller order queue/detail/decision authorization, stale/concurrent decisions, audit and rollback tests pass; seller review UI is pending. |
 | Browser | Seller setup, guest multi-destination checkout, receipt, review, loading/error states, keyboard, 390px/mobile and desktop, console/overflow; seven-language UI checks. | Seller product and public catalog/cart flows, two-destination checkout, field-error focus, typed/clicked/keyboard history selection, receipt reload, lost-response retry, and storage-failure receipt passed in local Chromium. Seller review and all-language checks remain. |
 | PWA/offline | Both surfaces: install/launch, service-worker private-cache boundaries, offline shell, update, and online-only mutations. | Local Chromium confirmed distinct scopes/caches, offline pages, and a waiting-then-activated worker update; target-device install and order/review mutation checks remain. |
 | Release/data | Private schema/migrations, backup/restore, retention, secret scan, artifact inspection, health/readiness, deployed version and rollback. | Local schema v1→v3 and v2→v3 migration tests pass; no backup/restore, deployed artifact, or release exists. |

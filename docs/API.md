@@ -1,6 +1,6 @@
 # Draft API contract
 
-**Status: partially implemented.** Seller session, liveness/readiness, product and guest order-create paths run locally; seller order review paths remain proposed targets. Keep this file aligned with actual behavior.
+**Status: locally implemented for seller session, products, guest order creation, and seller order review.** Deployment behavior remains unverified. Keep this file aligned with actual behavior.
 
 ## Implemented local endpoints
 
@@ -19,8 +19,12 @@
 | `PATCH` | `/api/v1/seller/products/{id}` | Authorized same-origin/CSRF partial edit or availability change. |
 | `GET` | `/api/v1/seller/products/{id}/image` | Authorized image read, including inactive products. |
 | `POST` | `/api/v1/orders` | Same-origin guest checkout with a bounded JSON body and `Idempotency-Key`; creates an atomic order and returns a receipt. |
+| `GET` | `/api/v1/seller/orders` | Authorized seller queue with `status`, order-number `search`, `limit` and `offset`; returns `{items, nextOffset}`. |
+| `GET` | `/api/v1/seller/orders/{orderId}` | Authorized complete order snapshot and audit history. |
+| `POST` | `/api/v1/seller/orders/{orderId}/confirm` | Same-origin/CSRF seller decision with `expectedRevision`; returns updated detail. |
+| `POST` | `/api/v1/seller/orders/{orderId}/reject` | Same-origin/CSRF seller decision with `expectedRevision` and bounded `reason`; returns updated detail. |
 
-The local session is stored by token hash in SQLite and expires after 12 hours. Production cookies add `Secure`; production startup requires an HTTPS `PUBLIC_ORIGIN` and rejects missing, too-short, or known-placeholder admin passwords. The initial admin is provisioned once from ignored server configuration and startup fails if later configuration does not match it. **Seller order endpoints below are not yet live.**
+The local session is stored by token hash in SQLite and expires after 12 hours. Production cookies add `Secure`; production startup requires an HTTPS `PUBLIC_ORIGIN` and rejects missing, too-short, or known-placeholder admin passwords. The initial admin is provisioned once from ignored server configuration and startup fails if later configuration does not match it.
 
 ## Principles
 
@@ -67,19 +71,21 @@ The client sends one fresh 16–128 character `Idempotency-Key` per intended ord
 
 The order number is allocated by a private sequence; the example is illustrative. The browser keeps the same idempotency key while retrying unchanged details after a 12-second request timeout or lost response. It never treats a network error as confirmation. On confirmed success, it clears the form and cart and stores only the latest minimal receipt in localStorage; browser storage failures show a warning without erasing server success. There is no public endpoint to enumerate orders by phone, email, or order number in the MVP. Prior phone/address choices are held only in localStorage after an explicit save choice on a confirmed order, with a clear-history control and expiry 90 days after the most recent save; the server does not expose contact history lookup.
 
-## Seller endpoints
+## Seller order review contract
 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `POST` | `/api/v1/seller/session` | Sign in using server-configured super admin credentials. |
 | `GET` | `/api/v1/seller/session` | Read the current seller username and role for the profile view. |
 | `DELETE` | `/api/v1/seller/session` | Sign out, invalidate the session, and clear its cookie. |
-| `GET` | `/api/v1/seller/orders` | List seller-visible orders, with status/search filters and pagination. |
+| `GET` | `/api/v1/seller/orders` | List orders with `status=SUBMITTED|CONFIRMED|REJECTED`, order-number substring search, `limit` 1–100, `offset` 0–10000, and `nextOffset`. Default limit is 20. |
 | `GET` | `/api/v1/seller/orders/{orderId}` | Read an authorized order snapshot and review history. |
 | `POST` | `/api/v1/seller/orders/{orderId}/confirm` | Confirm a submitted order using `expectedRevision`. |
 | `POST` | `/api/v1/seller/orders/{orderId}/reject` | Reject a submitted order using `expectedRevision` and a bounded reason. |
 
-Seller browser sessions use a server-controlled, `HttpOnly` cookie with production `Secure` and appropriate `SameSite` settings. Mutating requests must satisfy the selected CSRF defense. Login responses are generic on failure and rate limited. Product prices use integer minor units and are snapshotted into orders; later catalog edits do not rewrite existing orders.
+Queue items contain order ID/number, buyer name, status, revision, MYR total and timestamps; phone and address appear only in the authorized detail. Detail returns `buyer` with full name, normalized WhatsApp phone, optional email, opt-in boolean and consent evidence; ordered `deliveries` with recipient, address and item price snapshots; and ordered `events` with actor, previous/new status, reason and time. A detail read uses one SQLite snapshot. Seller browser sessions use a server-controlled, `HttpOnly` cookie with production `Secure` and appropriate `SameSite` settings. Mutating requests require same origin and a CSRF token. Login responses are generic on failure and rate limited. Later catalog edits do not rewrite existing order snapshots.
+
+Confirm body is `{ "expectedRevision": 1 }`; reject body is `{ "expectedRevision": 1, "reason": "Cannot fulfill this order." }` with a required reason of at most 500 characters. Only `SUBMITTED` can move to `CONFIRMED` or `REJECTED`. A decision increments the revision and appends an event with the authenticated seller username in the same transaction. An outdated revision or already-decided order returns `STALE_REVISION` (409) without another event. Unknown order IDs return 404. The seller UI must reload after a stale response.
 
 The planned localized catalog extension would accept text keyed by supported language tags, return English when a translation is absent, and snapshot the checkout display name and locale. No translation write field is implemented yet. Current orders snapshot the seller-authored English name and the selected UI locale.
 
@@ -93,7 +99,7 @@ The seller web app may build an official click-to-chat link from the authorized 
 { "error": { "code": "STALE_REVISION", "message": "The order changed. Reload and try again." } }
 ```
 
-Observed codes include `INVALID_INPUT` (400), `UNAUTHORIZED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404), `PRODUCT_UNAVAILABLE` (409), `IDEMPOTENCY_CONFLICT` (409), and `RATE_LIMITED` (429). `STALE_REVISION` (409) remains planned for seller decisions. Do not reveal whether an unverified phone or email exists through a public lookup response.
+Observed codes include `INVALID_INPUT` (400), `UNAUTHORIZED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404), `PRODUCT_UNAVAILABLE` (409), `IDEMPOTENCY_CONFLICT` (409), `STALE_REVISION` (409), and `RATE_LIMITED` (429). Do not reveal whether an unverified phone or email exists through a public lookup response.
 
 ## Deferred APIs
 
