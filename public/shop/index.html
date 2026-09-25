@@ -38,13 +38,56 @@
       <div id="cart-list" class="cart-list"></div>
       <div id="cart-summary" class="cart-summary" hidden><span data-i18n="estimatedTotal">Estimated total</span><strong id="cart-total"></strong></div>
       <p class="shop-note" data-i18n="cartPriceNote">Prices are checked again by the server when you place an order.</p>
-      <div class="cart-actions"><a class="outline-button" href="#catalog" data-i18n="continueShopping">Continue shopping</a><button id="checkout-button" class="primary-button" type="button" disabled data-i18n="checkoutSoon">Checkout coming soon</button></div>
+      <div class="cart-actions"><a class="outline-button" href="#catalog" data-i18n="continueShopping">Continue shopping</a><button id="checkout-button" class="primary-button" type="button" disabled data-i18n="proceedCheckout">Continue to checkout</button></div>
+    </section>
+    <section id="checkout-view" aria-labelledby="checkout-title" hidden>
+      <div class="shop-heading"><p class="eyebrow" data-i18n="shop">Shop</p><h1 id="checkout-title" data-i18n="checkout">Checkout</h1></div>
+      <p class="shop-note" data-i18n="checkoutIntro">Enter buyer and destination details. No payment or shipping charge is collected online.</p>
+      <form id="checkout-form" class="checkout-form">
+        <fieldset class="checkout-section">
+          <legend data-i18n="buyerDetails">Buyer details</legend>
+          <div class="checkout-fields">
+            <label class="checkout-field"><span data-i18n="fullName">Full name</span><input id="buyer-name" name="buyer.fullName" required maxlength="120" autocomplete="name"></label>
+            <div class="phone-fields">
+              <label class="checkout-field"><span data-i18n="phoneCode">Phone code</span><select id="buyer-code" aria-label="Phone code" data-i18n-aria="phoneCode"><option value="+60">MY +60</option><option value="+65">SG +65</option></select></label>
+              <label class="checkout-field"><span data-i18n="buyerWhatsApp">Buyer WhatsApp phone</span><input id="buyer-phone" name="buyer.whatsappPhone" type="tel" required maxlength="32" inputmode="tel" autocomplete="off" placeholder="0123456789"></label>
+            </div>
+            <label class="checkout-field"><span data-i18n="optionalEmail">Email (optional)</span><input id="buyer-email" name="buyer.email" type="email" maxlength="254" autocomplete="email"></label>
+          </div>
+          <label class="check-row"><input id="whatsapp-opt-in" type="checkbox"><span data-i18n="whatsappConsent">I allow the seller to contact me about this order on WhatsApp.</span></label>
+        </fieldset>
+        <div id="delivery-list" class="delivery-list"></div>
+        <button id="add-delivery" class="outline-button" type="button" data-i18n="addDestination">Add destination</button>
+        <fieldset class="checkout-section">
+          <legend data-i18n="assignItems">Assign items to destinations</legend>
+          <p class="shop-note" data-i18n="assignmentHelp">Each cart item goes to one destination. Change quantities in the cart.</p>
+          <div id="assignment-list" class="assignment-list"></div>
+        </fieldset>
+        <div class="history-controls">
+          <label class="check-row"><input id="save-history" type="checkbox"><span data-i18n="saveHistory">Remember these phones and addresses on this device for future orders.</span></label>
+          <button id="clear-history" class="outline-button" type="button" data-i18n="clearHistory">Clear saved suggestions</button>
+        </div>
+        <p id="checkout-status" class="shop-status" role="status"></p>
+        <p id="checkout-error" class="checkout-error" role="alert"></p>
+        <div class="cart-actions"><a class="outline-button" href="#cart" data-i18n="backToCart">Back to cart</a><button id="submit-order" class="primary-button" type="submit" data-i18n="placeOrder">Place order</button></div>
+      </form>
+    </section>
+    <section id="receipt-view" aria-labelledby="receipt-title" hidden>
+      <div class="receipt-card">
+        <p class="eyebrow" data-i18n="orderSubmitted">Order submitted</p>
+        <h1 id="receipt-title" data-i18n="thankYou">Thank you for your order</h1>
+        <p class="shop-note" data-i18n="receiptMessage">The seller will review your order. Save this order number for your records.</p>
+        <dl class="receipt-details"><dt data-i18n="orderNumber">Order number</dt><dd id="receipt-number"></dd><dt data-i18n="estimatedTotal">Total</dt><dd id="receipt-total"></dd><dt data-i18n="submittedAt">Submitted at</dt><dd id="receipt-date"></dd></dl>
+        <p id="receipt-storage-note" class="shop-note" hidden></p>
+        <a href="#catalog" class="primary-button" data-i18n="continueShopping">Continue shopping</a>
+      </div>
     </section>
   </main>
   <dialog id="product-dialog" class="product-dialog" aria-labelledby="detail-title">
     <button id="detail-close" class="dialog-close" type="button" data-i18n="close">Close</button>
     <div id="detail-content"></div>
   </dialog>
+  <datalist id="country-options"><option value="MY"></option><option value="SG"></option></datalist>
   <p id="shop-message" class="sr-only" role="status" aria-live="polite"></p>
 </body>
 </html>

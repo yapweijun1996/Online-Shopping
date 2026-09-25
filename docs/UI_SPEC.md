@@ -31,6 +31,7 @@ Use a light background, navy text, teal primary actions, subtle borders, clear s
 - Copy buttons and review actions use comfortable touch targets with explicit accessible names. The bottom review bar may remain visible while scrolling, but must not cover the total or the last field; account for safe-area insets.
 - For multiple deliveries, repeat recipient/address cards and show the items assigned to each destination. The mobile image illustrates one delivery only.
 - In checkout, buyer WhatsApp and each recipient phone field offer Malaysia `+60` and Singapore `+65` country codes, with the same controls on desktop and mobile. Preserve a manually selected phone country when the UI language or delivery address changes. Seller order details display the full normalized number, and copy controls include the country code.
+- Checkout phone and address inputs show same-browser saved suggestions only after an explicit save choice on a confirmed order. The combobox supports typing, pointer selection, Arrow keys/Enter, and Escape; choosing an address fills its remaining fields. A clear button removes the saved suggestions without changing the current form.
 
 ## Essential states and interactions
 

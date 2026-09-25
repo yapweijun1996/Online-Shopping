@@ -65,7 +65,7 @@ The client sends one fresh 16–128 character `Idempotency-Key` per intended ord
 }
 ```
 
-The order number is allocated by a private sequence; the example is illustrative. There is no public endpoint to enumerate orders by phone, email, or order number in the MVP. Optional prior phone/address choices will be held only in the same browser after an explicit save choice, with a clear-history control; the server does not expose contact history lookup.
+The order number is allocated by a private sequence; the example is illustrative. The browser keeps the same idempotency key while retrying unchanged details after a 12-second request timeout or lost response. It never treats a network error as confirmation. On confirmed success, it clears the form and cart and stores only the latest minimal receipt in localStorage; browser storage failures show a warning without erasing server success. There is no public endpoint to enumerate orders by phone, email, or order number in the MVP. Prior phone/address choices are held only in localStorage after an explicit save choice on a confirmed order, with a clear-history control and expiry 90 days after the most recent save; the server does not expose contact history lookup.
 
 ## Seller endpoints
 
@@ -81,7 +81,7 @@ The order number is allocated by a private sequence; the example is illustrative
 
 Seller browser sessions use a server-controlled, `HttpOnly` cookie with production `Secure` and appropriate `SameSite` settings. Mutating requests must satisfy the selected CSRF defense. Login responses are generic on failure and rate limited. Product prices use integer minor units and are snapshotted into orders; later catalog edits do not rewrite existing orders.
 
-The planned localized catalog extension would accept text keyed by supported language tags, return English when a translation is absent, and snapshot the checkout display name and locale. No translation write or locale negotiation field is implemented yet. The order snapshot contract will be finalized with checkout.
+The planned localized catalog extension would accept text keyed by supported language tags, return English when a translation is absent, and snapshot the checkout display name and locale. No translation write field is implemented yet. Current orders snapshot the seller-authored English name and the selected UI locale.
 
 Seller product requests require SKU, English name/description, category, integer `priceMinor`, `currency: "MYR"` and boolean `active` on create. PATCH accepts a nonempty subset. Optional `imageDataUrl` is a PNG/JPEG/WebP base64 data URL up to 512 KB decoded; `null` removes an image. The server validates signature and size, stores decoded bytes in private SQLite, and returns an `imageUrl` path rather than embedding base64 in product lists. The seller page uses a placeholder when no image exists. Localized product text remains a planned extension; English is the current public fallback. Duplicate SKU returns `DUPLICATE_SKU` (409). Product responses use `Cache-Control: no-store`.
 

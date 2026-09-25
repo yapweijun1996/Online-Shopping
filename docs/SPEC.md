@@ -1,6 +1,6 @@
 # MVP specification
 
-**Status: acceptance contract with AC-01/03/04/08/09 locally verified and AC-10 implemented but not fully verified.** The other items remain incomplete. Each `AC` is one progress unit; a row becomes **Implemented** when code and a runnable path exist, **Verified** only when its listed observable checks pass, and **Released** only when verified in the deployed release. See [PROGRESS.md](PROGRESS.md).
+**Status: acceptance contract with AC-01 and AC-03–11 locally verified.** The other items remain incomplete. Each `AC` is one progress unit; a row becomes **Implemented** when code and a runnable path exist, **Verified** only when its listed observable checks pass, and **Released** only when verified in the deployed release. See [PROGRESS.md](PROGRESS.md).
 
 ## Users and scope
 
@@ -38,8 +38,8 @@ The super admin configures a seller catalog and decides on submitted orders. A g
 | Area | New MVP gate | Current evidence |
 | --- | --- | --- |
 | Static/config/build | Source lint/type/build and production configuration rejection appropriate to chosen stack. | Node 24 syntax checks and production credential-startup tests pass. A SHA-pinned Node 24 CI workflow is configured but has not run remotely; no production build/artifact gate yet. |
-| Domain/API/data | Unit, integration, contract, transaction, authorization, idempotency, failure and concurrency checks for AC-01–14. | Seller session, CSRF, startup, product API, schema v1→v3/v2→v3, order-create transaction, failure, idempotency and concurrency tests pass. Browser checkout and seller review are pending. |
-| Browser | Seller setup, guest multi-destination checkout, receipt, review, loading/error states, keyboard, 390px/mobile and desktop, console/overflow; seven-language UI checks. | Seller product flow and public catalog/cart add/change/remove/reload were checked in Chromium; checkout and review do not exist yet. |
+| Domain/API/data | Unit, integration, contract, transaction, authorization, idempotency, failure and concurrency checks for AC-01–14. | Seller session, CSRF, startup, product API, schema v1→v3/v2→v3, order-create transaction, failure, idempotency and concurrency tests pass. Seller review is pending. |
+| Browser | Seller setup, guest multi-destination checkout, receipt, review, loading/error states, keyboard, 390px/mobile and desktop, console/overflow; seven-language UI checks. | Seller product and public catalog/cart flows, two-destination checkout, field-error focus, typed/clicked/keyboard history selection, receipt reload, lost-response retry, and storage-failure receipt passed in local Chromium. Seller review and all-language checks remain. |
 | PWA/offline | Both surfaces: install/launch, service-worker private-cache boundaries, offline shell, update, and online-only mutations. | Local Chromium confirmed distinct scopes/caches, offline pages, and a waiting-then-activated worker update; target-device install and order/review mutation checks remain. |
 | Release/data | Private schema/migrations, backup/restore, retention, secret scan, artifact inspection, health/readiness, deployed version and rollback. | Local schema v1→v3 and v2→v3 migration tests pass; no backup/restore, deployed artifact, or release exists. |
 
