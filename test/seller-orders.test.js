@@ -70,7 +70,7 @@ test('seller queue and detail expose one authorized order snapshot with no publi
     const second = await f.submit({ buyerName: 'Another Buyer', optIn: false });
     assert.equal(first.response.status, 201);
     assert.equal(second.response.status, 201);
-    const id = f.app.database.prepare('SELECT id FROM shop_order WHERE order_no = ?').get(first.data.orderNo).id;
+    const id = f.app.database.get('SELECT id FROM shop_order WHERE order_no = ?', first.data.orderNo).id;
     for (const url of ['/api/v1/seller/orders', `/api/v1/seller/orders/${id}`]) {
       const denied = await f.request('GET', url);
       assert.equal(denied.response.status, 401);
@@ -111,14 +111,14 @@ test('submitted orders have no deletion endpoint and remain readable', async () 
   try {
     const submitted = await f.submit();
     assert.equal(submitted.response.status, 201);
-    const id = f.app.database.prepare('SELECT id FROM shop_order WHERE order_no = ?').get(submitted.data.orderNo).id;
+    const id = f.app.database.get('SELECT id FROM shop_order WHERE order_no = ?', submitted.data.orderNo).id;
     const { cookie, csrf } = await f.login();
     const deleted = await f.request('DELETE', `/api/v1/seller/orders/${id}`, null, {
       origin: f.origin, cookie, 'x-csrf-token': csrf,
     });
     assert.equal(deleted.response.status, 404);
     for (const table of ['shop_order', 'delivery', 'order_item', 'order_event', 'checkout_idempotency']) {
-      assert.equal(f.app.database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get().count, 1, table);
+      assert.equal(f.app.database.get(`SELECT COUNT(*) AS count FROM ${table}`).count, 1, table);
     }
     assert.equal((await f.request('GET', `/api/v1/seller/orders/${id}`, null, { cookie })).response.status, 200);
   } finally { await f.close(); }
@@ -129,7 +129,7 @@ test('seller decisions require origin, CSRF, current revision, and append audit 
   try {
     await f.submit();
     await f.submit({ buyerName: 'Another Buyer' });
-    const ids = f.app.database.prepare('SELECT id FROM shop_order ORDER BY order_no').all().map((row) => row.id);
+    const ids = f.app.database.all('SELECT id FROM shop_order ORDER BY order_no').map((row) => row.id);
     const { cookie, csrf } = await f.login();
     const url = `/api/v1/seller/orders/${ids[0]}/confirm`;
     assert.equal((await f.request('POST', url, { expectedRevision: 1 }, { origin: f.origin })).response.status, 401);
@@ -159,7 +159,7 @@ test('seller decisions require origin, CSRF, current revision, and append audit 
     assert.equal(rejected.data.status, 'REJECTED');
     assert.equal(rejected.data.revision, 2);
     assert.equal(rejected.data.events[1].reason, 'Cannot fulfill this order.');
-    assert.equal(f.app.database.prepare('SELECT COUNT(*) AS count FROM order_event').get().count, 4);
+    assert.equal(f.app.database.get('SELECT COUNT(*) AS count FROM order_event').count, 4);
   } finally { await f.close(); }
 });
 
@@ -167,7 +167,7 @@ test('simultaneous decisions cannot overwrite one another and audit failure roll
   const f = await fixture();
   try {
     await f.submit();
-    const id = f.app.database.prepare('SELECT id FROM shop_order').get().id;
+    const id = f.app.database.get('SELECT id FROM shop_order').id;
     const { cookie, csrf } = await f.login();
     const headers = { origin: f.origin, cookie, 'x-csrf-token': csrf };
     const url = `/api/v1/seller/orders/${id}`;
@@ -175,8 +175,8 @@ test('simultaneous decisions cannot overwrite one another and audit failure roll
       WHEN NEW.event_type = 'CONFIRMED' BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END;`);
     const failed = await f.request('POST', `${url}/confirm`, { expectedRevision: 1 }, headers);
     assert.equal(failed.response.status, 500);
-    assert.equal(f.app.database.prepare('SELECT status, revision FROM shop_order WHERE id = ?').get(id).status, 'SUBMITTED');
-    assert.equal(f.app.database.prepare('SELECT status, revision FROM shop_order WHERE id = ?').get(id).revision, 1);
+    assert.equal(f.app.database.get('SELECT status, revision FROM shop_order WHERE id = ?', id).status, 'SUBMITTED');
+    assert.equal(f.app.database.get('SELECT status, revision FROM shop_order WHERE id = ?', id).revision, 1);
     f.app.database.exec('DROP TRIGGER fail_review');
     const results = await Promise.all([
       f.request('POST', `${url}/confirm`, { expectedRevision: 1 }, headers),

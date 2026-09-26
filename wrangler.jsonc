@@ -1,0 +1,22 @@
+{
+  // Cloudflare Workers deployment: one Worker serves public/ as static assets and
+  // forwards /api/*, /health and /ready to a single SQLite Durable Object.
+  // Set ADMIN_USERNAME, ADMIN_PASSWORD and PUBLIC_ORIGIN with `wrangler secret put`.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "online-shopping",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "none"
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "SHOP", "class_name": "ShopStore" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ShopStore"] }],
+  "vars": { "NODE_ENV": "production" },
+  "observability": { "enabled": true }
+}

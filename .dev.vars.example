@@ -1,0 +1,6 @@
+# Copy to ignored .dev.vars for `npx wrangler dev`. Never commit .dev.vars.
+NODE_ENV=development
+ADMIN_USERNAME=
+ADMIN_PASSWORD=
+# Leave empty locally; wrangler dev uses the request origin.
+PUBLIC_ORIGIN=

@@ -28,7 +28,7 @@ function productFromRow(row, seller = false) {
 }
 
 function duplicateSku(error) {
-  if (error?.errcode % 256 === 19 && String(error.message).includes('UNIQUE constraint failed: product.sku')) {
+  if (String(error?.message).includes('UNIQUE constraint failed: product.sku')) {
     throw new ApiError(409, 'DUPLICATE_SKU', 'This SKU is already in use.');
   }
   throw error;
@@ -40,9 +40,9 @@ export function createProduct(database, input) {
   const id = randomUUID();
   const now = new Date().toISOString();
   try {
-    database.prepare(`INSERT INTO product
+    database.run(`INSERT INTO product
       (id, sku, name, description, category, price_minor, currency, active, image_mime, image_data, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       id, product.sku, product.name, product.description, product.category,
       product.priceMinor, product.currency, Number(product.active),
       product.image?.mime || null, product.image?.data || null, now, now,
@@ -71,19 +71,19 @@ export function updateProduct(database, id, input) {
   assignments.push('updated_at = ?');
   values.push(new Date().toISOString(), id);
   try {
-    database.prepare(`UPDATE product SET ${assignments.join(', ')} WHERE id = ?`).run(...values);
+    database.run(`UPDATE product SET ${assignments.join(', ')} WHERE id = ?`, ...values);
   } catch (error) { duplicateSku(error); }
   return getProduct(database, id, true);
 }
 
 export function getProduct(database, id, seller = false) {
-  const row = database.prepare(`SELECT ${columns} ${fromProduct} WHERE p.id = ? ${seller ? '' : 'AND p.active = 1'}`).get(id);
+  const row = database.get(`SELECT ${columns} ${fromProduct} WHERE p.id = ? ${seller ? '' : 'AND p.active = 1'}`, id);
   return productFromRow(row, seller);
 }
 
 export function getProductImage(database, id, seller = false) {
-  const row = database.prepare(`SELECT image_mime AS mime, image_data AS data, updated_at FROM product
-    WHERE id = ? ${seller ? '' : 'AND active = 1'}`).get(id);
+  const row = database.get(`SELECT image_mime AS mime, image_data AS data, updated_at FROM product
+    WHERE id = ? ${seller ? '' : 'AND active = 1'}`, id);
   return row && { mime: row.mime, data: row.data, version: imageVersion(row.updated_at) };
 }
 
@@ -100,14 +100,13 @@ export function listProducts(database, params, seller = false) {
   const offset = parseNumber('offset', 0, 10_000);
   if (limit < 1) throw new FieldError('limit', 'Enter a valid list range.');
   const activeClause = seller ? '' : 'p.active = 1 AND ';
-  const rows = database.prepare(`SELECT ${columns} ${fromProduct} WHERE ${activeClause}
+  const rows = database.all(`SELECT ${columns} ${fromProduct} WHERE ${activeClause}
     (? = '' OR instr(lower(p.name), lower(?)) > 0 OR instr(lower(p.sku), lower(?)) > 0)
     AND (? = '' OR c.label = ?)
-    ORDER BY p.updated_at DESC, p.id DESC LIMIT ? OFFSET ?`)
-    .all(search, search, search, category, category, limit + 1, offset);
+    ORDER BY p.updated_at DESC, p.id DESC LIMIT ? OFFSET ?`, search, search, search, category, category, limit + 1, offset);
   const hasMore = rows.length > limit;
   const result = { items: rows.slice(0, limit).map((row) => productFromRow(row, seller)), nextOffset: hasMore ? offset + limit : null };
-  if (!seller) result.categories = database.prepare(`SELECT DISTINCT c.label AS category ${fromProduct}
-    WHERE p.active = 1 ORDER BY c.label`).all().map((row) => row.category);
+  if (!seller) result.categories = database.all(`SELECT DISTINCT c.label AS category ${fromProduct}
+    WHERE p.active = 1 ORDER BY c.label`).map((row) => row.category);
   return result;
 }

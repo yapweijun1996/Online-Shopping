@@ -31,19 +31,18 @@ export function listSellerOrders(database, params) {
   const limit = listNumber(params, 'limit', 20, 100);
   const offset = listNumber(params, 'offset', 0, 10_000);
   if (limit < 1) throw new FieldError('limit', 'Enter a valid list range.');
-  const rows = database.prepare(`SELECT ${queueColumns} FROM shop_order
+  const rows = database.all(`SELECT ${queueColumns} FROM shop_order
     WHERE (? = '' OR status = ?) AND (? = '' OR instr(lower(order_no), lower(?)) > 0)
-    ORDER BY submitted_at DESC, id DESC LIMIT ? OFFSET ?`)
-    .all(status, status, search, search, limit + 1, offset);
+    ORDER BY submitted_at DESC, id DESC LIMIT ? OFFSET ?`, status, status, search, search, limit + 1, offset);
   return { items: rows.slice(0, limit).map(summary), nextOffset: rows.length > limit ? offset + limit : null };
 }
 
 function readSellerOrder(database, id) {
-  const row = database.prepare(`SELECT ${orderColumns} FROM shop_order WHERE id = ?`).get(id);
+  const row = database.get(`SELECT ${orderColumns} FROM shop_order WHERE id = ?`, id);
   if (!row) return null;
-  const deliveries = database.prepare(`SELECT id, position, recipient_name, recipient_phone,
+  const deliveries = database.all(`SELECT id, position, recipient_name, recipient_phone,
     address_line1, address_line2, address_city, address_region, address_postcode, address_country
-    FROM delivery WHERE order_id = ? ORDER BY position`).all(id).map((delivery) => ({
+    FROM delivery WHERE order_id = ? ORDER BY position`, id).map((delivery) => ({
     id: delivery.id,
     position: delivery.position,
     recipient: { fullName: delivery.recipient_name, phone: delivery.recipient_phone },
@@ -52,16 +51,15 @@ function readSellerOrder(database, id) {
       city: delivery.address_city, region: delivery.address_region,
       postcode: delivery.address_postcode, country: delivery.address_country,
     },
-    items: database.prepare(`SELECT product_id, sku_snapshot, name_snapshot, price_minor,
-      quantity, line_total_minor, currency FROM order_item WHERE delivery_id = ? ORDER BY position`)
-      .all(delivery.id).map((item) => ({
+    items: database.all(`SELECT product_id, sku_snapshot, name_snapshot, price_minor,
+      quantity, line_total_minor, currency FROM order_item WHERE delivery_id = ? ORDER BY position`, delivery.id).map((item) => ({
         productId: item.product_id, sku: item.sku_snapshot, name: item.name_snapshot,
         priceMinor: item.price_minor, quantity: item.quantity,
         lineTotalMinor: item.line_total_minor, currency: item.currency,
       })),
   }));
-  const events = database.prepare(`SELECT event_type, actor_type, actor_id, previous_status,
-    status, reason, occurred_at FROM order_event WHERE order_id = ? ORDER BY id`).all(id)
+  const events = database.all(`SELECT event_type, actor_type, actor_id, previous_status,
+    status, reason, occurred_at FROM order_event WHERE order_id = ? ORDER BY id`, id)
     .map((event) => ({
       type: event.event_type, actorType: event.actor_type, actorId: event.actor_id,
       previousStatus: event.previous_status, status: event.status,
@@ -80,15 +78,7 @@ function readSellerOrder(database, id) {
 }
 
 export function getSellerOrder(database, id) {
-  database.exec('BEGIN');
-  try {
-    const detail = readSellerOrder(database, id);
-    database.exec('COMMIT');
-    return detail;
-  } catch (error) {
-    database.exec('ROLLBACK');
-    throw error;
-  }
+  return database.transaction(() => readSellerOrder(database, id));
 }
 
 function validateDecision(action, input) {
@@ -112,27 +102,21 @@ export function decideSellerOrder(database, id, action, input, actorId) {
   if (!['confirm', 'reject'].includes(action)) throw new TypeError('Invalid order action.');
   const decision = validateDecision(action, input);
   const now = new Date().toISOString();
-  database.exec('BEGIN IMMEDIATE');
-  try {
-    const current = database.prepare('SELECT status, revision FROM shop_order WHERE id = ?').get(id);
+  database.transaction(() => {
+    const current = database.get('SELECT status, revision FROM shop_order WHERE id = ?', id);
     if (!current) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
     if (current.status !== 'SUBMITTED' || current.revision !== input.expectedRevision) {
       throw new ApiError(409, 'STALE_REVISION', 'The order changed. Reload and try again.');
     }
-    const changed = database.prepare(`UPDATE shop_order SET status = ?, revision = revision + 1,
-      updated_at = ? WHERE id = ? AND status = 'SUBMITTED' AND revision = ?`)
-      .run(decision.status, now, id, input.expectedRevision);
-    if (changed.changes !== 1) {
+    const changed = database.get(`UPDATE shop_order SET status = ?, revision = revision + 1,
+      updated_at = ? WHERE id = ? AND status = 'SUBMITTED' AND revision = ? RETURNING id`,
+    decision.status, now, id, input.expectedRevision);
+    if (!changed) {
       throw new ApiError(409, 'STALE_REVISION', 'The order changed. Reload and try again.');
     }
-    database.prepare(`INSERT INTO order_event
+    database.run(`INSERT INTO order_event
       (order_id, event_type, actor_type, actor_id, previous_status, status, reason, occurred_at)
-      VALUES (?, ?, 'SELLER', ?, 'SUBMITTED', ?, ?, ?)`)
-      .run(id, decision.status, actorId, decision.status, decision.reason, now);
-    database.exec('COMMIT');
-  } catch (error) {
-    database.exec('ROLLBACK');
-    throw error;
-  }
+      VALUES (?, ?, 'SELLER', ?, 'SUBMITTED', ?, ?, ?)`, id, decision.status, actorId, decision.status, decision.reason, now);
+  });
   return getSellerOrder(database, id);
 }

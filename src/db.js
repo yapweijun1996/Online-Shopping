@@ -1,29 +1,40 @@
-import { DatabaseSync } from 'node:sqlite';
-import { chmodSync, mkdirSync } from 'node:fs';
-import path from 'node:path';
+import { openNodeStore } from './store.js';
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
-function migrate(database, version, sql) {
-  database.exec('BEGIN IMMEDIATE');
-  try {
-    database.exec(sql);
-    database.exec(`PRAGMA user_version = ${version}`);
-    database.exec('COMMIT');
-  } catch (error) {
-    database.exec('ROLLBACK');
-    throw error;
-  }
+// Column lists of the tables rebuilt by migration 5, as created by migration 3.
+const rebuildColumns = {
+  product: ['id', 'sku', 'name', 'description', 'category', 'price_minor', 'currency', 'active', 'translations_json',
+    'image_mime', 'image_data', 'created_at', 'updated_at'],
+  shop_order: ['id', 'order_no', 'buyer_name', 'buyer_phone', 'buyer_email', 'whatsapp_opt_in', 'whatsapp_consent_at',
+    'whatsapp_consent_version', 'locale', 'status', 'revision', 'currency', 'total_minor', 'submitted_at', 'updated_at'],
+  order_item: ['id', 'delivery_id', 'position', 'product_id', 'sku_snapshot', 'name_snapshot', 'price_minor', 'quantity',
+    'line_total_minor', 'currency'],
+};
+
+function migrate(store, version, sql) {
+  store.transaction(() => {
+    store.exec(sql);
+    store.setSchemaVersion(version);
+  });
 }
 
 export function openDatabase(file) {
-  if (file !== ':memory:') mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  const database = new DatabaseSync(file, { timeout: 5000 });
-  if (file !== ':memory:') chmodSync(file, 0o600);
-  database.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
-  let version = database.prepare('PRAGMA user_version').get().user_version;
+  const store = openNodeStore(file);
+  try {
+    migrateStore(store);
+  } catch (error) {
+    store.close();
+    throw error;
+  }
+  return store;
+}
+
+/* Applies pending migrations through the storage contract so every runtime shares one schema. */
+export function migrateStore(store) {
+  let version = store.schemaVersion();
   if (version === 0) {
-    migrate(database, 1, `
+    migrate(store, 1, `
       CREATE TABLE admin (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         username TEXT NOT NULL UNIQUE,
@@ -40,7 +51,7 @@ export function openDatabase(file) {
     version = 1;
   }
   if (version === 1) {
-    migrate(database, 2, `
+    migrate(store, 2, `
       CREATE TABLE product (
         id TEXT PRIMARY KEY,
         sku TEXT NOT NULL UNIQUE,
@@ -62,7 +73,7 @@ export function openDatabase(file) {
     version = 2;
   }
   if (version === 2) {
-    migrate(database, 3, `
+    migrate(store, 3, `
       CREATE TABLE order_sequence (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         value INTEGER NOT NULL CHECK (value >= 0)
@@ -136,7 +147,7 @@ export function openDatabase(file) {
     version = 3;
   }
   if (version === 3) {
-    migrate(database, 4, `
+    migrate(store, 4, `
       CREATE TABLE general_code (
         type TEXT NOT NULL CHECK (type = 'PRODUCT_CATEGORY'),
         code TEXT NOT NULL,
@@ -153,68 +164,62 @@ export function openDatabase(file) {
     version = 4;
   }
   if (version === 4) {
-    // SQLite cannot relax a CHECK constraint in place. Rebuild each affected table
-    // with foreign-key checking disabled only for this atomic migration.
-    database.exec('PRAGMA foreign_keys = OFF');
-    try {
-      database.exec('BEGIN IMMEDIATE');
+    // SQLite cannot relax a CHECK constraint in place, so rebuild each affected table.
+    // rebuildTransaction suspends foreign-key enforcement until the rebuild is complete.
+    store.rebuildTransaction(() => {
       for (const table of ['product', 'shop_order', 'order_item']) {
-        const schema = database.prepare('SELECT sql FROM sqlite_schema WHERE type = ? AND name = ?').get('table', table)?.sql;
+        const schema = store.get('SELECT sql FROM sqlite_schema WHERE type = ? AND name = ?', 'table', table)?.sql;
         if (!schema || !schema.includes("currency = 'MYR'")) throw new Error(`Unexpected ${table} currency schema.`);
-        database.exec(schema.replace(new RegExp(`^CREATE TABLE ["\x60]?${table}["\x60]?`, 'i'), `CREATE TABLE ${table}_new`)
+        store.exec(schema.replace(new RegExp(`^CREATE TABLE ["\x60]?${table}["\x60]?`, 'i'), `CREATE TABLE ${table}_new`)
           .replace("currency = 'MYR'", "currency IN ('MYR', 'SGD')"));
-        const columns = database.prepare(`PRAGMA table_info(${table})`).all().map((column) => column.name).join(', ');
-        database.exec(`INSERT INTO ${table}_new (${columns}) SELECT ${columns} FROM ${table}`);
-        database.exec(`DROP TABLE ${table}`);
-        database.exec(`ALTER TABLE ${table}_new RENAME TO ${table}`);
+        const columns = rebuildColumns[table].join(', ');
+        store.exec(`INSERT INTO ${table}_new (${columns}) SELECT ${columns} FROM ${table}`);
+        store.exec(`DROP TABLE ${table}`);
+        store.exec(`ALTER TABLE ${table}_new RENAME TO ${table}`);
       }
-      database.exec('CREATE INDEX product_public ON product(active, category, updated_at)');
-      database.exec('CREATE INDEX shop_order_queue ON shop_order(status, submitted_at DESC)');
-      database.exec(`CREATE TABLE company_setting (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        default_currency TEXT NOT NULL CHECK (default_currency IN ('MYR', 'SGD')),
-        updated_at TEXT NOT NULL
+      store.exec(`CREATE INDEX product_public ON product(active, category, updated_at);
+        CREATE INDEX shop_order_queue ON shop_order(status, submitted_at DESC);
+        CREATE TABLE company_setting (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          default_currency TEXT NOT NULL CHECK (default_currency IN ('MYR', 'SGD')),
+          updated_at TEXT NOT NULL
+        ) STRICT;
+        INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', datetime('now'));
+        CREATE TRIGGER product_category_insert BEFORE INSERT ON product
+          WHEN NOT EXISTS (SELECT 1 FROM general_code WHERE type = 'PRODUCT_CATEGORY' AND code = NEW.category AND active = 1)
+          BEGIN SELECT RAISE(ABORT, 'Unknown active product category'); END;
+        CREATE TRIGGER product_category_update BEFORE UPDATE OF category ON product
+          WHEN NEW.category <> OLD.category AND NOT EXISTS
+            (SELECT 1 FROM general_code WHERE type = 'PRODUCT_CATEGORY' AND code = NEW.category AND active = 1)
+          BEGIN SELECT RAISE(ABORT, 'Unknown active product category'); END;`);
+      store.setSchemaVersion(5);
+    });
+    version = 5;
+  }
+  if (version === 5) {
+    migrate(store, 6, `
+      CREATE TABLE rate_limit_attempt (
+        id INTEGER PRIMARY KEY,
+        bucket TEXT NOT NULL,
+        key_hash TEXT NOT NULL,
+        attempted_at INTEGER NOT NULL
       ) STRICT;
-      INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', datetime('now'));
-      CREATE TRIGGER product_category_insert BEFORE INSERT ON product
-        WHEN NOT EXISTS (SELECT 1 FROM general_code WHERE type = 'PRODUCT_CATEGORY' AND code = NEW.category AND active = 1)
-        BEGIN SELECT RAISE(ABORT, 'Unknown active product category'); END;
-      CREATE TRIGGER product_category_update BEFORE UPDATE OF category ON product
-        WHEN NEW.category <> OLD.category AND NOT EXISTS
-          (SELECT 1 FROM general_code WHERE type = 'PRODUCT_CATEGORY' AND code = NEW.category AND active = 1)
-        BEGIN SELECT RAISE(ABORT, 'Unknown active product category'); END;`);
-      if (database.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Currency migration failed foreign-key check.');
-      database.exec('PRAGMA user_version = 5');
-      database.exec('COMMIT');
-      version = 5;
-    } catch (error) {
-      database.exec('ROLLBACK');
-      throw error;
-    } finally {
-      database.exec('PRAGMA foreign_keys = ON');
-    }
+      CREATE INDEX rate_limit_lookup ON rate_limit_attempt(bucket, key_hash);
+      CREATE INDEX rate_limit_expiry ON rate_limit_attempt(bucket, attempted_at);`);
+    version = 6;
   }
-  if (version !== SCHEMA_VERSION) {
-    database.close();
-    throw new Error(`Unsupported database schema version ${version}.`);
-  }
-  return database;
+  if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }
 
-export function ready(database) {
+export function ready(store) {
   try {
-    return database.prepare('PRAGMA user_version').get().user_version === SCHEMA_VERSION &&
-      Boolean(database.prepare('SELECT id FROM admin WHERE id = 1').get()) &&
-      Array.isArray(database.prepare('SELECT token_hash FROM session LIMIT 1').all()) &&
-      Array.isArray(database.prepare('SELECT id FROM product LIMIT 1').all()) &&
-      Array.isArray(database.prepare('SELECT code FROM general_code LIMIT 1').all()) &&
-      Boolean(database.prepare('SELECT id FROM company_setting WHERE id = 1').get()) &&
-      Boolean(database.prepare('SELECT id FROM order_sequence WHERE id = 1').get()) &&
-      Array.isArray(database.prepare('SELECT id FROM shop_order LIMIT 1').all()) &&
-      Array.isArray(database.prepare('SELECT id FROM delivery LIMIT 1').all()) &&
-      Array.isArray(database.prepare('SELECT id FROM order_item LIMIT 1').all()) &&
-      Array.isArray(database.prepare('SELECT id FROM order_event LIMIT 1').all()) &&
-      Array.isArray(database.prepare('SELECT key_hash FROM checkout_idempotency LIMIT 1').all());
+    return store.schemaVersion() === SCHEMA_VERSION &&
+      Boolean(store.get('SELECT id FROM admin WHERE id = 1')) &&
+      Boolean(store.get('SELECT id FROM order_sequence WHERE id = 1')) &&
+      Boolean(store.get('SELECT id FROM company_setting WHERE id = 1')) &&
+      ['session', 'product', 'general_code', 'shop_order', 'delivery', 'order_item', 'order_event', 'checkout_idempotency',
+        'rate_limit_attempt']
+        .every((table) => Array.isArray(store.all(`SELECT * FROM ${table} LIMIT 0`)));
   } catch {
     return false;
   }

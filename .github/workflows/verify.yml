@@ -22,4 +22,7 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm test
+      - run: npm run worker:check
+        env:
+          WRANGLER_SEND_METRICS: 'false'
       - run: npm audit --omit=dev --audit-level=high
