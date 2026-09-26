@@ -1,7 +1,8 @@
-import { locale, setupLanguageSelect, t } from '../shared/i18n.js';
+import { locale, setupLanguageMenu, t } from '../shared/i18n.js';
 import { registerWorker } from '../shared/pwa.js';
 import { mountProducts } from './products.js';
 import { mountOrders } from './orders.js';
+import { mountCategories, mountCompanySettings } from './settings.js';
 
 const byId = (id) => document.getElementById(id);
 const loginView = byId('login-view');
@@ -18,6 +19,7 @@ let username = '';
 let role = '';
 let productsPage = null;
 let ordersPage = null;
+let settingsPage = null;
 let loginMessageKey = '';
 let workspaceMessageKey = '';
 const sessionHintKey = 'online-shopping-seller-session-hint';
@@ -30,7 +32,7 @@ function sessionHint(value) {
   } catch { return false; }
 }
 
-setupLanguageSelect(byId('language'));
+setupLanguageMenu(byId('language'));
 document.title = `${t('sellerPortal')} · Online Shopping`;
 registerWorker('/seller/sw.js', '/seller/').catch(() => console.warn('Seller offline shell unavailable.'));
 
@@ -44,12 +46,23 @@ function setWorkspaceMessage(key) {
   byId('workspace-message').textContent = key ? t(key) : '';
 }
 
+function setPasswordVisible(visible) {
+  byId('password').type = visible ? 'text' : 'password';
+  const toggle = byId('password-toggle');
+  toggle.classList.toggle('is-visible', visible);
+  toggle.setAttribute('aria-pressed', String(visible));
+  toggle.dataset.i18nAria = visible ? 'hidePassword' : 'showPassword';
+  toggle.setAttribute('aria-label', t(toggle.dataset.i18nAria));
+}
+
 function showLogin(messageKey = '', clearHint = true) {
+  const leavingWorkspace = !workspace.hidden;
   if (clearHint) sessionHint(false);
   csrfToken = null;
   username = '';
   role = '';
   productsPage = null;
+  settingsPage = null;
   ordersPage?.dispose();
   ordersPage = null;
   byId('workspace-content').replaceChildren();
@@ -58,8 +71,11 @@ function showLogin(messageKey = '', clearHint = true) {
   sidebar.hidden = true;
   menuButton.hidden = true;
   accountWrap.hidden = true;
+  document.body.classList.remove('seller-signed-in');
+  setPasswordVisible(false);
   setLoginMessage(messageKey);
-  closeDrawer();
+  closeDrawer(false);
+  if (leavingWorkspace) byId('username').focus();
 }
 
 function showWorkspace(session) {
@@ -74,6 +90,7 @@ function showWorkspace(session) {
   sidebar.hidden = false;
   menuButton.hidden = false;
   accountWrap.hidden = false;
+  document.body.classList.add('seller-signed-in');
   byId('password').value = '';
   syncDrawerAccess();
   renderView();
@@ -86,12 +103,13 @@ function renderView() {
     if (active) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
   });
-  const titleKey = { dashboard: 'dashboard', products: 'products', orders: 'salesOrders', review: 'orderReview' }[currentView];
+  const titleKey = { dashboard: 'dashboard', products: 'products', orders: 'salesOrders', review: 'orderReview', categories: 'categoryCodes', company: 'companySettings' }[currentView];
   byId('page-title').dataset.i18n = titleKey;
   byId('page-title').textContent = t(titleKey);
   const content = byId('workspace-content');
   if (currentView === 'orders' || currentView === 'review') {
     productsPage = null;
+    settingsPage = null;
     if (ordersPage?.mode !== currentView) {
       ordersPage?.dispose();
       ordersPage = mountOrders(content, {
@@ -105,10 +123,19 @@ function renderView() {
   ordersPage?.dispose();
   ordersPage = null;
   if (currentView === 'products') {
+    settingsPage = null;
     if (!productsPage) productsPage = mountProducts(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError') });
     return;
   }
   productsPage = null;
+  if (currentView === 'categories') {
+    settingsPage = mountCategories(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError') });
+    return;
+  }
+  if (currentView === 'company') {
+    settingsPage = mountCompanySettings(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError') });
+    return;
+  }
   content.replaceChildren();
   const p = document.createElement('p');
   p.dataset.i18n = 'notReady';
@@ -116,13 +143,13 @@ function renderView() {
   content.append(p);
 }
 
-function closeDrawer() {
+function closeDrawer(restoreFocus = true) {
   const wasOpen = sidebar.classList.contains('drawer-open');
   sidebar.classList.remove('drawer-open');
   backdrop.hidden = true;
   menuButton.setAttribute('aria-expanded', 'false');
   syncDrawerAccess();
-  if (wasOpen) menuButton.focus();
+  if (wasOpen && restoreFocus) menuButton.focus();
 }
 
 function syncDrawerAccess() {
@@ -141,21 +168,28 @@ menuButton.addEventListener('click', () => {
   menuButton.setAttribute('aria-expanded', 'true');
   byId('close-menu').focus();
 });
-byId('close-menu').addEventListener('click', closeDrawer);
-backdrop.addEventListener('click', closeDrawer);
+byId('close-menu').addEventListener('click', () => closeDrawer());
+backdrop.addEventListener('click', () => closeDrawer());
 window.addEventListener('resize', syncDrawerAccess);
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') { closeDrawer(); closeAccount(); }
+  if (event.key !== 'Escape' || document.querySelector('dialog[open]')) return;
+  if (!accountMenu.hidden) { closeAccount(); accountButton.focus(); return; }
+  if (sidebar.classList.contains('drawer-open')) closeDrawer();
 });
 byId('collapse-nav').addEventListener('click', () => {
+  if (window.matchMedia('(max-width: 760px)').matches) { closeDrawer(); return; }
   const collapsed = sidebar.classList.toggle('collapsed');
+  document.body.classList.toggle('seller-nav-collapsed', collapsed);
   byId('collapse-nav').dataset.i18nAria = collapsed ? 'expand' : 'collapse';
   byId('collapse-nav').setAttribute('aria-label', t(collapsed ? 'expand' : 'collapse'));
+  byId('collapse-nav').setAttribute('aria-expanded', String(!collapsed));
 });
 document.querySelectorAll('.nav-item').forEach((button) => button.addEventListener('click', () => {
   currentView = button.dataset.view;
   renderView();
-  closeDrawer();
+  closeDrawer(false);
+  window.scrollTo(0, 0);
+  byId('page-title').focus({ preventScroll: true });
 }));
 accountButton.addEventListener('click', () => {
   accountMenu.hidden = !accountMenu.hidden;
@@ -181,6 +215,10 @@ byId('sign-out-button').addEventListener('click', async () => {
   } catch {
     setWorkspaceMessage('networkError');
   }
+});
+
+byId('password-toggle').addEventListener('click', () => {
+  setPasswordVisible(byId('password').type === 'password');
 });
 
 byId('login-form').addEventListener('submit', async (event) => {
@@ -209,6 +247,7 @@ byId('login-form').addEventListener('submit', async (event) => {
 document.addEventListener('localechange', () => {
   if (currentView === 'products' && productsPage) productsPage.refreshLocale();
   else if (ordersPage) ordersPage.refreshLocale();
+  else if (settingsPage) settingsPage.refreshLocale();
   else renderView();
   document.documentElement.lang = locale();
   document.title = `${t('sellerPortal')} · Online Shopping`;

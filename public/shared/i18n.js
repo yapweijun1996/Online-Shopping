@@ -20,6 +20,8 @@ export const messages = {
     loading: 'Loading…', noProducts: 'No products yet.', notReady: 'This area is being prepared.',
     noOrders: 'No orders yet.', selectLanguage: 'Language', signedOut: 'You have signed out.',
     loginPrompt: 'Seller access only', protected: 'Your catalog and orders are private.', role: 'Role', superAdmin: 'Super admin', close: 'Close',
+    accessFeature: 'Only signed-in sellers can manage the catalog and orders.', catalogFeature: 'Add products, update details and control availability.', ordersFeature: 'Review submitted orders and record decisions.',
+    signInAccount: 'Sign in to your account', signInCardIntro: 'Use your seller credentials to continue.', showPassword: 'Show password', hidePassword: 'Hide password',
     addProduct: 'Add product', editProduct: 'Edit product', saveProduct: 'Save product', cancelEdit: 'Cancel edit',
     sku: 'SKU', name: 'Name', description: 'Description', category: 'Category', priceMyr: 'Price (MYR)', available: 'Active in shop',
     active: 'Active', inactive: 'Inactive', image: 'Product image', removeImage: 'Remove current image',
@@ -39,6 +41,8 @@ export const messages = {
     loading: 'Memuatkan…', noProducts: 'Belum ada produk.', notReady: 'Bahagian ini sedang disediakan.',
     noOrders: 'Belum ada pesanan.', selectLanguage: 'Bahasa', signedOut: 'Anda telah log keluar.',
     loginPrompt: 'Akses penjual sahaja', protected: 'Katalog dan pesanan anda adalah peribadi.', role: 'Peranan', superAdmin: 'Pentadbir utama', close: 'Tutup',
+    accessFeature: 'Hanya penjual yang log masuk boleh mengurus katalog dan pesanan.', catalogFeature: 'Tambah produk, kemas kini butiran dan kawal ketersediaan.', ordersFeature: 'Semak pesanan yang dihantar dan rekodkan keputusan.',
+    signInAccount: 'Log masuk ke akaun anda', signInCardIntro: 'Gunakan kelayakan penjual anda untuk meneruskan.', showPassword: 'Tunjukkan kata laluan', hidePassword: 'Sembunyikan kata laluan',
     addProduct: 'Tambah produk', editProduct: 'Edit produk', saveProduct: 'Simpan produk', cancelEdit: 'Batal edit',
     sku: 'SKU', name: 'Nama', description: 'Penerangan', category: 'Kategori', priceMyr: 'Harga (MYR)', available: 'Aktif di kedai',
     active: 'Aktif', inactive: 'Tidak aktif', image: 'Imej produk', removeImage: 'Buang imej semasa',
@@ -58,6 +62,8 @@ export const messages = {
     loading: '加载中…', noProducts: '暂无商品。', notReady: '此区域正在准备中。',
     noOrders: '暂无订单。', selectLanguage: '语言', signedOut: '你已退出登录。',
     loginPrompt: '仅限卖家访问', protected: '你的商品和订单为私有数据。', role: '角色', superAdmin: '超级管理员', close: '关闭',
+    accessFeature: '只有已登录的卖家可以管理商品和订单。', catalogFeature: '添加商品、更新资料并控制上架状态。', ordersFeature: '查看已提交的订单并记录处理决定。',
+    signInAccount: '登录卖家账户', signInCardIntro: '使用卖家账号继续。', showPassword: '显示密码', hidePassword: '隐藏密码',
     addProduct: '添加商品', editProduct: '编辑商品', saveProduct: '保存商品', cancelEdit: '取消编辑',
     sku: '商品编号', name: '名称', description: '描述', category: '类别', priceMyr: '价格（MYR）', available: '在商店上架',
     active: '已上架', inactive: '未上架', image: '商品图片', removeImage: '移除当前图片',
@@ -77,6 +83,8 @@ export const messages = {
     loading: 'Đang tải…', noProducts: 'Chưa có sản phẩm.', notReady: 'Khu vực này đang được chuẩn bị.',
     noOrders: 'Chưa có đơn hàng.', selectLanguage: 'Ngôn ngữ', signedOut: 'Bạn đã đăng xuất.',
     loginPrompt: 'Chỉ dành cho người bán', protected: 'Sản phẩm và đơn hàng của bạn là riêng tư.', role: 'Vai trò', superAdmin: 'Quản trị viên cao cấp', close: 'Đóng',
+    accessFeature: 'Chỉ người bán đã đăng nhập mới có thể quản lý sản phẩm và đơn hàng.', catalogFeature: 'Thêm sản phẩm, cập nhật thông tin và trạng thái bán.', ordersFeature: 'Xem đơn hàng đã gửi và ghi lại quyết định.',
+    signInAccount: 'Đăng nhập vào tài khoản', signInCardIntro: 'Dùng thông tin đăng nhập người bán để tiếp tục.', showPassword: 'Hiện mật khẩu', hidePassword: 'Ẩn mật khẩu',
     addProduct: 'Thêm sản phẩm', editProduct: 'Sửa sản phẩm', saveProduct: 'Lưu sản phẩm', cancelEdit: 'Hủy sửa',
     sku: 'SKU', name: 'Tên', description: 'Mô tả', category: 'Danh mục', priceMyr: 'Giá (MYR)', available: 'Đang bán',
     active: 'Đang bán', inactive: 'Ngừng bán', image: 'Ảnh sản phẩm', removeImage: 'Xóa ảnh hiện tại',
@@ -96,6 +104,8 @@ export const messages = {
     loading: 'กำลังโหลด…', noProducts: 'ยังไม่มีสินค้า', notReady: 'ส่วนนี้กำลังเตรียมพร้อม',
     noOrders: 'ยังไม่มีคำสั่งซื้อ', selectLanguage: 'ภาษา', signedOut: 'คุณออกจากระบบแล้ว',
     loginPrompt: 'สำหรับผู้ขายเท่านั้น', protected: 'สินค้าและคำสั่งซื้อของคุณเป็นข้อมูลส่วนตัว', role: 'บทบาท', superAdmin: 'ผู้ดูแลระบบหลัก', close: 'ปิด',
+    accessFeature: 'เฉพาะผู้ขายที่เข้าสู่ระบบเท่านั้นที่จัดการสินค้าและคำสั่งซื้อได้', catalogFeature: 'เพิ่มสินค้า อัปเดตรายละเอียด และกำหนดสถานะการขาย', ordersFeature: 'ตรวจสอบคำสั่งซื้อที่ส่งมาและบันทึกการตัดสินใจ',
+    signInAccount: 'เข้าสู่ระบบบัญชีของคุณ', signInCardIntro: 'ใช้ข้อมูลบัญชีผู้ขายเพื่อดำเนินการต่อ', showPassword: 'แสดงรหัสผ่าน', hidePassword: 'ซ่อนรหัสผ่าน',
     addProduct: 'เพิ่มสินค้า', editProduct: 'แก้ไขสินค้า', saveProduct: 'บันทึกสินค้า', cancelEdit: 'ยกเลิกการแก้ไข',
     sku: 'SKU', name: 'ชื่อ', description: 'รายละเอียด', category: 'หมวดหมู่', priceMyr: 'ราคา (MYR)', available: 'เปิดขายในร้าน',
     active: 'เปิดขาย', inactive: 'ไม่เปิดขาย', image: 'รูปสินค้า', removeImage: 'ลบรูปปัจจุบัน',
@@ -115,6 +125,8 @@ export const messages = {
     loading: '読み込み中…', noProducts: '商品はまだありません。', notReady: 'この機能は準備中です。',
     noOrders: '注文はまだありません。', selectLanguage: '言語', signedOut: 'ログアウトしました。',
     loginPrompt: '販売者専用', protected: '商品と注文は非公開です。', role: '役割', superAdmin: '最高管理者', close: '閉じる',
+    accessFeature: 'ログインした販売者だけが商品と注文を管理できます。', catalogFeature: '商品の追加、詳細の更新、公開状態の管理ができます。', ordersFeature: '受け付けた注文を確認し、判断を記録できます。',
+    signInAccount: 'アカウントにログイン', signInCardIntro: '販売者の認証情報を入力して続行してください。', showPassword: 'パスワードを表示', hidePassword: 'パスワードを隠す',
     addProduct: '商品を追加', editProduct: '商品を編集', saveProduct: '商品を保存', cancelEdit: '編集を中止',
     sku: 'SKU', name: '名前', description: '説明', category: 'カテゴリー', priceMyr: '価格（MYR）', available: 'ショップで公開',
     active: '公開中', inactive: '非公開', image: '商品画像', removeImage: '現在の画像を削除',
@@ -134,6 +146,8 @@ export const messages = {
     loading: '불러오는 중…', noProducts: '아직 상품이 없습니다.', notReady: '이 기능은 준비 중입니다.',
     noOrders: '아직 주문이 없습니다.', selectLanguage: '언어', signedOut: '로그아웃했습니다.',
     loginPrompt: '판매자 전용', protected: '상품과 주문 정보는 비공개입니다.', role: '역할', superAdmin: '최고 관리자', close: '닫기',
+    accessFeature: '로그인한 판매자만 상품과 주문을 관리할 수 있습니다.', catalogFeature: '상품을 추가하고 정보를 수정하며 판매 상태를 관리하세요.', ordersFeature: '접수된 주문을 검토하고 결정을 기록하세요.',
+    signInAccount: '계정에 로그인', signInCardIntro: '판매자 계정 정보로 계속하세요.', showPassword: '비밀번호 표시', hidePassword: '비밀번호 숨기기',
     addProduct: '상품 추가', editProduct: '상품 수정', saveProduct: '상품 저장', cancelEdit: '수정 취소',
     sku: 'SKU', name: '이름', description: '설명', category: '카테고리', priceMyr: '가격 (MYR)', available: '상점에 공개',
     active: '판매 중', inactive: '비활성', image: '상품 이미지', removeImage: '현재 이미지 삭제',
@@ -478,6 +492,22 @@ const sellerOrderMessages = {
 };
 for (const { code } of languages) Object.assign(messages[code], sellerOrderMessages[code]);
 
+const settingsMessages = {
+  en: { configuration: 'Configuration', categoryCodes: 'Category codes', companySettings: 'Company settings', categoryIntro: 'Manage categories available in product forms. Codes stay fixed; deactivate unused categories.', categoryCode: 'Code', categoryLabel: 'Display name', addCategory: 'Add category', saveCategory: 'Save', categorySaved: 'Category saved.', duplicateCategory: 'Code or name already exists.', currencyIntro: 'Choose the default currency for new products. Existing product prices and orders keep their own currency.', defaultCurrency: 'Default currency', saveSettings: 'Save settings', settingsSaved: 'Settings saved.', price: 'Price', currency: 'Currency', chooseCategory: 'Choose a category', currentImage: 'Current image', newImage: 'New image selected', imagePendingRemoval: 'Image will be removed when you save.', restoreImage: 'Undo removal', mixedCurrencies: 'This cart contains MYR and SGD products. Check out one currency at a time.', removeImage: 'Remove image' },
+  ms: { configuration: 'Konfigurasi', categoryCodes: 'Kod kategori', companySettings: 'Tetapan syarikat', categoryIntro: 'Urus kategori dalam borang produk. Kod kekal; nyahaktifkan kategori yang tidak digunakan.', categoryCode: 'Kod', categoryLabel: 'Nama paparan', addCategory: 'Tambah kategori', saveCategory: 'Simpan', categorySaved: 'Kategori disimpan.', duplicateCategory: 'Kod atau nama sudah wujud.', currencyIntro: 'Pilih mata wang lalai untuk produk baharu. Harga produk dan pesanan sedia ada kekal.', defaultCurrency: 'Mata wang lalai', saveSettings: 'Simpan tetapan', settingsSaved: 'Tetapan disimpan.', price: 'Harga', currency: 'Mata wang', chooseCategory: 'Pilih kategori', currentImage: 'Imej semasa', newImage: 'Imej baharu dipilih', imagePendingRemoval: 'Imej akan dibuang selepas disimpan.', restoreImage: 'Batalkan pembuangan', mixedCurrencies: 'Troli ini mengandungi produk MYR dan SGD. Selesaikan satu mata wang setiap kali.', removeImage: 'Buang imej' },
+  'zh-Hans': { configuration: '配置', categoryCodes: '分类代码', companySettings: '公司设置', categoryIntro: '管理商品可选分类。代码保持不变；不再使用时可停用。', categoryCode: '代码', categoryLabel: '显示名称', addCategory: '新增分类', saveCategory: '保存', categorySaved: '分类已保存。', duplicateCategory: '代码或名称已存在。', currencyIntro: '选择新商品的默认币种。现有商品价格和订单保留原币种。', defaultCurrency: '默认币种', saveSettings: '保存设置', settingsSaved: '设置已保存。', price: '价格', currency: '币种', chooseCategory: '选择分类', currentImage: '当前图片', newImage: '已选择新图片', imagePendingRemoval: '保存后将移除图片。', restoreImage: '撤销移除', mixedCurrencies: '购物车同时包含 MYR 和 SGD 商品。请按币种分别结账。', removeImage: '移除图片' },
+  vi: { configuration: 'Cấu hình', categoryCodes: 'Mã danh mục', companySettings: 'Cài đặt công ty', categoryIntro: 'Quản lý danh mục trong biểu mẫu sản phẩm. Mã không đổi; có thể ngừng dùng danh mục.', categoryCode: 'Mã', categoryLabel: 'Tên hiển thị', addCategory: 'Thêm danh mục', saveCategory: 'Lưu', categorySaved: 'Đã lưu danh mục.', duplicateCategory: 'Mã hoặc tên đã tồn tại.', currencyIntro: 'Chọn tiền tệ mặc định cho sản phẩm mới. Giá và đơn hàng cũ giữ nguyên tiền tệ.', defaultCurrency: 'Tiền tệ mặc định', saveSettings: 'Lưu cài đặt', settingsSaved: 'Đã lưu cài đặt.', price: 'Giá', currency: 'Tiền tệ', chooseCategory: 'Chọn danh mục', currentImage: 'Ảnh hiện tại', newImage: 'Đã chọn ảnh mới', imagePendingRemoval: 'Ảnh sẽ bị xóa khi lưu.', restoreImage: 'Hoàn tác', mixedCurrencies: 'Giỏ hàng có MYR và SGD. Vui lòng thanh toán riêng từng loại tiền.', removeImage: 'Xóa ảnh' },
+  th: { configuration: 'การตั้งค่า', categoryCodes: 'รหัสหมวดหมู่', companySettings: 'ตั้งค่าบริษัท', categoryIntro: 'จัดการหมวดหมู่ในแบบฟอร์มสินค้า รหัสคงที่ และปิดใช้งานหมวดหมู่ที่ไม่ใช้', categoryCode: 'รหัส', categoryLabel: 'ชื่อที่แสดง', addCategory: 'เพิ่มหมวดหมู่', saveCategory: 'บันทึก', categorySaved: 'บันทึกหมวดหมู่แล้ว', duplicateCategory: 'รหัสหรือชื่อมีอยู่แล้ว', currencyIntro: 'เลือกสกุลเงินเริ่มต้นของสินค้าใหม่ ราคาสินค้าและคำสั่งซื้อเดิมคงสกุลเงินเดิม', defaultCurrency: 'สกุลเงินเริ่มต้น', saveSettings: 'บันทึกการตั้งค่า', settingsSaved: 'บันทึกแล้ว', price: 'ราคา', currency: 'สกุลเงิน', chooseCategory: 'เลือกหมวดหมู่', currentImage: 'รูปปัจจุบัน', newImage: 'เลือกรูปใหม่แล้ว', imagePendingRemoval: 'รูปจะถูกลบเมื่อบันทึก', restoreImage: 'ยกเลิกการลบ', mixedCurrencies: 'ตะกร้ามีสินค้า MYR และ SGD กรุณาสั่งซื้อแยกตามสกุลเงิน', removeImage: 'ลบรูป' },
+  ja: { configuration: '設定', categoryCodes: 'カテゴリコード', companySettings: '会社設定', categoryIntro: '商品フォームのカテゴリを管理します。コードは固定で、未使用カテゴリは無効化できます。', categoryCode: 'コード', categoryLabel: '表示名', addCategory: 'カテゴリを追加', saveCategory: '保存', categorySaved: 'カテゴリを保存しました。', duplicateCategory: 'コードまたは名前が既にあります。', currencyIntro: '新商品の既定通貨を選びます。既存商品の価格と注文の通貨は変わりません。', defaultCurrency: '既定通貨', saveSettings: '設定を保存', settingsSaved: '設定を保存しました。', price: '価格', currency: '通貨', chooseCategory: 'カテゴリを選択', currentImage: '現在の画像', newImage: '新しい画像を選択', imagePendingRemoval: '保存すると画像を削除します。', restoreImage: '削除を取り消す', mixedCurrencies: 'カートに MYR と SGD の商品があります。通貨ごとに注文してください。', removeImage: '画像を削除' },
+  ko: { configuration: '설정', categoryCodes: '카테고리 코드', companySettings: '회사 설정', categoryIntro: '상품 양식의 카테고리를 관리합니다. 코드는 고정되며 사용하지 않는 카테고리는 비활성화합니다.', categoryCode: '코드', categoryLabel: '표시 이름', addCategory: '카테고리 추가', saveCategory: '저장', categorySaved: '카테고리를 저장했습니다.', duplicateCategory: '코드 또는 이름이 이미 있습니다.', currencyIntro: '새 상품의 기본 통화를 선택합니다. 기존 상품 가격과 주문 통화는 유지됩니다.', defaultCurrency: '기본 통화', saveSettings: '설정 저장', settingsSaved: '설정을 저장했습니다.', price: '가격', currency: '통화', chooseCategory: '카테고리 선택', currentImage: '현재 이미지', newImage: '새 이미지 선택됨', imagePendingRemoval: '저장하면 이미지가 제거됩니다.', restoreImage: '제거 취소', mixedCurrencies: '장바구니에 MYR과 SGD 상품이 있습니다. 통화별로 따로 주문하세요.', removeImage: '이미지 제거' },
+};
+for (const { code } of languages) Object.assign(messages[code], settingsMessages[code]);
+const categoryAvailability = {
+  en: 'Available for new products', ms: 'Tersedia untuk produk baharu', 'zh-Hans': '可供新商品使用',
+  vi: 'Dùng cho sản phẩm mới', th: 'ใช้กับสินค้าใหม่', ja: '新商品で使用可能', ko: '새 상품에 사용 가능',
+};
+for (const { code } of languages) messages[code].categoryActive = categoryAvailability[code];
+
 let current = 'en';
 try {
   const saved = localStorage.getItem('online-shopping-language');
@@ -521,4 +551,43 @@ export function setupLanguageSelect(select) {
   select.value = current;
   select.addEventListener('change', () => setLocale(select.value));
   setLocale(current);
+}
+
+export function setupLanguageMenu(host) {
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'language-trigger';
+  trigger.dataset.i18nAria = 'selectLanguage';
+  trigger.setAttribute('aria-haspopup', 'true');
+  trigger.setAttribute('aria-expanded', 'false');
+  trigger.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>';
+  const options = document.createElement('div');
+  options.className = 'language-options';
+  options.hidden = true;
+  function close() { options.hidden = true; trigger.setAttribute('aria-expanded', 'false'); }
+  for (const { code, label } of languages) {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.textContent = label;
+    option.lang = code;
+    option.addEventListener('click', () => { setLocale(code); close(); trigger.focus(); });
+    options.append(option);
+  }
+  function sync() {
+    trigger.setAttribute('aria-label', `${t('selectLanguage')}: ${languages.find(({ code }) => code === current).label}`);
+    for (const option of options.children) option.setAttribute('aria-current', String(option.lang === current));
+  }
+  trigger.addEventListener('click', () => {
+    options.hidden = !options.hidden;
+    trigger.setAttribute('aria-expanded', String(!options.hidden));
+    if (!options.hidden) options.querySelector('[aria-current="true"]').focus();
+  });
+  host.append(trigger, options);
+  document.addEventListener('click', (event) => { if (!host.contains(event.target)) close(); });
+  host.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !options.hidden) { close(); trigger.focus(); }
+  });
+  document.addEventListener('localechange', sync);
+  setLocale(current);
+  sync();
 }

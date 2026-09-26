@@ -43,7 +43,14 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
   const list = find('#product-list');
   const more = find('#product-more');
   const preview = find('#product-image-preview');
-  const removeImageLabel = find('#remove-image-label');
+  const imagePanel = find('#product-image-panel');
+  const imageStatus = find('#product-image-status');
+  const removeImage = find('#product-remove-image');
+  const restoreImage = find('#product-restore-image');
+  let originalImageUrl = null;
+  let pendingRemove = false;
+  let categories = [];
+  let defaultCurrency = 'MYR';
   let items = [];
   let nextOffset = null;
   let editingId = null;
@@ -52,6 +59,38 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
 
   function setStatus(key) { statusKey = key; status.textContent = key ? t(key) : ''; }
   function setError(key) { formErrorKey = key; error.textContent = key ? t(key) : ''; }
+
+  function showImage(state, source = null) {
+    imagePanel.hidden = state === 'none';
+    preview.hidden = !source;
+    if (source) preview.src = source;
+    else preview.removeAttribute('src');
+    imageStatus.dataset.i18n = { current: 'currentImage', replacement: 'newImage', removed: 'imagePendingRemoval' }[state] || '';
+    imageStatus.textContent = imageStatus.dataset.i18n ? t(imageStatus.dataset.i18n) : '';
+    removeImage.hidden = state === 'removed' || state === 'none';
+    restoreImage.hidden = state !== 'removed' || !originalImageUrl;
+  }
+
+  function populateCategories(selected = '') {
+    const select = form.elements.category;
+    select.replaceChildren(new Option(t('chooseCategory'), ''));
+    for (const category of categories) {
+      if (category.active || category.code === selected) select.add(new Option(category.label, category.code));
+    }
+    select.value = selected;
+  }
+
+  async function loadSettings() {
+    try {
+      const [categoryResult, settings] = await Promise.all([
+        api('GET', '/api/v1/seller/categories'), api('GET', '/api/v1/seller/company-settings'),
+      ]);
+      if (!root.isConnected) return;
+      categories = categoryResult.items;
+      defaultCurrency = settings.defaultCurrency;
+      populateCategories(form.elements.category.value);
+    } catch { if (root.isConnected) setStatus('networkError'); }
+  }
 
   function renderList() {
     list.replaceChildren();
@@ -125,9 +164,9 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
     editingId = null;
     form.reset();
     form.hidden = true;
-    preview.hidden = true;
-    preview.removeAttribute('src');
-    removeImageLabel.hidden = true;
+    originalImageUrl = null;
+    pendingRemove = false;
+    showImage('none');
     setError('');
   }
 
@@ -137,18 +176,18 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
     form.elements.sku.value = product.sku;
     form.elements.name.value = product.name;
     form.elements.description.value = product.description;
-    form.elements.category.value = product.category;
+    populateCategories(product.categoryCode);
     form.elements.price.value = (product.priceMinor / 100).toFixed(2);
+    form.elements.currency.value = product.currency;
     form.elements.active.checked = product.active;
     form.elements.image.value = '';
-    form.elements.removeImage.checked = false;
-    removeImageLabel.hidden = !product.imageUrl;
-    preview.hidden = !product.imageUrl;
-    if (product.imageUrl) preview.src = product.imageUrl;
+    originalImageUrl = product.imageUrl;
+    pendingRemove = false;
+    showImage(product.imageUrl ? 'current' : 'none', product.imageUrl);
     find('#product-form-title').dataset.i18n = 'editProduct';
     find('#product-form-title').textContent = t('editProduct');
     setError('');
-    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    form.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
     form.elements.sku.focus();
   }
 
@@ -162,6 +201,8 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
   find('#product-new').addEventListener('click', () => {
     resetForm();
     form.hidden = false;
+    populateCategories();
+    form.elements.currency.value = defaultCurrency;
     find('#product-form-title').dataset.i18n = 'addProduct';
     find('#product-form-title').textContent = t('addProduct');
     form.elements.sku.focus();
@@ -169,20 +210,27 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
   find('#product-cancel').addEventListener('click', resetForm);
   find('#product-search-form').addEventListener('submit', (event) => { event.preventDefault(); load(); });
   more.addEventListener('click', () => load(false));
+  removeImage.addEventListener('click', () => {
+    form.elements.image.value = '';
+    pendingRemove = Boolean(originalImageUrl);
+    showImage(pendingRemove ? 'removed' : 'none');
+  });
+  restoreImage.addEventListener('click', () => {
+    pendingRemove = false;
+    showImage('current', originalImageUrl);
+  });
   form.elements.image.addEventListener('change', async () => {
     const file = form.elements.image.files[0];
-    preview.hidden = true;
     if (file) {
       try {
         const dataUrl = await readImage(file);
         if (form.elements.image.files[0] !== file) return;
-        preview.src = dataUrl;
-        preview.hidden = false;
-        form.elements.removeImage.checked = false;
+        pendingRemove = false;
+        showImage('replacement', dataUrl);
       } catch {
         setError('productError');
       }
-    }
+    } else showImage(originalImageUrl ? 'current' : 'none', originalImageUrl);
   });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -196,12 +244,12 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
         description: form.elements.description.value,
         category: form.elements.category.value,
         priceMinor: priceToMinor(form.elements.price.value),
-        currency: 'MYR',
+        currency: form.elements.currency.value,
         active: form.elements.active.checked,
       };
       const file = form.elements.image.files[0];
       if (file) payload.imageDataUrl = await readImage(file);
-      else if (form.elements.removeImage.checked) payload.imageDataUrl = null;
+      else if (pendingRemove) payload.imageDataUrl = null;
       await api(editingId ? 'PATCH' : 'POST', editingId ? `/api/v1/seller/products/${editingId}` : '/api/v1/seller/products', payload);
       resetForm();
       if (await load()) setStatus('productSaved');
@@ -212,11 +260,12 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
     } finally { save.disabled = false; }
   });
 
-  load();
+  loadSettings().then(() => load());
   return {
     refreshLocale() {
       translate(root);
       renderList();
+      populateCategories(form.elements.category.value);
       status.textContent = statusKey ? t(statusKey) : '';
       error.textContent = formErrorKey ? t(formErrorKey) : '';
     },

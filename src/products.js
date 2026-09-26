@@ -2,8 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { ApiError } from './http.js';
 import { FieldError, boundedText } from './validation.js';
 import { validateProductInput } from './product-input.js';
+import { requireActiveCategory } from './settings.js';
 
-const columns = 'id, sku, name, description, category, price_minor, currency, active, image_mime, created_at, updated_at';
+const columns = `p.id, p.sku, p.name, p.description, p.category AS category_code,
+  c.label AS category, p.price_minor, p.currency, p.active, p.image_mime, p.created_at, p.updated_at`;
+const fromProduct = `FROM product p JOIN general_code c
+  ON c.type = 'PRODUCT_CATEGORY' AND c.code = p.category`;
 
 /* Public image URLs carry this token so browsers may cache them until the product changes. */
 export function imageVersion(updatedAt) {
@@ -17,7 +21,7 @@ function productFromRow(row, seller = false) {
   return {
     id: row.id, sku: row.sku, name: row.name, description: row.description,
     category: row.category, priceMinor: row.price_minor, currency: row.currency,
-    ...(seller ? { active: Boolean(row.active) } : {}),
+    ...(seller ? { categoryCode: row.category_code, active: Boolean(row.active) } : {}),
     imageUrl: row.image_mime ? imagePath : null,
     ...(seller ? { createdAt: row.created_at, updatedAt: row.updated_at } : {}),
   };
@@ -31,7 +35,8 @@ function duplicateSku(error) {
 }
 
 export function createProduct(database, input) {
-  const product = validateProductInput(input, ['MYR']);
+  const product = validateProductInput(input, ['MYR', 'SGD']);
+  requireActiveCategory(database, product.category);
   const id = randomUUID();
   const now = new Date().toISOString();
   try {
@@ -47,8 +52,10 @@ export function createProduct(database, input) {
 }
 
 export function updateProduct(database, id, input) {
-  if (!getProduct(database, id, true)) return null;
-  const patch = validateProductInput(input, ['MYR'], { partial: true });
+  const existing = getProduct(database, id, true);
+  if (!existing) return null;
+  const patch = validateProductInput(input, ['MYR', 'SGD'], { partial: true });
+  if (Object.hasOwn(patch, 'category') && patch.category !== existing.categoryCode) requireActiveCategory(database, patch.category);
   const mapping = { sku: 'sku', name: 'name', description: 'description', category: 'category', priceMinor: 'price_minor', currency: 'currency', active: 'active' };
   const assignments = [];
   const values = [];
@@ -70,7 +77,7 @@ export function updateProduct(database, id, input) {
 }
 
 export function getProduct(database, id, seller = false) {
-  const row = database.get(`SELECT ${columns} FROM product WHERE id = ? ${seller ? '' : 'AND active = 1'}`, id);
+  const row = database.get(`SELECT ${columns} ${fromProduct} WHERE p.id = ? ${seller ? '' : 'AND p.active = 1'}`, id);
   return productFromRow(row, seller);
 }
 
@@ -92,13 +99,14 @@ export function listProducts(database, params, seller = false) {
   const limit = parseNumber('limit', 24, 100);
   const offset = parseNumber('offset', 0, 10_000);
   if (limit < 1) throw new FieldError('limit', 'Enter a valid list range.');
-  const activeClause = seller ? '' : 'active = 1 AND ';
-  const rows = database.all(`SELECT ${columns} FROM product WHERE ${activeClause}
-    (? = '' OR instr(lower(name), lower(?)) > 0 OR instr(lower(sku), lower(?)) > 0)
-    AND (? = '' OR category = ?)
-    ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?`, search, search, search, category, category, limit + 1, offset);
+  const activeClause = seller ? '' : 'p.active = 1 AND ';
+  const rows = database.all(`SELECT ${columns} ${fromProduct} WHERE ${activeClause}
+    (? = '' OR instr(lower(p.name), lower(?)) > 0 OR instr(lower(p.sku), lower(?)) > 0)
+    AND (? = '' OR c.label = ?)
+    ORDER BY p.updated_at DESC, p.id DESC LIMIT ? OFFSET ?`, search, search, search, category, category, limit + 1, offset);
   const hasMore = rows.length > limit;
   const result = { items: rows.slice(0, limit).map((row) => productFromRow(row, seller)), nextOffset: hasMore ? offset + limit : null };
-  if (!seller) result.categories = database.all('SELECT DISTINCT category FROM product WHERE active = 1 ORDER BY category').map((row) => row.category);
+  if (!seller) result.categories = database.all(`SELECT DISTINCT c.label AS category ${fromProduct}
+    WHERE p.active = 1 ORDER BY c.label`).map((row) => row.category);
   return result;
 }

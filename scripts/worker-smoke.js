@@ -35,15 +35,24 @@ const cookie = x.r.headers.get('set-cookie').split(';')[0], csrf = x.data.csrfTo
 check('cookie flags', /HttpOnly/.test(x.r.headers.get('set-cookie')) && /SameSite=Strict/.test(x.r.headers.get('set-cookie')));
 const auth = { cookie, 'x-csrf-token': csrf };
 x = await req('GET', '/api/v1/seller/session', null, { cookie }); check('session read', x.r.status === 200);
+// categories and company settings
+x = await req('POST', '/api/v1/seller/categories', { code: 'SMOKE', label: 'Smoke tests' }, auth);
+check('category create (or already present)', x.r.status === 201 || x.data.error?.code === 'DUPLICATE_CATEGORY', String(x.r.status));
+x = await req('GET', '/api/v1/seller/categories', null, { cookie });
+check('category listed', x.data.items?.some((item) => item.code === 'SMOKE' && item.active));
+x = await req('GET', '/api/v1/seller/company-settings', null, { cookie });
+check('company settings', ['MYR', 'SGD'].includes(x.data.defaultCurrency));
+x = await req('POST', '/api/v1/seller/products', { sku: `NOCAT-${Date.now()}`, name: 'n', description: 'd', category: 'MISSING', priceMinor: 1, currency: 'MYR', active: true }, auth);
+check('unknown category rejected', x.r.status === 400 && x.data.error?.field === 'category', JSON.stringify(x.data));
 // products + images
 const png = readFileSync(new URL('../public/shop/icons/icon-192.png', import.meta.url));
 const sku = `SMOKE-${Date.now()}`;
-x = await req('POST', '/api/v1/seller/products', { sku, name: 'Smoke mug', description: 'd', category: 'Home', priceMinor: 1000, currency: 'MYR', active: true, imageDataUrl: `data:image/png;base64,${png.toString('base64')}` }, { cookie });
+x = await req('POST', '/api/v1/seller/products', { sku, name: 'Smoke mug', description: 'd', category: 'SMOKE', priceMinor: 1000, currency: 'MYR', active: true, imageDataUrl: `data:image/png;base64,${png.toString('base64')}` }, { cookie });
 check('create without CSRF 403', x.r.status === 403);
-x = await req('POST', '/api/v1/seller/products', { sku, name: 'Smoke mug', description: 'd', category: 'Home', priceMinor: 1000, currency: 'MYR', active: true, imageDataUrl: `data:image/png;base64,${png.toString('base64')}` }, auth);
+x = await req('POST', '/api/v1/seller/products', { sku, name: 'Smoke mug', description: 'd', category: 'SMOKE', priceMinor: 1000, currency: 'MYR', active: true, imageDataUrl: `data:image/png;base64,${png.toString('base64')}` }, auth);
 check('create product 201', x.r.status === 201, JSON.stringify(x.data).slice(0, 120));
 const product = x.data;
-x = await req('POST', '/api/v1/seller/products', { sku, name: 'Dup', description: 'd', category: 'Home', priceMinor: 1, currency: 'MYR', active: true }, auth);
+x = await req('POST', '/api/v1/seller/products', { sku, name: 'Dup', description: 'd', category: 'SMOKE', priceMinor: 1, currency: 'MYR', active: true }, auth);
 check('duplicate SKU 409', x.r.status === 409 && x.data.error?.code === 'DUPLICATE_SKU', JSON.stringify(x.data));
 x = await req('GET', '/api/v1/products');
 const listed = x.data.items.find((i) => i.id === product.id);
@@ -53,11 +62,11 @@ const bytes = Buffer.from(await img.arrayBuffer());
 check('versioned image cacheable + bytes intact', img.headers.get('cache-control') === 'public, max-age=31536000, immutable' && bytes.equals(png), `${img.headers.get('cache-control')} ${bytes.length}/${png.length}`);
 img = await fetch(`${origin}/api/v1/products/${product.id}/image`); check('unversioned image no-store', img.headers.get('cache-control') === 'no-store');
 img = await fetch(`${origin}/api/v1/seller/products/${product.id}/image`, { headers: { cookie } }); check('seller image 200', img.status === 200 && Buffer.from(await img.arrayBuffer()).equals(png));
-x = await req('POST', '/api/v1/seller/products', { sku: sku + 'X', name: 'Big', description: 'd', category: 'Home', priceMinor: 1, currency: 'MYR', active: true, imageDataUrl: 'data:image/png;base64,' + 'A'.repeat(800000) }, auth);
+x = await req('POST', '/api/v1/seller/products', { sku: sku + 'X', name: 'Big', description: 'd', category: 'SMOKE', priceMinor: 1, currency: 'MYR', active: true, imageDataUrl: 'data:image/png;base64,' + 'A'.repeat(800000) }, auth);
 check('oversized body 413', x.r.status === 413, String(x.r.status));
 // checkout
 const order = (expected) => ({ buyer: { fullName: 'Smoke Buyer', whatsappPhone: '+60123456789', email: null }, whatsappOrderContactOptIn: true, locale: 'en',
-  deliveries: [{ recipient: { fullName: 'Smoke Recipient', phone: '+6581234567' }, address: { line1: 'Example Street 1', postcode: '47810', country: 'MY' }, items: [{ productId: product.id, quantity: 2, expectedPriceMinor: expected }] }] });
+  deliveries: [{ recipient: { fullName: 'Smoke Recipient', phone: '+6581234567' }, address: { line1: 'Example Street 1', postcode: '47810', country: 'MY' }, items: [{ productId: product.id, quantity: 2, expectedPriceMinor: expected, expectedCurrency: 'MYR' }] }] });
 x = await req('PATCH', `/api/v1/seller/products/${product.id}`, { priceMinor: 1500 }, auth); check('price update', x.r.status === 200 && x.data.priceMinor === 1500);
 const key = `smoke-intent-${Date.now()}`;
 x = await req('POST', '/api/v1/orders', order(1000), { 'idempotency-key': key + 'a' });

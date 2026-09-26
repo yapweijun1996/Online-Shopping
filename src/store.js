@@ -11,6 +11,8 @@ import path from 'node:path';
  *   run(sql, ...params)   -> undefined; use RETURNING when a result is needed
  *   exec(sql)             -> runs one or more statements without parameters
  *   transaction(fn)       -> runs fn atomically and returns its result; a throw rolls back
+ *   rebuildTransaction(fn) -> like transaction, for migrations that drop and recreate
+ *                            referenced tables; foreign keys are checked only once fn returns
  *   schemaVersion()       -> integer schema version, 0 for a new database
  *   setSchemaVersion(v)   -> records the version; call inside a migration transaction
  *   close()               -> releases the database
@@ -37,6 +39,23 @@ export function openNodeStore(file) {
       } catch (error) {
         database.exec('ROLLBACK');
         throw error;
+      }
+    },
+    rebuildTransaction(fn) {
+      database.exec('PRAGMA foreign_keys = OFF');
+      try {
+        database.exec('BEGIN IMMEDIATE');
+        try {
+          const result = fn();
+          if (database.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Migration failed foreign-key check.');
+          database.exec('COMMIT');
+          return result;
+        } catch (error) {
+          database.exec('ROLLBACK');
+          throw error;
+        }
+      } finally {
+        database.exec('PRAGMA foreign_keys = ON');
       }
     },
     schemaVersion: () => database.prepare('PRAGMA user_version').get().user_version,

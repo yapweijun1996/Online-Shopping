@@ -29,6 +29,11 @@ export function openDurableStore(storage) {
     run: (text, ...params) => { query(text, params); },
     exec: (text) => { sql.exec(text); },
     transaction: (fn) => storage.transactionSync(fn),
+    // Durable Objects always enforce foreign keys; deferring them checks once, at commit.
+    rebuildTransaction: (fn) => storage.transactionSync(() => {
+      sql.exec('PRAGMA defer_foreign_keys = ON');
+      return fn();
+    }),
     schemaVersion: () => sql.exec('SELECT version FROM schema_meta WHERE id = 1').toArray()[0]?.version ?? 0,
     setSchemaVersion(version) {
       if (!Number.isSafeInteger(version) || version < 0) throw new TypeError('Invalid schema version.');

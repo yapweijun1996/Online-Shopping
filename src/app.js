@@ -5,6 +5,7 @@ import { SqlLimiter } from './limiter.js';
 import { createOrder } from './orders.js';
 import { createProduct, getProduct, getProductImage, listProducts, updateProduct } from './products.js';
 import { decideSellerOrder, getSellerOrder, listSellerOrders } from './seller-orders.js';
+import { createCategory, getCompanySettings, listCategories, updateCategory, updateCompanySettings } from './settings.js';
 
 const productIdPath = /^\/api\/v1\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
 const sellerProductIdPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
@@ -100,6 +101,26 @@ export function createApi({ store, config, serveStatic = null }) {
     }
     if (method === 'GET' && pathname === '/api/v1/seller/products') {
       return json(200, listProducts(store, url.searchParams, true));
+    }
+    if (method === 'GET' && pathname === '/api/v1/seller/categories') {
+      return json(200, { items: listCategories(store) });
+    }
+    if (method === 'GET' && pathname === '/api/v1/seller/company-settings') {
+      return json(200, getCompanySettings(store));
+    }
+    if ((method === 'POST' && pathname === '/api/v1/seller/categories') ||
+        (method === 'PATCH' && pathname.startsWith('/api/v1/seller/categories/')) ||
+        (method === 'PATCH' && pathname === '/api/v1/seller/company-settings')) {
+      requireOrigin(request, expectedOrigin);
+      requireCsrf(request, session);
+      const body = await readJson(request);
+      if (pathname === '/api/v1/seller/company-settings') return json(200, updateCompanySettings(store, body));
+      if (method === 'POST') return json(201, createCategory(store, body));
+      let code;
+      try { code = decodeURIComponent(pathname.slice('/api/v1/seller/categories/'.length)); }
+      catch { throw new ApiError(404, 'NOT_FOUND', 'Category not found.'); }
+      if (!code || code.includes('/')) throw new ApiError(404, 'NOT_FOUND', 'Category not found.');
+      return json(200, updateCategory(store, code, body));
     }
     if (method === 'GET' && pathname === '/api/v1/seller/orders') {
       return json(200, listSellerOrders(store, url.searchParams));

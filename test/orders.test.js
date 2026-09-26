@@ -7,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { SCHEMA_VERSION } from '../src/db.js';
 import { createApp } from '../src/server.js';
 import { createProduct, updateProduct } from '../src/products.js';
+import { createCategory } from '../src/settings.js';
 
 const orderInput = (firstId, secondId) => ({
   buyer: { fullName: 'Example Buyer', whatsappPhone: '+65 8123 4567', email: null },
@@ -16,12 +17,12 @@ const orderInput = (firstId, secondId) => ({
     {
       recipient: { fullName: 'Example Recipient One', phone: '+60 12-345 6789' },
       address: { line1: 'Example Street 1', postcode: '47810', country: 'MY' },
-      items: [{ productId: firstId, quantity: 2, expectedPriceMinor: 900 }],
+      items: [{ productId: firstId, quantity: 2, expectedPriceMinor: 900, expectedCurrency: 'MYR' }],
     },
     {
       recipient: { fullName: 'Example Recipient Two', phone: '+65 8123 4567' },
       address: { line1: 'Example Avenue 2', line2: 'Unit 03-01', city: 'Singapore', postcode: '123456', country: 'SG' },
-      items: [{ productId: secondId, quantity: 1, expectedPriceMinor: 500 }],
+      items: [{ productId: secondId, quantity: 1, expectedPriceMinor: 500, expectedCurrency: 'MYR' }],
     },
   ],
 });
@@ -30,13 +31,14 @@ async function fixture() {
   const directory = mkdtempSync(path.join(tmpdir(), 'online-shopping-orders-'));
   const config = { username: 'order_owner', password: 'LocalOrderPass123!', dbPath: path.join(directory, 'private.db'), production: false, publicOrigin: null };
   const app = createApp(config);
+  createCategory(app.database, { code: 'EXAMPLES', label: 'Examples' });
   await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve));
   const origin = `http://127.0.0.1:${app.server.address().port}`;
   const first = createProduct(app.database, {
-    sku: 'item-a', name: 'Example item A', description: 'Description A', category: 'Examples', priceMinor: 900, currency: 'MYR', active: true,
+    sku: 'item-a', name: 'Example item A', description: 'Description A', category: 'EXAMPLES', priceMinor: 900, currency: 'MYR', active: true,
   });
   const second = createProduct(app.database, {
-    sku: 'item-b', name: 'Example item B', description: 'Description B', category: 'Examples', priceMinor: 500, currency: 'MYR', active: true,
+    sku: 'item-b', name: 'Example item B', description: 'Description B', category: 'EXAMPLES', priceMinor: 500, currency: 'MYR', active: true,
   });
   return {
     app, config, directory, origin, first, second,
@@ -109,7 +111,7 @@ test('checkout rejects a changed price instead of charging the new amount', asyn
     assert.equal(missing.data.error.field, 'deliveries.1.items.0.expectedPriceMinor');
     const accepted = await f.submit('order-intent-00000013', {
       ...original,
-      deliveries: [original.deliveries[0], { ...original.deliveries[1], items: [{ productId: f.second.id, quantity: 1, expectedPriceMinor: 750 }] }],
+      deliveries: [original.deliveries[0], { ...original.deliveries[1], items: [{ productId: f.second.id, quantity: 1, expectedPriceMinor: 750, expectedCurrency: 'MYR' }] }],
     });
     assert.equal(accepted.response.status, 201);
     assert.equal(accepted.data.totalMinor, 2550);
@@ -133,6 +135,48 @@ test('idempotent retries return the original receipt and reject changed intent',
     const stored = f.app.database.get('SELECT key_hash, request_hash FROM checkout_idempotency');
     assert.equal(stored.key_hash.length, 64);
     assert.notEqual(stored.key_hash, key);
+  } finally { await f.close(); }
+});
+
+test('SGD orders retain SGD snapshots and mixed-currency orders make no writes', async () => {
+  const f = await fixture();
+  try {
+    updateProduct(f.app.database, f.second.id, { currency: 'SGD' });
+    const mixed = await f.submit('mixed-order-intent-001');
+    assert.equal(mixed.response.status, 409);
+    assert.equal(mixed.data.error.code, 'MIXED_CURRENCY');
+    assert.equal(f.app.database.get('SELECT COUNT(*) AS count FROM shop_order').count, 0);
+    const single = orderInput(f.second.id, f.first.id);
+    const receipt = await f.submit('sgd-order-intent-0002', {
+      ...single,
+      deliveries: [{
+        ...single.deliveries[0],
+        items: [{ ...single.deliveries[0].items[0], expectedPriceMinor: 500, expectedCurrency: 'SGD' }],
+      }],
+    });
+    assert.equal(receipt.response.status, 201);
+    assert.equal(receipt.data.currency, 'SGD');
+    assert.equal(f.app.database.get('SELECT currency FROM shop_order').currency, 'SGD');
+    assert.equal(f.app.database.get('SELECT currency FROM order_item').currency, 'SGD');
+  } finally { await f.close(); }
+});
+
+test('a currency change with the same minor amount is rejected as a price change', async () => {
+  const f = await fixture();
+  try {
+    updateProduct(f.app.database, f.second.id, { currency: 'SGD' });
+    const single = orderInput(f.second.id, f.first.id);
+    const stale = await f.submit('order-intent-currency-0001', {
+      ...single,
+      deliveries: [{
+        ...single.deliveries[0],
+        items: [{ ...single.deliveries[0].items[0], expectedPriceMinor: 500, expectedCurrency: 'MYR' }],
+      }],
+    });
+    assert.equal(stale.response.status, 409);
+    assert.equal(stale.data.error.code, 'PRICE_CHANGED');
+    assert.equal(stale.data.error.field, 'deliveries.0.items.0.expectedCurrency');
+    assert.equal(f.app.database.get('SELECT COUNT(*) AS count FROM shop_order').count, 0);
   } finally { await f.close(); }
 });
 
@@ -206,14 +250,57 @@ test('schema version two upgrades without losing catalog records', async () => {
   const f = await fixture();
   await f.app.close();
   const old = new DatabaseSync(f.config.dbPath);
-  old.exec(`DROP TABLE rate_limit_attempt; DROP TABLE checkout_idempotency; DROP TABLE order_event; DROP TABLE order_item;
+  old.exec(`DROP TABLE rate_limit_attempt; DROP TABLE company_setting; DROP TABLE general_code;
+    DROP TABLE checkout_idempotency; DROP TABLE order_event; DROP TABLE order_item;
     DROP TABLE delivery; DROP TABLE shop_order; DROP TABLE order_sequence; PRAGMA user_version = 2;`);
+  const productSchema = old.prepare("SELECT sql FROM sqlite_schema WHERE name = 'product'").get().sql;
+  old.exec(productSchema.replace(/^CREATE TABLE ["`]?product["`]?/i, 'CREATE TABLE product_v2')
+    .replace("currency IN ('MYR', 'SGD')", "currency = 'MYR'"));
+  old.exec(`INSERT INTO product_v2 SELECT * FROM product;
+    DROP TABLE product; ALTER TABLE product_v2 RENAME TO product;
+    CREATE INDEX product_public ON product(active, category, updated_at);`);
   old.close();
   const migrated = createApp(f.config);
   try {
     assert.equal(migrated.database.schemaVersion(), SCHEMA_VERSION);
     assert.equal(migrated.database.get('SELECT COUNT(*) AS count FROM product').count, 2);
     assert.equal(migrated.database.get('SELECT COUNT(*) AS count FROM shop_order').count, 0);
+  } finally {
+    migrated.database.close();
+    rmSync(f.directory, { recursive: true, force: true });
+  }
+});
+
+test('schema version three upgrades an existing order without changing its snapshots', async () => {
+  const f = await fixture();
+  const placed = await f.submit('migration-intent-0001');
+  assert.equal(placed.response.status, 201);
+  await f.app.close();
+  const old = new DatabaseSync(f.config.dbPath);
+  old.exec('PRAGMA foreign_keys = OFF; BEGIN IMMEDIATE');
+  try {
+    for (const table of ['product', 'shop_order', 'order_item']) {
+      const schema = old.prepare('SELECT sql FROM sqlite_schema WHERE name = ?').get(table).sql;
+      old.exec(schema.replace(new RegExp(`^CREATE TABLE ["\x60]?${table}["\x60]?`, 'i'), `CREATE TABLE ${table}_v3`)
+        .replace("currency IN ('MYR', 'SGD')", "currency = 'MYR'"));
+      old.exec(`INSERT INTO ${table}_v3 SELECT * FROM ${table}`);
+      old.exec(`DROP TABLE ${table}; ALTER TABLE ${table}_v3 RENAME TO ${table}`);
+    }
+    old.exec(`CREATE INDEX product_public ON product(active, category, updated_at);
+      CREATE INDEX shop_order_queue ON shop_order(status, submitted_at DESC);
+      DROP TABLE rate_limit_attempt; DROP TABLE company_setting; DROP TABLE general_code; PRAGMA user_version = 3; COMMIT`);
+  } catch (error) { old.exec('ROLLBACK'); throw error; }
+  old.exec('PRAGMA foreign_keys = ON');
+  old.close();
+  const migrated = createApp(f.config);
+  try {
+    assert.equal(migrated.database.schemaVersion(), SCHEMA_VERSION);
+    assert.equal(migrated.database.get('SELECT COUNT(*) AS count FROM shop_order').count, 1);
+    assert.equal(migrated.database.get('SELECT currency, total_minor FROM shop_order').total_minor, 2300);
+    assert.deepEqual(migrated.database.all('SELECT DISTINCT currency FROM order_item').map((row) => row.currency), ['MYR']);
+    assert.equal(migrated.database.get('SELECT COUNT(*) AS count FROM checkout_idempotency').count, 1);
+    assert.equal(migrated.database.all('PRAGMA foreign_key_check').length, 0);
+    assert.equal(migrated.database.get('PRAGMA integrity_check').integrity_check, 'ok');
   } finally {
     migrated.database.close();
     rmSync(f.directory, { recursive: true, force: true });

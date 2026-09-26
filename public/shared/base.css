@@ -10,10 +10,16 @@ svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke
 button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid #42b9b5;outline-offset:2px}
 .topbar{height:72px;position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:16px;padding:0 28px;background:#fff;border-bottom:1px solid #dce7eb}
 .brand{text-decoration:none;font-weight:750;display:flex;align-items:center;gap:11px;white-space:nowrap}
-.brand-mark{width:34px;height:34px;display:grid;place-items:center;border-radius:10px;background:#087f83;color:#fff;font-size:13px;font-weight:800}
-.brand-mark.large{width:52px;height:52px;border-radius:15px;font-size:19px}
+.brand-mark{width:34px;height:34px;display:block;border-radius:10px;object-fit:contain;flex:none}
+.brand-mark.large{width:52px;height:52px;border-radius:15px}
 .language-control{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:650;color:#536b79}
 .language-control select{max-width:170px;border:1px solid #cfdee3;border-radius:10px;background:#fff;padding:9px 10px;color:#173950}
+.language-menu{position:relative;margin-left:auto}
+.language-trigger{width:42px;height:42px;display:grid;place-items:center;border:1px solid #cfdee3;border-radius:10px;background:#fff;color:#1d465a}
+.language-trigger:hover,.language-trigger[aria-expanded="true"]{background:#eaf5f5;border-color:#78b8b7}
+.language-options{position:absolute;right:0;top:calc(100% + 8px);width:max-content;min-width:170px;max-width:min(260px,calc(100vw - 24px));padding:6px;border:1px solid #dce7eb;border-radius:12px;background:#fff;box-shadow:0 16px 40px #15354c22;z-index:40}
+.language-options button{display:block;width:100%;border:0;border-radius:8px;background:transparent;padding:10px 12px;text-align:left;color:#173950}
+.language-options button:hover,.language-options button[aria-current="true"]{background:#e8f4f3;color:#205f64}
 .eyebrow{color:#087f83;text-transform:uppercase;letter-spacing:.08em;font-size:12px;font-weight:800;margin:0 0 8px}
 h1{font-size:clamp(29px,3vw,40px);letter-spacing:-.035em;line-height:1.14;margin:0}
 .primary-button{border:0;border-radius:10px;background:#087f83;color:#fff;min-height:46px;padding:11px 18px;font-weight:700}
@@ -25,4 +31,5 @@ h1{font-size:clamp(29px,3vw,40px);letter-spacing:-.035em;line-height:1.14;margin
 .brand{font-size:14px}
 .language-control>span{display:none}
 .language-control select{max-width:130px;padding:7px}
+.language-trigger{width:40px;height:40px}
 }

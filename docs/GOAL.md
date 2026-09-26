@@ -1,6 +1,6 @@
 # Goal
 
-**Status: MVP in local development.** Seller authentication, MYR product management, public catalog/cart, atomic guest checkout, and seller order review now run locally. Release-quality and production gates remain. The local `sample/` is a separate runnable prototype; its features and tests do not count as new-app implementation.
+**Status: MVP in local development.** Seller authentication, MYR/SGD product management, public catalog/cart, atomic guest checkout, and seller order review now run locally. Release-quality and production gates remain. The local `sample/` is a separate runnable prototype; its features and tests do not count as new-app implementation.
 
 ## Outcome
 
@@ -8,7 +8,7 @@ Deliver a small online-shopping application: a seller configures products, a cus
 
 ## Success criteria
 
-1. A super admin signs in and creates, edits, activates, or deactivates products. Only active products appear at the public shop link.
+1. A super admin signs in, manages category codes and the default currency, and creates, edits, activates, or deactivates products. Only active products appear at the public shop link.
 2. A customer browses and searches products, uses a cart, and submits an order with one or more delivery destinations.
 3. Buyer contact and each destination's recipient contact remain separate. Buyer WhatsApp phone is required; email is optional. Neither is verified in the MVP. Buyer and recipient phone inputs support Malaysia (+60) and Singapore (+65).
 4. The server returns a unique order number after saving the order. The customer sees a receipt, with a minimal same-browser copy kept when local storage remains available.
@@ -32,6 +32,6 @@ Payment, GST calculation, customer accounts, contact verification, cross-device 
 - Keep real personal data, access tokens, credentials, and database files out of the public repository. Read initial super admin credentials from a local, ignored `.env` or server-only secret file; production must reject missing or weak development credentials.
 - Use one Docker frontend proxy/PWA container and one private Node API container with a persistent SQLite volume. Keep the backend at one instance and unpublished until a different persistence/rate-limit design is verified.
 - The owner requests permanent server retention of submitted orders and their contact/address snapshots. No automatic order purge exists, but lawful basis and durable recovery must be resolved before real-data release. Browser suggestion history remains separately clearable and expires after 90 days.
-- Use MYR prices and no shipping-charge or logistics calculation in the MVP. Collect destination addresses for seller review without a delivery-area promise. Accept bounded base64 product images through the seller API. Optional prior phone/address suggestions stay on the same browser with a clear control.
+- Default to MYR while allowing MYR and SGD product prices. A checkout contains one currency, with no conversion, shipping-charge or logistics calculation. Collect destination addresses for seller review without a delivery-area promise. Accept bounded base64 product images through the seller API. Optional prior phone/address suggestions stay on the same browser with a clear control.
 - Update design, API, tasks, progress, and this goal when decisions or implemented behavior change.
 - Resolve the open HTTPS-host, contact-retention, backup and recovery choices in [TASK.md](TASK.md) before a real-data release.
