@@ -6,9 +6,9 @@ import { FieldError } from '../src/validation.js';
 const buyer = { fullName: ' Example Buyer ', whatsappPhone: '+60 12-345 6789', email: ' buyer@example.test ' };
 
 test('buyer and recipient contacts validate independently of one another', () => {
-  assert.deepEqual(validateBuyer(buyer, false), {
+  assert.deepEqual(validateBuyer(buyer, true), {
     fullName: 'Example Buyer', whatsappPhone: '+60123456789', email: 'buyer@example.test',
-    whatsappOrderContactOptIn: false,
+    whatsappOrderContactOptIn: true,
   });
   assert.deepEqual(validateRecipient({ fullName: ' Example Recipient ', phone: '+65 8123 4567' }, 2), {
     fullName: 'Example Recipient', phone: '+6581234567',
@@ -20,6 +20,8 @@ test('contact validation identifies the field without echoing personal values', 
     [{ ...buyer, fullName: '\nBuyer' }, true, 'buyer.fullName'],
     [{ ...buyer, whatsappPhone: '+66 8123 4567' }, true, 'buyer.whatsappPhone'],
     [{ ...buyer, email: 'invalid' }, true, 'buyer.email'],
+    [buyer, false, 'whatsappOrderContactOptIn'],
+    [buyer, undefined, 'whatsappOrderContactOptIn'],
     [buyer, 'true', 'whatsappOrderContactOptIn'],
   ]) {
     assert.throws(() => validateBuyer(value, consent), (error) => error instanceof FieldError && error.field === field && !error.message.includes('example.test'));

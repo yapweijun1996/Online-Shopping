@@ -16,8 +16,8 @@ export function validateBuyer(buyer, whatsappOrderContactOptIn) {
   if (email && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email) || email.includes('..'))) {
     throw new FieldError('buyer.email', 'Enter a valid email address.');
   }
-  if (typeof whatsappOrderContactOptIn !== 'boolean') {
-    throw new FieldError('whatsappOrderContactOptIn', 'Choose whether to allow order contact by WhatsApp.');
+  if (whatsappOrderContactOptIn !== true) {
+    throw new FieldError('whatsappOrderContactOptIn', 'Confirm WhatsApp contact for this order.');
   }
   return { fullName, whatsappPhone, email: email || null, whatsappOrderContactOptIn };
 }

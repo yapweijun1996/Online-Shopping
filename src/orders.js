@@ -79,7 +79,7 @@ export function createOrder(database, idempotencyKey, input) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'SUBMITTED', 1, ?, ?, ?, ?)`,
       id, orderNo, order.buyer.fullName, order.buyer.whatsappPhone, order.buyer.email,
       Number(order.buyer.whatsappOrderContactOptIn), order.buyer.whatsappOrderContactOptIn ? now : null,
-      order.buyer.whatsappOrderContactOptIn ? 'order-contact-v1' : null, order.locale, currency, totalMinor, now, now,
+      order.buyer.whatsappOrderContactOptIn ? 'order-contact-v2' : null, order.locale, currency, totalMinor, now, now,
     );
 
     for (const [index, delivery] of order.deliveries.entries()) {

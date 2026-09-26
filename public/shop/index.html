@@ -74,7 +74,7 @@
             </div>
             <label class="checkout-field"><span data-i18n="optionalEmail">Email (optional)</span><input id="buyer-email" name="buyer.email" type="email" maxlength="254" autocomplete="email"></label>
           </div>
-          <label class="check-row"><input id="whatsapp-opt-in" type="checkbox"><span data-i18n="whatsappConsent">I allow the seller to contact me about this order on WhatsApp.</span></label>
+          <label class="check-row"><input id="whatsapp-opt-in" name="whatsappOrderContactOptIn" type="checkbox" required><span data-i18n="whatsappConsent">I agree to receive WhatsApp messages from the seller about this order. Required to place an order; no marketing.</span></label>
         </fieldset>
         <div id="delivery-list" class="delivery-list"></div>
         <button id="add-delivery" class="outline-button" type="button" data-i18n="addDestination">Add destination</button>

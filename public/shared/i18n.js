@@ -250,7 +250,7 @@ const checkoutMessages = {
   en: {
     proceedCheckout: 'Continue to checkout', checkout: 'Checkout', checkoutIntro: 'Enter buyer and destination details. No payment or shipping charge is collected online.',
     buyerDetails: 'Buyer details', fullName: 'Full name', phoneCode: 'Phone code', buyerWhatsApp: 'Buyer WhatsApp phone', optionalEmail: 'Email (optional)',
-    whatsappConsent: 'I allow the seller to contact me about this order on WhatsApp.', addDestination: 'Add destination', assignItems: 'Assign items to destinations',
+    whatsappConsent: 'I agree to receive WhatsApp messages from the seller about this order. Required to place an order; no marketing.', whatsappRequired: 'Confirm WhatsApp contact to place your order.', addDestination: 'Add destination', assignItems: 'Assign items to destinations',
     assignmentHelp: 'Each cart item goes to one destination. Change quantities in the cart.', saveHistory: 'Remember these phones and addresses on this device for future orders.',
     clearHistory: 'Clear saved suggestions', backToCart: 'Back to cart', placeOrder: 'Place order', orderSubmitted: 'Order submitted',
     thankYou: 'Thank you for your order', receiptMessage: 'The seller will review your order. Save this order number for your records.',
@@ -267,7 +267,7 @@ const checkoutMessages = {
   ms: {
     proceedCheckout: 'Teruskan ke pesanan', checkout: 'Buat pesanan', checkoutIntro: 'Isi butiran pembeli dan destinasi. Tiada bayaran atau caj penghantaran dikutip dalam talian.',
     buyerDetails: 'Butiran pembeli', fullName: 'Nama penuh', phoneCode: 'Kod telefon', buyerWhatsApp: 'Telefon WhatsApp pembeli', optionalEmail: 'E-mel (pilihan)',
-    whatsappConsent: 'Saya membenarkan penjual menghubungi saya tentang pesanan ini melalui WhatsApp.', addDestination: 'Tambah destinasi', assignItems: 'Tetapkan item kepada destinasi',
+    whatsappConsent: 'Saya bersetuju menerima mesej WhatsApp daripada penjual tentang pesanan ini. Wajib untuk membuat pesanan; bukan untuk pemasaran.', whatsappRequired: 'Sahkan hubungan melalui WhatsApp untuk membuat pesanan.', addDestination: 'Tambah destinasi', assignItems: 'Tetapkan item kepada destinasi',
     assignmentHelp: 'Setiap item troli dihantar ke satu destinasi. Ubah kuantiti dalam troli.', saveHistory: 'Ingat telefon dan alamat ini pada peranti ini untuk pesanan akan datang.',
     clearHistory: 'Padam cadangan tersimpan', backToCart: 'Kembali ke troli', placeOrder: 'Buat pesanan', orderSubmitted: 'Pesanan dihantar',
     thankYou: 'Terima kasih atas pesanan anda', receiptMessage: 'Penjual akan menyemak pesanan anda. Simpan nombor pesanan ini.',
@@ -284,7 +284,7 @@ const checkoutMessages = {
   'zh-Hans': {
     proceedCheckout: '继续结账', checkout: '结账', checkoutIntro: '填写买家和收件地址。线上不收取付款或运费。',
     buyerDetails: '买家资料', fullName: '全名', phoneCode: '电话区号', buyerWhatsApp: '买家 WhatsApp 电话', optionalEmail: '电子邮箱（可选）',
-    whatsappConsent: '我同意卖家通过 WhatsApp 就此订单联系我。', addDestination: '添加收件地址', assignItems: '分配商品到收件地址',
+    whatsappConsent: '我同意卖家通过 WhatsApp 就此订单联系我。下单必须确认；不用于营销。', whatsappRequired: '请确认通过 WhatsApp 联系，才能提交订单。', addDestination: '添加收件地址', assignItems: '分配商品到收件地址',
     assignmentHelp: '每种购物车商品分配到一个地址。数量请在购物车修改。', saveHistory: '在此设备记住这些电话和地址，供下次下单选择。',
     clearHistory: '清除已保存建议', backToCart: '返回购物车', placeOrder: '提交订单', orderSubmitted: '订单已提交',
     thankYou: '感谢你的订单', receiptMessage: '卖家将审核订单。请保存订单编号。',
@@ -301,7 +301,7 @@ const checkoutMessages = {
   vi: {
     proceedCheckout: 'Tiếp tục đặt hàng', checkout: 'Đặt hàng', checkoutIntro: 'Nhập thông tin người mua và địa chỉ nhận. Không thu tiền hoặc phí vận chuyển trực tuyến.',
     buyerDetails: 'Thông tin người mua', fullName: 'Họ và tên', phoneCode: 'Mã điện thoại', buyerWhatsApp: 'Số WhatsApp người mua', optionalEmail: 'Email (không bắt buộc)',
-    whatsappConsent: 'Tôi cho phép người bán liên hệ qua WhatsApp về đơn hàng này.', addDestination: 'Thêm địa chỉ nhận', assignItems: 'Gán hàng cho từng địa chỉ',
+    whatsappConsent: 'Tôi đồng ý nhận tin nhắn WhatsApp từ người bán về đơn hàng này. Bắt buộc để đặt hàng; không dùng để tiếp thị.', whatsappRequired: 'Xác nhận liên hệ qua WhatsApp để đặt hàng.', addDestination: 'Thêm địa chỉ nhận', assignItems: 'Gán hàng cho từng địa chỉ',
     assignmentHelp: 'Mỗi mặt hàng trong giỏ thuộc một địa chỉ. Đổi số lượng trong giỏ hàng.', saveHistory: 'Ghi nhớ số điện thoại và địa chỉ trên thiết bị này cho lần sau.',
     clearHistory: 'Xóa gợi ý đã lưu', backToCart: 'Quay lại giỏ hàng', placeOrder: 'Đặt hàng', orderSubmitted: 'Đã gửi đơn hàng',
     thankYou: 'Cảm ơn bạn đã đặt hàng', receiptMessage: 'Người bán sẽ xem xét đơn hàng. Hãy lưu mã đơn hàng.',
@@ -318,7 +318,7 @@ const checkoutMessages = {
   th: {
     proceedCheckout: 'ดำเนินการสั่งซื้อ', checkout: 'สั่งซื้อ', checkoutIntro: 'กรอกข้อมูลผู้ซื้อและที่อยู่ปลายทาง ไม่มีการชำระเงินหรือค่าขนส่งออนไลน์',
     buyerDetails: 'ข้อมูลผู้ซื้อ', fullName: 'ชื่อเต็ม', phoneCode: 'รหัสโทรศัพท์', buyerWhatsApp: 'เบอร์ WhatsApp ผู้ซื้อ', optionalEmail: 'อีเมล (ไม่บังคับ)',
-    whatsappConsent: 'ฉันอนุญาตให้ผู้ขายติดต่อเรื่องคำสั่งซื้อนี้ทาง WhatsApp', addDestination: 'เพิ่มปลายทาง', assignItems: 'กำหนดสินค้าให้ปลายทาง',
+    whatsappConsent: 'ฉันยินยอมรับข้อความ WhatsApp จากผู้ขายเกี่ยวกับคำสั่งซื้อนี้ ต้องยืนยันก่อนสั่งซื้อ และไม่ใช้เพื่อการตลาด', whatsappRequired: 'ยืนยันการติดต่อทาง WhatsApp ก่อนสั่งซื้อ', addDestination: 'เพิ่มปลายทาง', assignItems: 'กำหนดสินค้าให้ปลายทาง',
     assignmentHelp: 'สินค้าแต่ละรายการไปยังปลายทางเดียว เปลี่ยนจำนวนในตะกร้า', saveHistory: 'จำเบอร์โทรและที่อยู่เหล่านี้บนอุปกรณ์นี้สำหรับครั้งถัดไป',
     clearHistory: 'ล้างคำแนะนำที่บันทึก', backToCart: 'กลับไปตะกร้า', placeOrder: 'ส่งคำสั่งซื้อ', orderSubmitted: 'ส่งคำสั่งซื้อแล้ว',
     thankYou: 'ขอบคุณสำหรับคำสั่งซื้อ', receiptMessage: 'ผู้ขายจะตรวจสอบคำสั่งซื้อ โปรดเก็บหมายเลขคำสั่งซื้อไว้',
@@ -335,7 +335,7 @@ const checkoutMessages = {
   ja: {
     proceedCheckout: '注文に進む', checkout: '注文', checkoutIntro: '購入者とお届け先を入力してください。オンライン決済や送料の請求はありません。',
     buyerDetails: '購入者情報', fullName: '氏名', phoneCode: '電話の国番号', buyerWhatsApp: '購入者の WhatsApp 番号', optionalEmail: 'メール（任意）',
-    whatsappConsent: 'この注文について販売者から WhatsApp で連絡を受けることに同意します。', addDestination: 'お届け先を追加', assignItems: '商品をお届け先に割り当てる',
+    whatsappConsent: 'この注文について販売者から WhatsApp で連絡を受けることに同意します。注文に必須で、宣伝には使用しません。', whatsappRequired: '注文するには WhatsApp での連絡に同意してください。', addDestination: 'お届け先を追加', assignItems: '商品をお届け先に割り当てる',
     assignmentHelp: '各商品は一つのお届け先に割り当てます。数量はカートで変更してください。', saveHistory: '次回のために、この端末に電話番号と住所を保存します。',
     clearHistory: '保存した候補を消去', backToCart: 'カートに戻る', placeOrder: '注文する', orderSubmitted: '注文を送信しました',
     thankYou: 'ご注文ありがとうございます', receiptMessage: '販売者が注文を確認します。注文番号を保存してください。',
@@ -352,7 +352,7 @@ const checkoutMessages = {
   ko: {
     proceedCheckout: '주문 계속하기', checkout: '주문', checkoutIntro: '구매자와 배송지 정보를 입력하세요. 온라인 결제나 배송비는 받지 않습니다.',
     buyerDetails: '구매자 정보', fullName: '성명', phoneCode: '전화 국가번호', buyerWhatsApp: '구매자 WhatsApp 번호', optionalEmail: '이메일 (선택)',
-    whatsappConsent: '이 주문에 대해 판매자가 WhatsApp으로 연락하는 데 동의합니다.', addDestination: '배송지 추가', assignItems: '상품을 배송지에 배정',
+    whatsappConsent: '이 주문에 관해 판매자의 WhatsApp 메시지를 받는 데 동의합니다. 주문에 필수이며 마케팅에는 사용하지 않습니다.', whatsappRequired: '주문하려면 WhatsApp 연락에 동의해 주세요.', addDestination: '배송지 추가', assignItems: '상품을 배송지에 배정',
     assignmentHelp: '각 장바구니 상품은 한 배송지로 갑니다. 수량은 장바구니에서 바꾸세요.', saveHistory: '다음 주문을 위해 이 기기에 전화번호와 주소를 저장합니다.',
     clearHistory: '저장된 추천 지우기', backToCart: '장바구니로', placeOrder: '주문하기', orderSubmitted: '주문 제출됨',
     thankYou: '주문해 주셔서 감사합니다', receiptMessage: '판매자가 주문을 검토합니다. 주문번호를 보관하세요.',

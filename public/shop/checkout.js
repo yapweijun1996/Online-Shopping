@@ -290,6 +290,11 @@ export function mountCheckout({ onSuccess, onPriceChanged }) {
 
   const buyerPhone = document.getElementById('buyer-phone');
   const buyerCode = document.getElementById('buyer-code');
+  const whatsappConsent = document.getElementById('whatsapp-opt-in');
+  whatsappConsent.addEventListener('invalid', () => setError('whatsappRequired', 'whatsappOrderContactOptIn'));
+  whatsappConsent.addEventListener('change', () => {
+    if (whatsappConsent.checked && errorKey === 'whatsappRequired') setError('');
+  });
   buyerPhone.addEventListener('change', () => syncPhoneCode(buyerCode, buyerPhone.value));
   suggestionControls.push({ control: buyerPhone, ...historyCombobox(buyerPhone,
     () => history.snapshot().buyerPhones.map((value) => ({ value, label: value })),

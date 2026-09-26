@@ -72,7 +72,7 @@ test('checkout snapshots two destinations and server prices in one private order
     assert.equal(order.buyer_phone, '+6581234567');
     assert.equal(order.whatsapp_opt_in, 1);
     assert.equal(order.whatsapp_consent_at, order.submitted_at);
-    assert.equal(order.whatsapp_consent_version, 'order-contact-v1');
+    assert.equal(order.whatsapp_consent_version, 'order-contact-v2');
     assert.equal(order.revision, 1);
     assert.equal(f.app.database.get('SELECT COUNT(*) AS count FROM delivery').count, 2);
     const recipients = f.app.database.all('SELECT recipient_phone, address_country FROM delivery ORDER BY position');
@@ -89,6 +89,25 @@ test('checkout snapshots two destinations and server prices in one private order
     assert.equal((await f.submit('order-intent-00000002')).data.error.code, 'PRODUCT_UNAVAILABLE');
     assert.equal((await fetch(`${f.origin}/api/v1/orders?phone=%2B6581234567`)).status, 404);
     assert.equal((await fetch(`${f.origin}/api/v1/orders/${result.data.orderNo}`)).status, 404);
+  } finally { await f.close(); }
+});
+
+test('checkout requires explicit WhatsApp order-contact permission before any write', async () => {
+  const f = await fixture();
+  try {
+    const original = orderInput(f.first.id, f.second.id);
+    for (const value of [false, undefined]) {
+      const payload = { ...original, whatsappOrderContactOptIn: value };
+      const result = await f.submit('contact-intent-00000001', payload);
+      assert.equal(result.response.status, 400);
+      assert.equal(result.data.error.field, 'whatsappOrderContactOptIn');
+      assert.equal(f.app.database.get('SELECT COUNT(*) AS count FROM shop_order').count, 0);
+      assert.equal(f.app.database.get('SELECT COUNT(*) AS count FROM checkout_idempotency').count, 0);
+      assert.equal(f.app.database.get('SELECT value FROM order_sequence WHERE id = 1').value, 0);
+    }
+    const accepted = await f.submit('contact-intent-00000001', original);
+    assert.equal(accepted.response.status, 201);
+    assert.equal(f.app.database.get('SELECT whatsapp_opt_in, whatsapp_consent_version FROM shop_order').whatsapp_consent_version, 'order-contact-v2');
   } finally { await f.close(); }
 });
 
@@ -128,7 +147,8 @@ test('idempotent retries return the original receipt and reject changed intent',
     const replay = await f.submit(key);
     assert.equal(replay.response.status, 200);
     assert.deepEqual(replay.data, first.data);
-    const changed = await f.submit(key, { ...orderInput(f.first.id, f.second.id), whatsappOrderContactOptIn: false });
+    const original = orderInput(f.first.id, f.second.id);
+    const changed = await f.submit(key, { ...original, buyer: { ...original.buyer, fullName: 'Another Buyer' } });
     assert.equal(changed.response.status, 409);
     assert.equal(changed.data.error.code, 'IDEMPOTENCY_CONFLICT');
     assert.equal(f.app.database.get('SELECT COUNT(*) AS count FROM shop_order').count, 1);

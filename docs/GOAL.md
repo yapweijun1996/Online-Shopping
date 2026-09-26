@@ -10,7 +10,7 @@ Deliver a small online-shopping application: a seller configures products, a cus
 
 1. A super admin signs in, manages category codes and the default currency, and creates, edits, activates, or deactivates products. Only active products appear at the public shop link.
 2. A customer browses and searches products, uses a cart, and submits an order with one or more delivery destinations.
-3. Buyer contact and each destination's recipient contact remain separate. Buyer WhatsApp phone is required; email is optional. Neither is verified in the MVP. Buyer and recipient phone inputs support Malaysia (+60) and Singapore (+65).
+3. Buyer contact and each destination's recipient contact remain separate. Buyer WhatsApp phone and active permission for order-related WhatsApp messages are required; WhatsApp is the only buyer order-contact channel. Email is optional. Phone ownership is not verified in the MVP. Buyer and recipient phone inputs support Malaysia (+60) and Singapore (+65).
 4. The server returns a unique order number after saving the order. The customer sees a receipt, with a minimal same-browser copy kept when local storage remains available.
 5. The seller sees authoritative prices and order snapshots, confirms or rejects submitted orders with an audit record, copies individual contact and address fields, and can manually open an opted-in buyer's WhatsApp chat.
 6. The seller panel has a collapsible SVG-icon side bar and an account menu for profile viewing and sign-out.

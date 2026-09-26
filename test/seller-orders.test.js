@@ -34,10 +34,10 @@ async function fixture() {
 
   return {
     app, config, directory, origin, product, request,
-    async submit({ buyerName = 'Example Buyer', optIn = true } = {}) {
+    async submit({ buyerName = 'Example Buyer' } = {}) {
       const body = {
         buyer: { fullName: buyerName, whatsappPhone: '+6581234567', email: 'example@example.invalid' },
-        whatsappOrderContactOptIn: optIn,
+        whatsappOrderContactOptIn: true,
         locale: 'en',
         deliveries: [{
           recipient: { fullName: 'Example Recipient', phone: '+60123456789' },
@@ -67,9 +67,11 @@ test('seller queue and detail expose one authorized order snapshot with no publi
   const f = await fixture();
   try {
     const first = await f.submit();
-    const second = await f.submit({ buyerName: 'Another Buyer', optIn: false });
+    const second = await f.submit({ buyerName: 'Another Buyer' });
     assert.equal(first.response.status, 201);
     assert.equal(second.response.status, 201);
+    f.app.database.run(`UPDATE shop_order SET whatsapp_opt_in = 0,
+      whatsapp_consent_at = NULL, whatsapp_consent_version = NULL WHERE order_no = ?`, second.data.orderNo);
     const id = f.app.database.get('SELECT id FROM shop_order WHERE order_no = ?', first.data.orderNo).id;
     for (const url of ['/api/v1/seller/orders', `/api/v1/seller/orders/${id}`]) {
       const denied = await f.request('GET', url);
@@ -97,6 +99,8 @@ test('seller queue and detail expose one authorized order snapshot with no publi
     assert.equal(detail.response.headers.get('cache-control'), 'no-store');
     assert.equal(detail.data.buyer.whatsappPhone, '+6581234567');
     assert.equal(detail.data.buyer.whatsappOrderContactOptIn, true);
+    const historical = await f.request('GET', `/api/v1/seller/orders/${f.app.database.get('SELECT id FROM shop_order WHERE order_no = ?', second.data.orderNo).id}`, null, { cookie });
+    assert.equal(historical.data.buyer.whatsappOrderContactOptIn, false);
     assert.equal(detail.data.deliveries[0].recipient.phone, '+60123456789');
     assert.equal(detail.data.deliveries[0].address.line2, 'Unit 1');
     assert.equal(detail.data.deliveries[0].items[0].priceMinor, 1250);
