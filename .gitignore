@@ -11,3 +11,5 @@ coverage/
 *.log
 .local/
 .playwright-cli/
+.pi-glla/
+sample/
