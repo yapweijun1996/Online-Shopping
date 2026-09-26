@@ -87,5 +87,5 @@ Browser verification covers seller setup, guest checkout, receipt and seller rev
 
 ## Open decisions before release
 
-- Exact production HTTPS host and certificate reachability; the chosen one-backend Docker topology already uses private SQLite and persisted session hashes.
-- The owner requests permanent retention of server orders and their contact/address snapshots. The server currently has no automatic order deletion, but the lawful basis or exception and recovery guarantee remain unresolved before any real-data launch. Browser suggestion history is a separate, clearable 90-day convenience store.
+- Production HTTPS host resolved (2026-09-26): the Cloudflare Workers `*.workers.dev` subdomain under the Worker name `online-shopping`, not a custom domain; see [DEPLOY.md](DEPLOY.md). Certificate reachability is Cloudflare-managed for that subdomain. The one-backend Docker topology remains an alternative path with its own unresolved hostname.
+- The owner requests permanent retention of server orders and their contact/address snapshots. The lawful basis is now recorded as business/contractual necessity (2026-09-26; see [PROGRESS.md](PROGRESS.md) DEC-06), though the recovery guarantee (encrypted off-host backup, rollback) remains unresolved before any real-data launch. Browser suggestion history is a separate, clearable 90-day convenience store.
