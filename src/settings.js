@@ -27,7 +27,7 @@ function categoryInput(input, partial = false) {
   const result = {};
   if (Object.hasOwn(input, 'code')) {
     result.code = boundedText(input.code, 'code', 80);
-    if (!/^[A-Z][A-Z0-9_-]*$/.test(result.code)) throw new FieldError('code', 'Use uppercase letters, digits, hyphens or underscores.');
+    if (!/^[A-Z][A-Z0-9_\-]*$/.test(result.code)) throw new FieldError('code', 'Use uppercase letters, digits, hyphens or underscores.');
   }
   if (Object.hasOwn(input, 'label')) result.label = boundedText(input.label, 'label', 80);
   if (Object.hasOwn(input, 'active')) {

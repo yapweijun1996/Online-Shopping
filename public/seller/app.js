@@ -23,6 +23,17 @@ let settingsPage = null;
 let loginMessageKey = '';
 let workspaceMessageKey = '';
 const sessionHintKey = 'online-shopping-seller-session-hint';
+const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'review', 'categories', 'company']);
+
+function viewFromHash() {
+  const view = location.hash.slice(1);
+  return VALID_VIEWS.has(view) ? view : 'dashboard';
+}
+
+function applyRoute() {
+  currentView = viewFromHash();
+  renderView();
+}
 
 function sessionHint(value) {
   try {
@@ -93,7 +104,7 @@ function showWorkspace(session) {
   document.body.classList.add('seller-signed-in');
   byId('password').value = '';
   syncDrawerAccess();
-  renderView();
+  applyRoute();
 }
 
 function renderView() {
@@ -184,12 +195,24 @@ byId('collapse-nav').addEventListener('click', () => {
   byId('collapse-nav').setAttribute('aria-label', t(collapsed ? 'expand' : 'collapse'));
   byId('collapse-nav').setAttribute('aria-expanded', String(!collapsed));
 });
-document.querySelectorAll('.nav-item').forEach((button) => button.addEventListener('click', () => {
-  currentView = button.dataset.view;
-  renderView();
-  closeDrawer(false);
+function focusRouteChange() {
   window.scrollTo(0, 0);
   byId('page-title').focus({ preventScroll: true });
+}
+window.addEventListener('hashchange', () => {
+  if (workspace.hidden) return;
+  applyRoute();
+  focusRouteChange();
+});
+document.querySelectorAll('.nav-item').forEach((button) => button.addEventListener('click', () => {
+  const view = button.dataset.view;
+  closeDrawer(false);
+  if (location.hash === `#${view}`) {
+    applyRoute();
+    focusRouteChange();
+  } else {
+    location.hash = `#${view}`;
+  }
 }));
 accountButton.addEventListener('click', () => {
   accountMenu.hidden = !accountMenu.hidden;

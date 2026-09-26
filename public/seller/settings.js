@@ -24,7 +24,7 @@ export function mountCategories(root, { csrfToken, onUnauthorized }) {
     <h2 id="category-heading" data-i18n="categoryCodes">Category codes</h2>
     <p data-i18n="categoryIntro">Manage the categories available in product forms. Codes stay fixed; deactivate unused categories.</p>
     <form id="category-create" class="settings-form">
-      <label><span data-i18n="categoryCode">Code</span><input name="code" required maxlength="80" pattern="[A-Z][A-Z0-9_-]*" autocomplete="off" placeholder="HOME_GOODS"></label>
+      <label><span data-i18n="categoryCode">Code</span><input name="code" required maxlength="80" pattern="[A-Z][A-Z0-9_\\-]*" autocomplete="off" placeholder="HOME_GOODS"></label>
       <label><span data-i18n="categoryLabel">Display name</span><input name="label" required maxlength="80"></label>
       <button class="primary-button" type="submit" data-i18n="addCategory">Add category</button>
     </form>
