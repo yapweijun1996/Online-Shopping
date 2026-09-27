@@ -124,7 +124,7 @@ Customer account/history recovery, OTP, payment, automatic messaging, batch CSV/
 
 ## Shop setup
 
-`GET /api/v1/shop` returns `{ mode: null | "demo" | "production", shopName, currency: "MYR" | "SGD" }` publicly. Currency is the seller's current default currency; the storefront uses it to choose the address country and calling prefix. `GET /api/v1/seller/setup` returns the mode and shop name after seller authentication.
+`GET /api/v1/shop` returns `{ mode: null | "demo" | "production", shopName, currency: "MYR" | "SGD", sellerWhatsAppPhone: string | null }` publicly. Currency is the seller's current default currency; the storefront uses it to choose the address country and calling prefix. The Demo shop exposes `60182727900` for the product page's user-initiated WhatsApp chat link. Unconfigured and Production shops return `null`; no Demo contact number is inherited by Production. Opening the chat does not send a message automatically or include buyer information. `GET /api/v1/seller/setup` returns the mode and shop name after seller authentication.
 
 `POST /api/v1/seller/setup` requires seller session, same origin and CSRF token. Accepts `{ mode: "demo" }` or `{ mode: "production", shopName: "Your shop" }` (1–80 characters). Demo creates 35 pet products with images and five categories atomically, only in an empty catalog without orders. Production inserts no products. Repeating the chosen mode is idempotent; changing it returns `409 SHOP_ALREADY_CONFIGURED`. Demo against existing catalog data returns `409 SHOP_NOT_EMPTY`. Use a separate database for another mode; no reset/delete operation is provided.
 

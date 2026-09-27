@@ -337,8 +337,16 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
         }
       }
     }
-    const chat = button(t('chat'), () => notify?.('chatUnavailable'), 'product-chat');
-    chat.setAttribute('aria-label', t('chatUnavailable'));
+    const sellerPhone = shop()?.sellerWhatsAppPhone;
+    const chatAvailable = typeof sellerPhone === 'string' && /^[1-9]\d{7,14}$/.test(sellerPhone);
+    const chat = chatAvailable
+      ? link('', `https://web.whatsapp.com/send/?phone=${sellerPhone}`, 'product-chat')
+      : button('', () => notify?.('chatUnavailable'), 'product-chat');
+    chat.setAttribute('aria-label', t(chatAvailable ? 'openWhatsApp' : 'chatUnavailable'));
+    if (chatAvailable) {
+      chat.target = '_blank';
+      chat.rel = 'noopener noreferrer';
+    }
     chat.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4V5Z"/><path d="M8 9h8M8 12h5"/></svg>';
     chat.append(node('span', '', t('chat')));
     const add = button(t('addToCart'), () => purchase(false), 'product-add');

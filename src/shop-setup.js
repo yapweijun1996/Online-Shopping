@@ -4,6 +4,8 @@ import { createProduct } from './products.js';
 import { createCategory } from './settings.js';
 import { boundedText, FieldError } from './validation.js';
 
+export const DEMO_SELLER_WHATSAPP_PHONE = '60182727900';
+
 const categories = {
   LITTER_BOXES: 'Automatic Litter Boxes', CAT_LITTER: 'Cat Litter',
   ODOR_CONTROL: 'Odor Control', WASTE_BAGS: 'Waste Bags', ACCESSORIES: 'Litter Box Accessories',

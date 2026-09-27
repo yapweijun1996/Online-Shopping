@@ -88,6 +88,7 @@ test('setup API enforces session, origin and CSRF; public catalog exposes demo i
   const publicShop = await (await call('/api/v1/shop')).json();
   assert.equal(publicShop.mode, 'demo');
   assert.equal(publicShop.currency, 'MYR');
+  assert.equal(publicShop.sellerWhatsAppPhone, '60182727900');
   const page = await (await call('/api/v1/products?limit=100')).json();
   assert.equal(page.items.length, 35);
   const image = await call(page.items[0].imageUrl);
@@ -131,10 +132,13 @@ test('demo orders ignore supplied personal data and never grant contact permissi
   assert.equal(store.get('SELECT COUNT(*) AS n FROM shop_order').n, 1);
 });
 
-test('production does not accept simulation as a client-selected bypass', async (t) => {
+test('production does not inherit Demo chat or accept simulation as a client-selected bypass', async (t) => {
   const { createOrder } = await import('../src/orders.js');
   const store = fixture(t);
   setupShop(store, { mode: 'production', shopName: 'Real shop' });
+  const api = createApi({ store, config: { publicOrigin: 'http://localhost' } });
+  const publicShop = await (await api(new Request('http://localhost/api/v1/shop'), { clientAddress: '127.0.0.1' })).json();
+  assert.equal(publicShop.sellerWhatsAppPhone, null);
   assert.throws(() => createOrder(store, 'production-bypass-001', { simulation: true, deliveries: [] }));
   assert.equal(store.get('SELECT COUNT(*) AS n FROM shop_order').n, 0);
 });
