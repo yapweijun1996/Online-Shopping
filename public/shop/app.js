@@ -722,7 +722,7 @@ checkoutPage = mountCheckout({
     location.hash = '#cart';
   },
 });
-detailPage = mountProductDetail(byId('product-view'), { api, addToCart, checkout: beginCheckout, shop: () => shopInfo });
+detailPage = mountProductDetail(byId('product-view'), { api, addToCart, checkout: beginCheckout, shop: () => shopInfo, notify: setMessage });
 updateCount();
 updatePersistence();
 byId('catalog-search-form').addEventListener('submit', (event) => { event.preventDefault(); applyCatalogFilters(); });

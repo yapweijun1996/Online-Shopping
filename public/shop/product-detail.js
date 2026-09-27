@@ -26,7 +26,7 @@ function image(product, className, source = product.imageUrl) {
   return element;
 }
 
-export function mountProductDetail(root, { api, addToCart, checkout, shop }) {
+export function mountProductDetail(root, { api, addToCart, checkout, shop, notify }) {
   let request = 0;
   let product = null;
   let related = [];
@@ -39,7 +39,7 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop }) {
   let activeImageIndex = 0;
 
   function syncFloatingNavigation() {
-    const gallery = root.querySelector('.product-gallery');
+    const gallery = root.querySelector('.product-image-button');
     const navigation = root.querySelector('.product-navigation');
     if (!gallery || !navigation || root.hidden) return;
     navigation.classList.toggle('product-navigation-solid', gallery.getBoundingClientRect().bottom <= navigation.getBoundingClientRect().bottom);
@@ -191,11 +191,11 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop }) {
     const summary = node('div', 'product-summary');
     const title = node('h1', '', product.name);
     title.id = 'detail-title'; title.tabIndex = -1;
-    const headingMeta = node('div', 'product-heading-meta');
-    headingMeta.append(node('p', 'catalog-category', product.category));
     const headingBlock = node('div', 'product-heading-block');
+    const promotion = node('div', 'product-info-row product-promotion');
+    promotion.append(node('strong', '', t('promotion')), node('span', '', t('promotionUnavailable')));
     headingBlock.append(node('strong', 'product-price', formatMoney(product.priceMinor, product.currency)),
-      title, headingMeta);
+      promotion, title, node('p', 'product-rating-status', t('ratingsUnavailable')));
     const selectionBlock = node('div', 'product-selection-block');
     if (product.variants?.length > 1) {
       const variants = node('div', 'product-variants');
@@ -337,10 +337,14 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop }) {
         }
       }
     }
+    const chat = button(t('chat'), () => notify?.('chatUnavailable'), 'product-chat');
+    chat.setAttribute('aria-label', t('chatUnavailable'));
+    chat.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4V5Z"/><path d="M8 9h8M8 12h5"/></svg>';
+    chat.append(node('span', '', t('chat')));
     const add = button(t('addToCart'), () => purchase(false), 'product-add');
     const buy = button(t('buyNow'), () => purchase(true), 'primary-button product-buy');
     add.disabled = buy.disabled = busy;
-    purchaseBar.append(add, buy);
+    purchaseBar.append(chat, add, buy);
     const shareStatus = node('p', 'shop-note'); shareStatus.setAttribute('role', 'status');
     const shareField = node('input', 'share-url'); shareField.readOnly = true; shareField.hidden = true;
     shareField.setAttribute('aria-label', t('productLink'));
@@ -358,11 +362,20 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop }) {
     navigation.append(share, cartNavigation);
     headingBlock.append(shareStatus, shareField);
     selectionBlock.append(quantityRow, purchaseBar, feedback, cartLink);
-    summary.append(headingBlock, selectionBlock);
+    const serviceDetails = node('div', 'product-service-details');
+    for (const [heading, copy] of [
+      ['shipping', shop()?.mode === 'demo' ? 'demoBrief' : 'shippingUnconfirmed'],
+      ['returnsAndGuarantees', 'returnsUnconfirmed'],
+    ]) {
+      const section = node('section', 'product-service-row');
+      section.append(node('h2', '', t(heading)), node('p', '', t(copy)));
+      serviceDetails.append(section);
+    }
+    summary.append(headingBlock, selectionBlock, serviceDetails);
     layout.append(gallery, summary);
     if (shop()?.mode === 'demo') {
       const demoNote = node('p', 'product-demo-note', t('demoNotice'));
-      summary.prepend(demoNote);
+      summary.insertBefore(demoNote, selectionBlock);
     }
     const description = node('section', 'product-description-section');
     description.append(node('h2', '', t('productInformation')));
@@ -372,7 +385,9 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop }) {
     }
     description.append(specs, node('h3', 'description-heading', t('description')),
       node('p', 'detail-description', product.description));
-    root.append(layout, description, zoom);
+    const reviews = node('section', 'product-reviews');
+    reviews.append(node('h2', '', t('reviews')), node('p', '', t('reviewsUnavailable')));
+    root.append(layout, description, reviews, zoom);
     root.append(node('section', 'related-products'));
     renderRelated();
     requestAnimationFrame(syncFloatingNavigation);
