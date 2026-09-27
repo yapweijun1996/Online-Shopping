@@ -1211,6 +1211,12 @@ const productDetailMessages = {
 };
 for (const { code } of languages) Object.assign(messages[code], productDetailMessages[code]);
 
+const demoOrderInformationLabels = {
+  en: 'About demo orders', ms: 'Tentang pesanan demo', 'zh-Hans': '关于模拟订单',
+  vi: 'Về đơn hàng demo', th: 'เกี่ยวกับคำสั่งซื้อสาธิต', ja: 'デモ注文について', ko: '데모 주문 안내',
+};
+for (const { code } of languages) messages[code].demoOrderInformation = demoOrderInformationLabels[code];
+
 const photoNavigationLabels = {
   en: ['Previous photo', 'Next photo'],
   ms: ['Foto sebelumnya', 'Foto seterusnya'],

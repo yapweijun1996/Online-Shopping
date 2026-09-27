@@ -192,10 +192,8 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     const title = node('h1', '', product.name);
     title.id = 'detail-title'; title.tabIndex = -1;
     const headingBlock = node('div', 'product-heading-block');
-    const promotion = node('div', 'product-info-row product-promotion');
-    promotion.append(node('strong', '', t('promotion')), node('span', '', t('promotionUnavailable')));
     headingBlock.append(node('strong', 'product-price', formatMoney(product.priceMinor, product.currency)),
-      promotion, title, node('p', 'product-rating-status', t('ratingsUnavailable')));
+      title);
     const selectionBlock = node('div', 'product-selection-block');
     if (product.variants?.length > 1) {
       const variants = node('div', 'product-variants');
@@ -370,19 +368,20 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     navigation.append(share, cartNavigation);
     headingBlock.append(shareStatus, shareField);
     selectionBlock.append(quantityRow, purchaseBar, feedback, cartLink);
+    const demo = shop()?.mode === 'demo';
     const serviceDetails = node('div', 'product-service-details');
-    for (const [heading, copy] of [
-      ['shipping', shop()?.mode === 'demo' ? 'demoBrief' : 'shippingUnconfirmed'],
-      ['returnsAndGuarantees', 'returnsUnconfirmed'],
-    ]) {
-      const section = node('section', 'product-service-row');
-      section.append(node('h2', '', t(heading)), node('p', '', t(copy)));
+    const serviceRows = demo
+      ? [['demoOrderInformation', 'demoBrief']]
+      : [['shipping', 'shippingUnconfirmed'], ['returnsAndGuarantees', 'returnsUnconfirmed']];
+    for (const [heading, copy] of serviceRows) {
+      const section = node('details', 'product-service-row');
+      section.append(node('summary', '', t(heading)), node('p', '', t(copy)));
       serviceDetails.append(section);
     }
     if (updateBanner) summary.append(updateBanner);
     summary.append(headingBlock, selectionBlock, serviceDetails);
     layout.append(gallery, summary);
-    if (shop()?.mode === 'demo') {
+    if (demo) {
       const demoNote = node('p', 'product-demo-note', t('demoNotice'));
       summary.insertBefore(demoNote, selectionBlock);
     }
@@ -394,8 +393,8 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     }
     description.append(specs, node('h3', 'description-heading', t('description')),
       node('p', 'detail-description', product.description));
-    const reviews = node('section', 'product-reviews');
-    reviews.append(node('h2', '', t('reviews')), node('p', '', t('reviewsUnavailable')));
+    const reviews = node('details', 'product-reviews');
+    reviews.append(node('summary', '', t('reviews')), node('p', '', t('reviewsUnavailable')));
     root.append(layout, description, reviews, zoom);
     root.append(node('section', 'related-products'));
     renderRelated();
