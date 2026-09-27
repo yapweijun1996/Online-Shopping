@@ -106,6 +106,8 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
       <label><span data-i18n="defaultCurrency">Default currency</span><select name="defaultCurrency"><option value="MYR">MYR</option><option value="SGD">SGD</option></select></label>
       <label><span data-i18n="sellerWhatsAppPhone">Seller WhatsApp number</span><input name="sellerWhatsAppPhone" type="tel" inputmode="tel" autocomplete="tel" maxlength="32" placeholder="+60182727900" aria-describedby="seller-whatsapp-help"></label>
       <p id="seller-whatsapp-help" data-i18n="sellerWhatsAppHelp">The public product page uses this number for Chat. Enter a +60 or +65 number, or leave it blank to turn Chat off.</p>
+      <label class="settings-check"><input name="mobileHideBarsOnScroll" type="checkbox"><span data-i18n="mobileHideBarsOnScroll">Hide mobile navigation bars while scrolling down</span></label>
+      <p class="settings-check-help" data-i18n="mobileHideBarsHelp">By default, the shop's top search bar and bottom navigation stay visible. Turn this on to hide them when shoppers scroll down and show them when they scroll up.</p>
       <button class="secondary-button" type="button" id="company-retry" data-i18n="retry" hidden>Retry</button>
       <button class="primary-button" type="submit" data-i18n="saveSettings">Save settings</button>
     </form><p class="settings-status" role="status"></p>
@@ -160,8 +162,10 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
   saveButton.disabled = true;
   let currencyEdited = false;
   let phoneEdited = false;
+  let mobileBarsEdited = false;
   form.elements.defaultCurrency.addEventListener('change', () => { currencyEdited = true; });
   form.elements.sellerWhatsAppPhone.addEventListener('input', () => { phoneEdited = true; });
+  form.elements.mobileHideBarsOnScroll.addEventListener('change', () => { mobileBarsEdited = true; });
   async function loadSettings() {
     retryButton.disabled = true;
     try {
@@ -169,6 +173,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
       if (!root.isConnected) return;
       if (!currencyEdited) form.elements.defaultCurrency.value = settings.defaultCurrency;
       if (!phoneEdited) form.elements.sellerWhatsAppPhone.value = settings.sellerWhatsAppPhone ? `+${settings.sellerWhatsAppPhone}` : '';
+      if (!mobileBarsEdited) form.elements.mobileHideBarsOnScroll.checked = settings.mobileHideBarsOnScroll === true;
       saveButton.disabled = false;
       retryButton.hidden = true;
       status(root, '');
@@ -185,9 +190,11 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
       const settings = await request('PATCH', '/api/v1/seller/company-settings', {
         defaultCurrency: form.elements.defaultCurrency.value,
         sellerWhatsAppPhone: form.elements.sellerWhatsAppPhone.value.trim(),
+        mobileHideBarsOnScroll: form.elements.mobileHideBarsOnScroll.checked,
       }, csrfToken, onUnauthorized);
       form.elements.sellerWhatsAppPhone.value = settings.sellerWhatsAppPhone ? `+${settings.sellerWhatsAppPhone}` : '';
-      currencyEdited = phoneEdited = false;
+      form.elements.mobileHideBarsOnScroll.checked = settings.mobileHideBarsOnScroll;
+      currencyEdited = phoneEdited = mobileBarsEdited = false;
       status(root, 'settingsSaved');
     } catch (error) { status(root, error.field === 'sellerWhatsAppPhone' ? 'sellerWhatsAppInvalid' : 'productError', true); }
     finally {

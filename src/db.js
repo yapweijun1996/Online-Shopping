@@ -1,7 +1,7 @@
 import { openNodeStore } from './store.js';
 import { DEMO_SELLER_WHATSAPP_PHONE } from './demo-defaults.js';
 
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -247,6 +247,12 @@ export function migrateStore(store) {
       UPDATE company_setting SET seller_whatsapp_phone = '${DEMO_SELLER_WHATSAPP_PHONE}'
         WHERE id = 1 AND EXISTS (SELECT 1 FROM shop_setup WHERE mode = 'demo');`);
     version = 9;
+  }
+  if (version === 9) {
+    migrate(store, 10, `
+      ALTER TABLE company_setting ADD COLUMN mobile_hide_bars_on_scroll INTEGER NOT NULL DEFAULT 0
+        CHECK (mobile_hide_bars_on_scroll IN (0, 1));`);
+    version = 10;
   }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }

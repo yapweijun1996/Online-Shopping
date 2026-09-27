@@ -68,20 +68,23 @@ export function updateCategory(database, code, input) {
 }
 
 export function getCompanySettings(database) {
-  const row = database.get('SELECT default_currency, seller_whatsapp_phone FROM company_setting WHERE id = 1');
-  return { defaultCurrency: row.default_currency, sellerWhatsAppPhone: row.seller_whatsapp_phone };
+  const row = database.get('SELECT default_currency, seller_whatsapp_phone, mobile_hide_bars_on_scroll FROM company_setting WHERE id = 1');
+  return { defaultCurrency: row.default_currency, sellerWhatsAppPhone: row.seller_whatsapp_phone,
+    mobileHideBarsOnScroll: Boolean(row.mobile_hide_bars_on_scroll) };
 }
 
 export function updateCompanySettings(database, input) {
   if (!input || typeof input !== 'object' || Array.isArray(input) ||
       !Object.keys(input).length ||
-      Object.keys(input).some((key) => !['defaultCurrency', 'sellerWhatsAppPhone'].includes(key))) {
+      Object.keys(input).some((key) => !['defaultCurrency', 'sellerWhatsAppPhone', 'mobileHideBarsOnScroll'].includes(key))) {
     throw new FieldError('companySettings', 'Enter supported company settings.');
   }
   const current = getCompanySettings(database);
   const currency = Object.hasOwn(input, 'defaultCurrency') ? input.defaultCurrency : current.defaultCurrency;
   if (!['MYR', 'SGD'].includes(currency)) throw new FieldError('defaultCurrency', 'Choose MYR or SGD.');
   let phone = current.sellerWhatsAppPhone;
+  const hideBars = Object.hasOwn(input, 'mobileHideBarsOnScroll') ? input.mobileHideBarsOnScroll : current.mobileHideBarsOnScroll;
+  if (typeof hideBars !== 'boolean') throw new FieldError('mobileHideBarsOnScroll', 'Choose whether to hide mobile bars on scroll.');
   if (Object.hasOwn(input, 'sellerWhatsAppPhone')) {
     if (input.sellerWhatsAppPhone === null || input.sellerWhatsAppPhone === '') phone = null;
     else {
@@ -91,7 +94,7 @@ export function updateCompanySettings(database, input) {
       } catch { throw new FieldError('sellerWhatsAppPhone', 'Enter a valid +60 or +65 mobile number.'); }
     }
   }
-  database.run('UPDATE company_setting SET default_currency = ?, seller_whatsapp_phone = ?, updated_at = ? WHERE id = 1',
-    currency, phone, new Date().toISOString());
+  database.run('UPDATE company_setting SET default_currency = ?, seller_whatsapp_phone = ?, mobile_hide_bars_on_scroll = ?, updated_at = ? WHERE id = 1',
+    currency, phone, Number(hideBars), new Date().toISOString());
   return getCompanySettings(database);
 }

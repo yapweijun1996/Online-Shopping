@@ -1,8 +1,8 @@
 import { createModal } from '../shared/modal.js';
 import { languages, locale, setLocale, t } from '../shared/i18n.js';
 
-export function scrollChromeState({ previous, current, hidden, anchor }) {
-  if (current < 48) return { hidden: false, anchor: current };
+export function scrollChromeState({ previous, current, hidden, anchor, autoHide = false }) {
+  if (!autoHide || current < 48) return { hidden: false, anchor: current };
   const direction = current - previous;
   if ((direction > 0 && current < anchor) || (direction < 0 && current > anchor)) anchor = previous;
   if (current - anchor > 28) return { hidden: true, anchor: current };
@@ -17,6 +17,7 @@ export function mountMobileNavigation({ categories, selectCategory, currentCateg
   let previous = window.scrollY;
   let anchor = previous;
   let hidden = false;
+  let autoHide = false;
   let frame = false;
   function reveal() {
     hidden = false; anchor = previous = window.scrollY;
@@ -63,8 +64,8 @@ export function mountMobileNavigation({ categories, selectCategory, currentCateg
       frame = false;
       const current = Math.max(0, Math.min(window.scrollY, document.documentElement.scrollHeight - innerHeight));
       // Keep transactional controls and focused search reachable; only browsing hides navigation.
-      if (!media.matches || !['catalog','product'].includes(document.body.dataset.shopRoute) || document.querySelector('dialog[open]') || document.activeElement?.matches('input, textarea, select')) { reveal(); return; }
-      ({ hidden, anchor } = scrollChromeState({ previous, current, hidden, anchor }));
+      if (!autoHide || !media.matches || !['catalog','product'].includes(document.body.dataset.shopRoute) || document.querySelector('dialog[open]') || document.activeElement?.matches('input, textarea, select')) { reveal(); return; }
+      ({ hidden, anchor } = scrollChromeState({ previous, current, hidden, anchor, autoHide }));
       previous = current;
       document.body.classList.toggle('mobile-chrome-hidden', hidden);
     });
@@ -76,5 +77,5 @@ export function mountMobileNavigation({ categories, selectCategory, currentCateg
   window.visualViewport?.addEventListener('resize', keyboard);
   document.addEventListener('focusin', keyboard);
   document.addEventListener('focusout', () => requestAnimationFrame(keyboard));
-  return { reveal, route, openLanguage: () => open('language') };
+  return { reveal, route, setAutoHide(value) { autoHide = value === true; reveal(); }, openLanguage: () => open('language') };
 }

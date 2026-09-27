@@ -233,6 +233,7 @@ async function loadCatalog(reset = true) {
     const [data, shop] = await Promise.all([api(`/api/v1/products?${params}`), api('/api/v1/shop')]);
     if (request !== catalogRequest) return;
     shopInfo = shop;
+    mobileNavigation.setAutoHide(shop.mobileHideBarsOnScroll);
     profilePage?.setCountry(countryForCurrency(shop.currency));
     addressBook?.render();
     checkoutPage?.refreshAddress();

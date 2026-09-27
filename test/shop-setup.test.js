@@ -70,6 +70,7 @@ test('existing version 6 catalogs migrate to production without altering product
     DROP INDEX product_variant_option; DROP INDEX product_variant_group;
     ALTER TABLE product DROP COLUMN variant_group; ALTER TABLE product DROP COLUMN variant_label;
     ALTER TABLE company_setting DROP COLUMN seller_whatsapp_phone;
+    ALTER TABLE company_setting DROP COLUMN mobile_hide_bars_on_scroll;
     DROP TABLE shop_setup`);
   store.setSchemaVersion(6);
   migrateStore(store);
@@ -82,12 +83,21 @@ test('version 8 Demo migration seeds contact once, then preserves seller changes
   const store = fixture(t);
   setupShop(store, { mode: 'demo' });
   store.exec('ALTER TABLE company_setting DROP COLUMN seller_whatsapp_phone');
+  store.exec('ALTER TABLE company_setting DROP COLUMN mobile_hide_bars_on_scroll');
   store.setSchemaVersion(8);
   migrateStore(store);
   assert.equal(store.get('SELECT seller_whatsapp_phone FROM company_setting').seller_whatsapp_phone, '60182727900');
   store.run('UPDATE company_setting SET seller_whatsapp_phone = NULL WHERE id = 1');
   migrateStore(store);
   assert.equal(store.get('SELECT seller_whatsapp_phone FROM company_setting').seller_whatsapp_phone, null);
+});
+
+test('version 9 migration defaults existing shops to always-visible mobile bars', (t) => {
+  const store = fixture(t);
+  store.exec('ALTER TABLE company_setting DROP COLUMN mobile_hide_bars_on_scroll');
+  store.setSchemaVersion(9);
+  migrateStore(store);
+  assert.equal(store.get('SELECT mobile_hide_bars_on_scroll FROM company_setting').mobile_hide_bars_on_scroll, 0);
 });
 
 test('setup API enforces session, origin and CSRF; public catalog exposes demo images', async (t) => {
@@ -106,6 +116,7 @@ test('setup API enforces session, origin and CSRF; public catalog exposes demo i
   assert.equal(publicShop.mode, 'demo');
   assert.equal(publicShop.currency, 'MYR');
   assert.equal(publicShop.sellerWhatsAppPhone, '60182727900');
+  assert.equal(publicShop.mobileHideBarsOnScroll, false);
   const page = await (await call('/api/v1/products?limit=100')).json();
   assert.equal(page.items.length, 35);
   const image = await call(page.items[0].imageUrl);

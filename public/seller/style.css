@@ -126,6 +126,9 @@
 .settings-form{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin:22px 0}
 .settings-form label{display:grid;gap:6px;min-width:min(100%,220px);flex:1;font-size:13px;font-weight:700}
 .settings-form input,.settings-form select,.settings-row input:not([type="checkbox"]){width:100%;min-height:44px;padding:10px 12px;border:1px solid #c9d9df;border-radius:9px;background:#fff;color:#173950}
+.settings-form .settings-check{display:flex;align-items:center;gap:10px;flex-basis:100%;font-size:14px}
+.settings-check input[type="checkbox"]{width:20px;min-width:20px;height:20px;min-height:20px;accent-color:#087f86}
+.settings-check-help{flex-basis:100%;margin:-4px 0 0;color:#58717d;font-size:13px;line-height:1.5}
 .settings-list{display:grid;gap:9px;margin-top:16px}
 .settings-row{display:grid;grid-template-columns:minmax(90px,1fr) minmax(130px,2fr) auto auto;align-items:center;gap:10px;padding:12px;border:1px solid #dce7eb;border-radius:10px}
 .settings-row strong{overflow-wrap:anywhere;color:#173950}

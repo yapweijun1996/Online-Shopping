@@ -60,6 +60,7 @@ export function createApi({ store, config, serveStatic = null }) {
         ...setup,
         currency: company.defaultCurrency,
         sellerWhatsAppPhone: setup.mode ? company.sellerWhatsAppPhone : null,
+        mobileHideBarsOnScroll: company.mobileHideBarsOnScroll,
       });
     }
     if (method === 'GET' && pathname === '/api/v1/products') return json(200, listProducts(store, url.searchParams));

@@ -1167,6 +1167,16 @@ const settingsMessages = {
   ko: { configuration: '설정', categoryCodes: '카테고리 코드', companySettings: '회사 설정', categoryIntro: '상품 양식의 카테고리를 관리합니다. 코드는 고정되며 사용하지 않는 카테고리는 비활성화합니다.', categoryCode: '코드', categoryLabel: '표시 이름', addCategory: '카테고리 추가', saveCategory: '저장', categorySaved: '카테고리를 저장했습니다.', duplicateCategory: '코드 또는 이름이 이미 있습니다.', currencyIntro: '새 상품의 기본 통화를 선택합니다. 기존 상품 가격과 주문 통화는 유지됩니다.', defaultCurrency: '기본 통화', saveSettings: '설정 저장', settingsSaved: '설정을 저장했습니다.', price: '가격', currency: '통화', chooseCategory: '카테고리 선택', currentImage: '현재 이미지', newImage: '새 이미지 선택됨', imagePendingRemoval: '저장하면 이미지가 제거됩니다.', restoreImage: '제거 취소', mixedCurrencies: '장바구니에 MYR과 SGD 상품이 있습니다. 통화별로 따로 주문하세요.', removeImage: '이미지 제거' },
 };
 for (const { code } of languages) Object.assign(messages[code], settingsMessages[code]);
+const mobileBarsMessages = {
+  en: { mobileHideBarsOnScroll: 'Hide mobile navigation bars while scrolling down', mobileHideBarsHelp: "By default, the shop's top search bar and bottom navigation stay visible. Turn this on to hide them when shoppers scroll down and show them when they scroll up." },
+  ms: { mobileHideBarsOnScroll: 'Sembunyikan bar navigasi mudah alih semasa menatal ke bawah', mobileHideBarsHelp: 'Secara lalai, bar carian atas dan navigasi bawah sentiasa kelihatan. Aktifkan untuk menyembunyikannya semasa pelanggan menatal ke bawah dan memaparkannya semula apabila menatal ke atas.' },
+  'zh-Hans': { mobileHideBarsOnScroll: '向下滚动时隐藏移动端导航栏', mobileHideBarsHelp: '默认情况下，商店顶部搜索栏和底部导航栏始终显示。开启后，顾客向下滚动时会隐藏，向上滚动时会重新显示。' },
+  vi: { mobileHideBarsOnScroll: 'Ẩn thanh điều hướng di động khi cuộn xuống', mobileHideBarsHelp: 'Theo mặc định, thanh tìm kiếm trên cùng và điều hướng dưới cùng luôn hiển thị. Bật tùy chọn này để ẩn khi khách cuộn xuống và hiện lại khi cuộn lên.' },
+  th: { mobileHideBarsOnScroll: 'ซ่อนแถบนำทางมือถือเมื่อเลื่อนลง', mobileHideBarsHelp: 'โดยค่าเริ่มต้น แถบค้นหาด้านบนและแถบนำทางด้านล่างจะแสดงตลอด เปิดตัวเลือกนี้เพื่อซ่อนเมื่อผู้ซื้อเลื่อนลงและแสดงอีกครั้งเมื่อเลื่อนขึ้น' },
+  ja: { mobileHideBarsOnScroll: '下にスクロールするとモバイルのナビゲーションバーを隠す', mobileHideBarsHelp: '通常、上部の検索バーと下部のナビゲーションは常に表示されます。オンにすると、下へスクロールしたときに隠れ、上へスクロールすると再表示されます。' },
+  ko: { mobileHideBarsOnScroll: '아래로 스크롤할 때 모바일 탐색 표시줄 숨기기', mobileHideBarsHelp: '기본적으로 상단 검색창과 하단 탐색 메뉴는 항상 표시됩니다. 켜면 아래로 스크롤할 때 숨겨지고 위로 스크롤하면 다시 표시됩니다.' },
+};
+for (const { code } of languages) Object.assign(messages[code], mobileBarsMessages[code]);
 const sellerContactMessages = {
   en: { sellerWhatsAppPhone: 'Seller WhatsApp number', sellerWhatsAppHelp: 'The public product page uses this number for Chat. Enter a +60 or +65 number, or leave it blank to turn Chat off.', sellerWhatsAppInvalid: 'Enter a valid +60 or +65 phone number.' },
   ms: { sellerWhatsAppPhone: 'Nombor WhatsApp penjual', sellerWhatsAppHelp: 'Halaman produk awam menggunakan nombor ini untuk Chat. Masukkan nombor +60 atau +65, atau biarkan kosong untuk mematikan Chat.', sellerWhatsAppInvalid: 'Masukkan nombor telefon +60 atau +65 yang sah.' },
