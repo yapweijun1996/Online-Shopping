@@ -1,14 +1,17 @@
+import { getShopSetup, setupShop } from './shop-setup.js';
 import { authenticate, cookieFor, createSession, deleteSession, readSession, sessionCookieFrom } from './auth.js';
 import { ready } from './db.js';
 import { ApiError, errorResponse, json, readJson, requireOrigin } from './http.js';
 import { SqlLimiter } from './limiter.js';
 import { createOrder } from './orders.js';
-import { createProduct, getProduct, getProductImage, listProducts, updateProduct } from './products.js';
+import { addGalleryImage, createProduct, deleteGalleryImage, getGalleryImage, getProduct, getProductImage, listProducts, updateProduct } from './products.js';
 import { decideSellerOrder, getSellerOrder, listSellerOrders } from './seller-orders.js';
 import { createCategory, getCompanySettings, listCategories, updateCategory, updateCompanySettings } from './settings.js';
+import { FieldError } from './validation.js';
 
 const productIdPath = /^\/api\/v1\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
 const sellerProductIdPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
+const productGalleryPath = /^\/api\/v1\/(seller\/)?products\/([0-9a-f-]{36})\/gallery\/([0-9a-f-]{36})$/;
 const sellerOrderIdPath = /^\/api\/v1\/seller\/orders\/([0-9a-f-]{36})(?:\/(confirm|reject))?$/;
 const LIMIT_WINDOW_MS = 15 * 60 * 1000;
 
@@ -50,7 +53,15 @@ export function createApi({ store, config, serveStatic = null }) {
       if (serveStatic) return serveStatic(request, pathname);
       throw new ApiError(404, 'NOT_FOUND', 'Not found.');
     }
+    if (method === 'GET' && pathname === '/api/v1/shop') return json(200, {
+      ...getShopSetup(store), currency: getCompanySettings(store).defaultCurrency,
+    });
     if (method === 'GET' && pathname === '/api/v1/products') return json(200, listProducts(store, url.searchParams));
+    const galleryImage = productGalleryPath.exec(pathname);
+    if (method === 'GET' && galleryImage && !galleryImage[1]) {
+      const value = getGalleryImage(store, galleryImage[2], galleryImage[3]);
+      return image(value, Boolean(value) && url.searchParams.get('v') === value.version);
+    }
     const publicProduct = productIdPath.exec(pathname);
     if (method === 'GET' && publicProduct) {
       if (publicProduct[2] === 'image') {
@@ -99,6 +110,12 @@ export function createApi({ store, config, serveStatic = null }) {
       deleteSession(store, token);
       return json(200, { signedOut: true }, { 'Set-Cookie': cookieFor('', 0, config.production) });
     }
+    if (method === 'GET' && pathname === '/api/v1/seller/setup') return json(200, getShopSetup(store));
+    if (method === 'POST' && pathname === '/api/v1/seller/setup') {
+      requireOrigin(request, expectedOrigin);
+      requireCsrf(request, session);
+      return json(200, setupShop(store, await readJson(request)));
+    }
     if (method === 'GET' && pathname === '/api/v1/seller/products') {
       return json(200, listProducts(store, url.searchParams, true));
     }
@@ -138,8 +155,31 @@ export function createApi({ store, config, serveStatic = null }) {
       return json(200, decideSellerOrder(store, sellerOrder[1], sellerOrder[2], body, config.username));
     }
     const sellerProduct = sellerProductIdPath.exec(pathname);
+    if (method === 'GET' && sellerProduct && !sellerProduct[2]) {
+      const product = getProduct(store, sellerProduct[1], true);
+      if (!product) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+      return json(200, product);
+    }
     if (method === 'GET' && sellerProduct?.[2] === 'image') {
       return image(getProductImage(store, sellerProduct[1], true));
+    }
+    if (galleryImage?.[1]) {
+      if (method === 'GET') return image(getGalleryImage(store, galleryImage[2], galleryImage[3], true));
+      if (method === 'DELETE') {
+        requireOrigin(request, expectedOrigin);
+        requireCsrf(request, session);
+        return json(200, deleteGalleryImage(store, galleryImage[2], galleryImage[3]));
+      }
+    }
+    if (method === 'POST' && /^\/api\/v1\/seller\/products\/[0-9a-f-]{36}\/gallery$/.test(pathname)) {
+      requireOrigin(request, expectedOrigin);
+      requireCsrf(request, session);
+      const id = pathname.split('/')[5];
+      const body = await readJson(request, 750_000);
+      if (!body || Object.keys(body).length !== 1 || !Object.hasOwn(body, 'imageDataUrl')) {
+        throw new FieldError('imageDataUrl', 'Choose an image.');
+      }
+      return json(201, addGalleryImage(store, id, body.imageDataUrl));
     }
     if ((method === 'POST' && pathname === '/api/v1/seller/products') ||
         (method === 'PATCH' && sellerProduct && !sellerProduct[2])) {

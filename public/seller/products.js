@@ -45,10 +45,13 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
   const preview = find('#product-image-preview');
   const imagePanel = find('#product-image-panel');
   const imageStatus = find('#product-image-status');
+  const galleryPanel = find('#product-gallery-panel');
+  const galleryList = find('#product-gallery-list');
   const removeImage = find('#product-remove-image');
   const restoreImage = find('#product-restore-image');
   let originalImageUrl = null;
   let pendingRemove = false;
+  let galleryImages = [];
   let categories = [];
   let defaultCurrency = 'MYR';
   let items = [];
@@ -69,6 +72,31 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
     imageStatus.textContent = imageStatus.dataset.i18n ? t(imageStatus.dataset.i18n) : '';
     removeImage.hidden = state === 'removed' || state === 'none';
     restoreImage.hidden = state !== 'removed' || !originalImageUrl;
+  }
+
+  function renderGallery() {
+    galleryPanel.hidden = !editingId;
+    form.elements.gallery.disabled = !originalImageUrl || pendingRemove || galleryImages.length >= 4;
+    galleryList.replaceChildren();
+    for (const source of galleryImages) {
+      const item = document.createElement('div');
+      item.className = 'product-gallery-item';
+      const photo = document.createElement('img');
+      photo.src = source; photo.alt = '';
+      const imageId = /\/gallery\/([0-9a-f-]{36})/.exec(source)?.[1];
+      const productId = editingId;
+      item.append(photo, button(t('removePhoto'), async () => {
+        if (!imageId) return;
+        try {
+          const result = await api('DELETE', `/api/v1/seller/products/${productId}/gallery/${imageId}`);
+          if (editingId !== productId) return;
+          galleryImages = result.images.slice(1);
+          renderGallery();
+          setStatus('productSaved');
+        } catch { setError('productError'); }
+      }));
+      galleryList.append(item);
+    }
   }
 
   function populateCategories(selected = '') {
@@ -134,7 +162,8 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
   async function api(method, path, body) {
     const response = await fetch(path, {
       method,
-      headers: body ? { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() } : {},
+      headers: { ...(body ? { 'Content-Type': 'application/json' } : {}),
+        ...(method === 'GET' ? {} : { 'X-CSRF-Token': csrfToken() }) },
       body: body ? JSON.stringify(body) : undefined,
     });
     if (response.status === 401) { onUnauthorized(); throw new Error('unauthorized'); }
@@ -166,11 +195,13 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
     form.hidden = true;
     originalImageUrl = null;
     pendingRemove = false;
+    galleryImages = [];
     showImage('none');
+    renderGallery();
     setError('');
   }
 
-  function edit(product) {
+  async function edit(product) {
     editingId = product.id;
     form.hidden = false;
     form.elements.sku.value = product.sku;
@@ -180,15 +211,23 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
     form.elements.price.value = (product.priceMinor / 100).toFixed(2);
     form.elements.currency.value = product.currency;
     form.elements.active.checked = product.active;
+    form.elements.variantGroup.value = product.variantGroup || '';
+    form.elements.variantLabel.value = product.variantLabel || '';
     form.elements.image.value = '';
     originalImageUrl = product.imageUrl;
     pendingRemove = false;
     showImage(product.imageUrl ? 'current' : 'none', product.imageUrl);
+    galleryImages = [];
+    renderGallery();
     find('#product-form-title').dataset.i18n = 'editProduct';
     find('#product-form-title').textContent = t('editProduct');
     setError('');
     form.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
     form.elements.sku.focus();
+    try {
+      const detail = await api('GET', `/api/v1/seller/products/${product.id}`);
+      if (editingId === product.id) { galleryImages = detail.images.slice(1); renderGallery(); }
+    } catch { if (editingId === product.id) setError('productError'); }
   }
 
   async function toggle(product) {
@@ -214,10 +253,12 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
     form.elements.image.value = '';
     pendingRemove = Boolean(originalImageUrl);
     showImage(pendingRemove ? 'removed' : 'none');
+    renderGallery();
   });
   restoreImage.addEventListener('click', () => {
     pendingRemove = false;
     showImage('current', originalImageUrl);
+    renderGallery();
   });
   form.elements.image.addEventListener('change', async () => {
     const file = form.elements.image.files[0];
@@ -227,10 +268,30 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
         if (form.elements.image.files[0] !== file) return;
         pendingRemove = false;
         showImage('replacement', dataUrl);
+        renderGallery();
       } catch {
         setError('productError');
       }
     } else showImage(originalImageUrl ? 'current' : 'none', originalImageUrl);
+  });
+  form.elements.gallery.addEventListener('change', async () => {
+    const files = [...form.elements.gallery.files];
+    if (!files.length) return;
+    if (files.length + galleryImages.length > 4) { setError('galleryLimit'); form.elements.gallery.value = ''; return; }
+    form.elements.gallery.disabled = true;
+    setError('');
+    const productId = editingId;
+    try {
+      for (const file of files) {
+        const imageDataUrl = await readImage(file);
+        const detail = await api('POST', `/api/v1/seller/products/${productId}/gallery`, { imageDataUrl });
+        if (editingId !== productId) break;
+        galleryImages = detail.images.slice(1);
+        renderGallery();
+      }
+      setStatus('productSaved');
+    } catch { setError('productError'); }
+    finally { form.elements.gallery.value = ''; renderGallery(); }
   });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -246,15 +307,18 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
         priceMinor: priceToMinor(form.elements.price.value),
         currency: form.elements.currency.value,
         active: form.elements.active.checked,
+        variantGroup: form.elements.variantGroup.value,
+        variantLabel: form.elements.variantLabel.value,
       };
       const file = form.elements.image.files[0];
       if (file) payload.imageDataUrl = await readImage(file);
       else if (pendingRemove) payload.imageDataUrl = null;
-      await api(editingId ? 'PATCH' : 'POST', editingId ? `/api/v1/seller/products/${editingId}` : '/api/v1/seller/products', payload);
+      const saved = await api(editingId ? 'PATCH' : 'POST', editingId ? `/api/v1/seller/products/${editingId}` : '/api/v1/seller/products', payload);
       resetForm();
       if (await load()) setStatus('productSaved');
+      await edit(saved);
     } catch (failure) {
-      setError(failure.code === 'DUPLICATE_SKU' ? 'duplicateSku' : 'productError');
+      setError(failure.code === 'DUPLICATE_SKU' ? 'duplicateSku' : failure.code === 'DUPLICATE_VARIANT' ? 'duplicateVariant' : 'productError');
       const field = failure.code === 'DUPLICATE_SKU' ? 'sku' : failure.field === 'priceMinor' ? 'price' : failure.field === 'imageDataUrl' ? 'image' : failure.field;
       if (field && form.elements[field]) form.elements[field].focus();
     } finally { save.disabled = false; }

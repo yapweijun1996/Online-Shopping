@@ -1,4 +1,127 @@
-export async function registerWorker(script, scope) {
+import { t } from './i18n.js';
+
+function workerVersion(worker) {
+  if (!worker) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    const finish = (value) => { clearTimeout(timer); channel.port1.close(); resolve(value); };
+    const timer = setTimeout(() => finish(null), 3000);
+    channel.port1.onmessage = ({ data }) => finish(typeof data?.version === 'string' ? data.version : null);
+    try { worker.postMessage({ type: 'GET_VERSION' }, [channel.port2]); }
+    catch { finish(null); }
+  });
+}
+
+export async function registerWorker(script, scope, { returnUrl, target, onState, guard, confirmUpdate } = {}) {
   if (!('serviceWorker' in navigator)) return null;
-  return navigator.serviceWorker.register(script, { scope });
+  const registration = await navigator.serviceWorker.register(script, { scope, updateViaCache: 'none' });
+  const panel = document.createElement('footer');
+  panel.className = 'pwa-update';
+  const version = document.createElement('span');
+  const status = document.createElement('span');
+  status.setAttribute('role', 'status');
+  const check = document.createElement('button');
+  const update = document.createElement('button');
+  check.type = update.type = 'button';
+  update.hidden = true;
+  panel.append(version, check, status, update);
+  if (!onState) (target || document.body).append(panel);
+  let current = null;
+  let available = null;
+  let statusKey = '';
+  let applying = false;
+  let reloadReady = false;
+  let activationTimer;
+  function activationFailed() {
+    clearTimeout(activationTimer);
+    applying = false;
+    update.disabled = check.disabled = false;
+    statusKey = 'updateFailed';
+    render();
+  }
+  function render() {
+    version.textContent = `${t('appVersion')}: ${current || '—'}`;
+    check.textContent = t('checkUpdates');
+    status.textContent = statusKey ? t(statusKey) : '';
+    update.textContent = `${t('updateApp')}${available ? ` · ${available}` : ''}`;
+    update.hidden = !registration.waiting && !reloadReady;
+    onState?.({ current, available, statusKey, ready: !update.hidden, checking: check.disabled, applying }, { check: () => checkForUpdates(true), update: applyUpdate });
+  }
+  async function inspect() {
+    if (!current) current = await workerVersion(navigator.serviceWorker.controller || registration.active);
+    const waiting = registration.waiting;
+    if (waiting) {
+      const candidate = await workerVersion(waiting);
+      if (registration.waiting === waiting) { available = candidate; statusKey = 'updateAvailable'; }
+    } else if (!reloadReady && statusKey === 'updateAvailable') {
+      statusKey = '';
+    }
+    render();
+  }
+  function watch(worker) {
+    if (!worker) return;
+    worker.addEventListener('statechange', () => {
+      // Recovery pages live outside the worker scope and never receive controllerchange.
+      if (worker.state === 'activated' && applying && returnUrl) { location.assign(returnUrl); return; }
+      if (worker.state === 'installed' || worker.state === 'activated') inspect();
+      if (worker.state === 'redundant') activationFailed();
+    });
+  }
+  registration.addEventListener('updatefound', () => watch(registration.installing));
+  watch(registration.installing);
+  watch(registration.waiting);
+  navigator.serviceWorker.addEventListener('controllerchange', async () => {
+    if (applying) { location.reload(); return; }
+    if (current) {
+      available = await workerVersion(navigator.serviceWorker.controller);
+      reloadReady = available !== current;
+      if (reloadReady) statusKey = 'updateAvailable';
+    }
+    await inspect();
+  });
+  async function checkForUpdates(manual = false) {
+    if (check.disabled || applying) return;
+    if (!navigator.onLine) {
+      if (manual) { statusKey = 'updateFailed'; render(); }
+      return;
+    }
+    check.disabled = true;
+    const reportResult = manual || statusKey === 'updateFailed';
+    if (reportResult) { statusKey = 'checkingUpdates'; render(); }
+    try {
+      await registration.update();
+      await inspect();
+      if (reportResult && !registration.waiting && !reloadReady) {
+        statusKey = registration.installing ? 'checkingUpdates' : 'appUpToDate';
+      }
+    } catch { if (reportResult) statusKey = 'updateFailed'; }
+    finally { check.disabled = false; render(); }
+  }
+  check.addEventListener('click', () => checkForUpdates(true));
+  async function applyUpdate() {
+    if (applying || guard?.().busy) return;
+    const accepted = confirmUpdate ? (!guard?.().dirty || await confirmUpdate(t('updateConfirm'))) : window.confirm(t('updateConfirm'));
+    if (!accepted || applying || guard?.().busy) return;
+    if (reloadReady) { location.reload(); return; }
+    if (!registration.waiting) { inspect(); return; }
+    applying = true;
+    update.disabled = check.disabled = true;
+    statusKey = 'appUpdating';
+    render();
+    try { registration.waiting.postMessage({ type: 'SKIP_WAITING' }); }
+    catch { activationFailed(); return; }
+    activationTimer = setTimeout(() => {
+      if (!applying) return;
+      activationFailed();
+    }, 15000);
+  }
+  update.addEventListener('click', applyUpdate);
+  document.addEventListener('localechange', render);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') checkForUpdates();
+  });
+  window.addEventListener('online', () => checkForUpdates());
+  await inspect();
+  checkForUpdates();
+  return registration;
 }

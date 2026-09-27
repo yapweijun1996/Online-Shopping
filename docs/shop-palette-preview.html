@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shop palette proposals</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: clamp(18px, 3vw, 42px); background: #eef1f3; color: #173950; font: 15px/1.45 system-ui, sans-serif; }
+    h1, h2, h3, p { margin-top: 0; }
+    .intro { max-width: 850px; margin-bottom: 28px; }
+    .intro p { color: #48616f; }
+    .palette-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start; }
+    .palette { min-width: 0; overflow: hidden; border: 1px solid #c7d2d8; border-radius: 18px; background: var(--ui-canvas); color: var(--ui-text); box-shadow: 0 14px 36px #18354a12; }
+    .palette-head { padding: 20px; background: var(--ui-surface); border-bottom: 1px solid var(--ui-border); }
+    .palette-head h2 { margin-bottom: 5px; font-size: 22px; color: var(--ui-ink); }
+    .palette-head p { margin: 0; color: var(--ui-muted); font-size: 13px; }
+    .swatches { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; margin-top: 16px; }
+    .swatch { aspect-ratio: 1; border: 1px solid #0002; border-radius: 7px; background: var(--swatch); }
+    .swatch-labels { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; margin-top: 5px; color: var(--ui-muted); text-align: center; font-size: 9px; }
+    .storefront { padding: 16px; }
+    .storebar { display: flex; align-items: center; gap: 10px; padding: 12px; background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: 12px; }
+    .storemark { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 8px; background: var(--ui-primary); color: white; font-weight: 800; }
+    .storebar strong { color: var(--ui-ink); }
+    .search { margin-left: auto; padding: 7px 9px; border: 1px solid var(--ui-control-border); border-radius: 7px; color: var(--ui-muted); font-size: 12px; }
+    .demo { margin: 12px 0; padding: 10px 12px; border: 1px solid var(--shop-demo-border); border-radius: 9px; background: var(--shop-demo-background); color: var(--shop-demo-text); font-size: 12px; }
+    .chips { display: flex; gap: 8px; margin-bottom: 12px; }
+    .chip { padding: 7px 10px; border: 1px solid var(--ui-control-border); border-radius: 999px; background: var(--ui-surface); color: var(--ui-ink); font-size: 11px; }
+    .chip.selected { border-color: var(--ui-primary); background: var(--shop-selected-surface); color: var(--shop-selected-text); font-weight: 700; }
+    .product { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 12px; padding: 12px; border: 1px solid var(--ui-border); border-radius: 12px; background: var(--ui-surface); }
+    .product-art { display: grid; place-items: center; min-height: 104px; border-radius: 9px; background: var(--shop-accent-soft); color: var(--shop-accent-hover); font-size: 38px; }
+    .product h3 { margin: 4px 0 5px; color: var(--ui-ink); font-size: 13px; line-height: 1.25; }
+    .product small { color: var(--shop-selected-text); font-size: 10px; font-weight: 800; }
+    .regular-price { display: block; color: var(--shop-price-standard); font-size: 12px; }
+    .price { display: block; margin-top: 4px; color: var(--shop-price); font-size: 20px; font-weight: 800; }
+    .actions { display: flex; gap: 8px; margin-top: 12px; }
+    button { min-height: 44px; padding: 9px 11px; border-radius: 9px; font: inherit; font-weight: 700; cursor: pointer; }
+    .primary { flex: 1; border: 1px solid var(--ui-primary); background: var(--ui-primary); color: white; }
+    .primary:hover { background: var(--ui-primary-hover); }
+    .outline { border: 1px solid var(--ui-control-border); background: var(--ui-surface); color: var(--ui-ink); }
+    button:focus-visible, input:focus-visible { outline: 3px solid var(--ui-focus); outline-offset: 2px; }
+    .field { display: grid; gap: 5px; margin: 14px 0; color: var(--ui-secondary-text); font-size: 12px; font-weight: 700; }
+    .field input { width: 100%; height: 44px; padding: 10px; border: 1px solid var(--ui-control-border); border-radius: 8px; background: var(--ui-surface); color: var(--ui-ink); font: inherit; }
+    .notice { margin: 8px 0; padding: 9px 11px; border-radius: 8px; background: var(--shop-warning-background); border: 1px solid var(--shop-warning-border); color: var(--shop-warning-text); font-size: 12px; }
+    .error { color: var(--shop-error); font-size: 12px; font-weight: 700; }
+    .success { color: var(--shop-success); font-size: 12px; font-weight: 700; }
+    .total { display: flex; justify-content: space-between; gap: 12px; margin-top: 14px; padding: 12px; border: 1px solid var(--ui-border); border-radius: 10px; background: var(--ui-surface); }
+    .total strong { color: var(--shop-order-total); }
+    .audit { padding: 16px; border-top: 1px solid var(--ui-border); background: var(--ui-surface); }
+    .audit h3 { margin-bottom: 8px; font-size: 14px; }
+    .audit table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .audit th, .audit td { padding: 5px 3px; border-bottom: 1px solid var(--ui-divider); text-align: left; }
+    .audit td:last-child { text-align: right; white-space: nowrap; }
+    .pass { color: #216943; font-weight: 800; }
+    .fail { color: #aa3946; font-weight: 800; }
+    .note { max-width: 850px; margin-top: 25px; color: #48616f; font-size: 13px; }
+    @media (max-width: 1100px) { .palette-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 700px) { .palette-grid { grid-template-columns: 1fr; } }
+  </style>
+  <script src="shop-palettes.js" defer></script>
+  <script defer>
+    function luminance(hex) {
+      const channels = hex.slice(1).match(/../g).map(value => Number.parseInt(value, 16) / 255);
+      const linear = channels.map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+      return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+    }
+    function contrast(first, second) {
+      const values = [luminance(first), luminance(second)].sort((a, b) => b - a);
+      return (values[0] + 0.05) / (values[1] + 0.05);
+    }
+    function checks(colors) {
+      const pair = (name, foreground, background, minimum) => ({ name, ratio: contrast(colors[foreground] || foreground, colors[background] || background), minimum });
+      return [
+        pair('Primary button text', '#ffffff', '--ui-primary', 4.5),
+        pair('Accent button text', '#ffffff', '--shop-accent', 4.5),
+        pair('Body text', '--ui-text', '--ui-surface', 4.5),
+        pair('Secondary text', '--ui-muted', '--ui-surface', 4.5),
+        pair('Price', '--shop-price', '--ui-surface', 4.5),
+        pair('Selected label', '--shop-selected-text', '--shop-selected-surface', 4.5),
+        pair('Warning text', '--shop-warning-text', '--shop-warning-background', 4.5),
+        pair('Error text', '--shop-error', '--ui-surface', 4.5),
+        pair('Control border', '--ui-control-border', '--ui-surface', 3),
+        pair('Focus ring', '--ui-focus', '--ui-surface', 3),
+      ];
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+      const grid = document.getElementById('palette-grid');
+      for (const palette of shopPaletteDesign.palettes) {
+        const colors = { ...shopPaletteDesign.shared, ...palette.tokens };
+        const card = document.createElement('section');
+        card.className = 'palette';
+        card.setAttribute('aria-label', palette.name);
+        for (const [name, value] of Object.entries(colors)) card.style.setProperty(name, value);
+        const swatches = ['--ui-primary', '--shop-accent', '--ui-canvas', '--shop-selected-surface', '--shop-price', '--shop-warning-background'];
+        const swatchMarkup = swatches.map(name => `<span class="swatch" style="--swatch:${colors[name]}" title="${name}: ${colors[name]}"></span>`).join('');
+        const results = checks(colors);
+        const resultMarkup = results.map(result => `<tr><td>${result.name}</td><td>${result.minimum}:1</td><td class="${result.ratio >= result.minimum ? 'pass' : 'fail'}">${result.ratio.toFixed(2)}:1</td></tr>`).join('');
+        card.innerHTML = `<div class="palette-head"><h2>${palette.name}</h2><p>${palette.description}</p><div class="swatches" aria-label="Color samples">${swatchMarkup}</div><div class="swatch-labels"><span>Brand</span><span>Accent</span><span>Canvas</span><span>Selected</span><span>Price</span><span>Notice</span></div></div>
+          <div class="storefront"><div class="storebar"><span class="storemark" aria-hidden="true">P</span><strong>Pet Shop</strong><span class="search">Search products</span></div><p class="demo"><strong>Demo — Pet Shop</strong><br>Simulation only. No payment or delivery.</p><div class="chips"><span class="chip selected">✓ All categories</span><span class="chip">Cat litter</span></div><div class="product"><div class="product-art" aria-hidden="true">🐾</div><div><small>CAT LITTER</small><h3>Natural tofu cat litter · 2.4 kg</h3><span class="regular-price">Reference price</span><strong class="price">RM 25.00</strong></div></div><div class="actions"><button class="outline" type="button">Details</button><button class="primary" type="button">Add to cart</button></div><label class="field">Recipient name<input type="text" placeholder="Enter a name"></label><p class="notice"><strong>Before checkout:</strong> complete your profile.</p><p class="error">Error: enter a valid mobile number.</p><p class="success">✓ Profile saved.</p><div class="total"><span>Order total</span><strong>RM 25.00</strong></div></div>
+          <div class="audit"><h3>Measured contrast</h3><table><thead><tr><th>Pair</th><th>Target</th><th>Result</th></tr></thead><tbody>${resultMarkup}</tbody></table></div>`;
+        grid.append(card);
+      }
+    });
+  </script>
+</head>
+<body>
+  <header class="intro">
+    <h1>Pet Shop palette proposals</h1>
+    <p>Evergreen Teal is the selected Shop palette. Warm Plum and Ocean Blue remain design alternatives. Prices and status colors keep the same meaning across all three options.</p>
+  </header>
+  <main id="palette-grid" class="palette-grid"></main>
+  <p class="note">Ratios check selected color pairs, not the entire application. Controls still need visible labels, icons, and states. Decorative card borders may be lighter than the 3:1 control-border target.</p>
+</body>
+</html>

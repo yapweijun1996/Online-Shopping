@@ -1,0 +1,60 @@
+:root {
+  --ui-text: #133248;
+  --ui-ink: #173950;
+  --ui-muted: #58717d;
+  --ui-secondary-text: #355568;
+  --ui-canvas: #f5f8fa;
+  --ui-surface: #fff;
+  --ui-border: #dce7eb;
+  --ui-control-border: #8095a0;
+  --ui-divider: #e7eef0;
+  --ui-focus: #087f83;
+  --ui-primary: #087f83;
+  --ui-primary-hover: #066f73;
+  --ui-hover-surface: #edf5f5;
+  --shop-control-border: #8095a0;
+  --shop-accent: #317c82;
+  --shop-accent-hover: #24686e;
+  --shop-accent-soft: #e8f4f3;
+  --shop-selected-surface: #eff8f6;
+  --shop-selected-strong: #e1f4f1;
+  --shop-selected-text: #205f64;
+  --shop-price-standard: #173950;
+  --shop-price: #a54428;
+  --shop-order-total: #a54428;
+  --shop-error: #aa3946;
+  --shop-invalid-border: #aa3946;
+  --shop-success: #216943;
+  --shop-warning-background: #fff7e3;
+  --shop-warning-border: #edc974;
+  --shop-warning-text: #715314;
+  --shop-demo-background: #fff6e4;
+  --shop-demo-border: #e9ca8a;
+  --shop-demo-text: #65480f;
+}
+
+:root[data-shop-palette="warm-plum"] {
+  --ui-text: #332738; --ui-ink: #332738; --ui-muted: #625762;
+  --ui-secondary-text: #5c4f5b; --ui-canvas: #fcf8fa;
+  --ui-border: #e8dee5; --ui-control-border: #97858e;
+  --ui-divider: #efe6eb; --ui-focus: #7c426a;
+  --ui-primary: #7c426a; --ui-primary-hover: #643353;
+  --ui-hover-surface: #f8f0f5; --shop-control-border: #97858e;
+  --shop-accent: #945a7e; --shop-accent-hover: #774363;
+  --shop-accent-soft: #f7eaf2; --shop-selected-surface: #faf1f7;
+  --shop-selected-strong: #f4e2ed; --shop-selected-text: #693755;
+  --shop-price-standard: #332738;
+}
+
+:root[data-shop-palette="ocean-blue"] {
+  --ui-text: #18354a; --ui-ink: #18354a; --ui-muted: #566b7a;
+  --ui-secondary-text: #36586e; --ui-canvas: #f5f8fb;
+  --ui-border: #dbe4ec; --ui-control-border: #8296a5;
+  --ui-divider: #e6edf3; --ui-focus: #235e91;
+  --ui-primary: #235e91; --ui-primary-hover: #174a77;
+  --ui-hover-surface: #edf4fa; --shop-control-border: #8296a5;
+  --shop-accent: #2d6f9e; --shop-accent-hover: #21577f;
+  --shop-accent-soft: #e8f2fa; --shop-selected-surface: #eef5fb;
+  --shop-selected-strong: #dcecf8; --shop-selected-text: #214e70;
+  --shop-price-standard: #18354a;
+}

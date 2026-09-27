@@ -4,3 +4,6 @@ ADMIN_USERNAME=
 ADMIN_PASSWORD=
 # Leave empty locally; wrangler dev uses the request origin.
 PUBLIC_ORIGIN=
+
+# Data mode is separate from HTTPS/security environment. Demo seeds an empty store.
+SHOP_MODE=demo

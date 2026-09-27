@@ -4,6 +4,12 @@ import { readFileSync } from 'node:fs';
 const weakPasswords = new Set(['password', 'password123', 'changeme', 'admin123', 'testpassword', 'replace-me']);
 const placeholderWords = /password|changeme|replace[-_]?me|example|sample|default/i;
 
+export function readShopMode(env) {
+  const mode = env.SHOP_MODE ?? 'manual';
+  if (!['demo', 'manual'].includes(mode)) throw new Error('SHOP_MODE must be demo or manual.');
+  return mode;
+}
+
 function validateAdmin(username, password, production) {
   if (!/^[A-Za-z0-9._-]{3,64}$/.test(username)) {
     throw new Error('ADMIN_USERNAME must contain 3-64 safe characters.');
@@ -34,7 +40,7 @@ export function readWorkerConfig(env) {
   const password = env.ADMIN_PASSWORD || '';
   validateAdmin(username, password, production);
   const publicOrigin = validatePublicOrigin(env.PUBLIC_ORIGIN || null, production);
-  return { production, username, password, publicOrigin, trustProxy: true };
+  return { production, username, password, publicOrigin, trustProxy: true, shopMode: readShopMode(env) };
 }
 
 export function readConfig(env = process.env) {
@@ -63,5 +69,5 @@ export function readConfig(env = process.env) {
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('PORT must be a valid port.');
   const trustProxy = env.TRUST_PROXY === '1';
   if (env.TRUST_PROXY && !trustProxy) throw new Error('TRUST_PROXY must be 1 when set.');
-  return { production, username, password, dbPath, publicOrigin, port, trustProxy };
+  return { production, username, password, dbPath, publicOrigin, port, trustProxy, shopMode: readShopMode(env) };
 }

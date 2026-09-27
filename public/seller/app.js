@@ -149,9 +149,16 @@ function renderView() {
   }
   content.replaceChildren();
   const p = document.createElement('p');
-  p.dataset.i18n = 'notReady';
+  p.dataset.i18n = 'setupIntro';
   p.textContent = t(p.dataset.i18n);
   content.append(p);
+  const setupButton = document.createElement('button');
+  setupButton.type = 'button';
+  setupButton.className = 'primary-button';
+  setupButton.dataset.i18n = 'shopSetup';
+  setupButton.textContent = t('shopSetup');
+  setupButton.addEventListener('click', () => { location.hash = 'company'; });
+  content.append(setupButton);
 }
 
 function closeDrawer(restoreFocus = true) {

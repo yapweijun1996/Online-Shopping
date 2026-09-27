@@ -1,6 +1,6 @@
 import { openNodeStore } from './store.js';
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 8;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -208,6 +208,36 @@ export function migrateStore(store) {
       CREATE INDEX rate_limit_expiry ON rate_limit_attempt(bucket, attempted_at);`);
     version = 6;
   }
+  if (version === 6) {
+    migrate(store, 7, `
+      CREATE TABLE shop_setup (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        mode TEXT CHECK (mode IN ('demo', 'production')),
+        shop_name TEXT NOT NULL
+      ) STRICT;
+      INSERT INTO shop_setup(id, mode, shop_name)
+        SELECT 1, CASE WHEN EXISTS (SELECT 1 FROM product) OR EXISTS (SELECT 1 FROM shop_order)
+          OR EXISTS (SELECT 1 FROM general_code) THEN 'production' ELSE NULL END, 'Online Shopping';`);
+    version = 7;
+  }
+  if (version === 7) {
+    migrate(store, 8, `
+      ALTER TABLE product ADD COLUMN variant_group TEXT;
+      ALTER TABLE product ADD COLUMN variant_label TEXT;
+      CREATE UNIQUE INDEX product_variant_option ON product(variant_group, variant_label COLLATE NOCASE);
+      CREATE INDEX product_variant_group ON product(variant_group, active);
+      CREATE TABLE product_gallery_image (
+        id TEXT PRIMARY KEY,
+        product_id TEXT NOT NULL REFERENCES product(id) ON DELETE RESTRICT,
+        position INTEGER NOT NULL CHECK (position BETWEEN 1 AND 4),
+        mime TEXT NOT NULL CHECK (mime IN ('image/png', 'image/jpeg', 'image/webp')),
+        data BLOB NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(product_id, position)
+      ) STRICT;
+      CREATE INDEX product_gallery_product ON product_gallery_image(product_id, position);`);
+    version = 8;
+  }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }
 
@@ -217,8 +247,9 @@ export function ready(store) {
       Boolean(store.get('SELECT id FROM admin WHERE id = 1')) &&
       Boolean(store.get('SELECT id FROM order_sequence WHERE id = 1')) &&
       Boolean(store.get('SELECT id FROM company_setting WHERE id = 1')) &&
+      Boolean(store.get('SELECT id FROM shop_setup WHERE id = 1')) &&
       ['session', 'product', 'general_code', 'shop_order', 'delivery', 'order_item', 'order_event', 'checkout_idempotency',
-        'rate_limit_attempt']
+        'rate_limit_attempt', 'shop_setup']
         .every((table) => Array.isArray(store.all(`SELECT * FROM ${table} LIMIT 0`)));
   } catch {
     return false;

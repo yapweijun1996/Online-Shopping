@@ -107,6 +107,49 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
       <button class="primary-button" type="submit" data-i18n="saveSettings">Save settings</button>
     </form><p class="settings-status" role="status"></p>
   </section>`;
+  const setup = document.createElement('section');
+  setup.className = 'settings-card';
+  setup.innerHTML = `<h2 data-i18n="shopSetup"></h2><p data-i18n="setupIntro"></p>
+    <form class="settings-form" id="shop-setup-form">
+      <label><span data-i18n="shopMode"></span><select name="mode"><option value="demo" data-i18n="demoMode"></option><option value="production" data-i18n="productionMode"></option></select></label>
+      <label><span data-i18n="shopName"></span><input name="shopName" maxlength="80" value="Paws &amp; Whiskers Pet Shop" required></label>
+      <button class="primary-button" type="submit" data-i18n="setupShop" disabled></button>
+    </form><p class="setup-status" role="status"></p>`;
+  root.prepend(setup);
+  const setupForm = setup.querySelector('form');
+  const setupStatus = setup.querySelector('.setup-status');
+  const setupButton = setupForm.querySelector('button');
+  const syncName = () => {
+    setupForm.elements.shopName.disabled = setupForm.elements.mode.value === 'demo';
+    if (setupForm.elements.mode.value === 'demo') setupForm.elements.shopName.value = 'Paws & Whiskers Pet Shop';
+    else if (setupForm.elements.shopName.value === 'Paws & Whiskers Pet Shop') setupForm.elements.shopName.value = '';
+  };
+  syncName();
+  setupForm.elements.mode.addEventListener('change', syncName);
+  let setupState = null;
+  function showSetup(value) {
+    setupState = value;
+    setupForm.hidden = Boolean(value.mode);
+    if (value.mode) {
+      setupStatus.textContent = `${value.shopName} — ${t(value.mode === 'demo' ? 'demoMode' : 'productionMode')}`;
+    }
+    setupButton.disabled = false;
+  }
+  request('GET', '/api/v1/seller/setup', null, csrfToken, onUnauthorized)
+    .then((value) => { if (root.isConnected) showSetup(value); })
+    .catch(() => { setupStatus.textContent = t('networkError'); });
+  setupForm.addEventListener('submit', async (event) => {
+    event.preventDefault(); setupButton.disabled = true;
+    setupStatus.textContent = t('loading');
+    try {
+      const value = await request('POST', '/api/v1/seller/setup', {
+        mode: setupForm.elements.mode.value, shopName: setupForm.elements.shopName.value,
+      }, csrfToken, onUnauthorized);
+      showSetup(value);
+    } catch (error) {
+      setupStatus.textContent = t(['SHOP_ALREADY_CONFIGURED', 'SHOP_NOT_EMPTY'].includes(error.code) ? 'setupConflict' : 'productError');
+    } finally { setupButton.disabled = false; }
+  });
   translate(root);
   const form = root.querySelector('#company-form');
   request('GET', '/api/v1/seller/company-settings', null, csrfToken, onUnauthorized)
@@ -122,6 +165,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
   });
   return { refreshLocale() {
     translate(root);
+    if (setupState?.mode) showSetup(setupState);
     const line = root.querySelector('.settings-status');
     line.textContent = line.dataset.statusKey ? t(line.dataset.statusKey) : '';
   } };

@@ -1,3 +1,4 @@
+import { getShopSetup } from './shop-setup.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { validateOrderInput } from './checkout-input.js';
 import { ApiError } from './http.js';
@@ -10,6 +11,7 @@ function digest(value) {
 function receipt(row) {
   return {
     orderNo: row.order_no,
+    ...(row.order_no.startsWith('DEMO-') ? { simulation: true } : {}),
     status: 'SUBMITTED',
     currency: row.currency,
     totalMinor: row.total_minor,
@@ -21,7 +23,8 @@ export function createOrder(database, idempotencyKey, input) {
   if (typeof idempotencyKey !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(idempotencyKey)) {
     throw new FieldError('Idempotency-Key', 'Supply a valid idempotency key.');
   }
-  const order = validateOrderInput(input);
+  const simulation = getShopSetup(database).mode === 'demo';
+  const order = validateOrderInput(input, { simulation });
   const keyHash = digest(idempotencyKey);
   const requestHash = digest(JSON.stringify(order));
 
@@ -70,7 +73,7 @@ export function createOrder(database, idempotencyKey, input) {
     }));
 
     const sequence = database.get('UPDATE order_sequence SET value = value + 1 WHERE id = 1 RETURNING value');
-    const orderNo = `OS-${String(sequence.value).padStart(8, '0')}`;
+    const orderNo = `${simulation ? 'DEMO' : 'OS'}-${String(sequence.value).padStart(8, '0')}`;
     const id = randomUUID();
     const now = new Date().toISOString();
     database.run(`INSERT INTO shop_order
@@ -106,6 +109,6 @@ export function createOrder(database, idempotencyKey, input) {
       VALUES (?, 'SUBMITTED', 'GUEST', NULL, NULL, 'SUBMITTED', NULL, ?)`, id, now);
     database.run(`INSERT INTO checkout_idempotency(key_hash, request_hash, order_id, created_at)
       VALUES (?, ?, ?, ?)`, keyHash, requestHash, id, now);
-    return { receipt: { orderNo, status: 'SUBMITTED', currency, totalMinor, submittedAt: now }, replayed: false };
+    return { receipt: { ...(simulation ? { simulation: true } : {}), orderNo, status: 'SUBMITTED', currency, totalMinor, submittedAt: now }, replayed: false };
   });
 }

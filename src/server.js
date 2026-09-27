@@ -1,3 +1,4 @@
+import { initializeShop } from './shop-setup.js';
 import { createServer } from 'node:http';
 import { isIP } from 'node:net';
 import { Readable } from 'node:stream';
@@ -45,6 +46,7 @@ export function createApp(config) {
   const database = openDatabase(config.dbPath);
   try {
     ensureAdmin(database, config.username, config.password);
+    initializeShop(database, config);
   } catch (error) {
     database.close();
     throw error;

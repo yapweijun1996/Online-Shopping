@@ -2,15 +2,25 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0c2940">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#087f83">
   <title>Online Shopping</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="/shop/manifest.webmanifest">
+  <script src="/shop/palette.js"></script>
   <link rel="stylesheet" href="/shop/style.css">
   <script type="module" src="/shop/app.js"></script>
 </head>
 <body>
+  <div id="shop-boot-loader" class="shop-boot-overlay" role="status" aria-live="polite" aria-labelledby="shop-boot-title" tabindex="-1" hidden>
+    <div class="shop-boot-content">
+      <img class="shop-boot-mark" src="/favicon.svg" alt="">
+      <h2 id="shop-boot-title" data-i18n="shop">Shop</h2>
+      <p id="shop-boot-status" data-i18n="loading">Loading…</p>
+      <span class="shop-boot-progress" aria-hidden="true"></span>
+      <button id="shop-boot-retry" class="outline-button" type="button" data-i18n="retry" hidden>Try again</button>
+    </div>
+  </div>
   <a class="skip-link" href="#catalog-results" data-i18n="browseProducts">Browse products</a>
   <header class="topbar shop-topbar">
     <a class="brand" href="/shop/"><img class="brand-mark" src="/favicon.svg" alt=""><span data-i18n="shop">Shop</span></a>
@@ -24,8 +34,13 @@
       <a href="#cart" data-i18n-aria="cart" aria-label="Cart"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 4h2l2.3 11.5h11.7L21 7H5"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg><span data-i18n="cart">Cart</span> <span id="cart-count" class="cart-count">0</span></a>
     </nav>
     <div id="language" class="language-menu shop-language"></div>
+    <div class="shop-account">
+      <button id="profile-menu-button" class="language-trigger" type="button" aria-expanded="false" aria-controls="profile-menu" data-i18n-aria="customerProfile"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/></svg></button>
+      <nav id="profile-menu" class="language-options" hidden><a href="#profile" data-i18n="customerProfile">Profile</a><a href="#addresses" data-i18n="myAddresses">My addresses</a><a href="#settings" data-i18n="settings">Settings</a></nav>
+    </div>
   </header>
   <main class="shop-main">
+    <aside id="demo-banner" class="demo-banner" hidden><strong data-i18n="demoMode">Demo — Pet Shop</strong><span data-i18n="demoBrief"></span></aside>
     <section id="catalog-view" aria-labelledby="catalog-title">
       <div class="shop-hero" aria-labelledby="hero-title">
         <div class="hero-copy">
@@ -45,51 +60,104 @@
         </aside>
         <div class="catalog-results" id="catalog-results" tabindex="-1">
           <div class="catalog-intro"><div><p class="eyebrow" data-i18n="shop">Shop</p><h2 id="catalog-title" data-i18n="browseProducts">Browse products</h2><p data-i18n="catalogSubtitle">Find something useful for every day.</p></div><p id="catalog-count" class="catalog-count" aria-live="polite"></p></div>
-          <p id="catalog-status" class="shop-status" role="status"></p>
-          <div id="catalog-grid" class="catalog-grid"></div>
+          <p id="catalog-query" class="catalog-query" hidden></p>
+          <p id="catalog-status" class="shop-status" role="status" data-i18n="loading">Loading…</p>
+          <div id="catalog-grid" class="catalog-grid" aria-busy="true"></div>
+          <div id="catalog-skeleton" class="catalog-grid catalog-skeleton loading-placeholder" aria-hidden="true">
+            <div class="catalog-skeleton-card"><span class="skeleton-image"></span><span class="skeleton-body"><span class="skeleton-line short"></span><span class="skeleton-line"></span><span class="skeleton-line medium"></span><span class="skeleton-line short"></span><span class="skeleton-button"></span></span></div>
+            <div class="catalog-skeleton-card"><span class="skeleton-image"></span><span class="skeleton-body"><span class="skeleton-line short"></span><span class="skeleton-line"></span><span class="skeleton-line medium"></span><span class="skeleton-line short"></span><span class="skeleton-button"></span></span></div>
+            <div class="catalog-skeleton-card"><span class="skeleton-image"></span><span class="skeleton-body"><span class="skeleton-line short"></span><span class="skeleton-line"></span><span class="skeleton-line medium"></span><span class="skeleton-line short"></span><span class="skeleton-button"></span></span></div>
+            <div class="catalog-skeleton-card"><span class="skeleton-image"></span><span class="skeleton-body"><span class="skeleton-line short"></span><span class="skeleton-line"></span><span class="skeleton-line medium"></span><span class="skeleton-line short"></span><span class="skeleton-button"></span></span></div>
+          </div>
+          <div id="catalog-page-feedback" class="catalog-page-feedback" role="status" hidden>
+            <span class="catalog-page-spinner" aria-hidden="true"></span>
+            <span id="catalog-page-message"></span>
+            <button id="catalog-page-retry" class="outline-button" type="button" data-i18n="retry" hidden>Try again</button>
+          </div>
           <button id="catalog-more" class="outline-button" type="button" data-i18n="loadMore" hidden>Load more</button>
         </div>
       </div>
     </section>
+    <section id="product-view" aria-labelledby="detail-title" hidden></section>
+    <div id="account-layout" class="account-layout" hidden>
+      <nav class="account-sidebar" aria-label="Account" data-i18n-aria="account"><a href="#profile" data-i18n="customerProfile">Profile</a><a href="#addresses" data-i18n="myAddresses">My addresses</a><a href="#settings" data-i18n="settings">Settings</a></nav>
+      <div class="account-content">
+    <section id="profile-view" class="profile-page account-page" aria-labelledby="profile-title" hidden>
+      <div class="shop-heading"><p class="eyebrow" data-i18n="account">Account</p><h1 id="profile-title" data-i18n="customerProfile">Profile</h1></div>
+      <p class="shop-note" data-i18n="profileLocalNotice"></p>
+      <form id="profile-form" class="checkout-section">
+        <div class="checkout-fields">
+          <label class="checkout-field"><span data-i18n="fullName">Full name</span><input name="fullName" required maxlength="120" autocomplete="name"></label>
+          <div class="phone-fields">
+            <label class="checkout-field"><span data-i18n="phoneCode">Phone code</span><strong id="profile-phone-prefix" class="address-phone-prefix">MY +60</strong><input name="code" type="hidden" value="+60"></label>
+            <label class="checkout-field"><span data-i18n="buyerWhatsApp">Buyer WhatsApp phone</span><input name="phone" type="tel" maxlength="32" autocomplete="tel"></label>
+          </div>
+          <label class="checkout-field"><span data-i18n="email">Email</span><input name="email" type="email" maxlength="254" autocomplete="email"></label>
+        </div>
+        <p class="shop-note" data-i18n="profileContactHelp"></p>
+        <p id="profile-status" role="status" aria-live="polite"></p>
+        <div class="cart-actions"><button class="primary-button" type="submit" data-i18n="saveProfile">Save profile</button><a class="outline-button" href="#cart" data-i18n="viewCart">View cart</a></div>
+      </form>
+    </section>
+    <section id="settings-view" class="profile-page account-page" aria-labelledby="settings-title" hidden>
+      <div class="shop-heading"><h1 id="settings-title" data-i18n="settings">Settings</h1></div>
+      <div class="checkout-section settings-general"><a href="#profile" data-i18n="editProfile">Edit profile</a><p class="shop-note" data-i18n="shopSettingsHelp"></p><button id="settings-clear-history" class="outline-button" type="button" data-i18n="clearHistory">Clear saved suggestions</button><p id="settings-status" role="status"></p></div>
+      <section class="checkout-section palette-settings" aria-labelledby="palette-title">
+        <h2 id="palette-title" data-i18n="paletteTitle">Shop appearance</h2>
+        <p class="shop-note" data-i18n="paletteHelp">Choose a color palette for this browser. Prices and notices keep their meaning.</p>
+        <fieldset class="palette-options"><legend class="sr-only" data-i18n="paletteTitle">Shop appearance</legend>
+          <label class="palette-option"><input type="radio" name="shop-palette" value="evergreen-teal"><span class="palette-swatches palette-evergreen" aria-hidden="true"><i></i><i></i><i></i></span><span data-i18n="paletteEvergreen">Evergreen Teal</span></label>
+          <label class="palette-option"><input type="radio" name="shop-palette" value="warm-plum"><span class="palette-swatches palette-plum" aria-hidden="true"><i></i><i></i><i></i></span><span data-i18n="palettePlum">Warm Plum</span></label>
+          <label class="palette-option"><input type="radio" name="shop-palette" value="ocean-blue"><span class="palette-swatches palette-ocean" aria-hidden="true"><i></i><i></i><i></i></span><span data-i18n="paletteOcean">Ocean Blue</span></label>
+        </fieldset>
+        <p id="palette-status" class="shop-note" role="status" aria-live="polite"></p>
+      </section>
+    </section>
+    <section id="addresses-view" class="account-page" aria-labelledby="addresses-title" hidden>
+      <div class="address-page-heading"><h1 id="addresses-title" data-i18n="myAddresses">My addresses</h1><button id="add-address" class="primary-button" type="button" data-i18n="addAddress">Add address</button></div>
+      <p class="shop-note" data-i18n="addressLocalNotice"></p>
+      <p id="addresses-status" class="checkout-error" role="alert"></p>
+      <div id="addresses-list"></div>
+    </section>
+      </div>
+    </div>
     <section id="cart-view" aria-labelledby="cart-title" hidden>
       <div class="shop-heading"><p class="eyebrow" data-i18n="shop">Shop</p><h1 id="cart-title" data-i18n="yourCart">Your cart</h1></div>
       <p id="cart-persistence" class="shop-note" hidden></p>
       <p id="cart-status" class="shop-status" role="status"></p>
+      <button id="cart-retry" class="outline-button" type="button" data-i18n="retry" hidden>Try again</button>
+      <aside id="profile-warning" class="profile-warning" hidden><p data-i18n="profileRequired"></p><a class="outline-button" href="#profile" data-profile-return="cart" data-i18n="setupProfile">Set up profile</a></aside>
+      <div class="cart-columns" aria-hidden="true"><span data-i18n="product">Product</span><span data-i18n="unitPrice">Unit price</span><span data-i18n="quantity">Quantity</span><span data-i18n="itemSubtotal">Subtotal</span><span data-i18n="actions">Actions</span></div>
       <div id="cart-list" class="cart-list"></div>
-      <div id="cart-summary" class="cart-summary" hidden><span data-i18n="estimatedTotal">Estimated total</span><strong id="cart-total"></strong></div>
-      <p class="shop-note" data-i18n="cartPriceNote">Prices are checked again by the server when you place an order.</p>
-      <div class="cart-actions"><a class="outline-button" href="#catalog" data-i18n="continueShopping">Continue shopping</a><button id="checkout-button" class="primary-button" type="button" disabled data-i18n="proceedCheckout">Continue to checkout</button></div>
+      <div id="cart-skeleton" class="cart-list cart-skeleton loading-placeholder" aria-hidden="true" hidden></div>
+      <p class="shop-note" data-i18n="cartPriceNote"></p>
+      <a href="#catalog" data-i18n="continueShopping">Continue shopping</a>
+      <div class="shop-actionbar">
+        <label class="check-row"><input id="cart-select-all" type="checkbox"><span data-i18n="selectAll">Select all</span></label>
+        <p id="cart-selected-count" role="status"></p>
+        <div id="cart-summary" class="cart-summary"><span data-i18n="estimatedTotal">Estimated total</span><strong id="cart-total"></strong></div>
+        <button id="checkout-button" class="primary-button" type="button" disabled data-i18n="proceedCheckout">Continue to checkout</button>
+      </div>
     </section>
     <section id="checkout-view" aria-labelledby="checkout-title" hidden>
       <div class="shop-heading"><p class="eyebrow" data-i18n="shop">Shop</p><h1 id="checkout-title" data-i18n="checkout">Checkout</h1></div>
       <p class="shop-note" data-i18n="checkoutIntro">Enter buyer and destination details. No payment or shipping charge is collected online.</p>
       <form id="checkout-form" class="checkout-form">
-        <fieldset class="checkout-section">
+        <fieldset id="buyer-section" class="checkout-section">
           <legend data-i18n="buyerDetails">Buyer details</legend>
-          <div class="checkout-fields">
-            <label class="checkout-field"><span data-i18n="fullName">Full name</span><input id="buyer-name" name="buyer.fullName" required maxlength="120" autocomplete="name"></label>
-            <div class="phone-fields">
-              <label class="checkout-field"><span data-i18n="phoneCode">Phone code</span><select id="buyer-code" aria-label="Phone code" data-i18n-aria="phoneCode"><option value="+60">MY +60</option><option value="+65">SG +65</option></select></label>
-              <label class="checkout-field"><span data-i18n="buyerWhatsApp">Buyer WhatsApp phone</span><input id="buyer-phone" name="buyer.whatsappPhone" type="tel" required maxlength="32" inputmode="tel" autocomplete="off" placeholder="0123456789"></label>
-            </div>
-            <label class="checkout-field"><span data-i18n="optionalEmail">Email (optional)</span><input id="buyer-email" name="buyer.email" type="email" maxlength="254" autocomplete="email"></label>
-          </div>
+          <dl id="checkout-buyer" class="receipt-details"></dl>
+          <a href="#profile" data-profile-return="checkout" data-i18n="editProfile">Edit profile</a>
           <label class="check-row"><input id="whatsapp-opt-in" name="whatsappOrderContactOptIn" type="checkbox" required><span data-i18n="whatsappConsent">I agree to receive WhatsApp messages from the seller about this order. Required to place an order; no marketing.</span></label>
         </fieldset>
-        <div id="delivery-list" class="delivery-list"></div>
-        <button id="add-delivery" class="outline-button" type="button" data-i18n="addDestination">Add destination</button>
+        <section class="checkout-section checkout-address-section" aria-labelledby="delivery-title"><div class="address-page-heading"><h2 id="delivery-title" data-i18n="deliveryAddress">Delivery address</h2><button id="change-address" class="outline-button" type="button" data-i18n="changeAddress">Change</button></div><div id="checkout-address"></div></section>
         <fieldset class="checkout-section">
-          <legend data-i18n="assignItems">Assign items to destinations</legend>
-          <p class="shop-note" data-i18n="assignmentHelp">Each cart item goes to one destination. Change quantities in the cart.</p>
+          <legend data-i18n="orderItems">Order items</legend>
+          <p class="shop-note" data-i18n="singleDeliveryHelp">One delivery address per order. To send to another address, place a separate order.</p>
           <div id="assignment-list" class="assignment-list"></div>
         </fieldset>
-        <div class="history-controls">
-          <label class="check-row"><input id="save-history" type="checkbox"><span data-i18n="saveHistory">Remember these phones and addresses on this device for future orders.</span></label>
-          <button id="clear-history" class="outline-button" type="button" data-i18n="clearHistory">Clear saved suggestions</button>
-        </div>
         <p id="checkout-status" class="shop-status" role="status"></p>
         <p id="checkout-error" class="checkout-error" role="alert"></p>
-        <div class="cart-actions"><a class="outline-button" href="#cart" data-i18n="backToCart">Back to cart</a><button id="submit-order" class="primary-button" type="submit" data-i18n="placeOrder">Place order</button></div>
+        <div class="shop-actionbar"><a class="outline-button" href="#cart" data-i18n="backToCart">Back to cart</a><div class="cart-summary"><span data-i18n="estimatedTotal">Estimated total</span><strong id="checkout-total"></strong></div><button id="submit-order" class="primary-button" type="submit" data-i18n="placeOrder">Place order</button></div>
       </form>
     </section>
     <section id="receipt-view" aria-labelledby="receipt-title" hidden>
@@ -103,11 +171,7 @@
       </div>
     </section>
   </main>
-  <dialog id="product-dialog" class="product-dialog" aria-labelledby="detail-title">
-    <button id="detail-close" class="dialog-close" type="button" data-i18n="close">Close</button>
-    <div id="detail-content"></div>
-  </dialog>
-  <datalist id="country-options"><option value="MY"></option><option value="SG"></option></datalist>
-  <p id="shop-message" class="sr-only" role="status" aria-live="polite"></p>
+  <nav id="mobile-navigation" class="mobile-navigation" aria-label="Shop" data-i18n-aria="shop"><a href="#catalog"><span class="mobile-nav-icon" aria-hidden="true"><img src="/favicon.svg" alt=""></span><span data-i18n="home"></span></a><button id="mobile-category" type="button" aria-haspopup="dialog"><span class="mobile-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 5h12M9 12h12M9 19h12M3 5h1M3 12h1M3 19h1"/></svg></span><span data-i18n="category"></span></button><a href="#cart"><span class="mobile-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2 3h3l3 12h11l2-9H6"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg><span id="mobile-cart-count" class="mobile-cart-count">0</span></span><span data-i18n="cart"></span></a><button id="mobile-language" type="button" aria-haspopup="dialog"><span class="mobile-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c4 4 4 14 0 18M12 3c-4 4-4 14 0 18"/></svg></span><span data-i18n="selectLanguage"></span></button><a href="#profile"><span class="mobile-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/></svg></span><span data-i18n="account"></span></a></nav>
+  <p id="shop-message" class="shop-toast" role="status" aria-live="polite"></p>
 </body>
 </html>

@@ -29,3 +29,10 @@ test('contact validation identifies the field without echoing personal values', 
   assert.throws(() => validateRecipient({ fullName: 'Recipient', phone: 'bad' }, 3),
     (error) => error instanceof FieldError && error.field === 'deliveries.3.recipient.phone');
 });
+
+test('email-only buyer does not imply WhatsApp permission', () => {
+  assert.deepEqual(validateBuyer({ fullName: 'Email Buyer', email: 'buyer@example.test' }, true), {
+    fullName: 'Email Buyer', whatsappPhone: '', email: 'buyer@example.test', whatsappOrderContactOptIn: false,
+  });
+  assert.throws(() => validateBuyer({ fullName: 'Missing Contact' }, false), FieldError);
+});

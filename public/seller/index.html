@@ -100,8 +100,12 @@
         <label><span data-i18n="category">Category</span><select name="category" required></select></label>
         <label><span data-i18n="price">Price</span><input name="price" inputmode="decimal" required></label>
         <label><span data-i18n="currency">Currency</span><select name="currency"><option value="MYR">MYR</option><option value="SGD">SGD</option></select></label>
+        <label><span data-i18n="variantGroup">Variant group</span><input name="variantGroup" maxlength="40" autocomplete="off" placeholder="PET-BOWL"></label>
+        <label><span data-i18n="variantOption">Option label</span><input name="variantLabel" maxlength="80" autocomplete="off" placeholder="Small"></label>
+        <p class="shop-note full" data-i18n="variantHelp">Products with the same group code appear as selectable options. Each option keeps its own SKU and price.</p>
         <label class="full"><span data-i18n="image">Product image</span><input name="image" type="file" accept="image/png,image/jpeg,image/webp"><small data-i18n="imageHelp">PNG, JPEG or WebP, up to 512 KB.</small></label>
         <div id="product-image-panel" class="product-image-panel full" hidden><img id="product-image-preview" class="product-image-preview" alt=""><div><p id="product-image-status" data-i18n="currentImage">Current image</p><button id="product-remove-image" class="secondary-button" type="button" data-i18n="removeImage">Remove image</button><button id="product-restore-image" class="text-button" type="button" data-i18n="restoreImage" hidden>Undo removal</button></div></div>
+        <div id="product-gallery-panel" class="product-gallery-panel full" hidden><h3 data-i18n="gallery">Gallery</h3><p class="shop-note" data-i18n="galleryHelp">Add up to four extra photos after saving the main image. Extra photos can be removed individually.</p><div id="product-gallery-list" class="product-gallery-list"></div><label><span data-i18n="addPhoto">Add photos</span><input name="gallery" type="file" accept="image/png,image/jpeg,image/webp" multiple></label></div>
         <label class="check-row full"><input name="active" type="checkbox"><span data-i18n="available">Active in shop</span></label>
       </div>
       <p id="product-form-error" class="message" role="alert"></p>

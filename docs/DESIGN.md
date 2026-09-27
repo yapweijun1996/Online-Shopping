@@ -1,5 +1,9 @@
 # Design specification
 
+**Customer workflow update (2026-09-26):** Browser-local Profile is required before checkout; buyer details are read-only there. Cart checkboxes select one order with one delivery address. This supersedes earlier customer multi-destination UI requirements; the existing API/history stays compatible. See UI_SPEC.md.
+
+**Updated direction (2026-09-26):** Cloudflare Worker + SQLite Durable Object is the public Demo for simulated transactions with sample pet products. Future Production will use Docker + PostgreSQL on the owner’s server behind Cloudflare Tunnel. This supersedes earlier DEC-04 production-host wording below; the current Docker SQLite adapter has not yet been migrated to PostgreSQL.
+
 **Status: implemented local seller, shop, checkout, and order-review paths with release gates remaining.** This document describes the new MVP, not the `sample/` prototype.
 
 ## Verified repository state

@@ -137,6 +137,28 @@ test('checkout rejects a changed price instead of charging the new amount', asyn
   } finally { await f.close(); }
 });
 
+test('checkout snapshots the selected variant SKU and its own price', async () => {
+  const f = await fixture();
+  try {
+    updateProduct(f.app.database, f.first.id, { variantGroup: 'EXAMPLE-OPTIONS', variantLabel: 'Small' });
+    const large = createProduct(f.app.database, {
+      sku: 'item-a-large', name: 'Example item A Large', description: 'Large option',
+      category: 'EXAMPLES', priceMinor: 1500, currency: 'MYR', active: true,
+      variantGroup: 'EXAMPLE-OPTIONS', variantLabel: 'Large',
+    });
+    const original = orderInput(f.first.id, f.second.id);
+    const selected = { ...original, deliveries: [{ ...original.deliveries[0], items: [{
+      productId: large.id, quantity: 2, expectedPriceMinor: 1500, expectedCurrency: 'MYR',
+    }] }] };
+    const result = await f.submit('variant-order-00000001', selected);
+    assert.equal(result.response.status, 201);
+    assert.equal(result.data.totalMinor, 3000);
+    assert.deepEqual({ ...f.app.database.get('SELECT product_id, sku_snapshot, price_minor FROM order_item') },
+      { product_id: large.id, sku_snapshot: 'ITEM-A-LARGE', price_minor: 1500 });
+    assert.equal(f.app.database.get('SELECT COUNT(*) AS count FROM order_item WHERE product_id = ?', f.first.id).count, 0);
+  } finally { await f.close(); }
+});
+
 test('idempotent retries return the original receipt and reject changed intent', async () => {
   const f = await fixture();
   try {
@@ -270,13 +292,15 @@ test('schema version two upgrades without losing catalog records', async () => {
   const f = await fixture();
   await f.app.close();
   const old = new DatabaseSync(f.config.dbPath);
-  old.exec(`DROP TABLE rate_limit_attempt; DROP TABLE company_setting; DROP TABLE general_code;
+  old.exec(`DROP TABLE product_gallery_image; DROP TABLE shop_setup; DROP TABLE rate_limit_attempt; DROP TABLE company_setting; DROP TABLE general_code;
     DROP TABLE checkout_idempotency; DROP TABLE order_event; DROP TABLE order_item;
     DROP TABLE delivery; DROP TABLE shop_order; DROP TABLE order_sequence; PRAGMA user_version = 2;`);
   const productSchema = old.prepare("SELECT sql FROM sqlite_schema WHERE name = 'product'").get().sql;
   old.exec(productSchema.replace(/^CREATE TABLE ["`]?product["`]?/i, 'CREATE TABLE product_v2')
+    .replace(/, variant_group TEXT, variant_label TEXT/i, '')
     .replace("currency IN ('MYR', 'SGD')", "currency = 'MYR'"));
-  old.exec(`INSERT INTO product_v2 SELECT * FROM product;
+  old.exec(`INSERT INTO product_v2 SELECT id, sku, name, description, category, price_minor, currency, active,
+    translations_json, image_mime, image_data, created_at, updated_at FROM product;
     DROP TABLE product; ALTER TABLE product_v2 RENAME TO product;
     CREATE INDEX product_public ON product(active, category, updated_at);`);
   old.close();
@@ -297,18 +321,22 @@ test('schema version three upgrades an existing order without changing its snaps
   assert.equal(placed.response.status, 201);
   await f.app.close();
   const old = new DatabaseSync(f.config.dbPath);
+  old.exec('DROP TABLE product_gallery_image');
   old.exec('PRAGMA foreign_keys = OFF; BEGIN IMMEDIATE');
   try {
     for (const table of ['product', 'shop_order', 'order_item']) {
       const schema = old.prepare('SELECT sql FROM sqlite_schema WHERE name = ?').get(table).sql;
       old.exec(schema.replace(new RegExp(`^CREATE TABLE ["\x60]?${table}["\x60]?`, 'i'), `CREATE TABLE ${table}_v3`)
+        .replace(table === 'product' ? /, variant_group TEXT, variant_label TEXT/i : /$^/, '')
         .replace("currency IN ('MYR', 'SGD')", "currency = 'MYR'"));
-      old.exec(`INSERT INTO ${table}_v3 SELECT * FROM ${table}`);
+      if (table === 'product') old.exec(`INSERT INTO product_v3 SELECT id, sku, name, description, category, price_minor,
+        currency, active, translations_json, image_mime, image_data, created_at, updated_at FROM product`);
+      else old.exec(`INSERT INTO ${table}_v3 SELECT * FROM ${table}`);
       old.exec(`DROP TABLE ${table}; ALTER TABLE ${table}_v3 RENAME TO ${table}`);
     }
     old.exec(`CREATE INDEX product_public ON product(active, category, updated_at);
       CREATE INDEX shop_order_queue ON shop_order(status, submitted_at DESC);
-      DROP TABLE rate_limit_attempt; DROP TABLE company_setting; DROP TABLE general_code; PRAGMA user_version = 3; COMMIT`);
+      DROP TABLE shop_setup; DROP TABLE rate_limit_attempt; DROP TABLE company_setting; DROP TABLE general_code; PRAGMA user_version = 3; COMMIT`);
   } catch (error) { old.exec('ROLLBACK'); throw error; }
   old.exec('PRAGMA foreign_keys = ON');
   old.close();
@@ -325,4 +353,22 @@ test('schema version three upgrades an existing order without changing its snaps
     migrated.database.close();
     rmSync(f.directory, { recursive: true, force: true });
   }
+});
+
+test('single-address email buyer order stores no WhatsApp permission', async () => {
+  const f = await fixture();
+  try {
+    const payload = orderInput(f.first.id, f.second.id);
+    payload.buyer = { fullName: 'Email Buyer', email: 'buyer@example.test', whatsappPhone: '' };
+    payload.whatsappOrderContactOptIn = false;
+    payload.deliveries = [payload.deliveries[0]];
+    const result = await f.submit('email-only-order-00001', payload);
+    assert.equal(result.response.status, 201);
+    const row = f.app.database.get('SELECT * FROM shop_order');
+    assert.equal(row.buyer_email, 'buyer@example.test');
+    assert.equal(row.buyer_phone, '');
+    assert.equal(row.whatsapp_opt_in, 0);
+    assert.equal(row.whatsapp_consent_at, null);
+    assert.equal(f.app.database.get('SELECT COUNT(*) AS count FROM delivery').count, 1);
+  } finally { await f.close(); }
 });

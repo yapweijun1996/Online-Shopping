@@ -123,6 +123,67 @@ test('base64 images stay private until activation and can be removed', async () 
   } finally { await f.close(); }
 });
 
+test('variant options remain separate SKUs and prices, with only active options public', async () => {
+  const f = await fixture();
+  try {
+    const { cookie, csrf } = await f.login();
+    const headers = { cookie, 'x-csrf-token': csrf };
+    const first = await f.request('POST', '/api/v1/seller/products', {
+      ...draft, active: true, variantGroup: 'PET-BOWL', variantLabel: 'Small',
+    }, headers);
+    const second = await f.request('POST', '/api/v1/seller/products', {
+      ...draft, sku: 'item-2', priceMinor: 1500, active: true,
+      variantGroup: 'PET-BOWL', variantLabel: 'Large',
+    }, headers);
+    assert.equal(first.response.status, 201);
+    assert.equal(second.response.status, 201);
+    const detail = await f.request('GET', `/api/v1/products/${first.data.id}`);
+    assert.deepEqual(detail.data.variants.map(({ sku, priceMinor }) => [sku, priceMinor]),
+      [['ITEM-2', 1500], ['ITEM-1', 900]]);
+    assert.equal((await f.request('POST', '/api/v1/seller/products', {
+      ...draft, sku: 'item-3', variantGroup: 'PET-BOWL', variantLabel: 'Small',
+    }, headers)).data.error.code, 'DUPLICATE_VARIANT');
+    assert.equal((await f.request('POST', '/api/v1/seller/products', {
+      ...draft, sku: 'item-4', variantGroup: 'PET-BOWL', variantLabel: 'small',
+    }, headers)).data.error.code, 'DUPLICATE_VARIANT');
+    assert.equal((await f.request('PATCH', `/api/v1/seller/products/${second.data.id}`, {
+      currency: 'SGD',
+    }, headers)).response.status, 400);
+    await f.request('PATCH', `/api/v1/seller/products/${second.data.id}`, { active: false }, headers);
+    assert.deepEqual((await f.request('GET', `/api/v1/products/${first.data.id}`)).data.variants.map(({ sku }) => sku), ['ITEM-1']);
+  } finally { await f.close(); }
+});
+
+test('seller-managed gallery is bounded, private while inactive, and removable', async () => {
+  const f = await fixture();
+  try {
+    const { cookie, csrf } = await f.login();
+    const headers = { cookie, 'x-csrf-token': csrf };
+    const bytes = readFileSync(new URL('../public/shop/icons/icon-192.png', import.meta.url));
+    const imageDataUrl = `data:image/png;base64,${bytes.toString('base64')}`;
+    const created = await f.request('POST', '/api/v1/seller/products', { ...draft, imageDataUrl }, headers);
+    const id = created.data.id;
+    const added = await f.request('POST', `/api/v1/seller/products/${id}/gallery`, { imageDataUrl }, headers);
+    assert.equal(added.response.status, 201);
+    assert.equal(added.data.images.length, 2);
+    const extra = added.data.images[1];
+    assert.equal((await fetch(`${f.origin}${extra}`, { headers: { cookie } })).status, 200);
+    assert.equal((await f.request('GET', `/api/v1/products/${id}`)).response.status, 404);
+    const publicPath = extra.replace('/seller/', '/');
+    assert.equal((await fetch(`${f.origin}${publicPath}`)).status, 404);
+    assert.equal((await f.request('PATCH', `/api/v1/seller/products/${id}`, { imageDataUrl: null }, headers)).response.status, 400);
+    await f.request('PATCH', `/api/v1/seller/products/${id}`, { active: true }, headers);
+    const active = await f.request('GET', `/api/v1/products/${id}`);
+    assert.equal(active.data.images.length, 2);
+    assert.equal((await fetch(`${f.origin}${active.data.images[1]}`)).status, 200);
+    const imageId = /\/gallery\/([0-9a-f-]{36})/.exec(extra)[1];
+    const deleted = await f.request('DELETE', `/api/v1/seller/products/${id}/gallery/${imageId}`, null, headers);
+    assert.equal(deleted.response.status, 200);
+    assert.equal(deleted.data.images.length, 1);
+    assert.equal((await fetch(`${f.origin}${publicPath}`)).status, 404);
+  } finally { await f.close(); }
+});
+
 test('seller manages category codes and default currency without rewriting existing products', async () => {
   const f = await fixture();
   try {
@@ -136,6 +197,7 @@ test('seller manages category codes and default currency without rewriting exist
     assert.equal((await f.request('GET', '/api/v1/seller/company-settings', null, { cookie })).data.defaultCurrency, 'MYR');
     const settings = await f.request('PATCH', '/api/v1/seller/company-settings', { defaultCurrency: 'SGD' }, headers);
     assert.equal(settings.data.defaultCurrency, 'SGD');
+    assert.equal((await f.request('GET', '/api/v1/shop')).data.currency, 'SGD');
     const myr = await f.request('POST', '/api/v1/seller/products', draft, headers);
     const sgd = await f.request('POST', '/api/v1/seller/products', { ...draft, sku: 'item-sgd', category: 'WORK', currency: 'SGD' }, headers);
     assert.equal(myr.response.status, 201);
@@ -161,7 +223,7 @@ test('schema version one upgrades without losing the provisioned seller', async 
   const { cookie } = await f.login();
   await f.app.close();
   const old = new DatabaseSync(config.dbPath);
-  old.exec(`DROP TABLE rate_limit_attempt; DROP TABLE company_setting; DROP TABLE general_code;
+  old.exec(`DROP TABLE product_gallery_image; DROP TABLE shop_setup; DROP TABLE rate_limit_attempt; DROP TABLE company_setting; DROP TABLE general_code;
     DROP TABLE checkout_idempotency; DROP TABLE order_event; DROP TABLE order_item;
     DROP TABLE delivery; DROP TABLE shop_order; DROP TABLE order_sequence;
     DROP TABLE product; PRAGMA user_version = 1`);

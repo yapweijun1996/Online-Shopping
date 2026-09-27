@@ -17,6 +17,6 @@
     "bindings": [{ "name": "SHOP", "class_name": "ShopStore" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ShopStore"] }],
-  "vars": { "NODE_ENV": "production" },
+  "vars": { "NODE_ENV": "production", "SHOP_MODE": "demo" },
   "observability": { "enabled": true }
 }

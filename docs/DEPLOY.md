@@ -34,9 +34,9 @@ With a synthetic ignored secret and test order, the two pinned-base images built
 
 The exact hostname (Cloudflare `*.workers.dev` subdomain, see below) and the lawful basis for permanent retention are now recorded; still settle backup/restore and rollback for the Durable Object data, production secret management, and target-browser PWA installation/update before a public release. Verify the exact built artifact, secure cookie/origin behavior on HTTPS, readiness, migration, logs without PII, and deployed version. Record those results in [PROGRESS.md](PROGRESS.md); only then consider AC-16/17 verified or any item Released.
 
-## Cloudflare Workers deployment (owner-selected production host, DEC-04)
+## Cloudflare Workers Demo deployment (updated owner direction)
 
-**Status: local `wrangler dev` smoke verified; not yet deployed.** The same API runs on Cloudflare Workers with a SQLite Durable Object instead of Docker. It uses the Workers Free plan and needs no server or custom domain: the owner decided (2026-09-26) to use the Worker's `*.workers.dev` subdomain under the existing name `online-shopping` as the production HTTPS host, rather than a custom domain.
+**Role: public simulation Demo.** The owner clarified that Cloudflare Worker + Durable Object hosts the Demo; future real transactions belong on Docker + PostgreSQL behind Cloudflare Tunnel. The same API runs on Cloudflare Workers with a SQLite Durable Object instead of Docker. It uses the Workers Free plan and needs no server or custom domain: the owner decided (2026-09-26) to use the Worker's `*.workers.dev` subdomain under the existing name `online-shopping` as the Demo HTTPS host. This supersedes the earlier production-host decision.
 
 - `src/worker.js` serves `public/` as static assets (`public/_headers` adds the same CSP and security headers; `public/_redirects` sends `/` to `/shop/`) and forwards `/api/*`, `/health` and `/ready` to one `ShopStore` Durable Object.
 - The Worker overwrites `X-Real-IP` with Cloudflare's `CF-Connecting-IP` and buffers request bodies up to 1 MB before forwarding; larger bodies get 413 from the Worker. Only the Worker can reach the object.
@@ -53,3 +53,17 @@ First deployment:
 4. Optional: connect the GitHub repository in the Cloudflare dashboard (Workers Builds) to deploy on pushes to `main`. CI already runs `npm run worker:check`, a dry-run bundle build.
 
 Evidence so far: with synthetic data on local workerd, all six migrations, category and company-settings routes, static shells, redirects, CSP headers, seller login/CSRF/origin checks, product create with image, duplicate SKU, versioned image caching, 413 limits, `PRICE_CHANGED`, idempotent checkout, seller confirm and stale revision, logout, and parallel login limiting (5 × 401, 7 × 429) passed. After a restart, products and the login lockout persisted. A browser checkout with a mid-checkout price change passed. Not yet verified: a real Cloudflare deployment, Free-plan CPU limits for password hashing, and off-platform (off-Cloudflare) backup/restore for the Durable Object's SQLite storage — the retention-basis part of the data-retention gate is now recorded above, but backup/recovery and rollback for this deployment path remain open.
+
+### Demo isolation and rollout
+
+`wrangler.jsonc` sets `SHOP_MODE=demo`. The Worker selects the named Durable Object `pet-shop-demo-v1`, initializes the pet catalog atomically on its first request and leaves the original `shop` object unchanged. Repeated wakeups preserve edited products and simulated orders. The mode cannot be selected by the visitor. Keep existing admin secrets and the exact HTTPS `PUBLIC_ORIGIN`; no demo passwords are published.
+
+The first rollout switches the public catalog to a new Demo data space, so existing browser carts may show unavailable old products and require removal. Previous seller sessions belong to the old object and require signing in again. Rollback to the preceding Worker version restores routing to the original object; neither object is deleted. Future releases must keep the demo object name stable unless a deliberate new demo dataset is wanted.
+
+The planned Production deployment is Docker + PostgreSQL + Cloudflare Tunnel. Current Docker uses SQLite and must not be described as PostgreSQL-ready. PostgreSQL schema/transaction adapters, migration, backups, domain/Tunnel and company settings remain future work.
+
+### Verified Demo rollout (2026-09-26)
+
+Demo URL: https://online-shopping.onemap-token-proxy.workers.dev/shop/ . Live `/ready` and shop metadata returned 200; all 35 products and their JPEG images loaded. A synthetic two-unit checkout produced `DEMO-00000001` for MYR 73.80; replay returned the same receipt. Mobile live storefront loaded with no browser console errors. Local workerd passed 33 API smoke checks, seller confirmation, synthetic-contact assertions, browser Buy now → checkout → receipt, and restart persistence checks. Unit/API suite: 56 passing tests. Existing production-object data was not accessed or deleted.
+
+Public demo visitors do not receive seller credentials. The owner can sign into `/seller/` using the configured credentials to review simulation orders. Broader company settings and full customer UI redesign are future iterations.

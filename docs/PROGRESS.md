@@ -1,5 +1,7 @@
 # Progress
 
+**Updated direction (2026-09-26):** Cloudflare Worker + SQLite Durable Object is the public Demo for simulated transactions with sample pet products. Future Production will use Docker + PostgreSQL on the owner’s server behind Cloudflare Tunnel. This supersedes earlier DEC-04 production-host wording below; the current Docker SQLite adapter has not yet been migrated to PostgreSQL.
+
 **As of 2026-09-26 (Asia/Singapore).** The new Online Shopping application is an **MVP in local development**. The separate `sample/` is a local PWA/API/SQLite prototype. Its functionality and test results do not count toward the new MVP.
 
 ## Evidence-based state
@@ -67,3 +69,189 @@ WhatsApp is the sole buyer order-contact channel for new checkouts. The web form
 - The new-app CI workflow has not run remotely. A local Docker build/smoke and synthetic backup/restore exist; no target-device PWA install/update E2E, production migration/restore, encrypted off-host backup, secret scan, HTTPS deployment, release, or rollback verification exists yet. Local browser and Compose checks cannot fill those gaps.
 
 **Resume point:** DEC-06 lawful basis and DEC-04 HTTPS host are now recorded (see above); define encrypted off-host backup targets for the Durable Object data and rehearse rollback. Then verify AC-17 PWA install/update on target browsers and AC-16 deployed health/version, security artifact and operational gates, including setting `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`PUBLIC_ORIGIN` via `wrangler secret put` and running `npm run worker:deploy`. Record implementation, verification, and release evidence per AC row as work proceeds.
+
+## Pet Shop Demo delivery — 2026-09-26
+
+The existing Cloudflare Worker now serves the dedicated `pet-shop-demo-v1` Durable Object with 35 auto-seeded pet products. Live readiness, all product images, simulation receipt and idempotent replay passed. Local workerd smoke: 33 checks; Node suite: 56 tests. Browser desktop/mobile checks cover detail quantity, Buy now, sample checkout, receipt, invalid quantity, Escape/focus restoration and no horizontal overflow. Demo contact data is server-generated, consent is false, and seller confirmation preserves the existing audit flow. The original `shop` object remains retained. Production PostgreSQL/Tunnel work and a complete Shopee-inspired UX redesign are deferred by the latest owner direction.
+
+## Shareable product pages and shopping review — 2026-09-26
+
+Completed standalone hash-routed product details, square catalog images, quantity steppers, subtotal feedback, clipboard sharing, accessible image enlargement, same-category suggestions, linked cart items, desktop cart totals panel and compact Demo checkout. The API/order/data contracts remain unchanged. Local verification: 57 passing tests, Worker bundle check, desktop/tablet/mobile browser flows, navigation and network-failure recovery. See UI_SPEC.md for verified states and remaining design work.
+
+Deployed Worker version `b96390e4-373c-471f-9c30-8e0cd8e600e4`. Live verification confirmed 35 products, a direct product link, quantity adjustment and Buy now reaching sample checkout with the expected MYR 2,938.00 total for two units, with no browser console errors. The full simulated submission was verified locally; this rollout check did not create an additional live order.
+
+## Visible PWA versions and controlled updates — 2026-09-26
+
+Added shared, seven-language version/update controls for Shop v37 and Seller v41. The worker reports its authoritative cache version; waiting updates activate only after user confirmation. Other open tabs retain their forms and offer a reload. Local Chromium exercised real v37 → v38-test → v39-test waiting/activation, cancel preserving a draft, manual latest-version check, offline failure/recovery and 390px layout. These test-only versions are confined to an ignored local fixture. Node suite: 58 passed; syntax and Worker bundle checks passed. Target-device installation is still pending.
+
+Deployed `54008dec-9bd1-4fc0-befe-384ae2bdfc1a`. Live HTTPS Shop v37 and Seller v41 display the footer and pass manual up-to-date checks at 390px without horizontal overflow; Shop console reports no errors. A separate local two-tab update to v40-test confirmed that the other tab retains its draft and old displayed version until explicitly reloaded.
+
+
+## Profile-first checkout and selected cart items — 2026-09-26
+
+Implemented the owner's revised customer workflow: Profile/Settings menu right of Language; empty, browser-local profile requiring name and phone or email; yellow setup gate; read-only buyer summary; selectable cart lines; one address per checkout; and submitted-only cart deductions. Demo requests anonymize contacts before upload. The server accepts email-only buyers with no WhatsApp permission while preserving existing phone validation/consent and multi-delivery API compatibility. Local verification: 62 passing tests, syntax/Worker build checks, successful selected-item Demo order, retained unselected item, refresh persistence, and 320–1280px browser checks. Customer login/account verification remains outside this iteration.
+
+Deployed Worker `3bd93955-ef88-4995-9fee-9e77bc1635f1` (Shop v38, Seller v42). Live HTTPS verification confirmed empty initial Profile, menu links, yellow profile gate, email-only save, selected-only checkout, read-only buyer summary, one address and clean console at 390px. No additional live order was created; full submission and remaining-cart behavior were verified locally.
+
+## Address book / cart / checkout release — 2026-09-26
+
+- Shipped browser-local versioned address book, default-address management and a per-tab checkout selection by stable ID. No contact-history migration, login or database schema changes.
+- Cart now has aligned desktop columns, mobile rows, quantity steppers, persistent selection and a measured fixed summary bar. Profile saves return to the originating cart/checkout. Checkout reviews one saved address and selected product snapshot; request construction anonymizes Demo contacts before transmission.
+- 68 Node tests passed, including new address persistence/default/validation/failure and anonymous payload regressions, plus recursive PWA module allowlist coverage. Syntax checks, `git diff --check`, and Worker dry-run passed.
+- Chrome local checks: Profile gate and return, empty address gate, add/default/select/cancel, default deletion fallback, deleted selected address refusal, quantity boundaries, zero/partial selection, offline retry, one POST for double-click, anonymous request body, and retained unselected cart line. Viewports: 320, 390, 768 and 1280px; 320x500 modal keyboard focus reached Save without the checkout action bar covering it.
+- Published Cloudflare Demo Worker version `89aba98c-4b0c-4da1-b7e2-5fbb2f801a62`, Shop v39 / Seller v43. `/ready` returned ready; shop remains Demo. All nine changed frontend entry/module/style/version resources matched local bytes after following canonical redirects.
+- Online v38 displayed Update now · v39 and the expected confirmation. The Chrome extension adapter timed out during confirmation; its post-confirmation reload was not verified. Independent JEV Chrome inspection verified deployed v39, the empty address book and empty Add address form without changing user data. Actual mobile software-keyboard and installed-PWA behavior remain device checks.
+
+### Mobile navigation release — 2026-09-26
+- Deployed Shop v40 / Seller v44 to Cloudflare Demo, Worker version f8e3c51d-9c0c-4851-8f1f-fc866e7bb146.
+- Single-row mobile search, five-item bottom navigation, category/language sheets and directional browsing animations preserve existing brand colors.
+- 69 tests, syntax check, Worker dry-run and diff whitespace checks passed. Local in-app Chromium checks covered 320/390/768/1280px. Live HTTP responses contain v40 and the new navigation markup/module. Fresh JEV Chrome loaded the live catalog.
+- Existing in-app live browser continued rendering an older shell. Cached-client update confirmation and actual phone keyboard behavior remain unverified. Test overrides were restored; customer data was not cleared.
+
+### Legacy PWA recovery — 2026-09-26
+- Network evidence identified the stale in-app client as os-shop-v36. Its cached shared PWA module only registered a worker and provided no version/update controls.
+- Added an out-of-scope recovery page and waiting-worker activation handling. Deployed Shop v41 / Seller v45, Worker 8753af80-bddd-4176-88ed-1468f3c9add5.
+- Live v36 client displayed Update now · v41 on the recovery page. The browser tool then became unavailable at the native confirmation dialog; user confirmation was requested. No claim of completed end-to-end upgrade or persisted-data verification is made yet. Before update, cart held quantities 2 and 3, total MYR 483.88.
+- Full 70-test suite, syntax and Worker bundle passed before deploy; an additional targeted activation/cache isolation regression passed afterward (5 PWA tests total). Phone keyboard and installed-PWA acceptance require a connected physical device.
+
+### Legacy upgrade acceptance completed — 2026-09-26
+- Follow-up browser inspection confirmed the active Shop worker is v41. Reloading the existing v36 document loaded v41 and its five-item mobile navigation.
+- Existing cart preserved both lines and quantities: crystal litter 2, waste bag liners 3, total MYR 483.88. No cart edits or orders were submitted.
+- The v41 Check for updates button returned "You are up to date." The temporary recovery tab was closed; the user's existing cart tab remains open.
+- Profile was incomplete in this browser, so populated Profile/address preservation was not established by this upgrade walkthrough. Actual phone keyboard and installed-PWA testing remain unverified because no physical phone session was available.
+
+### 2026-09-26 — First-round shopping UX
+
+- Released Shop v42 / Seller v46 to Cloudflare Demo, Worker `c675461a-f9ee-4eff-89ea-f2d947f252ce`.
+- Home resets catalog state without relying on hashchange; filter completion checks request identity before scrolling. Added retry on catalog failure.
+- Shared dialog shell now serves Shop language/category/update confirmation, with mobile fullscreen and desktop centered layout.
+- Shop update controls moved into Settings; ready updates appear in the catalog banner. Business modules report dirty/busy guards. Profile drafts survive navigation.
+- Mobile cart rows and fixed checkout summary are compact; desktop columns retained. Currency whitespace permits narrow-screen wrapping beside quantity controls.
+- Verification: 72 tests passed, syntax and Worker dry-run passed, final whitespace diff check passed, deployed health endpoint alive, published SW resources report v42/v46. Chrome visual checks exercised 320/390/768/1280 layouts, category → Home, repeated Home, language fullscreen/desktop, and zero-selection checkout disabled.
+- Old v41 Chrome client displayed Update now · v42. Its native confirmation caused automation timeouts; subsequent native inspection reported that the Mac was locked. Final activation/reload, post-upgrade data equality, and final live screenshot are NOT verified. The final narrow-price wrapping fix has source/build verification but no post-fix browser screenshot. Physical phone keyboard and installed-PWA checks are also NOT verified. Resume these checks on an unlocked/connected device.
+
+### 2026-09-26 — Upgrade acceptance follow-up
+
+- Chrome opens the deployed v42 Settings page successfully; Check for updates returns "You are up to date." No ready-update banner appears on the current catalog.
+- Located the original in-app browser still running v41. Recorded cart baseline: crystal litter quantity 2 and waste bag liners quantity 3. Set a partial selection (liners only, quantity 3, MYR 35.88) to verify session selection preservation.
+- Saved explicitly synthetic local-only acceptance data into the previously empty Profile/address book: Upgrade QA with an example.com email, and Upgrade QA Address at a fictitious test street, marked default. No order or message was submitted.
+- Triggered v41 Update now · v42. The legacy native confirmation blocks browser automation, and desktop tools prohibit controlling the Codex application. User was asked to confirm this native dialog manually; post-activation comparisons remain pending until that action.
+
+### 2026-09-26 — v41 → v42 data retention verified
+
+- Completed activation without clearing storage: navigated the same in-app tab to the existing out-of-scope `/shop-update` recovery page, then returned to `/shop/#settings`. With the old document released, the waiting worker activated through the normal service-worker lifecycle; Settings displayed v42. Raw developer activation was unsupported and did not change state. The legacy native-confirm button path remains unverified.
+- Verified both cart product IDs and quantities persisted (crystal litter 2, waste bags 3), together with the partial selection: only waste bags checked, checkout quantity 3, MYR 35.88. Restored the original all-selected state after testing (5 units, MYR 483.88).
+- Verified Profile name, phone code and email in the read-only checkout summary, and the saved recipient, normalized phone, full test address and default flag. Synthetic QA Profile/address data remains in this browser, clearly named Upgrade QA; no real order or message was submitted.
+- Checkout contained only the selected three units and one default address. Confirmed mobile 320px unit price wraps without overlapping quantity controls, and the final item/remove action scrolls clear of fixed bars.
+- Verified seven-option language dialog, Escape close with focus restored to mobile-language, and Cat Litter → Home restoring All categories/24 products, including repeated Home activation.
+- Temporary viewport override reset. Evidence screenshot: `/tmp/shop-v42-upgrade-cart.png`. Physical phone software keyboard and installed-PWA behavior remain unverified; these cannot be established from a desktop viewport.
+
+### 2026-09-26 — Update failure, offline and retry acceptance
+
+- Added three deterministic regression scenarios for offline → online recovery, failed network checks with coalesced retries, and activation-message failure/timeout with retry.
+- Reproduced two defects: automatic successful checks retained a prior failure message; throwing activation messages left applying state locked. Shared PWA logic now reports successful recovery, catches activation-message failures, and releases controls/timers for retry. Version-query message failures resolve safely.
+- All 75 tests passed, syntax checks and Worker dry-run passed, whitespace diff check passed. Released Shop v43 / Seller v47, Worker `c1cd998f-8692-43f3-8627-bd696d7d1d13`.
+- Real Chrome verified v42 dirty-profile update confirmation, Cancel preserving draft, clearing the synthetic unsaved input, and clean one-click activation/reload to v43. The unsaved test input was not persisted.
+- Real Chrome v43 network emulation: offline manual check showed a retryable failure; restoring network automatically changed the status to You are up to date. Network override restored to online/unthrottled. Evidence `/tmp/shop-v43-network-recovery.png`.
+- Activation disconnection/timeouts and duplicate-check suppression were verified with deterministic worker mocks, not a forced live browser worker failure. No customer data or orders were modified in this round. Physical phone/installed-PWA checks remain outside this desktop run.
+
+### 2026-09-26 — Seven-language mobile layout acceptance
+
+- Exercised English, Malay, Simplified Chinese, Vietnamese, Thai, Japanese and Korean through the real language dialog. At 320px and 390px the cart/document had no horizontal overflow, checkout stayed inside the viewport and five navigation items remained visible. Malay checkout naturally wraps within its button.
+- Checked all seven Settings translations at 320px, including the longer available-update action. Buttons and page remained inside the viewport; shared language dialog displayed all seven options, selected state and SVG close control.
+- Took representative screenshots for the language modal and Vietnamese cart (`/tmp/shop-seven-language-modal.png`, `/tmp/shop-vietnamese-cart-390.png`). These are desktop viewport checks, not physical phone keyboard/installed-PWA certification or native-language linguistic review.
+- Original tab updated from v42 to v43 through the clean update button during inspection. Restored English and default viewport. Cart remains two lines, quantities 2 and 3, all selected, MYR 483.88. No orders or profile/address changes.
+- No layout code change or new deployment was needed. Locale-key regression test passed.
+
+## Address and checkout follow-up QA — 2026-09-26
+
+- An isolated localhost origin in Chrome confirmed the empty Profile and address gates, Profile save returning to the selected cart, first address selection, second address selection, chooser cancellation, default switching, and checkout address persistence after reload. No real order was submitted.
+- Found a stale-address chooser state: after the selected address disappeared, no radio was selected but “Use this address” stayed enabled and gave no useful response. The chooser now prompts for a selection and disables that action until an address is chosen. A fresh-origin browser test confirmed the disabled state and successful recovery after selecting a saved address.
+- 75 tests, JavaScript syntax checks, and the Worker dry run passed after the change. Existing order tests cover server price changes, currency checks, concurrent/idempotent retries, and failed persistence. Released Shop v44 to Cloudflare Demo as Worker `74c13999-f575-482a-80dd-482ab47804b4`; the live worker served v44 and the changed address module, and `/health` was alive. Native delete-confirm UI automation remained unavailable because the Chrome adapter stalled on the JavaScript confirm; address-store deletion/default fallback has passing tests and prior Chrome QA evidence. No physical-device keyboard or installed-PWA result is claimed.
+
+## Mobile product detail and direct purchase — 2026-09-26
+
+- Released Shop v45 to Cloudflare Demo as Worker `db44ab56-d427-4a59-98e0-4ce569001557`. The product image fills the mobile content width, price appears before the title, and Add to cart / Buy now remain visible above mobile navigation. The purchase bar follows navigation hiding and stays clear of an open image dialog or detected software keyboard.
+- Corrected Buy now's cart coupling: an existing cart quantity of one no longer becomes three when buying two more. Direct checkout uses the selected two units, persists its intent across Profile setup and refresh, and leaves the original cart line unchanged after a successful Demo order. Cart checkout still deducts submitted quantities. A direct price change returns to the product for review.
+- Chrome local checks covered 320, 390, 768 and 1280px with no horizontal overflow, image zoom and Escape focus return, quantity 100/invalid zero, Add to cart, Profile gate, direct checkout refresh, seven-language back-link ownership, and a successful anonymous simulated order. The 75-test suite, syntax check, Worker dry run and whitespace diff check passed. `/ready` returned ready; the six published frontend resources matched local SHA-256 hashes and the live service worker reports v45.
+- A separate Chrome tab on the deployed origin remained controlled by an older cached Shop shell and displayed `Update now · v45` on Home. Its visual v45 activation was not forced during this run. The HTTP deployment and fresh-origin browser flows are verified, while installed-PWA and physical-phone keyboard checks remain unverified. Acceptance screenshot: `/tmp/shop-v45-product-mobile.png`.
+
+## Product options, gallery and discovery — 2026-09-26
+
+- Released Shop v46 / Seller v48 to Cloudflare Demo as Worker `2b4d67a4-3f62-4e63-ac96-9ebf2197b4bc`. Schema v8 adds optional variant groups and up to four seller-managed additional images per product. Each option remains a distinct SKU with its own price; checkout snapshots the selected SKU and server-verified price. Existing demo products remain single-SKU with their existing images until edited by a seller.
+- Chrome local QA confirmed additional-image selection, option switching between MYR 8.99 and MYR 15.99, seller edit display, search/clear/Home, and 320/390/768/1280px catalog layouts without horizontal overflow. Catalog card Add to cart buttons measure 44px on a fresh origin. The 78-test suite, syntax check, Worker dry run and diff whitespace check passed.
+- Live `/ready` returned 200; Shop v46 and Seller v48 scripts were served; six changed frontend assets matched local SHA-256. An older Chrome client showed `Update now · v46`; after a user-style click, the new one-action card layout loaded without console errors. Physical phone keyboard and installed-PWA tests remain unverified.
+
+## Product detail hierarchy — 2026-09-26
+
+- Released Shop v47 / Seller v49 to Cloudflare Demo as Worker `46f0b963-6df9-4dbe-aba0-5879a87bdc5a`. Shared translations and the Shop detail layout changed; the order API and product data did not.
+- Mobile detail now separates the gallery, price/name/category/share, purchasing controls, and product information. SKU/category precede the seller description. The zoom close control uses an accessible SVG icon; multi-image products show an image counter.
+- Local Chrome verified 320/390/768/1280px without horizontal overflow, the 390px reading order, image zoom/close, quantity subtotal and Add to cart. The 78-test suite, syntax checks, Worker dry run and diff whitespace check passed.
+- Live `/ready` returned 200 and all five changed frontend assets matched local SHA-256. An older v46 Chrome client showed `Update now · v47`; a user-style click activated v47, then Chrome displayed the new product-information hierarchy on a live product. Physical-phone keyboard and installed-PWA checks remain unverified.
+
+## Product option and gallery interaction — 2026-09-26
+
+- Released Shop v48 / Seller v50 to Cloudflare Demo as Worker `300fa95c-d137-4dcd-96b7-e209ae821c3c`. The change is limited to customer detail interaction, shared photo-control translations and PWA cache versions; SKU/order contracts are unchanged.
+- Multi-image products now expose previous/next buttons, horizontal drag, thumbnail selection, image count, and keyboard arrows in the enlarged viewer. Dragging vertically no longer opens the image viewer by accident. A screen-reader status announces the selected photo.
+- Grouped SKUs remain separate products with separate prices. Phones show the current option in a compact row and open a bottom sheet with fixed title, independently scrolling options, focused current option, close/Escape and focus return. Desktop retains inline options.
+- A synthetic local Chrome fixture verified 320/390/768/1280px without horizontal overflow; a 14-option sheet scrolled from top to bottom at 320px. Switching Small (MYR 8.99) to Large (MYR 15.99) changed the product ID, SKU, image and subtotal. Pointer-drag automation verified horizontal image change, vertical-drag click suppression, normal zoom, keyboard image change and Escape. Browser console reported zero errors/warnings. These desktop tests do not establish physical-phone touch or installed-PWA behavior.
+- The 78-test suite, JavaScript syntax check, Worker dry run and whitespace diff check passed. Live `/ready` was ready and five changed assets matched local SHA-256. A v47 Chrome client displayed `Update now · v48`; clicking updated it to v48, and a live single-image product still rendered normally.
+
+## Address entry and checkout modal — 2026-09-26
+
+- Released Shop v49 / Seller v51 to Cloudflare Demo as Worker `a99e9eb2-d238-478f-afd1-f3e5c7070507`. The public shop response now exposes the seller's default currency so the address editor uses only MY +60 for MYR or SG +65 for SGD. Recipient numbers accept an international prefix or local trunk prefix and are stored in one normalized form.
+- Address selection and editing use the shared dialog, which fills a phone viewport. Malaysian addresses require line 1, city, state and a postcode present in the MCMC June 2026 data snapshot; the postcode must match the state. City is freely entered and line 2 is optional. Existing incomplete addresses remain stored for repair but cannot be selected for checkout.
+- Local Chrome verified the 390×844 address selector dimensions, Escape/focus restoration, invalid postcode-state correction with form retention, normalized phone display, checkout address summary, and MYR/SGD form switching. The 80-test suite, JavaScript syntax check, Worker dry run and diff whitespace check passed. Live `/ready` returned ready, the shop API returned MYR, the worker served v49, and five changed assets matched local SHA-256. Physical phone keyboard and installed-PWA behavior remain unverified.
+
+## Buyer Profile country code — 2026-09-26
+
+- Released Shop v50 / Seller v52 to Cloudflare Demo as Worker `6bfa2a8a-74d8-402f-b72a-38d165b453a0`. Buyer Profile now shows a fixed MY +60 or SG +65 prefix derived from the seller's default currency, matching the address editor. Existing saved phone numbers are preserved for correction; a number from the other country or an older invalid format cannot unlock checkout. Email-only Profiles remain usable.
+- Local Chrome verified MYR and SGD prefixes, a saved +60 number after switching to SGD, blocked save until correction, successful email-only save, and the reverse +65-to-MYR checkout gate while preserving the selected cart item. A 390px Profile view was checked. The 82-test suite, JavaScript syntax check, Worker dry run and diff whitespace check passed.
+- Live `/ready` returned ready and `/api/v1/shop` returned MYR. Shop v50, Seller v52, and all six changed frontend assets matched local SHA-256. Physical-phone keyboard and installed-PWA behavior remain unverified.
+
+## Product loading feedback — 2026-09-27
+
+- Released Shop v51 to Cloudflare Demo as Worker `cc679960-f43a-4b74-b16c-cd43b5e8b5df`. Initial catalog, Home, search and category requests display product-card skeletons instead of a blank grid. Pagination keeps existing cards visible and shows skeletons below them; the product detail page has a matching placeholder. Assistive technology receives the localized loading status, and reduced-motion mode disables shimmer.
+- Chrome local QA intercepted product requests to verify visible 390px skeletons, 24 cards retained during pagination, network failure → Retry → recovery for both catalog and detail, and static placeholders under reduced motion. Skeleton layouts at 320, 390, 768 and 1280px had no horizontal overflow. The 82-test suite, JavaScript syntax check, Worker dry run and diff whitespace check passed.
+- Live `/ready` returned ready, Shop served v51, and all five changed frontend assets matched local SHA-256. Physical-phone and installed-PWA behavior remain unverified.
+
+## Cart loading feedback — 2026-09-27
+
+- Released Shop v52 to Cloudflare Demo as Worker `0d73b025-ad42-496c-bc44-bcb07b3f2f0d`. Cart product/price refresh now shows up to three row-shaped skeletons, hides stale rows and total, and disables selection and checkout until refreshed data arrives. A failed refresh removes the skeleton, retains the browser cart and offers a retry instead of displaying a false zero total.
+- Local Chrome intercepted two product requests to verify the 390px loading view, success total, failure and retry, retained cart badge, quantity update and restored button focus. The skeleton had no horizontal overflow at 320, 390, 768 or 1280px; reduced-motion mode disabled shimmer. The 82-test suite, JavaScript syntax check, Worker dry run and diff whitespace check passed.
+- Live `/ready` returned ready, Shop served v52, and all four changed frontend assets matched local SHA-256. Physical-phone and installed-PWA behavior remain unverified.
+
+## Deferred placeholders and startup loading — 2026-09-27
+
+- Released Shop v53 to Cloudflare Demo as Worker `4537c165-5248-4f20-97d3-30e6a24eb626`. Catalog, detail and cart placeholders wait 250ms before appearing, including repeated requests. A full-screen startup overlay appears after 180ms only while initial setup is unfinished; after 8 seconds it offers Retry. It never appears for ordinary route changes.
+- Local Chrome held the initial product request to verify the 390×844 full-screen overlay, no horizontal overflow, Escape did not dismiss it, and successful loading returned to the catalog. A held category request showed its skeleton after the delay; rapid completion removed it. The 82-test suite, JavaScript syntax check, Worker dry run and whitespace diff check passed.
+- Live `/ready` returned ready, Shop served v53, and all five changed frontend assets matched local SHA-256. Physical-phone and installed-PWA behavior remain unverified.
+
+## Update confirmation layout — 2026-09-27
+
+- Released Shop v54 / Seller v53 to Cloudflare Demo as Worker `5bd2241a-4993-40b0-a24f-dd7dc01ee1a5`. The shared update confirmation now uses a compact centered dialog with styled Cancel and Update actions. Other mobile dialogs remain full-screen.
+- Local Chrome checked the confirmation at 320×640, 390×844 and 1280×800; there was no horizontal overflow, Cancel received initial focus, closing restored focus, and the language and category dialogs still filled the phone viewport. The 82-test suite, JavaScript syntax check, Worker dry run and whitespace diff check passed.
+- Live `/ready` returned ready and all four changed frontend assets matched local SHA-256. Physical-phone and installed-PWA behavior remain unverified.
+
+## Settings card spacing — 2026-09-27
+
+- Released Shop v55 to Cloudflare Demo as Worker `c66bf47e-78dc-4890-9868-be4c803e7698`. Settings cards now have a consistent 16px gap. The general card no longer reserves space for an empty status, and the update card uses controlled title, text and button spacing.
+- Local Chrome checked 320, 390 and 1280px layouts, card geometry, horizontal overflow, Profile navigation and console warnings. The 82-test suite, syntax check, Worker dry run and whitespace diff check passed. Live `/ready` returned ready and all three changed frontend assets matched local SHA-256.
+
+## Account spacing and Settings help — 2026-09-27
+
+- Shop v56 / Seller v54 make Settings help accurate for both the desktop and phone Language controls in all seven locales. Profile, Settings and My addresses now share a 16px page rhythm; multiple saved address cards have a measured 16px gap and no extra card margins.
+- Local browser checks covered Settings, Profile, empty and two-address states at 320, 390 and 1280px without horizontal overflow or console warnings. The 82-test suite, syntax check and Worker dry run passed. Physical-phone keyboard and installed-PWA behavior remain unverified.
+- Released to Cloudflare Demo as Worker `3d1c0b1a-68be-4856-a7e5-7d5cc5d4eb32`. Live `/ready` returned ready; Shop v56, Seller v54 and all five uploaded frontend assets matched local SHA-256 (Shop HTML is served at `/shop/`).
+
+## Shop color-token foundation — 2026-09-27
+
+- Shop v57 / Seller v55 add semantic Shop tokens for brand controls, surfaces, text, prices and status colors without adding a palette selector or changing the current visual values. Shared base components use fallback values on Seller. Shop HTML and manifest now use the same `#087f83` theme color as the primary token, and the new token file is cached offline.
+- Local browser checks covered the 390px catalog and product detail, plus Seller login fallback styling, with no horizontal overflow. The 83-test suite, syntax check and Worker dry run passed. Physical-phone and installed-PWA behavior remain unverified.
+- Released to Cloudflare Demo as Worker `2c0a44a1-ec05-4b81-8749-fcdf49c22f29`. Live `/ready` returned ready; Shop v57, Seller v55 and all six uploaded frontend assets matched local SHA-256.
+
+## Mobile product detail page — 2026-09-27
+
+- **Implemented:** The mobile PDP uses one square hero and a fixed image-overlay navigation that changes to a white bar after the gallery scrolls away. Its three-action purchase dock occupies the bottom safe-area background; the page reserves space for the last content. Price, images, variants, quantities and purchase actions still use the existing API/cart/checkout paths. Empty capability states are explicit for promotions, ratings/sales, shipping, returns and reviews. Chat opens an unavailable explanation because no public seller chat contract exists.
+- **Verified locally:** JavaScript syntax checks and 86/86 Node tests passed. A separate Chrome tab at 320×700, 390×844 and 480×800 measured square media, 44×44px top controls, 52px dock buttons, no horizontal overflow, solid header after scrolling, and the final related card above the dock at page end. The Chat dialog opened with native focus handling. A 768px desktop check found the previous minimum button widths exceeded the summary column; fluid widths were applied, then verified within the column after a fresh frontend build. Chinese 320px text fit and Chrome showed no warning/error logs.
+- **Released:** No release or production deployment from this change. Physical iOS safe-area and installed-PWA behavior remain unverified; CSS includes `viewport-fit=cover` and `env(safe-area-inset-top/bottom)`.

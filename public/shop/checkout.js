@@ -1,7 +1,6 @@
-import { locale, t, translate } from '../shared/i18n.js';
-import { createContactHistory } from './history.js';
-
-const MAX_DESTINATIONS = 10;
+import { checkoutPayload } from './checkout-payload.js';
+import { formatMoney, locale, t, translate } from '../shared/i18n.js';
+import { addressSummary } from './addresses.js';
 
 function element(tag, className, content) {
   const node = document.createElement(tag);
@@ -10,130 +9,15 @@ function element(tag, className, content) {
   return node;
 }
 
-function field(labelKey, input) {
-  const label = element('label', 'checkout-field');
-  const caption = element('span', '', t(labelKey));
-  caption.dataset.i18n = labelKey;
-  label.append(caption, input);
-  return label;
-}
-
-function input(name, options = {}) {
-  const control = element('input');
-  control.name = name;
-  control.dataset.suffix = name;
-  control.required = options.required ?? false;
-  control.maxLength = options.maxLength ?? 160;
-  if (options.type) control.type = options.type;
-  if (options.list) control.setAttribute('list', options.list);
-  if (options.autocomplete) control.autocomplete = options.autocomplete;
-  if (options.placeholder) control.placeholder = options.placeholder;
-  return control;
-}
-
-function phoneCode() {
-  const select = element('select');
-  select.dataset.suffix = 'recipient.code';
-  select.setAttribute('aria-label', t('phoneCode'));
-  select.append(new Option('MY +60', '+60'), new Option('SG +65', '+65'));
-  return select;
-}
-
-function internationalPhone(code, value) {
-  const raw = value.trim();
-  if (/[^+0-9 ()-]/.test(raw)) return raw;
-  const digits = raw.replace(/[^0-9]/g, '');
-  if (raw.startsWith('+')) return `+${digits}`;
-  return `${code}${code === '+60' && digits.startsWith('0') ? digits.slice(1) : digits}`;
-}
-
-function syncPhoneCode(code, value) {
-  const text = value.trim();
-  if (text.startsWith('+60')) code.value = '+60';
-  if (text.startsWith('+65')) code.value = '+65';
-}
-
-function historyCombobox(control, choices, selectChoice) {
-  const list = element('div', 'history-options');
-  const listId = `history-options-${crypto.randomUUID()}`;
-  list.id = listId;
-  list.setAttribute('role', 'listbox');
-  list.hidden = true;
-  control.parentElement.classList.add('history-combobox');
-  control.parentElement.append(list);
-  control.setAttribute('role', 'combobox');
-  control.setAttribute('aria-autocomplete', 'list');
-  control.setAttribute('aria-controls', listId);
-  control.setAttribute('aria-expanded', 'false');
-  let visible = [];
-  let active = -1;
-
-  function close() {
-    list.hidden = true;
-    list.replaceChildren();
-    visible = [];
-    control.setAttribute('aria-expanded', 'false');
-    control.removeAttribute('aria-activedescendant');
-    active = -1;
-  }
-
-  function choose(index) {
-    const choice = visible[index];
-    if (!choice) return;
-    control.value = choice.value;
-    selectChoice(choice);
-    close();
-    control.focus();
-  }
-
-  function show() {
-    const query = control.value.trim().toLowerCase();
-    visible = choices().filter((choice) => choice.label.toLowerCase().includes(query));
-    list.replaceChildren();
-    active = -1;
-    visible.forEach((choice, index) => {
-      const option = element('div', 'history-option', choice.label);
-      option.id = `${listId}-${index}`;
-      option.setAttribute('role', 'option');
-      option.setAttribute('aria-selected', 'false');
-      option.addEventListener('pointerdown', (event) => { event.preventDefault(); choose(index); });
-      option.addEventListener('click', () => choose(index));
-      list.append(option);
-    });
-    list.hidden = visible.length === 0;
-    control.setAttribute('aria-expanded', String(visible.length > 0));
-    control.removeAttribute('aria-activedescendant');
-  }
-
-  control.addEventListener('focus', show);
-  control.addEventListener('input', show);
-  control.addEventListener('blur', () => { setTimeout(close, 100); });
-  control.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') { close(); return; }
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      if (list.hidden) show();
-      if (list.hidden) return;
-      event.preventDefault();
-      active = (active + (event.key === 'ArrowDown' ? 1 : -1) + visible.length) % visible.length;
-      [...list.children].forEach((option, index) => option.setAttribute('aria-selected', String(index === active)));
-      control.setAttribute('aria-activedescendant', `${listId}-${active}`);
-    }
-    if (event.key === 'Enter' && !list.hidden && active >= 0) {
-      event.preventDefault();
-      choose(active);
-    }
-  });
-  return { refresh: () => { if (document.activeElement === control) show(); else close(); } };
-}
-
-export function mountCheckout({ onSuccess, onPriceChanged }) {
+export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBook }) {
   const form = document.getElementById('checkout-form');
-  const deliveryList = document.getElementById('delivery-list');
   const assignmentList = document.getElementById('assignment-list');
-  const history = createContactHistory();
-  const suggestionControls = [];
-  const assignments = new Map();
+  let submitting = false;
   let cartItems = [];
+  let cartBacked = true;
+  let demoMode = false;
+  let modeReady = false;
+  let itemsReady = false;
   let pendingIntent = null;
   let confirmedButNotShown = false;
   let statusKey = '';
@@ -158,175 +42,104 @@ export function mountCheckout({ onSuccess, onPriceChanged }) {
     }
   }
 
-  function refreshSuggestions() {
-    for (const controller of suggestionControls.filter(({ control }) => control.isConnected)) controller.refresh();
-  }
-
-  function deliveryCards() { return [...deliveryList.querySelectorAll('.delivery-card')]; }
-
   function renderAssignments() {
-    const cards = deliveryCards();
     assignmentList.replaceChildren();
+    const total = cartItems.reduce((sum, item) => sum + item.product.priceMinor * item.quantity, 0);
+    document.getElementById('checkout-total').textContent = cartItems.length ? formatMoney(total, cartItems[0].product.currency) : '—';
+    const headings = element('div', 'checkout-columns');
+    for (const key of ['product', 'unitPrice', 'quantity', 'itemSubtotal']) headings.append(element('span', '', t(key)));
+    headings.setAttribute('aria-hidden', 'true'); assignmentList.append(headings);
     for (const item of cartItems) {
       const row = element('div', 'assignment-row');
-      const name = element('span', '', `${item.product.name} × ${item.quantity}`);
-      const select = element('select');
-      select.setAttribute('aria-label', `${t('destinationFor')} ${item.product.name}`);
-      for (const [index, card] of cards.entries()) {
-        select.add(new Option(`${t('destination')} ${index + 1}`, card.dataset.deliveryId));
+      const name = element('div', 'checkout-item');
+      if (item.product.imageUrl) {
+        const image = element('img', 'checkout-item-image');
+        image.src = item.product.imageUrl; image.alt = ''; name.append(image);
       }
-      const current = assignments.get(item.productId);
-      select.value = cards.some((card) => card.dataset.deliveryId === current) ? current : cards[0].dataset.deliveryId;
-      assignments.set(item.productId, select.value);
-      select.addEventListener('change', () => assignments.set(item.productId, select.value));
-      row.append(name, select);
+      const summary = element('div');
+      summary.append(element('strong', '', item.product.name));
+      name.append(summary);
+      row.append(name);
+      for (const [key, value] of [['unitPrice', formatMoney(item.product.priceMinor, item.product.currency)], ['quantity', String(item.quantity)], ['itemSubtotal', formatMoney(item.product.priceMinor * item.quantity, item.product.currency)]]) {
+        const cell = element('div', 'checkout-cell');
+        cell.append(element('span', 'checkout-cell-label', t(key)), element('span', '', value));
+        row.append(cell);
+      }
       assignmentList.append(row);
     }
   }
 
-  function renumber() {
-    const cards = deliveryCards();
-    for (const [index, card] of cards.entries()) {
-      card.querySelector('legend').textContent = `${t('destination')} ${index + 1}`;
-      card.querySelector('.remove-destination').hidden = cards.length === 1;
-      for (const control of card.querySelectorAll('[data-suffix]')) {
-        control.name = `deliveries.${index}.${control.dataset.suffix}`;
-        control.dataset.field = control.name;
+  function refreshAddress() {
+    const summary = document.getElementById('checkout-address');
+    summary.replaceChildren();
+    let address = null;
+    try {
+      address = addressBook.selected();
+      if (address) {
+        const contact = element('div', 'address-contact');
+        contact.append(element('strong', '', address.fullName), element('span', '', address.phone));
+        summary.append(contact, element('p', '', addressSummary(address)));
+        if (address.id === addressBook.defaultId()) summary.append(element('span', 'default-badge', t('defaultAddress')));
+      } else summary.append(element('p', 'shop-note', t('addressRequired')));
+    } catch { summary.append(element('p', 'checkout-error', t('addressStorageFailed'))); }
+    document.getElementById('change-address').textContent = t(address ? 'changeAddress' : 'addAddress');
+    document.getElementById('submit-order').disabled = submitting || confirmedButNotShown || !modeReady || !itemsReady || !address || !cartItems.length;
+  }
+
+  function renderBuyer() {
+    const profile = getProfile();
+    const summary = document.getElementById('checkout-buyer');
+    summary.replaceChildren();
+    if (profile) {
+      for (const [key, value] of [['fullName', profile.fullName], ['buyerWhatsApp', profile.phone], ['email', profile.email]]) {
+        summary.append(element('dt', '', t(key)), element('dd', '', value || '—'));
       }
     }
-    document.getElementById('add-delivery').disabled = cards.length >= MAX_DESTINATIONS;
-    renderAssignments();
+    const consent = document.getElementById('whatsapp-opt-in');
+    const needsConsent = !demoMode && Boolean(profile?.phone);
+    consent.required = needsConsent;
+    consent.closest('label').hidden = !needsConsent;
+    if (!needsConsent) consent.checked = false;
   }
 
-  function addDestination() {
-    if (deliveryCards().length >= MAX_DESTINATIONS) return;
-    const card = element('fieldset', 'checkout-section delivery-card');
-    card.dataset.deliveryId = crypto.randomUUID();
-    card.append(element('legend'));
-    const remove = element('button', 'outline-button remove-destination', t('removeDestination'));
-    remove.type = 'button'; remove.dataset.i18n = 'removeDestination';
-    remove.addEventListener('click', () => {
-      if (deliveryCards().length === 1) return;
-      const removedId = card.dataset.deliveryId;
-      card.remove();
-      for (const [productId, deliveryId] of assignments) {
-        if (deliveryId === removedId) assignments.set(productId, deliveryCards()[0].dataset.deliveryId);
-      }
-      renumber();
-    });
-    card.append(remove);
-    const fields = element('div', 'checkout-fields');
-    const recipient = input('recipient.fullName', { required: true, maxLength: 120, autocomplete: 'name' });
-    fields.append(field('recipientName', recipient));
-    const phones = element('div', 'phone-fields');
-    const code = phoneCode();
-    const number = input('recipient.phone', { required: true, maxLength: 32, type: 'tel', autocomplete: 'off', placeholder: '0123456789' });
-    number.inputMode = 'tel';
-    number.addEventListener('change', () => syncPhoneCode(code, number.value));
-    phones.append(field('phoneCode', code), field('recipientPhone', number));
-    suggestionControls.push({ control: number, ...historyCombobox(number,
-      () => history.snapshot().recipientPhones.map((value) => ({ value, label: value })),
-      (choice) => syncPhoneCode(code, choice.value)) });
-    fields.append(phones);
-    const address = input('address.line1', { required: true, autocomplete: 'off' });
-    fields.append(field('addressLine1', address));
-    suggestionControls.push({ control: address, ...historyCombobox(address,
-      () => history.snapshot().addresses.map((value) => ({
-        value: value.line1,
-        label: [value.line1, value.line2, value.city, value.region, value.postcode, value.country].filter(Boolean).join(', '),
-        address: value,
-      })),
-      ({ address: match }) => {
-      for (const key of ['line2', 'city', 'region', 'postcode', 'country']) {
-        card.querySelector(`[data-suffix="address.${key}"]`).value = match[key];
-      }
-      setStatus('addressSelected');
-    }) });
-    fields.append(field('addressLine2', input('address.line2', { autocomplete: 'address-line2' })));
-    fields.append(field('city', input('address.city', { maxLength: 80, autocomplete: 'address-level2' })));
-    fields.append(field('region', input('address.region', { maxLength: 80, autocomplete: 'address-level1' })));
-    fields.append(field('postcode', input('address.postcode', { required: true, maxLength: 20, autocomplete: 'postal-code' })));
-    const country = input('address.country', { required: true, maxLength: 2, list: 'country-options', autocomplete: 'country' });
-    country.value = 'MY';
-    fields.append(field('countryCode', country));
-    card.append(fields);
-    deliveryList.append(card);
-    translate(card);
-    renumber();
-    return card;
+  function applyDemo() {
+    renderBuyer();
+    document.getElementById('submit-order').dataset.i18n = demoMode ? 'simulateOrder' : 'placeOrder';
+    document.querySelector('#checkout-view > .shop-note').dataset.i18n = 'checkoutReviewIntro';
+    translate(document.getElementById('checkout-view'));
   }
 
-  function collectOrder() {
-    const cards = deliveryCards();
-    const deliveries = cards.map((card) => {
-      const get = (suffix) => card.querySelector(`[data-suffix="${suffix}"]`).value.trim();
-      return {
-        recipient: { fullName: get('recipient.fullName'), phone: internationalPhone(get('recipient.code'), get('recipient.phone')) },
-        address: {
-          line1: get('address.line1'), line2: get('address.line2'), city: get('address.city'),
-          region: get('address.region'), postcode: get('address.postcode'), country: get('address.country').toUpperCase(),
-        },
-        items: [],
-      };
-    });
-    for (const item of cartItems) {
-      const index = cards.findIndex((card) => card.dataset.deliveryId === assignments.get(item.productId));
-      deliveries[index < 0 ? 0 : index].items.push({
-        productId: item.productId, quantity: item.quantity,
-        expectedPriceMinor: item.product?.priceMinor, expectedCurrency: item.product?.currency,
-      });
-    }
-    return {
-      buyer: {
-        fullName: document.getElementById('buyer-name').value.trim(),
-        whatsappPhone: internationalPhone(document.getElementById('buyer-code').value, document.getElementById('buyer-phone').value),
-        email: document.getElementById('buyer-email').value.trim() || null,
-      },
-      whatsappOrderContactOptIn: document.getElementById('whatsapp-opt-in').checked,
-      locale: locale(),
-      deliveries,
-    };
-  }
-
-  const buyerPhone = document.getElementById('buyer-phone');
-  const buyerCode = document.getElementById('buyer-code');
   const whatsappConsent = document.getElementById('whatsapp-opt-in');
   whatsappConsent.addEventListener('invalid', () => setError('whatsappRequired', 'whatsappOrderContactOptIn'));
-  whatsappConsent.addEventListener('change', () => {
-    if (whatsappConsent.checked && errorKey === 'whatsappRequired') setError('');
-  });
-  buyerPhone.addEventListener('change', () => syncPhoneCode(buyerCode, buyerPhone.value));
-  suggestionControls.push({ control: buyerPhone, ...historyCombobox(buyerPhone,
-    () => history.snapshot().buyerPhones.map((value) => ({ value, label: value })),
-    (choice) => syncPhoneCode(buyerCode, choice.value)) });
-  document.getElementById('add-delivery').addEventListener('click', () => { addDestination()?.querySelector('[data-suffix="recipient.fullName"]').focus(); });
-  document.getElementById('clear-history').addEventListener('click', () => {
-    history.clear();
-    refreshSuggestions();
-    setStatus(history.persistent ? 'historyCleared' : 'historyStorageUnavailable');
-  });
+  whatsappConsent.addEventListener('change', () => { if (whatsappConsent.checked) setError(''); });
+  document.getElementById('change-address').addEventListener('click', () => addressBook.choose());
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (submitting) return;
+    if (!modeReady || !itemsReady) { setError('networkError'); return; }
+    if (!getProfile()) { location.hash = '#profile'; return; }
     setError('');
     setStatus('');
     if (confirmedButNotShown) { setError('receiptRenderError'); return; }
     if (!cartItems.length) { setError('emptyCart'); return; }
-    const payload = collectOrder();
+    let payload;
+    try { payload = checkoutPayload({ profile: getProfile(), address: addressBook.selected(), items: cartItems, locale: locale(), consent: whatsappConsent.checked, demo: demoMode }); } catch (error) { setError(error.message); refreshAddress(); return; }
     if (payload.deliveries.some((delivery) => delivery.items.length === 0)) {
       setError('assignEveryDestination', 'deliveries.0.items');
       return;
     }
+    const submittedItems = cartItems.map(({ productId, quantity }) => ({ productId, quantity }));
     const serialized = JSON.stringify(payload);
     if (!pendingIntent || pendingIntent.serialized !== serialized) {
       pendingIntent = { key: crypto.randomUUID(), serialized };
     }
     const submit = document.getElementById('submit-order');
+    submitting = true; document.dispatchEvent(new Event('updateguardchange'));
     submit.disabled = true;
     setStatus('submittingOrder');
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12_000);
     let serverConfirmed = false;
-    let completed = false;
     try {
       const response = await fetch('/api/v1/orders', {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': pendingIntent.key },
@@ -347,57 +160,53 @@ export function mountCheckout({ onSuccess, onPriceChanged }) {
         return;
       }
       serverConfirmed = true;
-      let historySaveFailed = false;
-      if (document.getElementById('save-history').checked) {
-        historySaveFailed = !history.save({
-          buyerPhone: payload.buyer.whatsappPhone,
-          recipientPhones: payload.deliveries.map((delivery) => delivery.recipient.phone),
-          addresses: payload.deliveries.map((delivery) => delivery.address),
-        });
-        refreshSuggestions();
-      }
-      document.getElementById('save-history').checked = false;
       setStatus('');
-      await onSuccess(result, { historySaveFailed });
-      completed = true;
+      await onSuccess(result, { historySaveFailed: false, submittedItems, cartBacked });
     } catch {
       setStatus('');
       setError(serverConfirmed ? 'receiptRenderError' : 'orderNetworkError');
       if (serverConfirmed) confirmedButNotShown = true;
     } finally {
+      submitting = false; document.dispatchEvent(new Event('updateguardchange'));
       clearTimeout(timeout);
-      if (!serverConfirmed || completed) submit.disabled = false;
+      refreshAddress();
     }
   });
 
-  addDestination();
-  refreshSuggestions();
+  refreshAddress();
   return {
-    setItems(items) {
+    isBusy: () => submitting,
+    refreshAddress,
+    setDemoMode(value) { demoMode = value === true; modeReady = true; applyDemo(); refreshAddress(); },
+    invalidate() { itemsReady = false; document.getElementById('submit-order').disabled = true; },
+    setItems(items, { fromCart = true } = {}) {
+      if (submitting) return;
+      itemsReady = true;
+      cartBacked = fromCart;
+      try { addressBook.ensureSelection(); } catch { /* The address summary reports storage errors. */ }
       cartItems = items.map(({ productId, quantity, product }) => ({ productId, quantity, product }));
-      for (const key of assignments.keys()) {
-        if (!cartItems.some(({ productId }) => productId === key)) assignments.delete(key);
-      }
       renderAssignments();
+      renderBuyer();
+      refreshAddress();
       setError('');
     },
     refreshLocale() {
       translate(form);
-      for (const card of deliveryCards()) {
-        card.querySelector('[data-suffix="recipient.code"]').setAttribute('aria-label', t('phoneCode'));
-      }
-      renumber();
+      renderAssignments();
+      refreshAddress();
+      renderBuyer();
       document.getElementById('checkout-status').textContent = statusKey ? t(statusKey) : '';
       document.getElementById('checkout-error').textContent = errorKey ? t(errorKey) : '';
     },
     reset() {
       form.reset();
-      deliveryList.replaceChildren();
-      assignments.clear();
       cartItems = [];
+      cartBacked = true;
+      itemsReady = false;
       pendingIntent = null;
       confirmedButNotShown = false;
-      addDestination();
+      addressBook.resetSelection();
+      refreshAddress();
       setStatus('');
       setError('');
     },

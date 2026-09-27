@@ -11,15 +11,17 @@ export function validateBuyer(buyer, whatsappOrderContactOptIn) {
     throw new FieldError('buyer', 'Enter buyer details.');
   }
   const fullName = boundedText(buyer.fullName, 'buyer.fullName', 120);
-  const whatsappPhone = phone(buyer.whatsappPhone, 'buyer.whatsappPhone');
+  const rawPhone = boundedText(buyer.whatsappPhone, 'buyer.whatsappPhone', 32, false);
+  const whatsappPhone = rawPhone ? phone(rawPhone, 'buyer.whatsappPhone') : '';
   const email = boundedText(buyer.email, 'buyer.email', 254, false);
   if (email && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email) || email.includes('..'))) {
     throw new FieldError('buyer.email', 'Enter a valid email address.');
   }
-  if (whatsappOrderContactOptIn !== true) {
+  if (!whatsappPhone && !email) throw new FieldError('buyer.whatsappPhone', 'Enter a WhatsApp number or email.');
+  if (whatsappPhone && whatsappOrderContactOptIn !== true) {
     throw new FieldError('whatsappOrderContactOptIn', 'Confirm WhatsApp contact for this order.');
   }
-  return { fullName, whatsappPhone, email: email || null, whatsappOrderContactOptIn };
+  return { fullName, whatsappPhone, email: email || null, whatsappOrderContactOptIn: Boolean(whatsappPhone) && whatsappOrderContactOptIn === true };
 }
 
 export function validateRecipient(recipient, deliveryIndex) {
@@ -54,11 +56,13 @@ function validateAddress(address, deliveryIndex) {
   };
 }
 
-export function validateOrderInput(input) {
+export function validateOrderInput(input, { simulation = false } = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     throw new FieldError('order', 'Enter order details.');
   }
-  const buyer = validateBuyer(input.buyer, input.whatsappOrderContactOptIn);
+  const buyer = simulation
+    ? { fullName: 'Demo Customer', whatsappPhone: 'DEMO-NO-CONTACT', email: null, whatsappOrderContactOptIn: false }
+    : validateBuyer(input.buyer, input.whatsappOrderContactOptIn);
   const locale = input.locale === undefined ? 'en' : input.locale;
   if (!supportedLocales.has(locale)) throw new FieldError('locale', 'Choose a supported language.');
   if (!Array.isArray(input.deliveries) || input.deliveries.length < 1 || input.deliveries.length > 10) {
@@ -97,8 +101,8 @@ export function validateOrderInput(input) {
       return { productId, quantity: item.quantity, expectedPriceMinor: item.expectedPriceMinor, expectedCurrency: item.expectedCurrency };
     });
     return {
-      recipient: validateRecipient(delivery.recipient, index),
-      address: validateAddress(delivery.address, index),
+      recipient: simulation ? { fullName: `Demo Recipient ${index + 1}`, phone: 'DEMO-NO-CONTACT' } : validateRecipient(delivery.recipient, index),
+      address: simulation ? { line1: `Demo address ${index + 1} - no delivery`, line2: null, city: 'Demo City', region: null, postcode: '00000', country: 'MY' } : validateAddress(delivery.address, index),
       items,
     };
   });

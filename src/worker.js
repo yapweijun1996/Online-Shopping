@@ -1,6 +1,7 @@
+import { initializeShop, shopObjectName } from './shop-setup.js';
 import { createApi } from './app.js';
 import { ensureAdmin } from './auth.js';
-import { readWorkerConfig } from './config.js';
+import { readWorkerConfig, readShopMode } from './config.js';
 import { migrateStore } from './db.js';
 import { openDurableStore } from './durable-store.js';
 import { errorResponse, json, readBody } from './http.js';
@@ -20,6 +21,7 @@ export class ShopStore {
         const store = openDurableStore(ctx.storage);
         migrateStore(store);
         ensureAdmin(store, config.username, config.password);
+        initializeShop(store, config);
         this.handle = createApi({ store, config });
       } catch (error) {
         console.error(`Startup failed: ${error.message}`);
@@ -50,7 +52,7 @@ export default {
       }
       headers.delete('content-length');
     }
-    const stub = env.SHOP.get(env.SHOP.idFromName('shop'), { locationHint: 'apac' });
+    const stub = env.SHOP.get(env.SHOP.idFromName(shopObjectName(readShopMode(env))), { locationHint: 'apac' });
     return stub.fetch(new Request(request.url, { method: request.method, headers, body }));
   },
 };

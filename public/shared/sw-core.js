@@ -3,6 +3,11 @@ self.setupOfflineWorker = ({ cachePrefix, version, assets, scopePath, offlinePag
   const cacheName = `${cachePrefix}-${version}`;
   const assetPaths = new Set(assets);
 
+  self.addEventListener('message', (event) => {
+    if (event.data?.type === 'GET_VERSION') event.ports[0]?.postMessage({ version });
+    if (event.data?.type === 'SKIP_WAITING') event.waitUntil(self.skipWaiting());
+  });
+
   self.addEventListener('install', (event) => {
     event.waitUntil(caches.open(cacheName).then((cache) => cache.addAll(assets)));
   });

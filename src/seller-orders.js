@@ -18,6 +18,7 @@ function listNumber(params, key, fallback, maximum) {
 
 function summary(row) {
   return {
+    ...(row.order_no.startsWith('DEMO-') ? { simulation: true } : {}),
     id: row.id, orderNo: row.order_no, buyerName: row.buyer_name,
     status: row.status, revision: row.revision, currency: row.currency,
     totalMinor: row.total_minor, submittedAt: row.submitted_at, updatedAt: row.updated_at,

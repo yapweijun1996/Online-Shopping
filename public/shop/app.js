@@ -1,25 +1,86 @@
+import { mountShopUpdates } from './update-view.js';
+import { mountMobileNavigation } from './mobile-navigation.js';
+import { countryForCurrency, mountAddressBook } from './addresses.js';
+import { mountProfile } from './profile.js';
+import { createCartSelection } from './cart-selection.js';
+import { createContactHistory } from './history.js';
+import { mountProductDetail } from './product-detail.js';
+import { productHash, readShopRoute } from './shop-route.js';
 import { formatDate, formatMoney, setupLanguageMenu, t, translate } from '../shared/i18n.js';
-import { registerWorker } from '../shared/pwa.js';
 import { createCartStore } from './cart.js';
 import { mountCheckout } from './checkout.js';
 
 const byId = (id) => document.getElementById(id);
+const paletteInputs = [...document.querySelectorAll('input[name="shop-palette"]')];
+window.shopPalette.subscribe((current) => {
+  for (const input of paletteInputs) input.checked = input.value === current;
+});
+for (const input of paletteInputs) input.addEventListener('change', () => {
+  if (!input.checked) return;
+  const saved = window.shopPalette.choose(input.value);
+  byId('palette-status').textContent = t(saved ? 'paletteSaved' : 'paletteSessionOnly');
+});
 const grid = byId('catalog-grid');
 const list = byId('cart-list');
-const dialog = byId('product-dialog');
-const detailContent = byId('detail-content');
 const category = byId('catalog-category');
+const bootOverlay = byId('shop-boot-loader');
+const bootRetry = byId('shop-boot-retry');
+let bootFinished = false;
+let bootBackground = [];
+const bootShowTimer = setTimeout(() => {
+  if (bootFinished) return;
+  bootBackground = [...document.body.children].filter((child) => child !== bootOverlay && child.tagName !== 'SCRIPT').map((child) => [child, child.inert]);
+  for (const [child] of bootBackground) child.inert = true;
+  document.body.classList.add('shop-booting');
+  bootOverlay.hidden = false;
+  bootOverlay.focus({ preventScroll: true });
+}, 180);
+const bootRetryTimer = setTimeout(() => {
+  if (bootFinished) return;
+  bootRetry.hidden = false;
+  if (!bootOverlay.hidden) bootRetry.focus();
+}, 8000);
+bootRetry.addEventListener('click', () => location.reload());
+function finishBoot() {
+  bootFinished = true;
+  clearTimeout(bootShowTimer);
+  clearTimeout(bootRetryTimer);
+  bootOverlay.hidden = true;
+  document.body.classList.remove('shop-booting');
+  for (const [child, wasInert] of bootBackground) child.inert = wasInert;
+}
 let products = [];
 let categories = [];
 let nextOffset = null;
 let catalogRequest = 0;
+let catalogLoading = false;
 let cartRequest = 0;
 let resolvedCart = [];
-let detailProduct = null;
+let detailPage;
+let profilePage;
+let addressBook;
+let profileReturn = null;
+let directPurchase = null;
+let selection;
+let previousRoute = '';
+let catalogScroll = 0;
+let cartMutation = Promise.resolve();
+let cartWrites = 0;
+function trackCart(promise) {
+  cartWrites++;
+  document.dispatchEvent(new Event('updateguardchange'));
+  return promise.finally(() => { cartWrites--; document.dispatchEvent(new Event('updateguardchange')); });
+}
+let shopInfo = null;
 let catalogStatus = '';
+let catalogPageStatus = '';
+let retryCatalogReset = true;
 let cartStatus = '';
 let shopStatus = '';
+let messageTimeout;
 let cartReady = false;
+let cartLoading = false;
+let pendingCartFocusKey = null;
 let priceChangedNotice = false;
 let checkoutPage = null;
 let lastReceipt = null;
@@ -53,6 +114,35 @@ function setCatalogStatus(key) {
   byId('catalog-status').textContent = key ? t(key) : '';
 }
 
+function catalogHasError() {
+  return catalogStatus === 'networkError' || catalogStatus === 'offlineCatalogRetry';
+}
+
+function setCatalogPageStatus(key) {
+  catalogPageStatus = key;
+  const feedback = byId('catalog-page-feedback');
+  feedback.hidden = !key;
+  feedback.dataset.state = key === 'loadingMore' ? 'loading' : key === 'allProductsShown' ? 'end' : 'error';
+  byId('catalog-page-message').textContent = key ? t(key) : '';
+  byId('catalog-page-retry').hidden = key !== 'networkError' && key !== 'offlineCatalogRetry';
+}
+
+const skeletonTimers = new WeakMap();
+function showSkeleton(skeleton) {
+  clearTimeout(skeletonTimers.get(skeleton));
+  skeleton.style.visibility = 'hidden';
+  skeleton.hidden = false;
+  skeletonTimers.set(skeleton, setTimeout(() => {
+    if (!skeleton.hidden) skeleton.style.visibility = 'visible';
+  }, 250));
+}
+
+function hideSkeleton(skeleton) {
+  clearTimeout(skeletonTimers.get(skeleton));
+  skeleton.hidden = true;
+  skeleton.style.visibility = '';
+}
+
 function setCartStatus(key) {
   cartStatus = key;
   byId('cart-status').textContent = key ? t(key) : '';
@@ -61,6 +151,8 @@ function setCartStatus(key) {
 function setMessage(key) {
   shopStatus = key;
   byId('shop-message').textContent = key ? t(key) : '';
+  clearTimeout(messageTimeout);
+  if (key) messageTimeout = setTimeout(() => setMessage(''), 4500);
 }
 
 async function api(path) {
@@ -91,89 +183,110 @@ function renderCategories() {
   }
 }
 
-function renderCatalog() {
-  grid.replaceChildren();
-  for (const product of products) {
+function renderCatalog(startIndex = 0) {
+  if (!startIndex) grid.replaceChildren();
+  const cards = document.createDocumentFragment();
+  for (const product of products.slice(startIndex)) {
     const card = element('article', 'catalog-card');
-    const imageButton = action(`${t('viewDetails')}: ${product.name}`, () => openDetail(product.id), 'catalog-image-button');
+    const imageButton = element('a', 'catalog-image-button');
+    imageButton.href = productHash(product.id);
     imageButton.setAttribute('aria-label', `${t('viewDetails')}: ${product.name}`);
-    imageButton.replaceChildren(imageFor(product, 'catalog-image'));
+    imageButton.append(imageFor(product, 'catalog-image'));
     card.append(imageButton);
     const body = element('div', 'catalog-card-body');
-    body.append(element('p', 'catalog-category', product.category), element('h3', '', product.name),
-      element('p', 'catalog-description', product.description), element('strong', 'catalog-price', formatMoney(product.priceMinor, product.currency)));
+    const name = element('h3');
+    const nameLink = element('a', 'product-name-link', product.name); nameLink.href = productHash(product.id); name.append(nameLink);
+    body.append(element('p', 'catalog-category', product.category), name,
+      element('strong', 'catalog-price', formatMoney(product.priceMinor, product.currency)));
     const actions = element('div', 'catalog-card-actions');
-    actions.append(action(t('viewDetails'), () => openDetail(product.id)), action(t('addToCart'), () => addToCart(product), 'primary-button'));
+    actions.append(action(t('addToCart'), () => addToCart(product), 'primary-button'));
     body.append(actions);
     card.append(body);
-    grid.append(card);
+    cards.append(card);
   }
-  byId('catalog-more').hidden = nextOffset === null;
+  grid.append(cards);
+  byId('catalog-more').hidden = catalogPageStatus === 'loadingMore' || nextOffset === null ||
+    (catalogHasError() && !retryCatalogReset);
   byId('catalog-count').textContent = products.length ? t('showingProducts').replace('{count}', String(products.length)) : '';
+  const query = byId('catalog-search').value.trim();
+  byId('catalog-query').textContent = query ? t('searchResultsFor').replace('{query}', query) : '';
+  byId('catalog-query').hidden = !query;
 }
 
 async function loadCatalog(reset = true) {
+  if (!reset && (catalogLoading || nextOffset === null)) return;
   const request = ++catalogRequest;
+  catalogLoading = true;
   if (reset) { products = []; nextOffset = null; renderCatalog(); }
-  setCatalogStatus('loading');
+  if (reset) showSkeleton(byId('catalog-skeleton'));
+  else hideSkeleton(byId('catalog-skeleton'));
+  grid.setAttribute('aria-busy', 'true');
+  byId('catalog-more').hidden = true;
+  setCatalogStatus(reset ? 'loading' : '');
+  setCatalogPageStatus(reset ? '' : 'loadingMore');
+  if (document.getElementById('catalog-retry')) document.getElementById('catalog-retry').hidden = true;
   try {
     const params = new URLSearchParams({
       limit: '24', offset: String(reset ? 0 : nextOffset),
       search: byId('catalog-search').value.trim(), category: category.value,
     });
-    const data = await api(`/api/v1/products?${params}`);
+    const [data, shop] = await Promise.all([api(`/api/v1/products?${params}`), api('/api/v1/shop')]);
     if (request !== catalogRequest) return;
+    shopInfo = shop;
+    profilePage?.setCountry(countryForCurrency(shop.currency));
+    addressBook?.render();
+    checkoutPage?.refreshAddress();
+    checkoutPage.setDemoMode(shop.mode === 'demo');
+    byId('demo-banner').hidden = shop.mode !== 'demo';
+    if (shop.mode) {
+      const title = byId('hero-title');
+      title.removeAttribute('data-i18n');
+      title.textContent = shop.shopName;
+      if (shop.mode === 'demo') {
+        const eyebrow = document.querySelector('.hero-copy .eyebrow');
+        eyebrow.dataset.i18n = 'demoMode';
+        const description = document.querySelector('.hero-copy > p:not(.eyebrow)');
+        description.dataset.i18n = 'demoNotice';
+        translate(document.querySelector('.hero-copy'));
+      }
+    }
+    if (request !== catalogRequest) return;
+    const previousCount = products.length;
     products = reset ? data.items : [...products, ...data.items];
     categories = data.categories;
     nextOffset = data.nextOffset;
     renderCategories();
-    renderCatalog();
+    setCatalogStatus(products.length ? '' : (params.get('search') || params.get('category') ? 'noResults' : 'noProducts'));
+    setCatalogPageStatus(products.length && nextOffset === null ? 'allProductsShown' : '');
+    renderCatalog(reset ? 0 : previousCount);
     const heroImage = byId('hero-image');
     const featured = products.find((product) => product.imageUrl);
     heroImage.hidden = !featured;
     if (featured) heroImage.src = featured.imageUrl;
     else heroImage.removeAttribute('src');
-    setCatalogStatus(products.length ? '' : (params.get('search') || params.get('category') ? 'noResults' : 'noProducts'));
   } catch {
-    if (request === catalogRequest) setCatalogStatus('networkError');
-  }
-}
-
-function renderDetail() {
-  if (!detailProduct) return;
-  detailContent.replaceChildren();
-  detailContent.append(imageFor(detailProduct, 'detail-image'));
-  const body = element('div', 'detail-body');
-  const title = element('h2', '', detailProduct.name);
-  title.id = 'detail-title';
-  body.append(element('p', 'catalog-category', detailProduct.category), title,
-    element('p', 'detail-description', detailProduct.description),
-    element('strong', 'catalog-price', formatMoney(detailProduct.priceMinor, detailProduct.currency)),
-    action(t('addToCart'), () => addToCart(detailProduct), 'primary-button'));
-  detailContent.append(body);
-}
-
-async function openDetail(id) {
-  detailProduct = null;
-  detailContent.replaceChildren(element('h2', '', t('loading')));
-  detailContent.firstChild.id = 'detail-title';
-  dialog.showModal();
-  try {
-    const product = await api(`/api/v1/products/${id}`);
-    if (!dialog.open) return;
-    detailProduct = product;
-    renderDetail();
-  } catch (error) {
-    if (!dialog.open) return;
-    const heading = element('h2', '', t(error.status === 404 ? 'productUnavailable' : 'networkError'));
-    heading.id = 'detail-title';
-    detailContent.replaceChildren(heading);
+    if (request === catalogRequest) {
+      retryCatalogReset = reset;
+      const errorKey = navigator.onLine === false ? 'offlineCatalogRetry' : 'networkError';
+      setCatalogStatus(errorKey);
+      setCatalogPageStatus(reset ? '' : errorKey);
+      document.getElementById('catalog-retry').hidden = false;
+    }
+  } finally {
+    if (request === catalogRequest) {
+      catalogLoading = false;
+      hideSkeleton(byId('catalog-skeleton'));
+      grid.setAttribute('aria-busy', 'false');
+    }
   }
 }
 
 function updateCount() {
   const count = cartStore.list().reduce((sum, line) => sum + line.quantity, 0);
   byId('cart-count').textContent = String(count);
+  byId('mobile-cart-count').textContent = String(count);
+  byId('mobile-cart-count').hidden = count === 0;
+  document.querySelector('#mobile-navigation a[href="#cart"]').setAttribute('aria-label', `${t('cart')}: ${count}`);
   document.querySelector('.shop-nav a[href="#cart"]').setAttribute('aria-label', `${t('cart')}: ${count}`);
 }
 
@@ -183,20 +296,37 @@ function updatePersistence() {
   note.textContent = cartStore.persistent ? '' : t('cartMemoryOnly');
 }
 
-async function addToCart(product) {
+function addToCart(product, quantity = 1) {
+  const result = trackCart(cartMutation.then(() => addCartQuantity(product, quantity)));
+  cartMutation = result.catch(() => {});
+  return result;
+}
+
+async function addCartQuantity(product, quantity) {
   const existing = cartStore.list().find((line) => line.productId === product.id)?.quantity || 0;
-  if (existing >= 100) {
+  if (!Number.isInteger(quantity) || quantity < 1 || existing + quantity > 100) {
     setMessage('quantityLimit');
-    return;
+    return false;
   }
-  await cartStore.set(product.id, existing + 1);
+  await cartStore.set(product.id, existing + quantity);
   updateCount();
   updatePersistence();
   setMessage('addedToCart');
   if (!byId('cart-view').hidden) refreshCart();
+  return true;
 }
 
-async function changeQuantity(productId, value) {
+function changeQuantity(productId, value) {
+  const result = trackCart(cartMutation.then(async () => {
+    const current = cartStore.list().find(line => line.productId === productId)?.quantity;
+    if (current === undefined) return;
+    await applyQuantity(productId, typeof value === 'function' ? value(current) : value);
+  }));
+  cartMutation = result.catch(() => setMessage('networkError'));
+  return cartMutation;
+}
+
+async function applyQuantity(productId, value) {
   if (!Number.isInteger(value) || value < 1 || value > 100) {
     setMessage('quantityLimit');
     renderCart();
@@ -210,7 +340,9 @@ async function changeQuantity(productId, value) {
 }
 
 async function removeLine(productId) {
-  await cartStore.set(productId, 0);
+  const result = trackCart(cartMutation.then(() => cartStore.set(productId, 0)));
+  cartMutation = result.catch(() => setMessage('networkError'));
+  await cartMutation;
   updateCount();
   updatePersistence();
   setMessage('removedFromCart');
@@ -218,53 +350,127 @@ async function removeLine(productId) {
 }
 
 function renderCart() {
+  if (cartLoading) return;
+  const focusedKey = pendingCartFocusKey || (list.contains(document.activeElement) ? document.activeElement.dataset.focusKey : null);
+  pendingCartFocusKey = null;
   list.replaceChildren();
   let total = 0;
   let missing = false;
   const currencies = new Set();
   for (const { productId, quantity, product } of resolvedCart) {
     const row = element('article', 'cart-row');
+    const chosen = element('input', 'cart-select');
+    chosen.type = 'checkbox';
+    chosen.dataset.productId = productId;
+    chosen.dataset.focusKey = `select-${productId}`;
+    chosen.checked = selection.has(productId);
+    chosen.setAttribute('aria-label', `${t('selectItem')}: ${product?.name || t('productUnavailable')}`);
+    chosen.addEventListener('change', () => {
+      selection.set(productId, chosen.checked); renderCart();
+      [...list.querySelectorAll('.cart-select')].find((control) => control.dataset.productId === productId)?.focus();
+    });
+    row.append(chosen);
     row.append(product ? imageFor(product, 'cart-image') : element('div', 'cart-image image-placeholder', t('imageMissing')));
     const detail = element('div', 'cart-row-detail');
-    detail.append(element('h2', '', product?.name || t('productUnavailable')));
+    const title = element('h2');
+    if (product) { const link = element('a', 'product-name-link', product.name); link.href = productHash(product.id); title.append(link); }
+    else title.textContent = t('productUnavailable');
+    detail.append(title);
     if (product) {
-      detail.append(element('p', '', `${product.category} · ${formatMoney(product.priceMinor, product.currency)}`));
-      total += product.priceMinor * quantity;
-      currencies.add(product.currency);
-    } else missing = true;
+      detail.append(element('p', '', product.category));
+      if (selection.has(productId)) { total += product.priceMinor * quantity; currencies.add(product.currency); }
+
+    } else if (selection.has(productId)) missing = true;
     const controls = element('div', 'cart-row-controls');
-    const label = element('label', '', t('quantity'));
+    const label = element('div', 'quantity-stepper');
     const input = element('input');
     input.type = 'number'; input.min = '1'; input.max = '100'; input.step = '1'; input.inputMode = 'numeric';
     input.value = String(quantity);
+    input.dataset.focusKey = `quantity-${productId}`;
     input.setAttribute('aria-label', `${t('quantity')}: ${product?.name || t('productUnavailable')}`);
     input.addEventListener('change', () => changeQuantity(productId, input.valueAsNumber));
-    label.append(input);
-    controls.append(label, action(t('remove'), () => removeLine(productId)));
-    detail.append(controls);
-    row.append(detail);
+    const decrease = action('−', () => changeQuantity(productId, current => current - 1));
+    decrease.dataset.focusKey = `decrease-${productId}`;
+    decrease.disabled = quantity <= 1;
+    decrease.setAttribute('aria-label', `${t('decreaseQuantity')}: ${product?.name || t('productUnavailable')}`);
+    const increase = action('+', () => changeQuantity(productId, current => current + 1));
+    increase.dataset.focusKey = `increase-${productId}`;
+    increase.disabled = quantity >= 100;
+    increase.setAttribute('aria-label', `${t('increaseQuantity')}: ${product?.name || t('productUnavailable')}`);
+    label.append(decrease, input, increase);
+    controls.append(label);
+    const unit = element('span', 'cart-unit-price', product ? formatMoney(product.priceMinor, product.currency).replace(/\u00a0/g, ' ') : '—');
+    const subtotal = element('strong', 'cart-line-subtotal', product ? formatMoney(product.priceMinor * quantity, product.currency) : '—');
+    const remove = action(t('remove'), () => removeLine(productId)); remove.classList.add('cart-remove');
+    row.append(detail, unit, controls, subtotal, remove);
     list.append(row);
   }
+  if (focusedKey) [...list.querySelectorAll('[data-focus-key]')].find(control => control.dataset.focusKey === focusedKey && !control.disabled)?.focus({ preventScroll: true });
   const summary = byId('cart-summary');
-  summary.hidden = resolvedCart.length === 0;
+  summary.hidden = false;
   byId('cart-total').textContent = !missing && currencies.size === 1 && Number.isSafeInteger(total)
-    ? formatMoney(total, [...currencies][0]) : '—';
-  byId('checkout-button').disabled = !cartReady || missing || currencies.size > 1 || resolvedCart.length === 0;
+    ? formatMoney(total, [...currencies][0]) : total === 0 && !missing ? formatMoney(0, shopInfo?.currency || 'MYR') : '—';
+  const chosen = selection ? selection.items(resolvedCart) : [];
+  byId('cart-selected-count').textContent = `${t('selectedItems')}: ${chosen.reduce((sum, item) => sum + item.quantity, 0)}`;
+  byId('checkout-button').textContent = `${t('checkout')} (${chosen.reduce((sum, item) => sum + item.quantity, 0)})`;
+  byId('checkout-button').disabled = !cartReady || missing || currencies.size !== 1 || chosen.length === 0;
+  byId('profile-warning').hidden = Boolean(profilePage?.get()) || resolvedCart.length === 0;
+  const all = byId('cart-select-all');
+  all.checked = resolvedCart.length > 0 && chosen.length === resolvedCart.length;
+  all.indeterminate = chosen.length > 0 && chosen.length < resolvedCart.length;
+  all.disabled = resolvedCart.length === 0;
+  if (cartReady) setCartStatus(!chosen.length ? 'selectItemsFirst' : missing ? 'cartUnavailable' : currencies.size > 1 ? 'mixedCurrencies' : priceChangedNotice ? 'cartPriceChanged' : '');
+}
+
+function showCartSkeleton(count) {
+  if (list.contains(document.activeElement)) pendingCartFocusKey = document.activeElement.dataset.focusKey || null;
+  list.hidden = true;
+  const skeleton = byId('cart-skeleton');
+  skeleton.replaceChildren();
+  for (let index = 0; index < Math.min(count, 3); index++) {
+    const row = element('div', 'cart-row cart-skeleton-row');
+    const detail = element('div', 'cart-skeleton-detail');
+    detail.append(element('span', 'skeleton-line'), element('span', 'skeleton-line medium'));
+    row.append(element('span', 'cart-skeleton-check skeleton-line'),
+      element('span', 'cart-skeleton-image skeleton-image'), detail,
+      element('span', 'cart-skeleton-unit skeleton-line'),
+      element('span', 'cart-skeleton-quantity skeleton-line'),
+      element('span', 'cart-skeleton-subtotal skeleton-line'),
+      element('span', 'cart-skeleton-action skeleton-line'));
+    skeleton.append(row);
+  }
+  showSkeleton(skeleton);
+  byId('cart-total').textContent = '—';
+  const selectedCount = cartStore.list().filter((line) => selection.has(line.productId)).reduce((sum, line) => sum + line.quantity, 0);
+  byId('cart-selected-count').textContent = `${t('selectedItems')}: ${selectedCount}`;
+  byId('checkout-button').textContent = `${t('checkout')} (${selectedCount})`;
+  byId('cart-select-all').disabled = true;
+  byId('checkout-button').disabled = true;
+}
+
+function hideCartSkeleton() {
+  hideSkeleton(byId('cart-skeleton'));
+  list.hidden = false;
 }
 
 async function refreshCart() {
   const request = ++cartRequest;
   const lines = cartStore.list();
+  selection.sync(lines);
   cartReady = false;
-  byId('checkout-button').disabled = true;
+  cartLoading = false;
+  byId('cart-retry').hidden = true;
   updateCount();
   updatePersistence();
   if (!lines.length) {
+    hideCartSkeleton();
     resolvedCart = [];
     renderCart();
     setCartStatus('emptyCart');
     return false;
   }
+  cartLoading = true;
+  showCartSkeleton(lines.length);
   setCartStatus('loading');
   try {
     const results = await Promise.all(lines.map(async (line) => {
@@ -275,23 +481,65 @@ async function refreshCart() {
       }
     }));
     if (request !== cartRequest) return;
+    cartLoading = false;
+    hideCartSkeleton();
     resolvedCart = results;
-    const currencies = new Set(results.map(({ product }) => product?.currency).filter(Boolean));
-    cartReady = results.every(({ product }) => Boolean(product)) && currencies.size === 1;
+    cartReady = true;
     renderCart();
-    setCartStatus(results.some(({ product }) => !product) ? 'cartUnavailable' : currencies.size > 1 ? 'mixedCurrencies' : priceChangedNotice ? 'cartPriceChanged' : '');
     priceChangedNotice = false;
-    return cartReady;
+    const chosen = selection.items(results);
+    return chosen.length > 0 && chosen.every(({ product }) => Boolean(product)) && new Set(chosen.map(({ product }) => product.currency)).size === 1;
   } catch {
-    if (request === cartRequest) setCartStatus('networkError');
+    if (request === cartRequest) {
+      cartLoading = false;
+      hideCartSkeleton();
+      list.replaceChildren();
+      resolvedCart = [];
+      pendingCartFocusKey = null;
+      byId('cart-select-all').disabled = true;
+      byId('cart-retry').hidden = false;
+      setCartStatus('networkError');
+    }
     return false;
   }
+}
+
+function setDirectPurchase(value) {
+  directPurchase = value;
+  try {
+    if (value) sessionStorage.setItem('online-shopping-direct-purchase-v1', JSON.stringify(value));
+    else sessionStorage.removeItem('online-shopping-direct-purchase-v1');
+  } catch { /* The current tab still retains the intent. */ }
+}
+
+async function beginCheckout(stillCurrent = () => true, directItem = null) {
+  if (directItem) {
+    if (!stillCurrent()) return;
+    setDirectPurchase(directItem);
+    if (!profilePage.get()) {
+      profileReturn = 'checkout';
+      try { sessionStorage.setItem('online-shopping-profile-return', profileReturn); } catch { /* Optional return route. */ }
+      location.hash = '#profile';
+      return;
+    }
+    location.hash = '#checkout';
+    return;
+  }
+  setDirectPurchase(null);
+  await cartMutation;
+  selection.sync(cartStore.list());
+  const valid = await refreshCart();
+  if (!stillCurrent()) return;
+  if (!valid || !shopInfo) { location.hash = '#cart'; return; }
+  if (!profilePage.get()) { location.hash = '#cart'; byId('profile-warning').hidden = false; byId('profile-warning').scrollIntoView({ block: 'center' }); return; }
+  checkoutPage.setItems(selection.items(resolvedCart));
+  location.hash = '#checkout';
 }
 
 function readReceipt() {
   try {
     const saved = JSON.parse(localStorage.getItem('online-shopping-last-receipt-v1') || 'null');
-    if (saved && /^OS-\d{8,}$/.test(saved.orderNo) && Number.isSafeInteger(saved.totalMinor) &&
+    if (saved && /^(?:OS|DEMO)-\d{8,}$/.test(saved.orderNo) && Number.isSafeInteger(saved.totalMinor) &&
         ['MYR', 'SGD'].includes(saved.currency) && !Number.isNaN(Date.parse(saved.submittedAt))) return saved;
   } catch { /* A receipt is optional browser convenience. */ }
   return null;
@@ -299,6 +547,10 @@ function readReceipt() {
 
 function renderReceipt() {
   if (!lastReceipt) return;
+  const simulation = lastReceipt.simulation === true || lastReceipt.orderNo.startsWith('DEMO-');
+  byId('receipt-title').dataset.i18n = simulation ? 'simulationComplete' : 'thankYou';
+  document.querySelector('.receipt-card > .shop-note').dataset.i18n = simulation ? 'simulationReceipt' : 'receiptMessage';
+  translate(byId('receipt-view'));
   byId('receipt-number').textContent = lastReceipt.orderNo;
   byId('receipt-total').textContent = formatMoney(lastReceipt.totalMinor, lastReceipt.currency);
   byId('receipt-date').textContent = formatDate(lastReceipt.submittedAt);
@@ -307,7 +559,7 @@ function renderReceipt() {
   note.textContent = receiptNotes.map((key) => t(key)).join(' ');
 }
 
-async function completeOrder(receipt, { historySaveFailed }) {
+async function completeOrder(receipt, { historySaveFailed, submittedItems, cartBacked }) {
   lastReceipt = receipt;
   receiptNotes = historySaveFailed ? ['historyStorageUnavailable'] : [];
   try {
@@ -315,11 +567,21 @@ async function completeOrder(receipt, { historySaveFailed }) {
     localStorage.setItem('online-shopping-last-receipt-v1', JSON.stringify(receipt));
   }
   catch { receiptNotes.push('receiptMemoryOnly'); }
-  try { if (!(await cartStore.clear())) receiptNotes.push('cartClearFailed'); }
+  try {
+    await cartMutation;
+    if (cartBacked) {
+      for (const { productId, quantity } of submittedItems) {
+        const current = cartStore.list().find((line) => line.productId === productId)?.quantity || 0;
+        if (!(await cartStore.set(productId, Math.max(0, current - quantity)))) receiptNotes.push('cartClearFailed');
+      }
+    }
+    selection.sync(cartStore.list());
+  }
   catch { receiptNotes.push('cartClearFailed'); }
   resolvedCart = [];
   cartReady = false;
   checkoutPage.reset();
+  setDirectPurchase(null);
   updateCount();
   updatePersistence();
   renderReceipt();
@@ -329,23 +591,61 @@ async function completeOrder(receipt, { historySaveFailed }) {
 }
 
 function showRoute() {
-  const route = location.hash.slice(1);
+  const parsed = readShopRoute(location.hash);
+  const route = parsed.page;
+  if (route === 'checkout' && (!profilePage.get() || !shopInfo)) { location.hash = directPurchase ? '#profile' : '#cart'; return; }
+  if (['catalog', 'product', 'cart', 'receipt'].includes(route) && directPurchase) setDirectPurchase(null);
+  if (previousRoute === 'catalog' && route !== 'catalog') catalogScroll = window.scrollY;
   if (route === 'receipt' && !lastReceipt) { location.hash = '#catalog'; return; }
-  const catalogRoute = !['cart', 'checkout', 'receipt'].includes(route);
-  for (const view of ['catalog', 'cart', 'checkout', 'receipt']) {
+  const catalogRoute = route === 'catalog';
+  for (const view of ['catalog', 'product', 'cart', 'checkout', 'receipt', 'profile', 'settings', 'addresses']) {
     byId(`${view}-view`).hidden = route !== view && !(view === 'catalog' && catalogRoute);
   }
+  byId('account-layout').hidden = !['profile', 'addresses', 'settings'].includes(route);
+  for (const link of document.querySelectorAll('.account-sidebar a')) {
+    if (link.hash === `#${route}`) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  }
+  document.body.dataset.shopRoute = route;
+  requestAnimationFrame(measureActionbar);
   for (const [hash, active] of [['#catalog', catalogRoute], ['#cart', route === 'cart']]) {
     const link = document.querySelector(`.shop-nav a[href="${hash}"]`);
     if (active) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   }
-  if (!catalogRoute || route === 'catalog' || route === '') window.scrollTo(0, 0);
+  if (route === 'product') detailPage.show(parsed.id);
+  else {
+    detailPage.hide();
+    document.title = shopInfo?.shopName || t('shop');
+  }
+  if (previousRoute !== route || route === 'product') {
+    window.scrollTo(0, catalogRoute && previousRoute === 'product' ? catalogScroll : 0);
+  }
+  previousRoute = route;
   if (route === 'cart') refreshCart();
-  if (route === 'checkout' && !cartReady) {
-    refreshCart().then((valid) => {
-      if (valid) checkoutPage.setItems(resolvedCart);
-      else if (location.hash === '#checkout') location.hash = '#cart';
+  if (route === 'profile') profilePage.show();
+  if (route === 'addresses') addressBook.render();
+  if (route === 'checkout') {
+    checkoutPage.invalidate();
+    if (directPurchase) {
+      const intent = directPurchase;
+      api(`/api/v1/products/${intent.productId}`).then((product) => {
+        if (location.hash === '#checkout' && directPurchase === intent) {
+          checkoutPage.setItems([{ productId: intent.productId, quantity: intent.quantity, product }], { fromCart: false });
+          const back = document.querySelector('#checkout-view .shop-actionbar a');
+          back.href = productHash(intent.productId); back.dataset.i18n = 'continueShopping'; back.textContent = t('continueShopping');
+        }
+      }).catch((error) => {
+        if (location.hash !== '#checkout' || directPurchase !== intent) return;
+        setMessage(error.status === 404 ? 'productUnavailable' : 'networkError');
+        location.hash = productHash(intent.productId);
+      });
+    } else refreshCart().then((valid) => {
+      if (valid && location.hash === '#checkout') {
+        checkoutPage.setItems(selection.items(resolvedCart));
+        const back = document.querySelector('#checkout-view .shop-actionbar a');
+        back.href = '#cart'; back.dataset.i18n = 'backToCart'; back.textContent = t('backToCart');
+      } else if (location.hash === '#checkout') location.hash = '#cart';
     });
   }
   if (route === 'receipt') renderReceipt();
@@ -360,52 +660,164 @@ function showCatalogResults() {
 
 function applyCatalogFilters() {
   showCatalogResults();
-  loadCatalog().then(() => {
+  const loading = loadCatalog();
+  const request = catalogRequest;
+  loading.then(() => {
     requestAnimationFrame(() => {
-      if (!byId('catalog-view').hidden) byId('catalog-results').scrollIntoView({ block: 'start' });
+      if (request === catalogRequest && location.hash === '#catalog-results') byId('catalog-results').scrollIntoView({ block: 'start' });
     });
   });
 }
 
-setupLanguageMenu(document.getElementById('language'));
+const mobileNavigation = mountMobileNavigation({ currentCategory: () => category.value, categories: () => categories, selectCategory(value) { category.value = value; renderCategories(); applyCatalogFilters(); } });
+setupLanguageMenu(document.getElementById('language'), { onOpen: mobileNavigation.openLanguage });
 byId('catalog-search').placeholder = t('searchProducts');
-registerWorker('/shop/sw.js', '/shop/').catch(() => console.warn('Shop offline shell unavailable.'));
+
 const cartStore = await createCartStore();
+let selectionStorage;
+try { selectionStorage = sessionStorage; } catch { /* Optional selection persistence. */ }
+selection = createCartSelection(selectionStorage);
+selection.sync(cartStore.list());
+try { profileReturn = selectionStorage?.getItem('online-shopping-profile-return') || null; } catch { /* Optional return route. */ }
+try {
+  const saved = JSON.parse(selectionStorage?.getItem('online-shopping-direct-purchase-v1') || 'null');
+  if (saved && Number.isInteger(saved.quantity) && saved.quantity >= 1 && saved.quantity <= 100) {
+    productHash(saved.productId);
+    directPurchase = { productId: saved.productId, quantity: saved.quantity };
+  }
+} catch { /* Invalid saved intent is ignored. */ }
+profilePage = mountProfile({ onSaved() {
+  renderCart();
+  if (['cart', 'checkout'].includes(profileReturn)) {
+    location.hash = `#${profileReturn}`;
+    profileReturn = null;
+    try { selectionStorage?.removeItem('online-shopping-profile-return'); } catch { /* Optional return route. */ }
+  }
+} });
+addressBook = mountAddressBook({
+  getCountry: () => countryForCurrency(shopInfo?.currency),
+  onChange() { checkoutPage?.refreshAddress(); },
+});
+for (const link of document.querySelectorAll('a[href="#profile"]')) link.addEventListener('click', () => {
+  profileReturn = link.dataset.profileReturn || null;
+  try {
+    if (profileReturn) selectionStorage?.setItem('online-shopping-profile-return', profileReturn);
+    else selectionStorage?.removeItem('online-shopping-profile-return');
+  } catch { /* Optional return route. */ }
+});
 lastReceipt = readReceipt();
 checkoutPage = mountCheckout({
   onSuccess: completeOrder,
+  getProfile: () => profilePage.get(),
+  addressBook,
   onPriceChanged() {
+    if (directPurchase) {
+      const productId = directPurchase.productId;
+      setDirectPurchase(null);
+      setMessage('productPriceChanged');
+      location.hash = productHash(productId);
+      return;
+    }
     priceChangedNotice = true;
     location.hash = '#cart';
   },
 });
+detailPage = mountProductDetail(byId('product-view'), { api, addToCart, checkout: beginCheckout, shop: () => shopInfo });
 updateCount();
 updatePersistence();
 byId('catalog-search-form').addEventListener('submit', (event) => { event.preventDefault(); applyCatalogFilters(); });
+const searchInput = byId('catalog-search');
+const clearSearch = action(t('clearSearch'), () => {
+  searchInput.value = '';
+  syncSearchClear();
+  applyCatalogFilters();
+  searchInput.focus({ preventScroll: true });
+}, 'catalog-search-clear');
+clearSearch.id = 'catalog-search-clear';
+clearSearch.setAttribute('aria-label', t('clearSearch'));
+clearSearch.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5 19 19M19 5 5 19"/></svg>';
+searchInput.after(clearSearch);
+function syncSearchClear() { clearSearch.hidden = !searchInput.value; }
+searchInput.addEventListener('input', syncSearchClear);
+syncSearchClear();
 category.addEventListener('change', applyCatalogFilters);
 byId('catalog-more').addEventListener('click', () => loadCatalog(false));
-byId('detail-close').addEventListener('click', () => dialog.close());
-dialog.addEventListener('close', () => { detailProduct = null; });
-byId('checkout-button').addEventListener('click', async () => {
-  if (!(await refreshCart())) return;
-  checkoutPage.setItems(resolvedCart);
-  location.hash = '#checkout';
+byId('catalog-page-retry').addEventListener('click', () => loadCatalog(false));
+if ('IntersectionObserver' in window) {
+  const moreObserver = new IntersectionObserver(([entry]) => {
+    if (entry.isIntersecting && !byId('catalog-view').hidden && !catalogLoading &&
+        nextOffset !== null && !catalogHasError()) loadCatalog(false);
+  }, { rootMargin: '0px 0px 500px 0px' });
+  moreObserver.observe(byId('catalog-more'));
+}
+byId('cart-retry').addEventListener('click', () => refreshCart());
+byId('checkout-button').addEventListener('click', () => beginCheckout(() => location.hash === '#cart'));
+byId('cart-select-all').addEventListener('change', (event) => {
+  for (const { productId } of resolvedCart) selection.set(productId, event.target.checked);
+  renderCart();
+});
+const accountMenu = byId('profile-menu');
+const accountButton = byId('profile-menu-button');
+function closeAccountMenu() { accountMenu.hidden = true; accountButton.setAttribute('aria-expanded', 'false'); }
+accountButton.addEventListener('click', () => {
+  accountMenu.hidden = !accountMenu.hidden;
+  accountButton.setAttribute('aria-expanded', String(!accountMenu.hidden));
+});
+document.addEventListener('click', (event) => { if (!event.target.closest('.shop-account')) closeAccountMenu(); });
+accountMenu.addEventListener('click', closeAccountMenu);
+document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !accountMenu.hidden) { closeAccountMenu(); accountButton.focus(); } });
+byId('settings-clear-history').addEventListener('click', () => {
+  const history = createContactHistory(); history.clear();
+  byId('settings-status').textContent = t(history.persistent ? 'historyCleared' : 'historyStorageUnavailable');
 });
 window.addEventListener('hashchange', showRoute);
 document.addEventListener('localechange', () => {
   translate(document);
+  byId('catalog-retry').textContent = t('retry');
   byId('catalog-search').placeholder = t('searchProducts');
+  clearSearch.setAttribute('aria-label', t('clearSearch'));
   renderCategories();
   renderCatalog();
   renderCart();
-  renderDetail();
+  if (readShopRoute(location.hash).page === 'product') detailPage.refreshLocale();
   byId('catalog-status').textContent = catalogStatus ? t(catalogStatus) : '';
+  byId('catalog-page-message').textContent = catalogPageStatus ? t(catalogPageStatus) : '';
   byId('cart-status').textContent = cartStatus ? t(cartStatus) : '';
   byId('shop-message').textContent = shopStatus ? t(shopStatus) : '';
   updateCount();
   updatePersistence();
   checkoutPage.refreshLocale();
+  profilePage.refreshLocale();
+  addressBook.refreshLocale();
   renderReceipt();
 });
+function measureActionbar() {
+  const bar = document.querySelector('section:not([hidden]) > .shop-actionbar, section:not([hidden]) > form > .shop-actionbar');
+  document.documentElement.style.setProperty('--shop-action-height', `${bar?.getBoundingClientRect().height || 0}px`);
+}
+const actionObserver = new ResizeObserver(measureActionbar);
+document.querySelectorAll('.shop-actionbar').forEach((bar) => actionObserver.observe(bar));
+
+async function goHome(event) {
+  event.preventDefault();
+  document.getElementById('catalog-search').value = '';
+  syncSearchClear();
+  category.value = ''; renderCategories();
+  catalogScroll = 0;
+  location.hash = '#catalog'; showRoute();
+  mobileNavigation.route(); window.scrollTo(0, 0);
+  const view = byId('catalog-view');
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) view.animate([{ opacity: 0.5 }, { opacity: 1 }], { duration: 180 });
+  await loadCatalog();
+}
+for (const link of document.querySelectorAll('.shop-topbar .brand, .shop-nav a[href="#catalog"], #mobile-navigation a[href="#catalog"]')) link.addEventListener('click', goHome);
+const retryCatalog = element('button', 'outline-button', t('retry'));
+retryCatalog.id = 'catalog-retry'; retryCatalog.hidden = true; byId('catalog-status').after(retryCatalog);
+retryCatalog.addEventListener('click', () => loadCatalog(retryCatalogReset));
+
+await loadCatalog();
 showRoute();
-loadCatalog();
+
+
+mountShopUpdates(() => ({ dirty: profilePage.isDirty() || addressBook.isDirty(), busy: cartWrites > 0 || checkoutPage.isBusy() }));
+finishBoot();
