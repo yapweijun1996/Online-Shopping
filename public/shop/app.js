@@ -722,7 +722,13 @@ checkoutPage = mountCheckout({
     location.hash = '#cart';
   },
 });
-detailPage = mountProductDetail(byId('product-view'), { api, addToCart, checkout: beginCheckout, shop: () => shopInfo, notify: setMessage });
+const productUpdateBanner = document.createElement('aside');
+productUpdateBanner.className = 'shop-update-banner product-update-banner';
+productUpdateBanner.hidden = true;
+detailPage = mountProductDetail(byId('product-view'), {
+  api, addToCart, checkout: beginCheckout, shop: () => shopInfo, notify: setMessage,
+  updateBanner: productUpdateBanner,
+});
 updateCount();
 updatePersistence();
 byId('catalog-search-form').addEventListener('submit', (event) => { event.preventDefault(); applyCatalogFilters(); });
@@ -819,5 +825,5 @@ await loadCatalog();
 showRoute();
 
 
-mountShopUpdates(() => ({ dirty: profilePage.isDirty() || addressBook.isDirty(), busy: cartWrites > 0 || checkoutPage.isBusy() }));
+mountShopUpdates(() => ({ dirty: profilePage.isDirty() || addressBook.isDirty(), busy: cartWrites > 0 || checkoutPage.isBusy() }), productUpdateBanner);
 finishBoot();

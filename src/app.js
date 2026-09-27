@@ -1,4 +1,4 @@
-import { DEMO_SELLER_WHATSAPP_PHONE, getShopSetup, setupShop } from './shop-setup.js';
+import { getShopSetup, setupShop } from './shop-setup.js';
 import { authenticate, cookieFor, createSession, deleteSession, readSession, sessionCookieFrom } from './auth.js';
 import { ready } from './db.js';
 import { ApiError, errorResponse, json, readJson, requireOrigin } from './http.js';
@@ -55,10 +55,11 @@ export function createApi({ store, config, serveStatic = null }) {
     }
     if (method === 'GET' && pathname === '/api/v1/shop') {
       const setup = getShopSetup(store);
+      const company = getCompanySettings(store);
       return json(200, {
         ...setup,
-        currency: getCompanySettings(store).defaultCurrency,
-        sellerWhatsAppPhone: setup.mode === 'demo' ? DEMO_SELLER_WHATSAPP_PHONE : null,
+        currency: company.defaultCurrency,
+        sellerWhatsAppPhone: setup.mode ? company.sellerWhatsAppPhone : null,
       });
     }
     if (method === 'GET' && pathname === '/api/v1/products') return json(200, listProducts(store, url.searchParams));

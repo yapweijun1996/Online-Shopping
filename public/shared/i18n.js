@@ -1167,6 +1167,16 @@ const settingsMessages = {
   ko: { configuration: '설정', categoryCodes: '카테고리 코드', companySettings: '회사 설정', categoryIntro: '상품 양식의 카테고리를 관리합니다. 코드는 고정되며 사용하지 않는 카테고리는 비활성화합니다.', categoryCode: '코드', categoryLabel: '표시 이름', addCategory: '카테고리 추가', saveCategory: '저장', categorySaved: '카테고리를 저장했습니다.', duplicateCategory: '코드 또는 이름이 이미 있습니다.', currencyIntro: '새 상품의 기본 통화를 선택합니다. 기존 상품 가격과 주문 통화는 유지됩니다.', defaultCurrency: '기본 통화', saveSettings: '설정 저장', settingsSaved: '설정을 저장했습니다.', price: '가격', currency: '통화', chooseCategory: '카테고리 선택', currentImage: '현재 이미지', newImage: '새 이미지 선택됨', imagePendingRemoval: '저장하면 이미지가 제거됩니다.', restoreImage: '제거 취소', mixedCurrencies: '장바구니에 MYR과 SGD 상품이 있습니다. 통화별로 따로 주문하세요.', removeImage: '이미지 제거' },
 };
 for (const { code } of languages) Object.assign(messages[code], settingsMessages[code]);
+const sellerContactMessages = {
+  en: { sellerWhatsAppPhone: 'Seller WhatsApp number', sellerWhatsAppHelp: 'The public product page uses this number for Chat. Enter a +60 or +65 number, or leave it blank to turn Chat off.', sellerWhatsAppInvalid: 'Enter a valid +60 or +65 phone number.' },
+  ms: { sellerWhatsAppPhone: 'Nombor WhatsApp penjual', sellerWhatsAppHelp: 'Halaman produk awam menggunakan nombor ini untuk Chat. Masukkan nombor +60 atau +65, atau biarkan kosong untuk mematikan Chat.', sellerWhatsAppInvalid: 'Masukkan nombor telefon +60 atau +65 yang sah.' },
+  'zh-Hans': { sellerWhatsAppPhone: '卖家 WhatsApp 号码', sellerWhatsAppHelp: '商品页的聊天按钮会使用并公开此号码。输入 +60 或 +65 号码；留空可关闭聊天。', sellerWhatsAppInvalid: '请输入有效的 +60 或 +65 电话号码。' },
+  vi: { sellerWhatsAppPhone: 'Số WhatsApp của người bán', sellerWhatsAppHelp: 'Trang sản phẩm công khai dùng số này cho Chat. Nhập số +60 hoặc +65, hoặc để trống để tắt Chat.', sellerWhatsAppInvalid: 'Nhập số điện thoại +60 hoặc +65 hợp lệ.' },
+  th: { sellerWhatsAppPhone: 'หมายเลข WhatsApp ของผู้ขาย', sellerWhatsAppHelp: 'หน้าสินค้าสาธารณะใช้หมายเลขนี้สำหรับแชท ใส่หมายเลข +60 หรือ +65 หรือเว้นว่างเพื่อปิดแชท', sellerWhatsAppInvalid: 'กรอกหมายเลขโทรศัพท์ +60 หรือ +65 ที่ถูกต้อง' },
+  ja: { sellerWhatsAppPhone: '販売者の WhatsApp 番号', sellerWhatsAppHelp: '商品ページのチャットにはこの公開番号を使います。+60 または +65 の番号を入力し、チャットを無効にする場合は空欄にしてください。', sellerWhatsAppInvalid: '有効な +60 または +65 の電話番号を入力してください。' },
+  ko: { sellerWhatsAppPhone: '판매자 WhatsApp 번호', sellerWhatsAppHelp: '공개 상품 페이지의 채팅에 이 번호가 사용됩니다. +60 또는 +65 번호를 입력하거나 비워 두면 채팅이 꺼집니다.', sellerWhatsAppInvalid: '유효한 +60 또는 +65 전화번호를 입력하세요.' },
+};
+for (const { code } of languages) Object.assign(messages[code], sellerContactMessages[code]);
 const categoryAvailability = {
   en: 'Available for new products', ms: 'Tersedia untuk produk baharu', 'zh-Hans': '可供新商品使用',
   vi: 'Dùng cho sản phẩm mới', th: 'ใช้กับสินค้าใหม่', ja: '新商品で使用可能', ko: '새 상품에 사용 가능',

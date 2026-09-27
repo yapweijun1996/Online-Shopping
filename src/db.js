@@ -1,6 +1,7 @@
 import { openNodeStore } from './store.js';
+import { DEMO_SELLER_WHATSAPP_PHONE } from './demo-defaults.js';
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -237,6 +238,15 @@ export function migrateStore(store) {
       ) STRICT;
       CREATE INDEX product_gallery_product ON product_gallery_image(product_id, position);`);
     version = 8;
+  }
+  if (version === 8) {
+    migrate(store, 9, `
+      ALTER TABLE company_setting ADD COLUMN seller_whatsapp_phone TEXT
+        CHECK (seller_whatsapp_phone IS NULL OR
+          (length(seller_whatsapp_phone) BETWEEN 8 AND 15 AND seller_whatsapp_phone NOT GLOB '*[^0-9]*'));
+      UPDATE company_setting SET seller_whatsapp_phone = '${DEMO_SELLER_WHATSAPP_PHONE}'
+        WHERE id = 1 AND EXISTS (SELECT 1 FROM shop_setup WHERE mode = 'demo');`);
+    version = 9;
   }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }

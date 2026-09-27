@@ -7,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { SCHEMA_VERSION } from '../src/db.js';
 import { createApp } from '../src/server.js';
 import { createCategory } from '../src/settings.js';
+import { setupShop } from '../src/shop-setup.js';
 
 const username = 'product_owner';
 const password = 'LocalProductPass123!';
@@ -184,9 +185,10 @@ test('seller-managed gallery is bounded, private while inactive, and removable',
   } finally { await f.close(); }
 });
 
-test('seller manages category codes and default currency without rewriting existing products', async () => {
+test('seller manages category codes, currency and public chat without rewriting existing products', async () => {
   const f = await fixture();
   try {
+    setupShop(f.app.database, { mode: 'production', shopName: 'Example shop' });
     assert.equal((await f.request('GET', '/api/v1/seller/categories')).response.status, 401);
     const { cookie, csrf } = await f.login();
     const headers = { cookie, 'x-csrf-token': csrf };
@@ -195,9 +197,21 @@ test('seller manages category codes and default currency without rewriting exist
     assert.equal(category.response.status, 201);
     assert.equal((await f.request('POST', '/api/v1/seller/categories', { code: 'WORK', label: 'Work' }, headers)).response.status, 409);
     assert.equal((await f.request('GET', '/api/v1/seller/company-settings', null, { cookie })).data.defaultCurrency, 'MYR');
+    assert.equal((await f.request('GET', '/api/v1/shop')).data.sellerWhatsAppPhone, null);
     const settings = await f.request('PATCH', '/api/v1/seller/company-settings', { defaultCurrency: 'SGD' }, headers);
     assert.equal(settings.data.defaultCurrency, 'SGD');
+    assert.equal(settings.data.sellerWhatsAppPhone, null);
     assert.equal((await f.request('GET', '/api/v1/shop')).data.currency, 'SGD');
+    const contact = await f.request('PATCH', '/api/v1/seller/company-settings', { sellerWhatsAppPhone: '+60182727900' }, headers);
+    assert.equal(contact.data.sellerWhatsAppPhone, '60182727900');
+    assert.equal(contact.data.defaultCurrency, 'SGD');
+    assert.equal((await f.request('GET', '/api/v1/shop')).data.sellerWhatsAppPhone, '60182727900');
+    const invalidContact = await f.request('PATCH', '/api/v1/seller/company-settings', { sellerWhatsAppPhone: '+60123' }, headers);
+    assert.equal(invalidContact.response.status, 400);
+    assert.equal(invalidContact.data.error.field, 'sellerWhatsAppPhone');
+    assert.equal((await f.request('GET', '/api/v1/shop')).data.sellerWhatsAppPhone, '60182727900');
+    assert.equal((await f.request('PATCH', '/api/v1/seller/company-settings', { sellerWhatsAppPhone: '' }, headers)).data.sellerWhatsAppPhone, null);
+    assert.equal((await f.request('GET', '/api/v1/shop')).data.sellerWhatsAppPhone, null);
     const myr = await f.request('POST', '/api/v1/seller/products', draft, headers);
     const sgd = await f.request('POST', '/api/v1/seller/products', { ...draft, sku: 'item-sgd', category: 'WORK', currency: 'SGD' }, headers);
     assert.equal(myr.response.status, 201);

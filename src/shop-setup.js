@@ -3,8 +3,7 @@ import { ApiError } from './http.js';
 import { createProduct } from './products.js';
 import { createCategory } from './settings.js';
 import { boundedText, FieldError } from './validation.js';
-
-export const DEMO_SELLER_WHATSAPP_PHONE = '60182727900';
+import { DEMO_SELLER_WHATSAPP_PHONE } from './demo-defaults.js';
 
 const categories = {
   LITTER_BOXES: 'Automatic Litter Boxes', CAT_LITTER: 'Cat Litter',
@@ -37,7 +36,8 @@ export function setupShop(store, input) {
       }
       for (const [code, label] of Object.entries(categories)) createCategory(store, { code, label });
       for (const product of catalog) createProduct(store, product);
-      store.run("UPDATE company_setting SET default_currency = 'MYR', updated_at = ? WHERE id = 1", new Date().toISOString());
+      store.run("UPDATE company_setting SET default_currency = 'MYR', seller_whatsapp_phone = ?, updated_at = ? WHERE id = 1",
+        DEMO_SELLER_WHATSAPP_PHONE, new Date().toISOString());
     }
     store.run('UPDATE shop_setup SET mode = ?, shop_name = ? WHERE id = 1', input.mode, shopName);
     return getShopSetup(store);

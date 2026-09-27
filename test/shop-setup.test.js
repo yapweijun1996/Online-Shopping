@@ -24,10 +24,13 @@ test('demo seeds all 35 images and prices once, preserving subsequent edits', (t
   assert.equal(products.find((p) => p.sku === 'PET-DEMO-001').priceMinor, 3690);
   assert.equal(products.find((p) => p.sku === 'PET-DEMO-010').priceMinor, 186900);
   assert.equal(store.get('SELECT COUNT(*) AS n FROM general_code').n, 5);
+  assert.equal(store.get('SELECT seller_whatsapp_phone FROM company_setting').seller_whatsapp_phone, '60182727900');
   store.run("UPDATE product SET name = 'Seller edit', active = 0 WHERE sku = 'PET-DEMO-001'");
+  store.run('UPDATE company_setting SET seller_whatsapp_phone = NULL WHERE id = 1');
   setupShop(store, { mode: 'demo' });
   assert.equal(store.get("SELECT name FROM product WHERE sku = 'PET-DEMO-001'").name, 'Seller edit');
   assert.equal(store.get('SELECT COUNT(*) AS n FROM product').n, 35);
+  assert.equal(store.get('SELECT seller_whatsapp_phone FROM company_setting').seller_whatsapp_phone, null);
   assert.throws(() => setupShop(store, { mode: 'production', shopName: 'Live' }), { code: 'SHOP_ALREADY_CONFIGURED' });
 });
 
@@ -66,11 +69,25 @@ test('existing version 6 catalogs migrate to production without altering product
   store.exec(`DROP TABLE product_gallery_image;
     DROP INDEX product_variant_option; DROP INDEX product_variant_group;
     ALTER TABLE product DROP COLUMN variant_group; ALTER TABLE product DROP COLUMN variant_label;
+    ALTER TABLE company_setting DROP COLUMN seller_whatsapp_phone;
     DROP TABLE shop_setup`);
   store.setSchemaVersion(6);
   migrateStore(store);
   assert.equal(getShopSetup(store).mode, 'production');
   assert.equal(store.get('SELECT COUNT(*) AS n FROM product').n, 35);
+  assert.equal(store.get('SELECT seller_whatsapp_phone FROM company_setting').seller_whatsapp_phone, null);
+});
+
+test('version 8 Demo migration seeds contact once, then preserves seller changes', (t) => {
+  const store = fixture(t);
+  setupShop(store, { mode: 'demo' });
+  store.exec('ALTER TABLE company_setting DROP COLUMN seller_whatsapp_phone');
+  store.setSchemaVersion(8);
+  migrateStore(store);
+  assert.equal(store.get('SELECT seller_whatsapp_phone FROM company_setting').seller_whatsapp_phone, '60182727900');
+  store.run('UPDATE company_setting SET seller_whatsapp_phone = NULL WHERE id = 1');
+  migrateStore(store);
+  assert.equal(store.get('SELECT seller_whatsapp_phone FROM company_setting').seller_whatsapp_phone, null);
 });
 
 test('setup API enforces session, origin and CSRF; public catalog exposes demo images', async (t) => {

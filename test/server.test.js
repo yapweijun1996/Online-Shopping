@@ -187,6 +187,9 @@ test('public shell is served without exposing private files', async () => {
     assert.equal((await fetch(`${f.origin}/src/server.js`)).status, 404);
     assert.equal((await fetch(`${f.origin}/.env`)).status, 404);
     assert.equal((await fetch(`${f.origin}/shared/i18n.js`)).status, 200);
+    const sellerArtwork = await fetch(`${f.origin}/seller/assets/login-workspace.webp`);
+    assert.equal(sellerArtwork.status, 200);
+    assert.equal(sellerArtwork.headers.get('content-type'), 'image/webp');
   } finally {
     await f.close();
   }

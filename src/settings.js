@@ -1,5 +1,6 @@
 import { ApiError } from './http.js';
 import { FieldError, boundedText } from './validation.js';
+import { normalizeContactPhone } from './phone.js';
 
 const categoryType = 'PRODUCT_CATEGORY';
 
@@ -67,16 +68,30 @@ export function updateCategory(database, code, input) {
 }
 
 export function getCompanySettings(database) {
-  const row = database.get('SELECT default_currency FROM company_setting WHERE id = 1');
-  return { defaultCurrency: row.default_currency };
+  const row = database.get('SELECT default_currency, seller_whatsapp_phone FROM company_setting WHERE id = 1');
+  return { defaultCurrency: row.default_currency, sellerWhatsAppPhone: row.seller_whatsapp_phone };
 }
 
 export function updateCompanySettings(database, input) {
   if (!input || typeof input !== 'object' || Array.isArray(input) ||
-      Object.keys(input).length !== 1 || !Object.hasOwn(input, 'defaultCurrency') ||
-      !['MYR', 'SGD'].includes(input.defaultCurrency)) {
-    throw new FieldError('defaultCurrency', 'Choose MYR or SGD.');
+      !Object.keys(input).length ||
+      Object.keys(input).some((key) => !['defaultCurrency', 'sellerWhatsAppPhone'].includes(key))) {
+    throw new FieldError('companySettings', 'Enter supported company settings.');
   }
-  database.run('UPDATE company_setting SET default_currency = ?, updated_at = ? WHERE id = 1', input.defaultCurrency, new Date().toISOString());
+  const current = getCompanySettings(database);
+  const currency = Object.hasOwn(input, 'defaultCurrency') ? input.defaultCurrency : current.defaultCurrency;
+  if (!['MYR', 'SGD'].includes(currency)) throw new FieldError('defaultCurrency', 'Choose MYR or SGD.');
+  let phone = current.sellerWhatsAppPhone;
+  if (Object.hasOwn(input, 'sellerWhatsAppPhone')) {
+    if (input.sellerWhatsAppPhone === null || input.sellerWhatsAppPhone === '') phone = null;
+    else {
+      try {
+        const value = input.sellerWhatsAppPhone;
+        phone = normalizeContactPhone(typeof value === 'string' && /^\d+$/.test(value) ? `+${value}` : value).slice(1);
+      } catch { throw new FieldError('sellerWhatsAppPhone', 'Enter a valid +60 or +65 mobile number.'); }
+    }
+  }
+  database.run('UPDATE company_setting SET default_currency = ?, seller_whatsapp_phone = ?, updated_at = ? WHERE id = 1',
+    currency, phone, new Date().toISOString());
   return getCompanySettings(database);
 }

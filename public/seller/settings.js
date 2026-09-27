@@ -104,6 +104,9 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
     <p data-i18n="currencyIntro">Choose the default currency for new products. Existing product prices and orders keep their own currency.</p>
     <form id="company-form" class="settings-form">
       <label><span data-i18n="defaultCurrency">Default currency</span><select name="defaultCurrency"><option value="MYR">MYR</option><option value="SGD">SGD</option></select></label>
+      <label><span data-i18n="sellerWhatsAppPhone">Seller WhatsApp number</span><input name="sellerWhatsAppPhone" type="tel" inputmode="tel" autocomplete="tel" maxlength="32" placeholder="+60182727900" aria-describedby="seller-whatsapp-help"></label>
+      <p id="seller-whatsapp-help" data-i18n="sellerWhatsAppHelp">The public product page uses this number for Chat. Enter a +60 or +65 number, or leave it blank to turn Chat off.</p>
+      <button class="secondary-button" type="button" id="company-retry" data-i18n="retry" hidden>Retry</button>
       <button class="primary-button" type="submit" data-i18n="saveSettings">Save settings</button>
     </form><p class="settings-status" role="status"></p>
   </section>`;
@@ -152,16 +155,45 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
   });
   translate(root);
   const form = root.querySelector('#company-form');
-  request('GET', '/api/v1/seller/company-settings', null, csrfToken, onUnauthorized)
-    .then((settings) => { if (root.isConnected) form.elements.defaultCurrency.value = settings.defaultCurrency; })
-    .catch(() => { if (root.isConnected) status(root, 'networkError', true); });
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault(); const button = form.querySelector('button'); button.disabled = true;
+  const saveButton = form.querySelector('[type="submit"]');
+  const retryButton = form.querySelector('#company-retry');
+  saveButton.disabled = true;
+  let currencyEdited = false;
+  let phoneEdited = false;
+  form.elements.defaultCurrency.addEventListener('change', () => { currencyEdited = true; });
+  form.elements.sellerWhatsAppPhone.addEventListener('input', () => { phoneEdited = true; });
+  async function loadSettings() {
+    retryButton.disabled = true;
     try {
-      await request('PATCH', '/api/v1/seller/company-settings', { defaultCurrency: form.elements.defaultCurrency.value }, csrfToken, onUnauthorized);
+      const settings = await request('GET', '/api/v1/seller/company-settings', null, csrfToken, onUnauthorized);
+      if (!root.isConnected) return;
+      if (!currencyEdited) form.elements.defaultCurrency.value = settings.defaultCurrency;
+      if (!phoneEdited) form.elements.sellerWhatsAppPhone.value = settings.sellerWhatsAppPhone ? `+${settings.sellerWhatsAppPhone}` : '';
+      saveButton.disabled = false;
+      retryButton.hidden = true;
+      status(root, '');
+    } catch {
+      if (root.isConnected) { retryButton.hidden = false; status(root, 'networkError', true); }
+    } finally { retryButton.disabled = false; }
+  }
+  retryButton.addEventListener('click', loadSettings);
+  loadSettings();
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault(); saveButton.disabled = true;
+    for (const input of form.querySelectorAll('input, select')) input.disabled = true;
+    try {
+      const settings = await request('PATCH', '/api/v1/seller/company-settings', {
+        defaultCurrency: form.elements.defaultCurrency.value,
+        sellerWhatsAppPhone: form.elements.sellerWhatsAppPhone.value.trim(),
+      }, csrfToken, onUnauthorized);
+      form.elements.sellerWhatsAppPhone.value = settings.sellerWhatsAppPhone ? `+${settings.sellerWhatsAppPhone}` : '';
+      currencyEdited = phoneEdited = false;
       status(root, 'settingsSaved');
-    } catch { status(root, 'productError', true); }
-    finally { button.disabled = false; }
+    } catch (error) { status(root, error.field === 'sellerWhatsAppPhone' ? 'sellerWhatsAppInvalid' : 'productError', true); }
+    finally {
+      for (const input of form.querySelectorAll('input, select')) input.disabled = false;
+      saveButton.disabled = false;
+    }
   });
   return { refreshLocale() {
     translate(root);

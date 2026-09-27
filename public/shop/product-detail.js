@@ -26,7 +26,7 @@ function image(product, className, source = product.imageUrl) {
   return element;
 }
 
-export function mountProductDetail(root, { api, addToCart, checkout, shop, notify }) {
+export function mountProductDetail(root, { api, addToCart, checkout, shop, notify, updateBanner }) {
   let request = 0;
   let product = null;
   let related = [];
@@ -379,6 +379,7 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
       section.append(node('h2', '', t(heading)), node('p', '', t(copy)));
       serviceDetails.append(section);
     }
+    if (updateBanner) summary.append(updateBanner);
     summary.append(headingBlock, selectionBlock, serviceDetails);
     layout.append(gallery, summary);
     if (shop()?.mode === 'demo') {
