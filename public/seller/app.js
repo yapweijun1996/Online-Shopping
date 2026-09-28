@@ -22,6 +22,12 @@ let ordersPage = null;
 let settingsPage = null;
 let loginMessageKey = '';
 let workspaceMessageKey = '';
+let dashboardRequest = 0;
+let updateState = null;
+let updateActions = null;
+let updateDismissed = false;
+let updateView = null;
+let updateIdentity = '';
 const sessionHintKey = 'online-shopping-seller-session-hint';
 const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'review', 'categories', 'company']);
 
@@ -35,6 +41,23 @@ function applyRoute() {
   renderView();
 }
 
+function activePage() {
+  return currentView === 'products' ? productsPage : currentView === 'categories' || currentView === 'company' ? settingsPage : null;
+}
+
+function hasUnsavedChanges() { return activePage()?.hasUnsavedChanges?.() === true; }
+function confirmLeave() { return !hasUnsavedChanges() || window.confirm(t('unsavedChangesConfirm')); }
+
+function navigate(view) {
+  if (view === currentView) { focusRouteChange(); return true; }
+  if (!confirmLeave()) return false;
+  currentView = view;
+  location.hash = view;
+  renderView();
+  focusRouteChange();
+  return true;
+}
+
 function sessionHint(value) {
   try {
     if (value === undefined) return localStorage.getItem(sessionHintKey) === '1';
@@ -45,7 +68,31 @@ function sessionHint(value) {
 
 setupLanguageMenu(byId('language'));
 document.title = `${t('sellerPortal')} · Online Shopping`;
-registerWorker('/seller/sw.js', '/seller/').catch(() => console.warn('Seller offline shell unavailable.'));
+registerWorker('/seller/sw.js', '/seller/', {
+  onState(state, actions) {
+    const identity = state.ready ? state.available || 'ready' : '';
+    if (identity && identity !== updateIdentity) updateDismissed = false;
+    updateIdentity = identity;
+    updateState = state;
+    updateActions = actions;
+    renderUpdateUI();
+  },
+}).catch(() => {
+  updateState = { statusKey: 'updateFailed' };
+  renderUpdateUI();
+});
+
+function renderUpdateUI() {
+  const check = byId('check-updates-button');
+  const notice = byId('seller-update-notice');
+  const applying = updateState?.applying === true;
+  check.disabled = !updateActions || updateState?.checking === true || applying;
+  byId('check-updates-status').textContent = updateState?.statusKey ? t(updateState.statusKey) : '';
+  notice.hidden = !updateState?.ready || updateDismissed;
+  byId('seller-update-detail').textContent = t(applying ? 'appUpdating' : 'updateReadyDetail');
+  byId('install-update-button').disabled = applying;
+  byId('later-update-button').disabled = applying;
+}
 
 function setLoginMessage(key) {
   loginMessageKey = key;
@@ -108,6 +155,11 @@ function showWorkspace(session) {
 }
 
 function renderView() {
+  if (updateView !== currentView) {
+    updateView = currentView;
+    updateDismissed = false;
+    renderUpdateUI();
+  }
   document.querySelectorAll('.nav-item').forEach((button) => {
     const active = button.dataset.view === currentView;
     button.classList.toggle('active', active);
@@ -147,18 +199,64 @@ function renderView() {
     settingsPage = mountCompanySettings(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError') });
     return;
   }
-  content.replaceChildren();
-  const p = document.createElement('p');
-  p.dataset.i18n = 'setupIntro';
-  p.textContent = t(p.dataset.i18n);
-  content.append(p);
-  const setupButton = document.createElement('button');
-  setupButton.type = 'button';
-  setupButton.className = 'primary-button';
-  setupButton.dataset.i18n = 'shopSetup';
-  setupButton.textContent = t('shopSetup');
-  setupButton.addEventListener('click', () => { location.hash = 'company'; });
-  content.append(setupButton);
+  renderDashboard(content);
+}
+
+async function renderDashboard(content) {
+  const request = ++dashboardRequest;
+  const card = document.createElement('section');
+  card.className = 'settings-card dashboard-card';
+  card.textContent = t('loading');
+  content.replaceChildren(card);
+  try {
+    const response = await fetch('/api/v1/seller/setup');
+    if (response.status === 401) { showLogin('authError'); return; }
+    if (!response.ok) throw new Error('setup failed');
+    const setup = await response.json();
+    if (request !== dashboardRequest || currentView !== 'dashboard' || workspace.hidden) return;
+    card.replaceChildren();
+    const heading = document.createElement('h2');
+    const description = document.createElement('p');
+    const actions = document.createElement('div');
+    actions.className = 'dashboard-actions';
+    if (setup.mode) {
+      heading.textContent = setup.shopName;
+      description.dataset.i18n = setup.mode === 'demo' ? 'demoMode' : 'productionMode';
+      description.textContent = t(description.dataset.i18n);
+      for (const [view, key] of [['products', 'products'], ['orders', 'salesOrders'], ['company', 'companySettings']]) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = view === 'orders' ? 'primary-button' : 'secondary-button';
+        button.dataset.i18n = key;
+        button.textContent = t(key);
+        button.addEventListener('click', () => navigate(view));
+        actions.append(button);
+      }
+    } else {
+      heading.dataset.i18n = 'shopSetup';
+      heading.textContent = t('shopSetup');
+      description.dataset.i18n = 'setupIntro';
+      description.textContent = t('setupIntro');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'primary-button';
+      button.dataset.i18n = 'shopSetup';
+      button.textContent = t('shopSetup');
+      button.addEventListener('click', () => navigate('company'));
+      actions.append(button);
+    }
+    card.append(heading, description, actions);
+  } catch {
+    if (request !== dashboardRequest || currentView !== 'dashboard' || workspace.hidden) return;
+    const message = document.createElement('p');
+    message.textContent = t('networkError');
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'secondary-button';
+    retry.textContent = t('retry');
+    retry.addEventListener('click', () => renderDashboard(content));
+    card.replaceChildren(message, retry);
+  }
 }
 
 function closeDrawer(restoreFocus = true) {
@@ -208,18 +306,21 @@ function focusRouteChange() {
 }
 window.addEventListener('hashchange', () => {
   if (workspace.hidden) return;
+  if (viewFromHash() === currentView) return;
+  if (!confirmLeave()) {
+    history.replaceState(history.state, '', `#${currentView}`);
+    return;
+  }
   applyRoute();
   focusRouteChange();
 });
+window.addEventListener('beforeunload', (event) => {
+  if (!hasUnsavedChanges()) return;
+  event.preventDefault();
+  event.returnValue = '';
+});
 document.querySelectorAll('.nav-item').forEach((button) => button.addEventListener('click', () => {
-  const view = button.dataset.view;
-  closeDrawer(false);
-  if (location.hash === `#${view}`) {
-    applyRoute();
-    focusRouteChange();
-  } else {
-    location.hash = `#${view}`;
-  }
+  if (navigate(button.dataset.view)) closeDrawer(false);
 }));
 accountButton.addEventListener('click', () => {
   accountMenu.hidden = !accountMenu.hidden;
@@ -234,9 +335,21 @@ byId('profile-button').addEventListener('click', () => {
   byId('profile-role').textContent = role === 'SUPER_ADMIN' ? t('superAdmin') : role;
   byId('profile-dialog').showModal();
 });
+byId('check-updates-button').addEventListener('click', () => {
+  updateDismissed = false;
+  renderUpdateUI();
+  updateActions?.check();
+});
+byId('install-update-button').addEventListener('click', () => updateActions?.update());
+byId('later-update-button').addEventListener('click', () => {
+  updateDismissed = true;
+  renderUpdateUI();
+  byId('page-title').focus({ preventScroll: true });
+});
 byId('close-profile').addEventListener('click', () => byId('profile-dialog').close());
 byId('profile-dialog').addEventListener('close', () => accountButton.focus());
 byId('sign-out-button').addEventListener('click', async () => {
+  if (!confirmLeave()) return;
   closeAccount();
   try {
     const response = await fetch('/api/v1/seller/session', { method: 'DELETE', headers: { 'X-CSRF-Token': csrfToken } });
@@ -283,6 +396,7 @@ document.addEventListener('localechange', () => {
   document.title = `${t('sellerPortal')} · Online Shopping`;
   setLoginMessage(loginMessageKey);
   setWorkspaceMessage(workspaceMessageKey);
+  renderUpdateUI();
   if (byId('profile-dialog').open) byId('profile-role').textContent = role === 'SUPER_ADMIN' ? t('superAdmin') : role;
 });
 

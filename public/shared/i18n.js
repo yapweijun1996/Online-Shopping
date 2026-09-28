@@ -1167,6 +1167,46 @@ const settingsMessages = {
   ko: { configuration: '설정', categoryCodes: '카테고리 코드', companySettings: '회사 설정', categoryIntro: '상품 양식의 카테고리를 관리합니다. 코드는 고정되며 사용하지 않는 카테고리는 비활성화합니다.', categoryCode: '코드', categoryLabel: '표시 이름', addCategory: '카테고리 추가', saveCategory: '저장', categorySaved: '카테고리를 저장했습니다.', duplicateCategory: '코드 또는 이름이 이미 있습니다.', currencyIntro: '새 상품의 기본 통화를 선택합니다. 기존 상품 가격과 주문 통화는 유지됩니다.', defaultCurrency: '기본 통화', saveSettings: '설정 저장', settingsSaved: '설정을 저장했습니다.', price: '가격', currency: '통화', chooseCategory: '카테고리 선택', currentImage: '현재 이미지', newImage: '새 이미지 선택됨', imagePendingRemoval: '저장하면 이미지가 제거됩니다.', restoreImage: '제거 취소', mixedCurrencies: '장바구니에 MYR과 SGD 상품이 있습니다. 통화별로 따로 주문하세요.', removeImage: '이미지 제거' },
 };
 for (const { code } of languages) Object.assign(messages[code], settingsMessages[code]);
+const unsavedChangesConfirm = {
+  en: 'Leave this page? Unsaved changes will be lost.',
+  ms: 'Tinggalkan halaman ini? Perubahan yang belum disimpan akan hilang.',
+  'zh-Hans': '离开此页面？未保存的更改将会丢失。',
+  vi: 'Rời trang này? Các thay đổi chưa lưu sẽ bị mất.',
+  th: 'ออกจากหน้านี้หรือไม่ การเปลี่ยนแปลงที่ยังไม่บันทึกจะสูญหาย',
+  ja: 'このページを離れますか？保存していない変更は失われます。',
+  ko: '이 페이지를 떠나시겠습니까? 저장하지 않은 변경 사항이 사라집니다.',
+};
+for (const { code } of languages) messages[code].unsavedChangesConfirm = unsavedChangesConfirm[code];
+const sellerFollowUpMessages = {
+  en: { shopConfigured: 'Shop configured', orderSimulationNotice: 'Simulated order. No contact, payment, or delivery will take place.', demoContactUnavailable: 'Not available in Demo' },
+  ms: { shopConfigured: 'Kedai telah disediakan', orderSimulationNotice: 'Pesanan simulasi. Tiada hubungan, bayaran atau penghantaran akan dibuat.', demoContactUnavailable: 'Tidak tersedia dalam Demo' },
+  'zh-Hans': { shopConfigured: '店铺已设置', orderSimulationNotice: '这是模拟订单，不会联系顾客、付款或配送。', demoContactUnavailable: 'Demo 中不可用' },
+  vi: { shopConfigured: 'Cửa hàng đã được thiết lập', orderSimulationNotice: 'Đơn hàng mô phỏng. Sẽ không liên hệ, thanh toán hoặc giao hàng.', demoContactUnavailable: 'Không có trong Demo' },
+  th: { shopConfigured: 'ตั้งค่าร้านค้าแล้ว', orderSimulationNotice: 'คำสั่งซื้อจำลอง จะไม่มีการติดต่อ ชำระเงิน หรือจัดส่ง', demoContactUnavailable: 'ไม่มีใน Demo' },
+  ja: { shopConfigured: 'ショップは設定済みです', orderSimulationNotice: 'これは模擬注文です。連絡・決済・配送は行われません。', demoContactUnavailable: 'Demo では利用できません' },
+  ko: { shopConfigured: '상점 설정 완료', orderSimulationNotice: '모의 주문입니다. 연락, 결제 또는 배송이 진행되지 않습니다.', demoContactUnavailable: 'Demo에서 사용할 수 없음' },
+};
+for (const { code } of languages) Object.assign(messages[code], sellerFollowUpMessages[code]);
+const sellerLayoutMessages = {
+  en: { searchNameOrSku: 'Search products by name or SKU', searchNameOrSkuHint: 'Name or SKU', undoChange: 'Undo', productActivatedInline: 'Activated', productDeactivatedInline: 'Deactivated', productUndoRestored: 'Availability restored.', productUndoUnavailable: 'Availability changed again. Review the latest product status.', updateReadyDetail: 'A new version is available.', installUpdate: 'Install update', later: 'Later' },
+  ms: { searchNameOrSku: 'Cari produk mengikut nama atau SKU', searchNameOrSkuHint: 'Nama atau SKU', undoChange: 'Buat asal', productActivatedInline: 'Diaktifkan', productDeactivatedInline: 'Dinyahaktifkan', productUndoRestored: 'Ketersediaan dipulihkan.', productUndoUnavailable: 'Ketersediaan telah berubah lagi. Semak status produk terkini.', updateReadyDetail: 'Versi baharu tersedia.', installUpdate: 'Pasang kemas kini', later: 'Nanti' },
+  'zh-Hans': { searchNameOrSku: '按名称或 SKU 搜索商品', searchNameOrSkuHint: '名称或 SKU', undoChange: '撤销', productActivatedInline: '已上架', productDeactivatedInline: '已下架', productUndoRestored: '商品状态已恢复。', productUndoUnavailable: '商品状态再次变化，请检查最新状态。', updateReadyDetail: '有新版本可用。', installUpdate: '安装更新', later: '稍后' },
+  vi: { searchNameOrSku: 'Tìm sản phẩm theo tên hoặc SKU', searchNameOrSkuHint: 'Tên hoặc SKU', undoChange: 'Hoàn tác', productActivatedInline: 'Đã kích hoạt', productDeactivatedInline: 'Đã ngừng', productUndoRestored: 'Đã khôi phục trạng thái bán.', productUndoUnavailable: 'Trạng thái bán đã thay đổi lần nữa. Hãy kiểm tra trạng thái mới nhất.', updateReadyDetail: 'Đã có phiên bản mới.', installUpdate: 'Cài bản cập nhật', later: 'Để sau' },
+  th: { searchNameOrSku: 'ค้นหาสินค้าด้วยชื่อหรือ SKU', searchNameOrSkuHint: 'ชื่อหรือ SKU', undoChange: 'เลิกทำ', productActivatedInline: 'เปิดใช้งานแล้ว', productDeactivatedInline: 'ปิดใช้งานแล้ว', productUndoRestored: 'คืนสถานะสินค้าแล้ว', productUndoUnavailable: 'สถานะสินค้าเปลี่ยนอีกครั้ง โปรดตรวจสอบสถานะล่าสุด', updateReadyDetail: 'มีเวอร์ชันใหม่แล้ว', installUpdate: 'ติดตั้งอัปเดต', later: 'ภายหลัง' },
+  ja: { searchNameOrSku: '名前または SKU で商品を検索', searchNameOrSkuHint: '名前または SKU', undoChange: '元に戻す', productActivatedInline: '有効にしました', productDeactivatedInline: '無効にしました', productUndoRestored: '公開状態を元に戻しました。', productUndoUnavailable: '公開状態が再度変更されました。最新の状態を確認してください。', updateReadyDetail: '新しいバージョンを利用できます。', installUpdate: '更新をインストール', later: '後で' },
+  ko: { searchNameOrSku: '이름 또는 SKU로 상품 검색', searchNameOrSkuHint: '이름 또는 SKU', undoChange: '실행 취소', productActivatedInline: '활성화됨', productDeactivatedInline: '비활성화됨', productUndoRestored: '상품 상태를 복원했습니다.', productUndoUnavailable: '상품 상태가 다시 변경되었습니다. 최신 상태를 확인하세요.', updateReadyDetail: '새 버전을 사용할 수 있습니다.', installUpdate: '업데이트 설치', later: '나중에' },
+};
+for (const { code } of languages) Object.assign(messages[code], sellerLayoutMessages[code]);
+const sellerImageRemovalMessages = {
+  en: 'Remove all gallery photos before removing the main image. Then save the product again.',
+  ms: 'Buang semua foto galeri sebelum membuang imej utama. Kemudian simpan produk semula.',
+  'zh-Hans': '请先移除图库中的所有图片，再移除主图，然后重新保存商品。',
+  vi: 'Xóa tất cả ảnh trong thư viện trước khi xóa ảnh chính. Sau đó lưu lại sản phẩm.',
+  th: 'ลบรูปในแกลเลอรีทั้งหมดก่อนลบรูปหลัก จากนั้นบันทึกสินค้าอีกครั้ง',
+  ja: 'メイン画像を削除する前に、ギャラリーの画像をすべて削除してください。その後、商品を再度保存してください。',
+  ko: '대표 이미지를 삭제하기 전에 갤러리 사진을 모두 삭제하세요. 그런 다음 상품을 다시 저장하세요.',
+};
+for (const { code } of languages) messages[code].removeGalleryFirst = sellerImageRemovalMessages[code];
 const mobileBarsMessages = {
   en: { mobileHideBarsOnScroll: 'Hide mobile navigation bars while scrolling down', mobileHideBarsHelp: "By default, the shop's top search bar and bottom navigation stay visible. Turn this on to hide them when shoppers scroll down and show them when they scroll up." },
   ms: { mobileHideBarsOnScroll: 'Sembunyikan bar navigasi mudah alih semasa menatal ke bawah', mobileHideBarsHelp: 'Secara lalai, bar carian atas dan navigasi bawah sentiasa kelihatan. Aktifkan untuk menyembunyikannya semasa pelanggan menatal ke bawah dan memaparkannya semula apabila menatal ke atas.' },

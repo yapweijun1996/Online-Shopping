@@ -182,6 +182,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
     const head = node('div', 'order-detail-head');
     head.append(node('strong', 'order-number', order.orderNo), node('span', `order-chip ${order.status.toLowerCase()}`, t(statusKey(order.status))));
     fragment.append(head);
+    if (order.simulation) fragment.append(node('p', 'order-simulation-notice', t('orderSimulationNotice')));
     fragment.append(detailGroup('orderSummary', [
       detailField('orderTotal', formatMoney(order.totalMinor, order.currency), false),
       detailField('submittedAt', formatDate(order.submittedAt), false),
@@ -190,13 +191,12 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
     ]));
 
     const buyer = detailGroup('buyerDetails', [
-      detailField('fullName', order.buyer.fullName),
-      detailField('buyerWhatsApp', order.buyer.whatsappPhone),
-      detailField('emailLabel', order.buyer.email),
+      detailField('fullName', order.buyer.fullName, !order.simulation),
+      detailField('buyerWhatsApp', order.simulation ? t('demoContactUnavailable') : order.buyer.whatsappPhone, !order.simulation),
+      detailField('emailLabel', order.buyer.email, !order.simulation),
     ]);
-    const consent = node('p', 'order-consent', t(order.buyer.whatsappOrderContactOptIn ? 'contactOptedIn' : 'contactNotOptedIn'));
-    buyer.append(consent);
-    if (order.buyer.whatsappOrderContactOptIn && /^\+(?:60|65)[1-9]\d{6,11}$/.test(order.buyer.whatsappPhone)) {
+    if (!order.simulation) buyer.append(node('p', 'order-consent', t(order.buyer.whatsappOrderContactOptIn ? 'contactOptedIn' : 'contactNotOptedIn')));
+    if (!order.simulation && order.buyer.whatsappOrderContactOptIn && /^\+(?:60|65)[1-9]\d{6,11}$/.test(order.buyer.whatsappPhone)) {
       const link = node('a', 'secondary-button whatsapp-link', t('openWhatsApp'));
       link.href = `https://wa.me/${order.buyer.whatsappPhone.slice(1)}`;
       link.target = '_blank';
@@ -210,14 +210,14 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
       section.append(node('h3', '', `${t('destination')} ${delivery.position + 1}`));
       const fields = node('dl', 'order-fields');
       for (const field of [
-        detailField('recipientName', delivery.recipient.fullName),
-        detailField('recipientPhone', delivery.recipient.phone),
-        detailField('addressLine1', delivery.address.line1),
-        detailField('addressLine2Label', delivery.address.line2),
-        detailField('cityLabel', delivery.address.city),
-        detailField('regionLabel', delivery.address.region),
-        detailField('postcode', delivery.address.postcode),
-        detailField('countryCode', delivery.address.country),
+        detailField('recipientName', delivery.recipient.fullName, !order.simulation),
+        detailField('recipientPhone', order.simulation ? t('demoContactUnavailable') : delivery.recipient.phone, !order.simulation),
+        detailField('addressLine1', delivery.address.line1, !order.simulation),
+        detailField('addressLine2Label', delivery.address.line2, !order.simulation),
+        detailField('cityLabel', delivery.address.city, !order.simulation),
+        detailField('regionLabel', delivery.address.region, !order.simulation),
+        detailField('postcode', delivery.address.postcode, !order.simulation),
+        detailField('countryCode', delivery.address.country, !order.simulation),
       ]) if (field) fields.append(field);
       section.append(fields);
       const lines = node('ul', 'order-items');

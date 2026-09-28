@@ -30,11 +30,24 @@ export async function registerWorker(script, scope, { returnUrl, target, onState
   let available = null;
   let statusKey = '';
   let applying = false;
+  let applyingWorker = null;
   let reloadReady = false;
+  let reloadRequested = false;
   let activationTimer;
+  let activationPoll;
+  function finishActivation() {
+    if (reloadRequested) return;
+    reloadRequested = true;
+    clearTimeout(activationTimer);
+    clearTimeout(activationPoll);
+    if (returnUrl) location.assign(returnUrl);
+    else location.reload();
+  }
   function activationFailed() {
     clearTimeout(activationTimer);
+    clearTimeout(activationPoll);
     applying = false;
+    applyingWorker = null;
     update.disabled = check.disabled = false;
     statusKey = 'updateFailed';
     render();
@@ -52,7 +65,10 @@ export async function registerWorker(script, scope, { returnUrl, target, onState
     const waiting = registration.waiting;
     if (waiting) {
       const candidate = await workerVersion(waiting);
-      if (registration.waiting === waiting) { available = candidate; statusKey = 'updateAvailable'; }
+      if (registration.waiting === waiting) {
+        available = candidate;
+        if (!applying) statusKey = 'updateAvailable';
+      }
     } else if (!reloadReady && statusKey === 'updateAvailable') {
       statusKey = '';
     }
@@ -61,17 +77,17 @@ export async function registerWorker(script, scope, { returnUrl, target, onState
   function watch(worker) {
     if (!worker) return;
     worker.addEventListener('statechange', () => {
-      // Recovery pages live outside the worker scope and never receive controllerchange.
-      if (worker.state === 'activated' && applying && returnUrl) { location.assign(returnUrl); return; }
+      // Activation may finish without a controllerchange callback in the current page.
+      if (worker.state === 'activated' && worker === applyingWorker) { finishActivation(); return; }
       if (worker.state === 'installed' || worker.state === 'activated') inspect();
-      if (worker.state === 'redundant') activationFailed();
+      if (worker.state === 'redundant' && worker === applyingWorker) activationFailed();
     });
   }
   registration.addEventListener('updatefound', () => watch(registration.installing));
   watch(registration.installing);
   watch(registration.waiting);
   navigator.serviceWorker.addEventListener('controllerchange', async () => {
-    if (applying) { location.reload(); return; }
+    if (applying) { finishActivation(); return; }
     if (current) {
       available = await workerVersion(navigator.serviceWorker.controller);
       reloadReady = available !== current;
@@ -91,11 +107,11 @@ export async function registerWorker(script, scope, { returnUrl, target, onState
     try {
       await registration.update();
       await inspect();
-      if (reportResult && !registration.waiting && !reloadReady) {
+      if (reportResult && !applying && !registration.waiting && !reloadReady) {
         statusKey = registration.installing ? 'checkingUpdates' : 'appUpToDate';
       }
-    } catch { if (reportResult) statusKey = 'updateFailed'; }
-    finally { check.disabled = false; render(); }
+    } catch { if (reportResult && !applying) statusKey = 'updateFailed'; }
+    finally { if (!applying) check.disabled = false; render(); }
   }
   check.addEventListener('click', () => checkForUpdates(true));
   async function applyUpdate() {
@@ -108,8 +124,16 @@ export async function registerWorker(script, scope, { returnUrl, target, onState
     update.disabled = check.disabled = true;
     statusKey = 'appUpdating';
     render();
-    try { registration.waiting.postMessage({ type: 'SKIP_WAITING' }); }
+    const waiting = registration.waiting;
+    applyingWorker = waiting;
+    try { waiting.postMessage({ type: 'SKIP_WAITING' }); }
     catch { activationFailed(); return; }
+    function checkActivation() {
+      if (!applying || reloadRequested) return;
+      if (waiting.state === 'activated') { finishActivation(); return; }
+      activationPoll = setTimeout(checkActivation, 250);
+    }
+    activationPoll = setTimeout(checkActivation, 250);
     activationTimer = setTimeout(() => {
       if (!applying) return;
       activationFailed();

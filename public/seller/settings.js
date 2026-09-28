@@ -58,9 +58,11 @@ export function mountCategories(root, { csrfToken, onUnauthorized }) {
       activeLabel.className = 'check-row';
       const active = document.createElement('input');
       active.type = 'checkbox'; active.checked = category.active;
+      active.setAttribute('aria-label', `${t('categoryActive')}: ${category.code}`);
       activeLabel.append(active, document.createTextNode(t('categoryActive')));
       const save = document.createElement('button');
       save.type = 'submit'; save.className = 'secondary-button'; save.textContent = t('saveCategory');
+      save.setAttribute('aria-label', `${t('saveCategory')}: ${category.code}`);
       row.append(code, label, activeLabel, save);
       row.addEventListener('submit', async (event) => {
         event.preventDefault(); save.disabled = true;
@@ -86,16 +88,26 @@ export function mountCategories(root, { csrfToken, onUnauthorized }) {
     finally { button.disabled = false; }
   });
   load();
-  return { refreshLocale() {
-    translate(root);
-    for (const [index, row] of [...list.children].entries()) {
-      row.querySelector('input:not([type="checkbox"])').setAttribute('aria-label', `${t('categoryLabel')}: ${categories[index].code}`);
-      row.querySelector('.check-row').lastChild.textContent = t('categoryActive');
-      row.querySelector('button').textContent = t('saveCategory');
-    }
-    const line = root.querySelector('.settings-status');
-    line.textContent = line.dataset.statusKey ? t(line.dataset.statusKey) : '';
-  } };
+  return {
+    hasUnsavedChanges() {
+      if (form.elements.code.value || form.elements.label.value) return true;
+      return [...list.children].some((row, index) =>
+        row.querySelector('input:not([type="checkbox"])').value !== categories[index].label ||
+        row.querySelector('input[type="checkbox"]').checked !== categories[index].active);
+    },
+    refreshLocale() {
+      translate(root);
+      for (const [index, row] of [...list.children].entries()) {
+        row.querySelector('input:not([type="checkbox"])').setAttribute('aria-label', `${t('categoryLabel')}: ${categories[index].code}`);
+        row.querySelector('.check-row').lastChild.textContent = t('categoryActive');
+        row.querySelector('.check-row input').setAttribute('aria-label', `${t('categoryActive')}: ${categories[index].code}`);
+        row.querySelector('button').textContent = t('saveCategory');
+        row.querySelector('button').setAttribute('aria-label', `${t('saveCategory')}: ${categories[index].code}`);
+      }
+      const line = root.querySelector('.settings-status');
+      line.textContent = line.dataset.statusKey ? t(line.dataset.statusKey) : '';
+    },
+  };
 }
 
 export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
@@ -135,8 +147,14 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
   function showSetup(value) {
     setupState = value;
     setupForm.hidden = Boolean(value.mode);
+    setup.querySelector('h2').dataset.i18n = value.mode ? 'shopConfigured' : 'shopSetup';
+    setup.querySelector('h2').textContent = t(value.mode ? 'shopConfigured' : 'shopSetup');
+    setup.querySelector('[data-i18n="setupIntro"]').hidden = Boolean(value.mode);
     if (value.mode) {
       setupStatus.textContent = `${value.shopName} — ${t(value.mode === 'demo' ? 'demoMode' : 'productionMode')}`;
+      root.append(setup);
+    } else {
+      root.prepend(setup);
     }
     setupButton.disabled = false;
   }
@@ -163,6 +181,14 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
   let currencyEdited = false;
   let phoneEdited = false;
   let mobileBarsEdited = false;
+  let savedState = null;
+  const currentState = () => JSON.stringify({
+    defaultCurrency: form.elements.defaultCurrency.value,
+    sellerWhatsAppPhone: form.elements.sellerWhatsAppPhone.value,
+    mobileHideBarsOnScroll: form.elements.mobileHideBarsOnScroll.checked,
+  });
+  const initialState = currentState();
+  const setupBaseline = JSON.stringify([setupForm.elements.mode.value, setupForm.elements.shopName.value]);
   form.elements.defaultCurrency.addEventListener('change', () => { currencyEdited = true; });
   form.elements.sellerWhatsAppPhone.addEventListener('input', () => { phoneEdited = true; });
   form.elements.mobileHideBarsOnScroll.addEventListener('change', () => { mobileBarsEdited = true; });
@@ -174,6 +200,11 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
       if (!currencyEdited) form.elements.defaultCurrency.value = settings.defaultCurrency;
       if (!phoneEdited) form.elements.sellerWhatsAppPhone.value = settings.sellerWhatsAppPhone ? `+${settings.sellerWhatsAppPhone}` : '';
       if (!mobileBarsEdited) form.elements.mobileHideBarsOnScroll.checked = settings.mobileHideBarsOnScroll === true;
+      savedState = JSON.stringify({
+        defaultCurrency: settings.defaultCurrency,
+        sellerWhatsAppPhone: settings.sellerWhatsAppPhone ? `+${settings.sellerWhatsAppPhone}` : '',
+        mobileHideBarsOnScroll: settings.mobileHideBarsOnScroll === true,
+      });
       saveButton.disabled = false;
       retryButton.hidden = true;
       status(root, '');
@@ -194,6 +225,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
       }, csrfToken, onUnauthorized);
       form.elements.sellerWhatsAppPhone.value = settings.sellerWhatsAppPhone ? `+${settings.sellerWhatsAppPhone}` : '';
       form.elements.mobileHideBarsOnScroll.checked = settings.mobileHideBarsOnScroll;
+      savedState = currentState();
       currencyEdited = phoneEdited = mobileBarsEdited = false;
       status(root, 'settingsSaved');
     } catch (error) { status(root, error.field === 'sellerWhatsAppPhone' ? 'sellerWhatsAppInvalid' : 'productError', true); }
@@ -202,10 +234,16 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
       saveButton.disabled = false;
     }
   });
-  return { refreshLocale() {
-    translate(root);
-    if (setupState?.mode) showSetup(setupState);
-    const line = root.querySelector('.settings-status');
-    line.textContent = line.dataset.statusKey ? t(line.dataset.statusKey) : '';
-  } };
+  return {
+    hasUnsavedChanges() {
+      return currentState() !== (savedState ?? initialState) ||
+        (!setupForm.hidden && JSON.stringify([setupForm.elements.mode.value, setupForm.elements.shopName.value]) !== setupBaseline);
+    },
+    refreshLocale() {
+      translate(root);
+      if (setupState?.mode) showSetup(setupState);
+      const line = root.querySelector('.settings-status');
+      line.textContent = line.dataset.statusKey ? t(line.dataset.statusKey) : '';
+    },
+  };
 }

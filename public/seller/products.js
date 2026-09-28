@@ -23,11 +23,12 @@ function readImage(file) {
   });
 }
 
-function button(label, onClick) {
+function button(label, onClick, accessibleName = label) {
   const element = document.createElement('button');
   element.type = 'button';
   element.className = 'secondary-button';
   element.textContent = label;
+  element.setAttribute('aria-label', accessibleName);
   element.addEventListener('click', onClick);
   return element;
 }
@@ -38,6 +39,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
   const find = (selector) => root.querySelector(selector);
   const form = find('#product-form');
   const status = find('#product-status');
+  const formSuccess = find('#product-form-success');
   const error = find('#product-form-error');
   const search = find('#product-search');
   const list = find('#product-list');
@@ -49,19 +51,48 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
   const galleryList = find('#product-gallery-list');
   const removeImage = find('#product-remove-image');
   const restoreImage = find('#product-restore-image');
+  const imageRemovalHelp = find('#product-image-removal-help');
   let originalImageUrl = null;
   let pendingRemove = false;
   let galleryImages = [];
+  let galleryLoaded = false;
   let categories = [];
   let defaultCurrency = 'MYR';
   let items = [];
   let nextOffset = null;
+  let appliedSearch = '';
+  let loadSequence = 0;
   let editingId = null;
   let statusKey = '';
+  let statusProductName = '';
   let formErrorKey = '';
+  let formSuccessKey = '';
+  let formBaseline = null;
+  let saving = false;
+  const undoStates = new Map();
+  const pendingChanges = new Set();
 
-  function setStatus(key) { statusKey = key; status.textContent = key ? t(key) : ''; }
+  function setStatus(key, productName = '') {
+    statusKey = key;
+    statusProductName = productName;
+    status.classList.toggle('sr-only', ['productActivatedInline', 'productDeactivatedInline', 'productUndoRestored'].includes(key));
+    status.textContent = key ? `${productName ? `${productName}: ` : ''}${t(key)}` : '';
+  }
   function setError(key) { formErrorKey = key; error.textContent = key ? t(key) : ''; }
+  function setFormSuccess(key) { formSuccessKey = key; formSuccess.textContent = key ? t(key) : ''; }
+  function formState() {
+    const fields = ['sku', 'name', 'description', 'category', 'price', 'currency', 'variantGroup', 'variantLabel'];
+    const image = form.elements.image.files[0];
+    return {
+      values: fields.map((field) => form.elements[field].value),
+      active: form.elements.active.checked,
+      image: image ? [image.name, image.size, image.lastModified] : null,
+      pendingRemove,
+    };
+  }
+  function captureBaseline() { formBaseline = JSON.stringify(formState()); }
+  function hasUnsavedChanges() { return saving || (!form.hidden && formBaseline !== JSON.stringify(formState())); }
+  function confirmDiscard() { return !hasUnsavedChanges() || window.confirm(t('unsavedChangesConfirm')); }
 
   function showImage(state, source = null) {
     imagePanel.hidden = state === 'none';
@@ -77,6 +108,10 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
   function renderGallery() {
     galleryPanel.hidden = !editingId;
     form.elements.gallery.disabled = !originalImageUrl || pendingRemove || galleryImages.length >= 4;
+    removeImage.disabled = Boolean(editingId && (!galleryLoaded || galleryImages.length));
+    imageRemovalHelp.hidden = !editingId || !originalImageUrl || (galleryLoaded && !galleryImages.length);
+    imageRemovalHelp.dataset.i18n = galleryLoaded ? 'removeGalleryFirst' : 'loading';
+    imageRemovalHelp.textContent = imageRemovalHelp.hidden ? '' : t(imageRemovalHelp.dataset.i18n);
     galleryList.replaceChildren();
     for (const source of galleryImages) {
       const item = document.createElement('div');
@@ -92,6 +127,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
           if (editingId !== productId) return;
           galleryImages = result.images.slice(1);
           renderGallery();
+          setError('');
           setStatus('productSaved');
         } catch { setError('productError'); }
       }));
@@ -125,6 +161,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
     for (const product of items) {
       const card = document.createElement('article');
       card.className = 'product-card';
+      card.dataset.productId = product.id;
       if (product.imageUrl) {
         const image = document.createElement('img');
         image.src = product.imageUrl;
@@ -148,11 +185,26 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
       main.append(title, detail, chip);
       const actions = document.createElement('div');
       actions.className = 'product-card-actions';
-      actions.append(
-        button(t('editProduct'), () => edit(product)),
-        button(t(product.active ? 'deactivateProduct' : 'activateProduct'), () => toggle(product)),
-      );
+      const toggleButton = button(t(product.active ? 'deactivateProduct' : 'activateProduct'),
+        (event) => toggle(product, event.currentTarget),
+        `${t(product.active ? 'deactivateProduct' : 'activateProduct')}: ${product.name} (${product.sku})`);
+      toggleButton.dataset.action = 'toggle';
+      toggleButton.disabled = pendingChanges.has(product.id);
+      actions.append(button(t('editProduct'), () => edit(product), `${t('editProduct')}: ${product.name} (${product.sku})`), toggleButton);
       card.append(main, actions);
+      const undo = undoStates.get(product.id);
+      if (undo && undo.appliedActive === product.active) {
+        const line = document.createElement('div');
+        line.className = 'product-undo';
+        const label = document.createElement('span');
+        label.textContent = t(product.active ? 'productActivatedInline' : 'productDeactivatedInline');
+        const undoButton = button(t('undoChange'), (event) => undoToggle(product, event.currentTarget),
+          `${t('undoChange')} ${t(product.active ? 'productActivatedInline' : 'productDeactivatedInline')}: ${product.name} (${product.sku})`);
+        undoButton.dataset.action = 'undo';
+        undoButton.disabled = pendingChanges.has(product.id);
+        line.append(label, undoButton);
+        card.append(line);
+      }
       list.append(card);
     }
     if (!items.length && !statusKey) setStatus('noProducts');
@@ -173,19 +225,27 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
   }
 
   async function load(reset = true) {
+    if (!reset && nextOffset === null) return false;
+    const sequence = ++loadSequence;
+    const query = reset ? search.value.trim() : appliedSearch;
+    const offset = reset ? 0 : nextOffset;
+    more.disabled = true;
     setStatus('loading');
     try {
-      const params = new URLSearchParams({ limit: '24', offset: String(reset ? 0 : nextOffset), search: search.value.trim() });
+      const params = new URLSearchParams({ limit: '24', offset: String(offset), search: query });
       const result = await api('GET', `/api/v1/seller/products?${params}`);
-      if (!root.isConnected) return;
+      if (sequence !== loadSequence || !root.isConnected) return false;
       items = reset ? result.items : [...items, ...result.items];
+      if (reset) appliedSearch = query;
       nextOffset = result.nextOffset;
       setStatus(items.length ? '' : 'noProducts');
       renderList();
       return true;
     } catch {
-      if (root.isConnected) setStatus('networkError');
+      if (sequence === loadSequence && root.isConnected) setStatus('networkError');
       return false;
+    } finally {
+      if (sequence === loadSequence && root.isConnected) more.disabled = false;
     }
   }
 
@@ -193,15 +253,19 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
     editingId = null;
     form.reset();
     form.hidden = true;
+    formBaseline = null;
     originalImageUrl = null;
     pendingRemove = false;
     galleryImages = [];
+    galleryLoaded = false;
     showImage('none');
     renderGallery();
     setError('');
+    setFormSuccess('');
   }
 
-  async function edit(product) {
+  async function edit(product, { skipGuard = false } = {}) {
+    if (!skipGuard && !confirmDiscard()) return;
     editingId = product.id;
     form.hidden = false;
     form.elements.sku.value = product.sku;
@@ -218,38 +282,104 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
     pendingRemove = false;
     showImage(product.imageUrl ? 'current' : 'none', product.imageUrl);
     galleryImages = [];
+    galleryLoaded = false;
     renderGallery();
     find('#product-form-title').dataset.i18n = 'editProduct';
     find('#product-form-title').textContent = t('editProduct');
     setError('');
+    setFormSuccess('');
+    captureBaseline();
     form.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
     form.elements.sku.focus();
     try {
       const detail = await api('GET', `/api/v1/seller/products/${product.id}`);
-      if (editingId === product.id) { galleryImages = detail.images.slice(1); renderGallery(); }
+      if (editingId === product.id) { galleryImages = detail.images.slice(1); galleryLoaded = true; renderGallery(); }
     } catch { if (editingId === product.id) setError('productError'); }
   }
 
-  async function toggle(product) {
+  function syncOpenFormAvailability(product) {
+    if (editingId !== product.id || !formBaseline) return;
+    const baseline = JSON.parse(formBaseline);
+    const activeChangedInForm = form.elements.active.checked !== baseline.active;
+    baseline.active = product.active;
+    formBaseline = JSON.stringify(baseline);
+    if (!activeChangedInForm) form.elements.active.checked = product.active;
+  }
+
+  function replaceProduct(product) {
+    items = items.map((item) => item.id === product.id ? product : item);
+    syncOpenFormAvailability(product);
+    renderList();
+  }
+
+  function focusProductAction(productId, action) {
+    [...list.children].find((card) => card.dataset.productId === productId)
+      ?.querySelector(`[data-action="${action}"]`)?.focus({ preventScroll: true });
+  }
+
+  async function toggle(product, control) {
+    if (pendingChanges.has(product.id)) return;
+    pendingChanges.add(product.id);
+    control.disabled = true;
     try {
-      await api('PATCH', `/api/v1/seller/products/${product.id}`, { active: !product.active });
-      if (await load()) setStatus('productSaved');
-    } catch { if (root.isConnected) setStatus('productError'); }
+      const updated = await api('PATCH', `/api/v1/seller/products/${product.id}`, { active: !product.active });
+      undoStates.set(product.id, { previousActive: product.active, appliedActive: updated.active });
+      pendingChanges.delete(product.id);
+      replaceProduct(updated);
+      setStatus(updated.active ? 'productActivatedInline' : 'productDeactivatedInline', product.name);
+      focusProductAction(product.id, 'toggle');
+    } catch {
+      pendingChanges.delete(product.id);
+      control.disabled = false;
+      if (root.isConnected) setStatus('productError', product.name);
+    }
+  }
+
+  async function undoToggle(product, control) {
+    const undo = undoStates.get(product.id);
+    if (!undo || pendingChanges.has(product.id)) return;
+    pendingChanges.add(product.id);
+    control.disabled = true;
+    try {
+      const latest = await api('GET', `/api/v1/seller/products/${product.id}`);
+      if (latest.active !== undo.appliedActive) {
+        undoStates.delete(product.id);
+        pendingChanges.delete(product.id);
+        replaceProduct(latest);
+        setStatus('productUndoUnavailable', product.name);
+      } else {
+        const restored = await api('PATCH', `/api/v1/seller/products/${product.id}`, { active: undo.previousActive });
+        undoStates.delete(product.id);
+        pendingChanges.delete(product.id);
+        replaceProduct(restored);
+        setStatus('productUndoRestored', product.name);
+      }
+      focusProductAction(product.id, 'toggle');
+    } catch {
+      pendingChanges.delete(product.id);
+      control.disabled = false;
+      if (root.isConnected) setStatus('productError', product.name);
+    }
   }
 
   find('#product-new').addEventListener('click', () => {
+    if (!confirmDiscard()) return;
     resetForm();
     form.hidden = false;
     populateCategories();
     form.elements.currency.value = defaultCurrency;
     find('#product-form-title').dataset.i18n = 'addProduct';
     find('#product-form-title').textContent = t('addProduct');
+    captureBaseline();
     form.elements.sku.focus();
   });
-  find('#product-cancel').addEventListener('click', resetForm);
+  find('#product-cancel').addEventListener('click', () => { if (confirmDiscard()) resetForm(); });
+  form.addEventListener('input', () => { if (formSuccessKey) setFormSuccess(''); });
+  form.addEventListener('change', () => { if (formSuccessKey) setFormSuccess(''); });
   find('#product-search-form').addEventListener('submit', (event) => { event.preventDefault(); load(); });
   more.addEventListener('click', () => load(false));
   removeImage.addEventListener('click', () => {
+    if (!galleryLoaded || galleryImages.length) return;
     form.elements.image.value = '';
     pendingRemove = Boolean(originalImageUrl);
     showImage(pendingRemove ? 'removed' : 'none');
@@ -296,6 +426,8 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const save = find('#product-save');
+    const productId = editingId;
+    saving = true;
     save.disabled = true;
     setError('');
     try {
@@ -310,28 +442,46 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
         variantGroup: form.elements.variantGroup.value,
         variantLabel: form.elements.variantLabel.value,
       };
+      if (editingId && formBaseline && payload.active === JSON.parse(formBaseline).active) delete payload.active;
       const file = form.elements.image.files[0];
       if (file) payload.imageDataUrl = await readImage(file);
       else if (pendingRemove) payload.imageDataUrl = null;
       const saved = await api(editingId ? 'PATCH' : 'POST', editingId ? `/api/v1/seller/products/${editingId}` : '/api/v1/seller/products', payload);
       resetForm();
-      if (await load()) setStatus('productSaved');
-      await edit(saved);
+      await load();
+      await edit(saved, { skipGuard: true });
+      setFormSuccess('productSaved');
+      form.scrollIntoView({ block: 'start' });
+      formSuccess.focus({ preventScroll: true });
     } catch (failure) {
-      setError(failure.code === 'DUPLICATE_SKU' ? 'duplicateSku' : failure.code === 'DUPLICATE_VARIANT' ? 'duplicateVariant' : 'productError');
-      const field = failure.code === 'DUPLICATE_SKU' ? 'sku' : failure.field === 'priceMinor' ? 'price' : failure.field === 'imageDataUrl' ? 'image' : failure.field;
-      if (field && form.elements[field]) form.elements[field].focus();
-    } finally { save.disabled = false; }
+      const galleryConflict = pendingRemove && failure.field === 'imageDataUrl';
+      setError(galleryConflict ? 'removeGalleryFirst' : failure.code === 'DUPLICATE_SKU' ? 'duplicateSku' : failure.code === 'DUPLICATE_VARIANT' ? 'duplicateVariant' : 'productError');
+      if (galleryConflict && productId && editingId === productId) {
+        try {
+          const detail = await api('GET', `/api/v1/seller/products/${productId}`);
+          if (editingId === productId) { galleryImages = detail.images.slice(1); galleryLoaded = true; renderGallery(); }
+        } catch { /* Keep the actionable server error visible. */ }
+        galleryPanel.scrollIntoView({ block: 'nearest' });
+      } else {
+        const field = failure.code === 'DUPLICATE_SKU' ? 'sku' : failure.field === 'priceMinor' ? 'price' : failure.field === 'imageDataUrl' ? 'image' : failure.field;
+        if (field && form.elements[field]) form.elements[field].focus();
+      }
+    } finally { saving = false; save.disabled = false; }
   });
 
-  loadSettings().then(() => load());
+  loadSettings().then(() => { if (root.isConnected && loadSequence === 0) load(); });
+  search.placeholder = t('searchNameOrSkuHint');
   return {
     refreshLocale() {
       translate(root);
       renderList();
+      renderGallery();
       populateCategories(form.elements.category.value);
-      status.textContent = statusKey ? t(statusKey) : '';
+      search.placeholder = t('searchNameOrSkuHint');
+      status.textContent = statusKey ? `${statusProductName ? `${statusProductName}: ` : ''}${t(statusKey)}` : '';
       error.textContent = formErrorKey ? t(formErrorKey) : '';
+      formSuccess.textContent = formSuccessKey ? t(formSuccessKey) : '';
     },
+    hasUnsavedChanges,
   };
 }

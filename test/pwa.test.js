@@ -175,6 +175,43 @@ test('shop update state supports clean one-click, dirty cancellation, busy guard
   dirty = false; await commands.update(); assert.equal(reloads, 1); assert.equal(confirmations, 2);
 });
 
+test('superseded worker redundancy does not cancel installation; activation reloads once', async () => {
+  let actions, state, stateChange, oldStateChange, controllerChange, reloads = 0, skips = 0;
+  const waiting = { state: 'installed', addEventListener(name, handler) { if (name === 'statechange') stateChange = handler; },
+    postMessage(message, ports) {
+      if (message.type === 'GET_VERSION') ports[0].reply({ version: 'v65' });
+      if (message.type === 'SKIP_WAITING') skips++;
+    } };
+  const active = { state: 'activated', addEventListener(name, handler) { if (name === 'statechange') oldStateChange = handler; }, postMessage(message, ports) {
+    if (message.type === 'GET_VERSION') ports[0].reply({ version: 'v64' });
+  } };
+  const registration = { waiting, active, installing: active, addEventListener() {}, async update() {} };
+  const context = {
+    t: key => key,
+    navigator: { onLine: true, serviceWorker: { controller: active, register: async () => registration,
+      addEventListener(name, handler) { if (name === 'controllerchange') controllerChange = handler; } } },
+    document: { createElement: () => ({ disabled: false, setAttribute() {}, append() {}, addEventListener() {} }), body: { append() {} }, addEventListener() {} },
+    window: { addEventListener() {}, confirm: () => true },
+    location: { reload() { reloads++; } },
+    MessageChannel: class { constructor() { this.port1 = { close() {} }; this.port2 = { reply: data => this.port1.onmessage({ data }) }; } },
+    setTimeout: () => 1, clearTimeout() {},
+  };
+  const source = readFileSync(new URL('../public/shared/pwa.js', import.meta.url), 'utf8').replace("import { t } from './i18n.js';", '').replace('export async function', 'async function');
+  vm.runInNewContext(source, context);
+  await context.registerWorker('/seller/sw.js', '/seller/', { onState(nextState, nextActions) { state = nextState; actions = nextActions; } });
+  await actions.update();
+  assert.equal(skips, 1);
+  active.state = 'redundant';
+  oldStateChange();
+  assert.equal(state.applying, true);
+  assert.equal(state.statusKey, 'appUpdating');
+  waiting.state = 'activated';
+  stateChange();
+  assert.equal(reloads, 1);
+  await controllerChange();
+  assert.equal(reloads, 1);
+});
+
 async function updateHarness() {
   let state, commands, checks = 0, reloads = 0;
   const events = new Map(), timers = new Map();
