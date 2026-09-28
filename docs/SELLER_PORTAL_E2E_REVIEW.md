@@ -4,6 +4,49 @@ Date: 2026-09-27 (Asia/Singapore)
 Build tested: Seller PWA v59, repository baseline `8850a98`
 Scope: seller sign-in, navigation, products, categories, company settings, order search/detail/decision, account menu, language switch, and responsive layout.
 
+## Responsive refinement and E2E pass (2026-09-28)
+
+**Build:** Seller PWA v66, based on v65 (`f105e7f`) and subsequently released to the public Demo as detailed below. The public Demo was viewed read-only; all write-path checks used a temporary local Demo database with synthetic products and orders. The local database was reset before final screenshots so the comparison uses the original Demo catalog and two Submitted orders.
+
+Codex CLI `gpt-6-luna` received the real mobile, tablet, and desktop baselines and produced the [responsive illustration](../ui/seller-v66-responsive-proposal.png), [SVG source](../ui/seller-v66-responsive-proposal.svg), and [implementation specification](../ui/seller-v66-responsive-proposal.md). The PNG was rendered from the SVG after CLI generation. It is a **design illustration**, while the “after” images below are **running local browser screenshots**. The [CLI brief](../ui/seller-v66-responsive-cli-brief.md) and [CLI result](../ui/seller-v66-responsive-cli-output.md) record the proposal step; their statements about no source edits describe that step only.
+
+| Surface | Mobile 390 px | Tablet 820 px | Desktop 1440 px |
+| --- | --- | --- | --- |
+| Products | [Before](../ui/seller-v66-before-products-mobile.png) · [After](../ui/seller-v66-after-products-mobile.png) | [Before](../ui/seller-v66-before-products-tablet.png) · [After](../ui/seller-v66-after-products-tablet.png) | [Before](../ui/seller-v66-before-products-desktop.png) · [After](../ui/seller-v66-after-products-desktop.png) |
+| Sales Orders | [Before](../ui/seller-v66-before-orders-mobile.png) · [After](../ui/seller-v66-after-orders-mobile.png) | [Before](../ui/seller-v66-before-orders-tablet.png) · [After](../ui/seller-v66-after-orders-tablet.png) | [Before](../ui/seller-v66-before-orders-desktop.png) · [After](../ui/seller-v66-after-orders-desktop.png) |
+| Selected order | [Before](../ui/seller-v66-before-order-detail-mobile.png) · [After](../ui/seller-v66-after-order-detail-mobile.png) | [Before](../ui/seller-v66-before-order-detail-tablet.png) · [After](../ui/seller-v66-after-order-detail-tablet.png) | [Before](../ui/seller-v66-before-order-detail-desktop.png) · [After](../ui/seller-v66-after-order-detail-desktop.png) |
+
+### Findings and refinements
+
+| ID | Severity | Observed issue | Result |
+| --- | --- | --- | --- |
+| RP-01 | P2 | At 820 px, the persistent 248 px sidebar left only 572 px for the main work area. | The existing labelled navigation becomes a drawer through 900 px. The closed drawer leaves the full 820 px viewport for the main area. Opening focuses Close navigation; Escape returns focus to Open navigation; closed content is inert. Resizing an open drawer to desktop closes it and focuses the page title. |
+| RP-02 | P2 | The tablet Orders Search button wrapped below the two filters. | Both labelled filters and Search now occupy one toolbar row at 820 px. |
+| RP-03 | P3 | Tablet Products used one sparse column despite available space. | Products use two columns at 820 px, each about 379 px wide; mobile remains one column. Existing card actions and accessible names are retained. |
+| RP-04 | P2 | Mobile order filters occupied three stacked rows; an empty queue status reserved extra vertical space. | Order number and Status share a row at 390 px, Search remains a 44 px high second-row action, and empty queue status takes no space. The first order moves higher in the viewport. |
+| RP-05 | P2 | On mobile the full-width sticky Back to orders button sat above the detail heading, pushing order information down. | Heading and Back share a row when space permits; the order number and Demo simulation notice move up. Long labels wrap the two controls onto separate rows when required. |
+| RP-06 | P2 during refinement | An initial grid version overlapped the Malay detail heading and Back button at 320 px. | Replaced the grid with content-aware wrapping. [The final 320 px Malay screenshot](../ui/seller-v66-after-order-detail-320-ms.png) has separated controls and 320 px document scroll width; [390 px Malay Orders](../ui/seller-v66-after-orders-mobile-ms.png) also fits without clipping. |
+
+### Workflow and verification evidence
+
+| Workflow | Result in isolated local Demo |
+| --- | --- |
+| Authentication and account | Sign-in, profile dialog, sign-out, and sign-in again passed; the [mobile login baseline](../ui/seller-v66-before-login-mobile.png) showed no footer/version clutter. |
+| Products | Search by SKU, deactivate, product-specific Undo, add product, native required-field validation, and unsaved-edit Stay/Discard passed. A synthetic inactive product saved successfully. |
+| Categories and company | Added a synthetic category and inspected configured company settings. Company setting writes, category edits/deactivation, image upload, and gallery actions were not repeated in this pass; the earlier v65 E2E and repository tests cover their underlying flows. |
+| Orders | Two synthetic customer orders were submitted through the local API. Seller queue/detail, status filtering, confirmation, rejection, required rejection reason, post-decision history, and removal from the pending review queue passed. No public Demo order was changed. |
+| Responsive navigation | 390/820 px drawer open, route selection, focus return, and Escape passed. At 1440 px the persistent sidebar and side-by-side order queue/detail remain. 320, 390, 760, 761, 820, 900, 901, and 1440 px settled views had no horizontal document overflow; the [901 px Products boundary screenshot](../ui/seller-v66-after-products-901.png) shows narrow but usable two-column cards. |
+| Localization | Malay Orders at 390 px and order detail at 320 px were inspected visually; the long Back label wrapped safely. Other language layouts were not visually audited in this pass. |
+
+`npx -y node@24 scripts/check.js` passed JavaScript syntax checks; `npx -y node@24 --test test/*.test.js` passed **90/90** tests. Browser screenshots and DOM measurements verified the responsive changes and the 44 px Back action. The SVG passed XML parsing. The screenshots capture only the visible viewport, not full-page scrolling or every modal state.
+
+### v66 Demo release and online acceptance
+
+- Cloudflare Worker `online-shopping` deployment `7aab4258-3d7d-4182-899e-834cfef229a7` uploaded the four changed Seller assets (`app.js`, `index.html`, `style.css`, `sw.js`) to [the public Demo](https://online-shopping.onemap-token-proxy.workers.dev/seller/). Before release, Node 24 tests passed **90/90**, syntax and `git diff --check` passed, and the Worker dry run bundled 51 public assets with the existing Demo bindings.
+- After release, public `/ready` returned `ready`; Seller `/seller/sw.js` served v66; Shop `/shop/sw.js` remained v71; and public Seller `app.js`, `style.css`, `sw.js`, and canonical `/seller/` HTML matched the local files by SHA-256. The `/seller/index.html` URL redirects to `/seller/`.
+- In an authenticated in-app browser, the deployed Seller Orders and Products pages were inspected without changing Demo records. At 390 px, the Orders filters and queue fit with no horizontal document overflow; opening and returning from order detail worked. At 820 px, the navigation drawer opened, order filters shared a row, and Products showed two 379 px cards per row. At 1440 px, the persistent sidebar and two-column Products/Orders layouts fit with no horizontal overflow. The existing two Submitted Demo orders remained in the queue.
+- The previously open v65 tab detected a waiting v66 worker and showed **New version ready**. Its Install update button did not complete the confirmation/activation sequence under browser automation, so that UI path remains unverified online. Browser diagnostics sent `SKIP_WAITING` to the already installed v66 worker; after reload, both the new test tab and the original tab loaded without the update notice. This verifies activation and refreshed v66 rendering, but not the full old-client button/confirmation flow. Physical-device installation, offline transitions, browser file uploads, and public Demo write paths were not tested in this release check.
+
 The repository advanced to `b81da4c` during this audit. That commit increments the Seller service worker to v60 and changes shared/shop assets; it does not change the seller product, order, settings, or navigation logic cited below. The v60 browser build was not retested.
 
 ## Fix follow-up (2026-09-28)

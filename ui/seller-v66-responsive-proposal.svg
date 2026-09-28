@@ -1,0 +1,358 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2440 1740" role="img" aria-labelledby="title desc">
+  <title id="title">Seller portal responsive proposal — mobile, tablet, desktop</title>
+  <desc id="desc">An annotated responsive UI illustration showing Products, Sales Orders, and selected order details at 390, 820, and 1440 pixel viewport widths. This is a proposal, not a live screenshot.</desc>
+  <defs>
+    <style>
+      text{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#173950}
+      .board{fill:#f3f7f9}
+      .panel{fill:#fff;stroke:#dce7eb;stroke-width:1.5}
+      .screen{fill:#f5f8fa;stroke:#cbdbe1;stroke-width:1.5}
+      .top{fill:#fff}
+      .ink{fill:#173950}
+      .muted{fill:#58717d}
+      .teal{fill:#087f83}
+      .eyebrow{fill:#087f83;font-size:10px;font-weight:800;letter-spacing:1.15px}
+      .h1{font-size:21px;font-weight:800;letter-spacing:-.7px}
+      .h2{font-size:16px;font-weight:750}
+      .h3{font-size:12px;font-weight:750}
+      .body{font-size:11px}
+      .small{font-size:9.5px}
+      .tiny{font-size:8px}
+      .label{font-size:10px;font-weight:700}
+      .caption{font-size:13px;font-weight:800;letter-spacing:.4px}
+      .meta{font-size:9.5px;fill:#496679}
+      .line{stroke:#e2ebee;stroke-width:1}
+      .border{stroke:#c7d9df;stroke-width:1;fill:#fff}
+      .card{fill:#fff;stroke:#d6e4e9;stroke-width:1}
+      .primary{fill:#087f83}
+      .primaryText{fill:#fff;font-size:10px;font-weight:750}
+      .buttonText{fill:#173950;font-size:9px;font-weight:750}
+      .chipGreen{fill:#e3f5ec}
+      .chipGold{fill:#fff0cb}
+      .greenText{fill:#216943;font-size:8px;font-weight:800}
+      .goldText{fill:#805511;font-size:8px;font-weight:800}
+      .nav{fill:#496371;font-size:9px;font-weight:650}
+      .callout{fill:#edf8f8;stroke:#b9dadd;stroke-width:1}
+      .calloutText{fill:#24535b;font-size:10px;font-weight:650}
+      .sectionBadge{fill:#e7f4f3}
+      .sectionBadgeText{fill:#20686d;font-size:10px;font-weight:800}
+      .whiteIcon{stroke:#fff;stroke-width:1.6;fill:none;stroke-linecap:round;stroke-linejoin:round}
+      .lineIcon{stroke:#1d465a;stroke-width:1.6;fill:none;stroke-linecap:round;stroke-linejoin:round}
+    </style>
+    <clipPath id="mobile-products"><rect x="70" y="269" width="390" height="416" rx="13"/></clipPath>
+    <clipPath id="mobile-orders"><rect x="70" y="719" width="390" height="416" rx="13"/></clipPath>
+    <clipPath id="mobile-detail"><rect x="70" y="1169" width="390" height="416" rx="13"/></clipPath>
+    <clipPath id="tablet-products"><rect x="535" y="269" width="820" height="416" rx="13"/></clipPath>
+    <clipPath id="tablet-orders"><rect x="535" y="719" width="820" height="416" rx="13"/></clipPath>
+    <clipPath id="tablet-detail"><rect x="535" y="1169" width="820" height="416" rx="13"/></clipPath>
+    <clipPath id="desktop-products"><rect x="1425" y="269" width="940" height="416" rx="13"/></clipPath>
+    <clipPath id="desktop-orders"><rect x="1425" y="719" width="940" height="416" rx="13"/></clipPath>
+    <clipPath id="desktop-detail"><rect x="1425" y="1169" width="940" height="416" rx="13"/></clipPath>
+  </defs>
+
+  <rect class="board" width="2440" height="1740"/>
+  <text x="38" y="48" font-size="28" font-weight="850" letter-spacing="-1">Seller portal · responsive proposal</text>
+  <text x="40" y="76" font-size="13" class="muted">Products · Sales Orders · order details / three representative viewport widths</text>
+  <g transform="translate(1712 28)">
+    <rect width="285" height="39" rx="11" class="panel"/>
+    <circle cx="18" cy="19.5" r="5" fill="#087f83"/>
+    <text x="32" y="24" class="small" font-weight="700">Existing labels, Demo state and actions retained</text>
+  </g>
+  <g transform="translate(2009 28)">
+    <rect width="391" height="39" rx="11" fill="#fff4d7" stroke="#ead9a7"/>
+    <text x="15" y="24" class="small" font-weight="750" fill="#805511">ILLUSTRATION · not a running screenshot</text>
+  </g>
+
+  <!-- Responsive breakpoint panels -->
+  <rect x="24" y="108" width="480" height="1600" rx="20" class="panel"/>
+  <rect x="520" y="108" width="850" height="1600" rx="20" class="panel"/>
+  <rect x="1386" y="108" width="1030" height="1600" rx="20" class="panel"/>
+
+  <!-- MOBILE PANEL -->
+  <text x="48" y="147" font-size="21" font-weight="850">Mobile</text>
+  <rect x="399" y="123" width="83" height="29" rx="14" class="sectionBadge"/>
+  <text x="440.5" y="142" text-anchor="middle" class="sectionBadgeText">390px</text>
+  <text x="48" y="171" class="small muted">One-column catalog · compact filters · focused detail</text>
+  <text x="48" y="192" class="small" font-weight="700">NAV: menu button opens the existing labelled drawer.</text>
+
+  <rect x="48" y="207" width="187" height="25" rx="8" class="sectionBadge"/>
+  <text x="61" y="224" class="caption">PRODUCTS</text>
+  <text x="244" y="224" class="small muted">search + add controls stay visible</text>
+  <rect x="70" y="269" width="390" height="416" rx="13" class="screen"/>
+  <g clip-path="url(#mobile-products)">
+    <rect x="70" y="269" width="390" height="416" fill="#f5f8fa"/>
+    <rect x="70" y="269" width="390" height="64" class="top"/>
+    <line x1="70" y1="333" x2="460" y2="333" class="line"/>
+    <rect x="82" y="279" width="44" height="44" rx="10" fill="#fff"/>
+    <path d="M94 292h20M94 300h20M94 308h20" class="lineIcon"/>
+    <rect x="137" y="284" width="34" height="34" rx="10" fill="#087f83"/>
+    <path d="M145 296h18v14h-18zM143 295l2-4h14l2 4M150 301h8" class="whiteIcon"/>
+    <text x="179" y="306" font-size="13" font-weight="800">Seller portal</text>
+    <rect x="360" y="279" width="44" height="44" rx="10" class="border"/>
+    <circle cx="382" cy="301" r="9" class="lineIcon"/><path d="M373 301h18M382 292c4 4 4 14 0 18M382 292c-4 4-4 14 0 18" class="lineIcon"/>
+    <circle cx="433" cy="301" r="15" fill="#d5f1ec"/><text x="433" y="305" text-anchor="middle" font-size="10" font-weight="800" fill="#087f83">A</text>
+    <text x="86" y="357" class="eyebrow">SELLER PORTAL</text>
+    <text x="86" y="385" class="h1">Products</text>
+    <rect x="86" y="397" width="358" height="125" rx="13" class="card"/>
+    <rect x="100" y="411" width="231" height="44" rx="9" class="border"/>
+    <text x="112" y="438" font-size="12" class="muted">Name or SKU</text>
+    <rect x="339" y="411" width="91" height="44" rx="9" class="border"/>
+    <text x="384.5" y="438" text-anchor="middle" class="buttonText">Search</text>
+    <rect x="100" y="465" width="330" height="45" rx="10" class="primary"/>
+    <text x="265" y="493" text-anchor="middle" class="primaryText" font-size="11">Add product</text>
+    <rect x="86" y="536" width="358" height="143" rx="12" class="card"/>
+    <rect x="98" y="548" width="62" height="62" rx="8" fill="#fff0e9" stroke="#ff7147"/>
+    <rect x="103" y="553" width="52" height="9" rx="3" fill="#ff7147"/>
+    <text x="129" y="560" text-anchor="middle" font-size="4.7" font-weight="800" fill="#fff">PETKIT PURA MAX</text>
+    <path d="M108 573h43M111 580h12v18h-12zM129 580h9v14h-9zM141 578h9v19h-9z" fill="#fff" stroke="#d5a287" stroke-width="1"/>
+    <text x="171" y="564" font-size="12" font-weight="800">PETKIT Pura Max / Pura X</text>
+    <text x="171" y="580" font-size="12" font-weight="800">Replacement Parts</text>
+    <text x="171" y="596" class="meta">PET-DEMO-035 · Litter Box Accessories</text>
+    <text x="171" y="609" class="meta">MYR 65.00</text>
+    <rect x="171" y="615" width="48" height="17" rx="8" class="chipGreen"/>
+    <text x="195" y="627" text-anchor="middle" class="greenText">Active</text>
+    <line x1="98" y1="641" x2="432" y2="641" class="line"/>
+    <rect x="98" y="649" width="160" height="44" rx="9" class="border"/>
+    <text x="178" y="676" text-anchor="middle" class="buttonText">Edit product</text>
+    <rect x="266" y="649" width="166" height="44" rx="9" class="border"/>
+    <text x="349" y="676" text-anchor="middle" class="buttonText">Deactivate</text>
+    <text x="100" y="713" class="small muted">Next product continues below the fold.</text>
+  </g>
+
+  <rect x="48" y="692" width="199" height="25" rx="8" class="sectionBadge"/>
+  <text x="61" y="709" class="caption">SALES ORDERS</text>
+  <text x="256" y="709" class="small muted">two filters on one row</text>
+  <rect x="70" y="719" width="390" height="416" rx="13" class="screen"/>
+  <g clip-path="url(#mobile-orders)">
+    <rect x="70" y="719" width="390" height="416" fill="#f5f8fa"/>
+    <rect x="70" y="719" width="390" height="64" class="top"/>
+    <line x1="70" y1="783" x2="460" y2="783" class="line"/>
+    <rect x="82" y="729" width="44" height="44" rx="10" class="top"/>
+    <path d="M94 742h20M94 750h20M94 758h20" class="lineIcon"/>
+    <rect x="137" y="734" width="34" height="34" rx="10" fill="#087f83"/>
+    <path d="M145 746h18v14h-18zM143 745l2-4h14l2 4M150 751h8" class="whiteIcon"/>
+    <text x="179" y="756" font-size="13" font-weight="800">Seller portal</text>
+    <rect x="360" y="729" width="44" height="44" rx="10" class="border"/><circle cx="382" cy="751" r="9" class="lineIcon"/><path d="M373 751h18M382 742c4 4 4 14 0 18M382 742c-4 4-4 14 0 18" class="lineIcon"/>
+    <circle cx="433" cy="751" r="15" fill="#d5f1ec"/><text x="433" y="755" text-anchor="middle" font-size="10" font-weight="800" fill="#087f83">A</text>
+    <text x="86" y="807" class="eyebrow">SELLER PORTAL</text>
+    <text x="86" y="835" class="h1">Sales Orders</text>
+    <rect x="86" y="847" width="358" height="145" rx="13" class="card"/>
+    <text x="100" y="867" class="label">Order number</text>
+    <text x="280" y="867" class="label">Status</text>
+    <rect x="100" y="875" width="166" height="42" rx="9" class="border"/>
+    <rect x="276" y="875" width="154" height="42" rx="9" class="border"/>
+    <text x="290" y="901" font-size="10" font-weight="650">All statuses</text><path d="m415 892 5 5 5-5" class="lineIcon"/>
+    <rect x="326" y="927" width="104" height="44" rx="9" class="border"/>
+    <text x="378" y="954" text-anchor="middle" class="buttonText">Search</text>
+    <rect x="86" y="1004" width="358" height="154" rx="13" class="card"/>
+    <text x="102" y="1032" class="h2">Order queue</text>
+    <rect x="100" y="1044" width="330" height="75" rx="10" class="card"/>
+    <text x="113" y="1064" font-size="12" font-weight="800">DEMO-00000002</text>
+    <rect x="353" y="1051" width="66" height="19" rx="9" class="chipGold"/><text x="386" y="1064" text-anchor="middle" class="goldText">Submitted</text>
+    <text x="113" y="1083" class="body">Demo Customer</text>
+    <text x="113" y="1101" class="meta">MYR 65.00 · Sep 28, 2026</text>
+    <text x="100" y="1148" class="small muted">Search is a separate full-size action row.</text>
+  </g>
+
+  <rect x="48" y="1142" width="199" height="25" rx="8" class="sectionBadge"/>
+  <text x="61" y="1159" class="caption">ORDER DETAILS</text>
+  <text x="256" y="1159" class="small muted">Back + heading share a row</text>
+  <rect x="70" y="1169" width="390" height="416" rx="13" class="screen"/>
+  <g clip-path="url(#mobile-detail)">
+    <rect x="70" y="1169" width="390" height="416" fill="#f5f8fa"/>
+    <rect x="70" y="1169" width="390" height="64" class="top"/>
+    <line x1="70" y1="1233" x2="460" y2="1233" class="line"/>
+    <rect x="82" y="1179" width="44" height="44" rx="10" class="top"/><path d="M94 1192h20M94 1200h20M94 1208h20" class="lineIcon"/>
+    <rect x="137" y="1184" width="34" height="34" rx="10" fill="#087f83"/><path d="M145 1196h18v14h-18zM143 1195l2-4h14l2 4M150 1201h8" class="whiteIcon"/>
+    <text x="179" y="1206" font-size="13" font-weight="800">Seller portal</text>
+    <rect x="360" y="1179" width="44" height="44" rx="10" class="border"/><circle cx="382" cy="1201" r="9" class="lineIcon"/><path d="M373 1201h18M382 1192c4 4 4 14 0 18M382 1192c-4 4-4 14 0 18" class="lineIcon"/>
+    <circle cx="433" cy="1201" r="15" fill="#d5f1ec"/><text x="433" y="1205" text-anchor="middle" font-size="10" font-weight="800" fill="#087f83">A</text>
+    <text x="86" y="1257" class="eyebrow">SELLER PORTAL</text>
+    <text x="86" y="1285" class="h1">Sales Orders</text>
+    <rect x="86" y="1297" width="358" height="276" rx="13" class="card"/>
+    <text x="102" y="1327" class="h2">Order details</text>
+    <rect x="292" y="1306" width="138" height="44" rx="9" class="border"/>
+    <text x="361" y="1333" text-anchor="middle" class="buttonText">Back to orders</text>
+    <text x="102" y="1371" font-size="19" font-weight="850">DEMO-00000002</text>
+    <rect x="316" y="1352" width="68" height="20" rx="10" class="chipGold"/><text x="350" y="1366" text-anchor="middle" class="goldText">Submitted</text>
+    <rect x="102" y="1382" width="326" height="43" rx="9" class="callout"/>
+    <text x="114" y="1399" class="calloutText">Simulated order. No contact, payment,</text>
+    <text x="114" y="1412" class="calloutText">or delivery will take place.</text>
+    <line x1="102" y1="1437" x2="428" y2="1437" class="line"/>
+    <text x="102" y="1463" class="h3">Summary</text>
+    <text x="102" y="1487" class="small muted" font-weight="700">Total</text>
+    <text x="102" y="1503" class="body">MYR 65.00</text>
+    <text x="102" y="1525" class="small muted" font-weight="700">Submitted at</text>
+    <text x="102" y="1542" class="body">Sep 28, 2026, 12:53 PM</text>
+    <text x="102" y="1571" class="small muted">Additional detail sections continue by scroll.</text>
+  </g>
+
+  <!-- TABLET PANEL -->
+  <text x="544" y="147" font-size="21" font-weight="850">Tablet</text>
+  <rect x="1260" y="123" width="91" height="29" rx="14" class="sectionBadge"/>
+  <text x="1305.5" y="142" text-anchor="middle" class="sectionBadgeText">820px</text>
+  <text x="544" y="171" class="small muted">Full-width workspace · two-column catalog · queue then detail</text>
+  <text x="544" y="192" class="small" font-weight="700">NAV: menu opens the existing drawer over content; route labels stay visible.</text>
+
+  <rect x="544" y="207" width="187" height="25" rx="8" class="sectionBadge"/>
+  <text x="557" y="224" class="caption">PRODUCTS</text>
+  <text x="740" y="224" class="small muted">two equal columns</text>
+  <rect x="535" y="269" width="820" height="416" rx="13" class="screen"/>
+  <g clip-path="url(#tablet-products)">
+    <rect x="535" y="269" width="820" height="416" fill="#f5f8fa"/>
+    <rect x="535" y="269" width="820" height="64" class="top"/>
+    <line x1="535" y1="333" x2="1355" y2="333" class="line"/>
+    <rect x="548" y="279" width="44" height="44" rx="10" class="top"/><path d="M560 292h20M560 300h20M560 308h20" class="lineIcon"/>
+    <rect x="604" y="284" width="34" height="34" rx="10" fill="#087f83"/><path d="M612 296h18v14h-18zM610 295l2-4h14l2 4M617 301h8" class="whiteIcon"/>
+    <text x="646" y="306" font-size="14" font-weight="800">Seller portal</text>
+    <rect x="1269" y="279" width="44" height="44" rx="10" class="border"/><circle cx="1291" cy="301" r="9" class="lineIcon"/><path d="M1282 301h18M1291 292c4 4 4 14 0 18M1291 292c-4 4-4 14 0 18" class="lineIcon"/>
+    <circle cx="1332" cy="301" r="15" fill="#d5f1ec"/><text x="1332" y="305" text-anchor="middle" font-size="10" font-weight="800" fill="#087f83">A</text>
+    <text x="559" y="358" class="eyebrow">SELLER PORTAL</text><text x="559" y="386" class="h1">Products</text>
+    <rect x="559" y="399" width="772" height="62" rx="13" class="card"/>
+    <rect x="575" y="408" width="449" height="44" rx="9" class="border"/><text x="588" y="435" font-size="12" class="muted">Name or SKU</text>
+    <rect x="1032" y="408" width="91" height="44" rx="9" class="border"/><text x="1077.5" y="435" text-anchor="middle" class="buttonText">Search</text>
+    <rect x="1131" y="408" width="184" height="44" rx="9" class="primary"/><text x="1223" y="435" text-anchor="middle" class="primaryText">Add product</text>
+    <g>
+      <rect x="559" y="475" width="378" height="177" rx="12" class="card"/>
+      <rect x="573" y="489" width="68" height="68" rx="8" fill="#fff0e9" stroke="#ff7147"/><rect x="578" y="494" width="58" height="9" rx="3" fill="#ff7147"/><path d="M582 511h47M585 520h12v23h-12zM602 520h10v20h-10zM615 518h10v26h-10z" fill="#fff" stroke="#d5a287"/>
+      <text x="653" y="506" font-size="12" font-weight="800">PETKIT Pura Max / Pura X</text><text x="653" y="521" font-size="12" font-weight="800">Replacement Parts</text>
+      <text x="653" y="538" class="meta">PET-DEMO-035 · Litter Box Accessories</text><text x="653" y="551" class="meta">MYR 65.00</text>
+      <rect x="653" y="560" width="48" height="17" rx="8" class="chipGreen"/><text x="677" y="572" text-anchor="middle" class="greenText">Active</text>
+      <line x1="573" y1="588" x2="923" y2="588" class="line"/>
+      <rect x="687" y="598" width="130" height="44" rx="9" class="border"/><text x="752" y="625" text-anchor="middle" class="buttonText">Edit product</text>
+      <rect x="825" y="598" width="98" height="44" rx="9" class="border"/><text x="874" y="625" text-anchor="middle" class="buttonText">Deactivate</text>
+    </g>
+    <g>
+      <rect x="951" y="475" width="380" height="177" rx="12" class="card"/>
+      <rect x="965" y="489" width="68" height="68" rx="8" fill="#fff0e9" stroke="#ff7147"/><rect x="970" y="494" width="58" height="9" rx="3" fill="#ff7147"/><circle cx="984" cy="526" r="10" fill="#e7f4f3" stroke="#74aeb2"/><circle cx="1012" cy="526" r="10" fill="#f5e9dd" stroke="#cda78b"/>
+      <text x="1045" y="506" font-size="12" font-weight="800">ePetz PETKIT Pura Max /</text><text x="1045" y="521" font-size="12" font-weight="800">Pura X Replacement Liner</text>
+      <text x="1045" y="538" class="meta">PET-DEMO-033 · Litter Box Accessories</text><text x="1045" y="551" class="meta">MYR 69.90</text>
+      <rect x="1045" y="560" width="48" height="17" rx="8" class="chipGreen"/><text x="1069" y="572" text-anchor="middle" class="greenText">Active</text>
+      <line x1="965" y1="588" x2="1317" y2="588" class="line"/>
+      <rect x="973" y="598" width="167" height="44" rx="9" class="border"/><text x="1056.5" y="625" text-anchor="middle" class="buttonText">Edit product</text>
+      <rect x="1148" y="598" width="169" height="44" rx="9" class="border"/><text x="1232.5" y="625" text-anchor="middle" class="buttonText">Deactivate</text>
+    </g>
+    <text x="559" y="675" class="small muted">More products continue in the same two-column grid.</text>
+  </g>
+
+  <rect x="544" y="692" width="199" height="25" rx="8" class="sectionBadge"/>
+  <text x="557" y="709" class="caption">SALES ORDERS</text>
+  <text x="752" y="709" class="small muted">filter row stays inline</text>
+  <rect x="535" y="719" width="820" height="416" rx="13" class="screen"/>
+  <g clip-path="url(#tablet-orders)">
+    <rect x="535" y="719" width="820" height="416" fill="#f5f8fa"/><rect x="535" y="719" width="820" height="64" class="top"/><line x1="535" y1="783" x2="1355" y2="783" class="line"/>
+    <rect x="548" y="729" width="44" height="44" rx="10" class="top"/><path d="M560 742h20M560 750h20M560 758h20" class="lineIcon"/>
+    <rect x="604" y="734" width="34" height="34" rx="10" fill="#087f83"/><path d="M612 746h18v14h-18zM610 745l2-4h14l2 4M617 751h8" class="whiteIcon"/><text x="646" y="756" font-size="14" font-weight="800">Seller portal</text>
+    <rect x="1269" y="729" width="44" height="44" rx="10" class="border"/><circle cx="1291" cy="751" r="9" class="lineIcon"/><path d="M1282 751h18M1291 742c4 4 4 14 0 18M1291 742c-4 4-4 14 0 18" class="lineIcon"/><circle cx="1332" cy="751" r="15" fill="#d5f1ec"/><text x="1332" y="755" text-anchor="middle" font-size="10" font-weight="800" fill="#087f83">A</text>
+    <text x="559" y="808" class="eyebrow">SELLER PORTAL</text><text x="559" y="836" class="h1">Sales Orders</text>
+    <rect x="559" y="849" width="772" height="96" rx="13" class="card"/>
+    <text x="575" y="869" class="label">Order number</text><text x="852" y="869" class="label">Status</text>
+    <rect x="575" y="877" width="260" height="44" rx="9" class="border"/><rect x="844" y="877" width="293" height="44" rx="9" class="border"/>
+    <text x="860" y="904" font-size="10" font-weight="650">All statuses</text><path d="m1120 894 5 5 5-5" class="lineIcon"/>
+    <rect x="1147" y="877" width="91" height="44" rx="9" class="border"/><text x="1192.5" y="904" text-anchor="middle" class="buttonText">Search</text>
+    <rect x="559" y="961" width="772" height="187" rx="13" class="card"/><text x="579" y="990" class="h2">Order queue</text>
+    <rect x="575" y="1002" width="740" height="63" rx="10" class="card"/><text x="589" y="1025" font-size="12" font-weight="800">DEMO-00000002</text><rect x="1229" y="1010" width="70" height="19" rx="9" class="chipGold"/><text x="1264" y="1023" text-anchor="middle" class="goldText">Submitted</text><text x="589" y="1043" class="body">Demo Customer</text><text x="589" y="1058" class="meta">MYR 65.00 · Sep 28, 2026, 12:53 PM</text>
+    <rect x="575" y="1073" width="740" height="63" rx="10" class="card"/><text x="589" y="1096" font-size="12" font-weight="800">DEMO-00000001</text><rect x="1229" y="1081" width="70" height="19" rx="9" class="chipGold"/><text x="1264" y="1094" text-anchor="middle" class="goldText">Submitted</text><text x="589" y="1114" class="body">Demo Customer · MYR 65.00</text>
+  </g>
+
+  <rect x="544" y="1142" width="199" height="25" rx="8" class="sectionBadge"/><text x="557" y="1159" class="caption">ORDER DETAILS</text><text x="752" y="1159" class="small muted">selected-order view · Back retained</text>
+  <rect x="535" y="1169" width="820" height="416" rx="13" class="screen"/>
+  <g clip-path="url(#tablet-detail)">
+    <rect x="535" y="1169" width="820" height="416" fill="#f5f8fa"/><rect x="535" y="1169" width="820" height="64" class="top"/><line x1="535" y1="1233" x2="1355" y2="1233" class="line"/>
+    <rect x="548" y="1179" width="44" height="44" rx="10" class="top"/><path d="M560 1192h20M560 1200h20M560 1208h20" class="lineIcon"/><rect x="604" y="1184" width="34" height="34" rx="10" fill="#087f83"/><path d="M612 1196h18v14h-18zM610 1195l2-4h14l2 4M617 1201h8" class="whiteIcon"/><text x="646" y="1206" font-size="14" font-weight="800">Seller portal</text>
+    <rect x="1269" y="1179" width="44" height="44" rx="10" class="border"/><circle cx="1291" cy="1201" r="9" class="lineIcon"/><path d="M1282 1201h18M1291 1192c4 4 4 14 0 18M1291 1192c-4 4-4 14 0 18" class="lineIcon"/><circle cx="1332" cy="1201" r="15" fill="#d5f1ec"/><text x="1332" y="1205" text-anchor="middle" font-size="10" font-weight="800" fill="#087f83">A</text>
+    <text x="559" y="1258" class="eyebrow">SELLER PORTAL</text><text x="559" y="1286" class="h1">Sales Orders</text>
+    <rect x="559" y="1298" width="772" height="274" rx="13" class="card"/>
+    <text x="579" y="1328" class="h2">Order details</text><rect x="1174" y="1307" width="141" height="44" rx="9" class="border"/><text x="1244.5" y="1334" text-anchor="middle" class="buttonText">Back to orders</text>
+    <text x="579" y="1370" font-size="20" font-weight="850">DEMO-00000002</text><rect x="781" y="1351" width="70" height="20" rx="10" class="chipGold"/><text x="816" y="1365" text-anchor="middle" class="goldText">Submitted</text>
+    <rect x="579" y="1382" width="732" height="42" rx="9" class="callout"/><text x="593" y="1408" class="calloutText">Simulated order. No contact, payment, or delivery will take place.</text>
+    <line x1="579" y1="1437" x2="1311" y2="1437" class="line"/><text x="579" y="1463" class="h3">Summary</text>
+    <text x="579" y="1486" class="small muted" font-weight="700">Total</text><text x="579" y="1504" class="body">MYR 65.00</text>
+    <text x="730" y="1486" class="small muted" font-weight="700">Submitted at</text><text x="730" y="1504" class="body">Sep 28, 2026, 12:53 PM</text>
+    <text x="1005" y="1486" class="small muted" font-weight="700">Revision</text><text x="1005" y="1504" class="body">1</text>
+    <text x="579" y="1542" class="small muted">Remaining order sections continue below the fold.</text>
+  </g>
+
+  <!-- DESKTOP PANEL -->
+  <text x="1410" y="147" font-size="21" font-weight="850">Desktop</text>
+  <rect x="2296" y="123" width="102" height="29" rx="14" class="sectionBadge"/><text x="2347" y="142" text-anchor="middle" class="sectionBadgeText">1440px</text>
+  <text x="1410" y="171" class="small muted">Persistent sidebar · two-column catalog · split order workspace</text>
+  <text x="1410" y="192" class="small" font-weight="700">NAV: existing 248px sidebar and collapse control remain.</text>
+
+  <rect x="1410" y="207" width="187" height="25" rx="8" class="sectionBadge"/><text x="1423" y="224" class="caption">PRODUCTS</text><text x="1606" y="224" class="small muted">two-column cards</text>
+  <rect x="1425" y="269" width="940" height="416" rx="13" class="screen"/>
+  <g clip-path="url(#desktop-products)">
+    <rect x="1425" y="269" width="940" height="416" fill="#f5f8fa"/>
+    <rect x="1425" y="269" width="940" height="64" class="top"/><line x1="1425" y1="333" x2="2365" y2="333" class="line"/>
+    <rect x="1425" y="269" width="164" height="416" fill="#fff"/><line x1="1589" y1="269" x2="1589" y2="685" class="line"/>
+    <rect x="1438" y="280" width="34" height="34" rx="10" fill="#087f83"/><path d="M1446 292h18v14h-18zM1444 291l2-4h14l2 4M1451 297h8" class="whiteIcon"/><text x="1479" y="302" font-size="10" font-weight="800">Seller portal</text>
+    <path d="M1444 345l8-7 8 7v11h-16z" class="lineIcon"/><text x="1468" y="352" class="nav">Dashboard</text>
+    <rect x="1434" y="366" width="146" height="35" rx="8" fill="#e7f4f3"/><path d="M1445 376h15v15h-15zM1444 376l2-4h13l2 4" class="lineIcon"/><text x="1468" y="389" font-size="9" font-weight="750" fill="#20686d">Products</text>
+    <text x="1445" y="423" class="tiny" font-weight="800" fill="#8295a0" letter-spacing=".7">SALES MANAGER</text><text x="1468" y="449" class="nav">Sales Orders</text><text x="1468" y="475" class="nav">Sales Order Confirmation</text>
+    <text x="1445" y="514" class="tiny" font-weight="800" fill="#8295a0" letter-spacing=".7">CONFIGURATION</text><text x="1468" y="540" class="nav">Category codes</text><text x="1468" y="566" class="nav">Company settings</text>
+    <rect x="2297" y="279" width="44" height="44" rx="10" class="border"/><circle cx="2319" cy="301" r="9" class="lineIcon"/><path d="M2310 301h18M2319 292c4 4 4 14 0 18M2319 292c-4 4-4 14 0 18" class="lineIcon"/><circle cx="2350" cy="301" r="15" fill="#d5f1ec"/><text x="2350" y="305" text-anchor="middle" font-size="10" font-weight="800" fill="#087f83">A</text>
+    <text x="1607" y="358" class="eyebrow">SELLER PORTAL</text><text x="1607" y="386" class="h1">Products</text>
+    <rect x="1607" y="399" width="735" height="60" rx="13" class="card"/><rect x="1621" y="408" width="449" height="42" rx="9" class="border"/><text x="1634" y="434" font-size="11" class="muted">Name or SKU</text>
+    <rect x="2078" y="408" width="82" height="42" rx="9" class="border"/><text x="2119" y="434" text-anchor="middle" class="buttonText">Search</text><rect x="2168" y="408" width="158" height="42" rx="9" class="primary"/><text x="2247" y="434" text-anchor="middle" class="primaryText">Add product</text>
+    <g>
+      <rect x="1607" y="473" width="358" height="183" rx="12" class="card"/><rect x="1620" y="486" width="62" height="62" rx="8" fill="#fff0e9" stroke="#ff7147"/><rect x="1625" y="491" width="52" height="8" rx="3" fill="#ff7147"/><path d="M1629 508h44M1632 516h11v22h-11zM1648 516h9v19h-9zM1662 514h9v25h-9z" fill="#fff" stroke="#d5a287"/>
+      <text x="1694" y="499" font-size="11" font-weight="800">PETKIT Pura Max / Pura X Replacement Parts</text><text x="1694" y="518" class="meta">PET-DEMO-035 · Litter Box Accessories</text><text x="1694" y="532" class="meta">MYR 65.00</text><rect x="1694" y="539" width="48" height="17" rx="8" class="chipGreen"/><text x="1718" y="551" text-anchor="middle" class="greenText">Active</text>
+      <line x1="1620" y1="570" x2="1952" y2="570" class="line"/><rect x="1746" y="581" width="120" height="44" rx="9" class="border"/><text x="1806" y="608" text-anchor="middle" class="buttonText">Edit product</text><rect x="1874" y="581" width="78" height="44" rx="9" class="border"/><text x="1913" y="608" text-anchor="middle" class="buttonText">Deactivate</text>
+    </g>
+    <g>
+      <rect x="1977" y="473" width="365" height="183" rx="12" class="card"/><rect x="1990" y="486" width="62" height="62" rx="8" fill="#fff0e9" stroke="#ff7147"/><rect x="1995" y="491" width="52" height="8" rx="3" fill="#ff7147"/><circle cx="2008" cy="520" r="10" fill="#e7f4f3" stroke="#74aeb2"/><circle cx="2033" cy="520" r="10" fill="#f5e9dd" stroke="#cda78b"/>
+      <text x="2064" y="499" font-size="11" font-weight="800">ePetz PETKIT Pura Max / Pura X Replacement Liner</text><text x="2064" y="518" class="meta">PET-DEMO-033 · Litter Box Accessories</text><text x="2064" y="532" class="meta">MYR 69.90</text><rect x="2064" y="539" width="48" height="17" rx="8" class="chipGreen"/><text x="2088" y="551" text-anchor="middle" class="greenText">Active</text>
+      <line x1="1990" y1="570" x2="2329" y2="570" class="line"/><rect x="2118" y="581" width="120" height="44" rx="9" class="border"/><text x="2178" y="608" text-anchor="middle" class="buttonText">Edit product</text><rect x="2246" y="581" width="83" height="44" rx="9" class="border"/><text x="2287.5" y="608" text-anchor="middle" class="buttonText">Deactivate</text>
+    </g>
+  </g>
+
+  <rect x="1410" y="692" width="199" height="25" rx="8" class="sectionBadge"/><text x="1423" y="709" class="caption">SALES ORDERS</text><text x="1616" y="709" class="small muted">queue + empty detail pane</text>
+  <rect x="1425" y="719" width="940" height="416" rx="13" class="screen"/>
+  <g clip-path="url(#desktop-orders)">
+    <rect x="1425" y="719" width="940" height="416" fill="#f5f8fa"/><rect x="1425" y="719" width="940" height="64" class="top"/><line x1="1425" y1="783" x2="2365" y2="783" class="line"/>
+    <rect x="1425" y="719" width="164" height="416" fill="#fff"/><line x1="1589" y1="719" x2="1589" y2="1135" class="line"/><rect x="1438" y="730" width="34" height="34" rx="10" fill="#087f83"/><path d="M1446 742h18v14h-18zM1444 741l2-4h14l2 4M1451 747h8" class="whiteIcon"/><text x="1479" y="752" font-size="10" font-weight="800">Seller portal</text>
+    <rect x="2297" y="729" width="44" height="44" rx="10" class="border"/><circle cx="2319" cy="751" r="9" class="lineIcon"/><path d="M2310 751h18M2319 742c4 4 4 14 0 18M2319 742c-4 4-4 14 0 18" class="lineIcon"/><circle cx="2350" cy="751" r="15" fill="#d5f1ec"/><text x="2350" y="755" text-anchor="middle" font-size="10" font-weight="800" fill="#087f83">A</text>
+    <text x="1607" y="808" class="eyebrow">SELLER PORTAL</text><text x="1607" y="836" class="h1">Sales Orders</text>
+    <rect x="1607" y="849" width="735" height="72" rx="13" class="card"/><text x="1621" y="868" class="label">Order number</text><text x="1858" y="868" class="label">Status</text>
+    <rect x="1621" y="876" width="225" height="36" rx="8" class="border"/><rect x="1854" y="876" width="328" height="36" rx="8" class="border"/><text x="1868" y="899" class="small">All statuses</text><path d="m2165 891 5 5 5-5" class="lineIcon"/><rect x="2190" y="876" width="88" height="36" rx="8" class="border"/><text x="2234" y="899" text-anchor="middle" class="buttonText">Search</text>
+    <rect x="1607" y="937" width="225" height="176" rx="13" class="card"/><text x="1623" y="964" class="h2">Order queue</text>
+    <rect x="1621" y="977" width="197" height="58" rx="9" class="card"/><text x="1632" y="997" font-size="10" font-weight="800">DEMO-00000002</text><rect x="1741" y="984" width="67" height="18" rx="9" class="chipGold"/><text x="1774.5" y="997" text-anchor="middle" class="goldText">Submitted</text><text x="1632" y="1015" class="small">Demo Customer</text><text x="1632" y="1028" class="tiny muted">MYR 65.00 · Sep 28, 2026</text>
+    <rect x="1621" y="1044" width="197" height="58" rx="9" class="card"/><text x="1632" y="1064" font-size="10" font-weight="800">DEMO-00000001</text><rect x="1741" y="1051" width="67" height="18" rx="9" class="chipGold"/><text x="1774.5" y="1064" text-anchor="middle" class="goldText">Submitted</text><text x="1632" y="1082" class="small">Demo Customer</text><text x="1632" y="1095" class="tiny muted">MYR 65.00 · Sep 28, 2026</text>
+    <rect x="1845" y="937" width="497" height="176" rx="13" class="card"/><text x="1861" y="964" class="h2">Order details</text><text x="1861" y="997" font-size="12">Select an order to review.</text>
+  </g>
+
+  <rect x="1410" y="1142" width="199" height="25" rx="8" class="sectionBadge"/><text x="1423" y="1159" class="caption">ORDER DETAILS</text><text x="1616" y="1159" class="small muted">selected state inside split view</text>
+  <rect x="1425" y="1169" width="940" height="416" rx="13" class="screen"/>
+  <g clip-path="url(#desktop-detail)">
+    <rect x="1425" y="1169" width="940" height="416" fill="#f5f8fa"/><rect x="1425" y="1169" width="940" height="64" class="top"/><line x1="1425" y1="1233" x2="2365" y2="1233" class="line"/>
+    <rect x="1425" y="1169" width="164" height="416" fill="#fff"/><line x1="1589" y1="1169" x2="1589" y2="1585" class="line"/><rect x="1438" y="1180" width="34" height="34" rx="10" fill="#087f83"/><path d="M1446 1192h18v14h-18zM1444 1191l2-4h14l2 4M1451 1197h8" class="whiteIcon"/><text x="1479" y="1202" font-size="10" font-weight="800">Seller portal</text>
+    <rect x="2297" y="1179" width="44" height="44" rx="10" class="border"/><circle cx="2319" cy="1201" r="9" class="lineIcon"/><path d="M2310 1201h18M2319 1192c4 4 4 14 0 18M2319 1192c-4 4-4 14 0 18" class="lineIcon"/><circle cx="2350" cy="1201" r="15" fill="#d5f1ec"/><text x="2350" y="1205" text-anchor="middle" font-size="10" font-weight="800" fill="#087f83">A</text>
+    <text x="1607" y="1258" class="eyebrow">SELLER PORTAL</text><text x="1607" y="1286" class="h1">Sales Orders</text>
+    <rect x="1607" y="1298" width="225" height="270" rx="13" class="card"/><text x="1623" y="1325" class="h2">Order queue</text>
+    <rect x="1621" y="1338" width="197" height="65" rx="9" fill="#f1fafa" stroke="#317c82"/><rect x="1621" y="1338" width="3" height="65" rx="1" fill="#317c82"/><text x="1632" y="1358" font-size="10" font-weight="800">DEMO-00000002</text><rect x="1741" y="1345" width="67" height="18" rx="9" class="chipGold"/><text x="1774.5" y="1358" text-anchor="middle" class="goldText">Submitted</text><text x="1632" y="1377" class="small">Demo Customer</text><text x="1632" y="1392" class="tiny muted">MYR 65.00 · Sep 28, 2026</text>
+    <rect x="1621" y="1412" width="197" height="65" rx="9" class="card"/><text x="1632" y="1432" font-size="10" font-weight="800">DEMO-00000001</text><rect x="1741" y="1419" width="67" height="18" rx="9" class="chipGold"/><text x="1774.5" y="1432" text-anchor="middle" class="goldText">Submitted</text><text x="1632" y="1451" class="small">Demo Customer</text><text x="1632" y="1466" class="tiny muted">MYR 65.00 · Sep 28, 2026</text>
+    <rect x="1845" y="1298" width="497" height="270" rx="13" class="card"/><text x="1861" y="1325" class="h2">Order details</text>
+    <text x="1861" y="1362" font-size="17" font-weight="850">DEMO-00000002</text><rect x="2037" y="1343" width="70" height="20" rx="10" class="chipGold"/><text x="2072" y="1357" text-anchor="middle" class="goldText">Submitted</text>
+    <rect x="1861" y="1373" width="465" height="39" rx="9" class="callout"/><text x="1873" y="1397" class="calloutText">Simulated order. No contact, payment, or delivery will take place.</text>
+    <line x1="1861" y1="1427" x2="2326" y2="1427" class="line"/><text x="1861" y="1452" class="h3">Summary</text>
+    <text x="1861" y="1476" class="small muted" font-weight="700">Total</text><text x="1861" y="1494" class="body">MYR 65.00</text><text x="2010" y="1476" class="small muted" font-weight="700">Submitted at</text><text x="2010" y="1494" class="body">Sep 28, 2026, 12:53 PM</text>
+    <text x="1861" y="1532" class="small muted">Buyer and destination details continue below.</text>
+  </g>
+
+  <!-- Implementation notes / legend -->
+  <g transform="translate(48 1620)">
+    <rect width="400" height="60" rx="12" class="callout"/>
+    <text x="16" y="24" class="calloutText">Mobile: order fields share a row; Search stays 44px high.</text>
+    <text x="16" y="43" class="calloutText">Detail back control stays beside its heading.</text>
+  </g>
+  <g transform="translate(544 1620)">
+    <rect width="790" height="60" rx="12" class="callout"/>
+    <text x="16" y="24" class="calloutText">Tablet: hamburger opens the labelled drawer; the page keeps its full width while the drawer is closed.</text>
+    <text x="16" y="43" class="calloutText">All nav routes and the existing order queue → detail → Back flow remain available.</text>
+  </g>
+  <g transform="translate(1410 1620)">
+    <rect width="956" height="60" rx="12" fill="#fff4d7" stroke="#ead9a7"/>
+    <text x="16" y="24" font-size="10" font-weight="750" fill="#805511">ILLUSTRATIVE FIRST-FOLD CROPS · not a running screenshot; no live or private data shown.</text>
+    <text x="16" y="43" font-size="10" font-weight="650" fill="#805511">Validate localized wrapping, 44px targets, and tablet drawer focus/inert behavior in-browser.</text>
+  </g>
+</svg>

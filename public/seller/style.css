@@ -92,7 +92,7 @@
 .privacy-note{display:flex;align-items:center;justify-content:center;gap:7px;text-align:center;font-size:12px;color:#607888;margin:22px 0 0;line-height:1.4}
 .privacy-note svg{flex:none;width:16px;height:16px}
 .message{min-height:20px;color:#aa3946;margin:5px 0;font-size:13px}
-.icon-button{display:grid;place-items:center;width:42px;height:42px;border-radius:9px}
+.icon-button{display:grid;place-items:center;width:44px;height:44px;border-radius:9px}
 .mobile-only{display:none}
 .drawer-backdrop{display:none}
 .profile-dialog{width:min(420px,calc(100% - 32px));border:1px solid #dce7eb;border-radius:17px;padding:27px;color:#173950;box-shadow:0 18px 70px #15354c33}
@@ -179,7 +179,8 @@
 .order-queue h2,.order-detail h2{font-size:19px;margin:0 0 13px;color:#173950}
 .order-queue h2,#order-detail-title{position:sticky;top:-20px;z-index:1;margin:-20px -20px 13px;padding:20px 20px 12px;background:#fff}
 #order-detail-title{scroll-margin-top:100px}
-.order-list-status{min-height:18px;font-size:13px;margin:0 0 8px}
+.order-list-status{font-size:13px;margin:0 0 8px}
+.order-list-status:empty{display:none}
 .order-list{display:grid;gap:9px}
 .order-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px 8px;width:100%;padding:13px;text-align:left;border:1px solid #dce7eb;border-radius:11px;background:#fff;color:#173950}
 .order-card:hover,.order-card.selected{border-color:#317c82;background:#f1fafa}
@@ -219,15 +220,16 @@
 .decision-dialog label{display:grid;gap:8px;font-size:13px;font-weight:700}
 .decision-dialog textarea{resize:vertical;font:inherit;min-height:100px}
 .decision-actions{display:flex;justify-content:flex-end;gap:9px;flex-wrap:wrap}
-@media(max-width:1199px){.product-list{grid-template-columns:1fr}}
 @media(max-width:1080px){
   .order-layout{grid-template-columns:1fr}
   .order-queue,.order-detail{max-height:none;overflow:visible}
   .order-detail{position:static;display:none}
   #workspace-content.order-show-detail .order-queue{display:none}
   #workspace-content.order-show-detail .order-toolbar{display:none}
-  #workspace-content.order-show-detail .order-detail{display:block}
-  #workspace-content.order-show-detail .order-back{display:inline-flex;margin-bottom:17px}
+  #workspace-content.order-show-detail .order-detail{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+  #workspace-content.order-show-detail .order-back{display:inline-flex;min-height:44px;max-width:100%;margin-left:auto;white-space:normal;text-align:center}
+  #workspace-content.order-show-detail #order-detail-title{flex:1 1 0;min-width:min-content;max-width:100%;margin:0}
+  #workspace-content.order-show-detail #order-detail-content{flex:1 0 100%;min-width:0}
   .order-queue h2,#order-detail-title{position:static;margin:0 0 13px;padding:0}
 }
 @media(max-width:900px){
@@ -236,15 +238,8 @@
 .login-intro-content{max-width:540px}
 .login-area{padding:20px}
 .login-card{max-width:none;min-height:0}
-}
-@media(max-width:760px){
 .topbar,.seller-signed-in .topbar,.seller-signed-in.seller-nav-collapsed .topbar{margin-left:0;padding-inline:12px}
 .seller-signed-in .topbar .brand{display:flex}
-.topbar .brand{font-size:16px}
-.topbar .brand-mark{width:34px;height:34px;font-size:12px}
-.top-actions{gap:8px}
-.account-button>span:not(.avatar){display:none}
-.account-button{padding:4px}
 .mobile-only{display:grid}
 .sidebar{top:0;width:min(300px,86vw);height:100vh;height:100dvh;padding-top:env(safe-area-inset-top);transform:translateX(-105%);transition:transform .18s ease;z-index:30;box-shadow:0 10px 28px #15354c24}
 .sidebar.drawer-open{transform:translateX(0)}
@@ -258,6 +253,14 @@
 .sidebar-head{min-height:64px}
 .drawer-backdrop:not([hidden]){display:block;position:fixed;inset:0;background:#0c294055;z-index:25}
 .collapse-button{display:none}
+.main,.sidebar.collapsed+.main{margin-left:0;padding:24px clamp(20px,3vw,28px) 45px}
+}
+@media(max-width:760px){
+.topbar .brand{font-size:16px}
+.topbar .brand-mark{width:34px;height:34px;font-size:12px}
+.top-actions{gap:8px}
+.account-button>span:not(.avatar){display:none}
+.account-button{padding:4px}
 .main,.sidebar.collapsed+.main{margin-left:0;padding:20px 16px calc(35px + env(safe-area-inset-bottom))}
 .login-layout{margin:4px auto;border-radius:18px}
 .login-intro{min-height:215px}
@@ -271,7 +274,7 @@
 .login-area{padding:15px}
 .login-card{padding:25px 22px}
 .login-card-lead{margin-bottom:22px}
-.page-heading{margin-bottom:18px}
+.page-heading{margin-bottom:12px}
 .seller-update-notice{align-items:stretch;flex-direction:column}
 .seller-update-actions{justify-content:flex-start;flex-wrap:wrap}
 .panel{padding:20px}
@@ -289,12 +292,13 @@
 .product-card img,.product-placeholder{width:62px;height:62px}
 .product-card-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 .product-card-actions button{min-width:0;padding-inline:8px;font-size:12px}
+.product-list{grid-template-columns:1fr}
 .order-layout{grid-template-columns:1fr;gap:22px}
 .order-queue,.order-detail{padding:16px}
-.order-back{position:sticky;top:70px;z-index:2;width:100%;justify-content:flex-start;background:#fff;box-shadow:0 8px 12px #fff}
 #order-detail-title{scroll-margin-top:80px}
-.order-filter label{min-width:0;flex-basis:100%}
-.order-filter button{width:100%}
+.order-filter{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end}
+.order-filter label{min-width:0}
+.order-filter button{grid-column:1/-1;justify-self:end;min-width:120px}
 }
 @media(max-width:355px){
 .brand>span:not(.brand-mark){display:none}

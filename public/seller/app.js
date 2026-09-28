@@ -269,7 +269,7 @@ function closeDrawer(restoreFocus = true) {
 }
 
 function syncDrawerAccess() {
-  sidebar.inert = window.matchMedia('(max-width: 760px)').matches && !sidebar.classList.contains('drawer-open');
+  sidebar.inert = window.matchMedia('(max-width: 900px)').matches && !sidebar.classList.contains('drawer-open');
 }
 
 function closeAccount() {
@@ -286,14 +286,19 @@ menuButton.addEventListener('click', () => {
 });
 byId('close-menu').addEventListener('click', () => closeDrawer());
 backdrop.addEventListener('click', () => closeDrawer());
-window.addEventListener('resize', syncDrawerAccess);
+window.addEventListener('resize', () => {
+  if (!window.matchMedia('(max-width: 900px)').matches && sidebar.classList.contains('drawer-open')) {
+    closeDrawer(false);
+    byId('page-title').focus({ preventScroll: true });
+  } else syncDrawerAccess();
+});
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape' || document.querySelector('dialog[open]')) return;
   if (!accountMenu.hidden) { closeAccount(); accountButton.focus(); return; }
   if (sidebar.classList.contains('drawer-open')) closeDrawer();
 });
 byId('collapse-nav').addEventListener('click', () => {
-  if (window.matchMedia('(max-width: 760px)').matches) { closeDrawer(); return; }
+  if (window.matchMedia('(max-width: 900px)').matches) { closeDrawer(); return; }
   const collapsed = sidebar.classList.toggle('collapsed');
   document.body.classList.toggle('seller-nav-collapsed', collapsed);
   byId('collapse-nav').dataset.i18nAria = collapsed ? 'expand' : 'collapse';
