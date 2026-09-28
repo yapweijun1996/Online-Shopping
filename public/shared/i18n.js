@@ -1244,6 +1244,12 @@ const productExperienceMessages = {
 };
 for (const { code } of languages) Object.assign(messages[code], productExperienceMessages[code]);
 
+const clearFiltersLabels = {
+  en: 'Clear filters', ms: 'Kosongkan penapis', 'zh-Hans': '清除筛选',
+  vi: 'Xóa bộ lọc', th: 'ล้างตัวกรอง', ja: '絞り込みを解除', ko: '필터 지우기',
+};
+for (const { code } of languages) messages[code].clearFilters = clearFiltersLabels[code];
+
 const productInformationLabels = {
   en: 'Product information', ms: 'Maklumat produk', 'zh-Hans': '商品信息',
   vi: 'Thông tin sản phẩm', th: 'ข้อมูลสินค้า', ja: '商品情報', ko: '상품 정보',
@@ -1288,6 +1294,81 @@ const paletteMessages = {
   ko: { paletteTitle: '상점 화면', paletteHelp: '이 브라우저의 색상을 선택하세요. 가격과 알림의 의미는 그대로 유지됩니다.', paletteEvergreen: '에버그린 틸', palettePlum: '웜 플럼', paletteOcean: '오션 블루', paletteSaved: '이 브라우저에 화면 설정을 저장했습니다.', paletteSessionOnly: '화면은 변경됐지만 이 브라우저에 저장할 수 없습니다.' },
 };
 for (const { code } of languages) Object.assign(messages[code], paletteMessages[code]);
+
+const dashboardMessages = {
+  en: {
+    dashboardSimulated: 'Simulated', dashboardProduction: 'Production',
+    dashboardSubmittedOrders: 'Submitted orders', dashboardOrdersIntro: 'Review submissions that need a decision.',
+    dashboardReviewOrders: 'Review orders', dashboardNoSubmittedOrders: 'No submitted orders to review.',
+    dashboardRecentProducts: 'Recent products', dashboardProductsIntro: 'Latest catalog entries.',
+    dashboardViewProducts: 'View products', dashboardSimulationNote: 'Demo orders are simulated. No payment, delivery or buyer contact occurs.',
+  },
+  ms: {
+    dashboardSimulated: 'Simulasi', dashboardProduction: 'Produksi',
+    dashboardSubmittedOrders: 'Pesanan dihantar', dashboardOrdersIntro: 'Semak pesanan yang memerlukan keputusan.',
+    dashboardReviewOrders: 'Semak pesanan', dashboardNoSubmittedOrders: 'Tiada pesanan dihantar untuk disemak.',
+    dashboardRecentProducts: 'Produk terkini', dashboardProductsIntro: 'Entri katalog terkini.',
+    dashboardViewProducts: 'Lihat produk', dashboardSimulationNote: 'Pesanan Demo ialah simulasi. Tiada bayaran, penghantaran atau hubungan dengan pembeli.',
+  },
+  'zh-Hans': {
+    dashboardSimulated: '模拟', dashboardProduction: '正式',
+    dashboardSubmittedOrders: '待确认订单', dashboardOrdersIntro: '查看需要处理的已提交订单。',
+    dashboardReviewOrders: '确认订单', dashboardNoSubmittedOrders: '暂无待确认订单。',
+    dashboardRecentProducts: '最近商品', dashboardProductsIntro: '最新商品目录记录。',
+    dashboardViewProducts: '查看商品', dashboardSimulationNote: '演示订单仅为模拟，不会付款、配送或联系买家。',
+  },
+  vi: {
+    dashboardSimulated: 'Mô phỏng', dashboardProduction: 'Chính thức',
+    dashboardSubmittedOrders: 'Đơn đã gửi', dashboardOrdersIntro: 'Xem các đơn cần quyết định.',
+    dashboardReviewOrders: 'Xem đơn hàng', dashboardNoSubmittedOrders: 'Không có đơn đã gửi cần xem.',
+    dashboardRecentProducts: 'Sản phẩm gần đây', dashboardProductsIntro: 'Mục mới nhất trong danh mục.',
+    dashboardViewProducts: 'Xem sản phẩm', dashboardSimulationNote: 'Đơn Demo chỉ là mô phỏng. Không thanh toán, giao hàng hoặc liên hệ người mua.',
+  },
+  th: {
+    dashboardSimulated: 'จำลอง', dashboardProduction: 'ใช้งานจริง',
+    dashboardSubmittedOrders: 'คำสั่งซื้อที่ส่งแล้ว', dashboardOrdersIntro: 'ตรวจคำสั่งซื้อที่รอการตัดสินใจ',
+    dashboardReviewOrders: 'ตรวจคำสั่งซื้อ', dashboardNoSubmittedOrders: 'ไม่มีคำสั่งซื้อที่ส่งแล้วให้ตรวจ',
+    dashboardRecentProducts: 'สินค้าล่าสุด', dashboardProductsIntro: 'รายการล่าสุดในแคตตาล็อก',
+    dashboardViewProducts: 'ดูสินค้า', dashboardSimulationNote: 'คำสั่งซื้อ Demo เป็นการจำลอง ไม่มีการชำระเงิน จัดส่ง หรือติดต่อผู้ซื้อ',
+  },
+  ja: {
+    dashboardSimulated: 'シミュレーション', dashboardProduction: '本番',
+    dashboardSubmittedOrders: '確認待ちの注文', dashboardOrdersIntro: '対応が必要な注文を確認します。',
+    dashboardReviewOrders: '注文を確認', dashboardNoSubmittedOrders: '確認待ちの注文はありません。',
+    dashboardRecentProducts: '最近の商品', dashboardProductsIntro: '最近登録した商品です。',
+    dashboardViewProducts: '商品を見る', dashboardSimulationNote: 'デモ注文はシミュレーションです。決済、配送、購入者への連絡は行われません。',
+  },
+  ko: {
+    dashboardSimulated: '모의', dashboardProduction: '운영',
+    dashboardSubmittedOrders: '제출된 주문', dashboardOrdersIntro: '처리가 필요한 주문을 확인하세요.',
+    dashboardReviewOrders: '주문 확인', dashboardNoSubmittedOrders: '확인할 제출 주문이 없습니다.',
+    dashboardRecentProducts: '최근 상품', dashboardProductsIntro: '최근 등록된 상품입니다.',
+    dashboardViewProducts: '상품 보기', dashboardSimulationNote: 'Demo 주문은 모의 주문입니다. 결제, 배송 또는 구매자 연락이 진행되지 않습니다.',
+  },
+};
+for (const { code } of languages) Object.assign(messages[code], dashboardMessages[code]);
+
+const productEditorMessages = {
+  en: { backToProducts: 'Back to products', productNotFound: 'This product was not found. Return to products to choose another.', noMatchingProducts: 'No products match this search.' },
+  ms: { backToProducts: 'Kembali ke produk', productNotFound: 'Produk ini tidak ditemui. Kembali ke produk untuk memilih yang lain.', noMatchingProducts: 'Tiada produk sepadan dengan carian ini.' },
+  'zh-Hans': { backToProducts: '返回商品', productNotFound: '找不到此商品。请返回商品列表选择其他商品。', noMatchingProducts: '没有符合此搜索的商品。' },
+  vi: { backToProducts: 'Quay lại sản phẩm', productNotFound: 'Không tìm thấy sản phẩm này. Quay lại danh sách để chọn sản phẩm khác.', noMatchingProducts: 'Không có sản phẩm nào khớp với tìm kiếm.' },
+  th: { backToProducts: 'กลับไปที่สินค้า', productNotFound: 'ไม่พบสินค้านี้ กลับไปที่รายการสินค้าเพื่อเลือกสินค้าอื่น', noMatchingProducts: 'ไม่พบสินค้าที่ตรงกับการค้นหา' },
+  ja: { backToProducts: '商品一覧に戻る', productNotFound: 'この商品は見つかりません。商品一覧に戻って選び直してください。', noMatchingProducts: 'この検索に一致する商品はありません。' },
+  ko: { backToProducts: '상품 목록으로 돌아가기', productNotFound: '이 상품을 찾을 수 없습니다. 상품 목록으로 돌아가 다른 상품을 선택하세요.', noMatchingProducts: '검색 결과가 없습니다.' },
+};
+for (const { code } of languages) Object.assign(messages[code], productEditorMessages[code]);
+
+const cartWorkflowMessages = {
+  en: { setupProfileToContinue: 'Set up profile to continue', profileReadyShort: 'Profile ready', profileNeededShort: 'Profile needed before checkout' },
+  ms: { setupProfileToContinue: 'Sediakan profil untuk teruskan', profileReadyShort: 'Profil sedia', profileNeededShort: 'Profil diperlukan sebelum membuat pesanan' },
+  'zh-Hans': { setupProfileToContinue: '设置资料后继续', profileReadyShort: '资料已就绪', profileNeededShort: '结账前需设置资料' },
+  vi: { setupProfileToContinue: 'Thiết lập hồ sơ để tiếp tục', profileReadyShort: 'Hồ sơ đã sẵn sàng', profileNeededShort: 'Cần hồ sơ trước khi đặt hàng' },
+  th: { setupProfileToContinue: 'ตั้งค่าโปรไฟล์เพื่อดำเนินการต่อ', profileReadyShort: 'โปรไฟล์พร้อมแล้ว', profileNeededShort: 'ต้องมีโปรไฟล์ก่อนส่งคำสั่งซื้อ' },
+  ja: { setupProfileToContinue: 'プロフィールを設定して続ける', profileReadyShort: 'プロフィール設定済み', profileNeededShort: '購入手続きにはプロフィールが必要です' },
+  ko: { setupProfileToContinue: '프로필 설정 후 계속', profileReadyShort: '프로필 준비 완료', profileNeededShort: '주문 전에 프로필이 필요합니다' },
+};
+for (const { code } of languages) Object.assign(messages[code], cartWorkflowMessages[code]);
 
 let current = 'en';
 try {

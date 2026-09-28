@@ -33,7 +33,7 @@ function button(label, onClick, accessibleName = label) {
   return element;
 }
 
-export function mountProducts(root, { csrfToken, onUnauthorized }) {
+export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onSaved }) {
   root.replaceChildren(document.getElementById('products-template').content.cloneNode(true));
   translate(root);
   const find = (selector) => root.querySelector(selector);
@@ -52,6 +52,48 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
   const removeImage = find('#product-remove-image');
   const restoreImage = find('#product-restore-image');
   const imageRemovalHelp = find('#product-image-removal-help');
+  const listView = document.createElement('div');
+  listView.id = 'product-list-view';
+  const editorView = document.createElement('div');
+  editorView.id = 'product-editor-view';
+  editorView.hidden = true;
+  const back = button(t('backToProducts'), () => onNavigate('products'));
+  back.id = 'product-back';
+  back.className = 'text-button product-back';
+  back.dataset.i18n = 'backToProducts';
+  const editorStatus = document.createElement('p');
+  editorStatus.id = 'product-editor-status';
+  editorStatus.className = 'message';
+  editorStatus.setAttribute('role', 'status');
+  editorStatus.setAttribute('aria-live', 'polite');
+  const listRecovery = document.createElement('div');
+  listRecovery.className = 'product-list-recovery';
+  const clearSearch = button(t('clearSearch'), () => {
+    search.value = '';
+    load();
+  });
+  clearSearch.dataset.i18n = 'clearSearch';
+  clearSearch.hidden = true;
+  const retryList = button(t('retry'), () => loadSettings().then(() => load()));
+  retryList.dataset.i18n = 'retry';
+  retryList.hidden = true;
+  listRecovery.append(clearSearch, retryList);
+  const formFields = find('.product-fields');
+  const imageColumn = document.createElement('div');
+  imageColumn.className = 'product-image-column';
+  imageColumn.append(form.elements.image.closest('label'), imagePanel, galleryPanel);
+  const editorLayout = document.createElement('div');
+  editorLayout.className = 'product-editor-layout';
+  formFields.before(editorLayout);
+  editorLayout.append(formFields, imageColumn);
+  const editorActions = document.createElement('div');
+  editorActions.className = 'product-editor-actions';
+  editorActions.append(find('#product-cancel'), find('#product-save'));
+  form.append(editorActions);
+  find('.product-form-heading').remove();
+  listView.append(find('.product-toolbar'), status, listRecovery, list, more);
+  editorView.append(back, editorStatus, form);
+  root.replaceChildren(listView, editorView);
   let originalImageUrl = null;
   let pendingRemove = false;
   let galleryImages = [];
@@ -69,6 +111,8 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
   let formSuccessKey = '';
   let formBaseline = null;
   let saving = false;
+  let routeSequence = 0;
+  let editorStatusKey = '';
   const undoStates = new Map();
   const pendingChanges = new Set();
 
@@ -80,6 +124,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
   }
   function setError(key) { formErrorKey = key; error.textContent = key ? t(key) : ''; }
   function setFormSuccess(key) { formSuccessKey = key; formSuccess.textContent = key ? t(key) : ''; }
+  function setEditorStatus(key) { editorStatusKey = key; editorStatus.textContent = key ? t(key) : ''; }
   function formState() {
     const fields = ['sku', 'name', 'description', 'category', 'price', 'currency', 'variantGroup', 'variantLabel'];
     const image = form.elements.image.files[0];
@@ -153,7 +198,13 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
       categories = categoryResult.items;
       defaultCurrency = settings.defaultCurrency;
       populateCategories(form.elements.category.value);
-    } catch { if (root.isConnected) setStatus('networkError'); }
+    } catch {
+      if (root.isConnected) {
+        setStatus('networkError');
+        retryList.hidden = false;
+        if (!editorView.hidden) setEditorStatus('networkError');
+      }
+    }
   }
 
   function renderList() {
@@ -178,11 +229,15 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
       const title = document.createElement('h3');
       title.textContent = product.name;
       const detail = document.createElement('p');
-      detail.textContent = `${product.sku} · ${product.category} · ${formatMoney(product.priceMinor, product.currency)}`;
+      detail.className = 'product-card-identity';
+      detail.textContent = `${product.sku} · ${product.category}`;
+      const price = document.createElement('p');
+      price.className = 'product-card-price';
+      price.textContent = formatMoney(product.priceMinor, product.currency);
       const chip = document.createElement('span');
       chip.className = `product-status-chip${product.active ? '' : ' inactive'}`;
       chip.textContent = t(product.active ? 'active' : 'inactive');
-      main.append(title, detail, chip);
+      main.append(title, detail, price, chip);
       const actions = document.createElement('div');
       actions.className = 'product-card-actions';
       const toggleButton = button(t(product.active ? 'deactivateProduct' : 'activateProduct'),
@@ -190,7 +245,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
         `${t(product.active ? 'deactivateProduct' : 'activateProduct')}: ${product.name} (${product.sku})`);
       toggleButton.dataset.action = 'toggle';
       toggleButton.disabled = pendingChanges.has(product.id);
-      actions.append(button(t('editProduct'), () => edit(product), `${t('editProduct')}: ${product.name} (${product.sku})`), toggleButton);
+      actions.append(button(t('editProduct'), () => onNavigate(`products/${product.id}`), `${t('editProduct')}: ${product.name} (${product.sku})`), toggleButton);
       card.append(main, actions);
       const undo = undoStates.get(product.id);
       if (undo && undo.appliedActive === product.active) {
@@ -207,7 +262,6 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
       }
       list.append(card);
     }
-    if (!items.length && !statusKey) setStatus('noProducts');
     more.hidden = nextOffset === null;
   }
 
@@ -220,7 +274,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
     });
     if (response.status === 401) { onUnauthorized(); throw new Error('unauthorized'); }
     const data = await response.json();
-    if (!response.ok) throw Object.assign(new Error('request'), { field: data.error?.field, code: data.error?.code });
+    if (!response.ok) throw Object.assign(new Error('request'), { status: response.status, field: data.error?.field, code: data.error?.code });
     return data;
   }
 
@@ -230,6 +284,8 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
     const query = reset ? search.value.trim() : appliedSearch;
     const offset = reset ? 0 : nextOffset;
     more.disabled = true;
+    retryList.hidden = true;
+    clearSearch.hidden = true;
     setStatus('loading');
     try {
       const params = new URLSearchParams({ limit: '24', offset: String(offset), search: query });
@@ -238,11 +294,15 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
       items = reset ? result.items : [...items, ...result.items];
       if (reset) appliedSearch = query;
       nextOffset = result.nextOffset;
-      setStatus(items.length ? '' : 'noProducts');
+      setStatus(items.length ? '' : appliedSearch ? 'noMatchingProducts' : 'noProducts');
+      clearSearch.hidden = Boolean(items.length) || !appliedSearch;
       renderList();
       return true;
     } catch {
-      if (sequence === loadSequence && root.isConnected) setStatus('networkError');
+      if (sequence === loadSequence && root.isConnected) {
+        setStatus('networkError');
+        retryList.hidden = false;
+      }
       return false;
     } finally {
       if (sequence === loadSequence && root.isConnected) more.disabled = false;
@@ -264,7 +324,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
     setFormSuccess('');
   }
 
-  async function edit(product, { skipGuard = false } = {}) {
+  async function edit(product, { skipGuard = false, detailLoaded = false } = {}) {
     if (!skipGuard && !confirmDiscard()) return;
     editingId = product.id;
     form.hidden = false;
@@ -284,17 +344,63 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
     galleryImages = [];
     galleryLoaded = false;
     renderGallery();
-    find('#product-form-title').dataset.i18n = 'editProduct';
-    find('#product-form-title').textContent = t('editProduct');
     setError('');
     setFormSuccess('');
     captureBaseline();
-    form.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
-    form.elements.sku.focus();
+    if (!detailLoaded) {
+      form.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+      form.elements.sku.focus();
+    }
+    if (detailLoaded) {
+      galleryImages = product.images.slice(1);
+      galleryLoaded = true;
+      renderGallery();
+      return;
+    }
     try {
       const detail = await api('GET', `/api/v1/seller/products/${product.id}`);
       if (editingId === product.id) { galleryImages = detail.images.slice(1); galleryLoaded = true; renderGallery(); }
     } catch { if (editingId === product.id) setError('productError'); }
+  }
+
+  async function showRoute(route) {
+    const sequence = ++routeSequence;
+    if (route === 'products') {
+      resetForm();
+      editorView.hidden = true;
+      listView.hidden = false;
+      setEditorStatus('');
+      return;
+    }
+    listView.hidden = true;
+    editorView.hidden = false;
+    resetForm();
+    setEditorStatus(route === 'products/new' ? '' : 'loading');
+    if (route === 'products/new') {
+      await settingsPromise;
+      if (sequence !== routeSequence || !root.isConnected) return;
+      form.hidden = false;
+      populateCategories();
+      form.elements.currency.value = defaultCurrency;
+      captureBaseline();
+      return;
+    }
+    const id = route.slice('products/'.length);
+    try {
+      const detail = await api('GET', `/api/v1/seller/products/${id}`);
+      await settingsPromise;
+      if (sequence !== routeSequence || !root.isConnected) return;
+      await edit(detail, { skipGuard: true, detailLoaded: true });
+      setEditorStatus('');
+    } catch (failure) {
+      if (sequence !== routeSequence || !root.isConnected || failure.status === 401) return;
+      setEditorStatus(failure.status === 404 ? 'productNotFound' : 'networkError');
+      if (failure.status !== 404) {
+        const retry = button(t('retry'), () => showRoute(route));
+        retry.dataset.i18n = 'retry';
+        editorStatus.append(' ', retry);
+      }
+    }
   }
 
   function syncOpenFormAvailability(product) {
@@ -362,18 +468,8 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
     }
   }
 
-  find('#product-new').addEventListener('click', () => {
-    if (!confirmDiscard()) return;
-    resetForm();
-    form.hidden = false;
-    populateCategories();
-    form.elements.currency.value = defaultCurrency;
-    find('#product-form-title').dataset.i18n = 'addProduct';
-    find('#product-form-title').textContent = t('addProduct');
-    captureBaseline();
-    form.elements.sku.focus();
-  });
-  find('#product-cancel').addEventListener('click', () => { if (confirmDiscard()) resetForm(); });
+  find('#product-new').addEventListener('click', () => onNavigate('products/new'));
+  find('#product-cancel').addEventListener('click', () => onNavigate('products'));
   form.addEventListener('input', () => { if (formSuccessKey) setFormSuccess(''); });
   form.addEventListener('change', () => { if (formSuccessKey) setFormSuccess(''); });
   find('#product-search-form').addEventListener('submit', (event) => { event.preventDefault(); load(); });
@@ -450,6 +546,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
       resetForm();
       await load();
       await edit(saved, { skipGuard: true });
+      onSaved(saved.id);
       setFormSuccess('productSaved');
       form.scrollIntoView({ block: 'start' });
       formSuccess.focus({ preventScroll: true });
@@ -469,9 +566,11 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
     } finally { saving = false; save.disabled = false; }
   });
 
-  loadSettings().then(() => { if (root.isConnected && loadSequence === 0) load(); });
+  const settingsPromise = loadSettings();
+  settingsPromise.then(() => { if (root.isConnected && loadSequence === 0) load(); });
   search.placeholder = t('searchNameOrSkuHint');
   return {
+    showRoute,
     refreshLocale() {
       translate(root);
       renderList();
@@ -481,6 +580,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized }) {
       status.textContent = statusKey ? `${statusProductName ? `${statusProductName}: ` : ''}${t(statusKey)}` : '';
       error.textContent = formErrorKey ? t(formErrorKey) : '';
       formSuccess.textContent = formSuccessKey ? t(formSuccessKey) : '';
+      editorStatus.textContent = editorStatusKey ? t(editorStatusKey) : '';
     },
     hasUnsavedChanges,
   };

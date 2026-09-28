@@ -60,12 +60,14 @@ let detailPage;
 let profilePage;
 let addressBook;
 let profileReturn = null;
+let focusCheckoutAfterProfile = false;
 let directPurchase = null;
 let selection;
 let previousRoute = '';
 let catalogScroll = 0;
 let cartMutation = Promise.resolve();
 let cartWrites = 0;
+let checkoutStarting = false;
 function trackCart(promise) {
   cartWrites++;
   document.dispatchEvent(new Event('updateguardchange'));
@@ -112,6 +114,7 @@ function imageFor(product, className) {
 function setCatalogStatus(key) {
   catalogStatus = key;
   byId('catalog-status').textContent = key ? t(key) : '';
+  byId('catalog-clear-filters').hidden = key !== 'noResults';
 }
 
 function catalogHasError() {
@@ -239,18 +242,7 @@ async function loadCatalog(reset = true) {
     checkoutPage?.refreshAddress();
     checkoutPage.setDemoMode(shop.mode === 'demo');
     byId('demo-banner').hidden = shop.mode !== 'demo';
-    if (shop.mode) {
-      const title = byId('hero-title');
-      title.removeAttribute('data-i18n');
-      title.textContent = shop.shopName;
-      if (shop.mode === 'demo') {
-        const eyebrow = document.querySelector('.hero-copy .eyebrow');
-        eyebrow.dataset.i18n = 'demoMode';
-        const description = document.querySelector('.hero-copy > p:not(.eyebrow)');
-        description.dataset.i18n = 'demoNotice';
-        translate(document.querySelector('.hero-copy'));
-      }
-    }
+    byId('catalog-shop-name').textContent = shop.shopName || '';
     if (request !== catalogRequest) return;
     const previousCount = products.length;
     products = reset ? data.items : [...products, ...data.items];
@@ -260,11 +252,6 @@ async function loadCatalog(reset = true) {
     setCatalogStatus(products.length ? '' : (params.get('search') || params.get('category') ? 'noResults' : 'noProducts'));
     setCatalogPageStatus(products.length && nextOffset === null ? 'allProductsShown' : '');
     renderCatalog(reset ? 0 : previousCount);
-    const heroImage = byId('hero-image');
-    const featured = products.find((product) => product.imageUrl);
-    heroImage.hidden = !featured;
-    if (featured) heroImage.src = featured.imageUrl;
-    else heroImage.removeAttribute('src');
   } catch {
     if (request === catalogRequest) {
       retryCatalogReset = reset;
@@ -412,10 +399,15 @@ function renderCart() {
   byId('cart-total').textContent = !missing && currencies.size === 1 && Number.isSafeInteger(total)
     ? formatMoney(total, [...currencies][0]) : total === 0 && !missing ? formatMoney(0, shopInfo?.currency || 'MYR') : '—';
   const chosen = selection ? selection.items(resolvedCart) : [];
-  byId('cart-selected-count').textContent = `${t('selectedItems')}: ${chosen.reduce((sum, item) => sum + item.quantity, 0)}`;
-  byId('checkout-button').textContent = `${t('checkout')} (${chosen.reduce((sum, item) => sum + item.quantity, 0)})`;
-  byId('checkout-button').disabled = !cartReady || missing || currencies.size !== 1 || chosen.length === 0;
-  byId('profile-warning').hidden = Boolean(profilePage?.get()) || resolvedCart.length === 0;
+  const selectedCount = chosen.reduce((sum, item) => sum + item.quantity, 0);
+  const canContinue = cartReady && !missing && currencies.size === 1 && chosen.length > 0;
+  const hasProfile = Boolean(profilePage?.get());
+  byId('cart-selected-count').textContent = `${t('selectedItems')}: ${selectedCount}`;
+  byId('checkout-button').textContent = canContinue && !hasProfile ? t('setupProfileToContinue') : `${t('checkout')} (${selectedCount})`;
+  byId('checkout-button').disabled = !canContinue || checkoutStarting;
+  byId('cart-profile-state').hidden = !canContinue;
+  byId('cart-profile-message').textContent = t(hasProfile ? 'profileReadyShort' : 'profileNeededShort');
+  byId('cart-profile-state').querySelector('a').hidden = !hasProfile;
   const all = byId('cart-select-all');
   all.checked = resolvedCart.length > 0 && chosen.length === resolvedCart.length;
   all.indeterminate = chosen.length > 0 && chosen.length < resolvedCart.length;
@@ -447,6 +439,7 @@ function showCartSkeleton(count) {
   byId('checkout-button').textContent = `${t('checkout')} (${selectedCount})`;
   byId('cart-select-all').disabled = true;
   byId('checkout-button').disabled = true;
+  byId('cart-profile-state').hidden = true;
 }
 
 function hideCartSkeleton() {
@@ -526,15 +519,28 @@ async function beginCheckout(stillCurrent = () => true, directItem = null) {
     location.hash = '#checkout';
     return;
   }
-  setDirectPurchase(null);
-  await cartMutation;
-  selection.sync(cartStore.list());
-  const valid = await refreshCart();
-  if (!stillCurrent()) return;
-  if (!valid || !shopInfo) { location.hash = '#cart'; return; }
-  if (!profilePage.get()) { location.hash = '#cart'; byId('profile-warning').hidden = false; byId('profile-warning').scrollIntoView({ block: 'center' }); return; }
-  checkoutPage.setItems(selection.items(resolvedCart));
-  location.hash = '#checkout';
+  if (checkoutStarting) return;
+  checkoutStarting = true;
+  byId('checkout-button').disabled = true;
+  try {
+    setDirectPurchase(null);
+    await cartMutation;
+    selection.sync(cartStore.list());
+    const valid = await refreshCart();
+    if (!stillCurrent()) return;
+    if (!valid || !shopInfo) { location.hash = '#cart'; return; }
+    if (!profilePage.get()) {
+      profileReturn = 'cart';
+      try { sessionStorage.setItem('online-shopping-profile-return', profileReturn); } catch { /* Optional return route. */ }
+      location.hash = '#profile';
+      return;
+    }
+    checkoutPage.setItems(selection.items(resolvedCart));
+    location.hash = '#checkout';
+  } finally {
+    checkoutStarting = false;
+    if (location.hash === '#cart') renderCart();
+  }
 }
 
 function readReceipt() {
@@ -623,7 +629,12 @@ function showRoute() {
     window.scrollTo(0, catalogRoute && previousRoute === 'product' ? catalogScroll : 0);
   }
   previousRoute = route;
-  if (route === 'cart') refreshCart();
+  if (route === 'cart') refreshCart().then(() => {
+    if (focusCheckoutAfterProfile && location.hash === '#cart') {
+      focusCheckoutAfterProfile = false;
+      byId('checkout-button').focus({ preventScroll: true });
+    }
+  });
   if (route === 'profile') profilePage.show();
   if (route === 'addresses') addressBook.render();
   if (route === 'checkout') {
@@ -690,7 +701,9 @@ try {
 profilePage = mountProfile({ onSaved() {
   renderCart();
   if (['cart', 'checkout'].includes(profileReturn)) {
-    location.hash = `#${profileReturn}`;
+    const returnRoute = profileReturn;
+    focusCheckoutAfterProfile = returnRoute === 'cart';
+    location.hash = `#${returnRoute}`;
     profileReturn = null;
     try { selectionStorage?.removeItem('online-shopping-profile-return'); } catch { /* Optional return route. */ }
   }
@@ -748,6 +761,13 @@ function syncSearchClear() { clearSearch.hidden = !searchInput.value; }
 searchInput.addEventListener('input', syncSearchClear);
 syncSearchClear();
 category.addEventListener('change', applyCatalogFilters);
+byId('catalog-clear-filters').addEventListener('click', () => {
+  searchInput.value = '';
+  syncSearchClear();
+  category.value = '';
+  renderCategories();
+  applyCatalogFilters();
+});
 byId('catalog-more').addEventListener('click', () => loadCatalog(false));
 byId('catalog-page-retry').addEventListener('click', () => loadCatalog(false));
 if ('IntersectionObserver' in window) {

@@ -1,0 +1,1 @@
+已生成 [seller-v70-sidebar-proposal-desktop.svg](/Users/yapweijun/Documents/GitHub/Online-Shopping/ui/seller-v70-sidebar-proposal-desktop.svg)。折叠导航箭头已改为清晰的左指向；其余内容与 1440×900 画布保持不变。

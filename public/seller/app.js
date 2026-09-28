@@ -1,4 +1,4 @@
-import { locale, setupLanguageMenu, t } from '../shared/i18n.js';
+import { formatDate, formatMoney, locale, setupLanguageMenu, t } from '../shared/i18n.js';
 import { registerWorker } from '../shared/pwa.js';
 import { mountProducts } from './products.js';
 import { mountOrders } from './orders.js';
@@ -12,9 +12,19 @@ const accountWrap = byId('account-wrap');
 const accountButton = byId('account-button');
 const accountMenu = byId('account-menu');
 const menuButton = byId('open-menu');
+const closeMenuButton = byId('close-menu');
+const collapseNavButton = byId('collapse-nav');
 const backdrop = byId('drawer-backdrop');
+const main = byId('main');
+const topbar = document.querySelector('.topbar');
+const navTooltip = document.createElement('div');
+navTooltip.className = 'sidebar-tooltip';
+navTooltip.hidden = true;
+document.body.append(navTooltip);
+let navTooltipAnchor = null;
 let csrfToken = null;
 let currentView = 'dashboard';
+let currentRoute = 'dashboard';
 let username = '';
 let role = '';
 let productsPage = null;
@@ -30,14 +40,18 @@ let updateView = null;
 let updateIdentity = '';
 const sessionHintKey = 'online-shopping-seller-session-hint';
 const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'review', 'categories', 'company']);
+const PRODUCT_ROUTE = /^products\/(?:new|[0-9a-f-]{36})$/;
 
-function viewFromHash() {
-  const view = location.hash.slice(1);
-  return VALID_VIEWS.has(view) ? view : 'dashboard';
+function routeFromHash() {
+  const route = location.hash.slice(1);
+  return VALID_VIEWS.has(route) || PRODUCT_ROUTE.test(route) ? route : 'dashboard';
 }
 
+function viewFromRoute(route) { return route.startsWith('products/') ? 'products' : route; }
+
 function applyRoute() {
-  currentView = viewFromHash();
+  currentRoute = routeFromHash();
+  currentView = viewFromRoute(currentRoute);
   renderView();
 }
 
@@ -48,11 +62,12 @@ function activePage() {
 function hasUnsavedChanges() { return activePage()?.hasUnsavedChanges?.() === true; }
 function confirmLeave() { return !hasUnsavedChanges() || window.confirm(t('unsavedChangesConfirm')); }
 
-function navigate(view) {
-  if (view === currentView) { focusRouteChange(); return true; }
+function navigate(route) {
+  if (route === currentRoute) { focusRouteChange(); return true; }
   if (!confirmLeave()) return false;
-  currentView = view;
-  location.hash = view;
+  currentRoute = route;
+  currentView = viewFromRoute(route);
+  location.hash = route;
   renderView();
   focusRouteChange();
   return true;
@@ -141,6 +156,7 @@ function showWorkspace(session) {
   csrfToken = session.csrfToken;
   username = session.username;
   role = session.role;
+  accountButton.querySelector('.avatar').textContent = Array.from(username.trim())[0]?.toLocaleUpperCase(locale()) || '•';
   setLoginMessage('');
   setWorkspaceMessage('');
   loginView.hidden = true;
@@ -166,7 +182,9 @@ function renderView() {
     if (active) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
   });
-  const titleKey = { dashboard: 'dashboard', products: 'products', orders: 'salesOrders', review: 'orderReview', categories: 'categoryCodes', company: 'companySettings' }[currentView];
+  const titleKey = currentView === 'products' && currentRoute !== 'products'
+    ? currentRoute === 'products/new' ? 'addProduct' : 'editProduct'
+    : { dashboard: 'dashboard', products: 'products', orders: 'salesOrders', review: 'orderReview', categories: 'categoryCodes', company: 'companySettings' }[currentView];
   byId('page-title').dataset.i18n = titleKey;
   byId('page-title').textContent = t(titleKey);
   const content = byId('workspace-content');
@@ -187,7 +205,18 @@ function renderView() {
   ordersPage = null;
   if (currentView === 'products') {
     settingsPage = null;
-    if (!productsPage) productsPage = mountProducts(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError') });
+    if (!productsPage) productsPage = mountProducts(content, {
+      csrfToken: () => csrfToken,
+      onUnauthorized: () => showLogin('authError'),
+      onNavigate: navigate,
+      onSaved(id) {
+        currentRoute = `products/${id}`;
+        history.replaceState(history.state, '', `#${currentRoute}`);
+        byId('page-title').dataset.i18n = 'editProduct';
+        byId('page-title').textContent = t('editProduct');
+      },
+    });
+    productsPage.showRoute(currentRoute);
     return;
   }
   productsPage = null;
@@ -204,58 +233,109 @@ function renderView() {
 
 async function renderDashboard(content) {
   const request = ++dashboardRequest;
-  const card = document.createElement('section');
-  card.className = 'settings-card dashboard-card';
-  card.textContent = t('loading');
-  content.replaceChildren(card);
+  const node = (tag, className, value) => {
+    const element = document.createElement(tag);
+    if (className) element.className = className;
+    if (value) element.textContent = value;
+    return element;
+  };
+  const isCurrent = () => request === dashboardRequest && currentView === 'dashboard' && !workspace.hidden;
+  const action = (key, view, className = 'secondary-button') => {
+    const button = node('button', className, t(key));
+    button.type = 'button';
+    button.addEventListener('click', () => navigate(view));
+    return button;
+  };
+  const shell = node('div', 'dashboard-home');
+  const loading = node('p', 'dashboard-loading', t('loading'));
+  loading.setAttribute('role', 'status');
+  shell.append(loading);
+  content.replaceChildren(shell);
   try {
-    const response = await fetch('/api/v1/seller/setup');
+    const response = await fetch('/api/v1/seller/setup', { cache: 'no-store' });
     if (response.status === 401) { showLogin('authError'); return; }
     if (!response.ok) throw new Error('setup failed');
     const setup = await response.json();
-    if (request !== dashboardRequest || currentView !== 'dashboard' || workspace.hidden) return;
-    card.replaceChildren();
-    const heading = document.createElement('h2');
-    const description = document.createElement('p');
-    const actions = document.createElement('div');
-    actions.className = 'dashboard-actions';
-    if (setup.mode) {
-      heading.textContent = setup.shopName;
-      description.dataset.i18n = setup.mode === 'demo' ? 'demoMode' : 'productionMode';
-      description.textContent = t(description.dataset.i18n);
-      for (const [view, key] of [['products', 'products'], ['orders', 'salesOrders'], ['company', 'companySettings']]) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = view === 'orders' ? 'primary-button' : 'secondary-button';
-        button.dataset.i18n = key;
-        button.textContent = t(key);
-        button.addEventListener('click', () => navigate(view));
-        actions.append(button);
-      }
-    } else {
-      heading.dataset.i18n = 'shopSetup';
-      heading.textContent = t('shopSetup');
-      description.dataset.i18n = 'setupIntro';
-      description.textContent = t('setupIntro');
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'primary-button';
-      button.dataset.i18n = 'shopSetup';
-      button.textContent = t('shopSetup');
-      button.addEventListener('click', () => navigate('company'));
-      actions.append(button);
+    if (!isCurrent()) return;
+    if (!setup.mode) {
+      const card = node('section', 'settings-card dashboard-card');
+      card.append(node('h2', '', t('shopSetup')), node('p', '', t('setupIntro')), action('shopSetup', 'company', 'primary-button'));
+      shell.replaceChildren(card);
+      return;
     }
-    card.append(heading, description, actions);
+
+    const identity = node('section', 'dashboard-identity');
+    identity.append(node('div', 'dashboard-shop-name', setup.shopName || t('shop')),
+      node('span', `dashboard-mode ${setup.mode === 'demo' ? 'is-demo' : ''}`, t(setup.mode === 'demo' ? 'dashboardSimulated' : 'dashboardProduction')));
+    const grid = node('div', 'dashboard-grid');
+    shell.replaceChildren(identity, grid);
+
+    const panels = [
+      {
+        title: 'dashboardSubmittedOrders', intro: 'dashboardOrdersIntro',
+        path: '/api/v1/seller/orders?status=SUBMITTED&limit=3',
+        action: 'dashboardReviewOrders', view: 'review', empty: 'dashboardNoSubmittedOrders',
+        render(item) {
+          const row = node('li', 'dashboard-order-row');
+          const line = node('div', 'dashboard-row-line');
+          line.append(node('strong', '', item.orderNo), node('span', 'dashboard-status', t('statusSubmitted')));
+          row.append(line, node('span', 'dashboard-row-meta', `${formatMoney(item.totalMinor, item.currency)} · ${formatDate(item.submittedAt)}`));
+          return row;
+        },
+      },
+      {
+        title: 'dashboardRecentProducts', intro: 'dashboardProductsIntro',
+        path: '/api/v1/seller/products?limit=3',
+        action: 'dashboardViewProducts', view: 'products', empty: 'noProducts',
+        render(item) {
+          const row = node('li', 'dashboard-product-row');
+          row.append(node('strong', '', item.name), node('span', 'dashboard-row-meta', item.sku));
+          return row;
+        },
+      },
+    ];
+    for (const [index, panel] of panels.entries()) {
+      const section = node('section', `dashboard-panel ${index === 0 ? 'dashboard-orders' : 'dashboard-products'}`);
+      const header = node('div', 'dashboard-panel-header');
+      header.append(node('h2', '', t(panel.title)), node('p', '', t(panel.intro)));
+      const body = node('div', 'dashboard-panel-body', t('loading'));
+      body.setAttribute('role', 'status');
+      body.setAttribute('aria-live', 'polite');
+      section.append(header, body, action(panel.action, panel.view, index === 0 ? 'primary-button' : 'secondary-button'));
+      if (index === 0 && setup.mode === 'demo') section.append(node('p', 'dashboard-simulation-note', t('dashboardSimulationNote')));
+      grid.append(section);
+      const load = async () => {
+        body.textContent = t('loading');
+        try {
+          const result = await fetch(panel.path, { cache: 'no-store' });
+          if (result.status === 401) { if (isCurrent()) showLogin('authError'); return; }
+          if (!result.ok) throw new Error('dashboard preview failed');
+          const data = await result.json();
+          if (!isCurrent()) return;
+          if (!Array.isArray(data.items) || !data.items.length) {
+            body.replaceChildren(node('p', 'dashboard-empty', t(panel.empty)));
+            return;
+          }
+          const list = node('ul', 'dashboard-preview-list');
+          for (const item of data.items) list.append(panel.render(item));
+          body.replaceChildren(list);
+        } catch {
+          if (!isCurrent()) return;
+          const retry = node('button', 'secondary-button', t('retry'));
+          retry.type = 'button';
+          retry.addEventListener('click', load);
+          body.replaceChildren(node('p', 'dashboard-error', t('networkError')), retry);
+        }
+      };
+      load();
+    }
   } catch {
-    if (request !== dashboardRequest || currentView !== 'dashboard' || workspace.hidden) return;
-    const message = document.createElement('p');
-    message.textContent = t('networkError');
-    const retry = document.createElement('button');
+    if (!isCurrent()) return;
+    const message = node('p', 'dashboard-error', t('networkError'));
+    const retry = node('button', 'secondary-button', t('retry'));
     retry.type = 'button';
-    retry.className = 'secondary-button';
-    retry.textContent = t('retry');
     retry.addEventListener('click', () => renderDashboard(content));
-    card.replaceChildren(message, retry);
+    shell.replaceChildren(message, retry);
   }
 }
 
@@ -269,8 +349,37 @@ function closeDrawer(restoreFocus = true) {
 }
 
 function syncDrawerAccess() {
-  sidebar.inert = window.matchMedia('(max-width: 900px)').matches && !sidebar.classList.contains('drawer-open');
+  const mobile = window.matchMedia('(max-width: 900px)').matches;
+  const modalOpen = mobile && sidebar.classList.contains('drawer-open');
+  sidebar.inert = mobile && !modalOpen;
+  main.inert = modalOpen;
+  topbar.inert = modalOpen;
+  if (modalOpen) {
+    sidebar.setAttribute('role', 'dialog');
+    sidebar.setAttribute('aria-modal', 'true');
+    sidebar.setAttribute('aria-label', t('sellerPortal'));
+  } else {
+    sidebar.removeAttribute('role');
+    sidebar.removeAttribute('aria-modal');
+    sidebar.removeAttribute('aria-label');
+  }
 }
+
+function showNavTooltip(button) {
+  if (window.matchMedia('(max-width: 900px)').matches || !sidebar.classList.contains('collapsed')) return;
+  navTooltipAnchor = button;
+  navTooltip.textContent = button.getAttribute('aria-label') || '';
+  navTooltip.hidden = false;
+  const buttonRect = button.getBoundingClientRect();
+  const tipRect = navTooltip.getBoundingClientRect();
+  navTooltip.style.left = `${Math.min(buttonRect.right + 9, innerWidth - tipRect.width - 8)}px`;
+  navTooltip.style.top = `${Math.max(8, Math.min(buttonRect.top + (buttonRect.height - tipRect.height) / 2, innerHeight - tipRect.height - 8))}px`;
+}
+
+function hideNavTooltip() { navTooltip.hidden = true; navTooltipAnchor = null; }
+sidebar.addEventListener('transitionend', (event) => {
+  if (event.propertyName === 'width' && navTooltipAnchor) showNavTooltip(navTooltipAnchor);
+});
 
 function closeAccount() {
   accountMenu.hidden = true;
@@ -278,32 +387,57 @@ function closeAccount() {
 }
 
 menuButton.addEventListener('click', () => {
+  closeAccount();
   sidebar.classList.add('drawer-open');
   syncDrawerAccess();
   backdrop.hidden = false;
   menuButton.setAttribute('aria-expanded', 'true');
-  byId('close-menu').focus();
+  closeMenuButton.focus();
 });
-byId('close-menu').addEventListener('click', () => closeDrawer());
+closeMenuButton.addEventListener('click', () => closeDrawer());
 backdrop.addEventListener('click', () => closeDrawer());
 window.addEventListener('resize', () => {
+  hideNavTooltip();
   if (!window.matchMedia('(max-width: 900px)').matches && sidebar.classList.contains('drawer-open')) {
     closeDrawer(false);
     byId('page-title').focus({ preventScroll: true });
   } else syncDrawerAccess();
 });
 document.addEventListener('keydown', (event) => {
+  if (event.key === 'Tab' && sidebar.classList.contains('drawer-open') && !document.querySelector('dialog[open]')) {
+    const focusables = [...sidebar.querySelectorAll('button')].filter((button) => button.getClientRects().length && !button.disabled);
+    const first = focusables[0];
+    const last = focusables.at(-1);
+    if (event.shiftKey && (!sidebar.contains(document.activeElement) || document.activeElement === first)) {
+      event.preventDefault();
+      last?.focus();
+    } else if (!event.shiftKey && (!sidebar.contains(document.activeElement) || document.activeElement === last)) {
+      event.preventDefault();
+      first?.focus();
+    }
+    return;
+  }
   if (event.key !== 'Escape' || document.querySelector('dialog[open]')) return;
   if (!accountMenu.hidden) { closeAccount(); accountButton.focus(); return; }
   if (sidebar.classList.contains('drawer-open')) closeDrawer();
 });
-byId('collapse-nav').addEventListener('click', () => {
-  if (window.matchMedia('(max-width: 900px)').matches) { closeDrawer(); return; }
+document.addEventListener('focusin', (event) => {
+  if (sidebar.classList.contains('drawer-open') && !sidebar.contains(event.target)) closeMenuButton.focus();
+});
+collapseNavButton.addEventListener('mouseenter', () => showNavTooltip(collapseNavButton));
+collapseNavButton.addEventListener('focus', () => showNavTooltip(collapseNavButton));
+collapseNavButton.addEventListener('mouseleave', () => {
+  if (document.activeElement !== collapseNavButton) hideNavTooltip();
+});
+collapseNavButton.addEventListener('blur', hideNavTooltip);
+collapseNavButton.addEventListener('click', () => {
   const collapsed = sidebar.classList.toggle('collapsed');
+  hideNavTooltip();
   document.body.classList.toggle('seller-nav-collapsed', collapsed);
-  byId('collapse-nav').dataset.i18nAria = collapsed ? 'expand' : 'collapse';
-  byId('collapse-nav').setAttribute('aria-label', t(collapsed ? 'expand' : 'collapse'));
-  byId('collapse-nav').setAttribute('aria-expanded', String(!collapsed));
+  collapseNavButton.dataset.i18nAria = collapsed ? 'expand' : 'collapse';
+  collapseNavButton.setAttribute('aria-label', t(collapsed ? 'expand' : 'collapse'));
+  collapseNavButton.setAttribute('aria-expanded', String(!collapsed));
+  if (collapsed && document.activeElement === collapseNavButton) showNavTooltip(collapseNavButton);
 });
 function focusRouteChange() {
   window.scrollTo(0, 0);
@@ -311,9 +445,9 @@ function focusRouteChange() {
 }
 window.addEventListener('hashchange', () => {
   if (workspace.hidden) return;
-  if (viewFromHash() === currentView) return;
+  if (routeFromHash() === currentRoute) return;
   if (!confirmLeave()) {
-    history.replaceState(history.state, '', `#${currentView}`);
+    history.replaceState(history.state, '', `#${currentRoute}`);
     return;
   }
   applyRoute();
@@ -324,9 +458,22 @@ window.addEventListener('beforeunload', (event) => {
   event.preventDefault();
   event.returnValue = '';
 });
-document.querySelectorAll('.nav-item').forEach((button) => button.addEventListener('click', () => {
-  if (navigate(button.dataset.view)) closeDrawer(false);
-}));
+document.querySelectorAll('.nav-item').forEach((button) => {
+  button.addEventListener('mouseenter', () => showNavTooltip(button));
+  button.addEventListener('focus', () => showNavTooltip(button));
+  button.addEventListener('mouseleave', () => {
+    if (document.activeElement !== button) hideNavTooltip();
+  });
+  button.addEventListener('blur', hideNavTooltip);
+  button.addEventListener('click', () => {
+    hideNavTooltip();
+    if (navigate(button.dataset.view)) {
+      const wasOpen = sidebar.classList.contains('drawer-open');
+      closeDrawer(false);
+      if (wasOpen) focusRouteChange();
+    }
+  });
+});
 accountButton.addEventListener('click', () => {
   accountMenu.hidden = !accountMenu.hidden;
   accountButton.setAttribute('aria-expanded', String(!accountMenu.hidden));

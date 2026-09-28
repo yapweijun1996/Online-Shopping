@@ -110,7 +110,10 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     const mainImage = image(product, 'product-main-image', images[activeImageIndex]);
     mainImage.draggable = false;
     zoomImage.draggable = false;
-    imageButton.append(mainImage);
+    const zoomCue = node('span', 'product-zoom-cue');
+    zoomCue.setAttribute('aria-hidden', 'true');
+    zoomCue.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>';
+    imageButton.append(mainImage, zoomCue);
     const imageCount = node('span', 'image-count', `${activeImageIndex + 1} / ${images.length}`);
     imageCount.setAttribute('aria-hidden', 'true');
     if (images.length > 1) imageButton.append(imageCount);
