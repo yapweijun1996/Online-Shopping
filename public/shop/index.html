@@ -42,26 +42,13 @@
   <main class="shop-main">
     <aside id="demo-banner" class="demo-banner" hidden><strong data-i18n="demoMode">Demo — Pet Shop</strong><span data-i18n="demoBrief"></span></aside>
     <section id="catalog-view" aria-labelledby="catalog-title">
-      <div class="shop-hero" aria-labelledby="hero-title">
-        <div class="hero-copy">
-          <p class="eyebrow" data-i18n="heroEyebrow">Everyday finds</p>
-          <h1 id="hero-title" data-i18n="heroTitle">Good finds for brighter days.</h1>
-          <p data-i18n="heroDescription">Discover useful products for home, work, and your daily routine.</p>
-          <a class="primary-button hero-action" href="#catalog-results" data-i18n="browseProducts">Browse products</a>
-        </div>
-        <div class="hero-visual" aria-hidden="true"><img id="hero-image" alt="" hidden></div>
-      </div>
-      <nav class="category-rail" aria-label="Category" data-i18n-aria="category" id="category-rail"></nav>
       <div class="catalog-layout">
-        <aside class="catalog-sidebar" aria-labelledby="filter-title">
-          <h2 id="filter-title" data-i18n="category">Category</h2>
-          <label class="sr-only" for="catalog-category" data-i18n="category">Category</label>
-          <select id="catalog-category"><option value="" data-i18n="allCategories">All categories</option></select>
-        </aside>
         <div class="catalog-results" id="catalog-results" tabindex="-1">
-          <div class="catalog-intro"><div><p class="eyebrow" data-i18n="shop">Shop</p><h2 id="catalog-title" data-i18n="browseProducts">Browse products</h2><p data-i18n="catalogSubtitle">Find something useful for every day.</p></div><p id="catalog-count" class="catalog-count" aria-live="polite"></p></div>
+          <div class="catalog-intro"><div><p id="catalog-shop-name" class="eyebrow"></p><h2 id="catalog-title" data-i18n="browseProducts">Browse products</h2><p data-i18n="catalogSubtitle">Find something useful for every day.</p><p id="catalog-count" class="catalog-count" aria-live="polite"></p></div><div class="catalog-filter"><label for="catalog-category" data-i18n="category">Category</label><select id="catalog-category"><option value="" data-i18n="allCategories">All categories</option></select></div></div>
+          <nav class="category-rail" aria-label="Category" data-i18n-aria="category" id="category-rail"></nav>
           <p id="catalog-query" class="catalog-query" hidden></p>
           <p id="catalog-status" class="shop-status" role="status" data-i18n="loading">Loading…</p>
+          <button id="catalog-clear-filters" class="outline-button" type="button" data-i18n="clearFilters" hidden>Clear filters</button>
           <div id="catalog-grid" class="catalog-grid" aria-busy="true"></div>
           <div id="catalog-skeleton" class="catalog-grid catalog-skeleton loading-placeholder" aria-hidden="true">
             <div class="catalog-skeleton-card"><span class="skeleton-image"></span><span class="skeleton-body"><span class="skeleton-line short"></span><span class="skeleton-line"></span><span class="skeleton-line medium"></span><span class="skeleton-line short"></span><span class="skeleton-button"></span></span></div>
@@ -126,7 +113,6 @@
       <p id="cart-persistence" class="shop-note" hidden></p>
       <p id="cart-status" class="shop-status" role="status"></p>
       <button id="cart-retry" class="outline-button" type="button" data-i18n="retry" hidden>Try again</button>
-      <aside id="profile-warning" class="profile-warning" hidden><p data-i18n="profileRequired"></p><a class="outline-button" href="#profile" data-profile-return="cart" data-i18n="setupProfile">Set up profile</a></aside>
       <div class="cart-columns" aria-hidden="true"><span data-i18n="product">Product</span><span data-i18n="unitPrice">Unit price</span><span data-i18n="quantity">Quantity</span><span data-i18n="itemSubtotal">Subtotal</span><span data-i18n="actions">Actions</span></div>
       <div id="cart-list" class="cart-list"></div>
       <div id="cart-skeleton" class="cart-list cart-skeleton loading-placeholder" aria-hidden="true" hidden></div>
@@ -136,6 +122,7 @@
         <label class="check-row"><input id="cart-select-all" type="checkbox"><span data-i18n="selectAll">Select all</span></label>
         <p id="cart-selected-count" role="status"></p>
         <div id="cart-summary" class="cart-summary"><span data-i18n="estimatedTotal">Estimated total</span><strong id="cart-total"></strong></div>
+        <div id="cart-profile-state" class="cart-profile-state" hidden><span id="cart-profile-message"></span><a href="#profile" data-profile-return="cart" data-i18n="editProfile" hidden>Edit profile</a></div>
         <button id="checkout-button" class="primary-button" type="button" disabled data-i18n="proceedCheckout">Continue to checkout</button>
       </div>
     </section>

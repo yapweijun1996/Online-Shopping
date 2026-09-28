@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="900" viewBox="0 0 820 900" role="img" aria-labelledby="title desc">
+  <title id="title">Customer cart proposal — tablet, 820 by 900</title>
+  <desc id="desc">Illustrative Demo cart at tablet width with compressed cart columns and a visible profile setup action.</desc>
+  <defs><style>text{font-family:Arial,Helvetica,sans-serif;fill:#173950}.muted{fill:#58717d}.bold{font-weight:700}.eyebrow{font-size:11px;font-weight:700;letter-spacing:1.4px;fill:#087f83}.price{fill:#a54428;font-weight:700}.productlink{text-decoration:underline;text-underline-offset:3px;text-decoration-color:#8095a0}</style></defs>
+  <rect width="820" height="900" fill="#f5f8fa"/>
+  <!-- Tablet keeps the desktop shop navigation above the 760px mobile breakpoint. -->
+  <rect width="820" height="68" fill="#fff"/><path d="M0 67.5H820" stroke="#dce7eb"/>
+  <rect x="28" y="14" width="38" height="38" rx="11" fill="#087f83"/>
+  <path d="M38 27h18v16H38zM42 27v-4h10v4M42 33h10" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>
+  <text x="74" y="40" font-size="19" font-weight="700">Shop</text>
+  <rect x="161" y="14" width="304" height="40" rx="10" fill="#fff" stroke="#8095a0"/>
+  <text x="176" y="39" font-size="14" fill="#6a7880">Search products</text>
+  <path d="M424 14h31a10 10 0 0 1 10 10v20a10 10 0 0 1-10 10h-31z" fill="#317c82"/>
+  <circle cx="439" cy="33" r="5.5" fill="none" stroke="#fff" stroke-width="1.6"/><path d="m443 37 4 4" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>
+  <text x="486" y="40" font-size="14" font-weight="700" fill="#355568">Browse</text>
+  <rect x="548" y="14" width="88" height="40" rx="10" fill="#e8f4f3"/>
+  <path d="M558 25h4l2 11h11l3-8h-14" fill="none" stroke="#205f64" stroke-width="1.6" stroke-linejoin="round"/><circle cx="566" cy="40" r="1.4" fill="#205f64"/><circle cx="574" cy="40" r="1.4" fill="#205f64"/>
+  <text x="584" y="39" font-size="13" font-weight="700" fill="#205f64">Cart 1</text>
+  <rect x="656" y="14" width="38" height="40" rx="10" fill="#fff" stroke="#8095a0"/><circle cx="675" cy="34" r="8" fill="none" stroke="#355568" stroke-width="1.5"/><path d="M667 34h16M675 26c3 4 3 12 0 16M675 26c-3 4-3 12 0 16" fill="none" stroke="#355568" stroke-width="1.1"/>
+  <rect x="716" y="14" width="38" height="40" rx="10" fill="#fff" stroke="#8095a0"/><circle cx="735" cy="29" r="4.5" fill="none" stroke="#355568" stroke-width="1.5"/><path d="M728 45v-2a7 7 0 0 1 14 0v2" fill="none" stroke="#355568" stroke-width="1.5"/>
+  <rect x="32" y="82" width="756" height="50" rx="11" fill="#fff6e4" stroke="#e9ca8a"/>
+  <text x="48" y="104" font-size="13" font-weight="700" fill="#65480f">Demo — Pet Shop</text>
+  <text x="48" y="121" font-size="11.5" fill="#65480f">Demo orders only · No payment, delivery or automatic messages. Chat opens WhatsApp.</text>
+  <text x="32" y="161" class="eyebrow">SHOP</text>
+  <text x="32" y="201" font-size="33" font-weight="700" letter-spacing="-.8">Your cart</text>
+  <rect x="32" y="230" width="756" height="49" rx="9" fill="#fff" stroke="#dce7eb"/>
+  <text x="48" y="260" font-size="13" fill="#58717d">Product</text>
+  <text x="408" y="260" font-size="13" fill="#58717d">Unit price</text>
+  <text x="502" y="260" font-size="13" fill="#58717d">Quantity</text>
+  <text x="650" y="260" font-size="13" fill="#58717d">Subtotal</text>
+  <text x="734" y="260" font-size="13" fill="#58717d">Actions</text>
+  <rect x="32" y="291" width="756" height="144" rx="12" fill="#fff" stroke="#dce7eb"/>
+  <rect x="47" y="350" width="20" height="20" rx="3" fill="#087f83"/><path d="m51 360 4 4 8-8" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="77" y="322" width="60" height="60" rx="8" fill="#f1edf7" stroke="#e4d9ee"/>
+  <rect x="89" y="329" width="36" height="45" rx="4" fill="#fff" stroke="#9a79b1"/><rect x="94" y="326" width="26" height="6" rx="2" fill="#76518f"/>
+  <rect x="94" y="339" width="26" height="7" rx="2" fill="#e7dcef"/><text x="99" y="345" font-size="5.5" font-weight="700" fill="#76518f">PAW</text><rect x="94" y="351" width="26" height="14" rx="2" fill="#76518f"/>
+  <text x="80" y="397" font-size="8" font-weight="700" letter-spacing=".4" fill="#58717d">ILLUSTRATION</text>
+  <text x="151" y="342" class="productlink" font-size="14" font-weight="700">PawBright Air Refill</text>
+  <text x="151" y="361" class="productlink" font-size="13" font-weight="700">(4 × 50 ml)</text>
+  <text x="151" y="383" font-size="11" fill="#58717d">Odor Control · Demo item</text>
+  <text x="408" y="360" font-size="12" class="price">MYR 34.89</text>
+  <rect x="496" y="338" width="132" height="43" rx="8" fill="#fff" stroke="#8095a0"/>
+  <path d="M536 339v41M584 339v41" stroke="#dce7eb"/><text x="507" y="366" font-size="19" font-weight="700" fill="#8095a0">−</text><text x="554" y="365" font-size="15">1</text><text x="599" y="366" font-size="19" font-weight="700">+</text>
+  <text x="650" y="361" font-size="12" font-weight="700">MYR 34.89</text>
+  <text x="737" y="360" font-size="12" font-weight="700" fill="#355568">Remove</text>
+  <text x="32" y="469" font-size="12" fill="#58717d">Prices are checked again by the server when you place an order.</text>
+  <text x="32" y="496" font-size="14" text-decoration="underline">Continue shopping</text>
+  <!-- The compact action area remains one row while keeping the missing prerequisite adjacent. -->
+  <rect x="0" y="795" width="820" height="105" fill="#fff"/><path d="M0 795.5H820" stroke="#8095a0"/>
+  <rect x="32" y="837" width="20" height="20" rx="3" fill="#087f83"/><path d="m36 847 4 4 8-8" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><text x="62" y="852" font-size="13" fill="#58717d">Select all</text>
+  <text x="145" y="852" font-size="12" fill="#58717d">Selected: 1</text>
+  <text x="226" y="843" font-size="11" fill="#58717d">Estimated total</text><text x="226" y="864" font-size="17" class="price">MYR 34.89</text>
+  <rect x="338" y="824" width="171" height="52" rx="9" fill="#fff6e4" stroke="#e9ca8a"/><circle cx="353" cy="841" r="7" fill="#edc974"/><text x="350.5" y="845" font-size="11" font-weight="700" fill="#65480f">!</text><text x="366" y="845" font-size="11.5" font-weight="700" fill="#65480f">Profile required</text><text x="351" y="864" font-size="10" fill="#65480f">Full name + WhatsApp or email</text>
+  <rect x="522" y="827" width="266" height="48" rx="11" fill="#087f83"/><text x="568" y="857" font-size="14" font-weight="700" fill="#fff">Set up profile to continue</text>
+</svg>

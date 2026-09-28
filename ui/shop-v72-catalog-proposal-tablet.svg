@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="900" viewBox="0 0 820 900" role="img" aria-labelledby="title desc">
+  <title id="title">Customer catalog proposal — tablet, 820 by 900</title>
+  <desc id="desc">A compact tablet catalog with a single category selector, no hero or repeated filter, and three product cards whose details and add buttons appear above the fold.</desc>
+  <defs>
+    <linearGradient id="tabBottle" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#fbf2ff"/><stop offset="1" stop-color="#e3d4ed"/></linearGradient>
+    <linearGradient id="tabBox" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#fff"/><stop offset="1" stop-color="#dfe7e7"/></linearGradient>
+  </defs>
+  <rect width="820" height="900" fill="#f4f8fa"/>
+  <rect width="820" height="64" fill="#fff"/><path d="M0 63.5h820" stroke="#d7e2e7"/>
+  <rect x="32" y="15" width="34" height="34" rx="10" fill="#087f83"/><path d="M40 24h18v17H40zM43 24l2-4h8l2 4M43 29h12" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>
+  <text x="74" y="38" font-family="Inter,system-ui,sans-serif" font-size="18" font-weight="750" fill="#17384e">Shop</text>
+  <rect x="154" y="12" width="308" height="40" rx="10" fill="#fff" stroke="#8ba6b3"/><text x="170" y="37" font-family="Inter,system-ui,sans-serif" font-size="14" fill="#77848a">Search products</text>
+  <path d="M414 12h38a10 10 0 0 1 10 10v20a10 10 0 0 1-10 10h-38z" fill="#327e83"/><circle cx="431" cy="31" r="5.5" fill="none" stroke="#fff" stroke-width="1.7"/><path d="m435 35 4 4" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/>
+  <rect x="478" y="15" width="77" height="34" rx="9" fill="#e7f3f2"/><text x="493" y="37" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="700" fill="#20666b">Browse</text>
+  <path d="M570 23h4l3 12h12l3-9h-16M578 40a1.4 1.4 0 1 0 0 .1M587 40a1.4 1.4 0 1 0 0 .1" fill="none" stroke="#34566a" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="594" y="37" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="650" fill="#34566a">Cart</text><circle cx="644" cy="32" r="11" fill="#e4f3f1"/><text x="644" y="36" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="750" fill="#176b70">0</text>
+  <rect x="676" y="12" width="40" height="40" rx="10" fill="#fff" stroke="#8ba6b3"/><circle cx="696" cy="32" r="8" fill="none" stroke="#294d61" stroke-width="1.6"/><path d="M688 32h16M696 24c4 4 4 12 0 16M696 24c-4 4-4 12 0 16" fill="none" stroke="#294d61" stroke-width="1.3"/>
+  <rect x="732" y="12" width="40" height="40" rx="10" fill="#fff" stroke="#8ba6b3"/><circle cx="752" cy="27" r="3.7" fill="none" stroke="#294d61" stroke-width="1.6"/><path d="M745 42v-2a7 7 0 0 1 14 0v2" fill="none" stroke="#294d61" stroke-width="1.6" stroke-linecap="round"/>
+
+  <rect x="32" y="78" width="756" height="42" rx="10" fill="#fff7e8" stroke="#f1bd62"/>
+  <text x="47" y="104" font-family="Inter,system-ui,sans-serif" font-size="12" font-weight="750" fill="#674912">Demo — Paws &amp; Whiskers Pet Shop</text>
+  <text x="292" y="104" font-family="Inter,system-ui,sans-serif" font-size="11.5" fill="#674912">Demo orders only · No payment, delivery or automatic messages. Chat opens WhatsApp.</text>
+
+  <text x="32" y="153" font-family="Inter,system-ui,sans-serif" font-size="24" font-weight="760" letter-spacing="-.6" fill="#17384e">Browse products</text>
+  <text x="32" y="176" font-family="Inter,system-ui,sans-serif" font-size="12.5" fill="#567181">Find something useful for every day.</text>
+  <text x="32" y="198" font-family="Inter,system-ui,sans-serif" font-size="12" fill="#587482">Products shown: 24</text>
+  <rect x="560" y="137" width="228" height="48" rx="9" fill="#fff" stroke="#829daa"/>
+  <text x="574" y="153" font-family="Inter,system-ui,sans-serif" font-size="9.5" font-weight="800" letter-spacing=".7" fill="#6b828c">CATEGORY</text>
+  <text x="574" y="174" font-family="Inter,system-ui,sans-serif" font-size="14" font-weight="600" fill="#203f53">All categories</text>
+  <path d="m766 157 5 5 5-5" fill="none" stroke="#34566a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Synthetic Demo illustrations, sized for landscape card media at this breakpoint. -->
+  <g font-family="Inter,system-ui,sans-serif">
+    <g>
+      <rect x="32" y="214" width="244" height="330" rx="13" fill="#fff" stroke="#d7e3e8"/>
+      <rect x="33" y="215" width="242" height="132" rx="12" fill="#e8f4f1"/><circle cx="70" cy="324" r="39" fill="#d7ece6"/>
+      <rect x="92" y="264" width="37" height="65" rx="8" fill="url(#tabBottle)" stroke="#b8a7c5"/><rect x="100" y="250" width="21" height="17" rx="4" fill="#243d4e"/>
+      <rect x="137" y="250" width="43" height="79" rx="9" fill="url(#tabBottle)" stroke="#b8a7c5"/><rect x="147" y="232" width="23" height="20" rx="5" fill="#243d4e"/>
+      <rect x="188" y="266" width="35" height="63" rx="8" fill="url(#tabBottle)" stroke="#b8a7c5"/><rect x="196" y="252" width="19" height="17" rx="4" fill="#243d4e"/>
+      <rect x="183" y="222" width="81" height="18" rx="9" fill="#fff" opacity=".93"/><text x="223.5" y="235" text-anchor="middle" font-size="8.5" font-weight="750" fill="#587482">ILLUSTRATION</text>
+      <text x="44" y="365" font-size="9" font-weight="800" letter-spacing=".4" fill="#00888b">ODOR CONTROL</text>
+      <text x="44" y="386" font-size="13" font-weight="700" fill="#203f53">PETKIT N50 2.0 Odor</text><text x="44" y="403" font-size="13" font-weight="700" fill="#203f53">Eliminator (3 pcs)</text>
+      <text x="44" y="425" font-size="11.5" font-weight="650" fill="#16777b">View details →</text>
+      <text x="44" y="450" font-size="17" font-weight="800" fill="#b3472f">MYR 36.90</text>
+      <rect x="44" y="477" width="220" height="44" rx="9" fill="#087f83"/><text x="154" y="504" text-anchor="middle" font-size="14" font-weight="750" fill="#fff">Add to cart</text>
+    </g>
+    <g>
+      <rect x="288" y="214" width="244" height="330" rx="13" fill="#fff" stroke="#d7e3e8"/>
+      <rect x="289" y="215" width="242" height="132" rx="12" fill="#f6efe7"/><circle cx="321" cy="323" r="39" fill="#efe1d3"/>
+      <path d="M350 250 366 239h90l17 12 7 78q-1 9-11 9H355q-10 0-10-9z" fill="#f7f1e8" stroke="#c9b8a4" stroke-width="2"/><path d="M359 266h90v44h-90z" fill="#b95b39"/>
+      <text x="404" y="285" text-anchor="middle" font-size="8.5" font-weight="800" fill="#fff">TOFU LITTER</text><text x="404" y="299" text-anchor="middle" font-size="7.5" font-weight="650" fill="#fff">MIXED NATURAL FIBER</text>
+      <rect x="439" y="222" width="81" height="18" rx="9" fill="#fff" opacity=".93"/><text x="479.5" y="235" text-anchor="middle" font-size="8.5" font-weight="750" fill="#587482">ILLUSTRATION</text>
+      <text x="300" y="365" font-size="9" font-weight="800" letter-spacing=".4" fill="#00888b">CAT LITTER</text>
+      <text x="300" y="386" font-size="13" font-weight="700" fill="#203f53">PETKIT / Pidan 5-in-1</text><text x="300" y="403" font-size="13" font-weight="700" fill="#203f53">Mixed Tofu Cat Litter</text>
+      <text x="300" y="425" font-size="11.5" font-weight="650" fill="#16777b">View details →</text>
+      <text x="300" y="450" font-size="17" font-weight="800" fill="#b3472f">MYR 73.90</text>
+      <rect x="300" y="477" width="220" height="44" rx="9" fill="#087f83"/><text x="410" y="504" text-anchor="middle" font-size="14" font-weight="750" fill="#fff">Add to cart</text>
+    </g>
+    <g>
+      <rect x="544" y="214" width="244" height="330" rx="13" fill="#fff" stroke="#d7e3e8"/>
+      <rect x="545" y="215" width="242" height="132" rx="12" fill="#edf0f7"/><circle cx="581" cy="322" r="41" fill="#e0e6f0"/>
+      <path d="M595 274q0-11 11-11h136q11 0 11 11v48q0 11-12 11H607q-12 0-12-11z" fill="url(#tabBox)" stroke="#bcc8d1" stroke-width="2"/><path d="M608 268q13-17 35-17h59q22 0 36 17" fill="#f9fbfc" stroke="#bcc8d1" stroke-width="2"/>
+      <rect x="644" y="289" width="32" height="12" rx="6" fill="#23495b"/><circle cx="707" cy="296" r="6" fill="#8fbdb8"/>
+      <rect x="694" y="222" width="81" height="18" rx="9" fill="#fff" opacity=".93"/><text x="734.5" y="235" text-anchor="middle" font-size="8.5" font-weight="750" fill="#587482">ILLUSTRATION</text>
+      <text x="556" y="365" font-size="8.8" font-weight="800" letter-spacing=".25" fill="#00888b">AUTOMATIC LITTER BOXES</text>
+      <text x="556" y="386" font-size="12.5" font-weight="700" fill="#203f53">PETKIT Purobot Crystal Duo</text><text x="556" y="403" font-size="12.5" font-weight="700" fill="#203f53">Litter Box with Camera</text>
+      <text x="556" y="425" font-size="11.5" font-weight="650" fill="#16777b">View details →</text>
+      <text x="556" y="450" font-size="17" font-weight="800" fill="#b3472f">MYR 809.00</text>
+      <rect x="556" y="477" width="220" height="44" rx="9" fill="#087f83"/><text x="666" y="504" text-anchor="middle" font-size="14" font-weight="750" fill="#fff">Add to cart</text>
+    </g>
+  </g>
+  <text x="32" y="586" font-family="Inter,system-ui,sans-serif" font-size="12" fill="#71858f">One 44px category selector replaces both the wide chip rail and sidebar filter here.</text>
+</svg>
