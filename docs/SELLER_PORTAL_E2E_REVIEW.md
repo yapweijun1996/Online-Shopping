@@ -196,3 +196,26 @@ These risks were identified from the original code paths, then reproduced with c
 ## Verification boundaries
 
 The deployed Demo was inspected without changing its data. All follow-up writes used isolated local Demo databases. The latest risk follow-up exercised a product with a main image and gallery photo, as well as a concurrent gallery addition; it did not exercise arbitrary file uploads through the browser picker. Real customer contact, offline transitions, and the actual deployed old-client confirmation/reload interaction were not exercised. The isolated Chrome run did exercise final installation with a simulated v64 baseline. The live v59 client detected waiting v65, and browser diagnostics activated it; this does not establish that the old UI confirmation path works. Pointer activation in a normal human browser remains untested. The checked pages showed no stable horizontal overflow at 320 px after responsive transitions settled. Browser-visible findings are limited to the tested versions and workflows.
+
+## Authenticated public Demo follow-up — Seller v73 (2026-09-29)
+
+The owner signed in to the public Seller portal in the in-app browser. The existing browser was still controlled by Seller service worker v66 while v73 was waiting. The old client's **Install update** button produced no observable transition through browser automation; no JavaScript dialog was exposed. Browser diagnostics sent `SKIP_WAITING` to the already-installed v73 worker, then confirmed active/controller v73 and no waiting worker. A separate authenticated QA tab was reloaded before testing v73. This proves the current UI below, not the old-client update confirmation path. The original old-client tab with an open product editor was not reloaded.
+
+| Public v73 workflow | Observed result |
+| --- | --- |
+| Dashboard | Actual submitted-order and recent-product panels loaded; **Review orders** opened the submitted review queue. |
+| Products | SKU search returned the matching card; an unmatched query showed **No products match this search**; **Clear search** restored the list. The existing product opened at its `#products/{id}` editor route and returned to the list. **Add product** opened a blank editor; empty Save focused required SKU, and Cancel returned without a write. |
+| Sales Orders | Two simulated Submitted orders loaded. Order-number search found one order; Confirmed filtering and an unmatched order-number search returned empty results. Opening an order displayed its summary, buyer/destination, items and history. |
+| Sales Order Confirmation | The Submitted queue and order detail loaded. **Confirm order** and **Reject order** opened their respective dialogs; Cancel closed each without changing the order. |
+| Category codes and Company settings | Five active Demo categories loaded. The configured Demo shop, default MYR currency, and unchanged disabled Save control loaded. No setting or category was saved. |
+| Account, localization and responsive layout | The avatar matched the signed-in username's initial; profile dialog opened and closed. Chinese order headings translated and English restored. At 390px mobile, 820px tablet and 1440px desktop, the tested Dashboard, Products editor/list, and order queue/detail had no stable document-level horizontal overflow. The mobile drawer and bottom editor actions remained usable. The QA tab logged zero browser warnings/errors. |
+
+### SP-11 Filtered order empty state says there are no orders
+
+**Severity:** P2 · **Evidence:** reproduced on authenticated public Seller v73 without a data write.
+
+The public Demo has two Submitted orders. In **Sales Orders**, choose **Confirmed** and Search; the empty queue says **No orders yet.** The same message appears for an unmatched order-number search under All statuses. This implies the shop has no orders rather than that the current filter has no matches. `public/seller/orders.js` assigns `noOrders` to every empty non-review queue, regardless of the active status or search term.
+
+**Suggested acceptance:** Reserve **No orders yet** for the unfiltered empty shop. For an active search or status filter, explain that no orders match and provide a clear way to reset the criteria. Preserve the separate **No orders waiting for review** wording on the confirmation queue.
+
+**Boundary:** Public Demo product/category/settings writes, availability changes, and final order decisions were not submitted; those write paths were covered only in an isolated local Demo before release. The public test used simulated orders and did not contact buyers or expose contact details in this report. Physical devices, offline transitions, and a human old-client update confirmation remain unverified.
