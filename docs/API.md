@@ -28,6 +28,7 @@
 | `GET` | `/api/v1/seller/company-settings` | Authorized `{ "defaultCurrency": "MYR" | "SGD", "sellerWhatsAppPhone": string | null }` read. The phone is stored as international digits without `+`. |
 | `PATCH` | `/api/v1/seller/company-settings` | Same-origin/CSRF partial update of `defaultCurrency` and/or `sellerWhatsAppPhone`. Use a valid +60/+65 number (or international digits) for public product Chat; `""` or `null` disables it. Existing prices and orders are unchanged. |
 | `POST` | `/api/v1/orders` | Same-origin guest checkout with a bounded JSON body and `Idempotency-Key`; creates an atomic order and returns a receipt. |
+| `POST` | `/api/v1/orders/statuses` | Same-origin, rate-limited Customer status lookup for 1–50 `{orderNo, accessKey}` pairs; returns only matching `{orderNo, status, updatedAt}` entries from the last 90 days. |
 | `GET` | `/api/v1/seller/orders` | Authorized seller queue with `status`, order-number `search`, `limit` and `offset`; returns `{items, nextOffset}`. |
 | `GET` | `/api/v1/seller/orders/{orderId}` | Authorized complete order snapshot and audit history. |
 | `POST` | `/api/v1/seller/orders/{orderId}/confirm` | Same-origin/CSRF seller decision with `expectedRevision`; returns updated detail. |
@@ -40,9 +41,11 @@ There is no order or contact deletion API or automatic purge. An authorized `DEL
 ## Principles
 
 - All order and product facts come from the server. The browser may cache a cart and minimal receipt, but never supplies an authoritative price, total, status, or buyer identity.
-- Customer checkout and the seller login endpoint are unauthenticated entry points. All other seller endpoints require an authenticated super admin session and server-side authorization.
+- Customer checkout, capability-scoped status lookup, and the seller login endpoint are unauthenticated entry points. All seller order endpoints require an authenticated super admin session and server-side authorization.
 - JSON responses use stable error codes. Private responses use `Cache-Control: no-store`.
 - State-changing requests validate input and are bounded. The server records the actual authenticated seller as the review actor.
+
+Customer status lookup requires the random UUID v4 idempotency key from the original checkout, kept only in that browser's IndexedDB. The server stores its SHA-256 hash and matches it with the order number; the sequential order number alone never authorizes a lookup. The credential is sent in a POST body, not a URL or the legacy localStorage receipt. Wrong credentials produce an empty `items` list; responses omit buyer, recipient, address, item and rejection-reason data. Legacy orders without the credential cannot retrieve seller status, and the browser marks cached status as potentially outdated if refresh fails.
 - Current product responses return seller-authored English name/description. Optional localized catalog text is planned; language changes never alter IDs, prices, order states, or authorization. See [PWA_I18N.md](PWA_I18N.md).
 
 ## Public checkout

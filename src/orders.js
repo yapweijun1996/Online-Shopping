@@ -3,9 +3,34 @@ import { createHash, randomUUID } from 'node:crypto';
 import { validateOrderInput } from './checkout-input.js';
 import { ApiError } from './http.js';
 import { FieldError } from './validation.js';
+import { ORDER_RETENTION_MS, statusAccessKeyPattern } from '../public/shared/order-status.js';
 
 function digest(value) {
   return createHash('sha256').update(value).digest('hex');
+}
+
+const orderNoPattern = /^(?:OS|DEMO)-\d{8,}$/;
+
+export function lookupOrderStatuses(database, input, now = Date.now()) {
+  if (!Array.isArray(input?.orders) || input.orders.length < 1 || input.orders.length > 50 ||
+      Object.keys(input).length !== 1) throw new FieldError('orders', 'Supply 1 to 50 order credentials.');
+  const seen = new Set();
+  const cutoff = new Date(now - ORDER_RETENTION_MS).toISOString();
+  const items = [];
+  for (const entry of input.orders) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry) ||
+        Object.keys(entry).length !== 2 ||
+        typeof entry.orderNo !== 'string' || !orderNoPattern.test(entry.orderNo) ||
+        typeof entry.accessKey !== 'string' || !statusAccessKeyPattern.test(entry.accessKey) ||
+        seen.has(entry.orderNo)) throw new FieldError('orders', 'Supply valid, unique order credentials.');
+    seen.add(entry.orderNo);
+    const row = database.get(`SELECT o.order_no, o.status, o.updated_at FROM checkout_idempotency i
+      JOIN shop_order o ON o.id = i.order_id
+      WHERE i.key_hash = ? AND o.order_no = ? AND o.submitted_at > ?`,
+    digest(entry.accessKey), entry.orderNo, cutoff);
+    if (row) items.push({ orderNo: row.order_no, status: row.status, updatedAt: row.updated_at });
+  }
+  return { items };
 }
 
 function receipt(row) {

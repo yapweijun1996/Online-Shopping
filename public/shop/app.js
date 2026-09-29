@@ -89,6 +89,8 @@ let checkoutPage = null;
 let lastReceipt = null;
 let receiptNotes = [];
 let localOrderStore;
+let localOrdersRequest = 0;
+let localOrdersController;
 
 function element(tag, className, content) {
   const node = document.createElement(tag);
@@ -569,9 +571,9 @@ function renderReceipt() {
   note.textContent = receiptNotes.map((key) => t(key)).join(' ');
 }
 
-async function completeOrder(receipt, { orderItems, submittedItems, cartBacked }) {
+async function completeOrder(receipt, { orderItems, submittedItems, cartBacked, statusAccessKey }) {
   lastReceipt = receipt;
-  const savedLocally = await localOrderStore.save(receipt, orderItems);
+  const savedLocally = await localOrderStore.save(receipt, orderItems, statusAccessKey);
   receiptNotes = savedLocally ? [] : ['localOrdersSaveFailed'];
   try {
     localStorage.removeItem('online-shopping-last-receipt-v1');
@@ -601,13 +603,9 @@ async function completeOrder(receipt, { orderItems, submittedItems, cartBacked }
   showRoute();
 }
 
-async function renderLocalOrders() {
-  await localOrderStore.refresh();
-  const status = byId('local-orders-status');
-  status.textContent = localOrderStore.persistent ? '' : t('localOrdersUnavailable');
+function drawLocalOrders(orders) {
   const list = byId('local-orders-list');
   list.replaceChildren();
-  const orders = localOrderStore.list();
   if (!orders.length) {
     list.append(element('p', 'local-orders-empty', t('noLocalOrders')));
     return;
@@ -617,6 +615,12 @@ async function renderLocalOrders() {
     const heading = element('div', 'local-order-heading');
     heading.append(element('h2', '', order.orderNo), element('strong', 'local-order-total', formatMoney(order.totalMinor, order.currency)));
     card.append(heading, element('p', 'shop-note', `${t('submittedAt')}: ${formatDate(order.submittedAt)}`));
+    card.append(element('p', 'shop-note', order.status
+      ? `${t('orderStatus')}: ${t(`status${order.status[0]}${order.status.slice(1).toLowerCase()}`)}`
+      : t('olderOrderStatusUnavailable')));
+    if (order.status && order.statusUpdatedAt !== order.submittedAt) {
+      card.append(element('p', 'shop-note', `${t('updatedAt')}: ${formatDate(order.statusUpdatedAt)}`));
+    }
     if (order.simulation) card.append(element('p', 'shop-note', t('localDemoOrder')));
     card.append(element('h3', '', t('localOrderItems')));
     if (order.items.length) {
@@ -632,6 +636,56 @@ async function renderLocalOrders() {
     list.append(card);
   }
 }
+
+async function renderLocalOrders() {
+  const requestId = ++localOrdersRequest;
+  localOrdersController?.abort();
+  await localOrderStore.refresh();
+  if (requestId !== localOrdersRequest || readShopRoute(location.hash).page !== 'orders') return;
+  byId('local-orders-status').textContent = localOrderStore.persistent ? '' : t('localOrdersUnavailable');
+  const orders = localOrderStore.list();
+  drawLocalOrders(orders);
+  const credentials = orders.filter((order) => order.statusAccessKey).map((order) => ({
+    orderNo: order.orderNo, accessKey: order.statusAccessKey,
+  }));
+  const button = byId('refresh-order-statuses');
+  const status = byId('local-orders-sync-status');
+  button.hidden = credentials.length === 0;
+  status.textContent = credentials.length ? t('checkingOrderStatuses') : '';
+  if (!credentials.length) return;
+  button.disabled = true;
+  const controller = new AbortController();
+  localOrdersController = controller;
+  const timeout = setTimeout(() => controller.abort(), 12_000);
+  let incomplete = false;
+  try {
+    for (let offset = 0; offset < credentials.length; offset += 50) {
+      const batch = credentials.slice(offset, offset + 50);
+      const response = await fetch('/api/v1/orders/statuses', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orders: batch }), signal: controller.signal,
+      });
+      if (!response.ok) throw new Error('Status lookup failed');
+      const data = await response.json();
+      if (!Array.isArray(data.items)) throw new Error('Invalid status response');
+      if (requestId !== localOrdersRequest || readShopRoute(location.hash).page !== 'orders') return;
+      if (data.items.length !== batch.length) incomplete = true;
+      await localOrderStore.updateStatuses(data.items);
+    }
+    if (requestId !== localOrdersRequest || readShopRoute(location.hash).page !== 'orders') return;
+    drawLocalOrders(localOrderStore.list());
+    status.textContent = t(incomplete ? 'orderStatusesFailed' : 'orderStatusesCurrent');
+  } catch {
+    if (requestId === localOrdersRequest && readShopRoute(location.hash).page === 'orders') {
+      status.textContent = t('orderStatusesFailed');
+    }
+  } finally {
+    clearTimeout(timeout);
+    if (requestId === localOrdersRequest) button.disabled = false;
+  }
+}
+
+byId('refresh-order-statuses').addEventListener('click', renderLocalOrders);
 
 function showRoute() {
   const parsed = readShopRoute(location.hash);

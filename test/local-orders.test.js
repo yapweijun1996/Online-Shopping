@@ -7,6 +7,7 @@ const receipt = { orderNo: 'DEMO-00000001', currency: 'MYR', totalMinor: 250,
   submittedAt, simulation: true, status: 'SUBMITTED', buyerPhone: '+60123456789' };
 const items = [{ productId: 'product-1', name: 'Test item', quantity: 2,
   unitPriceMinor: 125, recipientPhone: '+60123456789' }];
+const statusAccessKey = '4d23d59b-dabd-4529-a03f-fbd8b6145960';
 
 test('local orders keep item snapshots but exclude contact data and duplicate retries', async () => {
   const store = await createLocalOrderStore(null, () => Date.parse(submittedAt) + 1000);
@@ -19,6 +20,24 @@ test('local orders keep item snapshots but exclude contact data and duplicate re
   assert.equal(JSON.stringify(orders).includes('+60123456789'), false);
   orders[0].items[0].name = 'Changed';
   assert.equal(store.list()[0].items[0].name, 'Test item');
+});
+
+test('local orders retain a private status credential and update seller decisions', async () => {
+  const store = await createLocalOrderStore(null, () => Date.parse(submittedAt) + 1000);
+  await store.save(receipt, items, statusAccessKey);
+  assert.equal(store.list()[0].status, 'SUBMITTED');
+  assert.equal(store.list()[0].statusAccessKey, statusAccessKey);
+  await store.updateStatuses([{ orderNo: receipt.orderNo, status: 'CONFIRMED',
+    updatedAt: '2026-09-29T00:00:01.000Z', buyerPhone: '+60123456789' }]);
+  assert.equal(store.list()[0].status, 'CONFIRMED');
+  assert.equal(JSON.stringify(store.list()).includes('+60123456789'), false);
+  await store.save(receipt);
+  assert.equal(store.list()[0].status, 'CONFIRMED');
+  assert.equal(store.list()[0].statusAccessKey, statusAccessKey);
+  await store.updateStatuses([{ orderNo: receipt.orderNo, status: 'UNKNOWN', updatedAt: submittedAt }]);
+  assert.equal(store.list()[0].status, 'CONFIRMED');
+  await store.updateStatuses([{ orderNo: receipt.orderNo, status: 'SUBMITTED', updatedAt: submittedAt }]);
+  assert.equal(store.list()[0].status, 'CONFIRMED');
 });
 
 test('local orders expire at 90 days and reject invalid records', async () => {

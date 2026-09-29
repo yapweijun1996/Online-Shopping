@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { randomUUID } from 'node:crypto';
 import { createApp } from '../src/server.js';
 import { createProduct } from '../src/products.js';
 import { createCategory } from '../src/settings.js';
@@ -34,7 +35,7 @@ async function fixture() {
 
   return {
     app, config, directory, origin, product, request,
-    async submit({ buyerName = 'Example Buyer' } = {}) {
+    async submit({ buyerName = 'Example Buyer', accessKey } = {}) {
       const body = {
         buyer: { fullName: buyerName, whatsappPhone: '+6581234567', email: 'example@example.invalid' },
         whatsappOrderContactOptIn: true,
@@ -46,7 +47,7 @@ async function fixture() {
         }],
       };
       return request('POST', '/api/v1/orders', body, {
-        origin, 'idempotency-key': `seller-review-intent-${++orderKey}`,
+        origin, 'idempotency-key': accessKey || `seller-review-intent-${++orderKey}`,
       });
     },
     async login() {
@@ -62,6 +63,52 @@ async function fixture() {
     async close() { await app.close(); rmSync(directory, { recursive: true, force: true }); },
   };
 }
+
+test('customer status credentials reveal only own 90-day seller decision', async () => {
+  const f = await fixture();
+  try {
+    const firstKey = randomUUID();
+    const secondKey = randomUUID();
+    const first = await f.submit({ accessKey: firstKey });
+    const second = await f.submit({ buyerName: 'Another Buyer', accessKey: secondKey });
+    assert.equal(first.response.status, 201);
+    const lookup = (orders, headers = { origin: f.origin }) =>
+      f.request('POST', '/api/v1/orders/statuses', { orders }, headers);
+    const firstCredential = { orderNo: first.data.orderNo, accessKey: firstKey };
+    const secondCredential = { orderNo: second.data.orderNo, accessKey: secondKey };
+    assert.equal((await lookup([firstCredential], {})).response.status, 403);
+    assert.equal((await f.request('GET', `/api/v1/orders/${first.data.orderNo}`)).response.status, 404);
+    const initial = await lookup([firstCredential, secondCredential]);
+    assert.equal(initial.response.status, 200);
+    assert.equal(initial.response.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(initial.data.items.map(({ orderNo, status }) => [orderNo, status]), [
+      [first.data.orderNo, 'SUBMITTED'], [second.data.orderNo, 'SUBMITTED'],
+    ]);
+    assert.deepEqual(Object.keys(initial.data.items[0]).sort(), ['orderNo', 'status', 'updatedAt']);
+    assert.ok(!JSON.stringify(initial.data).includes('Example Buyer'));
+    assert.ok(!JSON.stringify(initial.data).includes('+6581234567'));
+    assert.deepEqual((await lookup([{ orderNo: first.data.orderNo, accessKey: secondKey }])).data.items, []);
+    assert.deepEqual((await lookup([{ orderNo: second.data.orderNo, accessKey: firstKey }])).data.items, []);
+    assert.equal((await lookup([firstCredential, firstCredential])).response.status, 400);
+    assert.equal((await lookup([{ orderNo: first.data.orderNo, accessKey: 'guess' }])).response.status, 400);
+    const { cookie, csrf } = await f.login();
+    const ids = f.app.database.all('SELECT id FROM shop_order ORDER BY order_no').map(({ id }) => id);
+    const headers = { origin: f.origin, cookie, 'x-csrf-token': csrf };
+    assert.equal((await f.request('POST', `/api/v1/seller/orders/${ids[0]}/confirm`, { expectedRevision: 1 }, headers)).response.status, 200);
+    assert.equal((await f.request('POST', `/api/v1/seller/orders/${ids[1]}/reject`, { expectedRevision: 1, reason: 'Unavailable.' }, headers)).response.status, 200);
+    const reviewed = await lookup([firstCredential, secondCredential]);
+    assert.deepEqual(reviewed.data.items.map(({ status }) => status), ['CONFIRMED', 'REJECTED']);
+    assert.ok(!JSON.stringify(reviewed.data).includes('Unavailable.'));
+    f.app.database.run('UPDATE shop_order SET submitted_at = ? WHERE order_no = ?',
+      new Date(Date.now() - 91 * 24 * 60 * 60 * 1000).toISOString(), first.data.orderNo);
+    assert.deepEqual((await lookup([firstCredential])).data.items, []);
+    let limited = false;
+    for (let attempt = 0; attempt < 31; attempt++) {
+      if ((await lookup([secondCredential])).response.status === 429) { limited = true; break; }
+    }
+    assert.equal(limited, true);
+  } finally { await f.close(); }
+});
 
 test('seller queue and detail expose one authorized order snapshot with no public lookup', async () => {
   const f = await fixture();

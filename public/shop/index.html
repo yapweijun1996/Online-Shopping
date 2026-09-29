@@ -71,8 +71,9 @@
       <div class="account-content">
     <section id="orders-view" class="account-page" aria-labelledby="my-orders-title" hidden>
       <div class="shop-heading"><p class="eyebrow" data-i18n="account">Account</p><h1 id="my-orders-title" data-i18n="myOrders">My orders</h1></div>
-      <p class="shop-note" data-i18n="localOrdersIntro">Orders are kept on this browser for 90 days. They do not sync across devices or show later seller decisions.</p>
+      <p class="shop-note" data-i18n="localOrdersIntro">Orders are kept on this browser for 90 days. Seller decisions refresh here for new orders on this browser.</p>
       <p id="local-orders-status" class="shop-note" role="status"></p>
+      <div class="local-orders-toolbar"><button id="refresh-order-statuses" class="outline-button" type="button" data-i18n="refreshOrderStatuses" hidden>Refresh statuses</button><p id="local-orders-sync-status" class="shop-note" role="status"></p></div>
       <div id="local-orders-list" class="local-orders-list"></div>
     </section>
     <section id="profile-view" class="profile-page account-page" aria-labelledby="profile-title" hidden>

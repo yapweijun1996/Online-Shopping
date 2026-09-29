@@ -3,7 +3,7 @@ import { authenticate, cookieFor, createSession, deleteSession, readSession, ses
 import { ready } from './db.js';
 import { ApiError, errorResponse, json, readJson, requireOrigin } from './http.js';
 import { SqlLimiter } from './limiter.js';
-import { createOrder } from './orders.js';
+import { createOrder, lookupOrderStatuses } from './orders.js';
 import { addGalleryImage, createProduct, deleteGalleryImage, getGalleryImage, getProduct, getProductImage, listProducts, updateProduct } from './products.js';
 import { decideSellerOrder, getSellerOrder, listSellerOrders } from './seller-orders.js';
 import { createCategory, getCompanySettings, listCategories, updateCategory, updateCompanySettings } from './settings.js';
@@ -38,6 +38,7 @@ function requireCsrf(request, session) {
 export function createApi({ store, config, serveStatic = null }) {
   const loginLimiter = new SqlLimiter(store, 'login', { limit: 5, windowMs: LIMIT_WINDOW_MS });
   const checkoutLimiter = new SqlLimiter(store, 'checkout', { limit: 30, windowMs: LIMIT_WINDOW_MS });
+  const orderStatusLimiter = new SqlLimiter(store, 'order-status', { limit: 30, windowMs: LIMIT_WINDOW_MS });
 
   async function route(request, clientAddress) {
     const url = new URL(request.url);
@@ -87,6 +88,13 @@ export function createApi({ store, config, serveStatic = null }) {
       const body = await readJson(request, 128 * 1024);
       const result = createOrder(store, request.headers.get('idempotency-key'), body);
       return json(result.replayed ? 200 : 201, result.receipt);
+    }
+    if (method === 'POST' && pathname === '/api/v1/orders/statuses') {
+      requireOrigin(request, expectedOrigin);
+      if (!orderStatusLimiter.attempt(clientAddress)) {
+        throw new ApiError(429, 'RATE_LIMITED', 'Too many status checks. Try again later.');
+      }
+      return json(200, lookupOrderStatuses(store, await readJson(request, 12 * 1024)));
     }
     if (!pathname.startsWith('/api/v1/seller/')) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
 

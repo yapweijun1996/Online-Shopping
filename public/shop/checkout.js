@@ -164,7 +164,7 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
       }
       serverConfirmed = true;
       setStatus('');
-      await onSuccess(result, { orderItems, submittedItems, cartBacked });
+      await onSuccess(result, { orderItems, submittedItems, cartBacked, statusAccessKey: pendingIntent.key });
     } catch {
       setStatus('');
       setError(serverConfirmed ? 'receiptRenderError' : 'orderNetworkError');

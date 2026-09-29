@@ -1,8 +1,11 @@
+import { ORDER_RETENTION_MS, statusAccessKeyPattern } from '../shared/order-status.js';
+
 const DB_NAME = 'online-shopping-local-orders';
 const STORE_NAME = 'orders';
-export const ORDER_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+export { ORDER_RETENTION_MS };
+const statuses = new Set(['SUBMITTED', 'CONFIRMED', 'REJECTED']);
 
-function normalizeOrder(receipt, items = []) {
+function normalizeOrder(receipt, items = [], accessKey = receipt?.statusAccessKey) {
   if (!receipt || !/^(?:OS|DEMO)-\d{8,}$/.test(receipt.orderNo) ||
       !['MYR', 'SGD'].includes(receipt.currency) ||
       !Number.isSafeInteger(receipt.totalMinor) || receipt.totalMinor < 0 ||
@@ -17,9 +20,14 @@ function normalizeOrder(receipt, items = []) {
     lines.push({ productId: item.productId, name: item.name, quantity: item.quantity,
       unitPriceMinor: item.unitPriceMinor });
   }
+  const statusAccessKey = typeof accessKey === 'string' && statusAccessKeyPattern.test(accessKey) ? accessKey : null;
+  const status = statusAccessKey && statuses.has(receipt.status) ? receipt.status : null;
+  const statusUpdatedAt = status && typeof receipt.statusUpdatedAt === 'string' &&
+    Number.isFinite(Date.parse(receipt.statusUpdatedAt)) ? receipt.statusUpdatedAt : receipt.submittedAt;
   return { orderNo: receipt.orderNo, submittedAt: receipt.submittedAt,
     totalMinor: receipt.totalMinor, currency: receipt.currency,
-    simulation: receipt.simulation === true, items: lines };
+    simulation: receipt.simulation === true, items: lines,
+    ...(statusAccessKey ? { statusAccessKey, status, statusUpdatedAt } : {}) };
 }
 
 export function isLocalOrderCurrent(order, now = Date.now()) {
@@ -132,13 +140,33 @@ export async function createLocalOrderStore(provider = globalThis.indexedDB, now
         .map((order) => ({ ...order, items: order.items.map((item) => ({ ...item })) }));
     },
     refresh,
-    async save(receipt, items = []) {
-      const order = normalizeOrder(receipt, items);
+    async save(receipt, items = [], accessKey) {
+      const order = normalizeOrder(receipt, items, accessKey);
       if (!order || !isLocalOrderCurrent(order, now())) return false;
       const previous = memory.get(order.orderNo);
       if (previous?.items.length && !order.items.length) order.items = previous.items;
+      if (previous?.statusAccessKey && !order.statusAccessKey) {
+        order.statusAccessKey = previous.statusAccessKey;
+        order.status = previous.status;
+        order.statusUpdatedAt = previous.statusUpdatedAt;
+      }
       memory.set(order.orderNo, order);
       return persist((store) => store.put(order));
+    },
+    async updateStatuses(items) {
+      if (!Array.isArray(items)) return false;
+      const updated = [];
+      for (const item of items) {
+        const previous = memory.get(item?.orderNo);
+        if (!previous?.statusAccessKey || !statuses.has(item.status) ||
+            typeof item.updatedAt !== 'string' || !Number.isFinite(Date.parse(item.updatedAt)) ||
+            Date.parse(item.updatedAt) < Date.parse(previous.statusUpdatedAt || previous.submittedAt)) continue;
+        const order = { ...previous, status: item.status, statusUpdatedAt: item.updatedAt };
+        memory.set(order.orderNo, order);
+        updated.push(order);
+      }
+      if (!updated.length) return true;
+      return persist((store) => { for (const order of updated) store.put(order); });
     },
     close() { database?.close(); database = null; },
   };

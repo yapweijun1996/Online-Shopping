@@ -426,6 +426,8 @@ body:has(.variant-dialog[open]){overflow:hidden}
 .account-sidebar a[aria-current=page]{background:var(--shop-selected-strong);color:var(--shop-selected-text);font-weight:700}
 .account-content{min-width:0}.account-content .profile-page{max-width:none;margin:0}
 .local-orders-list{display:grid;gap:14px;margin-top:18px}
+.local-orders-toolbar{display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap;margin-top:16px}
+.local-orders-toolbar .shop-note{margin:0}
 .local-order-card,.local-orders-empty{padding:20px;background:var(--ui-surface);border:1px solid var(--ui-border);border-radius:12px}
 .local-orders-empty{margin:0;color:var(--ui-secondary-text)}
 .local-order-heading{display:flex;align-items:start;justify-content:space-between;gap:10px 20px;flex-wrap:wrap}
