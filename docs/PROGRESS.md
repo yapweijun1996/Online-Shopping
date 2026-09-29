@@ -1,6 +1,6 @@
 # Progress
 
-**Current state (2026-09-29, Asia/Singapore):** The Cloudflare Worker + SQLite Durable Object hosts a public **Demo** with simulated orders. The future real-data **Production** deployment is Docker + PostgreSQL on the owner's server behind Cloudflare Tunnel. The current Docker backend still uses SQLite. The separate `sample/` prototype does not count toward this application's acceptance.
+**Current state (2026-09-29, Asia/Singapore):** The Cloudflare Worker + SQLite Durable Object hosts a public **Demo** with simulated orders. A separate Docker + PostgreSQL Production stack now passes local synthetic checks, including encrypted backup and isolated restore. It has not been deployed to the owner's server or connected to a real off-host backup destination. The default local Docker stack still uses SQLite. The separate `sample/` prototype does not count toward this application's acceptance.
 
 ## Evidence-based state
 
@@ -11,9 +11,16 @@ The denominator is the **18 independent AC-01–18 acceptance items** in [SPEC.m
 | Planned | 18/18 | Requirements and acceptance gates recorded in SPEC, including PWA and seven-language UI. |
 | Implemented | 16/18 | AC-01–15 and AC-18 have runnable local paths. Production operations and target-browser PWA installation remain. |
 | Verified locally | 16/18 | AC-01–15 and AC-18 have local API/data/browser evidence. The checkout retry fix below adds a changed-form, lost-response regression for AC-10. This does not establish Production acceptance. |
-| Released to Production | 0/18 | The public Worker is a Demo; real-data PostgreSQL, backup/recovery, deployment and rollback gates remain open. |
+| Released to Production | 0/18 | The public Worker is a Demo; the real-data server, off-host recovery, deployment and rollback gates remain open. |
 
 The public Demo has deployment and browser evidence in the dated entries below. Its deployed Shop v75 still predates the checkout retry fix; that fix has only local test evidence. M1–M3 core flows run locally, while their remaining milestone exit gates and M4 Production readiness stay open. Milestone state is separate from the 16/18 local acceptance count.
+
+## PostgreSQL Production preparation — 2026-09-29
+
+- A fresh PostgreSQL schema v10, native store adapter in a dedicated Node worker thread, private Compose backend/database, loopback Caddy frontend and Cloudflare Tunnel origin configuration are implemented. The SQLite local stack and Worker Demo remain separate. No Demo or SQLite data is migrated into this fresh Production database.
+- The full local Production Compose stack passed **35/35** synthetic HTTP smoke checks: session/CSRF/origin boundary, categories, duplicate SKU, 657-byte PNG round trip, request-size limit, price conflict, checkout replay, seller confirmation/stale revision, no-delete behavior and parallel rate limiting. An isolated second Compose project reproduced all 35 checks. PostgreSQL startup and its Docker images were built and verified locally.
+- `pg_dump | age` produced an encrypted local backup and copied it to a local rclone remote for a pipeline test. The remote and local SHA-256 matched. Decryption and `pg_restore` into a fresh isolated PostgreSQL volume recovered schema v10, 2 synthetic orders, 4 events, 2 products and 2 idempotency records. The remote used for this rehearsal was on the same machine, so **off-host recovery is still unverified**.
+- The Node 24 syntax/test suite, PostgreSQL Compose smoke, Worker bundle dry run and runtime-dependency audit are release checks. The Production host, exact hostname, real off-host destination/encryption recipient, schedule, real restore and rollback are still prerequisites for AC-16. See [Production operations](PRODUCTION.md). AC-17 target-device installation/update also remains open.
 
 ## Checkout retry review — 2026-09-29
 
