@@ -1,8 +1,6 @@
 # Progress
 
-**Updated direction (2026-09-26):** Cloudflare Worker + SQLite Durable Object is the public Demo for simulated transactions with sample pet products. Future Production will use Docker + PostgreSQL on the owner’s server behind Cloudflare Tunnel. This supersedes earlier DEC-04 production-host wording below; the current Docker SQLite adapter has not yet been migrated to PostgreSQL.
-
-**As of 2026-09-26 (Asia/Singapore).** The new Online Shopping application is an **MVP in local development**. The separate `sample/` is a local PWA/API/SQLite prototype. Its functionality and test results do not count toward the new MVP.
+**Current state (2026-09-29, Asia/Singapore):** The Cloudflare Worker + SQLite Durable Object hosts a public **Demo** with simulated orders. The future real-data **Production** deployment is Docker + PostgreSQL on the owner's server behind Cloudflare Tunnel. The current Docker backend still uses SQLite. The separate `sample/` prototype does not count toward this application's acceptance.
 
 ## Evidence-based state
 
@@ -12,12 +10,18 @@ The denominator is the **18 independent AC-01–18 acceptance items** in [SPEC.m
 | --- | ---: | --- |
 | Planned | 18/18 | Requirements and acceptance gates recorded in SPEC, including PWA and seven-language UI. |
 | Implemented | 16/18 | AC-01–15 and AC-18 have runnable local paths. Production operations and target-browser PWA installation remain. |
-| Verified | 16/18 | AC-01–15 and AC-18 passed applicable local API/data/browser gates, including responsive keyboard/error states and seven-language journeys. This is local proof only. |
-| Released | 0/18 | Local Docker images and a loopback Compose smoke exist, but no public HTTPS deployment, registry/tag/release, or deployed version/rollback proof exists. |
+| Verified locally | 16/18 | AC-01–15 and AC-18 have local API/data/browser evidence. The checkout retry fix below adds a changed-form, lost-response regression for AC-10. This does not establish Production acceptance. |
+| Released to Production | 0/18 | The public Worker is a Demo; real-data PostgreSQL, backup/recovery, deployment and rollback gates remain open. |
 
-Documentation milestone **M0: 1/5 milestones verified** after the initial documentation audit and local commit. M1–M3 functional slices run locally but their milestone exit gates remain in progress; M4 local quality gates are in progress. This milestone count is separate from the 16/18 locally verified acceptance count.
+The public Demo has deployment and browser evidence in the dated entries below. Its deployed Shop v75 still predates the checkout retry fix; that fix has only local test evidence. M1–M3 core flows run locally, while their remaining milestone exit gates and M4 Production readiness stay open. Milestone state is separate from the 16/18 local acceptance count.
 
-## Current development slice
+## Checkout retry review — 2026-09-29
+
+- A lost checkout response after commit could create a second order if the customer changed language or order details before retrying. The browser had replaced the idempotency key whenever the serialized request changed. An isolated run of the real checkout handler and order database reproduced two orders.
+- The checkout now keeps the original key until the server confirms a result. If a changed request conflicts with an already committed order, it replays the original request and displays that receipt. It retains the original product snapshot and leaves a subsequently changed cart alone. A confirmed order resets the key for the next purchase.
+- Node 24 syntax checks, **96/96** new-application tests, Worker dry run and production-dependency audit passed. Two new tests cover lost response plus language/address change, and corrected details after an unsuccessful submission. The public Demo has not received this fix, and a fresh browser acceptance of this exact scenario remains to be recorded.
+
+## Historical local development snapshot (2026-09-26)
 
 | Check | Evidence and limit |
 | --- | --- |
@@ -60,7 +64,7 @@ WhatsApp is the sole buyer order-contact channel for new checkouts. The web form
 
 ## Open decisions, risks, and next work
 
-- **DEC-04 (2026-09-26):** the owner selected two Docker containers: Caddy frontend and one private Node API/SQLite backend with persistent volumes. Local loopback smoke passed. **HTTPS host resolved:** the owner chose the Cloudflare Workers deployment path's `*.workers.dev` subdomain under the existing Worker name `online-shopping` (`PUBLIC_ORIGIN=https://online-shopping.<account>.workers.dev`), not a custom domain. Encrypted/off-host backup, recovery, and rollback for the Durable Object data still remain unresolved.
+- **DEC-04 (2026-09-26, later clarified):** the two-container Caddy/Node/SQLite stack passed local loopback smoke. The `online-shopping` Worker's `*.workers.dev` HTTPS hostname applies to the simulated Demo. Real-data Production targets Docker + PostgreSQL behind Cloudflare Tunnel; its hostname, backup destination, recovery and rollback remain unresolved.
 - **DEC-06 (2026-09-26):** the owner now requests permanent preservation of submitted orders, including names, phones, and addresses. Code inspection found no order deletion API or automatic order purge; an authorized DELETE returns 404 and leaves all related rows in the new regression test. Only expired/sign-out seller sessions are deleted. A persistent volume and local backup cannot guarantee permanence. **Lawful basis resolved:** the owner recorded the basis as business/contractual necessity — order dispute resolution, warranty/after-sales claims, and audit trail for submitted orders — not consent-based, and accepted this as the documented retention justification (owner judgment, not independent legal counsel review). [Official source review](DEPLOY.md) still applies for the underlying tax/PDPA context. AC-16's retention-policy sub-item is satisfied; its backup/recovery and deployed-rollback sub-items remain open. Browser suggestion history remains separately clearable and expires after 90 days.
 - **DEC-02/DEC-05 recorded:** MYR remains the company default. Products may use MYR or SGD; each checkout uses one currency, with no automatic conversion. No shipping charge, delivery-area rule, GST calculation or logistics integration is included. Addresses are collected for seller review. Seller images use bounded base64 input with private decoded storage and active-only serving; no-image placeholder is used.
 - **On-device history:** checkout offers explicit opt-in saving, typed/clicked/keyboard combobox selection, expiry 90 days after the most recent save, and clearing. This is local browser convenience only; no public contact lookup or cross-device recovery is added.
