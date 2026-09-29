@@ -9,6 +9,7 @@ import { productHash, readShopRoute } from './shop-route.js';
 import { formatDate, formatMoney, setupLanguageMenu, t, translate } from '../shared/i18n.js';
 import { createCartStore } from './cart.js';
 import { mountCheckout } from './checkout.js';
+import { createLocalOrderStore, isLocalOrderCurrent } from './local-orders.js';
 
 const byId = (id) => document.getElementById(id);
 const paletteInputs = [...document.querySelectorAll('input[name="shop-palette"]')];
@@ -87,6 +88,7 @@ let priceChangedNotice = false;
 let checkoutPage = null;
 let lastReceipt = null;
 let receiptNotes = [];
+let localOrderStore;
 
 function element(tag, className, content) {
   const node = document.createElement(tag);
@@ -547,7 +549,8 @@ function readReceipt() {
   try {
     const saved = JSON.parse(localStorage.getItem('online-shopping-last-receipt-v1') || 'null');
     if (saved && /^(?:OS|DEMO)-\d{8,}$/.test(saved.orderNo) && Number.isSafeInteger(saved.totalMinor) &&
-        ['MYR', 'SGD'].includes(saved.currency) && !Number.isNaN(Date.parse(saved.submittedAt))) return saved;
+        ['MYR', 'SGD'].includes(saved.currency) && isLocalOrderCurrent(saved)) return saved;
+    localStorage.removeItem('online-shopping-last-receipt-v1');
   } catch { /* A receipt is optional browser convenience. */ }
   return null;
 }
@@ -566,9 +569,10 @@ function renderReceipt() {
   note.textContent = receiptNotes.map((key) => t(key)).join(' ');
 }
 
-async function completeOrder(receipt, { historySaveFailed, submittedItems, cartBacked }) {
+async function completeOrder(receipt, { orderItems, submittedItems, cartBacked }) {
   lastReceipt = receipt;
-  receiptNotes = historySaveFailed ? ['historyStorageUnavailable'] : [];
+  const savedLocally = await localOrderStore.save(receipt, orderItems);
+  receiptNotes = savedLocally ? [] : ['localOrdersSaveFailed'];
   try {
     localStorage.removeItem('online-shopping-last-receipt-v1');
     localStorage.setItem('online-shopping-last-receipt-v1', JSON.stringify(receipt));
@@ -597,6 +601,38 @@ async function completeOrder(receipt, { historySaveFailed, submittedItems, cartB
   showRoute();
 }
 
+async function renderLocalOrders() {
+  await localOrderStore.refresh();
+  const status = byId('local-orders-status');
+  status.textContent = localOrderStore.persistent ? '' : t('localOrdersUnavailable');
+  const list = byId('local-orders-list');
+  list.replaceChildren();
+  const orders = localOrderStore.list();
+  if (!orders.length) {
+    list.append(element('p', 'local-orders-empty', t('noLocalOrders')));
+    return;
+  }
+  for (const order of orders) {
+    const card = element('article', 'local-order-card');
+    const heading = element('div', 'local-order-heading');
+    heading.append(element('h2', '', order.orderNo), element('strong', 'local-order-total', formatMoney(order.totalMinor, order.currency)));
+    card.append(heading, element('p', 'shop-note', `${t('submittedAt')}: ${formatDate(order.submittedAt)}`));
+    if (order.simulation) card.append(element('p', 'shop-note', t('localDemoOrder')));
+    card.append(element('h3', '', t('localOrderItems')));
+    if (order.items.length) {
+      const items = element('ul', 'local-order-items');
+      for (const item of order.items) {
+        const row = element('li', '');
+        row.append(element('span', '', `${item.name} × ${item.quantity}`),
+          element('strong', '', formatMoney(item.unitPriceMinor * item.quantity, order.currency)));
+        items.append(row);
+      }
+      card.append(items);
+    } else card.append(element('p', 'shop-note', t('localOrderItemsUnavailable')));
+    list.append(card);
+  }
+}
+
 function showRoute() {
   const parsed = readShopRoute(location.hash);
   const route = parsed.page;
@@ -605,10 +641,10 @@ function showRoute() {
   if (previousRoute === 'catalog' && route !== 'catalog') catalogScroll = window.scrollY;
   if (route === 'receipt' && !lastReceipt) { location.hash = '#catalog'; return; }
   const catalogRoute = route === 'catalog';
-  for (const view of ['catalog', 'product', 'cart', 'checkout', 'receipt', 'profile', 'settings', 'addresses']) {
+  for (const view of ['catalog', 'product', 'cart', 'checkout', 'receipt', 'profile', 'orders', 'settings', 'addresses']) {
     byId(`${view}-view`).hidden = route !== view && !(view === 'catalog' && catalogRoute);
   }
-  byId('account-layout').hidden = !['profile', 'addresses', 'settings'].includes(route);
+  byId('account-layout').hidden = !['profile', 'orders', 'addresses', 'settings'].includes(route);
   for (const link of document.querySelectorAll('.account-sidebar a')) {
     if (link.hash === `#${route}`) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
@@ -636,6 +672,7 @@ function showRoute() {
     }
   });
   if (route === 'profile') profilePage.show();
+  if (route === 'orders') renderLocalOrders();
   if (route === 'addresses') addressBook.render();
   if (route === 'checkout') {
     checkoutPage.invalidate();
@@ -685,7 +722,8 @@ const mobileNavigation = mountMobileNavigation({ currentCategory: () => category
 setupLanguageMenu(document.getElementById('language'), { onOpen: mobileNavigation.openLanguage });
 byId('catalog-search').placeholder = t('searchProducts');
 
-const cartStore = await createCartStore();
+const [cartStore, openedOrderStore] = await Promise.all([createCartStore(), createLocalOrderStore()]);
+localOrderStore = openedOrderStore;
 let selectionStorage;
 try { selectionStorage = sessionStorage; } catch { /* Optional selection persistence. */ }
 selection = createCartSelection(selectionStorage);
@@ -719,7 +757,9 @@ for (const link of document.querySelectorAll('a[href="#profile"]')) link.addEven
     else selectionStorage?.removeItem('online-shopping-profile-return');
   } catch { /* Optional return route. */ }
 });
-lastReceipt = readReceipt();
+const legacyReceipt = readReceipt();
+if (legacyReceipt) await localOrderStore.save(legacyReceipt);
+lastReceipt = localOrderStore.list()[0] || legacyReceipt;
 checkoutPage = mountCheckout({
   onSuccess: completeOrder,
   getProfile: () => profilePage.get(),
@@ -817,6 +857,7 @@ document.addEventListener('localechange', () => {
   profilePage.refreshLocale();
   addressBook.refreshLocale();
   renderReceipt();
+  if (readShopRoute(location.hash).page === 'orders') renderLocalOrders();
 });
 function measureActionbar() {
   const bar = document.querySelector('section:not([hidden]) > .shop-actionbar, section:not([hidden]) > form > .shop-actionbar');

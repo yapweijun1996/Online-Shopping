@@ -11,5 +11,5 @@ export function readShopRoute(hash) {
     const id = value.slice('product/'.length);
     return { page: 'product', id: productId.test(id) ? id.toLowerCase() : null };
   }
-  return { page: ['cart', 'checkout', 'receipt', 'profile', 'settings', 'addresses'].includes(value) ? value : 'catalog', id: null };
+  return { page: ['cart', 'checkout', 'receipt', 'profile', 'orders', 'settings', 'addresses'].includes(value) ? value : 'catalog', id: null };
 }
