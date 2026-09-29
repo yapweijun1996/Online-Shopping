@@ -5,7 +5,7 @@
 ## Prerequisites and trust boundary
 
 - An owner-controlled server with Docker Compose, a Cloudflare-managed HTTPS hostname, and a remotely managed Cloudflare Tunnel. Route the hostname to `http://127.0.0.1:18080` on the server. Do not publish backend or database ports. The frontend trusts `CF-Connecting-IP` only within this loopback/Tunnel boundary; restrict local host access. See [Cloudflare Tunnel setup](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/get-started/) and [run parameters](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/configure-tunnels/run-parameters/).
-- Separate admin and PostgreSQL password files outside Git. Copy `deploy/production.env.example` to an ignored environment file and set `PUBLIC_ORIGIN` to the exact HTTPS origin. Compose sets `SHOP_MODE=manual`; the initial shop has no products. Finish setup in `/seller/` after launch.
+- Separate admin and PostgreSQL password files outside Git. The backend entrypoint copies their file-backed Compose mounts into container-only tmpfs, restricts them to the Node user and drops root privileges before starting the API. Copy `deploy/production.env.example` to an ignored environment file and set `PUBLIC_ORIGIN` to the exact HTTPS origin. Compose sets `SHOP_MODE=manual`; the initial shop has no products. Finish setup in `/seller/` after launch.
 - `age` and `rclone` on the host, a configured **off-host** rclone remote, and an `age` public recipient. Keep the matching private identity key away from Production. Choose backup frequency, retention, access and restore-time targets before accepting real orders.
 
 ## First release

@@ -9,6 +9,10 @@ project="shop-smoke-$(date -u +%s)-$$"
 env_file="$directory/stack.env"
 compose=(docker compose --project-name "$project" --env-file "$env_file" -f "$root/compose.production.yaml")
 cleanup() {
+  status=$?
+  if [ "$status" -ne 0 ]; then
+    "${compose[@]}" logs --tail=80 backend database || true
+  fi
   "${compose[@]}" down --volumes >/dev/null 2>&1 || true
   for file in "$directory/admin-password" "$directory/db-password" "$env_file"; do
     if [ -f "$file" ]; then unlink "$file"; fi
