@@ -1,6 +1,6 @@
 # Goal
 
-**Status: MVP in local development.** Seller authentication, MYR/SGD product management, public catalog/cart, atomic guest checkout, and seller order review now run locally. Release-quality and production gates remain. The local `sample/` is a separate runnable prototype; its features and tests do not count as new-app implementation.
+**Status: public simulated Demo deployed; real-data Production remains in preparation.** Seller authentication, MYR/SGD product management, public catalog/cart, atomic guest checkout, and seller order review run locally and in the Demo. Production PostgreSQL, backup/recovery and release gates remain. The local `sample/` is a separate runnable prototype; its features and tests do not count as new-app implementation.
 
 ## Outcome
 
@@ -30,7 +30,7 @@ Payment, GST calculation, customer accounts, contact verification, cross-device 
 - Treat `sample/` as domain reference only. Build a new implementation rather than copying its code or appearance.
 - Keep source, identifiers, and technical documentation in English. Explain progress to the owner in Mandarin.
 - Keep real personal data, access tokens, credentials, and database files out of the public repository. Read initial super admin credentials from a local, ignored `.env` or server-only secret file; production must reject missing or weak development credentials.
-- Use one Docker frontend proxy/PWA container and one private Node API container with a persistent SQLite volume. Keep the backend at one instance and unpublished until a different persistence/rate-limit design is verified.
+- The local Docker stack uses Caddy and one private Node API with a persistent SQLite volume. The real-data Production target is Docker + PostgreSQL behind Cloudflare Tunnel. Keep the backend private and at one instance until its persistence and rate-limit behavior is verified on PostgreSQL.
 - The owner requests permanent server retention of submitted orders and their contact/address snapshots. No automatic order purge exists, but lawful basis and durable recovery must be resolved before real-data release. Browser suggestion history remains separately clearable and expires after 90 days.
 - Default to MYR while allowing MYR and SGD product prices. A checkout contains one currency, with no conversion, shipping-charge or logistics calculation. Collect destination addresses for seller review without a delivery-area promise. Accept bounded base64 product images through the seller API. Optional prior phone/address suggestions stay on the same browser with a clear control.
 - Update design, API, tasks, progress, and this goal when decisions or implemented behavior change.
