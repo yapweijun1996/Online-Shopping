@@ -16,7 +16,8 @@
     "worker:deploy": "wrangler deploy"
   },
   "dependencies": {
-    "libphonenumber-js": "1.13.14"
+    "libphonenumber-js": "1.13.14",
+    "pg-native": "3.9.0"
   },
   "devDependencies": {
     "wrangler": "4.141.0"

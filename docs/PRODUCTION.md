@@ -1,0 +1,32 @@
+# Real-data Production deployment
+
+**State (2026-09-29): the PostgreSQL stack and encrypted recovery drill passed with synthetic local data. No real-data release exists.** The public Cloudflare Worker remains a separate simulated Demo. `compose.production.yaml` starts a fresh PostgreSQL 16 database, one Node 24 API worker, and a Caddy frontend bound to host loopback for Cloudflare Tunnel. The older `compose.yaml` remains a local SQLite stack. No Demo orders or SQLite data are imported into Production.
+
+## Prerequisites and trust boundary
+
+- An owner-controlled server with Docker Compose, a Cloudflare-managed HTTPS hostname, and a remotely managed Cloudflare Tunnel. Route the hostname to `http://127.0.0.1:18080` on the server. Do not publish backend or database ports. The frontend trusts `CF-Connecting-IP` only within this loopback/Tunnel boundary; restrict local host access. See [Cloudflare Tunnel setup](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/get-started/) and [run parameters](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/configure-tunnels/run-parameters/).
+- Separate admin and PostgreSQL password files outside Git. The backend entrypoint copies their file-backed Compose mounts into container-only tmpfs, restricts them to the Node user and drops root privileges before starting the API. Copy `deploy/production.env.example` to an ignored environment file and set `PUBLIC_ORIGIN` to the exact HTTPS origin. Compose sets `SHOP_MODE=manual`; the initial shop has no products. Finish setup in `/seller/` after launch.
+- `age` and `rclone` on the host, a configured **off-host** rclone remote, and an `age` public recipient. Keep the matching private identity key away from Production. Choose backup frequency, retention, access and restore-time targets before accepting real orders.
+
+## First release
+
+1. Pin and record the reviewed Git revision. Prepare the environment and secret files with restrictive permissions. Check `docker compose --env-file <env-file> -f compose.production.yaml config --quiet` and inspect the rendered network, loopback port and secret mount paths without printing secret values.
+2. Build and start with `docker compose --env-file <env-file> -f compose.production.yaml up -d --build --wait`. Confirm database and backend health; `GET /ready` through the local frontend returns 200. The PostgreSQL schema initializes only in an empty database and refuses an unknown version or unrelated nonempty database.
+3. Configure the Tunnel connector and public hostname. From outside the server, verify HTTPS, `/ready`, `/shop/`, `/seller/`, CSP, cookie flags, origin/CSRF rejection, real-client rate limiting, image bytes, checkout replay, seller confirmation and private-port isolation with synthetic data. Clear synthetic rows before accepting real buyers; a fresh volume is simpler. Check the exact deployed revision and logs for secret/contact leakage.
+4. Complete the first encrypted off-host backup and isolated restore drill below. Rehearse application rollback on the same schema version. Record the result, owner, backup schedule and recovery target in [PROGRESS.md](PROGRESS.md) before declaring AC-16 released.
+
+Only one backend worker writes this database. A dedicated Node worker thread runs native synchronous PostgreSQL calls so the HTTP thread stays responsive; complete API requests are serialized to preserve shared transactions and rate limits. This is an MVP capacity limit. Measure latency and worker saturation before increasing traffic. Schema changes beyond version 10 require a separately designed PostgreSQL migration and restore test; do not run SQLite rebuild migrations against PostgreSQL.
+
+## Encrypted backup and restore
+
+Run `bash deploy/backup-production.sh <env-file> <rclone-remote-directory> <age-public-recipient>` from the checkout. The script streams `pg_dump` through `age` without writing a plaintext dump, saves a mode-0600 encrypted local copy under ignored `.local/backups/production/`, copies it to the remote, and compares SHA-256 after reading the remote copy. It reports the encrypted filename and checksum. A local filesystem remote is useful only for a synthetic drill; it does not satisfy off-host recovery.
+
+On an isolated host with the private identity file, retrieve the encrypted backup through the remote and run `bash deploy/restore-drill.sh <env-file> <encrypted-file> <age-identity-file>`. This starts a uniquely named PostgreSQL project and volume, decrypts directly into `pg_restore`, checks schema version 10 and counts for orders, events, products and idempotency records, then removes that temporary project. Keep the identity file and restored customer data under operator access controls. The local test restored two synthetic orders, four events, two products and two idempotency records. An actual off-host restore must be run with the chosen remote before release.
+
+Schedule backups outside the repository using the server's service manager, monitor failures, and periodically rehearse a restore from a remotely retrieved file. Restrict backup access. A successful dump or local copy alone does not prove recoverability. See [PostgreSQL backup documentation](https://www.postgresql.org/docs/current/backup.html) and [pg_restore documentation](https://www.postgresql.org/docs/current/app-pgrestore.html).
+
+## Upgrade and rollback
+
+Before each upgrade, record the running revision, take and verify an off-host backup, and preserve the previous application image or checkout. Deploy one change at a time, then check readiness and seller/shop flows through the public hostname. For an application-only rollback with unchanged schema version 10, restart the prior reviewed image against the **same** PostgreSQL volume and verify new orders remain. Do not restore an older snapshot over newer orders. If a schema change makes application rollback incompatible, stop accepting orders, preserve the current volume, restore into a separate volume and reconcile orders created after the backup before switching traffic. Never use `docker compose down --volumes` on Production as a routine stop.
+
+Production release still needs server access, the exact hostname, a real off-host destination and encryption recipient, a monitored backup schedule, an off-host restore result, deployed smoke checks and rollback evidence. Target-device PWA installation/update remains AC-17.

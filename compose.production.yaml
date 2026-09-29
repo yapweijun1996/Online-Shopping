@@ -1,0 +1,95 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend-production
+    ports:
+      - "127.0.0.1:${FRONTEND_LOCAL_PORT:-18080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - edge
+      - private
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /config
+      - /data
+    security_opt:
+      - no-new-privileges:true
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend-postgres
+    environment:
+      NODE_ENV: production
+      DATABASE_ENGINE: postgres
+      SHOP_MODE: manual
+      ADMIN_USERNAME: ${ADMIN_USERNAME:?Set ADMIN_USERNAME}
+      ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Set the exact HTTPS Production origin}
+      TRUST_PROXY: "1"
+      PGHOST: database
+      PGPORT: "5432"
+      PGDATABASE: ${PGDATABASE:-online_shopping}
+      PGUSER: ${PGUSER:-shop_app}
+      PGPASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - admin_password
+      - db_password
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - private
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+
+  database:
+    image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+    environment:
+      POSTGRES_DB: ${PGDATABASE:-online_shopping}
+      POSTGRES_USER: ${PGUSER:-shop_app}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - private
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-shop_app} -d ${PGDATABASE:-online_shopping}"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+
+secrets:
+  admin_password:
+    file: ${ADMIN_PASSWORD_FILE_HOST:?Set an ignored admin password file}
+  db_password:
+    file: ${PGPASSWORD_FILE_HOST:?Set an ignored PostgreSQL password file}
+
+volumes:
+  pg_data:
+
+networks:
+  edge:
+  private:
+    internal: true

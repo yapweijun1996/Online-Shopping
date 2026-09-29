@@ -1,6 +1,6 @@
 # Docker deployment and data boundary
 
-**Status: public Cloudflare Demo available; no real-data Production release.** The local Compose smoke uses SQLite. See [README](../README.md) for local startup and the Demo/Production distinction.
+**Status: public Cloudflare Demo available; no real-data Production release.** The local Compose smoke uses SQLite. See [README](../README.md) for local startup and [PRODUCTION.md](PRODUCTION.md) for the separate PostgreSQL stack and recovery procedure.
 
 ## Topology
 
@@ -60,7 +60,7 @@ Evidence so far: with synthetic data on local workerd, all six migrations, categ
 
 The first rollout switches the public catalog to a new Demo data space, so existing browser carts may show unavailable old products and require removal. Previous seller sessions belong to the old object and require signing in again. Rollback to the preceding Worker version restores routing to the original object; neither object is deleted. Future releases must keep the demo object name stable unless a deliberate new demo dataset is wanted.
 
-The planned Production deployment is Docker + PostgreSQL + Cloudflare Tunnel. Current Docker uses SQLite and must not be described as PostgreSQL-ready. PostgreSQL schema/transaction adapters, migration, backups, domain/Tunnel and company settings remain future work.
+The separate `compose.production.yaml` PostgreSQL stack and encrypted backup/restore helpers have local synthetic-data evidence; see [PRODUCTION.md](PRODUCTION.md). The default local `compose.yaml` still uses SQLite. The real server, domain/Tunnel, off-host backup, recovery schedule and rollback remain unverified.
 
 ### Verified Demo rollout (2026-09-26)
 
