@@ -1,0 +1,18 @@
+FROM node:24.20.0-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf AS build
+
+WORKDIR /app
+RUN apk add --no-cache python3 make g++ postgresql-dev
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+FROM node:24.20.0-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf
+
+WORKDIR /app
+RUN apk add --no-cache libpq libstdc++
+COPY package.json ./package.json
+COPY --from=build /app/node_modules ./node_modules
+COPY src/ ./src/
+COPY public/shared/ ./public/shared/
+USER node
+EXPOSE 3000
+CMD ["node", "src/server.js"]

@@ -45,7 +45,9 @@ export function createCategory(database, input) {
     database.run(`INSERT INTO general_code(type, code, label, active, created_at, updated_at)
       VALUES (?, ?, ?, 1, ?, ?)`, categoryType, category.code, category.label, now, now);
   } catch (error) {
-    if (String(error.message).includes('UNIQUE constraint failed')) throw new ApiError(409, 'DUPLICATE_CATEGORY', 'Category code or label already exists.');
+    if (/UNIQUE constraint failed|unique constraint "general_code_(?:pkey|type_label_key)"/i.test(String(error.message))) {
+      throw new ApiError(409, 'DUPLICATE_CATEGORY', 'Category code or label already exists.');
+    }
     throw error;
   }
   return { ...category, active: true };
@@ -61,7 +63,9 @@ export function updateCategory(database, code, input) {
     database.run(`UPDATE general_code SET label = ?, active = ?, updated_at = ? WHERE type = ? AND code = ?`,
       label, Number(active), new Date().toISOString(), categoryType, code);
   } catch (error) {
-    if (String(error.message).includes('UNIQUE constraint failed')) throw new ApiError(409, 'DUPLICATE_CATEGORY', 'Category label already exists.');
+    if (/UNIQUE constraint failed|unique constraint "general_code_type_label_key"/i.test(String(error.message))) {
+      throw new ApiError(409, 'DUPLICATE_CATEGORY', 'Category label already exists.');
+    }
     throw error;
   }
   return { code, label, active };

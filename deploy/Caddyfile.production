@@ -1,0 +1,27 @@
+:80 {
+	encode zstd gzip
+	header X-Content-Type-Options nosniff
+	header Referrer-Policy strict-origin-when-cross-origin
+	header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+
+	@api path /api/* /health /ready
+	handle @api {
+		reverse_proxy backend:3000 {
+			header_up X-Real-IP {http.request.header.CF-Connecting-IP}
+		}
+	}
+	@internal path /_headers /_redirects
+	handle @internal {
+		respond 404
+	}
+
+	redir / /shop/ 302
+	redir /shop /shop/ 302
+	redir /seller /seller/ 302
+
+	handle {
+		root * /srv/public
+		header Cache-Control "no-cache"
+		file_server
+	}
+}

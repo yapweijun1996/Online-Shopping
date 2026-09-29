@@ -1,0 +1,23 @@
+services:
+  database:
+    image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+    environment:
+      POSTGRES_DB: ${PGDATABASE:-online_shopping}
+      POSTGRES_USER: ${PGUSER:-shop_app}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+    volumes:
+      - restore_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-shop_app} -d ${PGDATABASE:-online_shopping}"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+secrets:
+  db_password:
+    file: ${PGPASSWORD_FILE_HOST:?Set the PostgreSQL password file}
+
+volumes:
+  restore_data:

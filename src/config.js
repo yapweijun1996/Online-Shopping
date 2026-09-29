@@ -45,6 +45,8 @@ export function readWorkerConfig(env) {
 
 export function readConfig(env = process.env) {
   const production = env.NODE_ENV === 'production';
+  const databaseEngine = env.DATABASE_ENGINE || 'sqlite';
+  if (!['sqlite', 'postgres'].includes(databaseEngine)) throw new Error('DATABASE_ENGINE must be sqlite or postgres.');
   const username = (env.ADMIN_USERNAME || '').trim();
   if (env.ADMIN_PASSWORD && env.ADMIN_PASSWORD_FILE) {
     throw new Error('Set only one of ADMIN_PASSWORD and ADMIN_PASSWORD_FILE.');
@@ -63,11 +65,27 @@ export function readConfig(env = process.env) {
   if (dbPath === publicDir || dbPath.startsWith(`${publicDir}${path.sep}`)) {
     throw new Error('DB_PATH must be outside the public directory.');
   }
-  if (production && !env.DB_PATH) throw new Error('DB_PATH is required in production.');
+  if (production && databaseEngine === 'sqlite' && !env.DB_PATH) throw new Error('DB_PATH is required in production.');
   const publicOrigin = validatePublicOrigin(env.PUBLIC_ORIGIN || null, production);
   const port = Number(env.PORT || 3000);
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('PORT must be a valid port.');
   const trustProxy = env.TRUST_PROXY === '1';
   if (env.TRUST_PROXY && !trustProxy) throw new Error('TRUST_PROXY must be 1 when set.');
-  return { production, username, password, dbPath, publicOrigin, port, trustProxy, shopMode: readShopMode(env) };
+  const config = { production, username, password, dbPath, publicOrigin, port, trustProxy,
+    shopMode: readShopMode(env), databaseEngine };
+  if (databaseEngine === 'postgres') {
+    const pgHost = env.PGHOST || '';
+    const pgPort = Number(env.PGPORT || 5432);
+    const pgDatabase = env.PGDATABASE || '';
+    const pgUser = env.PGUSER || '';
+    const pgPasswordFile = env.PGPASSWORD_FILE || '';
+    if (!/^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$/.test(pgHost) ||
+        !Number.isInteger(pgPort) || pgPort < 1 || pgPort > 65535 ||
+        !/^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(pgDatabase) ||
+        !/^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(pgUser) || !pgPasswordFile) {
+      throw new Error('PostgreSQL host, port, database, user and password file are required.');
+    }
+    Object.assign(config, { pgHost, pgPort, pgDatabase, pgUser, pgPasswordFile });
+  }
+  return config;
 }
