@@ -227,6 +227,7 @@
 #order-detail-title{scroll-margin-top:100px}
 .order-list-status{font-size:13px;margin:0 0 8px}
 .order-list-status:empty{display:none}
+.order-clear-filters{margin:0 0 12px}
 .order-list{display:grid;gap:9px}
 .order-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px 8px;width:100%;padding:13px;text-align:left;border:1px solid #dce7eb;border-radius:11px;background:#fff;color:#173950}
 .order-card:hover,.order-card.selected{border-color:#317c82;background:#f1fafa}
