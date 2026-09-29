@@ -25,6 +25,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
   const shell = find('.order-layout');
   const list = find('#order-list');
   const listStatus = find('#order-list-status');
+  const clearFilters = find('#order-clear-filters');
   const message = find('#order-message');
   const detailContent = find('#order-detail-content');
   const more = find('#order-more');
@@ -48,6 +49,8 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
   let dialogTrigger = null;
   let dialogErrorKey = '';
   let listRequest = 0;
+  let appliedSearch = '';
+  let appliedStatus = mode === 'review' ? 'SUBMITTED' : '';
   let detailRequest = 0;
   let deciding = false;
 
@@ -115,21 +118,31 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
     const requestNumber = ++listRequest;
     const offset = reset ? 0 : nextOffset;
     if (offset === null) return;
-    if (reset) { items = []; nextOffset = null; renderQueue(); }
+    const query = reset ? search.value.trim() : appliedSearch;
+    const filter = mode === 'review' ? 'SUBMITTED' : reset ? status.value : appliedStatus;
+    if (reset) {
+      appliedSearch = query;
+      appliedStatus = filter;
+      items = [];
+      nextOffset = null;
+      renderQueue();
+    }
     more.disabled = true;
+    clearFilters.hidden = true;
     setListStatus('loading');
     try {
       const params = new URLSearchParams({
-        limit: '20', offset: String(offset), search: search.value.trim(),
+        limit: '20', offset: String(offset), search: query,
       });
-      const filter = mode === 'review' ? 'SUBMITTED' : status.value;
       if (filter) params.set('status', filter);
       const result = await request('GET', `/api/v1/seller/orders?${params}`);
       if (!isCurrent() || requestNumber !== listRequest) return;
       items = reset ? result.items : [...items, ...result.items];
       nextOffset = result.nextOffset;
       renderQueue();
-      setListStatus(items.length ? '' : mode === 'review' ? 'noPendingOrders' : 'noOrders');
+      const hasCriteria = Boolean(query || (mode !== 'review' && filter));
+      setListStatus(items.length ? '' : hasCriteria ? 'noMatchingOrders' : mode === 'review' ? 'noPendingOrders' : 'noOrders');
+      clearFilters.hidden = Boolean(items.length) || !hasCriteria;
     } catch (error) {
       if (isCurrent() && requestNumber === listRequest && error.status !== 401) setListStatus('networkError');
     } finally {
@@ -308,6 +321,12 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
     showDetailStatus('selectOrder');
     setMessage('');
     loadQueue();
+  });
+  clearFilters.addEventListener('click', () => {
+    search.value = '';
+    status.value = '';
+    find('#order-filter').requestSubmit();
+    search.focus();
   });
   more.addEventListener('click', () => loadQueue(false));
   back.addEventListener('click', () => {
