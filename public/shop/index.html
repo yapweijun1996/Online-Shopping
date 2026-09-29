@@ -36,7 +36,7 @@
     <div id="language" class="language-menu shop-language"></div>
     <div class="shop-account">
       <button id="profile-menu-button" class="language-trigger" type="button" aria-expanded="false" aria-controls="profile-menu" data-i18n-aria="customerProfile"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/></svg></button>
-      <nav id="profile-menu" class="language-options" hidden><a href="#profile" data-i18n="customerProfile">Profile</a><a href="#addresses" data-i18n="myAddresses">My addresses</a><a href="#settings" data-i18n="settings">Settings</a></nav>
+      <nav id="profile-menu" class="language-options" hidden><a href="#profile" data-i18n="customerProfile">Profile</a><a href="#orders" data-i18n="myOrders">My orders</a><a href="#addresses" data-i18n="myAddresses">My addresses</a><a href="#settings" data-i18n="settings">Settings</a></nav>
     </div>
   </header>
   <main class="shop-main">
@@ -67,8 +67,14 @@
     </section>
     <section id="product-view" aria-labelledby="detail-title" hidden></section>
     <div id="account-layout" class="account-layout" hidden>
-      <nav class="account-sidebar" aria-label="Account" data-i18n-aria="account"><a href="#profile" data-i18n="customerProfile">Profile</a><a href="#addresses" data-i18n="myAddresses">My addresses</a><a href="#settings" data-i18n="settings">Settings</a></nav>
+      <nav class="account-sidebar" aria-label="Account" data-i18n-aria="account"><a href="#profile" data-i18n="customerProfile">Profile</a><a href="#orders" data-i18n="myOrders">My orders</a><a href="#addresses" data-i18n="myAddresses">My addresses</a><a href="#settings" data-i18n="settings">Settings</a></nav>
       <div class="account-content">
+    <section id="orders-view" class="account-page" aria-labelledby="my-orders-title" hidden>
+      <div class="shop-heading"><p class="eyebrow" data-i18n="account">Account</p><h1 id="my-orders-title" data-i18n="myOrders">My orders</h1></div>
+      <p class="shop-note" data-i18n="localOrdersIntro">Orders are kept on this browser for 90 days. They do not sync across devices or show later seller decisions.</p>
+      <p id="local-orders-status" class="shop-note" role="status"></p>
+      <div id="local-orders-list" class="local-orders-list"></div>
+    </section>
     <section id="profile-view" class="profile-page account-page" aria-labelledby="profile-title" hidden>
       <div class="shop-heading"><p class="eyebrow" data-i18n="account">Account</p><h1 id="profile-title" data-i18n="customerProfile">Profile</h1></div>
       <p class="shop-note" data-i18n="profileLocalNotice"></p>
@@ -154,7 +160,7 @@
         <p class="shop-note" data-i18n="receiptMessage">The seller will review your order. Save this order number for your records.</p>
         <dl class="receipt-details"><dt data-i18n="orderNumber">Order number</dt><dd id="receipt-number"></dd><dt data-i18n="estimatedTotal">Total</dt><dd id="receipt-total"></dd><dt data-i18n="submittedAt">Submitted at</dt><dd id="receipt-date"></dd></dl>
         <p id="receipt-storage-note" class="shop-note" hidden></p>
-        <a href="#catalog" class="primary-button" data-i18n="continueShopping">Continue shopping</a>
+        <div class="cart-actions"><a href="#orders" class="primary-button" data-i18n="viewMyOrders">View my orders</a><a href="#catalog" class="outline-button" data-i18n="continueShopping">Continue shopping</a></div>
       </div>
     </section>
   </main>

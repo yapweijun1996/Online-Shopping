@@ -9,6 +9,6 @@ test('shareable product routes round-trip and reject malformed API identifiers',
     assert.deepEqual(readShopRoute(`#product/${value}`), { page: 'product', id: null });
     assert.throws(() => productHash(value), TypeError);
   }
-  for (const page of ['cart', 'checkout', 'receipt', 'profile', 'settings']) assert.equal(readShopRoute(`#${page}`).page, page);
+  for (const page of ['cart', 'checkout', 'receipt', 'profile', 'orders', 'settings']) assert.equal(readShopRoute(`#${page}`).page, page);
   for (const hash of ['', '#catalog', '#catalog-results', '#unknown']) assert.equal(readShopRoute(hash).page, 'catalog');
 });

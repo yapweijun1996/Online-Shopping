@@ -1034,6 +1034,73 @@ const checkoutMessages = {
 };
 for (const { code } of languages) Object.assign(messages[code], checkoutMessages[code]);
 
+const localOrderMessages = {
+  en: {
+    myOrders: 'My orders', viewMyOrders: 'View my orders',
+    localOrdersIntro: 'Orders are saved on this browser for 90 days. They do not sync across devices or show later seller decisions.',
+    noLocalOrders: 'No orders saved on this browser in the last 90 days.',
+    localOrdersUnavailable: 'Browser storage is unavailable. Orders shown now may disappear when this page closes; keep your order numbers.',
+    localOrdersSaveFailed: 'This order could not be saved to My orders. Keep its order number.',
+    localOrderItems: 'Items ordered', localOrderItemsUnavailable: 'Item details are unavailable for this earlier receipt.',
+    localDemoOrder: 'Simulated Demo order. No payment or delivery will take place.',
+  },
+  ms: {
+    myOrders: 'Pesanan saya', viewMyOrders: 'Lihat pesanan saya',
+    localOrdersIntro: 'Pesanan disimpan dalam pelayar ini selama 90 hari. Ia tidak disegerakkan antara peranti atau menunjukkan keputusan penjual selepas itu.',
+    noLocalOrders: 'Tiada pesanan disimpan dalam pelayar ini sepanjang 90 hari lalu.',
+    localOrdersUnavailable: 'Storan pelayar tidak tersedia. Pesanan yang dipaparkan mungkin hilang apabila halaman ini ditutup; simpan nombor pesanan anda.',
+    localOrdersSaveFailed: 'Pesanan ini tidak dapat disimpan dalam Pesanan saya. Simpan nombor pesanannya.',
+    localOrderItems: 'Barangan dipesan', localOrderItemsUnavailable: 'Butiran barangan tidak tersedia untuk resit terdahulu ini.',
+    localDemoOrder: 'Pesanan Demo simulasi. Tiada bayaran atau penghantaran akan dibuat.',
+  },
+  'zh-Hans': {
+    myOrders: '我的订单', viewMyOrders: '查看我的订单',
+    localOrdersIntro: '订单在此浏览器保存 90 天；不会跨设备同步，也不会显示卖家之后的处理结果。',
+    noLocalOrders: '此浏览器最近 90 天没有保存的订单。',
+    localOrdersUnavailable: '浏览器存储不可用。当前显示的订单可能在关闭页面后消失；请保存订单号。',
+    localOrdersSaveFailed: '这笔订单无法保存到“我的订单”。请保存订单号。',
+    localOrderItems: '订购商品', localOrderItemsUnavailable: '这张较早的收据没有商品明细。',
+    localDemoOrder: '模拟 Demo 订单，不会付款或配送。',
+  },
+  vi: {
+    myOrders: 'Đơn hàng của tôi', viewMyOrders: 'Xem đơn hàng của tôi',
+    localOrdersIntro: 'Đơn hàng được lưu trong trình duyệt này 90 ngày. Dữ liệu không đồng bộ giữa các thiết bị và không hiển thị quyết định sau đó của người bán.',
+    noLocalOrders: 'Không có đơn hàng nào được lưu trong trình duyệt này trong 90 ngày qua.',
+    localOrdersUnavailable: 'Không thể dùng bộ nhớ trình duyệt. Đơn hàng đang hiển thị có thể mất khi đóng trang; hãy lưu số đơn hàng.',
+    localOrdersSaveFailed: 'Không thể lưu đơn hàng này vào Đơn hàng của tôi. Hãy lưu số đơn hàng.',
+    localOrderItems: 'Sản phẩm đã đặt', localOrderItemsUnavailable: 'Không có chi tiết sản phẩm cho biên nhận cũ này.',
+    localDemoOrder: 'Đơn hàng Demo mô phỏng. Không có thanh toán hoặc giao hàng.',
+  },
+  th: {
+    myOrders: 'คำสั่งซื้อของฉัน', viewMyOrders: 'ดูคำสั่งซื้อของฉัน',
+    localOrdersIntro: 'คำสั่งซื้อจะถูกเก็บในเบราว์เซอร์นี้ 90 วัน ไม่ซิงก์ข้ามอุปกรณ์และไม่แสดงผลการดำเนินการของผู้ขายในภายหลัง',
+    noLocalOrders: 'ไม่มีคำสั่งซื้อที่บันทึกในเบราว์เซอร์นี้ในช่วง 90 วันที่ผ่านมา',
+    localOrdersUnavailable: 'ไม่สามารถใช้พื้นที่เก็บข้อมูลของเบราว์เซอร์ได้ คำสั่งซื้อที่แสดงอาจหายไปเมื่อปิดหน้านี้ โปรดเก็บหมายเลขคำสั่งซื้อไว้',
+    localOrdersSaveFailed: 'ไม่สามารถบันทึกคำสั่งซื้อนี้ในคำสั่งซื้อของฉันได้ โปรดเก็บหมายเลขคำสั่งซื้อไว้',
+    localOrderItems: 'สินค้าที่สั่ง', localOrderItemsUnavailable: 'ไม่มีรายละเอียดสินค้าสำหรับใบเสร็จก่อนหน้านี้',
+    localDemoOrder: 'คำสั่งซื้อ Demo จำลอง ไม่มีการชำระเงินหรือจัดส่ง',
+  },
+  ja: {
+    myOrders: '注文履歴', viewMyOrders: '注文履歴を見る',
+    localOrdersIntro: '注文はこのブラウザーに90日間保存されます。端末間では同期されず、その後の販売者の判断は表示されません。',
+    noLocalOrders: 'このブラウザーには過去90日間の注文が保存されていません。',
+    localOrdersUnavailable: 'ブラウザーの保存領域を利用できません。表示中の注文はページを閉じると消える可能性があります。注文番号を控えてください。',
+    localOrdersSaveFailed: 'この注文を注文履歴に保存できませんでした。注文番号を控えてください。',
+    localOrderItems: '注文商品', localOrderItemsUnavailable: '以前の領収書には商品明細がありません。',
+    localDemoOrder: '模擬 Demo 注文です。支払いや配送は行われません。',
+  },
+  ko: {
+    myOrders: '내 주문', viewMyOrders: '내 주문 보기',
+    localOrdersIntro: '주문은 이 브라우저에 90일 동안 저장됩니다. 기기 간 동기화되지 않으며 이후 판매자의 결정은 표시되지 않습니다.',
+    noLocalOrders: '이 브라우저에 저장된 최근 90일 주문이 없습니다.',
+    localOrdersUnavailable: '브라우저 저장소를 사용할 수 없습니다. 현재 표시된 주문은 페이지를 닫으면 사라질 수 있으니 주문 번호를 보관하세요.',
+    localOrdersSaveFailed: '이 주문을 내 주문에 저장할 수 없습니다. 주문 번호를 보관하세요.',
+    localOrderItems: '주문 상품', localOrderItemsUnavailable: '이전 영수증의 상품 상세 정보는 없습니다.',
+    localDemoOrder: '모의 Demo 주문입니다. 결제 또는 배송은 진행되지 않습니다.',
+  },
+};
+for (const { code } of languages) Object.assign(messages[code], localOrderMessages[code]);
+
 const sellerOrderMessages = {
   en: {
     searchOrderNo: 'Order number', orderStatus: 'Status', allStatuses: 'All statuses',

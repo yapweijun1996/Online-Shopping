@@ -129,6 +129,9 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
       return;
     }
     const submittedItems = cartItems.map(({ productId, quantity }) => ({ productId, quantity }));
+    const orderItems = cartItems.map(({ productId, quantity, product }) => ({
+      productId, name: product.name, quantity, unitPriceMinor: product.priceMinor,
+    }));
     const serialized = JSON.stringify(payload);
     if (!pendingIntent || pendingIntent.serialized !== serialized) {
       pendingIntent = { key: crypto.randomUUID(), serialized };
@@ -161,7 +164,7 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
       }
       serverConfirmed = true;
       setStatus('');
-      await onSuccess(result, { historySaveFailed: false, submittedItems, cartBacked });
+      await onSuccess(result, { orderItems, submittedItems, cartBacked });
     } catch {
       setStatus('');
       setError(serverConfirmed ? 'receiptRenderError' : 'orderNetworkError');

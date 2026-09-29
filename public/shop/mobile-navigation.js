@@ -48,7 +48,7 @@ export function mountMobileNavigation({ categories, selectCategory, currentCateg
     reveal(); if (modal.isOpen) close();
     const page = document.body.dataset.shopRoute;
     for (const link of nav.querySelectorAll('a')) {
-      const active = link.hash === '#catalog' ? page === 'catalog' : link.hash === '#profile' ? ['profile','addresses','settings'].includes(page) : ['cart','checkout'].includes(page);
+      const active = link.hash === '#catalog' ? page === 'catalog' : link.hash === '#profile' ? ['profile','orders','addresses','settings'].includes(page) : ['cart','checkout'].includes(page);
       if (active) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
     }
   }
