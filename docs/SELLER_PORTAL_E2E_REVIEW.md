@@ -223,3 +223,22 @@ The public Demo has two Submitted orders. In **Sales Orders**, choose **Confirme
 Authenticated public Demo acceptance covered status-only Confirmed, an unmatched order-number search under All statuses, and an unmatched search in Sales Order Confirmation. In each case the reset control returned the two existing Submitted orders without a data write. Mouse activation worked in the active QA tab; keyboard activation also worked. The 390px mobile and 820px tablet empty states had no horizontal document overflow; the desktop layout was inspected at its default 1280px viewport. Captures: [desktop](../ui/seller-v74-orders-no-match.jpg), [mobile](../ui/seller-v74-orders-no-match-mobile.jpg), and [tablet](../ui/seller-v74-orders-no-match-tablet.jpg). The public Seller v74 service worker was installed through browser diagnostics from the already waiting update; this does not verify the old-client Install update confirmation path. The QA tab logged no browser warnings or errors.
 
 **Boundary:** Public Demo product/category/settings writes, availability changes, and final order decisions were not submitted; those write paths were covered only in an isolated local Demo before release. The public test used simulated orders and did not contact buyers or expose contact details in this report. Physical devices, offline transitions, and a human old-client update confirmation remain unverified.
+
+## Public Demo write-path acceptance — Seller v74 (2026-09-29)
+
+The authenticated public Seller portal was tested with clearly labeled synthetic data. The checkout requests sent no buyer, recipient, phone, or address fields. The Demo API returned `simulation: true` and generated placeholder contact details; these orders cannot contact buyers, collect payment, or trigger delivery.
+
+| Workflow | Observed result |
+| --- | --- |
+| Category codes | Created `QA_PORTAL_20260929`, edited its label to “QA portal workflow verified”, then deactivated it. The inactive state persisted after navigating away and back. |
+| Products | Created SKU `QA-PORTAL-20260929` in that category at MYR 1.00, edited its price to MYR 1.50, then deactivated it. The public catalog search returned no active match after deactivation. |
+| Order decisions | Created two simulated MYR 1.00 orders using the QA product. In Seller, cancelling the confirmation left `DEMO-00000003` Submitted; confirming changed it to Confirmed with revision 2. A blank rejection reason was blocked by required-field validation for `DEMO-00000004`; entering a QA reason changed it to Rejected with revision 2. The order snapshots retained the original MYR 1.00 price after the product edit. |
+| Queue and existing data | The confirmation queue removed the two decided QA orders and still contained the pre-existing `DEMO-00000001` and `DEMO-00000002` as Submitted. Sales Orders showed all four statuses correctly. The QA tab logged no browser warnings or errors. |
+
+[Public Demo order outcome screenshot](../ui/seller-public-demo-write-qa-20260929.jpg). The QA category and product remain **inactive** because this app has no deletion API. The two simulated orders and their decision history remain as Demo audit records. Existing orders were not edited.
+
+## Old-client Install update follow-up — isolated v74→v77 (2026-09-29)
+
+An isolated local Demo served an unchanged Seller v74 snapshot, then temporary service-worker version bumps. Chrome detected a waiting v75 worker through **Account → Check for updates**. **Install update** opened the native confirmation; cancelling retained the v74 controller and waiting v75. Accepting activated v75, reloaded the Seller page, removed the ready notice, and left only the v75 cache. A second v75→v76 test with an unsaved product name confirmed that cancelling the upgrade preserved the draft and kept v76 waiting. In a newly created in-app browser tab, a local v76→v77 check displayed the same ready notice and clicking **Install update** exposed the native confirmation. The in-app browser's subsequent dialog-control command timed out, so that tab did not establish acceptance/reload.
+
+These results show that the Seller upgrade UI opens its confirmation and that Chrome completes the upgrade path. They do not establish an actual public old-client accept/reload, because the public browser no longer has a waiting update. The earlier public old-tab automation failure should not be treated as a confirmed application defect. No source change was warranted by this test. Physical-device and offline upgrade behavior remain unverified.
