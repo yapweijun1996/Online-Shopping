@@ -133,7 +133,7 @@ export function mountAddressBook({ onChange, getCountry = () => 'MY' }) {
   }
   function changed() { render(); onChange(); }
   function cancel() {
-    if (mode === 'edit' && checkoutContext) showChooser();
+    if (mode === 'edit' && checkoutContext && store.read().entries.length) showChooser();
     else modal.close();
   }
   function card(entry, defaultId) {
@@ -233,8 +233,11 @@ export function mountAddressBook({ onChange, getCountry = () => 'MY' }) {
   }
   function open(choose, entry = null) {
     checkoutContext = choose;
-    if (choose) showChooser(); else showEditor(entry);
-    modal.open(t(choose ? 'chooseAddress' : entry ? 'editAddress' : 'addAddress'));
+    let hasChoices = false;
+    try { hasChoices = choose && store.read().entries.length > 0; }
+    catch { showChooser(); modal.open(t('chooseAddress')); return; }
+    if (hasChoices) showChooser(); else showEditor(entry);
+    modal.open(t(hasChoices ? 'chooseAddress' : entry ? 'editAddress' : 'addAddress'));
   }
   function render() {
     const list = document.getElementById('addresses-list'); list.replaceChildren(); pageStatus.textContent = '';

@@ -12,3 +12,17 @@ test('shareable product routes round-trip and reject malformed API identifiers',
   for (const page of ['cart', 'checkout', 'receipt', 'profile', 'orders', 'settings']) assert.equal(readShopRoute(`#${page}`).page, page);
   for (const hash of ['', '#catalog', '#catalog-results', '#unknown']) assert.equal(readShopRoute(hash).page, 'catalog');
 });
+
+
+test('catalog links restore filters and clear them without losing unrelated URL values', async () => {
+  const { readCatalogFilters, catalogFilterURL } = await import('../public/shop/shop-route.js');
+  const original = 'https://shop.example/shop/?lang=en#cart';
+  const first = catalogFilterURL(original, { search: ' tofu & food ', category: 'Cat Food' });
+  assert.deepEqual(readCatalogFilters(first.search), { search: 'tofu & food', category: 'Cat Food' });
+  assert.equal(first.hash, '#catalog-results');
+  assert.equal(first.searchParams.get('lang'), 'en');
+  const second = catalogFilterURL(first.href, { search: '', category: '' });
+  assert.deepEqual(readCatalogFilters(second.search), { search: '', category: '' });
+  assert.deepEqual(readCatalogFilters(new URL(first.href).search), { search: 'tofu & food', category: 'Cat Food' });
+  assert.equal(second.searchParams.get('lang'), 'en');
+});

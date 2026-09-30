@@ -5,7 +5,7 @@ import { mountProfile } from './profile.js';
 import { createCartSelection } from './cart-selection.js';
 import { createContactHistory } from './history.js';
 import { mountProductDetail } from './product-detail.js';
-import { productHash, readShopRoute } from './shop-route.js';
+import { productHash, readShopRoute, readCatalogFilters, catalogFilterURL } from './shop-route.js';
 import { formatDate, formatMoney, setupLanguageMenu, t, translate } from '../shared/i18n.js';
 import { createCartStore } from './cart.js';
 import { mountCheckout } from './checkout.js';
@@ -534,7 +534,7 @@ async function beginCheckout(stillCurrent = () => true, directItem = null) {
     if (!stillCurrent()) return;
     if (!valid || !shopInfo) { location.hash = '#cart'; return; }
     if (!profilePage.get()) {
-      profileReturn = 'cart';
+      profileReturn = 'checkout';
       try { sessionStorage.setItem('online-shopping-profile-return', profileReturn); } catch { /* Optional return route. */ }
       location.hash = '#profile';
       return;
@@ -762,6 +762,8 @@ function showCatalogResults() {
 }
 
 function applyCatalogFilters() {
+  const url = catalogFilterURL(location.href, { search: byId('catalog-search').value, category: category.value });
+  history.pushState(null, '', url);
   showCatalogResults();
   const loading = loadCatalog();
   const request = catalogRequest;
@@ -891,6 +893,19 @@ byId('settings-clear-history').addEventListener('click', () => {
   const history = createContactHistory(); history.clear();
   byId('settings-status').textContent = t(history.persistent ? 'historyCleared' : 'historyStorageUnavailable');
 });
+function restoreCatalogFilters() {
+  const filters = readCatalogFilters(location.search);
+  byId('catalog-search').value = filters.search;
+  const value = filters.category;
+  if (value && ![...category.options].some(option => option.value === value)) category.add(new Option(value, value));
+  category.value = value;
+  syncSearchClear();
+}
+window.addEventListener('popstate', () => {
+  restoreCatalogFilters();
+  loadCatalog();
+  if (readShopRoute(location.hash).page === 'catalog') showRoute();
+});
 window.addEventListener('hashchange', showRoute);
 document.addEventListener('localechange', () => {
   translate(document);
@@ -926,7 +941,8 @@ async function goHome(event) {
   syncSearchClear();
   category.value = ''; renderCategories();
   catalogScroll = 0;
-  location.hash = '#catalog'; showRoute();
+  const url = new URL(location.href); url.searchParams.delete('search'); url.searchParams.delete('category'); url.hash = '#catalog';
+  history.pushState(null, '', url); showRoute();
   mobileNavigation.route(); window.scrollTo(0, 0);
   const view = byId('catalog-view');
   if (!matchMedia('(prefers-reduced-motion: reduce)').matches) view.animate([{ opacity: 0.5 }, { opacity: 1 }], { duration: 180 });
@@ -937,6 +953,7 @@ const retryCatalog = element('button', 'outline-button', t('retry'));
 retryCatalog.id = 'catalog-retry'; retryCatalog.hidden = true; byId('catalog-status').after(retryCatalog);
 retryCatalog.addEventListener('click', () => loadCatalog(retryCatalogReset));
 
+restoreCatalogFilters();
 await loadCatalog();
 showRoute();
 

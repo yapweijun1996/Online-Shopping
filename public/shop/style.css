@@ -579,3 +579,8 @@ body:has(.app-modal[open]) .shop-actionbar{visibility:hidden}
  #cart-view .cart-profile-state:has(a[hidden]){display:none}
 }
 @media(max-width:360px){#cart-view>.shop-actionbar{gap:6px;padding-inline:8px}#cart-view .shop-actionbar .cart-summary strong{font-size:16px;white-space:normal;overflow-wrap:anywhere}}
+
+/* Each address field uses the full form width, including the nested phone field. */
+.address-form .checkout-fields{grid-template-columns:minmax(0,1fr)}
+.address-form .phone-fields{grid-template-columns:100px minmax(0,1fr)}
+@media(max-width:380px){.address-form .phone-fields{grid-template-columns:minmax(0,1fr)}}
