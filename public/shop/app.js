@@ -280,9 +280,11 @@ async function loadCatalog(reset = true) {
 
 function updateCount() {
   const count = cartStore.list().reduce((sum, line) => sum + line.quantity, 0);
-  byId('cart-count').textContent = String(count);
-  byId('mobile-cart-count').textContent = String(count);
-  byId('mobile-cart-count').hidden = count === 0;
+  for (const id of ['cart-count', 'mobile-cart-count']) {
+    byId(id).textContent = count > 99 ? '99+' : String(count);
+    byId(id).hidden = count === 0;
+  }
+  detailPage?.updateCartCount();
   document.querySelector('#mobile-navigation a[href="#cart"]').setAttribute('aria-label', `${t('cart')}: ${count}`);
   document.querySelector('.shop-nav a[href="#cart"]').setAttribute('aria-label', `${t('cart')}: ${count}`);
 }
@@ -309,6 +311,11 @@ async function addCartQuantity(product, quantity) {
   updateCount();
   updatePersistence();
   setMessage('addedToCart');
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    for (const icon of document.querySelectorAll('.shop-nav a[href="#cart"], .product-nav-cart, #mobile-navigation a[href="#cart"]')) {
+      icon.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.12)' }, { transform: 'scale(1)' }], { duration: 280, easing: 'ease-out' });
+    }
+  }
   if (!byId('cart-view').hidden) refreshCart();
   return true;
 }
@@ -868,6 +875,7 @@ productUpdateBanner.className = 'shop-update-banner product-update-banner';
 productUpdateBanner.hidden = true;
 detailPage = mountProductDetail(byId('product-view'), {
   api, addToCart, checkout: beginCheckout, shop: () => shopInfo, notify: setMessage,
+  cartQuantity: () => cartStore.list().reduce((sum, line) => sum + line.quantity, 0),
   updateBanner: productUpdateBanner,
 });
 updateCount();

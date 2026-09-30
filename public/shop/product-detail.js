@@ -32,7 +32,7 @@ function image(product, className, source = product.imageUrl) {
   return element;
 }
 
-export function mountProductDetail(root, { api, addToCart, checkout, shop, notify, updateBanner }) {
+export function mountProductDetail(root, { api, addToCart, checkout, shop, notify, updateBanner, cartQuantity = () => 0 }) {
   let request = 0;
   let product = null;
   let related = [];
@@ -375,7 +375,9 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     const cartNavigation = link('', '#cart', 'product-nav-cart');
     cartNavigation.setAttribute('aria-label', t('viewCart'));
     cartNavigation.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 4h2l2.3 11.5h11.7L21 7H5"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg>';
+    cartNavigation.append(node('span', 'product-cart-count'));
     navigation.append(share, cartNavigation);
+    updateCartCount();
     headingBlock.append(shareStatus, shareField);
     selectionBlock.append(quantityRow, purchaseBar, feedback, cartLink);
     const demo = shop()?.mode === 'demo';
@@ -458,7 +460,17 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
       errorKey = error.status === 404 ? 'productUnavailable' : 'networkError'; render(true);
     }
   }
+  function updateCartCount() {
+    const control = root.querySelector('.product-nav-cart');
+    if (!control) return;
+    const count = cartQuantity();
+    const badge = control.querySelector('.product-cart-count');
+    badge.textContent = count > 99 ? '99+' : String(count);
+    badge.hidden = count === 0;
+    control.setAttribute('aria-label', `${t('cart')}: ${count}`);
+  }
   return {
+    updateCartCount,
     show,
     hide() { request++; currentId = undefined; product = null; busy = false; closeImage(); },
     refreshLocale() { if (busy) localePending = true; else render(); },
