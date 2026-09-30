@@ -1,10 +1,10 @@
 # Docker deployment and data boundary
 
-**Status: local Compose smoke verified; no production release.** See [README](../README.md) for local startup. This document records the chosen deployment shape and gates, not a claim that a public host exists.
+**Status: public Cloudflare Demo available; no real-data Production release.** The local Compose smoke uses SQLite. See [README](../README.md) for local startup and the Demo/Production distinction.
 
 ## Topology
 
-`frontend` is Caddy with only `public/` and a Caddyfile in its image. It serves `/shop/` and `/seller/` as separate PWA scopes and forwards `/api/*`, `/health`, and `/ready` to `backend` on the private Compose network. Its local default binds only loopback. `backend` is one Node 24 API process with private SQLite v5 in the persistent `db_data` volume. Seller session hashes, product image bytes, order contacts, addresses, snapshots, idempotency records, and audit events live there. No SQLite port or backend HTTP port is published. Caddy's `caddy_data` volume preserves TLS state when a real HTTPS hostname is configured.
+The current local `frontend` is Caddy with only `public/` and a Caddyfile in its image. It serves `/shop/` and `/seller/` as separate PWA scopes and forwards `/api/*`, `/health`, and `/ready` to `backend` on the private Compose network. Its local default binds only loopback. `backend` is one Node 24 API process with private SQLite v10 in the persistent `db_data` volume. Seller session hashes, product image bytes, order contacts, addresses, snapshots, idempotency records, and audit events live there. No SQLite port or backend HTTP port is published. This local topology is not the planned PostgreSQL Production stack.
 
 The backend accepts a trusted `X-Real-IP` only in this private-proxy topology. Caddy overwrites the incoming header with its direct client address. Do not expose backend port 3000 or add untrusted containers to the private network. If a load balancer is added in front of Caddy, reassess real-client IP and rate limits. Scale the backend at one instance: the SQLite file is a single-writer store. Login and checkout limits are stored in the database (`rate_limit_attempt`, hashed client keys) and survive restarts.
 
@@ -32,7 +32,7 @@ For the local v3→v5 upgrade, the backend was stopped and its `/data` directory
 
 With a synthetic ignored secret and test order, the two pinned-base images built and started. `/ready`, both PWA assets, proxy API, seller authorization, product create/public visibility, guest order and idempotent replay passed through Caddy. The private SQLite file and secret were mode `0600` under the nonroot backend user. The frontend image lacked backend source/private files and the backend image lacked `public/` and `sample/`. After restarting the backend, the product and order remained; spoofed incoming `X-Real-IP` values did not bypass the login limiter. Missing/weak production credentials exited with status 1. Local backup/restore evidence is recorded above. These are local checks only.
 
-The exact hostname (Cloudflare `*.workers.dev` subdomain, see below) and the lawful basis for permanent retention are now recorded; still settle backup/restore and rollback for the Durable Object data, production secret management, and target-browser PWA installation/update before a public release. Verify the exact built artifact, secure cookie/origin behavior on HTTPS, readiness, migration, logs without PII, and deployed version. Record those results in [PROGRESS.md](PROGRESS.md); only then consider AC-16/17 verified or any item Released.
+The Cloudflare `*.workers.dev` subdomain below is the public Demo host. The owner recorded the basis for retaining submitted orders. Real-data Production still needs its own hostname and PostgreSQL deployment, secret management, encrypted off-host backups, recovery and rollback. Target-device PWA installation and update also remain open. Verify the exact built artifact, secure cookie/origin behavior on HTTPS, readiness, migration, redacted logs and deployed version before considering AC-16/17 or any Production release complete. Record results in [PROGRESS.md](PROGRESS.md).
 
 ## Cloudflare Workers Demo deployment (updated owner direction)
 

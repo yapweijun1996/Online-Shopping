@@ -133,9 +133,12 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
       productId, name: product.name, quantity, unitPriceMinor: product.priceMinor,
     }));
     const serialized = JSON.stringify(payload);
-    if (!pendingIntent || pendingIntent.serialized !== serialized) {
-      pendingIntent = { key: crypto.randomUUID(), serialized };
-    }
+    // Keep the key until the server confirms an outcome. A lost response may
+    // already represent a committed order, even if the form changes meanwhile.
+    if (!pendingIntent) pendingIntent = {
+      key: crypto.randomUUID(), serialized, orderItems, submittedItems, cartBacked,
+    };
+    const intent = pendingIntent;
     const submit = document.getElementById('submit-order');
     submitting = true; document.dispatchEvent(new Event('updateguardchange'));
     submit.disabled = true;
@@ -144,13 +147,19 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
     const timeout = setTimeout(() => controller.abort(), 12_000);
     let serverConfirmed = false;
     try {
-      const response = await fetch('/api/v1/orders', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': pendingIntent.key },
-        body: serialized, signal: controller.signal,
+      const submitIntent = (body) => fetch('/api/v1/orders', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': intent.key },
+        body, signal: controller.signal,
       });
-      const result = await response.json();
+      let response = await submitIntent(serialized);
+      let result = await response.json();
+      let originalOrder = false;
+      if (result.error?.code === 'IDEMPOTENCY_CONFLICT' && serialized !== intent.serialized) {
+        response = await submitIntent(intent.serialized);
+        result = await response.json();
+        originalOrder = response.ok;
+      }
       if (!response.ok) {
-        if (result.error?.code === 'IDEMPOTENCY_CONFLICT') pendingIntent = null;
         setStatus('');
         if (result.error?.code === 'PRICE_CHANGED') {
           pendingIntent = null;
@@ -164,7 +173,12 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
       }
       serverConfirmed = true;
       setStatus('');
-      await onSuccess(result, { orderItems, submittedItems, cartBacked, statusAccessKey: pendingIntent.key });
+      await onSuccess(result, {
+        orderItems: originalOrder ? intent.orderItems : orderItems,
+        submittedItems: originalOrder ? intent.submittedItems : submittedItems,
+        cartBacked: originalOrder ? false : cartBacked,
+        statusAccessKey: intent.key,
+      });
     } catch {
       setStatus('');
       setError(serverConfirmed ? 'receiptRenderError' : 'orderNetworkError');
