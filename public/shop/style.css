@@ -734,3 +734,13 @@ body.search-focused .header-search{width:100%;max-width:720px;margin:auto;height
  body[data-shop-route=product] .shop-toast{bottom:calc(82px + var(--shop-safe-bottom))}
  .product-update-banner{margin:8px 12px 0;border:1px solid var(--ui-border);border-radius:8px}
 }
+html.image-zoom-open{overflow:hidden}
+.image-zoom-stage{position:relative;min-height:0;overflow:hidden;touch-action:none;display:grid;place-items:center;outline-offset:-3px}
+.image-zoom-stage .zoom-image{width:100%;height:100%;object-fit:contain;transform-origin:center;touch-action:none;user-select:none;cursor:zoom-in}
+.image-zoom-stage[data-zoomed=true] .zoom-image{cursor:grab}
+.image-zoom-controls{display:flex;align-items:center;gap:4px}
+.image-zoom-controls button{min-width:44px;height:44px;border:1px solid var(--ui-border);border-radius:8px;background:var(--ui-surface);color:var(--ui-ink);font-size:18px}
+.image-zoom-controls output{min-width:42px;font-size:12px;text-align:center}
+.image-zoom-error{position:absolute;text-align:center;padding:16px}
+.image-viewer-header{gap:4px;flex-wrap:wrap}
+@media(max-width:760px){.image-viewer{width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;margin:0;padding:8px 8px max(8px,env(safe-area-inset-bottom));border-radius:0}.image-viewer-count{font-size:12px}}

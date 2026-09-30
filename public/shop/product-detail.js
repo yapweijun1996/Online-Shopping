@@ -1,5 +1,6 @@
 import { formatMoney, t } from '../shared/i18n.js';
 import { productHash } from './shop-route.js';
+import { attachImageZoom } from './image-zoom.js';
 
 export function sellerChatURL(phone) {
   return typeof phone === 'string' && /^[1-9]\d{7,14}$/.test(phone)
@@ -53,7 +54,9 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
   window.addEventListener('scroll', syncFloatingNavigation, { passive: true });
   window.addEventListener('resize', syncFloatingNavigation);
 
+  let imageZoom;
   function closeImage() {
+    imageZoom?.destroy();
     root.querySelectorAll('dialog[open]').forEach((dialog) => dialog.close());
   }
 
@@ -100,17 +103,18 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     const zoom = node('dialog', 'image-viewer');
     zoom.setAttribute('aria-label', product.name);
     const zoomImage = image(product, 'zoom-image', images[activeImageIndex]);
-    const zoomClose = button('', () => zoom.close(), 'image-close');
+    const zoomClose = button('', () => {}, 'image-close');
     zoomClose.setAttribute('aria-label', t('close'));
     zoomClose.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5 19 19M19 5 5 19"/></svg>';
     const zoomHeader = node('div', 'image-viewer-header');
     const zoomCount = node('span', 'image-viewer-count', `${activeImageIndex + 1} / ${images.length}`);
     zoomHeader.append(zoomCount, zoomClose);
     zoom.append(zoomHeader, zoomImage);
-    zoom.addEventListener('click', (event) => { if (event.target === zoom) zoom.close(); });
+
     const imageButton = node('button', 'product-image-button');
     imageButton.type = 'button';
-    imageButton.addEventListener('click', () => zoom.showModal());
+    imageZoom = attachImageZoom(zoom, zoomImage, imageButton, zoomClose);
+    imageButton.addEventListener('click', () => imageZoom.open());
     imageButton.setAttribute('aria-label', `${t('zoomImage')}: ${product.name}`);
     imageButton.disabled = !images.length;
     const mainImage = image(product, 'product-main-image', images[activeImageIndex]);
@@ -133,6 +137,7 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
       const updateImage = (index) => {
         activeImageIndex = (index + images.length) % images.length;
         mainImage.src = images[activeImageIndex];
+        imageZoom.reset();
         zoomImage.src = images[activeImageIndex];
         imageCount.textContent = `${activeImageIndex + 1} / ${images.length}`;
         zoomCount.textContent = imageCount.textContent;
@@ -174,7 +179,8 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
         });
         surface.addEventListener('pointercancel', () => { pointerStart = null; });
       };
-      swipe(imageButton); swipe(zoomImage);
+      swipe(imageButton);
+      imageZoom.setSwipe(direction => updateImage(activeImageIndex + direction));
       imageButton.addEventListener('click', (event) => {
         if (!ignoreClick) return;
         ignoreClick = false;
