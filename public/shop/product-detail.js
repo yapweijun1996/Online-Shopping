@@ -290,12 +290,10 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     stepper.append(minus, quantity, plus);
     const subtotal = node('p', 'product-subtotal');
     quantityRow.append(label, stepper, subtotal);
-    const feedback = node('p', 'detail-feedback', statusKey ? t(statusKey) : '');
+    const feedback = node('p', 'detail-feedback', statusKey && statusKey !== 'addedToCart' ? t(statusKey) : '');
     feedback.setAttribute('role', 'status');
     feedback.dataset.state = statusKey === 'addedToCart' ? 'success' : statusKey ? 'error' : '';
     const purchaseBar = node('div', 'product-purchase');
-    const cartLink = link(t('viewCart'), '#cart', 'outline-button');
-    cartLink.hidden = statusKey !== 'addedToCart';
     function syncQuantity() {
       quantityValue = quantity.value;
       const count = quantity.valueAsNumber;
@@ -336,9 +334,8 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
         const added = await addToCart(selectedProduct, count);
         if (capturedRequest !== request) return;
         statusKey = added ? 'addedToCart' : 'quantityLimit';
-        feedback.textContent = t(statusKey);
+        feedback.textContent = added ? '' : t(statusKey);
         feedback.dataset.state = added ? 'success' : 'error';
-        cartLink.hidden = !added;
       } catch {
         if (capturedRequest === request) { statusKey = 'networkError'; feedback.textContent = t(statusKey); feedback.dataset.state = 'error'; }
       } finally {
@@ -385,7 +382,7 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     navigation.append(share, cartNavigation);
     updateCartCount();
     headingBlock.append(shareStatus, shareField);
-    selectionBlock.append(quantityRow, purchaseBar, feedback, cartLink);
+    selectionBlock.append(quantityRow, purchaseBar, feedback);
     const demo = shop()?.mode === 'demo';
     const serviceDetails = node('div', 'product-service-details');
     const serviceRows = demo
