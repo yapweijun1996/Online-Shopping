@@ -5,8 +5,17 @@ export function productHash(id) {
   return `#product/${id.toLowerCase()}`;
 }
 
+export function orderHash(orderNo) {
+  if (typeof orderNo !== 'string' || !/^(?:OS|DEMO)-\d{8,}$/.test(orderNo)) throw new TypeError('Invalid order number.');
+  return `#orders/${orderNo}`;
+}
+
 export function readShopRoute(hash) {
   const value = hash.replace(/^#/, '');
+  if (value.startsWith('orders/')) {
+    const id = value.slice(7);
+    return { page: 'orders', id: /^(?:OS|DEMO)-\d{8,}$/.test(id) ? id : null };
+  }
   if (value.startsWith('product/')) {
     const id = value.slice('product/'.length);
     return { page: 'product', id: productId.test(id) ? id.toLowerCase() : null };

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { productHash, readShopRoute } from '../public/shop/shop-route.js';
+import { productHash, orderHash, readShopRoute } from '../public/shop/shop-route.js';
 
 test('shareable product routes round-trip and reject malformed API identifiers', () => {
   const id = 'ABCD1234-1234-1234-1234-123456789ABC';
@@ -25,4 +25,12 @@ test('catalog links restore filters and clear them without losing unrelated URL 
   assert.deepEqual(readCatalogFilters(second.search), { search: '', category: '' });
   assert.deepEqual(readCatalogFilters(new URL(first.href).search), { search: 'tofu & food', category: 'Cat Food' });
   assert.equal(second.searchParams.get('lang'), 'en');
+});
+
+test('order detail routes accept only bounded public order identifiers', () => {
+  assert.deepEqual(readShopRoute(orderHash('DEMO-00000001')), { page: 'orders', id: 'DEMO-00000001' });
+  for (const id of ['../admin', 'DEMO-x', 'OS-123', 'DEMO-00000001?key=secret']) {
+    assert.throws(() => orderHash(id));
+    assert.deepEqual(readShopRoute(`#orders/${id}`), { page: 'orders', id: null });
+  }
 });

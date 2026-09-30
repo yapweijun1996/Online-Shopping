@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createLocalOrderStore, ORDER_RETENTION_MS } from '../public/shop/local-orders.js';
+import { createLocalOrderStore, ORDER_RETENTION_MS, ORDER_CLOCK_SKEW_MS } from '../public/shop/local-orders.js';
 
 const submittedAt = '2026-09-29T00:00:00.000Z';
 const receipt = { orderNo: 'DEMO-00000001', currency: 'MYR', totalMinor: 250,
@@ -53,4 +53,19 @@ test('local orders expire at 90 days and reject invalid records', async () => {
   assert.deepEqual(store.list(), []);
   await store.refresh();
   assert.equal(await store.save(receipt, items), false);
+});
+
+ test('near-future server receipts survive immediately with complete sanitized backup', async () => {
+  const now = Date.parse(submittedAt);
+  const store = await createLocalOrderStore(null, () => now);
+  await Promise.all([store.save({ ...receipt, submittedAt: new Date(now + 1000).toISOString() }, items, statusAccessKey), store.refresh()]);
+  const saved = store.list()[0];
+  assert.equal(saved.items.length, 1);
+  assert.equal(saved.statusAccessKey, statusAccessKey);
+  const restored = await createLocalOrderStore(null, () => now);
+  await restored.save(saved, saved.items, saved.statusAccessKey);
+  assert.deepEqual(restored.list(), store.list());
+  assert.equal(JSON.stringify(restored.list()).includes('buyerPhone'), false);
+  await restored.save({ ...receipt, orderNo: 'DEMO-00000002', submittedAt: new Date(now + ORDER_CLOCK_SKEW_MS + 1).toISOString() }, items);
+  assert.equal(restored.list().length, 1);
 });

@@ -749,3 +749,9 @@ html.image-zoom-open{overflow:hidden}
 #product-view .quantity-stepper{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;width:144px;align-items:stretch}
 #product-view .quantity-stepper button,#product-view .quantity-stepper input{width:100%;min-width:0;height:44px;min-height:44px;margin:0}
 #product-view .quantity-stepper button:focus-visible,#product-view .quantity-stepper input:focus-visible{outline:2px solid var(--ui-focus);outline-offset:-3px}
+.order-list-link{display:block;color:var(--ui-ink);text-decoration:none}
+.order-list-link:hover{border-color:var(--ui-primary)}
+.order-list-link:focus-visible,.order-back:focus-visible{outline:2px solid var(--ui-focus);outline-offset:3px}
+.order-details-action{display:block;margin-top:14px;color:var(--ui-primary);font-weight:700}
+.order-back{display:inline-flex;align-items:center;min-height:44px;justify-self:start;margin-bottom:4px;text-decoration:none}
+.order-detail h2{margin:0 0 12px;font-size:20px;overflow-wrap:anywhere}

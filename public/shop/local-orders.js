@@ -3,6 +3,7 @@ import { ORDER_RETENTION_MS, statusAccessKeyPattern } from '../shared/order-stat
 const DB_NAME = 'online-shopping-local-orders';
 const STORE_NAME = 'orders';
 export { ORDER_RETENTION_MS };
+export const ORDER_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const statuses = new Set(['SUBMITTED', 'CONFIRMED', 'REJECTED']);
 
 function normalizeOrder(receipt, items = [], accessKey = receipt?.statusAccessKey) {
@@ -32,7 +33,7 @@ function normalizeOrder(receipt, items = [], accessKey = receipt?.statusAccessKe
 
 export function isLocalOrderCurrent(order, now = Date.now()) {
   const submitted = Date.parse(order.submittedAt);
-  return Number.isFinite(submitted) && submitted <= now && now - submitted < ORDER_RETENTION_MS;
+  return Number.isFinite(submitted) && submitted <= now + ORDER_CLOCK_SKEW_MS && now - submitted < ORDER_RETENTION_MS;
 }
 
 function openDatabase(provider) {
@@ -101,7 +102,7 @@ export async function createLocalOrderStore(provider = globalThis.indexedDB, now
     }
   }
 
-  async function refresh() {
+  async function refreshNow() {
     if (database) {
       const opened = database;
       try {
@@ -130,6 +131,11 @@ export async function createLocalOrderStore(provider = globalThis.indexedDB, now
     return false;
   }
 
+  let mutation = Promise.resolve();
+  function serialize(operation) {
+    const result = mutation.then(operation); mutation = result.catch(() => {}); return result;
+  }
+  const refresh = () => serialize(refreshNow);
   await refresh();
 
   return {
@@ -140,7 +146,7 @@ export async function createLocalOrderStore(provider = globalThis.indexedDB, now
         .map((order) => ({ ...order, items: order.items.map((item) => ({ ...item })) }));
     },
     refresh,
-    async save(receipt, items = [], accessKey) {
+    save(receipt, items = [], accessKey) { return serialize(async () => {
       const order = normalizeOrder(receipt, items, accessKey);
       if (!order || !isLocalOrderCurrent(order, now())) return false;
       const previous = memory.get(order.orderNo);
@@ -152,8 +158,8 @@ export async function createLocalOrderStore(provider = globalThis.indexedDB, now
       }
       memory.set(order.orderNo, order);
       return persist((store) => store.put(order));
-    },
-    async updateStatuses(items) {
+    }); },
+    updateStatuses(items) { return serialize(async () => {
       if (!Array.isArray(items)) return false;
       const updated = [];
       for (const item of items) {
@@ -167,7 +173,7 @@ export async function createLocalOrderStore(provider = globalThis.indexedDB, now
       }
       if (!updated.length) return true;
       return persist((store) => { for (const order of updated) store.put(order); });
-    },
+    }); },
     close() { database?.close(); database = null; },
   };
 }

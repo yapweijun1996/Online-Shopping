@@ -5,7 +5,7 @@ import { mountProfile } from './profile.js';
 import { createCartSelection } from './cart-selection.js';
 import { createContactHistory } from './history.js';
 import { mountProductDetail } from './product-detail.js';
-import { productHash, readShopRoute, readCatalogFilters, catalogFilterURL } from './shop-route.js';
+import { productHash, orderHash, readShopRoute, readCatalogFilters, catalogFilterURL } from './shop-route.js';
 import { formatDate, formatMoney, setupLanguageMenu, t, translate } from '../shared/i18n.js';
 import { createCartStore, resolveCartSnapshot } from './cart.js';
 import { mountCheckout } from './checkout.js';
@@ -648,12 +648,12 @@ function renderReceipt() {
 }
 
 async function completeOrder(receipt, { orderItems, submittedItems, cartBacked, statusAccessKey }) {
-  lastReceipt = receipt;
   const savedLocally = await localOrderStore.save(receipt, orderItems, statusAccessKey);
+  lastReceipt = localOrderStore.list().find(order => order.orderNo === receipt.orderNo) || receipt;
   receiptNotes = savedLocally ? [] : ['localOrdersSaveFailed'];
   try {
     localStorage.removeItem('online-shopping-last-receipt-v1');
-    localStorage.setItem('online-shopping-last-receipt-v1', JSON.stringify(receipt));
+    localStorage.setItem('online-shopping-last-receipt-v1', JSON.stringify(lastReceipt));
   }
   catch { receiptNotes.push('receiptMemoryOnly'); }
   try {
@@ -679,48 +679,78 @@ async function completeOrder(receipt, { orderItems, submittedItems, cartBacked, 
   showRoute();
 }
 
+let ordersScroll = 0;
+let previousOrderId = null;
 function drawLocalOrders(orders) {
   const list = byId('local-orders-list');
+  const selectedId = readShopRoute(location.hash).id;
+  const focused = list.contains(document.activeElement) ? document.activeElement.dataset.orderNo : null;
+  const backFocused = document.activeElement?.classList.contains('order-back');
+  const titleFocused = document.activeElement?.matches('.order-detail h2');
   list.replaceChildren();
-  if (!orders.length) {
-    list.append(element('p', 'local-orders-empty', t('noLocalOrders')));
-    return;
-  }
-  for (const order of orders) {
-    const card = element('article', 'local-order-card');
-    const heading = element('div', 'local-order-heading');
-    heading.append(element('h2', '', order.orderNo), element('strong', 'local-order-total', formatMoney(order.totalMinor, order.currency)));
-    card.append(heading, element('p', 'shop-note', `${t('submittedAt')}: ${formatDate(order.submittedAt)}`));
-    card.append(element('p', 'shop-note', order.status
-      ? `${t('orderStatus')}: ${t(`status${order.status[0]}${order.status.slice(1).toLowerCase()}`)}`
-      : t('olderOrderStatusUnavailable')));
-    if (order.status && order.statusUpdatedAt !== order.submittedAt) {
-      card.append(element('p', 'shop-note', `${t('updatedAt')}: ${formatDate(order.statusUpdatedAt)}`));
-    }
-    if (order.simulation) card.append(element('p', 'shop-note', t('localDemoOrder')));
-    card.append(element('h3', '', t('localOrderItems')));
+  if (selectedId) {
+    const back = element('a', 'outline-button order-back', t('backToOrders')); back.href = '#orders'; list.append(back);
+    const order = orders.find(item => item.orderNo === selectedId);
+    if (!order) { list.append(element('p', 'local-orders-empty', t('orderNotOnDevice'))); return; }
+    const detail = element('article', 'local-order-card order-detail');
+    const title = element('h2', '', `${t('orderDetails')}: ${order.orderNo}`); title.tabIndex = -1;
+    detail.append(title); appendOrderSummary(detail, order);
+    detail.append(element('h3', '', t('localOrderItems')));
     if (order.items.length) {
       const items = element('ul', 'local-order-items');
       for (const item of order.items) {
-        const row = element('li', '');
-        row.append(element('span', '', `${item.name} × ${item.quantity}`),
-          element('strong', '', formatMoney(item.unitPriceMinor * item.quantity, order.currency)));
+        const row = element('li');
+        row.append(element('span', '', `${item.name} × ${item.quantity}`), element('strong', '', formatMoney(item.unitPriceMinor * item.quantity, order.currency)));
         items.append(row);
       }
-      card.append(items);
-    } else card.append(element('p', 'shop-note', t('localOrderItemsUnavailable')));
+      detail.append(items);
+    } else detail.append(element('p', 'shop-note', t('localOrderItemsUnavailable')));
+    list.append(detail);
+    if (backFocused) back.focus({ preventScroll: true });
+    if (titleFocused) title.focus({ preventScroll: true });
+    return;
+  }
+  if (!orders.length) { list.append(element('p', 'local-orders-empty', t('noLocalOrders'))); return; }
+  for (const order of orders) {
+    const card = element('a', 'local-order-card order-list-link'); card.href = orderHash(order.orderNo); card.dataset.orderNo = order.orderNo;
+    card.setAttribute('aria-label', `${t('orderDetails')}: ${order.orderNo}`);
+    const heading = element('div', 'local-order-heading');
+    heading.append(element('h2', '', order.orderNo), element('strong', 'local-order-total', formatMoney(order.totalMinor, order.currency)));
+    card.append(heading); appendOrderSummary(card, order, false);
+    card.append(element('span', 'order-details-action', `${t('orderDetails')} ›`));
+    card.addEventListener('click', () => { ordersScroll = window.scrollY; });
     list.append(card);
   }
+  if (focused) [...list.querySelectorAll('[data-order-no]')].find(el => el.dataset.orderNo === focused)?.focus({ preventScroll: true });
+}
+function appendOrderSummary(card, order, total = true) {
+  if (total) card.append(element('strong', 'local-order-total', formatMoney(order.totalMinor, order.currency)));
+  card.append(element('p', 'shop-note', `${t('submittedAt')}: ${formatDate(order.submittedAt)}`));
+  card.append(element('p', 'shop-note', order.status ? `${t('orderStatus')}: ${t(`status${order.status[0]}${order.status.slice(1).toLowerCase()}`)}` : t('olderOrderStatusUnavailable')));
+  if (order.status && order.statusUpdatedAt !== order.submittedAt) card.append(element('p', 'shop-note', `${t('updatedAt')}: ${formatDate(order.statusUpdatedAt)}`));
+  if (order.simulation) card.append(element('p', 'shop-note', t('localDemoOrder')));
 }
 
-async function renderLocalOrders() {
+async function renderLocalOrders(navigating = false) {
   const requestId = ++localOrdersRequest;
   localOrdersController?.abort();
+  const orderRoute = location.hash;
+  const currentRoute = () => requestId === localOrdersRequest && location.hash === orderRoute;
+  byId('local-orders-list').setAttribute('aria-busy', 'true');
+  byId('local-orders-status').textContent = t('loading');
+  if (localOrderStore.list().length) drawLocalOrders(localOrderStore.list());
+  else byId('local-orders-list').replaceChildren();
   await localOrderStore.refresh();
-  if (requestId !== localOrdersRequest || readShopRoute(location.hash).page !== 'orders') return;
+  if (!currentRoute()) return;
+  byId('local-orders-list').setAttribute('aria-busy', 'false');
   byId('local-orders-status').textContent = localOrderStore.persistent ? '' : t('localOrdersUnavailable');
   const orders = localOrderStore.list();
   drawLocalOrders(orders);
+  if (navigating) {
+    if (readShopRoute(orderRoute).id) { window.scrollTo(0, 0); byId('local-orders-list').querySelector('.order-detail h2')?.focus({ preventScroll: true }); }
+    else { window.scrollTo(0, ordersScroll); if (previousOrderId) [...byId('local-orders-list').querySelectorAll('[data-order-no]')].find(el => el.dataset.orderNo === previousOrderId)?.focus({ preventScroll: true }); }
+    previousOrderId = readShopRoute(orderRoute).id;
+  }
   const credentials = orders.filter((order) => order.statusAccessKey).map((order) => ({
     orderNo: order.orderNo, accessKey: order.statusAccessKey,
   }));
@@ -744,24 +774,24 @@ async function renderLocalOrders() {
       if (!response.ok) throw new Error('Status lookup failed');
       const data = await response.json();
       if (!Array.isArray(data.items)) throw new Error('Invalid status response');
-      if (requestId !== localOrdersRequest || readShopRoute(location.hash).page !== 'orders') return;
+      if (!currentRoute()) return;
       if (data.items.length !== batch.length) incomplete = true;
       await localOrderStore.updateStatuses(data.items);
     }
-    if (requestId !== localOrdersRequest || readShopRoute(location.hash).page !== 'orders') return;
+    if (!currentRoute()) return;
     drawLocalOrders(localOrderStore.list());
     status.textContent = t(incomplete ? 'orderStatusesFailed' : 'orderStatusesCurrent');
   } catch {
-    if (requestId === localOrdersRequest && readShopRoute(location.hash).page === 'orders') {
+    if (currentRoute()) {
       status.textContent = t('orderStatusesFailed');
     }
   } finally {
     clearTimeout(timeout);
-    if (requestId === localOrdersRequest) button.disabled = false;
+    if (currentRoute()) button.disabled = false;
   }
 }
 
-byId('refresh-order-statuses').addEventListener('click', renderLocalOrders);
+byId('refresh-order-statuses').addEventListener('click', () => renderLocalOrders());
 
 function revealAccountLink(link) {
   const nav = link?.closest('.account-sidebar');
@@ -777,6 +807,7 @@ document.querySelector('.account-sidebar').addEventListener('focusin', event => 
 function showRoute() {
   const parsed = readShopRoute(location.hash);
   const route = parsed.page;
+  if (route !== 'orders') { localOrdersRequest++; localOrdersController?.abort(); }
   if (route === 'checkout' && (!profilePage.get() || !shopInfo)) { location.hash = directPurchase ? '#profile' : '#cart'; return; }
   if (['catalog', 'product', 'cart', 'receipt'].includes(route) && directPurchase) setDirectPurchase(null);
   if (previousRoute === 'catalog' && route !== 'catalog') catalogScroll = window.scrollY;
@@ -814,7 +845,7 @@ function showRoute() {
     }
   });
   if (route === 'profile') profilePage.show();
-  if (route === 'orders') renderLocalOrders();
+  if (route === 'orders') renderLocalOrders(true);
   if (route === 'addresses') addressBook.render();
   if (route === 'checkout') {
     checkoutPage.invalidate();
@@ -902,7 +933,7 @@ for (const link of document.querySelectorAll('a[href="#profile"]')) link.addEven
   } catch { /* Optional return route. */ }
 });
 const legacyReceipt = readReceipt();
-if (legacyReceipt) await localOrderStore.save(legacyReceipt);
+if (legacyReceipt) await localOrderStore.save(legacyReceipt, legacyReceipt.items || [], legacyReceipt.statusAccessKey);
 lastReceipt = localOrderStore.list()[0] || legacyReceipt;
 checkoutPage = mountCheckout({
   onSuccess: completeOrder,
