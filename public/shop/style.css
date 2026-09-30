@@ -664,7 +664,7 @@ body.search-focused .header-search{width:100%;max-width:720px;margin:auto;height
 .header-search .search-back svg{width:24px;height:24px}
 .header-search .search-back+label+input{min-width:0}
 .cart-count[hidden],.mobile-cart-count[hidden],.product-cart-count[hidden]{display:none}
-.product-nav-cart{position:relative}
+#product-view .product-nav-cart{position:relative}
 .product-cart-count{position:absolute;inset-inline-end:1px;top:1px;min-width:17px;padding:1px 3px;border-radius:12px;background:var(--ui-primary);color:var(--ui-surface);font-size:10px;line-height:15px;text-align:center}
 #cart-view.is-empty>.cart-columns,#cart-view.is-empty>.shop-actionbar,#cart-view.is-empty>p[data-i18n=cartPriceNote],#cart-view.is-empty>a[data-i18n=continueShopping]{display:none}
 @media(max-width:760px){
