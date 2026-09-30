@@ -66,6 +66,8 @@ let directPurchase = null;
 let selection;
 let previousRoute = '';
 let catalogScroll = 0;
+let catalogReturnFocus = null;
+let restoreCatalogFocus = false;
 let cartMutation = Promise.resolve();
 let cartWrites = 0;
 let checkoutStarting = false;
@@ -174,10 +176,12 @@ function renderCategories() {
   for (const value of categories) category.add(new Option(value, value));
   category.value = categories.includes(chosen) ? chosen : '';
   const rail = byId('category-rail');
+  const focusedCategory = rail.contains(document.activeElement) ? document.activeElement.dataset.category : null;
+  const railScroll = rail.scrollLeft;
   rail.replaceChildren();
   for (const value of ['', ...categories]) {
     const button = element('button', 'category-option');
-    button.type = 'button';
+    button.type = 'button'; button.dataset.category = value;
     button.setAttribute('aria-pressed', String(category.value === value));
     const symbol = element('span', 'category-symbol');
     const paths = 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z';
@@ -186,11 +190,20 @@ function renderCategories() {
     button.append(symbol, element('span', '', value || t('allCategories')));
     button.addEventListener('click', () => {
       category.value = value;
-      applyCatalogFilters();
+      applyCatalogFilters(false, value);
     });
     rail.append(button);
   }
+  rail.scrollLeft = railScroll;
+  if (focusedCategory !== null) [...rail.children].find(button => button.dataset.category === focusedCategory)?.focus({ preventScroll: true });
+  revealCategory(rail.querySelector('[aria-pressed=true]'));
 }
+function revealCategory(button) {
+  if (!button) return; const rail = byId('category-rail'); const bounds = rail.getBoundingClientRect(); const item = button.getBoundingClientRect();
+  const delta = item.left < bounds.left + 3 ? item.left - bounds.left - 3 : item.right > bounds.right - 3 ? item.right - bounds.right + 3 : 0;
+  if (delta) rail.scrollBy({ left: delta, behavior: 'instant' });
+}
+byId('category-rail').addEventListener('focusin', event => revealCategory(event.target.closest('button')));
 
 function renderCatalog(startIndex = 0) {
   if (!startIndex) grid.replaceChildren();
@@ -198,28 +211,36 @@ function renderCatalog(startIndex = 0) {
   for (const product of products.slice(startIndex)) {
     const card = element('article', 'catalog-card');
     const imageButton = element('a', 'catalog-image-button');
-    imageButton.href = productHash(product.id);
+    imageButton.href = productHash(product.id); imageButton.dataset.productId = product.id; imageButton.dataset.catalogLink = 'image';
     imageButton.setAttribute('aria-label', `${t('viewDetails')}: ${product.name}`);
     imageButton.append(imageFor(product, 'catalog-image'));
     card.append(imageButton);
     const body = element('div', 'catalog-card-body');
     const name = element('h3');
-    const nameLink = element('a', 'product-name-link', product.name); nameLink.href = productHash(product.id); name.append(nameLink);
+    const nameLink = element('a', 'product-name-link', product.name); nameLink.href = productHash(product.id); nameLink.dataset.productId = product.id; nameLink.dataset.catalogLink = 'title'; name.append(nameLink);
     body.append(element('p', 'catalog-category', product.category), name,
       element('strong', 'catalog-price', formatMoney(product.priceMinor, product.currency)));
-    const actions = element('div', 'catalog-card-actions');
-    actions.append(action(t('addToCart'), () => addToCart(product), 'primary-button'));
-    body.append(actions);
     card.append(body);
     cards.append(card);
   }
   grid.append(cards);
+  restoreCatalogLinkFocus();
   byId('catalog-more').hidden = catalogPageStatus === 'loadingMore' || nextOffset === null ||
     (catalogHasError() && !retryCatalogReset);
   byId('catalog-count').textContent = products.length ? t('showingProducts').replace('{count}', String(products.length)) : '';
   const query = byId('catalog-search').value.trim();
   byId('catalog-query').textContent = query ? t('searchResultsFor').replace('{query}', query) : '';
   byId('catalog-query').hidden = !query;
+}
+
+grid.addEventListener('click', event => {
+  const link = event.target.closest('a[data-catalog-link]');
+  if (link) catalogReturnFocus = { id: link.dataset.productId, kind: link.dataset.catalogLink };
+});
+function restoreCatalogLinkFocus() {
+  if (!restoreCatalogFocus || readShopRoute(location.hash).page !== 'catalog') return;
+  const link = [...grid.querySelectorAll('a[data-catalog-link]')].find(link => link.dataset.productId === catalogReturnFocus?.id && link.dataset.catalogLink === catalogReturnFocus?.kind);
+  if (link) { link.focus({ preventScroll: true }); restoreCatalogFocus = false; }
 }
 
 async function loadCatalog(reset = true) {
@@ -863,6 +884,7 @@ function showRoute() {
     detailPage.hide();
     document.title = shopInfo?.shopName || t('shop');
   }
+  if (catalogRoute && previousRoute === 'product') { restoreCatalogFocus = Boolean(catalogReturnFocus); restoreCatalogLinkFocus(); }
   if (previousRoute !== route || route === 'product') {
     window.scrollTo(0, catalogRoute && previousRoute === 'product' ? catalogScroll : 0);
   }
@@ -909,7 +931,7 @@ function showCatalogResults() {
   byId('catalog-results').focus({ preventScroll: true });
 }
 
-function applyCatalogFilters(replaceEntry = false) {
+function applyCatalogFilters(replaceEntry = false, focusCategory) {
   const url = catalogFilterURL(location.href, { search: byId('catalog-search').value, category: category.value });
   history[replaceEntry === true ? 'replaceState' : 'pushState'](null, '', url);
   showCatalogResults();
@@ -917,7 +939,10 @@ function applyCatalogFilters(replaceEntry = false) {
   const request = catalogRequest;
   loading.then(() => {
     requestAnimationFrame(() => {
-      if (request === catalogRequest && location.hash === '#catalog-results') byId('catalog-results').scrollIntoView({ block: 'start' });
+      if (request === catalogRequest && location.hash === '#catalog-results') {
+        byId('catalog-results').scrollIntoView({ block: 'start' });
+        if (focusCategory !== undefined) [...byId('category-rail').children].find(button => button.dataset.category === focusCategory)?.focus({ preventScroll: true });
+      }
     });
   });
 }
@@ -1166,7 +1191,7 @@ async function goHome(event) {
   document.getElementById('catalog-search').value = '';
   syncSearchClear();
   category.value = ''; renderCategories();
-  catalogScroll = 0;
+  catalogScroll = 0; catalogReturnFocus = null; restoreCatalogFocus = false;
   const url = new URL(location.href); url.searchParams.delete('search'); url.searchParams.delete('category'); url.hash = '#catalog';
   history.pushState(null, '', url); showRoute();
   mobileNavigation.route(); window.scrollTo(0, 0);
