@@ -7,7 +7,7 @@ import { createContactHistory } from './history.js';
 import { mountProductDetail } from './product-detail.js';
 import { productHash, readShopRoute, readCatalogFilters, catalogFilterURL } from './shop-route.js';
 import { formatDate, formatMoney, setupLanguageMenu, t, translate } from '../shared/i18n.js';
-import { createCartStore } from './cart.js';
+import { createCartStore, resolveCartSnapshot } from './cart.js';
 import { mountCheckout } from './checkout.js';
 import { createLocalOrderStore, isLocalOrderCurrent } from './local-orders.js';
 
@@ -320,37 +320,71 @@ async function addCartQuantity(product, quantity) {
   return true;
 }
 
+const quantityRevisions = new Map();
+const quantityPending = new Map();
+const quantityErrors = new Map();
+function cartRow(productId) { return [...list.querySelectorAll('.cart-row')].find(row => row.dataset.productId === productId); }
+function patchCartRow(productId, revision) {
+  const row = cartRow(productId), line = resolvedCart.find(item => item.productId === productId);
+  if (!row || !line) return;
+  const input = row.querySelector('input[type=number]');
+  if (revision === undefined || revision === quantityRevisions.get(productId)) {
+    if (input.value !== String(line.quantity) && !(input === document.activeElement && input.valueAsNumber === line.quantity)) input.value = String(line.quantity);
+  }
+  const buttons = row.querySelectorAll('.quantity-stepper button');
+  buttons[0].disabled = line.quantity <= 1; buttons[1].disabled = line.quantity >= 100;
+  row.querySelector('.cart-unit-price').textContent = line.product ? formatMoney(line.product.priceMinor, line.product.currency).replace(/\u00a0/g, ' ') : '—';
+  row.querySelector('.cart-line-subtotal').textContent = line.product ? formatMoney(line.product.priceMinor * line.quantity, line.product.currency) : '—';
+  const pending = (quantityPending.get(productId) || 0) > 0;
+  row.setAttribute('aria-busy', String(pending));
+  const feedback = row.querySelector('.cart-quantity-feedback');
+  const key = quantityErrors.get(productId) || (pending ? 'loading' : '');
+  feedback.textContent = key ? t(key) : ''; feedback.hidden = !key;
+  input.setAttribute('aria-invalid', String(Boolean(quantityErrors.get(productId))));
+}
 function changeQuantity(productId, value) {
+  const revision = (quantityRevisions.get(productId) || 0) + 1;
+  quantityRevisions.set(productId, revision);
+  quantityPending.set(productId, (quantityPending.get(productId) || 0) + 1);
+  patchCartRow(productId, -1); renderCartSummary();
   const result = trackCart(cartMutation.then(async () => {
     const current = cartStore.list().find(line => line.productId === productId)?.quantity;
     if (current === undefined) return;
-    await applyQuantity(productId, typeof value === 'function' ? value(current) : value);
+    const next = typeof value === 'function' ? value(current) : value;
+    if (!Number.isInteger(next) || next < 1 || next > 100) {
+      quantityErrors.set(productId, 'quantityLimit'); setMessage('quantityLimit'); return;
+    }
+    const product = await api(`/api/v1/products/${encodeURIComponent(productId)}`);
+    const previous = resolvedCart.find(line => line.productId === productId)?.product;
+    if (previous && (previous.priceMinor !== product.priceMinor || previous.currency !== product.currency)) priceChangedNotice = true;
+    await cartStore.set(productId, next);
+    resolvedCart = resolvedCart.map(line => line.productId === productId ? { productId, quantity: next, product } : line);
+    quantityErrors.delete(productId);
+    updateCount(); updatePersistence(); setMessage('quantityUpdated');
+  }).catch(error => {
+    quantityErrors.set(productId, error.status === 404 ? 'cartUnavailable' : 'networkError');
+    setMessage(error.status === 404 ? 'cartUnavailable' : 'networkError');
+  }).finally(() => {
+    quantityPending.set(productId, Math.max(0, (quantityPending.get(productId) || 1) - 1));
+    patchCartRow(productId, revision); renderCartSummary();
   }));
-  cartMutation = result.catch(() => setMessage('networkError'));
-  return cartMutation;
-}
-
-async function applyQuantity(productId, value) {
-  if (!Number.isInteger(value) || value < 1 || value > 100) {
-    setMessage('quantityLimit');
-    renderCart();
-    return;
-  }
-  await cartStore.set(productId, value);
-  updateCount();
-  updatePersistence();
-  setMessage('quantityUpdated');
-  refreshCart();
+  cartMutation = result.catch(() => {});
+  return result;
 }
 
 async function removeLine(productId) {
-  const result = trackCart(cartMutation.then(() => cartStore.set(productId, 0)));
+  const result = trackCart(cartMutation.then(async () => {
+    await cartStore.set(productId, 0);
+    quantityErrors.delete(productId);
+    const row = cartRow(productId), hadFocus = row?.contains(document.activeElement);
+    const next = row?.nextElementSibling || row?.previousElementSibling;
+    row?.remove(); resolvedCart = resolvedCart.filter(line => line.productId !== productId);
+    selection.sync(cartStore.list()); updateCount(); updatePersistence(); renderCartSummary();
+    if (hadFocus) (next?.querySelector('.cart-remove') || byId('cart-empty').querySelector('.empty-browse')).focus({ preventScroll: true });
+    setMessage('removedFromCart');
+  }));
   cartMutation = result.catch(() => setMessage('networkError'));
-  await cartMutation;
-  updateCount();
-  updatePersistence();
-  setMessage('removedFromCart');
-  refreshCart();
+  return cartMutation;
 }
 
 function renderEmptyCartCategories() {
@@ -372,11 +406,9 @@ function renderCart() {
   const empty = cartStore.list().length === 0;
   byId('cart-view').classList.toggle('is-empty', empty);
   byId('cart-empty').hidden = !empty;
-  let total = 0;
-  let missing = false;
-  const currencies = new Set();
   for (const { productId, quantity, product } of resolvedCart) {
     const row = element('article', 'cart-row');
+    row.dataset.productId = productId;
     const chosen = element('input', 'cart-select');
     chosen.type = 'checkbox';
     chosen.dataset.productId = productId;
@@ -384,8 +416,7 @@ function renderCart() {
     chosen.checked = selection.has(productId);
     chosen.setAttribute('aria-label', `${t('selectItem')}: ${product?.name || t('productUnavailable')}`);
     chosen.addEventListener('change', () => {
-      selection.set(productId, chosen.checked); renderCart();
-      [...list.querySelectorAll('.cart-select')].find((control) => control.dataset.productId === productId)?.focus();
+      selection.set(productId, chosen.checked); renderCartSummary();
     });
     row.append(chosen);
     row.append(product ? imageFor(product, 'cart-image') : element('div', 'cart-image image-placeholder', t('imageMissing')));
@@ -396,9 +427,7 @@ function renderCart() {
     detail.append(title);
     if (product) {
       detail.append(element('p', '', product.category));
-      if (selection.has(productId)) { total += product.priceMinor * quantity; currencies.add(product.currency); }
-
-    } else if (selection.has(productId)) missing = true;
+    }
     const controls = element('div', 'cart-row-controls');
     const label = element('div', 'quantity-stepper');
     const input = element('input');
@@ -406,6 +435,7 @@ function renderCart() {
     input.value = String(quantity);
     input.dataset.focusKey = `quantity-${productId}`;
     input.setAttribute('aria-label', `${t('quantity')}: ${product?.name || t('productUnavailable')}`);
+    input.addEventListener('input', () => quantityRevisions.set(productId, (quantityRevisions.get(productId) || 0) + 1));
     input.addEventListener('change', () => changeQuantity(productId, input.valueAsNumber));
     const decrease = action('−', () => changeQuantity(productId, current => current - 1));
     decrease.dataset.focusKey = `decrease-${productId}`;
@@ -417,6 +447,7 @@ function renderCart() {
     increase.setAttribute('aria-label', `${t('increaseQuantity')}: ${product?.name || t('productUnavailable')}`);
     label.append(decrease, input, increase);
     controls.append(label);
+    const feedback = element('span', 'cart-quantity-feedback'); feedback.setAttribute('role', 'status'); feedback.hidden = true; controls.append(feedback);
     const unit = element('span', 'cart-unit-price', product ? formatMoney(product.priceMinor, product.currency).replace(/\u00a0/g, ' ') : '—');
     const subtotal = element('strong', 'cart-line-subtotal', product ? formatMoney(product.priceMinor * quantity, product.currency) : '—');
     const remove = action(t('remove'), () => removeLine(productId)); remove.classList.add('cart-remove');
@@ -424,25 +455,43 @@ function renderCart() {
     list.append(row);
   }
   if (focusedKey) [...list.querySelectorAll('[data-focus-key]')].find(control => control.dataset.focusKey === focusedKey && !control.disabled)?.focus({ preventScroll: true });
+  renderCartSummary();
+  for (const line of resolvedCart) patchCartRow(line.productId, -1);
+}
+
+function renderCartSummary() {
+  const empty = cartStore.list().length === 0;
+  byId('cart-view').classList.toggle('is-empty', empty);
+  byId('cart-empty').hidden = !empty;
+  let total = 0, missing = false;
+  const currencies = new Set();
+  for (const { quantity, product, productId } of resolvedCart) {
+    if (!selection.has(productId)) continue;
+    if (product) { total += product.priceMinor * quantity; currencies.add(product.currency); }
+    else missing = true;
+  }
+  const pending = [...quantityPending.values()].some(count => count > 0);
   const summary = byId('cart-summary');
   summary.hidden = false;
   byId('cart-total').textContent = !missing && currencies.size === 1 && Number.isSafeInteger(total)
     ? formatMoney(total, [...currencies][0]) : total === 0 && !missing ? formatMoney(0, shopInfo?.currency || 'MYR') : '—';
   const chosen = selection ? selection.items(resolvedCart) : [];
   const selectedCount = chosen.reduce((sum, item) => sum + item.quantity, 0);
-  const canContinue = cartReady && !missing && currencies.size === 1 && chosen.length > 0;
+  const eligible = cartReady && !missing && currencies.size === 1 && chosen.length > 0;
+  const canContinue = eligible && !pending && !quantityErrors.size;
   const hasProfile = Boolean(profilePage?.get());
   byId('cart-selected-count').textContent = `${t('selectedItems')}: ${selectedCount}`;
-  byId('checkout-button').textContent = canContinue && !hasProfile ? t('setupProfileToContinue') : `${t('checkout')} (${selectedCount})`;
+  byId('checkout-button').textContent = eligible && !hasProfile ? t('setupProfileToContinue') : `${t('checkout')} (${selectedCount})`;
   byId('checkout-button').disabled = !canContinue || checkoutStarting;
-  byId('cart-profile-state').hidden = !canContinue;
+  byId('cart-profile-state').hidden = !eligible;
   byId('cart-profile-message').textContent = t(hasProfile ? 'profileReadyShort' : 'profileNeededShort');
   byId('cart-profile-state').querySelector('a').hidden = !hasProfile;
   const all = byId('cart-select-all');
   all.checked = resolvedCart.length > 0 && chosen.length === resolvedCart.length;
   all.indeterminate = chosen.length > 0 && chosen.length < resolvedCart.length;
   all.disabled = resolvedCart.length === 0;
-  if (cartReady) setCartStatus(!chosen.length ? 'selectItemsFirst' : missing ? 'cartUnavailable' : currencies.size > 1 ? 'mixedCurrencies' : priceChangedNotice ? 'cartPriceChanged' : '');
+  byId('cart-retry').hidden = !quantityErrors.size;
+  if (cartReady && !pending) setCartStatus(quantityErrors.size ? [...quantityErrors.values()][0] : !chosen.length ? 'selectItemsFirst' : missing ? 'cartUnavailable' : currencies.size > 1 ? 'mixedCurrencies' : priceChangedNotice ? 'cartPriceChanged' : '');
 }
 
 function showCartSkeleton(count) {
@@ -507,7 +556,8 @@ async function refreshCart() {
     if (request !== cartRequest) return;
     cartLoading = false;
     hideCartSkeleton();
-    resolvedCart = results;
+    resolvedCart = resolveCartSnapshot(cartStore.list(), results);
+    quantityErrors.clear();
     cartReady = true;
     renderCart();
     priceChangedNotice = false;
@@ -988,7 +1038,8 @@ byId('cart-retry').addEventListener('click', () => refreshCart());
 byId('checkout-button').addEventListener('click', () => beginCheckout(() => location.hash === '#cart'));
 byId('cart-select-all').addEventListener('change', (event) => {
   for (const { productId } of resolvedCart) selection.set(productId, event.target.checked);
-  renderCart();
+  for (const control of list.querySelectorAll('.cart-select')) control.checked = selection.has(control.dataset.productId);
+  renderCartSummary();
 });
 const accountMenu = byId('profile-menu');
 const accountButton = byId('profile-menu-button');

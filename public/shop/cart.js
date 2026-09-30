@@ -103,3 +103,10 @@ export async function createCartStore(provider = globalThis.indexedDB) {
     close() { database?.close(); database = null; },
   };
 }
+
+// Product requests may finish after a quantity edit or removal. Their old
+// quantities must never overwrite the current cart source of truth.
+export function resolveCartSnapshot(lines, results) {
+  const products = new Map(results.map(line => [line.productId, line.product]));
+  return lines.map(line => ({ ...line, product: products.get(line.productId) || null }));
+}
