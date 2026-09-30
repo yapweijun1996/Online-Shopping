@@ -792,9 +792,9 @@ function showCatalogResults() {
   byId('catalog-results').focus({ preventScroll: true });
 }
 
-function applyCatalogFilters() {
+function applyCatalogFilters(replaceEntry = false) {
   const url = catalogFilterURL(location.href, { search: byId('catalog-search').value, category: category.value });
-  history.pushState(null, '', url);
+  history[replaceEntry === true ? 'replaceState' : 'pushState'](null, '', url);
   showCatalogResults();
   const loading = loadCatalog();
   const request = catalogRequest;
@@ -922,19 +922,26 @@ function openFocusedSearch() {
   if (searchContext) return;
   searchContext = searchPointerContext || { value: searchInput.value, scroll: scrollY };
   searchPointerContext = null;
+  searchContext.url = location.href;
+  if (!history.state?.shopSearchFocus) history.pushState({ shopSearchFocus: true }, '', location.href);
+  byId('search-cancel').hidden = false;
   document.body.classList.add('search-focused'); byId('search-focus-panel').hidden = false;
   updateSearchViewport(); renderFocusedSearch();
 }
-function closeFocusedSearch(restore) {
+function closeFocusedSearch(restore, navigate = true) {
+  if (restore && navigate && searchContext && history.state?.shopSearchFocus) { if (!byId('search-cancel').disabled) { byId('search-cancel').disabled = true; history.back(); } return; }
   const context = searchContext; searchContext = null;
   document.body.classList.remove('search-focused'); byId('search-focus-panel').hidden = true;
   searchInput.blur();
+  byId('search-cancel').hidden = true;
+  byId('search-cancel').disabled = false;
   if (restore && context) { searchInput.value = context.value; syncSearchClear(); requestAnimationFrame(() => { scrollTo(0, context.scroll); const heading = document.querySelector('.shop-main section:not([hidden]) h1, .shop-main #catalog-view:not([hidden]) h2'); if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); } }); }
 }
 function commitFocusedSearch() {
   const query = searchInput.value.trim();
   if (query) { recentSearches = [query, ...recentSearches.filter(x => x !== query)].slice(0, 8); persistSearchHistory(); }
-  closeFocusedSearch(false); applyCatalogFilters();
+  const replaceEntry = Boolean(history.state?.shopSearchFocus);
+  closeFocusedSearch(false, false); applyCatalogFilters(replaceEntry);
 }
 searchInput.addEventListener('pointerdown', () => { if (!searchContext) searchPointerContext = { value: searchInput.value, scroll: scrollY }; });
 searchInput.addEventListener('focus', openFocusedSearch);
@@ -944,7 +951,13 @@ searchInput.addEventListener('compositionend', () => { searchComposing = false; 
 byId('search-cancel').addEventListener('click', () => closeFocusedSearch(true));
 byId('search-history-clear').addEventListener('click', () => { recentSearches = []; persistSearchHistory(); renderFocusedSearch(); });
 window.visualViewport?.addEventListener('resize', updateSearchViewport);
-window.addEventListener('popstate', () => { if (searchContext) closeFocusedSearch(false); });
+window.addEventListener('popstate', event => {
+  if (searchContext && !event.state?.shopSearchFocus) {
+    const sameEntry = searchContext.url === location.href;
+    closeFocusedSearch(sameEntry, false);
+    if (sameEntry) event.stopImmediatePropagation();
+  } else if (!searchContext && event.state?.shopSearchFocus) { openFocusedSearch(); searchInput.focus({ preventScroll: true }); event.stopImmediatePropagation(); }
+}, { capture: true });
 syncSearchClear();
 category.addEventListener('change', applyCatalogFilters);
 byId('catalog-clear-filters').addEventListener('click', () => {
@@ -1034,7 +1047,7 @@ async function goHome(event) {
   category.value = ''; renderCategories();
   catalogScroll = 0;
   const url = new URL(location.href); url.searchParams.delete('search'); url.searchParams.delete('category'); url.hash = '#catalog';
-  history.pushState(null, '', url); showRoute();
+  history[replaceEntry === true ? 'replaceState' : 'pushState'](null, '', url); showRoute();
   mobileNavigation.route(); window.scrollTo(0, 0);
   const view = byId('catalog-view');
   if (!matchMedia('(prefers-reduced-motion: reduce)').matches) view.animate([{ opacity: 0.5 }, { opacity: 1 }], { duration: 180 });
