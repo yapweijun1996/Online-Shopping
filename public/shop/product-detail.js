@@ -1,6 +1,12 @@
 import { formatMoney, t } from '../shared/i18n.js';
 import { productHash } from './shop-route.js';
 
+export function sellerChatURL(phone) {
+  return typeof phone === 'string' && /^[1-9]\d{7,14}$/.test(phone)
+    ? `https://wa.me/${phone}`
+    : null;
+}
+
 function node(tag, className = '', text) {
   const element = document.createElement(tag);
   element.className = className;
@@ -339,9 +345,10 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
       }
     }
     const sellerPhone = shop()?.sellerWhatsAppPhone;
-    const chatAvailable = typeof sellerPhone === 'string' && /^[1-9]\d{7,14}$/.test(sellerPhone);
+    const chatURL = sellerChatURL(sellerPhone);
+    const chatAvailable = Boolean(chatURL);
     const chat = chatAvailable
-      ? link('', `https://web.whatsapp.com/send/?phone=${sellerPhone}`, 'product-chat')
+      ? link('', chatURL, 'product-chat')
       : button('', () => notify?.('chatUnavailable'), 'product-chat');
     chat.setAttribute('aria-label', t(chatAvailable ? 'openWhatsApp' : 'chatUnavailable'));
     if (chatAvailable) {
