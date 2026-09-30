@@ -98,7 +98,7 @@ export const messages = {
     shopSetup: "Shop setup",
     setupIntro: "Choose Demo to create a sample pet shop with 35 products, or Production to add your own categories and products. Setup is one-time; use a separate empty database for a different mode.",
     shopMode: "Mode",
-    demoMode: "Demo — Pet Shop",
+    demoMode: "Demo store",
     productionMode: "Production — Manual setup",
     shopName: "Shop name",
     setupShop: "Set up shop",
@@ -214,7 +214,7 @@ export const messages = {
     shopSetup: "Persediaan kedai",
     setupIntro: "Pilih Demo untuk kedai haiwan contoh dengan 35 produk, atau Production untuk menambah kategori dan produk sendiri. Persediaan sekali sahaja; gunakan pangkalan data kosong berasingan untuk mod lain.",
     shopMode: "Mod",
-    demoMode: "Demo — Kedai Haiwan",
+    demoMode: "Kedai demo",
     productionMode: "Production — Persediaan manual",
     shopName: "Nama kedai",
     setupShop: "Sediakan kedai",
@@ -330,7 +330,7 @@ export const messages = {
     shopSetup: "店铺设置",
     setupIntro: "选择 Demo 建立含 35 个商品的示例宠物店，或选择 Production 手动添加分类和商品。设置仅执行一次；另一模式需使用独立空数据库。",
     shopMode: "模式",
-    demoMode: "Demo — 宠物店",
+    demoMode: "演示商店",
     productionMode: "Production — 手动设置",
     shopName: "店铺名称",
     setupShop: "建立店铺",
@@ -446,7 +446,7 @@ export const messages = {
     shopSetup: "Thiết lập cửa hàng",
     setupIntro: "Chọn Demo để tạo cửa hàng thú cưng mẫu với 35 sản phẩm, hoặc Production để tự thêm danh mục và sản phẩm. Chỉ thiết lập một lần; dùng cơ sở dữ liệu trống riêng cho chế độ khác.",
     shopMode: "Chế độ",
-    demoMode: "Demo — Cửa hàng thú cưng",
+    demoMode: "Cửa hàng demo",
     productionMode: "Production — Thiết lập thủ công",
     shopName: "Tên cửa hàng",
     setupShop: "Thiết lập",
@@ -562,7 +562,7 @@ export const messages = {
     shopSetup: "ตั้งค่าร้านค้า",
     setupIntro: "เลือก Demo เพื่อสร้างร้านสัตว์เลี้ยงตัวอย่าง 35 รายการ หรือ Production เพื่อเพิ่มหมวดหมู่และสินค้าเอง ตั้งค่าได้ครั้งเดียว ใช้ฐานข้อมูลว่างแยกสำหรับโหมดอื่น",
     shopMode: "โหมด",
-    demoMode: "Demo — ร้านสัตว์เลี้ยง",
+    demoMode: "ร้านค้าสาธิต",
     productionMode: "Production — ตั้งค่าด้วยตนเอง",
     shopName: "ชื่อร้าน",
     setupShop: "ตั้งค่าร้าน",
@@ -678,7 +678,7 @@ export const messages = {
     shopSetup: "ショップ設定",
     setupIntro: "Demo は35商品のペットショップを作成します。Production はカテゴリと商品を手動で追加します。設定は一度のみです。別モードには別の空のデータベースを使用してください。",
     shopMode: "モード",
-    demoMode: "Demo — ペットショップ",
+    demoMode: "デモストア",
     productionMode: "Production — 手動設定",
     shopName: "ショップ名",
     setupShop: "ショップを設定",
@@ -794,7 +794,7 @@ export const messages = {
     shopSetup: "상점 설정",
     setupIntro: "Demo는 상품 35개의 반려동물 예시 상점을 만듭니다. Production에서는 카테고리와 상품을 직접 추가합니다. 설정은 한 번만 가능하며 다른 모드에는 별도의 빈 데이터베이스를 사용하세요.",
     shopMode: "모드",
-    demoMode: "Demo — 반려동물 상점",
+    demoMode: "데모 상점",
     productionMode: "Production — 수동 설정",
     shopName: "상점 이름",
     setupShop: "상점 설정",
@@ -1466,16 +1466,18 @@ const cartWorkflowMessages = {
 for (const { code } of languages) Object.assign(messages[code], cartWorkflowMessages[code]);
 
 const shopVisualMessages = {
- en: { petShop: 'Pet shop', petCareEyebrow: 'For their everyday', petCareTitle: 'Cat-care essentials', petCareIntro: 'Explore litter, waste bags and everyday accessories.', referencePrice: 'Reference price', stockAndDelivery: 'Availability & delivery', demoAvailability: 'Demo catalog only. Stock and delivery are not offered through this simulation.', availabilityUnconfirmed: 'Stock and delivery availability have not been confirmed. Contact the shop before ordering.' },
- ms: { petShop: 'Kedai haiwan', petCareEyebrow: 'Untuk setiap hari', petCareTitle: 'Keperluan penjagaan kucing', petCareIntro: 'Terokai pasir kucing, beg sisa dan aksesori harian.', referencePrice: 'Harga rujukan', stockAndDelivery: 'Stok & penghantaran', demoAvailability: 'Katalog demo sahaja. Simulasi ini tidak menawarkan stok atau penghantaran.', availabilityUnconfirmed: 'Stok dan penghantaran belum disahkan. Hubungi kedai sebelum memesan.' },
- 'zh-Hans': { petShop: '宠物用品店', petCareEyebrow: '关爱每一天', petCareTitle: '猫咪清洁用品', petCareIntro: '浏览猫砂、垃圾袋与日常配件。', referencePrice: '参考价', stockAndDelivery: '库存与配送', demoAvailability: '仅示例目录；此模拟不提供真实库存或配送。', availabilityUnconfirmed: '库存和配送情况尚未确认，请在下单前联系商店。' },
- vi: { petShop: 'Cửa hàng thú cưng', petCareEyebrow: 'Cho mỗi ngày', petCareTitle: 'Đồ chăm sóc mèo', petCareIntro: 'Khám phá cát vệ sinh, túi rác và phụ kiện hàng ngày.', referencePrice: 'Giá tham khảo', stockAndDelivery: 'Tình trạng & giao hàng', demoAvailability: 'Chỉ là danh mục demo. Mô phỏng không cung cấp hàng hoặc giao hàng.', availabilityUnconfirmed: 'Tình trạng hàng và giao hàng chưa được xác nhận. Liên hệ cửa hàng trước khi đặt.' },
- th: { petShop: 'ร้านสัตว์เลี้ยง', petCareEyebrow: 'เพื่อทุกวันของพวกเขา', petCareTitle: 'ของใช้ดูแลแมว', petCareIntro: 'เลือกทรายแมว ถุงขยะ และอุปกรณ์ประจำวัน', referencePrice: 'ราคาอ้างอิง', stockAndDelivery: 'สินค้าและการจัดส่ง', demoAvailability: 'เป็นแคตตาล็อกสาธิตเท่านั้น ไม่มีสินค้าหรือการจัดส่งจริงในการจำลองนี้', availabilityUnconfirmed: 'ยังไม่ได้ยืนยันสินค้าและการจัดส่ง กรุณาติดต่อร้านก่อนสั่งซื้อ' },
- ja: { petShop: 'ペットショップ', petCareEyebrow: '毎日のために', petCareTitle: '猫のお手入れ用品', petCareIntro: '猫砂、ごみ袋、日用品を探す。', referencePrice: '参考価格', stockAndDelivery: '在庫と配送', demoAvailability: 'デモカタログのみです。このシミュレーションでは在庫や配送を提供しません。', availabilityUnconfirmed: '在庫と配送は未確認です。注文前に店舗にお問い合わせください。' },
- ko: { petShop: '반려동물 용품점', petCareEyebrow: '매일의 돌봄을 위해', petCareTitle: '고양이 관리 용품', petCareIntro: '모래, 쓰레기 봉투와 일상 용품을 살펴보세요.', referencePrice: '참고 가격', stockAndDelivery: '재고 및 배송', demoAvailability: '데모 카탈로그입니다. 이 시뮬레이션에서는 실제 재고나 배송을 제공하지 않습니다.', availabilityUnconfirmed: '재고와 배송은 확인되지 않았습니다. 주문 전에 매장에 문의하세요.' }
+ en: { referencePrice: 'Reference price', stockAndDelivery: 'Availability & delivery', demoAvailability: 'Demo catalog only. Stock and delivery are not offered through this simulation.', availabilityUnconfirmed: 'Stock and delivery availability have not been confirmed. Contact the shop before ordering.' },
+ ms: { referencePrice: 'Harga rujukan', stockAndDelivery: 'Stok & penghantaran', demoAvailability: 'Katalog demo sahaja. Simulasi ini tidak menawarkan stok atau penghantaran.', availabilityUnconfirmed: 'Stok dan penghantaran belum disahkan. Hubungi kedai sebelum memesan.' },
+ 'zh-Hans': { referencePrice: '参考价', stockAndDelivery: '库存与配送', demoAvailability: '仅示例目录；此模拟不提供真实库存或配送。', availabilityUnconfirmed: '库存和配送情况尚未确认，请在下单前联系商店。' },
+ vi: { referencePrice: 'Giá tham khảo', stockAndDelivery: 'Tình trạng & giao hàng', demoAvailability: 'Chỉ là danh mục demo. Mô phỏng không cung cấp hàng hoặc giao hàng.', availabilityUnconfirmed: 'Tình trạng hàng và giao hàng chưa được xác nhận. Liên hệ cửa hàng trước khi đặt.' },
+ th: { referencePrice: 'ราคาอ้างอิง', stockAndDelivery: 'สินค้าและการจัดส่ง', demoAvailability: 'เป็นแคตตาล็อกสาธิตเท่านั้น ไม่มีสินค้าหรือการจัดส่งจริงในการจำลองนี้', availabilityUnconfirmed: 'ยังไม่ได้ยืนยันสินค้าและการจัดส่ง กรุณาติดต่อร้านก่อนสั่งซื้อ' },
+ ja: { referencePrice: '参考価格', stockAndDelivery: '在庫と配送', demoAvailability: 'デモカタログのみです。このシミュレーションでは在庫や配送を提供しません。', availabilityUnconfirmed: '在庫と配送は未確認です。注文前に店舗にお問い合わせください。' },
+ ko: { referencePrice: '참고 가격', stockAndDelivery: '재고 및 배송', demoAvailability: '데모 카탈로그입니다. 이 시뮬레이션에서는 실제 재고나 배송을 제공하지 않습니다.', availabilityUnconfirmed: '재고와 배송은 확인되지 않았습니다. 주문 전에 매장에 문의하세요.' }
 };
 for (const { code } of languages) Object.assign(messages[code], shopVisualMessages[code]);
 
+const searchFocusMessages = {"en": {"recentSearches": "Recent searches", "noSearchHistory": "No search history yet.", "searchSuggestions": "Search suggestions", "clearSearchHistory": "Clear history"}, "ms": {"recentSearches": "Carian terbaru", "noSearchHistory": "Belum ada sejarah carian.", "searchSuggestions": "Cadangan carian", "clearSearchHistory": "Padam sejarah"}, "zh-Hans": {"recentSearches": "最近搜索", "noSearchHistory": "暂无搜索记录。", "searchSuggestions": "搜索建议", "clearSearchHistory": "清除记录"}, "vi": {"recentSearches": "Tìm kiếm gần đây", "noSearchHistory": "Chưa có lịch sử tìm kiếm.", "searchSuggestions": "Gợi ý tìm kiếm", "clearSearchHistory": "Xóa lịch sử"}, "th": {"recentSearches": "การค้นหาล่าสุด", "noSearchHistory": "ยังไม่มีประวัติการค้นหา", "searchSuggestions": "คำแนะนำการค้นหา", "clearSearchHistory": "ล้างประวัติ"}, "ja": {"recentSearches": "最近の検索", "noSearchHistory": "検索履歴はありません。", "searchSuggestions": "検索候補", "clearSearchHistory": "履歴を消去"}, "ko": {"recentSearches": "최근 검색", "noSearchHistory": "검색 기록이 없습니다.", "searchSuggestions": "검색 제안", "clearSearchHistory": "기록 지우기"}};
+for (const [locale, values] of Object.entries(searchFocusMessages)) Object.assign(messages[locale], values);
 let current = 'en';
 try {
   const saved = localStorage.getItem('online-shopping-language');

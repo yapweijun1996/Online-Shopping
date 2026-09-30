@@ -180,12 +180,7 @@ function renderCategories() {
     button.type = 'button';
     button.setAttribute('aria-pressed', String(category.value === value));
     const symbol = element('span', 'category-symbol');
-    const paths = !value ? 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z'
-      : /waste|bag/i.test(value) ? 'M7 7h10l2 13H5L7 7Zm2 0V4h6v3'
-      : /odor/i.test(value) ? 'M12 3v4M12 17v4M3 12h4M17 12h4M6 6l3 3M15 15l3 3M6 18l3-3M15 9l3-3'
-      : /accessor/i.test(value) ? 'm14 4 6 6-5 5-3-3-6 6-3-3 6-6-3-3 5-5 3 3Z'
-      : /automatic/i.test(value) ? 'M5 20V8a7 7 0 0 1 14 0v12H5Zm4 0v-6a3 3 0 0 1 6 0v6M9 7h6'
-      : 'M4 9h16l-2 11H6L4 9Zm3-4h10M9 5v4M15 5v4';
+    const paths = 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z';
     symbol.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${paths}"/></svg>`;
     symbol.setAttribute('aria-hidden', 'true');
     button.append(symbol, element('span', '', value || t('allCategories')));
@@ -223,7 +218,6 @@ function renderCatalog(startIndex = 0) {
     (catalogHasError() && !retryCatalogReset);
   byId('catalog-count').textContent = products.length ? t('showingProducts').replace('{count}', String(products.length)) : '';
   const query = byId('catalog-search').value.trim();
-  byId('catalog-hero').hidden = Boolean(query || category.value) || shopInfo?.mode !== 'demo';
   byId('catalog-query').textContent = query ? t('searchResultsFor').replace('{query}', query) : '';
   byId('catalog-query').hidden = !query;
 }
@@ -255,14 +249,15 @@ async function loadCatalog(reset = true) {
     checkoutPage.setDemoMode(shop.mode === 'demo');
     byId('demo-banner').hidden = shop.mode !== 'demo';
     byId('catalog-shop-name').textContent = shop.shopName || '';
-    byId('shop-brand-name').textContent = (shop.shopName || t('shop')).replace(/\s+Pet Shop$/i, '');
-    byId('shop-brand-kind').hidden = shop.mode !== 'demo';
+    byId('shop-brand-name').textContent = shop.shopName || t('shop');
+    byId('shop-brand-kind').hidden = true;
     if (request !== catalogRequest) return;
     const previousCount = products.length;
     products = reset ? data.items : [...products, ...data.items];
     categories = data.categories;
     nextOffset = data.nextOffset;
     renderCategories();
+    renderEmptyCartCategories();
     setCatalogStatus(products.length ? '' : (params.get('search') || params.get('category') ? 'noResults' : 'noProducts'));
     setCatalogPageStatus(products.length && nextOffset === null ? 'allProductsShown' : '');
     renderCatalog(reset ? 0 : previousCount);
@@ -351,11 +346,25 @@ async function removeLine(productId) {
   refreshCart();
 }
 
+function renderEmptyCartCategories() {
+  const nav = byId('empty-cart-categories');
+  nav.replaceChildren();
+  for (const value of categories) {
+    const shortcut = action(value, () => {
+      searchInput.value = ''; syncSearchClear(); category.value = value; applyCatalogFilters();
+    }, 'outline-button');
+    nav.append(shortcut);
+  }
+}
+
 function renderCart() {
   if (cartLoading) return;
   const focusedKey = pendingCartFocusKey || (list.contains(document.activeElement) ? document.activeElement.dataset.focusKey : null);
   pendingCartFocusKey = null;
   list.replaceChildren();
+  const empty = cartStore.list().length === 0;
+  byId('cart-view').classList.toggle('is-empty', empty);
+  byId('cart-empty').hidden = !empty;
   let total = 0;
   let missing = false;
   const currencies = new Set();
@@ -474,7 +483,7 @@ async function refreshCart() {
     hideCartSkeleton();
     resolvedCart = [];
     renderCart();
-    setCartStatus('emptyCart');
+    setCartStatus('');
     return false;
   }
   cartLoading = true;
@@ -863,12 +872,12 @@ detailPage = mountProductDetail(byId('product-view'), {
 });
 updateCount();
 updatePersistence();
-byId('catalog-search-form').addEventListener('submit', (event) => { event.preventDefault(); applyCatalogFilters(); });
+byId('catalog-search-form').addEventListener('submit', event => { event.preventDefault(); if (!searchComposing) commitFocusedSearch(); });
 const searchInput = byId('catalog-search');
 const clearSearch = action(t('clearSearch'), () => {
   searchInput.value = '';
   syncSearchClear();
-  applyCatalogFilters();
+  if (searchContext) renderFocusedSearch(); else applyCatalogFilters();
   searchInput.focus({ preventScroll: true });
 }, 'catalog-search-clear');
 clearSearch.id = 'catalog-search-clear';
@@ -878,10 +887,64 @@ searchInput.after(clearSearch);
 function syncSearchClear() { clearSearch.hidden = !searchInput.value; }
 searchInput.addEventListener('input', syncSearchClear);
 searchInput.addEventListener('keydown', event => {
-  if (event.key === 'Escape' && searchInput.value) {
+  if (event.key === 'Escape' && searchContext && !event.isComposing) { event.preventDefault(); closeFocusedSearch(true); return; }
+  if (event.key === 'Escape' && searchInput.value && !event.isComposing) {
     event.preventDefault(); clearSearch.click();
   }
 });
+let searchContext = null;
+let searchPointerContext = null;
+let searchComposing = false;
+const searchHistoryKey = 'online-shopping-search-history-v1';
+let recentSearches = [];
+try { const stored = JSON.parse(localStorage.getItem(searchHistoryKey) || '[]'); if (Array.isArray(stored)) recentSearches = stored.filter(x => typeof x === 'string' && x.trim() && x.length <= 100).slice(0, 8); } catch {}
+function persistSearchHistory() { try { localStorage.setItem(searchHistoryKey, JSON.stringify(recentSearches)); } catch {} }
+function renderFocusedSearch() {
+  const recent = byId('search-recent'); recent.replaceChildren();
+  byId('search-history-clear').hidden = !recentSearches.length;
+  if (!recentSearches.length) recent.append(element('p', 'shop-note', t('noSearchHistory')));
+  for (const query of recentSearches) recent.append(action(query, () => { searchInput.value = query; category.value = ''; commitFocusedSearch(); }, 'search-suggestion'));
+  const suggestions = byId('search-suggestions'); suggestions.replaceChildren();
+  const query = searchInput.value.trim().toLocaleLowerCase();
+  const values = [...categories.map(value => ({ value, category: true })), ...products.map(p => ({ value: p.name, category: false }))];
+  const seen = new Set();
+  for (const item of values.filter(x => !query || x.value.toLocaleLowerCase().includes(query))) {
+    if (seen.has(item.value)) continue; seen.add(item.value);
+    suggestions.append(action(item.value, () => { category.value = item.category ? item.value : ''; searchInput.value = item.category ? '' : item.value; commitFocusedSearch(); }, 'search-suggestion'));
+    if (seen.size === 8) break;
+  }
+  if (!seen.size) suggestions.append(element('p', 'shop-note', t('noResults')));
+  byId('search-demo-note').hidden = shopInfo?.mode !== 'demo';
+  syncSearchClear();
+}
+function updateSearchViewport() { document.documentElement.style.setProperty('--search-viewport-height', `${window.visualViewport?.height || innerHeight}px`); }
+function openFocusedSearch() {
+  if (searchContext) return;
+  searchContext = searchPointerContext || { value: searchInput.value, scroll: scrollY };
+  searchPointerContext = null;
+  document.body.classList.add('search-focused'); byId('search-focus-panel').hidden = false;
+  updateSearchViewport(); renderFocusedSearch();
+}
+function closeFocusedSearch(restore) {
+  const context = searchContext; searchContext = null;
+  document.body.classList.remove('search-focused'); byId('search-focus-panel').hidden = true;
+  searchInput.blur();
+  if (restore && context) { searchInput.value = context.value; syncSearchClear(); requestAnimationFrame(() => { scrollTo(0, context.scroll); const heading = document.querySelector('.shop-main section:not([hidden]) h1, .shop-main #catalog-view:not([hidden]) h2'); if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); } }); }
+}
+function commitFocusedSearch() {
+  const query = searchInput.value.trim();
+  if (query) { recentSearches = [query, ...recentSearches.filter(x => x !== query)].slice(0, 8); persistSearchHistory(); }
+  closeFocusedSearch(false); applyCatalogFilters();
+}
+searchInput.addEventListener('pointerdown', () => { if (!searchContext) searchPointerContext = { value: searchInput.value, scroll: scrollY }; });
+searchInput.addEventListener('focus', openFocusedSearch);
+searchInput.addEventListener('input', () => { if (searchContext && !searchComposing) renderFocusedSearch(); });
+searchInput.addEventListener('compositionstart', () => { searchComposing = true; });
+searchInput.addEventListener('compositionend', () => { searchComposing = false; if (searchContext) renderFocusedSearch(); });
+byId('search-cancel').addEventListener('click', () => closeFocusedSearch(true));
+byId('search-history-clear').addEventListener('click', () => { recentSearches = []; persistSearchHistory(); renderFocusedSearch(); });
+window.visualViewport?.addEventListener('resize', updateSearchViewport);
+window.addEventListener('popstate', () => { if (searchContext) closeFocusedSearch(false); });
 syncSearchClear();
 category.addEventListener('change', applyCatalogFilters);
 byId('catalog-clear-filters').addEventListener('click', () => {
@@ -936,6 +999,7 @@ window.addEventListener('popstate', () => {
 window.addEventListener('hashchange', showRoute);
 document.addEventListener('localechange', () => {
   translate(document);
+  if (searchContext) renderFocusedSearch();
   requestAnimationFrame(() => revealAccountLink(document.querySelector('.account-sidebar a[aria-current=page]')));
   byId('catalog-retry').textContent = t('retry');
   byId('catalog-search').placeholder = t('searchProducts');
