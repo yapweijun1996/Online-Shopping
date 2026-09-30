@@ -697,6 +697,17 @@ async function renderLocalOrders() {
 
 byId('refresh-order-statuses').addEventListener('click', renderLocalOrders);
 
+function revealAccountLink(link) {
+  const nav = link?.closest('.account-sidebar');
+  if (!nav || !matchMedia('(max-width:800px)').matches || nav.offsetParent === null) return;
+  const bounds = nav.getBoundingClientRect();
+  const item = link.getBoundingClientRect();
+  const delta = item.left < bounds.left + 4 ? item.left - bounds.left - 4
+    : item.right > bounds.right - 4 ? item.right - bounds.right + 4 : 0;
+  if (delta) nav.scrollBy({ left: delta, behavior: 'instant' });
+}
+document.querySelector('.account-sidebar').addEventListener('focusin', event => revealAccountLink(event.target.closest('a')));
+
 function showRoute() {
   const parsed = readShopRoute(location.hash);
   const route = parsed.page;
@@ -713,6 +724,7 @@ function showRoute() {
     if (link.hash === `#${route}`) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   }
+  requestAnimationFrame(() => revealAccountLink(document.querySelector('.account-sidebar a[aria-current=page]')));
   document.body.dataset.shopRoute = route;
   requestAnimationFrame(measureActionbar);
   for (const [hash, active] of [['#catalog', catalogRoute], ['#cart', route === 'cart']]) {
@@ -924,6 +936,7 @@ window.addEventListener('popstate', () => {
 window.addEventListener('hashchange', showRoute);
 document.addEventListener('localechange', () => {
   translate(document);
+  requestAnimationFrame(() => revealAccountLink(document.querySelector('.account-sidebar a[aria-current=page]')));
   byId('catalog-retry').textContent = t('retry');
   byId('catalog-search').placeholder = t('searchProducts');
   clearSearch.setAttribute('aria-label', t('clearSearch'));
