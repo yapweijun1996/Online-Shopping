@@ -640,17 +640,16 @@ body:has(.app-modal[open]) .shop-actionbar{visibility:hidden}
 .product-purchase .product-chat{border-color:transparent;color:var(--ui-primary)}
 .product-purchase .product-add{border-color:var(--ui-primary);color:var(--ui-primary)}
 @media(max-width:760px){
- .shop-topbar{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto 44px;height:auto;min-height:112px;padding:12px 16px;gap:12px 8px}
- .shop-topbar>.brand{display:flex;grid-column:1;grid-row:1;max-width:none}
+ .shop-topbar{display:flex;height:60px;min-height:60px;padding:8px 12px;gap:0}
+ .shop-topbar>.brand,.shop-topbar>.shop-nav,.shop-topbar>.shop-language,.shop-topbar>.shop-account{display:none}
  .brand-copy strong{font-size:17px}
  .brand-paw{width:34px;height:34px}
- .shop-topbar>.shop-nav{display:flex;grid-column:2;grid-row:1}
  .shop-nav>a[href='#catalog']{display:none}
  .shop-nav>a[href='#cart']{position:relative;padding:8px;min-width:44px;min-height:44px;background:transparent}
  .shop-nav>a[href='#cart']>span[data-i18n=cart]{display:none}
  .shop-nav svg{width:24px;height:24px}
  .shop-nav .cart-count{position:absolute;right:0;top:0;font-size:10px;min-width:17px;height:17px;padding:0 3px}
- .shop-topbar .header-search{grid-column:1/-1;grid-row:2;width:100%;max-width:none;height:44px}
+ .shop-topbar .header-search{grid-area:auto;grid-column:auto;grid-row:auto;width:100%;max-width:none;height:44px}
  .shop-main{padding:12px 12px 28px}
  .demo-banner{padding:8px 10px;gap:3px 8px;font-size:11px;line-height:1.4;margin-bottom:12px}
  .catalog-hero{padding:16px;margin-bottom:18px;gap:12px;border-radius:14px}
@@ -672,7 +671,7 @@ body:has(.app-modal[open]) .shop-actionbar{visibility:hidden}
  .catalog-price{font-size:18px}
  .catalog-category{font-size:9px}
  .catalog-card-actions button{font-size:11px;padding:8px 4px;min-height:44px}
- #catalog-results{scroll-margin-top:140px}
+ #catalog-results{scroll-margin-top:70px}
  #product-view{padding-top:calc(56px + var(--shop-safe-top))}
  #product-view .product-navigation{height:calc(56px + var(--shop-safe-top));padding:var(--shop-safe-top) 10px 0;display:grid;grid-template-columns:44px minmax(0,1fr) 44px 44px;gap:2px;background:var(--ui-surface);box-shadow:none;border-bottom:1px solid var(--ui-divider)}
  #product-view .product-navigation .product-back,#product-view .product-navigation .product-share,#product-view .product-nav-cart{width:44px;height:44px;margin:0;border-radius:10px;background:transparent;color:var(--ui-ink);box-shadow:none}
