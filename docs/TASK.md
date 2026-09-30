@@ -54,3 +54,7 @@
 ## Resume point
 
 DEC-06 lawful basis and the real HTTPS hostname (DEC-04) are now recorded. Define encrypted/off-host backup and rollback for the Durable Object data, verify target-browser AC-17 install/update, and run AC-16 production health/version/security gates, including setting `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`PUBLIC_ORIGIN` via `wrangler secret put` and a verified `npm run worker:deploy`. AC-15/18 and the local QA-02/Compose boundary checks passed; production artifact inspection remains REL-01. Do not copy sample credentials, customer access links, logistics workflow, or UI into the new app.
+
+### Owner-authorized buyer/seller milestone (2026-09-30)
+
+The owner's fresh instruction authorizes scoped tested fixes and publishing the existing Demo shop; older no-push notes above describe the historical gate, not current authorization. Current work: seller cached-queue/detail recovery, authenticated printable order summaries and confirmed-only packing sheets, pending approved storefront typography. Local unit/API and synthetic browser/PDF gates are tracked in SELLER_ACCEPTANCE.md. Commit/push/deploy require action-specific review and exact-head CI; release is not claimed before live verification. No production order writes, credentials/grants changes, payments or messages are authorized.

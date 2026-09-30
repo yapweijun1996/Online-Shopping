@@ -108,3 +108,7 @@ Cart checkboxes select the items and total for the next order. Buy now opens che
 Cart quantities range from 1–100. The fixed action bar summarizes selected quantities and totals, and reserves its measured height in the page. Only selected available items in a single currency can proceed. Profile setup returns to the originating cart or checkout. Checkout contains read-only buyer details, one address, selected products and the total; no shipping/payment/promotion controls are included. Address selection uses a desktop dialog/mobile sheet and cancellation preserves the current address.
 
 Demo payload construction anonymizes contacts before any network transmission. Server pricing, idempotency, multi-delivery API compatibility and historical orders remain unchanged. Failed saves retain form input. New modules are included in the PWA allowlist; Shop v39 and Seller v43 wait for user-approved updates.
+
+## Seller order documents
+
+Seller order details offer **Order summary** and, for confirmed orders, **Packing sheet**. Preview uses a fresh authenticated order snapshot; **Print / Save as PDF** opens the browser print workflow. Each destination is isolated with repeated identifying table headers and accurate snapshot quantities/amounts. Demo documents are explicitly simulated. These are manual records/checklists, not tax invoices, payment receipts or courier labels, and do not record packing or shipment state. See [acceptance and QA gates](docs/SELLER_ACCEPTANCE.md).

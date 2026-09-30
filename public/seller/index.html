@@ -9,6 +9,7 @@
   <link rel="manifest" href="/seller/manifest.webmanifest">
   <link rel="stylesheet" href="/seller/style.css">
   <script type="module" src="/seller/app.js"></script>
+  <link rel="stylesheet" href="/seller/order-print.css">
 </head>
 <body>
   <header class="topbar">
@@ -136,6 +137,7 @@
         <h2 id="order-queue-title" data-i18n="orderQueue">Order queue</h2>
         <p id="order-list-status" class="order-list-status" role="status"></p>
         <button id="order-clear-filters" class="secondary-button order-clear-filters" type="button" data-i18n="resetOrderFilters" hidden>Clear search and filters</button>
+        <button id="order-retry" class="secondary-button order-retry" type="button" data-i18n="retry" hidden>Try again</button>
         <div id="order-list" class="order-list"></div>
         <button id="order-more" class="secondary-button" type="button" data-i18n="loadMore" hidden>Load more</button>
       </section>

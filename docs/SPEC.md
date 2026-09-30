@@ -46,3 +46,7 @@ The owner requests permanent server retention of submitted orders and their cont
 | Release/data | Private schema/migrations, backup/restore, retention, secret scan, artifact inspection, health/readiness, deployed version and rollback. | Local schema v1→v5 and v2→v5 migration tests, public path/auth denial, cache boundary, two-container proxy/persistence smoke, and isolated synthetic-data backup/restore pass. Permanent retention is an owner request with unconfirmed lawful basis; no production encrypted/off-host backup plan, HTTPS deployment, rollback, or release exists. |
 
 Tests in `sample/` are scoped to its prototype and do not satisfy these gates.
+
+### Seller documents and recovery (2026-09-30)
+
+Authorized seller order details offer a current-snapshot order summary, plus a packing checklist only when CONFIRMED. Each destination remains separate; item quantity, currency, unit/line amounts and overall minor-unit total must agree or document generation fails. Repeated table headers identify order/destination/revision/currency on continuation pages. Demo documents are marked simulated and omit meaningful contact/address data. Browser print/Save as PDF is supported; this is not a server PDF endpoint, tax invoice, payment receipt or carrier label. A failed queue refresh retains prior rows with an error/retry control; detail errors offer retry. See SELLER_ACCEPTANCE.md for measured gates and limits.

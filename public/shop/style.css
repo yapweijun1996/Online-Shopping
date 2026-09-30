@@ -816,3 +816,51 @@ html.image-zoom-open{overflow:hidden}
  .category-rail button{min-height:44px;padding:8px 12px;font-size:12px}
  .category-symbol{display:none}.catalog-intro{gap:4px;margin-bottom:4px}
 }
+
+/* Local typography refinement: stable roles across product, catalog and account. */
+:root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;font-size:15px;line-height:1.5333}
+h1,h2{letter-spacing:-.01em}
+.shop-note{font-size:12px;line-height:18px;color:var(--ui-muted)}
+.product-price-label,.product-demo-note,.demo-banner,.catalog-category{font-size:12px;line-height:18px;font-weight:400;color:var(--ui-muted)}
+.catalog-category{font-weight:500;letter-spacing:0}
+.catalog-price,.product-price,.local-order-total{color:var(--shop-price);font-variant-numeric:tabular-nums;letter-spacing:0;font-weight:700}
+.catalog-price{font-size:18px;line-height:23px}
+.catalog-card h3{font-size:14px;line-height:20px;font-weight:600}
+.catalog-card .product-name-link{line-height:20px}
+#product-view .product-heading-block h1{font-size:20px;line-height:28px;font-weight:600;letter-spacing:-.01em}
+#product-view .product-price{font-size:28px;line-height:34px;letter-spacing:0}
+#product-view .product-price-label,#product-view .product-demo-note{font-size:12px;line-height:18px}
+#product-view .detail-description,#product-view .product-specs{font-size:15px;line-height:23px}
+#product-view .product-purchase button,#product-view .product-purchase a{font-size:14px;line-height:20px;font-weight:600;height:52px;min-height:52px}
+#product-view .product-purchase .product-chat{font-size:12px;line-height:14px;padding:2px 4px;gap:2px}
+#product-view .product-chat svg{width:18px;height:18px;flex:none}
+#product-view .product-chat span{line-height:14px}
+#product-view .product-navigation-title{font-size:14px;line-height:20px;font-weight:600}
+.catalog-intro h2,.account-page h1{font-size:22px;line-height:29px}
+.mobile-navigation>a,.mobile-navigation>button{font-size:12px;line-height:15px}
+.category-rail button{font-size:12px;line-height:18px;font-weight:600}
+:lang(zh) h1,:lang(zh) h2,:lang(zh) h3,:lang(zh) #product-view .product-heading-block h1{letter-spacing:0}
+@media(min-width:761px){
+ :root{font-size:16px;line-height:1.5}
+ .shop-note{font-size:13px;line-height:19px}
+ .product-price-label,.product-demo-note,.demo-banner,.catalog-category{font-size:13px;line-height:19px}
+ .catalog-card h3,.catalog-card .product-name-link{font-size:16px;line-height:23px;min-height:46px;height:46px}
+ .catalog-price{font-size:20px;line-height:26px}
+ #product-view .product-heading-block h1{font-size:24px;line-height:32px}
+ #product-view .product-price{font-size:32px;line-height:38px}
+ #product-view .detail-description,#product-view .product-specs{font-size:16px;line-height:24px}
+ .catalog-intro h2,.account-page h1{font-size:28px;line-height:35px}
+}
+
+.demo-banner strong,.demo-banner span{font-size:12px;line-height:18px}
+@media(max-width:760px){
+ .mobile-nav-icon,.mobile-nav-icon svg,.mobile-nav-icon img{width:22px;height:22px}
+ .mobile-navigation>a,.mobile-navigation>button{gap:1px;padding:2px 1px;font-size:12px;line-height:14px}
+}
+@media(min-width:761px){.demo-banner strong,.demo-banner span{font-size:13px;line-height:19px}}
+
+/* Keep the established PWA brand distinct from readable action color. */
+.primary-button{background:var(--ui-action,var(--ui-primary));border-color:var(--ui-action,var(--ui-primary))}
+.product-purchase .product-chat,.product-purchase .product-add{color:var(--ui-action,var(--ui-primary))}
+.product-purchase .product-add{border-color:var(--ui-action,var(--ui-primary))}
+.category-rail button[aria-pressed=true]{background:var(--ui-action,var(--ui-primary))}

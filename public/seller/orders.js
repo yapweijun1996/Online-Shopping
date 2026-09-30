@@ -1,3 +1,4 @@
+import { createOrderDocuments } from './order-documents.js';
 import { formatDate, formatMoney, t, translate } from '../shared/i18n.js';
 
 function node(tag, className = '', value = '') {
@@ -37,6 +38,10 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
   const reasonLabel = find('#decision-reason-label');
   const dialogError = find('#decision-error');
   const decisionSubmit = find('#decision-submit');
+  const documents = createOrderDocuments();
+  const retry = find('#order-retry');
+  let shopName = '';
+  let documentRequest = 0;
   let active = true;
   let items = [];
   let nextOffset = null;
@@ -63,7 +68,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
   function setMessage(key) {
     messageKey = key;
     message.textContent = key ? t(key) : '';
-    message.classList.toggle('is-error', ['copyFailure', 'orderChanged', 'decisionUnknown', 'decisionFailed', 'offlineMessage'].includes(key));
+    message.classList.toggle('is-error', ['documentFailed', 'copyFailure', 'orderChanged', 'decisionUnknown', 'decisionFailed', 'offlineMessage'].includes(key));
   }
   function setListStatus(key) { listStatusKey = key; listStatus.textContent = key ? t(key) : ''; }
   function setDialogError(key) { dialogErrorKey = key; dialogError.textContent = key ? t(key) : ''; }
@@ -71,6 +76,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
     detailStatusKey = key;
     detailContent.replaceChildren();
     detailContent.textContent = t(key);
+    if (key === 'orderLoadError' && selectedId) detailContent.append(actionButton(t('retry'), () => openOrder(selectedId), 'secondary-button order-retry'));
   }
 
   async function request(method, path, body) {
@@ -116,6 +122,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
   async function loadQueue(reset = true) {
     if (!isCurrent()) return;
     const requestNumber = ++listRequest;
+    let succeeded = false;
     const offset = reset ? 0 : nextOffset;
     if (offset === null) return;
     const query = reset ? search.value.trim() : appliedSearch;
@@ -123,12 +130,12 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
     if (reset) {
       appliedSearch = query;
       appliedStatus = filter;
-      items = [];
-      nextOffset = null;
-      renderQueue();
+      // Keep the last successful queue visible until its replacement arrives.
+      list.setAttribute('aria-busy', 'true');
     }
     more.disabled = true;
     clearFilters.hidden = true;
+    retry.hidden = true;
     setListStatus('loading');
     try {
       const params = new URLSearchParams({
@@ -137,6 +144,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
       if (filter) params.set('status', filter);
       const result = await request('GET', `/api/v1/seller/orders?${params}`);
       if (!isCurrent() || requestNumber !== listRequest) return;
+      succeeded = true;
       items = reset ? result.items : [...items, ...result.items];
       nextOffset = result.nextOffset;
       renderQueue();
@@ -144,9 +152,9 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
       setListStatus(items.length ? '' : hasCriteria ? 'noMatchingOrders' : mode === 'review' ? 'noPendingOrders' : 'noOrders');
       clearFilters.hidden = Boolean(items.length) || !hasCriteria;
     } catch (error) {
-      if (isCurrent() && requestNumber === listRequest && error.status !== 401) setListStatus('networkError');
+      if (isCurrent() && requestNumber === listRequest && error.status !== 401) { setListStatus('networkError'); retry.hidden = false; }
     } finally {
-      if (isCurrent() && requestNumber === listRequest) more.disabled = false;
+      if (isCurrent() && requestNumber === listRequest) { more.disabled = !succeeded; list.setAttribute('aria-busy', 'false'); }
     }
   }
 
@@ -195,6 +203,20 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
     const head = node('div', 'order-detail-head');
     head.append(node('strong', 'order-number', order.orderNo), node('span', `order-chip ${order.status.toLowerCase()}`, t(statusKey(order.status))));
     fragment.append(head);
+    const documentActions = node('div', 'order-document-actions');
+    for (const kind of order.status === 'CONFIRMED' ? ['summary', 'packing'] : ['summary']) {
+      const button = actionButton(t(kind === 'packing' ? 'packingSheet' : 'orderDocument'), async () => {
+        const requestNumber = ++documentRequest; const id = order.id; button.disabled = true;
+        try {
+          const fresh = await request('GET', `/api/v1/seller/orders/${encodeURIComponent(id)}`);
+          if (!isCurrent() || requestNumber !== documentRequest || selectedId !== id) return;
+          documents.open(fresh, kind, shopName, button);
+        } catch (error) { if (isCurrent() && error.status !== 401) setMessage('documentFailed'); }
+        finally { if (button.isConnected) button.disabled = false; }
+      });
+      documentActions.append(button);
+    }
+    fragment.append(documentActions);
     if (order.simulation) fragment.append(node('p', 'order-simulation-notice', t('orderSimulationNotice')));
     fragment.append(detailGroup('orderSummary', [
       detailField('orderTotal', formatMoney(order.totalMinor, order.currency), false),
@@ -315,6 +337,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
 
   find('#order-filter').addEventListener('submit', (event) => {
     event.preventDefault();
+    ++detailRequest; ++documentRequest;
     selectedId = null;
     selectedOrder = null;
     root.classList.remove('order-show-detail');
@@ -328,6 +351,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
     find('#order-filter').requestSubmit();
     search.focus();
   });
+  retry.addEventListener('click', () => loadQueue());
   more.addEventListener('click', () => loadQueue(false));
   back.addEventListener('click', () => {
     root.classList.remove('order-show-detail');
@@ -374,19 +398,18 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
       const updated = await request('POST', `/api/v1/seller/orders/${encodeURIComponent(id)}/${action}`, body);
       if (!isCurrent()) return;
       dialog.close();
-      selectedOrder = updated;
-      renderDetail();
+      if (selectedId === id) { selectedOrder = updated; renderDetail(); }
       setMessage(action === 'confirm' ? 'orderConfirmed' : 'orderRejected');
       await loadQueue();
     } catch (error) {
       if (!isCurrent() || error.status === 401) return;
       if (error.status === 409 && error.code === 'STALE_REVISION') {
         dialog.close();
-        await Promise.all([loadQueue(), openOrder(id)]);
+        await Promise.all([loadQueue(), ...(selectedId === id ? [openOrder(id)] : [])]);
         setMessage('orderChanged');
       } else if (!error.status) {
         dialog.close();
-        await Promise.all([loadQueue(), openOrder(id)]);
+        await Promise.all([loadQueue(), ...(selectedId === id ? [openOrder(id)] : [])]);
         setMessage('decisionUnknown');
       } else {
         setDialogError(error.field === 'reason' ? 'reasonRequired' : 'decisionFailed');
@@ -397,11 +420,13 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
     }
   });
 
+  request('GET', '/api/v1/shop').then(setup => { if (isCurrent()) shopName = setup.shopName || ''; }).catch(() => {});
   loadQueue();
   return {
     mode,
     dispose() {
       active = false;
+      ++documentRequest; documents.dispose();
       root.classList.remove('order-show-detail');
       window.removeEventListener('offline', onOffline);
       window.removeEventListener('online', onOnline);

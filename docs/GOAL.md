@@ -35,3 +35,7 @@ Payment, GST calculation, customer accounts, contact verification, cross-device 
 - Default to MYR while allowing MYR and SGD product prices. A checkout contains one currency, with no conversion, shipping-charge or logistics calculation. Collect destination addresses for seller review without a delivery-area promise. Accept bounded base64 product images through the seller API. Optional prior phone/address suggestions stay on the same browser with a clear control.
 - Update design, API, tasks, progress, and this goal when decisions or implemented behavior change.
 - Resolve the open HTTPS-host, contact-retention, backup and recovery choices in [TASK.md](TASK.md) before a real-data release.
+
+## 2026-09-30 seller completion milestone
+
+The owner approved testing and completing the current single-store buyer/seller loop. Seller order summary and confirmed-order per-destination packing sheets support browser Print / Save as PDF from current authenticated snapshots. These documents are not tax invoices, payment receipts or carrier labels. No new shipping statuses, payment integration or real order writes are included in release verification. See [seller acceptance gates](SELLER_ACCEPTANCE.md).
