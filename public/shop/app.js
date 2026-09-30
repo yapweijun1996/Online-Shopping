@@ -1047,7 +1047,7 @@ async function goHome(event) {
   category.value = ''; renderCategories();
   catalogScroll = 0;
   const url = new URL(location.href); url.searchParams.delete('search'); url.searchParams.delete('category'); url.hash = '#catalog';
-  history[replaceEntry === true ? 'replaceState' : 'pushState'](null, '', url); showRoute();
+  history.pushState(null, '', url); showRoute();
   mobileNavigation.route(); window.scrollTo(0, 0);
   const view = byId('catalog-view');
   if (!matchMedia('(prefers-reduced-motion: reduce)').matches) view.animate([{ opacity: 0.5 }, { opacity: 1 }], { duration: 180 });
