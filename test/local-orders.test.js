@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createLocalOrderStore, ORDER_RETENTION_MS, ORDER_CLOCK_SKEW_MS } from '../public/shop/local-orders.js';
+import { createLocalOrderStore, ORDER_RETENTION_MS, ORDER_CLOCK_SKEW_MS, safeOrderImage } from '../public/shop/local-orders.js';
 
 const submittedAt = '2026-09-29T00:00:00.000Z';
 const receipt = { orderNo: 'DEMO-00000001', currency: 'MYR', totalMinor: 250,
@@ -68,4 +68,15 @@ test('local orders expire at 90 days and reject invalid records', async () => {
   assert.equal(JSON.stringify(restored.list()).includes('buyerPhone'), false);
   await restored.save({ ...receipt, orderNo: 'DEMO-00000002', submittedAt: new Date(now + ORDER_CLOCK_SKEW_MS + 1).toISOString() }, items);
   assert.equal(restored.list().length, 1);
+});
+
+test('optional order image snapshots allow only public shop product image paths', async () => {
+  const imageUrl = '/api/v1/products/12345678-1234-1234-1234-123456789abc/image?v=abc123';
+  assert.equal(safeOrderImage(imageUrl), imageUrl);
+  for (const value of ['https://external.example/pixel', 'javascript:alert(1)', '//external/pixel', '/api/v1/seller/products/x/image', '/api/v1/products/x/image', imageUrl + '&token=secret']) assert.equal(safeOrderImage(value), null);
+  const store = await createLocalOrderStore(null, () => Date.parse(submittedAt));
+  await store.save(receipt, [{ ...items[0], imageUrl }]);
+  assert.equal(store.list()[0].items[0].imageUrl, imageUrl);
+  await store.save(receipt, [{ ...items[0], imageUrl: 'https://external.example' }]);
+  assert.equal(store.list()[0].items[0].imageUrl, undefined);
 });

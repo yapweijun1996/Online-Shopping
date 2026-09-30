@@ -6,6 +6,10 @@ export { ORDER_RETENTION_MS };
 export const ORDER_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const statuses = new Set(['SUBMITTED', 'CONFIRMED', 'REJECTED']);
 
+export function safeOrderImage(value) {
+  return typeof value === 'string' && /^\/api\/v1\/products\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/image(?:\?v=[0-9a-z]+)?$/i.test(value) ? value : null;
+}
+
 function normalizeOrder(receipt, items = [], accessKey = receipt?.statusAccessKey) {
   if (!receipt || !/^(?:OS|DEMO)-\d{8,}$/.test(receipt.orderNo) ||
       !['MYR', 'SGD'].includes(receipt.currency) ||
@@ -19,7 +23,7 @@ function normalizeOrder(receipt, items = [], accessKey = receipt?.statusAccessKe
         !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 100 ||
         !Number.isSafeInteger(item.unitPriceMinor) || item.unitPriceMinor < 0) return null;
     lines.push({ productId: item.productId, name: item.name, quantity: item.quantity,
-      unitPriceMinor: item.unitPriceMinor });
+      unitPriceMinor: item.unitPriceMinor, ...(safeOrderImage(item.imageUrl) ? { imageUrl: safeOrderImage(item.imageUrl) } : {}) });
   }
   const statusAccessKey = typeof accessKey === 'string' && statusAccessKeyPattern.test(accessKey) ? accessKey : null;
   const status = statusAccessKey && statuses.has(receipt.status) ? receipt.status : null;

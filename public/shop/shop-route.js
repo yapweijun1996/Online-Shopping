@@ -5,16 +5,24 @@ export function productHash(id) {
   return `#product/${id.toLowerCase()}`;
 }
 
-export function orderHash(orderNo) {
+export function orderHash(orderNo, filter = '') {
   if (typeof orderNo !== 'string' || !/^(?:OS|DEMO)-\d{8,}$/.test(orderNo)) throw new TypeError('Invalid order number.');
-  return `#orders/${orderNo}`;
+  return `#orders/${orderNo}${orderFilterSuffix(filter)}`;
 }
+
+function orderFilterSuffix(filter) { return ['SUBMITTED', 'CONFIRMED', 'REJECTED'].includes(filter) ? `?status=${filter}` : ''; }
+export function ordersHash(filter = '') { return `#orders${orderFilterSuffix(filter)}`; }
 
 export function readShopRoute(hash) {
   const value = hash.replace(/^#/, '');
-  if (value.startsWith('orders/')) {
-    const id = value.slice(7);
-    return { page: 'orders', id: /^(?:OS|DEMO)-\d{8,}$/.test(id) ? id : null };
+  const [orderPath, search = ''] = value.split('?');
+  if (orderPath === 'orders' || orderPath.startsWith('orders/')) {
+    const params = new URLSearchParams(search);
+    const safeParams = [...params.keys()].every(key => key === 'status');
+    const candidate = params.get('status');
+    const filter = ['SUBMITTED', 'CONFIRMED', 'REJECTED'].includes(candidate) ? candidate : '';
+    const id = orderPath.slice(7);
+    return { page: 'orders', id: safeParams && /^(?:OS|DEMO)-\d{8,}$/.test(id) ? id : null, ...(filter ? { filter } : {}) };
   }
   if (value.startsWith('product/')) {
     const id = value.slice('product/'.length);

@@ -130,7 +130,7 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
     }
     const submittedItems = cartItems.map(({ productId, quantity }) => ({ productId, quantity }));
     const orderItems = cartItems.map(({ productId, quantity, product }) => ({
-      productId, name: product.name, quantity, unitPriceMinor: product.priceMinor,
+      productId, name: product.name, quantity, unitPriceMinor: product.priceMinor, imageUrl: product.imageUrl,
     }));
     const serialized = JSON.stringify(payload);
     if (!pendingIntent || pendingIntent.serialized !== serialized) {

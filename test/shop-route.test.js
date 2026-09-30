@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { productHash, orderHash, readShopRoute } from '../public/shop/shop-route.js';
+import { productHash, orderHash, ordersHash, readShopRoute } from '../public/shop/shop-route.js';
 
 test('shareable product routes round-trip and reject malformed API identifiers', () => {
   const id = 'ABCD1234-1234-1234-1234-123456789ABC';
@@ -33,4 +33,12 @@ test('order detail routes accept only bounded public order identifiers', () => {
     assert.throws(() => orderHash(id));
     assert.deepEqual(readShopRoute(`#orders/${id}`), { page: 'orders', id: null });
   }
+});
+
+test('order status filters round-trip through list and detail without inventing states', () => {
+  for (const filter of ['SUBMITTED', 'CONFIRMED', 'REJECTED']) {
+    assert.equal(readShopRoute(ordersHash(filter)).filter, filter);
+    assert.deepEqual(readShopRoute(orderHash('DEMO-00000001', filter)), { page: 'orders', id: 'DEMO-00000001', filter });
+  }
+  assert.equal(readShopRoute('#orders?status=DELIVERED').filter, undefined);
 });

@@ -5,7 +5,7 @@ import { mountProfile } from './profile.js';
 import { createCartSelection } from './cart-selection.js';
 import { createContactHistory } from './history.js';
 import { mountProductDetail } from './product-detail.js';
-import { productHash, orderHash, readShopRoute, readCatalogFilters, catalogFilterURL } from './shop-route.js';
+import { productHash, orderHash, ordersHash, readShopRoute, readCatalogFilters, catalogFilterURL } from './shop-route.js';
 import { formatDate, formatMoney, setupLanguageMenu, t, translate } from '../shared/i18n.js';
 import { createCartStore, resolveCartSnapshot } from './cart.js';
 import { mountCheckout } from './checkout.js';
@@ -683,50 +683,79 @@ let ordersScroll = 0;
 let previousOrderId = null;
 function drawLocalOrders(orders) {
   const list = byId('local-orders-list');
-  const selectedId = readShopRoute(location.hash).id;
+  const { id: selectedId, filter = '' } = readShopRoute(location.hash);
+  const filters = byId('order-filters'); const focusedFilter = filters.contains(document.activeElement) ? document.activeElement.hash : null; filters.hidden = Boolean(selectedId);
+  filters.replaceChildren();
+  for (const state of ['', 'SUBMITTED', 'CONFIRMED', 'REJECTED']) {
+    const link = element('a', 'order-filter', state ? t(`status${state[0]}${state.slice(1).toLowerCase()}`) : t('allOrders'));
+    link.href = ordersHash(state); link.setAttribute('aria-current', state === filter ? 'page' : 'false');
+    link.addEventListener('click', () => { ordersScroll = 0; previousOrderId = null; }); filters.append(link);
+  }
+  if (focusedFilter) [...filters.querySelectorAll('a')].find(link => link.hash === focusedFilter)?.focus({ preventScroll: true });
   const focused = list.contains(document.activeElement) ? document.activeElement.dataset.orderNo : null;
   const backFocused = document.activeElement?.classList.contains('order-back');
   const titleFocused = document.activeElement?.matches('.order-detail h2');
   list.replaceChildren();
   if (selectedId) {
-    const back = element('a', 'outline-button order-back', t('backToOrders')); back.href = '#orders'; list.append(back);
+    const back = element('a', 'outline-button order-back', t('backToOrders')); back.href = ordersHash(filter); list.append(back);
     const order = orders.find(item => item.orderNo === selectedId);
     if (!order) { list.append(element('p', 'local-orders-empty', t('orderNotOnDevice'))); return; }
     const detail = element('article', 'local-order-card order-detail');
     const title = element('h2', '', `${t('orderDetails')}: ${order.orderNo}`); title.tabIndex = -1;
-    detail.append(title); appendOrderSummary(detail, order);
+    detail.append(title, orderStatusBadge(order));
     detail.append(element('h3', '', t('localOrderItems')));
     if (order.items.length) {
       const items = element('ul', 'local-order-items');
       for (const item of order.items) {
         const row = element('li');
-        row.append(element('span', '', `${item.name} × ${item.quantity}`), element('strong', '', formatMoney(item.unitPriceMinor * item.quantity, order.currency)));
+        row.append(orderThumbnail(item), element('span', '', `${item.name} × ${item.quantity}`), element('strong', '', formatMoney(item.unitPriceMinor * item.quantity, order.currency)));
         items.append(row);
       }
       detail.append(items);
     } else detail.append(element('p', 'shop-note', t('localOrderItemsUnavailable')));
+    const total = element('div', 'order-detail-total'); total.append(element('span', '', t('orderTotal')), element('strong', 'local-order-total', formatMoney(order.totalMinor, order.currency))); detail.append(total);
+    appendOrderSummary(detail, order, false);
     list.append(detail);
     if (backFocused) back.focus({ preventScroll: true });
     if (titleFocused) title.focus({ preventScroll: true });
     return;
   }
   if (!orders.length) { list.append(element('p', 'local-orders-empty', t('noLocalOrders'))); return; }
-  for (const order of orders) {
-    const card = element('a', 'local-order-card order-list-link'); card.href = orderHash(order.orderNo); card.dataset.orderNo = order.orderNo;
+  const visibleOrders = orders.filter(order => !filter || order.status === filter);
+  if (!visibleOrders.length) list.append(element('p', 'local-orders-empty', t('noOrdersInStatus')));
+  for (const order of visibleOrders) {
+    const card = element('a', 'local-order-card order-list-link'); card.href = orderHash(order.orderNo, filter); card.dataset.orderNo = order.orderNo;
     card.setAttribute('aria-label', `${t('orderDetails')}: ${order.orderNo}`);
     const heading = element('div', 'local-order-heading');
-    heading.append(element('h2', '', order.orderNo), element('strong', 'local-order-total', formatMoney(order.totalMinor, order.currency)));
-    card.append(heading); appendOrderSummary(card, order, false);
+    heading.append(element('h2', 'order-number', order.orderNo), orderStatusBadge(order));
+    card.append(heading);
+    const preview = element('div', 'order-preview');
+    const item = order.items[0]; const summary = element('div', 'order-preview-copy');
+    summary.append(element('strong', 'order-item-name', item?.name || t('localOrderItemsUnavailable')));
+    if (item) summary.append(element('span', 'shop-note', `${t('quantity')}: ${order.items.reduce((sum, line) => sum + line.quantity, 0)}`));
+    preview.append(orderThumbnail(item), summary); card.append(preview);
+    const footer = element('div', 'order-card-footer'); footer.append(element('span', 'shop-note', formatDate(order.submittedAt)), element('strong', 'local-order-total', formatMoney(order.totalMinor, order.currency))); card.append(footer);
+    if (order.simulation) card.append(element('p', 'shop-note', t('localDemoOrder')));
     card.append(element('span', 'order-details-action', `${t('orderDetails')} ›`));
     card.addEventListener('click', () => { ordersScroll = window.scrollY; });
     list.append(card);
   }
   if (focused) [...list.querySelectorAll('[data-order-no]')].find(el => el.dataset.orderNo === focused)?.focus({ preventScroll: true });
 }
+function orderStatusBadge(order) {
+  const badge = element('p', 'order-status-badge', order.status ? t(`status${order.status[0]}${order.status.slice(1).toLowerCase()}`) : t('olderOrderStatusUnavailable'));
+  badge.dataset.status = order.status || 'unknown'; return badge;
+}
+function orderThumbnail(item) {
+  const box = element('span', 'order-thumbnail'); box.setAttribute('aria-hidden', 'true');
+  box.textContent = '▧';
+  if (item?.imageUrl) { const img = element('img'); img.alt = ''; img.loading = 'lazy'; img.src = item.imageUrl; img.addEventListener('error', () => img.remove()); box.append(img); }
+  return box;
+}
 function appendOrderSummary(card, order, total = true) {
   if (total) card.append(element('strong', 'local-order-total', formatMoney(order.totalMinor, order.currency)));
   card.append(element('p', 'shop-note', `${t('submittedAt')}: ${formatDate(order.submittedAt)}`));
-  card.append(element('p', 'shop-note', order.status ? `${t('orderStatus')}: ${t(`status${order.status[0]}${order.status.slice(1).toLowerCase()}`)}` : t('olderOrderStatusUnavailable')));
+  if (total) card.append(element('p', 'shop-note', order.status ? `${t('orderStatus')}: ${t(`status${order.status[0]}${order.status.slice(1).toLowerCase()}`)}` : t('olderOrderStatusUnavailable')));
   if (order.status && order.statusUpdatedAt !== order.submittedAt) card.append(element('p', 'shop-note', `${t('updatedAt')}: ${formatDate(order.statusUpdatedAt)}`));
   if (order.simulation) card.append(element('p', 'shop-note', t('localDemoOrder')));
 }
