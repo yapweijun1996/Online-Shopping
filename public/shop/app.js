@@ -179,7 +179,14 @@ function renderCategories() {
     const button = element('button', 'category-option');
     button.type = 'button';
     button.setAttribute('aria-pressed', String(category.value === value));
-    const symbol = element('span', 'category-symbol', value ? value.slice(0, 1).toLocaleUpperCase() : '✦');
+    const symbol = element('span', 'category-symbol');
+    const paths = !value ? 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z'
+      : /waste|bag/i.test(value) ? 'M7 7h10l2 13H5L7 7Zm2 0V4h6v3'
+      : /odor/i.test(value) ? 'M12 3v4M12 17v4M3 12h4M17 12h4M6 6l3 3M15 15l3 3M6 18l3-3M15 9l3-3'
+      : /accessor/i.test(value) ? 'm14 4 6 6-5 5-3-3-6 6-3-3 6-6-3-3 5-5 3 3Z'
+      : /automatic/i.test(value) ? 'M5 20V8a7 7 0 0 1 14 0v12H5Zm4 0v-6a3 3 0 0 1 6 0v6M9 7h6'
+      : 'M4 9h16l-2 11H6L4 9Zm3-4h10M9 5v4M15 5v4';
+    symbol.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${paths}"/></svg>`;
     symbol.setAttribute('aria-hidden', 'true');
     button.append(symbol, element('span', '', value || t('allCategories')));
     button.addEventListener('click', () => {
@@ -216,6 +223,7 @@ function renderCatalog(startIndex = 0) {
     (catalogHasError() && !retryCatalogReset);
   byId('catalog-count').textContent = products.length ? t('showingProducts').replace('{count}', String(products.length)) : '';
   const query = byId('catalog-search').value.trim();
+  byId('catalog-hero').hidden = Boolean(query || category.value) || shopInfo?.mode !== 'demo';
   byId('catalog-query').textContent = query ? t('searchResultsFor').replace('{query}', query) : '';
   byId('catalog-query').hidden = !query;
 }
@@ -247,6 +255,8 @@ async function loadCatalog(reset = true) {
     checkoutPage.setDemoMode(shop.mode === 'demo');
     byId('demo-banner').hidden = shop.mode !== 'demo';
     byId('catalog-shop-name').textContent = shop.shopName || '';
+    byId('shop-brand-name').textContent = (shop.shopName || t('shop')).replace(/\s+Pet Shop$/i, '');
+    byId('shop-brand-kind').hidden = shop.mode !== 'demo';
     if (request !== catalogRequest) return;
     const previousCount = products.length;
     products = reset ? data.items : [...products, ...data.items];
@@ -855,6 +865,11 @@ clearSearch.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5
 searchInput.after(clearSearch);
 function syncSearchClear() { clearSearch.hidden = !searchInput.value; }
 searchInput.addEventListener('input', syncSearchClear);
+searchInput.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && searchInput.value) {
+    event.preventDefault(); clearSearch.click();
+  }
+});
 syncSearchClear();
 category.addEventListener('change', applyCatalogFilters);
 byId('catalog-clear-filters').addEventListener('click', () => {

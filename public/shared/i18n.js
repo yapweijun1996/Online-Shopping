@@ -1465,6 +1465,17 @@ const cartWorkflowMessages = {
 };
 for (const { code } of languages) Object.assign(messages[code], cartWorkflowMessages[code]);
 
+const shopVisualMessages = {
+ en: { petShop: 'Pet shop', petCareEyebrow: 'For their everyday', petCareTitle: 'Cat-care essentials', petCareIntro: 'Explore litter, waste bags and everyday accessories.', referencePrice: 'Reference price', stockAndDelivery: 'Availability & delivery', demoAvailability: 'Demo catalog only. Stock and delivery are not offered through this simulation.', availabilityUnconfirmed: 'Stock and delivery availability have not been confirmed. Contact the shop before ordering.' },
+ ms: { petShop: 'Kedai haiwan', petCareEyebrow: 'Untuk setiap hari', petCareTitle: 'Keperluan penjagaan kucing', petCareIntro: 'Terokai pasir kucing, beg sisa dan aksesori harian.', referencePrice: 'Harga rujukan', stockAndDelivery: 'Stok & penghantaran', demoAvailability: 'Katalog demo sahaja. Simulasi ini tidak menawarkan stok atau penghantaran.', availabilityUnconfirmed: 'Stok dan penghantaran belum disahkan. Hubungi kedai sebelum memesan.' },
+ 'zh-Hans': { petShop: '宠物用品店', petCareEyebrow: '关爱每一天', petCareTitle: '猫咪清洁用品', petCareIntro: '浏览猫砂、垃圾袋与日常配件。', referencePrice: '参考价', stockAndDelivery: '库存与配送', demoAvailability: '仅示例目录；此模拟不提供真实库存或配送。', availabilityUnconfirmed: '库存和配送情况尚未确认，请在下单前联系商店。' },
+ vi: { petShop: 'Cửa hàng thú cưng', petCareEyebrow: 'Cho mỗi ngày', petCareTitle: 'Đồ chăm sóc mèo', petCareIntro: 'Khám phá cát vệ sinh, túi rác và phụ kiện hàng ngày.', referencePrice: 'Giá tham khảo', stockAndDelivery: 'Tình trạng & giao hàng', demoAvailability: 'Chỉ là danh mục demo. Mô phỏng không cung cấp hàng hoặc giao hàng.', availabilityUnconfirmed: 'Tình trạng hàng và giao hàng chưa được xác nhận. Liên hệ cửa hàng trước khi đặt.' },
+ th: { petShop: 'ร้านสัตว์เลี้ยง', petCareEyebrow: 'เพื่อทุกวันของพวกเขา', petCareTitle: 'ของใช้ดูแลแมว', petCareIntro: 'เลือกทรายแมว ถุงขยะ และอุปกรณ์ประจำวัน', referencePrice: 'ราคาอ้างอิง', stockAndDelivery: 'สินค้าและการจัดส่ง', demoAvailability: 'เป็นแคตตาล็อกสาธิตเท่านั้น ไม่มีสินค้าหรือการจัดส่งจริงในการจำลองนี้', availabilityUnconfirmed: 'ยังไม่ได้ยืนยันสินค้าและการจัดส่ง กรุณาติดต่อร้านก่อนสั่งซื้อ' },
+ ja: { petShop: 'ペットショップ', petCareEyebrow: '毎日のために', petCareTitle: '猫のお手入れ用品', petCareIntro: '猫砂、ごみ袋、日用品を探す。', referencePrice: '参考価格', stockAndDelivery: '在庫と配送', demoAvailability: 'デモカタログのみです。このシミュレーションでは在庫や配送を提供しません。', availabilityUnconfirmed: '在庫と配送は未確認です。注文前に店舗にお問い合わせください。' },
+ ko: { petShop: '반려동물 용품점', petCareEyebrow: '매일의 돌봄을 위해', petCareTitle: '고양이 관리 용품', petCareIntro: '모래, 쓰레기 봉투와 일상 용품을 살펴보세요.', referencePrice: '참고 가격', stockAndDelivery: '재고 및 배송', demoAvailability: '데모 카탈로그입니다. 이 시뮬레이션에서는 실제 재고나 배송을 제공하지 않습니다.', availabilityUnconfirmed: '재고와 배송은 확인되지 않았습니다. 주문 전에 매장에 문의하세요.' }
+};
+for (const { code } of languages) Object.assign(messages[code], shopVisualMessages[code]);
+
 let current = 'en';
 try {
   const saved = localStorage.getItem('online-shopping-language');

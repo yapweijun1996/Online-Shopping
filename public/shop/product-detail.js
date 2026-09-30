@@ -71,7 +71,7 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     back.append(backIcon, node('span', '', t('continueShopping')));
     const navigation = node('nav', 'product-navigation');
     navigation.setAttribute('aria-label', t('productNavigation'));
-    navigation.append(back);
+    navigation.append(back, node('span', 'product-navigation-title', t('productInformation')));
     root.append(navigation);
     if (!product) {
       document.title = `${t(errorKey || 'viewDetails')} · ${shop()?.shopName || t('shop')}`;
@@ -122,7 +122,7 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     imageButton.append(mainImage, zoomCue);
     const imageCount = node('span', 'image-count', `${activeImageIndex + 1} / ${images.length}`);
     imageCount.setAttribute('aria-hidden', 'true');
-    if (images.length > 1) imageButton.append(imageCount);
+    if (images.length) imageButton.append(imageCount);
     gallery.append(imageButton);
     if (images.length > 1) {
       const photoStatus = node('span', 'sr-only');
@@ -201,7 +201,7 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     const title = node('h1', '', product.name);
     title.id = 'detail-title'; title.tabIndex = -1;
     const headingBlock = node('div', 'product-heading-block');
-    headingBlock.append(node('strong', 'product-price', formatMoney(product.priceMinor, product.currency)),
+    headingBlock.append(node('span', 'product-price-label', t(shop()?.mode === 'demo' ? 'referencePrice' : 'unitPrice')), node('strong', 'product-price', formatMoney(product.priceMinor, product.currency)),
       title);
     const selectionBlock = node('div', 'product-selection-block');
     if (product.variants?.length > 1) {
@@ -381,8 +381,8 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     const demo = shop()?.mode === 'demo';
     const serviceDetails = node('div', 'product-service-details');
     const serviceRows = demo
-      ? [['demoOrderInformation', 'demoBrief']]
-      : [['shipping', 'shippingUnconfirmed'], ['returnsAndGuarantees', 'returnsUnconfirmed']];
+      ? [['stockAndDelivery', 'demoAvailability'], ['demoOrderInformation', 'demoBrief']]
+      : [['stockAndDelivery', 'availabilityUnconfirmed'], ['shipping', 'shippingUnconfirmed'], ['returnsAndGuarantees', 'returnsUnconfirmed']];
     for (const [heading, copy] of serviceRows) {
       const section = node('details', 'product-service-row');
       section.append(node('summary', '', t(heading)), node('p', '', t(copy)));
