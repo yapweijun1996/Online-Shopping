@@ -736,7 +736,7 @@ function showRoute() {
   requestAnimationFrame(() => revealAccountLink(document.querySelector('.account-sidebar a[aria-current=page]')));
   document.body.dataset.shopRoute = route;
   requestAnimationFrame(measureActionbar);
-  for (const [hash, active] of [['#catalog', catalogRoute], ['#cart', route === 'cart']]) {
+  for (const [hash, active] of [['#cart', route === 'cart']]) {
     const link = document.querySelector(`.shop-nav a[href="${hash}"]`);
     if (active) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');

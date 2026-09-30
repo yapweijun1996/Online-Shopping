@@ -2,7 +2,7 @@ importScripts('/shared/sw-core.js');
 
 self.setupOfflineWorker({
   cachePrefix: 'os-shop',
-  version: 'v81',
+  version: 'v82',
   scopePath: '/shop/',
   offlinePage: '/shop/offline.html',
   assets: [
