@@ -780,3 +780,23 @@ html.image-zoom-open{overflow:hidden}
 #local-orders-status:empty,#local-orders-sync-status:empty{display:none}
 .local-orders-toolbar:has(button[hidden]):has(.shop-note:empty){display:none}
 @media(max-width:480px){.local-order-card{padding:16px}.local-order-heading{gap:8px}.order-detail h2{font-size:18px}.order-detail .order-thumbnail{width:52px;height:52px}}
+
+/* Cohesive desktop utilities; mobile retains the search-only header. */
+@media(min-width:761px){
+ .shop-topbar{height:72px;min-height:72px;grid-template-columns:minmax(140px,auto) minmax(140px,1fr) auto auto auto;gap:12px;padding-inline:clamp(16px,3vw,48px)}
+ .shop-topbar .brand{max-width:320px}
+ .shop-topbar .brand-copy{min-width:0}.shop-topbar .brand-copy strong{display:block;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .shop-topbar .header-search{min-width:0;width:100%;max-width:650px;justify-self:center}
+ .shop-topbar .shop-nav a,.shop-topbar .language-trigger{display:inline-flex;align-items:center;justify-content:center;gap:7px;width:auto;min-width:44px;min-height:44px;height:44px;padding:8px 10px;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--ui-ink);font-size:14px;font-weight:600;line-height:1.2;white-space:nowrap}
+ .shop-topbar .shop-nav a:hover,.shop-topbar .language-trigger:hover,.shop-topbar .language-trigger[aria-expanded=true]{background:var(--ui-hover-surface);border-color:transparent}
+ .shop-topbar .shop-nav a:focus-visible,.shop-topbar .language-trigger:focus-visible,.shop-account nav a:focus-visible{outline:2px solid var(--ui-focus);outline-offset:-2px}
+ .shop-topbar .shop-nav svg,.shop-topbar .language-trigger svg{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+ .shop-topbar .language-trigger .utility-chevron{width:14px;height:14px}
+ .shop-topbar .utility-label{max-width:110px;overflow:hidden;text-overflow:ellipsis}
+ .shop-topbar .cart-count{font-size:11px;min-width:19px;padding:2px 5px;line-height:1.2}
+}
+@media(min-width:761px) and (max-width:1100px){
+ .shop-topbar .brand{max-width:190px}
+ .shop-topbar .brand-copy strong{max-width:150px}.shop-topbar .brand-paw{width:28px;height:28px}.shop-topbar .brand{gap:6px;font-size:15px}
+ .shop-topbar{gap:6px}.shop-topbar .utility-label{max-width:74px}.shop-topbar .shop-nav a,.shop-topbar .language-trigger{padding-inline:7px;font-size:13px}
+}

@@ -923,7 +923,7 @@ function applyCatalogFilters(replaceEntry = false) {
 }
 
 const mobileNavigation = mountMobileNavigation({ currentCategory: () => category.value, categories: () => categories, selectCategory(value) { category.value = value; renderCategories(); applyCatalogFilters(); } });
-setupLanguageMenu(document.getElementById('language'), { onOpen: mobileNavigation.openLanguage });
+setupLanguageMenu(document.getElementById('language'), { onOpen: mobileNavigation.openLanguage, showLabel: true });
 byId('catalog-search').placeholder = t('searchProducts');
 
 const [cartStore, openedOrderStore] = await Promise.all([createCartStore(), createLocalOrderStore()]);
@@ -1107,9 +1107,11 @@ function closeAccountMenu() { accountMenu.hidden = true; accountButton.setAttrib
 accountButton.addEventListener('click', () => {
   accountMenu.hidden = !accountMenu.hidden;
   accountButton.setAttribute('aria-expanded', String(!accountMenu.hidden));
+  if (!accountMenu.hidden) accountMenu.querySelector('a').focus();
 });
 document.addEventListener('click', (event) => { if (!event.target.closest('.shop-account')) closeAccountMenu(); });
 accountMenu.addEventListener('click', closeAccountMenu);
+window.addEventListener('hashchange', closeAccountMenu);
 document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !accountMenu.hidden) { closeAccountMenu(); accountButton.focus(); } });
 byId('settings-clear-history').addEventListener('click', () => {
   const history = createContactHistory(); history.clear();

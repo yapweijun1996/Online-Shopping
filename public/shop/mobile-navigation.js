@@ -24,7 +24,7 @@ export function mountMobileNavigation({ categories, selectCategory, currentCateg
     document.body.classList.remove('mobile-chrome-hidden');
   }
   function close() { modal.close(); reveal(); }
-  function open(kind) {
+  function open(kind, afterClose) {
     reveal(); modal.content.replaceChildren();
     const choices = document.createElement('div'); choices.className = 'mobile-nav-choices';
     const entries = kind === 'language' ? languages.map(item => ({ value: item.code, label: item.label })) : [{ value: '', label: t('allCategories') }, ...categories().map(value => ({ value, label: value }))];
@@ -40,7 +40,7 @@ export function mountMobileNavigation({ categories, selectCategory, currentCateg
       choices.append(button);
     }
     modal.content.append(choices);
-    modal.open(t(kind === 'language' ? 'selectLanguage' : 'category'), reveal);
+    modal.open(t(kind === 'language' ? 'selectLanguage' : 'category'), () => { reveal(); afterClose?.(); });
   }
   document.getElementById('mobile-language').addEventListener('click', () => open('language'));
   document.getElementById('mobile-category').addEventListener('click', () => open('category'));
@@ -77,5 +77,5 @@ export function mountMobileNavigation({ categories, selectCategory, currentCateg
   window.visualViewport?.addEventListener('resize', keyboard);
   document.addEventListener('focusin', keyboard);
   document.addEventListener('focusout', () => requestAnimationFrame(keyboard));
-  return { reveal, route, setAutoHide(value) { autoHide = value === true; reveal(); }, openLanguage: () => open('language') };
+  return { reveal, route, setAutoHide(value) { autoHide = value === true; reveal(); }, openLanguage: afterClose => open('language', afterClose) };
 }

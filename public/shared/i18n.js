@@ -1529,7 +1529,7 @@ export function setupLanguageSelect(select) {
   setLocale(current);
 }
 
-export function setupLanguageMenu(host, { onOpen } = {}) {
+export function setupLanguageMenu(host, { onOpen, showLabel = false } = {}) {
   const trigger = document.createElement('button');
   trigger.type = 'button';
   trigger.className = 'language-trigger';
@@ -1537,6 +1537,12 @@ export function setupLanguageMenu(host, { onOpen } = {}) {
   trigger.setAttribute('aria-haspopup', 'true');
   trigger.setAttribute('aria-expanded', 'false');
   trigger.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>';
+  let currentLabel;
+  if (showLabel) {
+    currentLabel = document.createElement('span'); currentLabel.className = 'utility-label language-current'; trigger.append(currentLabel);
+    const chevron = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); chevron.setAttribute('viewBox', '0 0 24 24'); chevron.setAttribute('aria-hidden', 'true'); chevron.classList.add('utility-chevron');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path'); path.setAttribute('d', 'm6 9 6 6 6-6'); chevron.append(path); trigger.append(chevron);
+  }
   const options = document.createElement('div');
   options.className = 'language-options';
   options.hidden = true;
@@ -1550,11 +1556,12 @@ export function setupLanguageMenu(host, { onOpen } = {}) {
     options.append(option);
   }
   function sync() {
+    if (currentLabel) { currentLabel.textContent = languages.find(({ code }) => code === current).label; currentLabel.title = currentLabel.textContent; }
     trigger.setAttribute('aria-label', `${t('selectLanguage')}: ${languages.find(({ code }) => code === current).label}`);
     for (const option of options.children) option.setAttribute('aria-current', String(option.lang === current));
   }
   trigger.addEventListener('click', () => {
-    if (onOpen) { onOpen(); return; }
+    if (onOpen) { trigger.setAttribute('aria-expanded', 'true'); onOpen(() => trigger.setAttribute('aria-expanded', 'false')); return; }
     options.hidden = !options.hidden;
     trigger.setAttribute('aria-expanded', String(!options.hidden));
     if (!options.hidden) options.querySelector('[aria-current="true"]').focus();
