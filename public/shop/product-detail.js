@@ -2,6 +2,7 @@ import { locale, t } from '../shared/i18n.js';
 import { formatCatalogPrice } from './catalog-presentation.js';
 const formatMoney = (minor, currency) => formatCatalogPrice(minor, currency, locale());
 import { productHash } from './shop-route.js';
+import { productShareURL, shareProduct } from './product-share.js';
 import { attachImageZoom } from './image-zoom.js';
 
 export function sellerChatURL(phone) {
@@ -372,13 +373,26 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     const shareStatus = node('p', 'shop-note'); shareStatus.setAttribute('role', 'status');
     const shareField = node('input', 'share-url'); shareField.readOnly = true; shareField.hidden = true;
     shareField.setAttribute('aria-label', t('productLink'));
-    const share = button(t('copyProductLink'), async () => {
-      const url = new URL(productHash(product.id), location.href).href;
-      try { await navigator.clipboard.writeText(url); shareStatus.textContent = t('linkCopied'); }
-      catch { shareField.value = url; shareField.hidden = false; shareField.focus(); shareField.select(); shareStatus.textContent = t('copyLinkHelp'); }
+    let sharing = false;
+    const share = button(t('shareProduct'), async () => {
+      if (sharing) return;
+      sharing = true; share.disabled = true; share.setAttribute('aria-busy', 'true');
+      shareStatus.textContent = ''; shareField.hidden = true;
+      const id = product.id;
+      const url = productShareURL(id, location.href);
+      const isCurrent = () => share.isConnected && !root.hidden && location.hash === productHash(id);
+      const result = await shareProduct({ title: product.name, url }, navigator, isCurrent);
+      if (result && isCurrent()) {
+        shareStatus.textContent = t(result);
+        if (result === 'copyLinkHelp') {
+          shareField.value = url; shareField.hidden = false; shareField.focus(); shareField.select();
+        }
+      }
+      sharing = false; share.disabled = false; share.removeAttribute('aria-busy');
     }, 'text-button');
     share.className = 'product-share';
-    share.setAttribute('aria-label', t('copyProductLink'));
+    share.setAttribute('aria-label', t('shareProduct'));
+    share.title = t('shareProduct');
     share.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12.5 16 8M8 11.5l8 4.5"/><circle cx="6" cy="12" r="2"/><circle cx="18" cy="7" r="2"/><circle cx="18" cy="17" r="2"/></svg>';
     const cartNavigation = link('', '#cart', 'product-nav-cart');
     cartNavigation.setAttribute('aria-label', t('viewCart'));

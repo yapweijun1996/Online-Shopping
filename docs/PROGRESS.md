@@ -337,3 +337,9 @@ Deployed Worker `3bd93955-ef88-4995-9fee-9e77bc1635f1` (Shop v38, Seller v42). L
 - Desktop title, reference price, actual SKU/category and purchase controls form one aligned summary; gallery uses 42/58 columns (38/62 on tablets). Mobile sticky controls remain 52px. MYR formatting matches catalog RM presentation without changing minor-unit amounts.
 - 107 automated tests, syntax, Worker dry-run, dependency audit (zero vulnerabilities), and diff checks passed. Browser layout checks passed at 320/375/393/430/761/820/980/1099/1100/1280/1440/1920; seven-locale checks and cart quantity/search/zoom/checkout/order error regressions passed.
 - Screenshots use real catalog images. Chromium automated checks do not establish physical iOS/Safari behavior. No real orders, payments or messages were created. Seller v77 unchanged.
+
+
+## Shop v99 product sharing
+- The share-shaped control previously only copied a link (confirmed on the exact reported public product with intercepted APIs). It now invokes native Web Share directly under click activation where available, otherwise copies the canonical query-free product URL. Native cancellation does not copy; clipboard denial exposes a selected manual-copy field. Native completion copy is deliberately not a delivery guarantee.
+- Pending clicks are serialized; route interruption suppresses stale feedback/fallback. Seven locales include accessible labels and honest completion/cancel copy. The new module is offline cached.
+- 113 tests and syntax/Worker dry-run passed. Browser checks at 320/375/393/430/1280/1920 passed native activation, capability fallback, cancel, denied clipboard/manual copy, repeated click and route interruption with all external calls intercepted. Physical native OS sharing panels remain untested.
