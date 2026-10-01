@@ -331,3 +331,9 @@ Deployed Worker `3bd93955-ef88-4995-9fee-9e77bc1635f1` (Shop v38, Seller v42). L
 
 - User-requested six cards per row from 1280px; five at1180–1279px, four at1000–1179px, three at761–999px and two on mobile. Existing typography/image fitting/header/price hierarchy retained. Shop cache v97.
 - Local107tests/check/Worker/audit pass; breakpoint edges including1279/1280, seven locale utilities, non-pet long labels/high prices/missing images, category touch/keyboard/URL/back scroll, search, stable cart and product zoom passed. No customer writes.
+
+
+## Shop v98 desktop product hierarchy
+- Desktop title, reference price, actual SKU/category and purchase controls form one aligned summary; gallery uses 42/58 columns (38/62 on tablets). Mobile sticky controls remain 52px. MYR formatting matches catalog RM presentation without changing minor-unit amounts.
+- 107 automated tests, syntax, Worker dry-run, dependency audit (zero vulnerabilities), and diff checks passed. Browser layout checks passed at 320/375/393/430/761/820/980/1099/1100/1280/1440/1920; seven-locale checks and cart quantity/search/zoom/checkout/order error regressions passed.
+- Screenshots use real catalog images. Chromium automated checks do not establish physical iOS/Safari behavior. No real orders, payments or messages were created. Seller v77 unchanged.

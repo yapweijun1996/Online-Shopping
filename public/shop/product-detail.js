@@ -1,4 +1,6 @@
-import { formatMoney, t } from '../shared/i18n.js';
+import { locale, t } from '../shared/i18n.js';
+import { formatCatalogPrice } from './catalog-presentation.js';
+const formatMoney = (minor, currency) => formatCatalogPrice(minor, currency, locale());
 import { productHash } from './shop-route.js';
 import { attachImageZoom } from './image-zoom.js';
 
@@ -207,8 +209,11 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     const title = node('h1', '', product.name);
     title.id = 'detail-title'; title.tabIndex = -1;
     const headingBlock = node('div', 'product-heading-block');
-    headingBlock.append(node('span', 'product-price-label', t(shop()?.mode === 'demo' ? 'referencePrice' : 'unitPrice')), node('strong', 'product-price', formatMoney(product.priceMinor, product.currency)),
-      title);
+    const priceBlock = node('div', 'product-price-block');
+    priceBlock.append(node('span', 'product-price-label', t(shop()?.mode === 'demo' ? 'referencePrice' : 'unitPrice')), node('strong', 'product-price', formatMoney(product.priceMinor, product.currency)));
+    const keyDetails = node('dl', 'product-key-details');
+    for (const [label, value] of [[t('sku'), product.sku], [t('category'), product.category]]) keyDetails.append(node('dt', '', label), node('dd', '', value));
+    headingBlock.append(title, priceBlock, keyDetails);
     const selectionBlock = node('div', 'product-selection-block');
     if (product.variants?.length > 1) {
       const variants = node('div', 'product-variants');
