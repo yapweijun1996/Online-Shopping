@@ -22,7 +22,7 @@ export function attachImageZoom(dialog, image, trigger, closeButton) {
   let active = false, entry, scrollY = 0, returning = false, failed = false;
   let swipe = () => {};
   function apply(scale = state.scale, x = state.x, y = state.y) {
-    state = boundedZoom(scale, x, y, stage.clientWidth, stage.clientHeight);
+    state = boundedZoom(failed ? 1 : scale, failed ? 0 : x, failed ? 0 : y, stage.clientWidth, stage.clientHeight);
     image.style.transform = `translate(${state.x}px,${state.y}px) scale(${state.scale})`;
     stage.dataset.zoomed = String(state.scale > 1);
     status.textContent = `${Math.round(state.scale * 100)}%`;

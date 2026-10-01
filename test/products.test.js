@@ -182,6 +182,14 @@ test('seller-managed gallery is bounded, private while inactive, and removable',
     assert.equal(deleted.response.status, 200);
     assert.equal(deleted.data.images.length, 1);
     assert.equal((await fetch(`${f.origin}${publicPath}`)).status, 404);
+    for (let index = 0; index < 9; index++) {
+      const photo = await f.request('POST', `/api/v1/seller/products/${id}/gallery`, { imageDataUrl }, headers);
+      assert.equal(photo.response.status, 201);
+      assert.equal(photo.data.images.length, index + 2);
+    }
+    const overflow = await f.request('POST', `/api/v1/seller/products/${id}/gallery`, { imageDataUrl }, headers);
+    assert.equal(overflow.response.status, 400);
+    assert.equal((await f.request('GET', `/api/v1/products/${id}`)).data.images.length, 10);
   } finally { await f.close(); }
 });
 
