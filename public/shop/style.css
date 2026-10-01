@@ -864,3 +864,24 @@ h1,h2{letter-spacing:-.01em}
 .product-purchase .product-chat,.product-purchase .product-add{color:var(--ui-action,var(--ui-primary))}
 .product-purchase .product-add{border-color:var(--ui-action,var(--ui-primary))}
 .category-rail button[aria-pressed=true]{background:var(--ui-action,var(--ui-primary))}
+
+/* Desktop browsing density; retain the approved mobile two-column shell. */
+@media(min-width:761px){
+ .shop-main{max-width:1280px;padding-inline:24px}
+ .shop-topbar{padding-inline:max(24px,calc((100% - 1232px)/2));grid-template-columns:minmax(140px,310px) minmax(160px,1fr) auto auto auto}
+ .shop-topbar .brand{max-width:310px}.shop-topbar .brand-copy strong{max-width:262px}
+ .shop-topbar .header-search{background:var(--ui-surface);border:1px solid var(--ui-control-border);border-radius:10px}
+ .shop-topbar .header-search button[type=submit]{background:var(--ui-action,var(--ui-primary));color:white}
+ .shop-topbar .cart-count{min-width:22px;min-height:22px;font-size:12px;font-weight:700;background:var(--ui-action,var(--ui-primary));color:#fff}
+ .catalog-intro{margin-block:16px 8px}.catalog-intro h2{font-size:24px;line-height:30px}
+ .catalog-count{margin-top:4px;font-size:12px}
+ .category-rail{gap:8px;padding-block:6px;margin-bottom:16px}
+ .category-rail button{min-height:44px;padding:8px 12px;font-size:13px}
+ .catalog-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+ .catalog-card{border-radius:8px}.catalog-image{padding:8px;object-fit:contain}
+ .catalog-card-body{padding:10px;gap:6px}.catalog-card h3{font-size:14px;line-height:20px;height:40px;min-height:40px;font-weight:600}
+ .catalog-price{font-size:20px;line-height:26px;font-weight:700;color:var(--ui-action,var(--ui-primary))}
+}
+@media(min-width:1000px){.catalog-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(min-width:1180px){.catalog-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
+@media(min-width:761px) and (max-width:1000px){.shop-topbar{padding-inline:24px;grid-template-columns:minmax(120px,160px) minmax(140px,1fr) auto auto auto}.shop-topbar .brand-copy strong{max-width:116px}}

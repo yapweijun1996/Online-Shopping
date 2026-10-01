@@ -1,3 +1,4 @@
+import { categoryIconPath, formatCatalogPrice } from './catalog-presentation.js';
 import { mountShopUpdates } from './update-view.js';
 import { mountMobileNavigation } from './mobile-navigation.js';
 import { countryForCurrency, mountAddressBook } from './addresses.js';
@@ -6,7 +7,7 @@ import { createCartSelection } from './cart-selection.js';
 import { createContactHistory } from './history.js';
 import { mountProductDetail } from './product-detail.js';
 import { productHash, orderHash, ordersHash, readShopRoute, readCatalogFilters, catalogFilterURL } from './shop-route.js';
-import { formatDate, formatMoney, setupLanguageMenu, t, translate } from '../shared/i18n.js';
+import { formatDate, formatMoney, locale, setupLanguageMenu, t, translate } from '../shared/i18n.js';
 import { createCartStore, resolveCartSnapshot } from './cart.js';
 import { mountCheckout } from './checkout.js';
 import { createLocalOrderStore, isLocalOrderCurrent } from './local-orders.js';
@@ -184,7 +185,7 @@ function renderCategories() {
     button.type = 'button'; button.dataset.category = value;
     button.setAttribute('aria-pressed', String(category.value === value));
     const symbol = element('span', 'category-symbol');
-    const paths = 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z';
+    const paths = categoryIconPath(value);
     symbol.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${paths}"/></svg>`;
     symbol.setAttribute('aria-hidden', 'true');
     button.append(symbol, element('span', '', value || t('allCategories')));
@@ -218,8 +219,7 @@ function renderCatalog(startIndex = 0) {
     const body = element('div', 'catalog-card-body');
     const name = element('h3');
     const nameLink = element('a', 'product-name-link', product.name); nameLink.href = productHash(product.id); nameLink.dataset.productId = product.id; nameLink.dataset.catalogLink = 'title'; name.append(nameLink);
-    body.append(element('p', 'catalog-category', product.category), name,
-      element('strong', 'catalog-price', formatMoney(product.priceMinor, product.currency)));
+    body.append(name, element('strong', 'catalog-price', formatCatalogPrice(product.priceMinor, product.currency, locale())));
     card.append(body);
     cards.append(card);
   }
