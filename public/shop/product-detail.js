@@ -209,6 +209,7 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
         event.preventDefault(); updateImage(activeImageIndex + (event.key === 'ArrowLeft' ? -1 : 1));
       });
       zoom.addEventListener('keydown', (event) => {
+        if (event.ctrlKey || event.metaKey || event.altKey || !zoom.open) return;
         if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
         event.preventDefault(); updateImage(activeImageIndex + (event.key === 'ArrowLeft' ? -1 : 1));
       });
