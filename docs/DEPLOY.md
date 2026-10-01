@@ -56,9 +56,9 @@ Evidence so far: with synthetic data on local workerd, all six migrations, categ
 
 ### Demo isolation and rollout
 
-`wrangler.jsonc` sets `SHOP_MODE=demo`. The Worker selects the named Durable Object `pet-shop-demo-v1`, initializes the pet catalog atomically on its first request and leaves the original `shop` object unchanged. Repeated wakeups preserve edited products and simulated orders. The mode cannot be selected by the visitor. Keep existing admin secrets and the exact HTTPS `PUBLIC_ORIGIN`; no demo passwords are published.
+`wrangler.jsonc` sets `SHOP_MODE=public-demo` and `SHOP_DEMO_REVISION=v1`. The Worker selects `public-general-demo-v1`, initializes the fictional general catalog atomically and preserves both legacy `shop` and `pet-shop-demo-v1` objects. Repeated wakeups preserve edited products and simulated orders. The mode cannot be selected by the visitor. Keep existing admin secrets and the exact HTTPS `PUBLIC_ORIGIN`; no demo passwords are published.
 
-The first rollout switches the public catalog to a new Demo data space, so existing browser carts may show unavailable old products and require removal. Previous seller sessions belong to the old object and require signing in again. Rollback to the preceding Worker version restores routing to the original object; neither object is deleted. Future releases must keep the demo object name stable unless a deliberate new demo dataset is wanted.
+The first rollout switches the public catalog to a new Demo data space, and revision-scoped browser storage leaves previous carts and local records untouched rather than importing them. Previous seller sessions belong to the old object and require signing in again. Rollback to the preceding Worker version restores routing to the original object; neither object is deleted. Future releases must keep the demo object name stable unless a deliberate new demo dataset is wanted.
 
 The planned Production deployment is Docker + PostgreSQL + Cloudflare Tunnel. Current Docker uses SQLite and must not be described as PostgreSQL-ready. PostgreSQL schema/transaction adapters, migration, backups, domain/Tunnel and company settings remain future work.
 

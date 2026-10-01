@@ -1,16 +1,17 @@
+import { storageKey } from './storage-scope.js';
 const KEY = 'online-shopping-selection-v1';
 export function createCartSelection(storage) {
   let known = new Set();
   let selected = new Set();
   try {
-    const saved = JSON.parse(storage?.getItem(KEY) || 'null');
+    const saved = JSON.parse(storage?.getItem(storageKey(KEY)) || 'null');
     if (Array.isArray(saved?.known) && Array.isArray(saved?.selected)) {
       known = new Set(saved.known.filter((id) => typeof id === 'string'));
       selected = new Set(saved.selected.filter((id) => known.has(id)));
     }
   } catch { /* Selection remains usable in this tab. */ }
   function save() {
-    try { storage?.setItem(KEY, JSON.stringify({ known: [...known], selected: [...selected] })); } catch { /* Optional tab persistence. */ }
+    try { storage?.setItem(storageKey(KEY), JSON.stringify({ known: [...known], selected: [...selected] })); } catch { /* Optional tab persistence. */ }
   }
   return {
     has: (id) => selected.has(id),

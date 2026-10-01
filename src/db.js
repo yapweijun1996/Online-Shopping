@@ -1,5 +1,4 @@
 import { openNodeStore } from './store.js';
-import { DEMO_SELLER_WHATSAPP_PHONE } from './demo-defaults.js';
 
 export const SCHEMA_VERSION = 10;
 
@@ -244,7 +243,7 @@ export function migrateStore(store) {
       ALTER TABLE company_setting ADD COLUMN seller_whatsapp_phone TEXT
         CHECK (seller_whatsapp_phone IS NULL OR
           (length(seller_whatsapp_phone) BETWEEN 8 AND 15 AND seller_whatsapp_phone NOT GLOB '*[^0-9]*'));
-      UPDATE company_setting SET seller_whatsapp_phone = '${DEMO_SELLER_WHATSAPP_PHONE}'
+      UPDATE company_setting SET seller_whatsapp_phone = NULL
         WHERE id = 1 AND EXISTS (SELECT 1 FROM shop_setup WHERE mode = 'demo');`);
     version = 9;
   }

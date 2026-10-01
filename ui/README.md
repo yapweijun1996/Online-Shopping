@@ -1,0 +1,1 @@
+Historical screenshot and visual proposal files were retired from the current public tree during the fictional Demo provenance/privacy audit. Fresh evidence must use only the original fictional catalog and synthetic orders. Earlier Git history is retained.

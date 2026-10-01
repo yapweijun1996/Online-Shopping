@@ -1,3 +1,4 @@
+import { storageKey } from './storage-scope.js';
 import { localPhoneInput, normalizeProfile } from './profile.js';
 import { malaysiaStates, stateForPostcode } from './postcodes-my.js';
 import { createModal } from '../shared/modal.js';
@@ -50,7 +51,7 @@ export function createAddressStore(storage, id = () => crypto.randomUUID()) {
   function read() {
     try {
       if (!storage) throw new Error();
-      const raw = storage.getItem(KEY);
+      const raw = storage.getItem(storageKey(KEY));
       if (!raw) return { version: 1, entries: [], defaultId: null };
       const saved = JSON.parse(raw);
       if (saved.version !== 1 || !Array.isArray(saved.entries)) throw new Error();
@@ -64,7 +65,7 @@ export function createAddressStore(storage, id = () => crypto.randomUUID()) {
     } catch { throw new Error('addressStorageFailed'); }
   }
   function write(next) {
-    try { storage.setItem(KEY, JSON.stringify(next)); } catch { throw new Error('addressStorageFailed'); }
+    try { storage.setItem(storageKey(KEY), JSON.stringify(next)); } catch { throw new Error('addressStorageFailed'); }
   }
   return {
     read,
@@ -113,7 +114,7 @@ export function mountAddressBook({ onChange, getCountry = () => 'MY' }) {
   const store = createAddressStore(storage);
   const modal = createModal();
   let selectedId = null;
-  try { selectedId = session?.getItem(SELECTION_KEY) || null; } catch { /* Selection remains in memory. */ }
+  try { selectedId = session?.getItem(storageKey(SELECTION_KEY)) || null; } catch { /* Selection remains in memory. */ }
   let editing = null;
   let checkoutContext = false;
   let mode = 'choose';
@@ -121,7 +122,7 @@ export function mountAddressBook({ onChange, getCountry = () => 'MY' }) {
   const currentCountry = () => getCountry() === 'SG' ? 'SG' : 'MY';
   function select(id) {
     selectedId = id;
-    try { if (id) session?.setItem(SELECTION_KEY, id); else session?.removeItem(SELECTION_KEY); } catch { /* Optional tab persistence. */ }
+    try { if (id) session?.setItem(storageKey(SELECTION_KEY), id); else session?.removeItem(storageKey(SELECTION_KEY)); } catch { /* Optional tab persistence. */ }
   }
   function usable(entry) {
     if (entry.country !== currentCountry()) return false;
@@ -259,7 +260,7 @@ export function mountAddressBook({ onChange, getCountry = () => 'MY' }) {
     } catch (failure) { pageStatus.textContent = t(failure.message); }
   }
   document.getElementById('add-address').addEventListener('click', () => open(false));
-  window.addEventListener('storage', event => { if (event.key === KEY || event.key === null) changed(); });
+  window.addEventListener('storage', event => { if (event.key === storageKey(KEY) || event.key === null) changed(); });
   window.addEventListener('hashchange', () => { if (modal.isOpen) modal.close(); });
   return {
     isDirty() { const form = modal.content.querySelector('form'); return modal.isOpen && mode === 'edit' && form && form.dataset.baseline !== JSON.stringify([...new FormData(form)]); },

@@ -215,14 +215,14 @@ test('seller manages category codes, currency and public chat without rewriting 
     assert.equal(settings.data.defaultCurrency, 'SGD');
     assert.equal(settings.data.sellerWhatsAppPhone, null);
     assert.equal((await f.request('GET', '/api/v1/shop')).data.currency, 'SGD');
-    const contact = await f.request('PATCH', '/api/v1/seller/company-settings', { sellerWhatsAppPhone: '+60182727900' }, headers);
-    assert.equal(contact.data.sellerWhatsAppPhone, '60182727900');
+    const contact = await f.request('PATCH', '/api/v1/seller/company-settings', { sellerWhatsAppPhone: '+60123456789' }, headers);
+    assert.equal(contact.data.sellerWhatsAppPhone, '60123456789');
     assert.equal(contact.data.defaultCurrency, 'SGD');
-    assert.equal((await f.request('GET', '/api/v1/shop')).data.sellerWhatsAppPhone, '60182727900');
+    assert.equal((await f.request('GET', '/api/v1/shop')).data.sellerWhatsAppPhone, '60123456789');
     const invalidContact = await f.request('PATCH', '/api/v1/seller/company-settings', { sellerWhatsAppPhone: '+60123' }, headers);
     assert.equal(invalidContact.response.status, 400);
     assert.equal(invalidContact.data.error.field, 'sellerWhatsAppPhone');
-    assert.equal((await f.request('GET', '/api/v1/shop')).data.sellerWhatsAppPhone, '60182727900');
+    assert.equal((await f.request('GET', '/api/v1/shop')).data.sellerWhatsAppPhone, '60123456789');
     assert.equal((await f.request('PATCH', '/api/v1/seller/company-settings', { sellerWhatsAppPhone: '' }, headers)).data.sellerWhatsAppPhone, null);
     assert.equal((await f.request('GET', '/api/v1/shop')).data.sellerWhatsAppPhone, null);
     const myr = await f.request('POST', '/api/v1/seller/products', draft, headers);

@@ -343,3 +343,11 @@ Deployed Worker `3bd93955-ef88-4995-9fee-9e77bc1635f1` (Shop v38, Seller v42). L
 - The share-shaped control previously only copied a link (confirmed on the exact reported public product with intercepted APIs). It now invokes native Web Share directly under click activation where available, otherwise copies the canonical query-free product URL. Native cancellation does not copy; clipboard denial exposes a selected manual-copy field. Native completion copy is deliberately not a delivery guarantee.
 - Pending clicks are serialized; route interruption suppresses stale feedback/fallback. Seven locales include accessible labels and honest completion/cancel copy. The new module is offline cached.
 - 113 tests and syntax/Worker dry-run passed. Browser checks at 320/375/393/430/1280/1920 passed native activation, capability fallback, cancel, denied clipboard/manual copy, repeated click and route interruption with all external calls intercepted. Physical native OS sharing panels remain untested.
+
+
+## Public fictional Demo — prepared release
+
+- 35 original AI-generated illustrations and fictional product descriptions across seven generic categories; image hashes and generation provenance recorded. Seven-category pilot and all remaining images pixel-inspected. No seeded variants or extra galleries, real seller contact or customer/order records.
+- Non-destructive public-general-demo-v1 namespace and revision-scoped browser storage preserve both legacy databases and browser data. Idempotent transactional setup and revision reset validation covered. Public contact is suppressed independently of seller settings.
+- 117 tests pass; isolated buyer/seller decisions, stale/CSRF/retry, six widths/seven locales, cart/search/profile/address/zoom/share and browser isolation gates passed. Synthetic PDFs: 76 rows, two destinations, SGD1,902.88, 75 units per destination, 10 summary / 6 packing pages with no recipient spill.
+- Current-tree legacy catalog and 195 historical visual artifacts retired; Git history retained. AI provenance does not guarantee exclusive copyright. Manual packing/browser print only; physical iOS/Safari untested. No live customer writes.

@@ -1,7 +1,7 @@
 import { initializeShop, shopObjectName } from './shop-setup.js';
 import { createApi } from './app.js';
 import { ensureAdmin } from './auth.js';
-import { readWorkerConfig, readShopMode } from './config.js';
+import { readWorkerConfig, readShopMode, readDemoRevision } from './config.js';
 import { migrateStore } from './db.js';
 import { openDurableStore } from './durable-store.js';
 import { errorResponse, json, readBody } from './http.js';
@@ -52,7 +52,7 @@ export default {
       }
       headers.delete('content-length');
     }
-    const stub = env.SHOP.get(env.SHOP.idFromName(shopObjectName(readShopMode(env))), { locationHint: 'apac' });
+    const stub = env.SHOP.get(env.SHOP.idFromName(shopObjectName(readShopMode(env), readDemoRevision(env))), { locationHint: 'apac' });
     return stub.fetch(new Request(request.url, { method: request.method, headers, body }));
   },
 };

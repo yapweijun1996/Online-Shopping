@@ -6,8 +6,14 @@ const placeholderWords = /password|changeme|replace[-_]?me|example|sample|defaul
 
 export function readShopMode(env) {
   const mode = env.SHOP_MODE ?? 'manual';
-  if (!['demo', 'manual'].includes(mode)) throw new Error('SHOP_MODE must be demo or manual.');
+  if (!['demo', 'manual', 'public-demo'].includes(mode)) throw new Error('SHOP_MODE must be demo, public-demo or manual.');
   return mode;
+}
+
+export function readDemoRevision(env) {
+  const revision = env.SHOP_DEMO_REVISION ?? 'v1';
+  if (typeof revision !== 'string' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(revision)) throw new Error('SHOP_DEMO_REVISION must be a bounded lowercase label.');
+  return revision;
 }
 
 function validateAdmin(username, password, production) {
@@ -40,7 +46,7 @@ export function readWorkerConfig(env) {
   const password = env.ADMIN_PASSWORD || '';
   validateAdmin(username, password, production);
   const publicOrigin = validatePublicOrigin(env.PUBLIC_ORIGIN || null, production);
-  return { production, username, password, publicOrigin, trustProxy: true, shopMode: readShopMode(env) };
+  return { production, username, password, publicOrigin, trustProxy: true, shopMode: readShopMode(env), demoRevision: readDemoRevision(env) };
 }
 
 export function readConfig(env = process.env) {
@@ -69,5 +75,5 @@ export function readConfig(env = process.env) {
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('PORT must be a valid port.');
   const trustProxy = env.TRUST_PROXY === '1';
   if (env.TRUST_PROXY && !trustProxy) throw new Error('TRUST_PROXY must be 1 when set.');
-  return { production, username, password, dbPath, publicOrigin, port, trustProxy, shopMode: readShopMode(env) };
+  return { production, username, password, dbPath, publicOrigin, port, trustProxy, shopMode: readShopMode(env), demoRevision: readDemoRevision(env) };
 }

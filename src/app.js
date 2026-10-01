@@ -1,4 +1,4 @@
-import { getShopSetup, setupShop } from './shop-setup.js';
+import { getShopSetup, setupShop, shopObjectName } from './shop-setup.js';
 import { authenticate, cookieFor, createSession, deleteSession, readSession, sessionCookieFrom } from './auth.js';
 import { ready } from './db.js';
 import { ApiError, errorResponse, json, readJson, requireOrigin } from './http.js';
@@ -59,8 +59,9 @@ export function createApi({ store, config, serveStatic = null }) {
       const company = getCompanySettings(store);
       return json(200, {
         ...setup,
+        ...(config.shopMode === 'public-demo' ? { demoNamespace: shopObjectName(config.shopMode, config.demoRevision) } : {}),
         currency: company.defaultCurrency,
-        sellerWhatsAppPhone: setup.mode ? company.sellerWhatsAppPhone : null,
+        sellerWhatsAppPhone: config.shopMode === 'public-demo' ? null : setup.mode ? company.sellerWhatsAppPhone : null,
         mobileHideBarsOnScroll: company.mobileHideBarsOnScroll,
       });
     }

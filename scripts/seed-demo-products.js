@@ -39,7 +39,7 @@ try {
     headers: { Origin: origin, Cookie: cookie, 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
     body: JSON.stringify({ mode: 'demo' }),
   });
-  console.log(`Demo ready: ${body.shopName}. Open /shop/ to browse the pet catalog.`);
+  console.log(`Demo ready: ${body.shopName}. Open /shop/ to browse the fictional general catalog.`);
 } finally {
   await request('/api/v1/seller/session', {
     method: 'DELETE',

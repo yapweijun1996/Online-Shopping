@@ -1,3 +1,4 @@
+import { storageKey } from './storage-scope.js';
 const DB_NAME = 'online-shopping-cart';
 const STORE_NAME = 'lines';
 const MAX_QUANTITY = 100;
@@ -14,7 +15,7 @@ function openDatabase(provider) {
       clearTimeout(timeout);
       reject(error);
     }
-    try { request = provider.open(DB_NAME, 1); } catch (error) { fail(error); return; }
+    try { request = provider.open(storageKey(DB_NAME), 1); } catch (error) { fail(error); return; }
     request.onupgradeneeded = () => {
       if (!request.result.objectStoreNames.contains(STORE_NAME)) {
         request.result.createObjectStore(STORE_NAME, { keyPath: 'productId' });

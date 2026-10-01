@@ -1,3 +1,4 @@
+import { storageKey } from './storage-scope.js';
 import { categoryIconPath, formatCatalogPrice } from './catalog-presentation.js';
 import { mountShopUpdates } from './update-view.js';
 import { mountMobileNavigation } from './mobile-navigation.js';
@@ -262,6 +263,7 @@ async function loadCatalog(reset = true) {
     });
     const [data, shop] = await Promise.all([api(`/api/v1/products?${params}`), api('/api/v1/shop')]);
     if (request !== catalogRequest) return;
+    if ((shop.demoNamespace || '') !== globalThis.shopStorageNamespace) { location.reload(); return; }
     shopInfo = shop;
     mobileNavigation.setAutoHide(shop.mobileHideBarsOnScroll);
     profilePage?.setCountry(countryForCurrency(shop.currency));
@@ -602,8 +604,8 @@ async function refreshCart() {
 function setDirectPurchase(value) {
   directPurchase = value;
   try {
-    if (value) sessionStorage.setItem('online-shopping-direct-purchase-v1', JSON.stringify(value));
-    else sessionStorage.removeItem('online-shopping-direct-purchase-v1');
+    if (value) sessionStorage.setItem(storageKey('online-shopping-direct-purchase-v1'), JSON.stringify(value));
+    else sessionStorage.removeItem(storageKey('online-shopping-direct-purchase-v1'));
   } catch { /* The current tab still retains the intent. */ }
 }
 
@@ -613,7 +615,7 @@ async function beginCheckout(stillCurrent = () => true, directItem = null) {
     setDirectPurchase(directItem);
     if (!profilePage.get()) {
       profileReturn = 'checkout';
-      try { sessionStorage.setItem('online-shopping-profile-return', profileReturn); } catch { /* Optional return route. */ }
+      try { sessionStorage.setItem(storageKey('online-shopping-profile-return'), profileReturn); } catch { /* Optional return route. */ }
       location.hash = '#profile';
       return;
     }
@@ -632,7 +634,7 @@ async function beginCheckout(stillCurrent = () => true, directItem = null) {
     if (!valid || !shopInfo) { location.hash = '#cart'; return; }
     if (!profilePage.get()) {
       profileReturn = 'checkout';
-      try { sessionStorage.setItem('online-shopping-profile-return', profileReturn); } catch { /* Optional return route. */ }
+      try { sessionStorage.setItem(storageKey('online-shopping-profile-return'), profileReturn); } catch { /* Optional return route. */ }
       location.hash = '#profile';
       return;
     }
@@ -646,10 +648,10 @@ async function beginCheckout(stillCurrent = () => true, directItem = null) {
 
 function readReceipt() {
   try {
-    const saved = JSON.parse(localStorage.getItem('online-shopping-last-receipt-v1') || 'null');
+    const saved = JSON.parse(localStorage.getItem(storageKey('online-shopping-last-receipt-v1')) || 'null');
     if (saved && /^(?:OS|DEMO)-\d{8,}$/.test(saved.orderNo) && Number.isSafeInteger(saved.totalMinor) &&
         ['MYR', 'SGD'].includes(saved.currency) && isLocalOrderCurrent(saved)) return saved;
-    localStorage.removeItem('online-shopping-last-receipt-v1');
+    localStorage.removeItem(storageKey('online-shopping-last-receipt-v1'));
   } catch { /* A receipt is optional browser convenience. */ }
   return null;
 }
@@ -673,8 +675,8 @@ async function completeOrder(receipt, { orderItems, submittedItems, cartBacked, 
   lastReceipt = localOrderStore.list().find(order => order.orderNo === receipt.orderNo) || receipt;
   receiptNotes = savedLocally ? [] : ['localOrdersSaveFailed'];
   try {
-    localStorage.removeItem('online-shopping-last-receipt-v1');
-    localStorage.setItem('online-shopping-last-receipt-v1', JSON.stringify(lastReceipt));
+    localStorage.removeItem(storageKey('online-shopping-last-receipt-v1'));
+    localStorage.setItem(storageKey('online-shopping-last-receipt-v1'), JSON.stringify(lastReceipt));
   }
   catch { receiptNotes.push('receiptMemoryOnly'); }
   try {
@@ -951,15 +953,19 @@ const mobileNavigation = mountMobileNavigation({ currentCategory: () => category
 setupLanguageMenu(document.getElementById('language'), { onOpen: mobileNavigation.openLanguage, showLabel: true });
 byId('catalog-search').placeholder = t('searchProducts');
 
+// Resolve the server's demo revision before reading any browser-local data.
+// A failed initial request stays behind the existing retryable boot overlay.
+shopInfo = await api('/api/v1/shop');
+globalThis.shopStorageNamespace = shopInfo.demoNamespace || '';
 const [cartStore, openedOrderStore] = await Promise.all([createCartStore(), createLocalOrderStore()]);
 localOrderStore = openedOrderStore;
 let selectionStorage;
 try { selectionStorage = sessionStorage; } catch { /* Optional selection persistence. */ }
 selection = createCartSelection(selectionStorage);
 selection.sync(cartStore.list());
-try { profileReturn = selectionStorage?.getItem('online-shopping-profile-return') || null; } catch { /* Optional return route. */ }
+try { profileReturn = selectionStorage?.getItem(storageKey('online-shopping-profile-return')) || null; } catch { /* Optional return route. */ }
 try {
-  const saved = JSON.parse(selectionStorage?.getItem('online-shopping-direct-purchase-v1') || 'null');
+  const saved = JSON.parse(selectionStorage?.getItem(storageKey('online-shopping-direct-purchase-v1')) || 'null');
   if (saved && Number.isInteger(saved.quantity) && saved.quantity >= 1 && saved.quantity <= 100) {
     productHash(saved.productId);
     directPurchase = { productId: saved.productId, quantity: saved.quantity };
@@ -972,7 +978,7 @@ profilePage = mountProfile({ onSaved() {
     focusCheckoutAfterProfile = returnRoute === 'cart';
     location.hash = `#${returnRoute}`;
     profileReturn = null;
-    try { selectionStorage?.removeItem('online-shopping-profile-return'); } catch { /* Optional return route. */ }
+    try { selectionStorage?.removeItem(storageKey('online-shopping-profile-return')); } catch { /* Optional return route. */ }
   }
 } });
 addressBook = mountAddressBook({
@@ -982,8 +988,8 @@ addressBook = mountAddressBook({
 for (const link of document.querySelectorAll('a[href="#profile"]')) link.addEventListener('click', () => {
   profileReturn = link.dataset.profileReturn || null;
   try {
-    if (profileReturn) selectionStorage?.setItem('online-shopping-profile-return', profileReturn);
-    else selectionStorage?.removeItem('online-shopping-profile-return');
+    if (profileReturn) selectionStorage?.setItem(storageKey('online-shopping-profile-return'), profileReturn);
+    else selectionStorage?.removeItem(storageKey('online-shopping-profile-return'));
   } catch { /* Optional return route. */ }
 });
 const legacyReceipt = readReceipt();
@@ -1038,7 +1044,7 @@ searchInput.addEventListener('keydown', event => {
 let searchContext = null;
 let searchPointerContext = null;
 let searchComposing = false;
-const searchHistoryKey = 'online-shopping-search-history-v1';
+const searchHistoryKey = storageKey('online-shopping-search-history-v1');
 let recentSearches = [];
 try { const stored = JSON.parse(localStorage.getItem(searchHistoryKey) || '[]'); if (Array.isArray(stored)) recentSearches = stored.filter(x => typeof x === 'string' && x.trim() && x.length <= 100).slice(0, 8); } catch {}
 function persistSearchHistory() { try { localStorage.setItem(searchHistoryKey, JSON.stringify(recentSearches)); } catch {} }

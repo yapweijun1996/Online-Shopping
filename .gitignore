@@ -17,3 +17,9 @@ coverage/
 .wrangler/
 .pi-glla/
 sample/
+
+# Private evidence and isolated SQLite demo/test artifacts
+output/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

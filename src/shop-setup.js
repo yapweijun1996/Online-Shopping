@@ -1,14 +1,10 @@
-import catalog from './pet-demo-catalog.json' with { type: 'json' };
+import catalog from './public-demo-catalog.json' with { type: 'json' };
 import { ApiError } from './http.js';
 import { createProduct } from './products.js';
 import { createCategory } from './settings.js';
 import { boundedText, FieldError } from './validation.js';
-import { DEMO_SELLER_WHATSAPP_PHONE } from './demo-defaults.js';
 
-const categories = {
-  LITTER_BOXES: 'Automatic Litter Boxes', CAT_LITTER: 'Cat Litter',
-  ODOR_CONTROL: 'Odor Control', WASTE_BAGS: 'Waste Bags', ACCESSORIES: 'Litter Box Accessories',
-};
+const categories = { HOME: 'Home', STATIONERY: 'Stationery', KITCHEN: 'Kitchen', TRAVEL: 'Travel', TECH_ACCESSORIES: 'Tech Accessories', APPAREL: 'Apparel', PET_CARE: 'Pet Care' };
 
 export function getShopSetup(store) {
   const row = store.get('SELECT mode, shop_name FROM shop_setup WHERE id = 1');
@@ -21,7 +17,7 @@ export function setupShop(store, input) {
       !['demo', 'production'].includes(input.mode)) {
     throw new FieldError('mode', 'Choose Demo or Production.');
   }
-  const shopName = input.mode === 'demo' ? 'Paws & Whiskers Pet Shop' : boundedText(input.shopName, 'shopName', 80);
+  const shopName = input.mode === 'demo' ? 'Demo General Store' : boundedText(input.shopName, 'shopName', 80);
   return store.transaction(() => {
     const current = getShopSetup(store);
     // Setup is a one-time operation, so retries cannot overwrite seller edits or orders.
@@ -37,7 +33,7 @@ export function setupShop(store, input) {
       for (const [code, label] of Object.entries(categories)) createCategory(store, { code, label });
       for (const product of catalog) createProduct(store, product);
       store.run("UPDATE company_setting SET default_currency = 'MYR', seller_whatsapp_phone = ?, updated_at = ? WHERE id = 1",
-        DEMO_SELLER_WHATSAPP_PHONE, new Date().toISOString());
+        null, new Date().toISOString());
     }
     store.run('UPDATE shop_setup SET mode = ?, shop_name = ? WHERE id = 1', input.mode, shopName);
     return getShopSetup(store);
@@ -46,10 +42,14 @@ export function setupShop(store, input) {
 
 // Deployment mode is independent of NODE_ENV: a public demo still uses secure cookies.
 export function initializeShop(store, config) {
-  if (config.shopMode === 'demo') setupShop(store, { mode: 'demo' });
+  if (['demo', 'public-demo'].includes(config.shopMode)) setupShop(store, { mode: 'demo' });
 }
 
-export function shopObjectName(mode) {
-  if (!['demo', 'manual'].includes(mode)) throw new Error('Unsupported shop mode.');
+export function shopObjectName(mode, revision = 'v1') {
+  if (!['demo', 'manual', 'public-demo'].includes(mode)) throw new Error('Unsupported shop mode.');
+  if (mode === 'public-demo') {
+    if (typeof revision !== 'string' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(revision)) throw new Error('Invalid public demo revision.');
+    return `public-general-demo-${revision}`;
+  }
   return mode === 'demo' ? 'pet-shop-demo-v1' : 'shop';
 }

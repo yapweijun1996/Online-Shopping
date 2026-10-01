@@ -1,3 +1,4 @@
+import { storageKey } from './storage-scope.js';
 import { ORDER_RETENTION_MS, statusAccessKeyPattern } from '../shared/order-status.js';
 
 const DB_NAME = 'online-shopping-local-orders';
@@ -52,7 +53,7 @@ function openDatabase(provider) {
       clearTimeout(timeout);
       reject(error);
     }
-    try { request = provider.open(DB_NAME, 1); } catch (error) { fail(error); return; }
+    try { request = provider.open(storageKey(DB_NAME), 1); } catch (error) { fail(error); return; }
     request.onupgradeneeded = () => {
       if (!request.result.objectStoreNames.contains(STORE_NAME)) {
         request.result.createObjectStore(STORE_NAME, { keyPath: 'orderNo' });
