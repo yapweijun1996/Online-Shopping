@@ -900,7 +900,7 @@ h1,h2{letter-spacing:-.01em}
  #product-view .product-price{font-size:32px;line-height:38px;color:var(--ui-action,var(--ui-primary));letter-spacing:0}
  .product-key-details{display:grid;grid-template-columns:minmax(70px,auto) minmax(0,1fr);gap:8px 16px;margin:0;font-size:13px;line-height:20px}
  .product-key-details dt{color:var(--ui-muted)}.product-key-details dd{margin:0;color:var(--ui-ink);overflow-wrap:anywhere}
- #product-view .product-main-image{max-height:none;object-fit:contain;padding:8px}.product-image-button{border-radius:8px;border:1px solid var(--ui-border)}
+ #product-view .product-main-image{height:auto;max-height:none;object-fit:contain;padding:8px}.product-image-button{border-radius:8px;border:1px solid var(--ui-border)}
  .product-thumbnails{gap:8px;padding-top:12px}.product-thumbnail{width:64px;height:64px;border-radius:6px}
  .product-selection-block{margin-top:16px;padding-top:16px;gap:16px}
  .product-quantity-row{align-items:center;gap:10px 14px}.product-subtotal{font-size:13px;line-height:20px}
