@@ -27,3 +27,10 @@ Lazada's official document API describes shipping-label retrieval, a carrier-bac
 ## Release / recovery
 
 Before publishing: run complete npm tests/check/build, inspect only scoped files, verify exact pushed-head CI, record the current Cloudflare deployment ID, deploy to the unchanged `online-shopping` Worker with the existing Demo Durable Object binding, and verify assets/readiness and public browser regressions. If live regression appears, use the existing Wrangler rollback to the recorded prior deployment. No database migration or deletion is part of this milestone.
+
+
+## A4 PrintForm engine refinement — 2026-10-01
+
+- Pinned the actual MIT PrintForm.js engine at revision 091ab04743a8da37059a2776536ff723b33ea8c7. Separate Studio project is untouched. Seller review detail uses normal document scrolling with a compact sticky desktop queue.
+- Preview renders true 210×297mm A4 sheets; the same formatted DOM is cloned for printing, with 14mm safe margins, repeated destination/column headers and page-number footers. Engine measures natural, unscaled content before preview fitting; oversized content fails closed. No customer records are cached by the engine.
+- Local gates: 105 tests, syntax, Worker dry run and audit zero vulnerabilities. Synthetic authenticated seller decisions/retry/CSRF/stale checks; eight review widths 320–1920px; five preview widths × seven locales and focus/Escape. PDF long-item fixture: two destinations, 76 rows, SGD1,902.88,75 units each; 10 summary pages and 6 packing pages, exact totals, repeated identifiers and no destination spill. Preview and print page counts agree. Physical Safari/OS print dialog untested.

@@ -1,3 +1,4 @@
+import PrintForm from './vendor/printform.js';
 import { formatDate, formatMoney, t } from '../shared/i18n.js';
 import { orderDocumentModel } from './order-document-model.js';
 
@@ -16,42 +17,48 @@ export function createOrderDocuments() {
   toolbar.append(close, print);
   const content = node('div', '', 'order-document-pages'); dialog.append(toolbar, content); document.body.append(dialog);
   dialog.addEventListener('close', () => { if (dialog.open || printing) return; content.replaceChildren(); if (trigger?.isConnected) trigger.focus(); trigger = null; });
-  function paginatePrint(root) {
-    // A4 content area: 297mm less two 14mm margins. Keep a rounding reserve.
-    const measure = node('div', '', 'document-page-measure'); root.append(measure);
-    const capacity = measure.getBoundingClientRect().height - 16; measure.remove();
-    const pages = root.querySelector('.order-document-pages');
-    for (const original of [...pages.children]) {
-      const table = original.querySelector('table'); const totals = original.querySelector('.order-document-totals');
-      const rows = [...table.querySelectorAll('tbody tr')]; const header = [...original.children].slice(0, [...original.children].indexOf(table));
-      let sheet, body;
-      function newSheet(first = false) {
-        sheet = original.cloneNode(false); pages.insertBefore(sheet, original);
-        if (first) header.forEach(element => sheet.append(element.cloneNode(true)));
-        else {
-          sheet.append(header[0].cloneNode(true), header[1].cloneNode(true));
-          sheet.append(node('p', table.querySelector('.document-repeat-id').textContent));
-        }
-        const nextTable = table.cloneNode(false);
-        nextTable.append(table.querySelector('colgroup').cloneNode(true), table.querySelector('thead').cloneNode(true));
-        body = node('tbody'); nextTable.append(body); sheet.append(nextTable);
+  function formatPages() {
+    content.classList.remove('document-formatted');
+    content.style.setProperty('--document-scale', '1');
+    for (const section of [...content.children]) {
+      section.classList.add('printform');
+      const table = section.querySelector('table');
+      const header = node('div', '', 'pheader');
+      const info = node('div', '', 'pdocinfo');
+      const children = [...section.children];
+      for (const element of children.slice(0, children.indexOf(table))) {
+        (element === children[0] || element === children[1] ? header : info).append(element);
       }
-      newSheet(true);
-      for (const row of rows) {
-        body.append(row.cloneNode(true));
-        if (sheet.getBoundingClientRect().height > capacity && body.children.length > 1) {
-          const overflow = body.lastElementChild; overflow.remove(); newSheet(); body.append(overflow);
-        }
-      }
-      const footer = totals.cloneNode(true); sheet.append(footer);
-      if (sheet.getBoundingClientRect().height > capacity) {
-        footer.remove(); const tail = [];
-        for (let count = 0; count < 3 && body.children.length; count++) { const row = body.lastElementChild; row.remove(); tail.unshift(row); }
-        newSheet(); body.append(...tail); sheet.append(footer);
-      }
-      original.remove();
+      const gridClass = section.classList.contains('packing-document') ? 'document-grid packing-grid' : 'document-grid summary-grid';
+      const rowHeader = node('div', '', 'prowheader ' + gridClass);
+      for (const cell of table.querySelectorAll('thead th')) { const next = node('strong', cell.firstChild.textContent); rowHeader.append(next); }
+      const rows = [...table.querySelectorAll('tbody tr')].map(row => {
+        const next = node('div', '', 'prowitem ' + gridClass);
+        for (const cell of row.children) next.append(node('span', cell.textContent));
+        return next;
+      });
+      const totals = section.querySelector('.order-document-totals'); totals.classList.add('pfooter');
+      const pageFooter = node('div', '', 'pfooter_pagenum document-page-footer');
+      pageFooter.append(node('span', table.querySelector('.document-repeat-id').textContent));
+      const number = node('span'); number.append(node('span', '', 'document-page-number'), document.createTextNode(' / '), node('span', '', 'document-page-total'));
+      number.firstChild.setAttribute('data-page-number', ''); number.lastChild.setAttribute('data-page-total', ''); pageFooter.append(number);
+      section.replaceChildren(header, info, rowHeader, ...rows, totals, pageFooter);
+      PrintForm.format(section, { papersizeWidth: 182 * 96 / 25.4, papersizeHeight: 269 * 96 / 25.4 - 2,
+        repeatHeader: true, repeatDocinfo: true, repeatRowheader: true, repeatFooter: false, repeatFooterPagenum: true,
+        insertDummyRowItemWhileFormatTable: false, insertPtacDummyRowItems: false, insertDummyRowWhileFormatTable: false, insertFooterSpacerWhileFormatTable: false, insertFooterSpacerWithDummyRowItemWhileFormatTable: false, fillPageHeightAfterFooter: false, debug: false });
     }
+    const pages = [...content.querySelectorAll('.printform_page')];
+    for (const page of pages) {
+      if (page.scrollHeight > 269 * 96 / 25.4 + 2) throw new Error('Document content exceeds A4; reduce oversized snapshot content');
+    }
+    content.classList.add('document-formatted');
+    fitPreview();
   }
+  function fitPreview() {
+    const width = content.clientWidth - 24;
+    content.style.setProperty('--document-scale', String(Math.min(1, Math.max(.25, width / (210 * 96 / 25.4)))));
+  }
+  const resize = new ResizeObserver(() => { if (dialog.open) fitPreview(); }); resize.observe(content);
   function beforePrint() {
     if (!dialog.open) return;
     printing = true;
@@ -59,7 +66,8 @@ export function createOrderDocuments() {
     printRoot.append(content.cloneNode(true));
     printRoot.querySelectorAll('[id]').forEach(element => element.removeAttribute('id'));
     document.body.append(printRoot); document.body.dataset.orderPrint = 'true';
-    paginatePrint(printRoot);
+    // Clone the already formatted preview; printing never repaginates.
+    printRoot.style.setProperty('--document-scale', '1');
     dialog.close();
   }
   function afterPrint() {
@@ -102,7 +110,9 @@ export function createOrderDocuments() {
       section.append(totals);
       content.append(section);
     });
-    dialog.showModal(); close.focus();
+    dialog.showModal();
+    try { formatPages(); } catch (error) { dialog.close(); content.replaceChildren(); throw error; }
+    close.focus();
   }
-  return { open, dispose() { window.removeEventListener('beforeprint', beforePrint); window.removeEventListener('afterprint', afterPrint); printRoot?.remove(); delete document.body.dataset.orderPrint; printing = false; if (dialog.open) dialog.close(); dialog.remove(); } };
+  return { open, dispose() { resize.disconnect(); window.removeEventListener('beforeprint', beforePrint); window.removeEventListener('afterprint', afterPrint); printRoot?.remove(); delete document.body.dataset.orderPrint; printing = false; if (dialog.open) dialog.close(); dialog.remove(); } };
 }

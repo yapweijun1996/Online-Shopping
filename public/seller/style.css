@@ -388,3 +388,11 @@
 
 #shop-setup-form[hidden]{display:none}
 .settings-card + .settings-card{margin-top:20px}
+
+/* Review uses one document scroll; the queue remains a compact navigator. */
+@media(min-width:821px){
+ .order-layout{grid-template-columns:minmax(250px,300px) minmax(0,1fr);align-items:start}
+ .order-detail{max-height:none;overflow:visible;position:static}
+ .order-queue{position:sticky;top:88px;max-height:calc(100dvh - 112px)}
+ #order-detail-title{position:static;margin:0 0 16px;padding:0}
+}
