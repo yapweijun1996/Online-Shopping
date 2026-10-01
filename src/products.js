@@ -146,7 +146,7 @@ export function addGalleryImage(database, productId, imageDataUrl) {
     if (!product) throw new ApiError(404, 'NOT_FOUND', 'Product not found.');
     if (!product.image_mime) throw new FieldError('imageDataUrl', 'Add a main image first.');
     const count = database.get('SELECT COUNT(*) AS count FROM product_gallery_image WHERE product_id = ?', productId).count;
-    if (count >= 4) throw new FieldError('imageDataUrl', 'A product supports four additional images.');
+    if (count >= 9) throw new FieldError('imageDataUrl', 'A product supports nine additional images.');
     const id = randomUUID();
     database.run(`INSERT INTO product_gallery_image(id, product_id, position, mime, data, created_at)
       VALUES (?, ?, ?, ?, ?, ?)`, id, productId, count + 1, image.mime, image.data, new Date().toISOString());

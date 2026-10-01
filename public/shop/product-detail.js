@@ -1,3 +1,4 @@
+import { productMedia, setProductMedia } from './product-media.js';
 import { locale, t } from '../shared/i18n.js';
 import { formatCatalogPrice } from './catalog-presentation.js';
 const formatMoney = (minor, currency) => formatCatalogPrice(minor, currency, locale());
@@ -101,11 +102,13 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     document.title = `${product.name} · ${shop()?.shopName || t('shop')}`;
     const layout = node('div', 'product-layout');
     const gallery = node('div', 'product-gallery');
-    const images = product.images?.length ? product.images : (product.imageUrl ? [product.imageUrl] : []);
+    const media = productMedia(product);
+    const images = media.map(item => item.src);
     activeImageIndex = Math.min(activeImageIndex, Math.max(0, images.length - 1));
     const zoom = node('dialog', 'image-viewer');
     zoom.setAttribute('aria-label', product.name);
-    const zoomImage = image(product, 'zoom-image', images[activeImageIndex]);
+    const zoomImage = images.length ? node('img', 'zoom-image') : image(product, 'zoom-image');
+    zoomImage.alt = media[activeImageIndex]?.alt || product.name;
     const zoomClose = button('', () => {}, 'image-close');
     zoomClose.setAttribute('aria-label', t('close'));
     zoomClose.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5 19 19M19 5 5 19"/></svg>';
@@ -117,20 +120,29 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     const imageButton = node('button', 'product-image-button');
     imageButton.type = 'button';
     imageZoom = attachImageZoom(zoom, zoomImage, imageButton, zoomClose);
-    imageButton.addEventListener('click', () => imageZoom.open());
+    imageButton.addEventListener('click', () => { if (media[activeImageIndex]) setProductMedia(zoomImage, media[activeImageIndex], 'full'); imageZoom.open(); });
     imageButton.setAttribute('aria-label', `${t('zoomImage')}: ${product.name}`);
     imageButton.disabled = !images.length;
-    const mainImage = image(product, 'product-main-image', images[activeImageIndex]);
+    const mainImage = images.length ? node('img', 'product-main-image') : image(product, 'product-main-image');
+    if (media[activeImageIndex]) setProductMedia(mainImage, media[activeImageIndex]);
+    const imageError = node('span', 'product-image-error', t('imageMissing')); imageError.hidden = true;
+    mainImage.addEventListener('error', () => { mainImage.hidden = true; imageError.hidden = false; });
+    mainImage.addEventListener('load', () => { mainImage.hidden = false; imageError.hidden = true; });
     mainImage.draggable = false;
     zoomImage.draggable = false;
     const zoomCue = node('span', 'product-zoom-cue');
     zoomCue.setAttribute('aria-hidden', 'true');
     zoomCue.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>';
-    imageButton.append(mainImage, zoomCue);
+    imageButton.append(mainImage, imageError, zoomCue);
     const imageCount = node('span', 'image-count', `${activeImageIndex + 1} / ${images.length}`);
     imageCount.setAttribute('aria-hidden', 'true');
     if (images.length) imageButton.append(imageCount);
     gallery.append(imageButton);
+    const photoCaption = node('p', 'product-photo-caption', media[activeImageIndex]?.caption || '');
+    photoCaption.hidden = !photoCaption.textContent; gallery.append(photoCaption);
+    const galleryProductId = product.id;
+    const rememberPhoto = () => { if (product?.id === galleryProductId && location.hash === productHash(galleryProductId)) history.replaceState({ ...history.state, shopGallery: { id: galleryProductId, index: activeImageIndex } }, '', location.href); };
+    zoom.addEventListener('close', rememberPhoto);
     if (images.length > 1) {
       const photoStatus = node('span', 'sr-only');
       photoStatus.setAttribute('role', 'status');
@@ -139,9 +151,12 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
       const viewerThumbs = node('div', 'viewer-thumbnails');
       const updateImage = (index) => {
         activeImageIndex = (index + images.length) % images.length;
-        mainImage.src = images[activeImageIndex];
+        mainImage.hidden = false; imageError.hidden = true;
+        setProductMedia(mainImage, media[activeImageIndex]);
+        photoCaption.textContent = media[activeImageIndex].caption; photoCaption.hidden = !photoCaption.textContent;
+        rememberPhoto();
         imageZoom.reset();
-        zoomImage.src = images[activeImageIndex];
+        if (zoom.open) setProductMedia(zoomImage, media[activeImageIndex], 'full');
         imageCount.textContent = `${activeImageIndex + 1} / ${images.length}`;
         zoomCount.textContent = imageCount.textContent;
         photoStatus.textContent = `${t('photoNumber').replace('{number}', String(activeImageIndex + 1))} / ${images.length}`;
@@ -189,6 +204,10 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
         ignoreClick = false;
         event.stopImmediatePropagation();
       }, true);
+      imageButton.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault(); updateImage(activeImageIndex + (event.key === 'ArrowLeft' ? -1 : 1));
+      });
       zoom.addEventListener('keydown', (event) => {
         if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
         event.preventDefault(); updateImage(activeImageIndex + (event.key === 'ArrowLeft' ? -1 : 1));
@@ -197,7 +216,9 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
         const thumbnail = button('', () => updateImage(index), 'product-thumbnail');
         thumbnail.setAttribute('aria-label', t('photoNumber').replace('{number}', String(index + 1)));
         thumbnail.setAttribute('aria-pressed', String(index === activeImageIndex));
-        thumbnail.append(image(product, '', source));
+        const preview = node('img');
+        setProductMedia(preview, media[index], 'thumbnail');
+        thumbnail.append(preview);
         thumbs.append(thumbnail);
         const viewerThumbnail = thumbnail.cloneNode(true);
         viewerThumbnail.addEventListener('click', () => updateImage(index));
@@ -447,7 +468,9 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
       const list = node('div', 'related-grid');
       for (const item of related) {
         const card = link('', productHash(item.id), 'related-card');
-        card.append(image(item, 'related-image'), node('h3', '', item.name), node('strong', '', formatMoney(item.priceMinor, item.currency)));
+        const relatedImage = image(item, 'related-image');
+        relatedImage.loading = 'lazy'; relatedImage.decoding = 'async';
+        card.append(relatedImage, node('h3', '', item.name), node('strong', '', formatMoney(item.priceMinor, item.currency)));
         list.append(card);
       }
       section.append(list);
@@ -467,6 +490,8 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
       const result = await api(`/api/v1/products/${id}`);
       if (version !== request) return;
       product = result;
+      const savedPhoto = history.state?.shopGallery;
+      if (savedPhoto?.id === id && Number.isInteger(savedPhoto.index)) activeImageIndex = Math.max(0, Math.min(savedPhoto.index, productMedia(result).length - 1));
       if (previousGroup && result.variantGroup === previousGroup) quantityValue = previousQuantity;
       render(true);
       const params = new URLSearchParams({ category: result.category, limit: '5' });

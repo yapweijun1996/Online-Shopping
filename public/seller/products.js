@@ -152,7 +152,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
 
   function renderGallery() {
     galleryPanel.hidden = !editingId;
-    form.elements.gallery.disabled = !originalImageUrl || pendingRemove || galleryImages.length >= 4;
+    form.elements.gallery.disabled = !originalImageUrl || pendingRemove || galleryImages.length >= 9;
     removeImage.disabled = Boolean(editingId && (!galleryLoaded || galleryImages.length));
     imageRemovalHelp.hidden = !editingId || !originalImageUrl || (galleryLoaded && !galleryImages.length);
     imageRemovalHelp.dataset.i18n = galleryLoaded ? 'removeGalleryFirst' : 'loading';
@@ -503,7 +503,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   form.elements.gallery.addEventListener('change', async () => {
     const files = [...form.elements.gallery.files];
     if (!files.length) return;
-    if (files.length + galleryImages.length > 4) { setError('galleryLimit'); form.elements.gallery.value = ''; return; }
+    if (files.length + galleryImages.length > 9) { setError('galleryLimit'); form.elements.gallery.value = ''; return; }
     form.elements.gallery.disabled = true;
     setError('');
     const productId = editingId;

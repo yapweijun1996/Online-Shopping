@@ -1,3 +1,4 @@
+import { withDemoGallery } from './demo-gallery.js';
 import { getShopSetup, setupShop, shopObjectName } from './shop-setup.js';
 import { authenticate, cookieFor, createSession, deleteSession, readSession, sessionCookieFrom } from './auth.js';
 import { ready } from './db.js';
@@ -79,7 +80,7 @@ export function createApi({ store, config, serveStatic = null }) {
       }
       const product = getProduct(store, publicProduct[1]);
       if (!product) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
-      return json(200, product);
+      return json(200, withDemoGallery(product, config.shopMode === 'public-demo' ? getProductImage(store, product.id) : null, config.shopMode));
     }
     if (method === 'POST' && pathname === '/api/v1/orders') {
       requireOrigin(request, expectedOrigin);

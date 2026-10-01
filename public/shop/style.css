@@ -918,3 +918,6 @@ h1,h2{letter-spacing:-.01em}
  #product-view .product-heading-block h1{font-size:22px;line-height:29px}.product-price-block{padding:12px}
  #product-view .product-purchase{gap:8px;grid-template-columns:52px minmax(0,1fr) minmax(0,1.15fr)}
 }
+
+.product-photo-caption{font-size:12px;line-height:1.5;color:#52616b;padding:0 12px;margin:8px 0}.product-image-error{display:block;padding:24px;color:#52616b}
+@media(max-width:760px){#product-view .product-thumbnails{display:flex;padding:8px 12px;gap:8px}#product-view .product-thumbnail{width:56px;height:56px}.product-photo-caption{margin:8px 0 0}}
