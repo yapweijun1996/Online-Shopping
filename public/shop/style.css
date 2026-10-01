@@ -885,3 +885,5 @@ h1,h2{letter-spacing:-.01em}
 @media(min-width:1000px){.catalog-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(min-width:1180px){.catalog-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
 @media(min-width:761px) and (max-width:1000px){.shop-topbar{padding-inline:24px;grid-template-columns:minmax(120px,160px) minmax(140px,1fr) auto auto auto}.shop-topbar .brand-copy strong{max-width:116px}}
+
+@media(min-width:1280px){.catalog-grid{grid-template-columns:repeat(6,minmax(0,1fr))}}

@@ -325,3 +325,9 @@ Deployed Worker `3bd93955-ef88-4995-9fee-9e77bc1635f1` (Shop v38, Seller v42). L
 - Local gates: 107 tests, syntax, Worker dry run, audit zero vulnerabilities; 320–1920px column/alignment checks, seven locales/menus/badges, non-pet long-name/high-price/missing-image fixture, category focus/touch/history/error recovery and cart/search/zoom/profile/address/orders regressions. Shop cache v96; seller A4 v76 unchanged.
 
 - Final A4 accessibility review removes duplicated title IDs created by repeated engine headers, keeping exactly one accessible dialog title. Long-form PDF regression asserts the invariant; Seller cache v77. Shop v96 public catalog, nine buyer regressions, readiness and exact asset checks passed; no live mutations.
+
+
+## Six-column desktop catalog — 2026-10-01
+
+- User-requested six cards per row from 1280px; five at1180–1279px, four at1000–1179px, three at761–999px and two on mobile. Existing typography/image fitting/header/price hierarchy retained. Shop cache v97.
+- Local107tests/check/Worker/audit pass; breakpoint edges including1279/1280, seven locale utilities, non-pet long labels/high prices/missing images, category touch/keyboard/URL/back scroll, search, stable cart and product zoom passed. No customer writes.
