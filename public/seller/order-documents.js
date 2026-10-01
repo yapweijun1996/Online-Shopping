@@ -47,6 +47,9 @@ export function createOrderDocuments() {
         repeatHeader: true, repeatDocinfo: true, repeatRowheader: true, repeatFooter: false, repeatFooterPagenum: true,
         insertDummyRowItemWhileFormatTable: false, insertPtacDummyRowItems: false, insertDummyRowWhileFormatTable: false, insertFooterSpacerWhileFormatTable: false, insertFooterSpacerWithDummyRowItemWhileFormatTable: false, fillPageHeightAfterFooter: false, debug: false });
     }
+    // Repeated engine headers must not duplicate the dialog's accessible title ID.
+    content.querySelectorAll('#order-document-title').forEach(title => title.removeAttribute('id'));
+    const title = content.querySelector('h1'); if (title) title.id = 'order-document-title';
     const pages = [...content.querySelectorAll('.printform_page')];
     for (const page of pages) {
       if (page.scrollHeight > 269 * 96 / 25.4 + 2) throw new Error('Document content exceeds A4; reduce oversized snapshot content');
