@@ -6,6 +6,8 @@ The historical single-company local baseline records AC-01–15 and AC-18 as ver
 
 The separately local [offline adapter slice](INTEGRATION_ADAPTERS.md) adds credential-free request/response fixtures. Its 168 passing regression tests and independent synthetic review do not change this denominator or certify a provider connection.
 
+The subsequent [trusted-consent and offline signed-ingress slice](INTEGRATION_TRUST_INGRESS.md), based on that adapter checkpoint, has 192 passing regression tests and 50 focused integration tests. It reads existing server order-contact records and tests synthetic revocation, raw Meta signatures, scoped mapping and durable-before-ACK transaction behavior. It adds no production startup route, tenant grant, provider lookup, transport activation or migration. Those local checks also leave the 18-item denominator and production release count unchanged.
+
 | Item | Current single-company evidence | Remaining production/tenant gate |
 | --- | --- | --- |
 | AC-01 credentials/session | Existing config/auth tests; ordinary Seller login; Demo cookie cannot authorize it. | Production secrets/IdP, MFA/grant policy, HTTPS/revocation and exact artifact review. |
