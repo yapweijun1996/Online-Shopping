@@ -1,13 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { openNodeStore } from '../src/store.js';
-import { openDatabase } from '../src/db.js';
-import { initializeShop } from '../src/shop-setup.js';
-import { createCategory } from '../src/settings.js';
-import { createProduct } from '../src/products.js';
-import { createOrder } from '../src/orders.js';
-import { createSyntheticIntegrationLedger } from '../src/integration-ledger.js';
+import { trustFixture, metaPayload, signed, statusEvent } from './helpers/integration-trust-fixture.js';
 import { buildNinjaParcelRequest, buildWhatsAppMessageRequest, restoreIntegrationRequest, normalizeProviderResponse, normalizeProviderStatus } from '../src/integration-requests.js';
 import { createFixtureIntegrationTransport, createSyntheticProviderAdapter } from '../src/integration-adapters.js';
 
@@ -22,18 +16,8 @@ const parcel = () => ({ country: 'MY', orderRef: 'synthetic-order', requestedTra
 const message = () => ({ phoneNumberId: '000000000000000', apiVersion: 'v25.0', recipient: '+60123456789', kind: 'TEXT', body: 'Synthetic order update',
   consent: { optIn: true, at: 1_800_000_000, version: 'synthetic-opt-in-v1' }, lastInboundAt: 1_800_000_000 });
 function fixture(t, wrap = store => store) {
-  const store = openNodeStore(':memory:'); t.after(() => store.close()); let time = 1_800_000_000;
-  const ledger = createSyntheticIntegrationLedger(wrap(store), { mode: 'SYNTHETIC', now: () => time });
-  for (const name of ['alpha','beta']) {
-    ledger.addCompany(`synthetic-${name}`);
-    for (const provider of ['NINJA_VAN','WHATSAPP_CLOUD']) {
-      const b = binding(provider, name);
-      ledger.forCompany(b.companyId).addConnection({ id: b.connectionId, provider, environment: b.environment, accountId: b.accountId });
-    }
-  }
-  const b = binding(), scope = ledger.forCompany(b.companyId);
-  return { store, ledger, scope, b, now: () => time, advance: value => { time += value; },
-    adapter(transport, bound = b) { return createSyntheticProviderAdapter({ ledger, ...bound, transport, now: () => time }); } };
+  const f = trustFixture(t, { wrap, openWindow: true }), b = binding();
+  return { ...f, b, scope: f.ledger.forCompany(b.companyId) };
 }
 
 test('verified Ninja parcel subset creates an immutable, credential-free sandbox descriptor', () => {
@@ -117,7 +101,7 @@ test('foreign operation, account changes and mismatched connection never reach t
 
 test('message permission is checked at queue and again before execution; old DONE facts remain replayable', async t => {
   const f = fixture(t), b = binding('WHATSAPP_CLOUD'), transport = createFixtureIntegrationTransport([{ status: 200, body: { messaging_product: 'whatsapp', messages: [{ id: 'wamid.SYNTHETIC001' }] } }]);
-  const prepared = buildWhatsAppMessageRequest(b, message());
+  const prepared = f.prepare();
   const queued = f.scope.queueProviderRequest(b.connectionId, 'done', prepared);
   assert.equal((await f.adapter(transport, b).execute(queued.operationId)).state, 'DONE');
   const waiting = f.scope.queueProviderRequest(b.connectionId, 'waiting', prepared);
@@ -127,8 +111,7 @@ test('message permission is checked at queue and again before execution; old DON
   await assert.rejects(f.adapter(transport, b).execute(waiting.operationId), code('MESSAGE_WINDOW_CLOSED'));
   assert.throws(() => f.scope.queueProviderRequest(b.connectionId, 'new', prepared), code('MESSAGE_WINDOW_CLOSED'));
   assert.equal(transport.requests().length, 1); assert.equal(f.scope.getOperation(waiting.operationId).state, 'PENDING');
-  const { body, lastInboundAt, ...base } = message();
-  assert.throws(() => f.scope.queueProviderRequest(b.connectionId, 'unapproved', buildWhatsAppMessageRequest(b, { ...base, kind: 'TEMPLATE', template: 'synthetic_order_update', templateApproved: false, language: 'en_US', parameters: ['Fictional Person'] })), code('APPROVED_TEMPLATE_REQUIRED'));
+  assert.throws(() => f.prepare({ recipient: '+60123456789', kind: 'TEMPLATE', template: 'synthetic_order_update', language: 'en_US', parameters: ['Fictional Person'] }), code('APPROVED_TEMPLATE_REQUIRED'));
 });
 
 test('timeouts and unverifiable responses require explicit reconciliation before a retry', async t => {
@@ -136,16 +119,16 @@ test('timeouts and unverifiable responses require explicit reconciliation before
   const queued = f.scope.queueProviderRequest(f.b.connectionId, 'unknown', buildNinjaParcelRequest(f.b, parcel())), adapter = f.adapter(transport);
   assert.equal((await adapter.execute(queued.operationId)).state, 'RECONCILE');
   await assert.rejects(adapter.execute(queued.operationId), code('INVALID_STATE')); assert.equal(transport.requests().length, 1);
-  f.scope.recordReconciliation(queued.operationId, 'ABSENT'); assert.equal((await adapter.execute(queued.operationId)).state, 'DONE');
-  assert.equal(transport.requests().length, 2);
+  assert.throws(() => f.scope.recordReconciliation(queued.operationId, 'ABSENT'), code('PROVIDER_LOOKUP_REQUIRED'));
+  assert.equal(f.scope.getOperation(queued.operationId).state, 'RECONCILE'); assert.equal(transport.requests().length, 1);
   const found = f.scope.queueProviderRequest(f.b.connectionId, 'found', buildNinjaParcelRequest(f.b, parcel()));
   const unknown = createFixtureIntegrationTransport([{ status: 200, body: {} }]);
   assert.equal((await f.adapter(unknown).execute(found.operationId)).state, 'RECONCILE');
-  f.scope.recordReconciliation(found.operationId, 'FOUND');
-  assert.equal((await f.adapter(unknown).execute(found.operationId)).replayed, true); assert.equal(unknown.requests().length, 1);
+  assert.throws(() => f.scope.recordReconciliation(found.operationId, 'FOUND'), code('PROVIDER_LOOKUP_REQUIRED'));
+  await assert.rejects(f.adapter(unknown).execute(found.operationId), code('INVALID_STATE')); assert.equal(unknown.requests().length, 1);
   const b = binding('WHATSAPP_CLOUD');
   for (const [index, messages] of [{ length: 1, 0: { id: 'wamid.SYNTHETIC001' } }, ['wamid.SYNTHETIC001'], [{ id: 'wamid.SYNTHETIC001' }, { id: 'wamid.SYNTHETIC002' }]].entries()) {
-    const invalid = f.scope.queueProviderRequest(b.connectionId, `malformed-${index}`, buildWhatsAppMessageRequest(b, message()));
+    const invalid = f.scope.queueProviderRequest(b.connectionId, `malformed-${index}`, f.prepare());
     const malformed = createFixtureIntegrationTransport([{ status: 200, body: { messaging_product: 'whatsapp', messages } }]);
     assert.equal((await f.adapter(malformed, b).execute(invalid.operationId)).state, 'RECONCILE');
     assert.equal(f.scope.getOperation(invalid.operationId).providerResult.category, 'UNVERIFIED_RESPONSE');
@@ -197,25 +180,16 @@ test('concurrent execution sends once and expired replies cannot persist an acce
 });
 
 test('synthetic shipment/message execution leaves actual order, currency, consent and audit snapshots unchanged', async t => {
-  const store = openDatabase(':memory:'); t.after(() => store.close()); initializeShop(store, { shopMode: 'public-demo' });
-  createCategory(store, { code: 'SYNTHETIC', label: 'Synthetic Category' });
-  const product = createProduct(store, { sku: 'synthetic-price', name: 'Fictional Product', description: 'Fictional description', category: 'SYNTHETIC', priceMinor: 1234, currency: 'MYR', active: true });
-  createOrder(store, 'synthetic-checkout-key-001', { buyer: { fullName: 'Fictional Buyer', whatsappPhone: '+60123456789', email: null }, whatsappOrderContactOptIn: true,
-    locale: 'en', deliveries: [{ recipient: { fullName: 'Fictional Recipient', phone: '+60123456789' }, address: { line1: 'Synthetic Street', postcode: '47810', country: 'MY' },
-      items: [{ productId: product.id, quantity: 1, expectedPriceMinor: 1234, expectedCurrency: 'MYR' }] }] });
-  const tables = ['shop_order','delivery','order_item','order_event','checkout_idempotency','product'];
-  const snapshots = () => Object.fromEntries(tables.map(table => [table, store.all(`SELECT * FROM ${table}`)]));
+  const f = fixture(t), tables = ['shop_order','delivery','order_item','order_event','checkout_idempotency','product'];
+  const snapshots = () => Object.fromEntries(tables.map(table => [table, f.store.all(`SELECT * FROM ${table}`)]));
   const before = snapshots();
-  const ledger = createSyntheticIntegrationLedger(store, { mode: 'SYNTHETIC', now: () => 1_800_000_000 }); ledger.addCompany('synthetic-alpha');
   for (const provider of ['NINJA_VAN','WHATSAPP_CLOUD']) {
-    const b = binding(provider), scope = ledger.forCompany(b.companyId);
-    scope.addConnection({ id: b.connectionId, provider, environment: b.environment, accountId: b.accountId });
-    const prepared = provider === 'NINJA_VAN' ? buildNinjaParcelRequest(b, parcel()) : buildWhatsAppMessageRequest(b, message());
+    const b = binding(provider), scope = f.ledger.forCompany(b.companyId);
+    const prepared = provider === 'NINJA_VAN' ? buildNinjaParcelRequest(b, parcel()) : f.prepare();
     const queued = scope.queueProviderRequest(b.connectionId, 'snapshot', prepared);
     const response = provider === 'NINJA_VAN' ? { tracking_number: 'SYNTHETIC001' } : { messaging_product: 'whatsapp', messages: [{ id: 'wamid.SYNTHETIC001' }] };
-    const adapter = createSyntheticProviderAdapter({ ledger, ...b, now: () => 1_800_000_000, transport: createFixtureIntegrationTransport([{ status: 200, body: response }]) });
-    assert.equal((await adapter.execute(queued.operationId)).state, 'DONE');
-    scope.receiveSyntheticEvent(b.connectionId, { accountId: b.accountId, eventId: 'synthetic-delivered', subjectId: 'synthetic-subject', sequence: 1, status: 'DELIVERED' });
+    assert.equal((await f.adapter(createFixtureIntegrationTransport([{ status: 200, body: response }]), b).execute(queued.operationId)).state, 'DONE');
+    if (provider === 'WHATSAPP_CLOUD') f.ingress.receive(signed(metaPayload({ statuses: [statusEvent(f.now(), 'delivered')] })));
   }
   assert.deepEqual(snapshots(), before);
 });

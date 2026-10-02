@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { ApiError } from './http.js';
 import { messagingPolicy } from './integration-contracts.js';
-import { isPreparedIntegrationRequest } from './integration-requests.js';
+import { isPreparedIntegrationRequest, isTrustedMessageRequest, assertTrustedMessagePermission } from './integration-requests.js';
 
 const error = (code, message, status = 409) => { throw new ApiError(status, code, message); };
 const missing = () => error('NOT_FOUND', 'Not found.', 404);
@@ -129,14 +129,14 @@ export function createSyntheticIntegrationLedger(store, { mode, now = Date.now }
           return enqueue(connectionId, key, 'SHIPMENT', input);
         },
         createMessage(connectionId, key, input) {
-          fields(input, ['recipient','consent','kind','body', ...(input?.kind === 'TEMPLATE' ? ['template','templateApproved'] : ['lastInboundAt'])]);
-          text(input.recipient); text(input.body, 4000); fields(input.consent, ['optIn','at','version']);
-          text(input.consent.version, 80); if (input.kind === 'TEMPLATE') text(input.template, 160);
-          return enqueue(connectionId, key, 'MESSAGE', input, () => messagingPolicy(input, clock()));
+          error('TRUSTED_CONSENT_REQUIRED', 'Caller flags cannot authorize a message.');
         },
         queueProviderRequest(connectionId, key, prepared) {
           validateProviderRequest(connectionId, prepared);
-          return enqueue(connectionId, key, prepared.kind, prepared, () => { if (prepared.policy) messagingPolicy(prepared.policy, clock()); });
+          if (prepared.kind === 'MESSAGE' && !isTrustedMessageRequest(prepared)) error('TRUSTED_CONSENT_REQUIRED', 'Use a server-owned consent proof.');
+          return enqueue(connectionId, key, prepared.kind, prepared, () => {
+            if (prepared.kind === 'MESSAGE') messagingPolicy(assertTrustedMessagePermission(prepared).policy, clock());
+          });
         },
         validateProviderRequest,
         getOperation(id) {
@@ -161,7 +161,7 @@ export function createSyntheticIntegrationLedger(store, { mode, now = Date.now }
           text(leaseToken); if (!['ACKNOWLEDGED','SAFE_RETRY','UNKNOWN','REJECTED'].includes(outcome)) error('INVALID_INPUT', 'Invalid outcome.', 400);
           if (result !== undefined) {
             fields(result, ['outcome','category','providerId','errorCode','httpStatus']);
-            if (result.outcome !== outcome || !['ACCEPTED','UNVERIFIED_RESPONSE','INVALID_REQUEST','CONFIGURATION_REQUIRED','RATE_LIMIT_RECONCILE','PROVIDER_RECONCILE','NETWORK_UNKNOWN'].includes(result.category)) error('INVALID_INPUT', 'Invalid provider result.', 400);
+            if (result.outcome !== outcome || !['ACCEPTED','UNVERIFIED_RESPONSE','INVALID_REQUEST','CONFIGURATION_REQUIRED','RATE_LIMIT_RECONCILE','PROVIDER_RECONCILE','NETWORK_UNKNOWN','POLICY_BLOCKED'].includes(result.category)) error('INVALID_INPUT', 'Invalid provider result.', 400);
             if (result.providerId !== undefined) text(result.providerId, 160);
             if (result.errorCode !== undefined && (typeof result.errorCode !== 'string' || !/^[A-Za-z0-9_-]{1,80}$/.test(result.errorCode))) error('INVALID_INPUT', 'Invalid provider result.', 400);
             if (result.httpStatus !== undefined && (!Number.isInteger(result.httpStatus) || result.httpStatus < 100 || result.httpStatus > 599)) error('INVALID_INPUT', 'Invalid provider result.', 400);
@@ -180,13 +180,8 @@ export function createSyntheticIntegrationLedger(store, { mode, now = Date.now }
         },
         recordReconciliation(id, result) {
           if (!['FOUND','ABSENT'].includes(result)) error('INVALID_INPUT', 'An explicit reconciliation result is required.', 400);
-          return store.transaction(() => {
-            const row = outbox(id); if (row.state !== 'RECONCILE') error('INVALID_STATE', 'Reconciliation is not pending.');
-            store.run('UPDATE integration_demo_reconciliation SET result = ? WHERE company_id = ? AND outbox_id = ?', result, companyId, id);
-            const state = result === 'FOUND' ? 'DONE' : row.attempts >= 3 ? 'FAILED' : 'RETRY';
-            store.run('UPDATE integration_demo_outbox SET state = ? WHERE company_id = ? AND id = ?', state, companyId, id);
-            return { state };
-          });
+          const row = outbox(id); if (row.state !== 'RECONCILE') error('INVALID_STATE', 'Reconciliation is not pending.');
+          error('PROVIDER_LOOKUP_REQUIRED', 'No verified provider lookup evidence is implemented; the result remains UNKNOWN.');
         },
         receiveSyntheticEvent(connectionId, input) {
           const bound = connection(connectionId); synthetic(bound);

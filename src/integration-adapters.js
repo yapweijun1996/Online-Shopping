@@ -1,6 +1,7 @@
 import { ApiError } from './http.js';
 import { messagingPolicy } from './integration-contracts.js';
 import { isPreparedIntegrationRequest, restoreIntegrationRequest, normalizeProviderResponse } from './integration-requests.js';
+import { isMessagingAuthority } from './integration-consent.js';
 
 const fixtures = new WeakSet();
 const fail = (code, message, status = 409) => { throw new ApiError(status, code, message); };
@@ -48,9 +49,16 @@ export function createFixtureIntegrationTransport(responses) {
   fixtures.add(transport); return transport;
 }
 
-export function createSyntheticProviderAdapter({ ledger, companyId, connectionId, transport, now = Date.now }) {
+export function createSyntheticProviderAdapter({ ledger, companyId, connectionId, transport, messagingAuthority, now = Date.now }) {
   if (transport !== undefined && !fixtures.has(transport)) fail('SYNTHETIC_ONLY', 'Only the data-only fixture transport is supported.');
+  if (messagingAuthority !== undefined && !isMessagingAuthority(messagingAuthority)) fail('TRUSTED_CONSENT_REQUIRED', 'Use a server-record authority.');
   const scope = ledger.forCompany(companyId);
+  function currentPolicy(prepared) {
+    const time = now(); if (!Number.isSafeInteger(time) || time < 0) fail('INVALID_CLOCK', 'Invalid clock.');
+    const proof = messagingAuthority.resolve(prepared.binding, { ...prepared.input.authorizationRef, recipient: prepared.input.recipient,
+      kind: prepared.input.kind, template: prepared.input.template, language: prepared.input.language, parameterCount: prepared.input.parameters?.length });
+    messagingPolicy(proof.policy, time);
+  }
   return Object.freeze({
     async execute(operationId) {
       if (!transport) fail('NOT_CONFIGURED', 'Provider transport is not configured.');
@@ -60,14 +68,28 @@ export function createSyntheticProviderAdapter({ ledger, companyId, connectionId
       const prepared = restoreIntegrationRequest(operation.intent);
       scope.validateProviderRequest(connectionId, prepared);
       if (prepared.kind !== operation.kind) fail('INVALID_INPUT', 'Operation kind does not match.', 400);
-      if (operation.state === 'DONE' || operation.state === 'FAILED') return { state: operation.state, result: operation.providerResult, replayed: true };
-      if (prepared.policy) {
-        const time = now();
-        if (!Number.isSafeInteger(time) || time < 0) fail('INVALID_CLOCK', 'Invalid clock.');
-        messagingPolicy(prepared.policy, time);
+      if (prepared.kind === 'MESSAGE') {
+        if (!messagingAuthority || !prepared.input.authorizationRef) fail('TRUSTED_CONSENT_REQUIRED', 'A server-record authority is required.');
+        messagingAuthority.assertReference(prepared.binding, { ...prepared.input.authorizationRef, recipient: prepared.input.recipient });
       }
+      if (operation.state === 'DONE' || operation.state === 'FAILED') return { state: operation.state, result: operation.providerResult, replayed: true };
+      if (operation.state === 'LEASED') {
+        const expired = scope.beginAttempt(operationId);
+        return { state: expired.state, result: operation.providerResult, replayed: false };
+      }
+      if (prepared.policy) currentPolicy(prepared);
       const lease = scope.beginAttempt(operationId);
       if (lease.state !== 'LEASED') return { state: lease.state, result: null, replayed: false };
+      if (prepared.policy) {
+        // A change during lease acquisition must block before even the fixture send.
+        try { currentPolicy(prepared); }
+        catch (error) {
+          if (!(error instanceof ApiError)) throw error;
+          const result = { outcome: 'REJECTED', category: 'POLICY_BLOCKED', errorCode: error.code };
+          const completed = scope.finishAttempt(operationId, lease.leaseToken, result.outcome, result);
+          return { state: completed.state, result: completed.state === 'RECONCILE' ? scope.getOperation(operationId).providerResult : result, replayed: false };
+        }
+      }
       let result;
       try { result = normalizeProviderResponse(prepared.binding.provider, await transport.send(prepared)); }
       catch { result = { outcome: 'UNKNOWN', category: 'NETWORK_UNKNOWN' }; }

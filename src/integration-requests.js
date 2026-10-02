@@ -1,7 +1,9 @@
 import { ApiError } from './http.js';
 import { ninjaContractLocation } from './integration-contracts.js';
+import { isConsentProof, refreshConsentProof } from './integration-consent.js';
 
 const prepared = new WeakSet();
+const trustedMessages = new WeakMap();
 const invalid = () => { throw new ApiError(400, 'INVALID_INPUT', 'Invalid bounded provider request.'); };
 function fields(value, allowed) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !allowed.includes(key))) invalid();
@@ -66,10 +68,14 @@ export function buildNinjaParcelRequest(binding, input) {
 
 export function buildWhatsAppMessageRequest(binding, input) {
   const bound = bindingFor(binding, 'WHATSAPP_CLOUD');
-  fields(input, ['phoneNumberId','apiVersion','recipient','consent','kind',
+  fields(input, ['phoneNumberId','apiVersion','recipient','consent','kind','authorizationRef',
     ...(input?.kind === 'TEMPLATE' ? ['template','templateApproved','language','parameters'] : ['body','lastInboundAt'])]);
   matches(input.phoneNumberId, /^\d{5,20}$/, 20);
   if (input.apiVersion !== 'v25.0') invalid();
+  if (input.authorizationRef !== undefined) {
+    fields(input.authorizationRef, ['orderId','purpose']); matches(input.authorizationRef.orderId, /^[A-Za-z0-9_-]+$/, 160);
+    if (input.authorizationRef.purpose !== 'ORDER_CONTACT') invalid();
+  }
   fields(input.consent, ['optIn','at','version']); text(input.consent.version, 80);
   if (typeof input.consent.optIn !== 'boolean' || !Number.isSafeInteger(input.consent.at) || input.consent.at < 0) invalid();
   const body = { messaging_product: 'whatsapp', recipient_type: 'individual', to: phone(input.recipient) };
@@ -89,6 +95,21 @@ export function buildWhatsAppMessageRequest(binding, input) {
   return packet(bound, 'MESSAGE', input, { method: 'POST', url: `https://graph.facebook.com/v25.0/${input.phoneNumberId}/messages`,
     headers: { 'content-type': 'application/json' }, body }, policy);
 }
+
+export function buildTrustedWhatsAppMessageRequest(binding, input, proof) {
+  fields(input, ['recipient','kind', ...(input?.kind === 'TEXT' ? ['body'] : ['template','language','parameters'])]);
+  if (!isConsentProof(proof) || JSON.stringify(canonical(binding)) !== JSON.stringify(canonical(proof.binding)) ||
+      input.recipient !== proof.recipient || input.kind !== proof.policy.kind || input.kind === 'TEMPLATE' &&
+      (input.template !== proof.policy.template || input.language !== proof.language || input.parameters?.length !== proof.parameterCount)) {
+    throw new ApiError(409, 'TRUSTED_CONSENT_REQUIRED', 'Use a current server-owned consent proof.');
+  }
+  const value = buildWhatsAppMessageRequest(binding, { ...input, phoneNumberId: proof.phoneNumberId, apiVersion: proof.apiVersion,
+    authorizationRef: proof.authorizationRef, consent: proof.policy.consent,
+    ...(input.kind === 'TEXT' ? { lastInboundAt: proof.policy.lastInboundAt } : { templateApproved: true }) });
+  trustedMessages.set(value, proof); return value;
+}
+export const isTrustedMessageRequest = value => trustedMessages.has(value);
+export const assertTrustedMessagePermission = value => refreshConsentProof(trustedMessages.get(value));
 
 export const isPreparedIntegrationRequest = value => prepared.has(value);
 function canonical(value) {

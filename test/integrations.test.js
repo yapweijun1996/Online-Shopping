@@ -99,11 +99,10 @@ test('unknown outcomes require reconciliation; expired and stale leases cannot f
   assert.equal(f.alpha.finishAttempt(op.outboxId, attempt.leaseToken, 'UNKNOWN').state, 'RECONCILE');
   assert.throws(() => f.alpha.beginAttempt(op.outboxId), code('INVALID_STATE'));
   assert.throws(() => f.beta.recordReconciliation(op.outboxId, 'ABSENT'), code('NOT_FOUND'));
-  assert.equal(f.alpha.recordReconciliation(op.outboxId, 'ABSENT').state, 'RETRY');
-  const retry = f.alpha.beginAttempt(op.outboxId);
+  assert.throws(() => f.alpha.recordReconciliation(op.outboxId, 'ABSENT'), code('PROVIDER_LOOKUP_REQUIRED'));
   assert.throws(() => f.alpha.finishAttempt(op.outboxId, attempt.leaseToken, 'ACKNOWLEDGED'), code('STALE_ATTEMPT'));
-  f.advance(30000); assert.equal(f.alpha.finishAttempt(op.outboxId, retry.leaseToken, 'ACKNOWLEDGED').state, 'RECONCILE');
-  assert.equal(f.alpha.recordReconciliation(op.outboxId, 'FOUND').state, 'DONE');
+  assert.throws(() => f.alpha.recordReconciliation(op.outboxId, 'FOUND'), code('PROVIDER_LOOKUP_REQUIRED'));
+  assert.equal(f.alpha.getOperation(op.operationId).state, 'RECONCILE');
   assert.throws(() => f.alpha.beginAttempt(op.outboxId), code('INVALID_STATE'));
   const expired = f.alpha.createShipment('ninja-alpha', 'expired', parcel()); f.alpha.beginAttempt(expired.outboxId); f.advance(30001);
   assert.equal(f.alpha.beginAttempt(expired.outboxId).state, 'RECONCILE');
@@ -141,22 +140,14 @@ test('inbox and projection roll back together, without touching an order or paym
   assert.equal(f.store.get('SELECT balance FROM payment_fixture').balance, 123); assert.equal(f.store.get('SELECT status FROM order_fixture').status, 'CONFIRMED');
 });
 
-test('messaging requires current consent, an open service window or an approved template', t => {
+test('legacy caller consent and approval flags cannot authorize a queued message', t => {
   const f = fixture(t); f.alpha.addConnection({ id: 'wa', provider: 'WHATSAPP_CLOUD', environment: 'SYNTHETIC', accountId: 'synthetic-wa' });
   const input = { recipient: 'synthetic-recipient', kind: 'TEXT', body: 'Fictional message', consent: { optIn: true, at: f.now(), version: 'synthetic-consent-v1' }, lastInboundAt: f.now() };
-  const first = f.alpha.createMessage('wa', 'message', input); assert.equal(first.replayed, false);
-  const attempt = f.alpha.beginAttempt(first.outboxId); assert.equal(f.alpha.finishAttempt(first.outboxId, attempt.leaseToken, 'ACKNOWLEDGED').state, 'DONE');
-  assert.throws(() => f.alpha.createMessage('wa', 'no-consent', { ...input, consent: { ...input.consent, optIn: false } }), code('CONSENT_REQUIRED'));
+  for (const changed of [input, { ...input, consent: { ...input.consent, optIn: false } }, { ...input, kind: 'TEMPLATE', templateApproved: true, template: 'synthetic-template' }]) {
+    assert.throws(() => f.alpha.createMessage('wa', 'legacy', changed), code('TRUSTED_CONSENT_REQUIRED'));
+  }
+  assert.equal(f.store.get('SELECT count(*) n FROM integration_demo_operation').n, 0);
   assert.throws(() => messagingPolicy({ ...input, lastInboundAt: f.now() + 1 }, f.now()), code('MESSAGE_WINDOW_CLOSED'));
-  f.advance(86400000); assert.throws(() => f.alpha.createMessage('wa', 'closed', input), code('MESSAGE_WINDOW_CLOSED'));
-  const recovered = f.alpha.createMessage('wa', 'message', input); assert.equal(recovered.replayed, true); assert.equal(recovered.operationId, first.operationId);
-  assert.equal(f.alpha.getOperation(first.operationId).state, 'DONE');
-  assert.throws(() => f.alpha.createMessage('wa', 'message', { ...input, body: 'Changed fictional body' }), code('IDEMPOTENCY_CONFLICT'));
-  const { lastInboundAt, ...template } = input;
-  assert.throws(() => f.alpha.createMessage('wa', 'unapproved', { ...template, kind: 'TEMPLATE', template: 'synthetic-template', templateApproved: false }), code('APPROVED_TEMPLATE_REQUIRED'));
-  assert.equal(f.alpha.createMessage('wa', 'approved', { ...template, kind: 'TEMPLATE', template: 'synthetic-template', templateApproved: true }).replayed, false);
-  assert.throws(() => f.alpha.createMessage('wa', 'huge', { ...template, kind: 'TEMPLATE', template: 'x'.repeat(161), templateApproved: true }), code('INVALID_INPUT'));
-  assert.throws(() => f.alpha.createMessage('wa', 'foreign-field', { ...template, kind: 'TEMPLATE', template: 'synthetic-template', templateApproved: true, lastInboundAt: { unrelated: true } }), code('INVALID_INPUT'));
 });
 
 test('Ninja contract locations are fixed, and signatures use bounded raw bytes with exact encoding', () => {

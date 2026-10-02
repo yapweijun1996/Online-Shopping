@@ -1,0 +1,39 @@
+# Trusted consent and offline signed ingress
+
+Local branch `codex/integration-trust-ingress-local` starts from the reviewed adapter checkpoint `06bf106540a67397cef0c1f9a5903d70f1b1880f`. B `1b53f8d23dc77de86ec173d7155036101c264baf` and foundation `73cf59440af470e08ae616bcaf7066703ba8f0f3` remain separate preserved checkpoints. This slice has no startup/public route, live transport, identity/grant provisioning, production migration, pairing, publication or deployment. It does not implement a production tenant architecture.
+
+## Server-owned consent boundary
+
+`integration-consent.js` reads the existing `shop_order` contract: buyer phone, `whatsapp_opt_in`, `whatsapp_consent_at`, and version `order-contact-v2`. The source is the server order transaction, not a provider payload or caller boolean. Only buyer **ORDER_CONTACT** is supported; recipient addresses, inbound texts and marketing-purpose claims cannot establish permission.
+
+The authority factory requires explicit SYNTHETIC mode and a pre-existing shopping schema plus synthetic integration ledger. Separate opt-in tables bind a fixture order to one company/connection/account and bind that connection to a fictional App/WABA/phone-number ID. All provider IDs configured here are deliberately zero-prefixed fiction. The ownership mapping is test setup supplied by a trusted server harness; it is not inferred from old single-company rows and is not a production tenant grant. Actual company ownership still needs a separately reviewed tenant repository and authorization layer.
+
+Consent proofs and trusted message descriptors are module-private branded and frozen. A copied proof, pure request builder, fake authority, or legacy `createMessage` caller flags cannot queue a message. A new queue validates current records again inside the intent transaction. Execution re-reads current records before leasing and immediately before fixture transmission. A revocation during lease acquisition becomes a policy block without submission. Completed facts remain replayable after window expiry or revocation, while current company/account binding and stored snapshot integrity still apply.
+
+Revocation is an append-only synthetic overlay; it never overwrites historical order consent/contact/price/audit snapshots. The service-window clock comes only from an accepted signed inbound text for the mapped business phone and exact buyer phone. Inbound messages never grant opt-in. Template metadata is an account-bound server fixture record, checked again for current approval and exact positional-body parameter count. Real template synchronization, revocation sources, message content/triggers, and approved recipient policy remain external gates.
+
+## Official signature and envelope evidence
+
+Meta's current official [endpoint contract](https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/create-webhook-endpoint.md), [inbound text envelope](https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/messages/text.md), and [status envelope](https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/messages/status.md) were read on 2026-10-02. The browser fetch was rate limited; the official Markdown pages were successfully read directly. The contract uses HMAC-SHA256 over the POST body with the App Secret, compared to `X-Hub-Signature-256` after `sha256=`. The GET verification token is a separate mechanism and is not an App Secret. The factory implements no GET handshake or subscription/configuration API.
+
+Normalized local primary-source cache hashes (HTML entities decoded): endpoint `bfce8cc461ebc418ab685f5ced59393f4211ca561adadd3b09d31949928d3acd`; inbound text `bb4f08c8583ea57d1618327ff4c38edcf3a8562a2086d527bf7560d255b015b1`; status `2a6087e465c3e0981238135eca510db05b9093116754c6b9ed2bb36abbe002ed`. No third-party documentation copy is committed.
+
+## Offline inbox behavior
+
+`integration-ingress.js` accepts raw Uint8Array bytes and a signature, plus a clearly synthetic configured key. It snapshots the bytes once and verifies that same snapshot before UTF-8/JSON parsing. The bounded local contract is the messages field, at most 1 MiB and 1000 events. It resolves every entry/change through trusted App + WABA + business-phone mapping; caller company/role claims have no authority. The current binding is checked again in the write transaction. No customer identity is inferred from `contacts.wa_id`; inbound `from` is the documented sender phone.
+
+Inbox insertion, inbound clock/projection effects and receipt persistence share one synchronous Store transaction. The returned HTTP 200 **descriptor** exists only after commit; a failure returns no ACK. Tests include a real isolated SQLite file close/reopen, but do not establish production storage durability or crash/backup recovery. The Store contract must commit before returning. This is an offline function, not a public endpoint.
+
+Events are deduplicated within a batch and across retries. Inbound message ID is its identity; a changed core payload conflicts. Status identity includes message ID, raw status and event timestamp, since the provider does not supply a separate unique status-event ID here. Private text, profiles, URLs, raw payloads and error prose are not retained; inbox stores bounded correlation metadata and content hashes. Malformed signatures/envelopes, unknown account mapping and conflicting event identity fail without batch writes. Unsupported/future events persist quarantined without opening a window.
+
+Delivery status requires exactly one accepted operation in the same company/connection with that provider message ID. A callback arriving before response persistence waits durably for its subject; explicit offline `reprocessWaiting` can correlate it later. Missing/ambiguous subjects, unknown states and failure/success contradictions cannot silently change a projection. Timestamp checks and the documented sent/delivered/read progression preserve newer progress without pretending real events have synthetic sequence numbers. A read event implies delivery, but acceptance does not. No inbox function changes a shopping order/payment state.
+
+Ninja Van's existing raw-body signature helper remains unchanged. This slice adds Meta messages ingress only; a Ninja signed ingress, full provider event coverage, key rotation/replay retention, subscriber handshakes and public routing require their own bounded review.
+
+## Reconciliation and remaining gates
+
+This slice disables the earlier manual synthetic `FOUND/ABSENT` placeholder: it now returns `PROVIDER_LOOKUP_REQUIRED`, leaving reconciliation **UNKNOWN**. No lookup endpoint is invented and a signed but uncorrelated status cannot close the uncertain operation. A verified provider query contract and account-bound lookup evidence are required before changing this rule. No retry is triggered by inbox processing.
+
+Remaining external gates include real principal/company ownership and capabilities, IdP/MFA/tenant database design approval, real App/WABA/phone ownership and grants, secure key provisioning, account/version/tracking/template contracts, verified query semantics, actual inbound and revocation provenance, approved message triggers/recipients, HTTPS subscriptions, sandbox/provider acceptance, retention/monitoring/backups and exact artifact release/migration approval. Passing synthetic tests does not close any of these. The 18 MVP denominator remains unchanged, historical local 16/18 and production released 0/18.
+
+Relevant tests are `test/integration-trust.test.js` plus the existing integration/adapter files. Prior caller-flag and manual-reconciliation fixtures were updated to assert the tightened trust contract; snapshot, lease, response, malformed-envelope and cache/startup protections remain checked. No UI assets change, so no new screenshot or heavy browser suite is necessary for this slice.

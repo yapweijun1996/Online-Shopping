@@ -1,5 +1,7 @@
 # Offline provider adapters
 
+Historical adapter checkpoint `06bf106540a67397cef0c1f9a5903d70f1b1880f` is preserved. The later [trust/ingress slice](INTEGRATION_TRUST_INGRESS.md) replaces caller policy flags with server-record resolution and disables the manual FOUND/ABSENT placeholder described below; this document records the earlier bounded checkpoint.
+
 This local slice builds on the independently reviewed integration foundation at `73cf59440af470e08ae616bcaf7066703ba8f0f3`. It has no startup migration, dispatcher, credential resolver, network transport, webhook endpoint, live connection, or deployment. The seller status screen remains `NOT_CONFIGURED` for every provider. The existing 18 MVP acceptance criteria and production denominator remain unchanged; courier and messaging automation are later extensions.
 
 ## Contract scope

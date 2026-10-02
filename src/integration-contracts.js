@@ -20,6 +20,14 @@ export function verifyNinjaSignature(rawBody, signature, secret) {
   return received.length === expected.length && timingSafeEqual(expected, received);
 }
 
+export function verifyMetaSignature(rawBody, signature, appSecret) {
+  if (!(rawBody instanceof Uint8Array) || rawBody.byteLength > 1024 * 1024 || typeof appSecret !== 'string' || !appSecret ||
+      typeof signature !== 'string' || !/^sha256=[a-fA-F0-9]{64}$/.test(signature)) return false;
+  const expected = createHmac('sha256', appSecret).update(rawBody).digest();
+  const received = Buffer.from(signature.slice(7), 'hex');
+  return received.length === expected.length && timingSafeEqual(expected, received);
+}
+
 export function messagingPolicy(input, now) {
   const consent = input?.consent;
   if (consent?.optIn !== true || typeof consent.version !== 'string' || !consent.version.trim() ||
