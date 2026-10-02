@@ -1,6 +1,6 @@
 # Admin and company isolation — review draft
 
-Candidate: Shop v104 / Seller v80. This document proposes future Production on one Docker/PostgreSQL server behind Cloudflare Tunnel. It does not activate tenants, credentials, grants, migration or hosting. The current application still has one persistent company and one privileged Seller account. The public Demo continues using its existing SQLite Durable Object namespace.
+Candidate: Shop v105 / Seller v81. This document proposes future Production on one Docker/PostgreSQL server behind Cloudflare Tunnel. It does not activate tenants, credentials, grants, migration or hosting. The current application still has one persistent company and one privileged Seller account. The public Demo continues using its existing SQLite Durable Object namespace.
 
 ## Goal and bounded implementation
 
@@ -9,6 +9,8 @@ An Admin must manage companies and Seller memberships while each Seller sees onl
 The candidate implements a separate **fictional prototype** at `/demo/` and `/api/v1/demo/`. “Login as Admin” and “Login as Demo Seller” appear only when the server reports `demoRolesAvailable=true`. The API receives no live database, credentials or privileged sessions. Every login creates a fresh in-memory workspace, including two companies, two fictional memberships, 35 products per company with six images, and fictional customers/orders. Login/reset/expiry/exit are session-local. The absolute lifetime is one hour; restart/DO eviction can reset it earlier. Limits: 32 concurrent workspaces, 100 rows per collection, 100 audit entries, 10 starts/minute/client and 128 tracked limiter clients. It is a demonstration with bounded memory, not a durable production tenancy adapter.
 
 The demo cookie has a separate name/path, a random 256-bit token stored by hash, HttpOnly/SameSite=Strict and Secure on HTTPS. Mutation requires same origin plus CSRF. The role/principal comes from the server session. An Admin can create/disable fictional companies/memberships and enter a Seller view; that switch rotates CSRF and reduces privileges. New login creates fresh fiction rather than granting real access. A Demo role never authorizes `/api/v1/seller/*`. Manual/legacy-demo server modes reject Demo APIs and pages, including encoded page paths. Worker-first asset handling is required to enforce this page gate. Docker/Caddy uses a GET-only `/api/v1/demo/availability` preflight before serving any `/demo` asset; the mode-disabled API returns 404 before session handling. Production must run `SHOP_MODE=manual`; the production artifact and reverse-proxy gates require independent verification.
+
+Reset rotates CSRF without extending absolute expiry. A seeded Seller keeps its identity; an assumed custom Seller whose membership is removed by reset returns to seeded `seller-alpha`, still with Seller privileges. The response includes the resulting role/principal, and resource loading/Exit remain usable. Reset never restores prior Admin privileges. These identities and company selection belong only to the private fictional workspace.
 
 ## Proposed production data and invariants
 
