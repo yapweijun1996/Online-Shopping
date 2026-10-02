@@ -4,6 +4,8 @@ Reconciled 2026-10-02 against `SPEC.md`, current code/tests and recorded project
 
 The historical single-company local baseline records AC-01–15 and AC-18 as verified (16/18). AC-16/17 remain open. **Production released: 0/18**. A running Cloudflare Demo does not satisfy the future Docker/PostgreSQL Production denominator. The present full regression and focused browser results preserve evidence for the candidate changes; they do not re-certify every historical browser journey or the unimplemented production tenant adapter.
 
+The separately local [offline adapter slice](INTEGRATION_ADAPTERS.md) adds credential-free request/response fixtures. Its 168 passing regression tests and independent synthetic review do not change this denominator or certify a provider connection.
+
 | Item | Current single-company evidence | Remaining production/tenant gate |
 | --- | --- | --- |
 | AC-01 credentials/session | Existing config/auth tests; ordinary Seller login; Demo cookie cannot authorize it. | Production secrets/IdP, MFA/grant policy, HTTPS/revocation and exact artifact review. |
