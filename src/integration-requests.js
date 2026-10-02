@@ -110,14 +110,18 @@ export function normalizeProviderResponse(provider, response) {
   const unknown = category => ({ outcome: 'UNKNOWN', category, ...(Number.isInteger(status) && status >= 100 && status <= 599 ? { httpStatus: status } : {}) });
   if (!Number.isInteger(status) || status < 200 || status > 599 || !body || typeof body !== 'object' || Array.isArray(body)) return unknown('UNVERIFIED_RESPONSE');
   if (status < 300 && !body.error) {
-    const id = provider === 'NINJA_VAN' ? body.tracking_number : body.messaging_product === 'whatsapp' && body.messages?.length === 1 ? body.messages[0]?.id : null;
+    if (provider === 'NINJA_VAN' && status !== 200) return unknown('UNVERIFIED_RESPONSE');
+    const entry = Array.isArray(body.messages) && body.messages.length === 1 ? body.messages[0] : null;
+    const id = provider === 'NINJA_VAN' ? body.tracking_number : body.messaging_product === 'whatsapp' && entry && typeof entry === 'object' && !Array.isArray(entry) ? entry.id : null;
     const pattern = provider === 'NINJA_VAN' ? /^([a-zA-Z0-9]+-)*[a-zA-Z0-9]+$/ : /^wamid\.[A-Za-z0-9+/=_-]+$/;
     if (typeof id === 'string' && id.length <= 160 && pattern.test(id)) return { outcome: 'ACKNOWLEDGED', category: 'ACCEPTED', providerId: id, httpStatus: status };
     return unknown('UNVERIFIED_RESPONSE');
   }
   const code = body.error?.code;
-  const validCode = provider === 'WHATSAPP_CLOUD' ? Number.isSafeInteger(code) && code >= 0 : typeof code === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(code);
+  const numericCode = Number.isSafeInteger(code) && code >= 0;
+  const validCode = provider === 'WHATSAPP_CLOUD' ? numericCode : numericCode || typeof code === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(code);
   if (!validCode) return unknown('UNVERIFIED_RESPONSE');
+  if (provider === 'NINJA_VAN' && String(code) === '109201') return { ...unknown('PROVIDER_RECONCILE'), errorCode: String(code) };
   if ([400,422].includes(status)) return { outcome: 'REJECTED', category: 'INVALID_REQUEST', errorCode: String(code), httpStatus: status };
   if ([401,403,404].includes(status)) return { outcome: 'REJECTED', category: 'CONFIGURATION_REQUIRED', errorCode: String(code), httpStatus: status };
   // No verified provider idempotency guarantee: conflicts, throttling and server errors need reconciliation.

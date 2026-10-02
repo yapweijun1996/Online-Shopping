@@ -93,17 +93,19 @@ test('default adapter stays disconnected and arbitrary transports cannot be inje
 });
 
 test('accepted fixture response is persisted atomically and DONE replay never submits twice', async t => {
-  const f = fixture(t), transport = createFixtureIntegrationTransport([{ status: 201, body: { tracking_number: 'SYNTHETIC001', to: { name: 'private echo' } } }]);
+  const f = fixture(t), transport = createFixtureIntegrationTransport([{ status: 200, body: { tracking_number: 'SYNTHETIC001', to: { name: 'private echo' } } }]);
   const queued = f.scope.queueProviderRequest(f.b.connectionId, 'accepted', buildNinjaParcelRequest(f.b, parcel())), adapter = f.adapter(transport);
   const result = await adapter.execute(queued.operationId);
   assert.equal(result.state, 'DONE'); assert.equal(result.result.category, 'ACCEPTED');
   assert.deepEqual(f.scope.getOperation(queued.operationId).providerResult, result.result);
   assert.equal((await adapter.execute(queued.operationId)).replayed, true); assert.equal(transport.requests().length, 1);
   assert.doesNotMatch(f.store.get('SELECT result_json FROM integration_demo_provider_result').result_json, /private echo|name|address/);
+  f.store.run('UPDATE integration_demo_connection SET account_id = ? WHERE company_id = ? AND id = ?', 'synthetic-replaced', f.b.companyId, f.b.connectionId);
+  await assert.rejects(adapter.execute(queued.operationId), code('NOT_FOUND')); assert.equal(transport.requests().length, 1);
 });
 
 test('foreign operation, account changes and mismatched connection never reach the transport', async t => {
-  const f = fixture(t), transport = createFixtureIntegrationTransport([{ status: 201, body: { tracking_number: 'SYNTHETIC001' } }]);
+  const f = fixture(t), transport = createFixtureIntegrationTransport([{ status: 200, body: { tracking_number: 'SYNTHETIC001' } }]);
   const queued = f.scope.queueProviderRequest(f.b.connectionId, 'foreign', buildNinjaParcelRequest(f.b, parcel()));
   await assert.rejects(f.adapter(transport, binding('NINJA_VAN','beta')).execute(queued.operationId), code('NOT_FOUND'));
   await assert.rejects(f.adapter(transport, binding('WHATSAPP_CLOUD')).execute(queued.operationId), code('NOT_FOUND'));
@@ -130,7 +132,7 @@ test('message permission is checked at queue and again before execution; old DON
 });
 
 test('timeouts and unverifiable responses require explicit reconciliation before a retry', async t => {
-  const f = fixture(t), transport = createFixtureIntegrationTransport([{ networkFailure: 'TIMEOUT' }, { status: 201, body: { tracking_number: 'SYNTHETIC001' } }]);
+  const f = fixture(t), transport = createFixtureIntegrationTransport([{ networkFailure: 'TIMEOUT' }, { status: 200, body: { tracking_number: 'SYNTHETIC001' } }]);
   const queued = f.scope.queueProviderRequest(f.b.connectionId, 'unknown', buildNinjaParcelRequest(f.b, parcel())), adapter = f.adapter(transport);
   assert.equal((await adapter.execute(queued.operationId)).state, 'RECONCILE');
   await assert.rejects(adapter.execute(queued.operationId), code('INVALID_STATE')); assert.equal(transport.requests().length, 1);
@@ -141,6 +143,13 @@ test('timeouts and unverifiable responses require explicit reconciliation before
   assert.equal((await f.adapter(unknown).execute(found.operationId)).state, 'RECONCILE');
   f.scope.recordReconciliation(found.operationId, 'FOUND');
   assert.equal((await f.adapter(unknown).execute(found.operationId)).replayed, true); assert.equal(unknown.requests().length, 1);
+  const b = binding('WHATSAPP_CLOUD');
+  for (const [index, messages] of [{ length: 1, 0: { id: 'wamid.SYNTHETIC001' } }, ['wamid.SYNTHETIC001'], [{ id: 'wamid.SYNTHETIC001' }, { id: 'wamid.SYNTHETIC002' }]].entries()) {
+    const invalid = f.scope.queueProviderRequest(b.connectionId, `malformed-${index}`, buildWhatsAppMessageRequest(b, message()));
+    const malformed = createFixtureIntegrationTransport([{ status: 200, body: { messaging_product: 'whatsapp', messages } }]);
+    assert.equal((await f.adapter(malformed, b).execute(invalid.operationId)).state, 'RECONCILE');
+    assert.equal(f.scope.getOperation(invalid.operationId).providerResult.category, 'UNVERIFIED_RESPONSE');
+  }
 });
 
 test('verified rejection fails without resending; rate limits and conflicts remain uncertain', async t => {
@@ -154,11 +163,19 @@ test('verified rejection fails without resending; rate limits and conflicts rema
     for (const status of [401,403]) assert.equal(normalizeProviderResponse(provider, { status, body: { error } }).category, 'CONFIGURATION_REQUIRED');
     assert.equal(normalizeProviderResponse(provider, { status: 400, body: { error: { message: 'missing code' } } }).outcome, 'UNKNOWN');
   }
+  for (const errorCode of ['109201',109201]) {
+    const duplicate = f.scope.queueProviderRequest(f.b.connectionId, `duplicate-${typeof errorCode}`, buildNinjaParcelRequest(f.b, parcel()));
+    const transport = createFixtureIntegrationTransport([{ status: 400, body: { error: { code: errorCode, message: 'private duplicate detail' } } }]);
+    assert.equal((await f.adapter(transport).execute(duplicate.operationId)).state, 'RECONCILE');
+    assert.equal(f.scope.getOperation(duplicate.operationId).providerResult.errorCode, '109201');
+  }
+  assert.equal(normalizeProviderResponse('NINJA_VAN', { status: 400, body: { error: { code: 127014 } } }).outcome, 'REJECTED');
+  assert.equal(normalizeProviderResponse('NINJA_VAN', { status: 201, body: { tracking_number: 'SYNTHETIC001' } }).outcome, 'UNKNOWN');
 });
 
 test('provider-result persistence failure rolls back state, leaving a lease for reconciliation', async t => {
   const f = fixture(t, store => ({ ...store, run(sql, ...args) { if (sql.startsWith('INSERT INTO integration_demo_provider_result')) throw new Error('synthetic persistence failure'); return store.run(sql, ...args); } }));
-  const transport = createFixtureIntegrationTransport([{ status: 201, body: { tracking_number: 'SYNTHETIC001' } }]);
+  const transport = createFixtureIntegrationTransport([{ status: 200, body: { tracking_number: 'SYNTHETIC001' } }]);
   const queued = f.scope.queueProviderRequest(f.b.connectionId, 'fault', buildNinjaParcelRequest(f.b, parcel()));
   await assert.rejects(f.adapter(transport).execute(queued.operationId), /synthetic persistence failure/);
   assert.equal(f.scope.getOperation(queued.operationId).state, 'LEASED'); assert.equal(f.scope.getOperation(queued.operationId).providerResult, null);
@@ -167,12 +184,12 @@ test('provider-result persistence failure rolls back state, leaving a lease for 
 });
 
 test('concurrent execution sends once and expired replies cannot persist an accepted result', async t => {
-  const f = fixture(t), transport = createFixtureIntegrationTransport([{ status: 201, body: { tracking_number: 'SYNTHETIC001' } }]);
+  const f = fixture(t), transport = createFixtureIntegrationTransport([{ status: 200, body: { tracking_number: 'SYNTHETIC001' } }]);
   const queued = f.scope.queueProviderRequest(f.b.connectionId, 'concurrent', buildNinjaParcelRequest(f.b, parcel())), adapter = f.adapter(transport);
   const first = adapter.execute(queued.operationId);
   await assert.rejects(adapter.execute(queued.operationId), code('INVALID_STATE'));
   assert.equal((await first).state, 'DONE'); assert.equal(transport.requests().length, 1);
-  const lateTransport = createFixtureIntegrationTransport([{ status: 201, body: { tracking_number: 'SYNTHETIC002' } }]);
+  const lateTransport = createFixtureIntegrationTransport([{ status: 200, body: { tracking_number: 'SYNTHETIC002' } }]);
   const late = f.scope.queueProviderRequest(f.b.connectionId, 'late', buildNinjaParcelRequest(f.b, parcel()));
   const lateExecution = f.adapter(lateTransport).execute(late.operationId); f.advance(30000);
   const result = await lateExecution; assert.equal(result.state, 'RECONCILE'); assert.equal(result.result, null);

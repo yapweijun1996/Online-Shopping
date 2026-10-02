@@ -57,10 +57,10 @@ export function createSyntheticProviderAdapter({ ledger, companyId, connectionId
       const operation = scope.getOperation(operationId);
       if (operation.connectionId !== connectionId || operation.intent.binding?.companyId !== companyId ||
           operation.intent.binding?.connectionId !== connectionId) fail('NOT_FOUND', 'Not found.', 404);
-      if (operation.state === 'DONE' || operation.state === 'FAILED') return { state: operation.state, result: operation.providerResult, replayed: true };
       const prepared = restoreIntegrationRequest(operation.intent);
       scope.validateProviderRequest(connectionId, prepared);
       if (prepared.kind !== operation.kind) fail('INVALID_INPUT', 'Operation kind does not match.', 400);
+      if (operation.state === 'DONE' || operation.state === 'FAILED') return { state: operation.state, result: operation.providerResult, replayed: true };
       if (prepared.policy) {
         const time = now();
         if (!Number.isSafeInteger(time) || time < 0) fail('INVALID_CLOCK', 'Invalid clock.');
