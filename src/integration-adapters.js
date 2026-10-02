@@ -1,7 +1,7 @@
 import { ApiError } from './http.js';
 import { messagingPolicy } from './integration-contracts.js';
 import { isPreparedIntegrationRequest, restoreIntegrationRequest, normalizeProviderResponse } from './integration-requests.js';
-import { isMessagingAuthority } from './integration-consent.js';
+import { ledgerUsesMessagingAuthority } from './integration-ledger.js';
 
 const fixtures = new WeakSet();
 const fail = (code, message, status = 409) => { throw new ApiError(status, code, message); };
@@ -51,12 +51,13 @@ export function createFixtureIntegrationTransport(responses) {
 
 export function createSyntheticProviderAdapter({ ledger, companyId, connectionId, transport, messagingAuthority, now = Date.now }) {
   if (transport !== undefined && !fixtures.has(transport)) fail('SYNTHETIC_ONLY', 'Only the data-only fixture transport is supported.');
-  if (messagingAuthority !== undefined && !isMessagingAuthority(messagingAuthority)) fail('TRUSTED_CONSENT_REQUIRED', 'Use a server-record authority.');
+  if (messagingAuthority !== undefined && !ledgerUsesMessagingAuthority(ledger, messagingAuthority)) fail('TRUSTED_CONSENT_REQUIRED', 'Use a server-record authority from this ledger Store.');
   const scope = ledger.forCompany(companyId);
   function currentPolicy(prepared) {
     const time = now(); if (!Number.isSafeInteger(time) || time < 0) fail('INVALID_CLOCK', 'Invalid clock.');
     const proof = messagingAuthority.resolve(prepared.binding, { ...prepared.input.authorizationRef, recipient: prepared.input.recipient,
-      kind: prepared.input.kind, template: prepared.input.template, language: prepared.input.language, parameterCount: prepared.input.parameters?.length });
+      phoneNumberId: prepared.input.phoneNumberId, kind: prepared.input.kind, template: prepared.input.template,
+      language: prepared.input.language, parameterCount: prepared.input.parameters?.length });
     messagingPolicy(proof.policy, time);
   }
   return Object.freeze({
@@ -70,7 +71,7 @@ export function createSyntheticProviderAdapter({ ledger, companyId, connectionId
       if (prepared.kind !== operation.kind) fail('INVALID_INPUT', 'Operation kind does not match.', 400);
       if (prepared.kind === 'MESSAGE') {
         if (!messagingAuthority || !prepared.input.authorizationRef) fail('TRUSTED_CONSENT_REQUIRED', 'A server-record authority is required.');
-        messagingAuthority.assertReference(prepared.binding, { ...prepared.input.authorizationRef, recipient: prepared.input.recipient });
+        messagingAuthority.assertReference(prepared.binding, { ...prepared.input.authorizationRef, recipient: prepared.input.recipient, phoneNumberId: prepared.input.phoneNumberId });
       }
       if (operation.state === 'DONE' || operation.state === 'FAILED') return { state: operation.state, result: operation.providerResult, replayed: true };
       if (operation.state === 'LEASED') {

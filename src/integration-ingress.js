@@ -47,7 +47,7 @@ export function createOfflineMetaIngress({ store, authority, mode, appId, appSec
     ) STRICT;
   `));
   const clock = () => { const value = now(); if (!Number.isSafeInteger(value) || value < 0) fail('INVALID_CLOCK', 'Invalid clock.', 409); return value; };
-  function parse(rawBody, time) {
+  function parse(rawBody) {
     let payload;
     try { payload = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(rawBody)); }
     catch { fail('INVALID_PAYLOAD', 'Invalid UTF-8 JSON.'); }
@@ -62,7 +62,8 @@ export function createOfflineMetaIngress({ store, authority, mode, appId, appSec
         const binding = authority.resolvePhone(appId, wabaId, phoneId);
         const base = { binding, wabaId, phoneId };
         if (!value.messages && !value.statuses) {
-          events.push({ ...base, kind: 'UNSUPPORTED', subjectId: digest(encode(value)), status: 'UNKNOWN', occurredAt: time });
+          // The provider supplied no event time; receipt time must not change retry identity.
+          events.push({ ...base, kind: 'UNSUPPORTED', subjectId: digest(encode(value)), status: 'UNKNOWN', occurredAt: null });
         }
         if (value.messages !== undefined) for (const message of array(value.messages)) {
           const subjectId = messageId(message?.id), recipient = phone(message.from), occurredAt = timestamp(message.timestamp);
@@ -72,7 +73,8 @@ export function createOfflineMetaIngress({ store, authority, mode, appId, appSec
         }
         if (value.statuses !== undefined) for (const status of array(value.statuses)) {
           const subjectId = messageId(status?.id), occurredAt = timestamp(status.timestamp);
-          string(status.status, /^[a-z_]{1,80}$/, 80); string(status.recipient_id, /^\d{8,20}$/, 20);
+          string(status.status, /^[a-z_]{1,80}$/, 80);
+          string(status.recipient_id, status.recipient_type === 'group' ? /^[A-Za-z0-9+/=_-]+$/ : /^\d{8,20}$/, status.recipient_type === 'group' ? 160 : 20);
           const normalized = Object.hasOwn({ sent: 1, delivered: 1, read: 1, failed: 1 }, status.status) && status.recipient_type !== 'group' ? status.status.toUpperCase() : 'UNKNOWN';
           events.push({ ...base, kind: 'STATUS', subjectId, occurredAt, status: normalized, providerStatus: status.status, recipientId: status.recipient_id });
         }
@@ -90,16 +92,20 @@ export function createOfflineMetaIngress({ store, authority, mode, appId, appSec
       store.run('INSERT INTO integration_demo_inbound_clock(company_id,connection_id,recipient,occurred_at) VALUES (?,?,?,?) ON CONFLICT(company_id,connection_id,recipient) DO UPDATE SET occurred_at=excluded.occurred_at', companyId, connectionId, event.recipient, event.occurredAt);
       return 'APPLIED';
     }
-    const operations = store.all(`SELECT o.id FROM integration_demo_operation o JOIN integration_demo_intent i
+    const operations = store.all(`SELECT o.id,json_extract(i.snapshot_json,'$.input.recipient') recipient,
+      json_extract(i.snapshot_json,'$.input.phoneNumberId') phone_id FROM integration_demo_operation o JOIN integration_demo_intent i
       ON i.company_id=o.company_id AND i.id=o.intent_id JOIN integration_demo_provider_result r ON r.company_id=o.company_id AND r.outbox_id=o.id
       WHERE o.company_id=? AND o.connection_id=? AND i.kind='MESSAGE' AND json_extract(r.result_json,'$.providerId')=? AND json_extract(r.result_json,'$.category')='ACCEPTED'`,
     companyId, connectionId, event.subjectId);
     if (!operations.length) return 'WAITING_SUBJECT';
     if (operations.length !== 1) return 'QUARANTINED';
+    if (`+${event.recipientId}` !== operations[0].recipient || event.phoneId !== operations[0].phone_id) return 'QUARANTINED';
     const current = store.get('SELECT * FROM integration_demo_message_projection WHERE company_id=? AND connection_id=? AND subject_id=?', companyId, connectionId, event.subjectId);
     const rank = { SENT: 1, DELIVERED: 2, READ: 3 };
     if (current) {
-      if ((current.status === 'FAILED') !== (event.status === 'FAILED')) return 'QUARANTINED';
+      // Sent is not delivered: a later failure may report a delivery failure.
+      if ((current.status === 'FAILED') !== (event.status === 'FAILED') &&
+          !(current.status === 'SENT' && event.status === 'FAILED' && event.occurredAt > current.occurred_at)) return 'QUARANTINED';
       if (event.occurredAt < current.occurred_at || event.status !== 'FAILED' && rank[event.status] < rank[current.status] ||
           event.occurredAt === current.occurred_at && event.status === current.status) return 'STALE';
     }
@@ -112,7 +118,7 @@ export function createOfflineMetaIngress({ store, authority, mode, appId, appSec
       // Authenticate and persist the same snapshot even if the caller shares mutable bytes.
       const raw = Uint8Array.from(rawBody);
       if (!verifyMetaSignature(raw, signature, appSecret)) fail('INVALID_SIGNATURE', 'Invalid webhook signature.', 401);
-      const time = clock(), events = parse(raw, time), rawDigest = digest(raw);
+      const time = clock(), events = parse(raw), rawDigest = digest(raw);
       const result = store.transaction(() => {
         let duplicates = 0, quarantined = 0;
         for (const event of events) {

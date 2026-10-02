@@ -41,6 +41,32 @@ test('server order consent binds company, account, connection, buyer recipient a
   assert.throws(() => f.authority.registerOrder(trustBinding('WHATSAPP_CLOUD','beta'), f.orderId));
 });
 
+test('another Store cannot authorize queue or execution even with identical fictional company/account IDs', t => {
+  const source = trustFixture(t, { openWindow: true }), target = trustFixture(t, { openWindow: true });
+  target.authority.revoke(target.b, target.orderId);
+  const foreign = source.prepare(), scope = target.ledger.forCompany(target.b.companyId), transport = accepted('wamid.SYNTHETIC_FOREIGN');
+  assert.throws(() => target.authority.assertReference(target.b, { ...foreign.input.authorizationRef, recipient: foreign.input.recipient }), code('NOT_FOUND'));
+  assert.throws(() => scope.queueProviderRequest(target.b.connectionId, 'foreign-proof', foreign), code('TRUSTED_CONSENT_REQUIRED'));
+  assert.throws(() => createSyntheticProviderAdapter({ ledger: target.ledger, ...target.b, transport, messagingAuthority: source.authority }), code('TRUSTED_CONSENT_REQUIRED'));
+  assert.throws(() => createSyntheticProviderAdapter({ ledger: { ...source.ledger }, ...source.b, transport, messagingAuthority: source.authority }), code('TRUSTED_CONSENT_REQUIRED'));
+  assert.equal(count(target, 'operation'), 0); assert.equal(transport.requests().length, 0);
+});
+
+test('changed phone bindings block stale new queues, pending dispatch and completed replay', async t => {
+  const f = trustFixture(t, { openWindow: true }), scope = f.ledger.forCompany(f.b.companyId), prepared = f.prepare();
+  const done = scope.queueProviderRequest(f.b.connectionId, 'phone-done', prepared), transport = accepted('wamid.SYNTHETIC_PHONE'), adapter = f.adapter(transport, f.b);
+  assert.equal((await adapter.execute(done.operationId)).state, 'DONE');
+  const waiting = scope.queueProviderRequest(f.b.connectionId, 'phone-waiting', prepared);
+  f.store.run('UPDATE integration_demo_phone_binding SET phone_id=? WHERE company_id=? AND connection_id=?', '000000000000019', f.b.companyId, f.b.connectionId);
+  assert.throws(() => scope.queueProviderRequest(f.b.connectionId, 'phone-new', prepared), code('MESSAGE_BINDING_CHANGED'));
+  assert.throws(() => scope.queueProviderRequest(f.b.connectionId, 'phone-done', prepared), code('MESSAGE_BINDING_CHANGED'));
+  await assert.rejects(adapter.execute(waiting.operationId), code('MESSAGE_BINDING_CHANGED'));
+  await assert.rejects(adapter.execute(done.operationId), code('MESSAGE_BINDING_CHANGED'));
+  assert.equal(scope.getOperation(waiting.operationId).state, 'PENDING'); assert.equal(transport.requests().length, 1);
+  const currentPhoneStatus = metaPayload({ statuses: [statusEvent(f.now(), 'delivered', 'wamid.SYNTHETIC_PHONE')] }, { phoneId: '000000000000019' });
+  assert.equal(f.ingress.receive(signed(currentPhoneStatus)).quarantined, 1); assert.equal(projection(f, 'wamid.SYNTHETIC_PHONE'), undefined);
+});
+
 test('signed inbound never grants consent to email-only or historical opt-out orders', t => {
   const f = trustFixture(t, { openWindow: true }), orderId = f.makeOrder({ phone: '', optIn: false }); f.authority.registerOrder(f.b, orderId);
   assert.throws(() => f.authority.resolve(f.b, { orderId, purpose: 'ORDER_CONTACT', recipient: '+60123456789', kind: 'TEXT', consent: { optIn: true } }), code('NOT_FOUND'));
@@ -86,6 +112,18 @@ test('revocation during lease acquisition is rechecked before transmission and r
   assert.equal(result.result.errorCode,'CONSENT_REQUIRED'); assert.equal(transport.requests().length,0);
 });
 
+test('phone replacement during lease acquisition prevents transmission', async t => {
+  let onLease;
+  const f = trustFixture(t, { openWindow: true, wrap: store => ({ ...store, run(sql, ...args) {
+    store.run(sql, ...args); if (onLease && sql.startsWith("UPDATE integration_demo_outbox SET state = 'LEASED'")) onLease();
+  } }) });
+  const scope = f.ledger.forCompany(f.b.companyId), queued = scope.queueProviderRequest(f.b.connectionId, 'phone-lease', f.prepare());
+  onLease = () => f.store.run('UPDATE integration_demo_phone_binding SET phone_id=? WHERE company_id=? AND connection_id=?', '000000000000019', f.b.companyId, f.b.connectionId);
+  const transport = accepted('wamid.SYNTHETIC_PHONE_RACE'), result = await f.adapter(transport, f.b).execute(queued.operationId);
+  assert.equal(result.state, 'FAILED'); assert.equal(result.result.category, 'POLICY_BLOCKED');
+  assert.equal(result.result.errorCode, 'MESSAGE_BINDING_CHANGED'); assert.equal(transport.requests().length, 0);
+});
+
 test('expired message leases enter UNKNOWN reconciliation even after consent is revoked', async t => {
   const f = trustFixture(t,{openWindow:true}), scope = f.ledger.forCompany(f.b.companyId);
   const queued = scope.queueProviderRequest(f.b.connectionId,'expired-revoked',f.prepare()); scope.beginAttempt(queued.operationId);
@@ -127,6 +165,26 @@ test('duplicates inside a batch and across retries do not duplicate windows or r
   const conflict = metaPayload({ messages: [inboundText(f.now(), 'wamid.SYNTHETIC_NEW'), { ...message, text: { body: 'Changed content' } }] });
   assert.throws(() => f.ingress.receive(signed(conflict)), code('EVENT_CONFLICT'));
   assert.equal(count(f, 'signed_inbox'), 1); assert.equal(count(f, 'webhook_receipt'), 1);
+});
+
+test('unsupported notification retries have stable identity without invented provider timestamps', t => {
+  const f = trustFixture(t), request = signed(metaPayload({ errors: [{ code: 131051, message: 'PRIVATE FICTIONAL ERROR' }] }));
+  const firstTime = f.now(); assert.equal(f.ingress.receive(request).quarantined, 1);
+  f.advance(1000); const retry = f.ingress.receive(request);
+  assert.equal(retry.httpStatus, 200); assert.equal(retry.duplicates, 1); assert.equal(retry.quarantined, 0);
+  assert.equal(count(f, 'signed_inbox'), 1); assert.equal(count(f, 'webhook_receipt'), 1);
+  const event = JSON.parse(f.store.get('SELECT event_json FROM integration_demo_signed_inbox').event_json);
+  assert.equal(event.occurredAt, null); assert.doesNotMatch(JSON.stringify(event), /PRIVATE FICTIONAL ERROR/);
+  assert.equal(f.store.get('SELECT received_at FROM integration_demo_webhook_receipt').received_at, firstTime);
+});
+
+test('unsupported opaque group status quarantines without starving valid individual events in its batch', t => {
+  const f = trustFixture(t), group = { ...statusEvent(f.now(), 'delivered', 'wamid.SYNTHETIC_GROUP'), recipient_type: 'group', recipient_id: 'U3ludGhldGljR3JvdXA=' };
+  const request = signed(metaPayload({ messages: [inboundText(f.now())], statuses: [group] })), first = f.ingress.receive(request);
+  assert.equal(first.httpStatus, 200); assert.equal(first.received, 2); assert.equal(first.quarantined, 1);
+  assert.equal(count(f, 'inbound_clock'), 1); assert.equal(count(f, 'signed_inbox'), 2);
+  assert.equal(f.prepare().kind, 'MESSAGE'); f.advance(1000); assert.equal(f.ingress.receive(request).duplicates, 2);
+  assert.equal(count(f, 'webhook_receipt'), 1);
 });
 
 test('future, unsupported and older inbound events cannot open or regress a service window', t => {
@@ -175,6 +233,17 @@ test('a status arriving before accepted-response persistence waits for correlati
   assert.deepEqual(f.store.all('SELECT * FROM shop_order'), before);
 });
 
+test('status correlation requires the exact original individual recipient, including delayed correlation', async t => {
+  const f = trustFixture(t, { openWindow: true }), wrong = { ...statusEvent(f.now(), 'delivered'), recipient_id: '60129876543' };
+  f.ingress.receive(signed(metaPayload({ statuses: [wrong] })));
+  const scope = f.ledger.forCompany(f.b.companyId), queued = scope.queueProviderRequest(f.b.connectionId, 'recipient-status', f.prepare());
+  await f.adapter(accepted('wamid.SYNTHETIC001'), f.b).execute(queued.operationId);
+  assert.equal(f.ingress.reprocessWaiting().applied, 0); assert.equal(projection(f), undefined);
+  assert.equal(f.store.get("SELECT disposition FROM integration_demo_signed_inbox WHERE disposition='QUARANTINED'").disposition, 'QUARANTINED');
+  f.advance(1000); assert.equal(f.ingress.receive(signed(metaPayload({ statuses: [statusEvent(f.now(), 'delivered')] }))).quarantined, 0);
+  assert.equal(projection(f).status, 'DELIVERED');
+});
+
 test('out-of-order and equal-time status events preserve progress; failure conflicts and unknown statuses quarantine', async t => {
   const f = trustFixture(t,{openWindow:true}), scope = f.ledger.forCompany(f.b.companyId), queued = scope.queueProviderRequest(f.b.connectionId,'status',f.prepare());
   await f.adapter(accepted('wamid.SYNTHETIC001'),f.b).execute(queued.operationId);
@@ -182,6 +251,22 @@ test('out-of-order and equal-time status events preserve progress; failure confl
   assert.equal(projection(f).status,'READ');
   f.advance(1000); const result = f.ingress.receive(signed(metaPayload({statuses:[statusEvent(f.now(),'failed'),statusEvent(f.now(),'future_status'),statusEvent(f.now(),'another_future_status')]})));
   assert.equal(result.quarantined,3); assert.equal(projection(f).status,'READ');
+});
+
+test('sent may progress to a later delivery failure while confirmed delivery contradictions quarantine', async t => {
+  const f = trustFixture(t, { openWindow: true }), scope = f.ledger.forCompany(f.b.companyId);
+  const queued = scope.queueProviderRequest(f.b.connectionId, 'sent-failure', f.prepare());
+  await f.adapter(accepted('wamid.SYNTHETIC001'), f.b).execute(queued.operationId);
+  f.ingress.receive(signed(metaPayload({ statuses: [statusEvent(f.now(), 'sent')] })));
+  f.advance(1000); assert.equal(f.ingress.receive(signed(metaPayload({ statuses: [statusEvent(f.now(), 'failed')] }))).quarantined, 0);
+  assert.equal(projection(f).status, 'FAILED');
+  f.advance(1000); assert.equal(f.ingress.receive(signed(metaPayload({ statuses: [statusEvent(f.now(), 'read')] }))).quarantined, 1);
+  assert.equal(projection(f).status, 'FAILED');
+  const delivered = scope.queueProviderRequest(f.b.connectionId, 'delivered-failure', f.prepare());
+  await f.adapter(accepted('wamid.SYNTHETIC_DELIVERED'), f.b).execute(delivered.operationId);
+  f.ingress.receive(signed(metaPayload({ statuses: [statusEvent(f.now(), 'delivered', 'wamid.SYNTHETIC_DELIVERED')] })));
+  f.advance(1000); assert.equal(f.ingress.receive(signed(metaPayload({ statuses: [statusEvent(f.now(), 'failed', 'wamid.SYNTHETIC_DELIVERED')] }))).quarantined, 1);
+  assert.equal(projection(f, 'wamid.SYNTHETIC_DELIVERED').status, 'DELIVERED');
 });
 
 test('unverified provider lookup cannot resolve UNKNOWN, including after a signed uncorrelated status', async t => {

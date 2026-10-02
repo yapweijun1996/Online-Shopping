@@ -1,7 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { ApiError } from './http.js';
 import { messagingPolicy } from './integration-contracts.js';
-import { isPreparedIntegrationRequest, isTrustedMessageRequest, assertTrustedMessagePermission } from './integration-requests.js';
+import { isPreparedIntegrationRequest, isTrustedMessageRequest, assertTrustedMessageReference, assertTrustedMessagePermission } from './integration-requests.js';
+import { authorityUsesStore } from './integration-consent.js';
+
+const ledgerStores = new WeakMap();
+export const ledgerUsesMessagingAuthority = (ledger, authority) => ledgerStores.has(ledger) && authorityUsesStore(authority, ledgerStores.get(ledger));
 
 const error = (code, message, status = 409) => { throw new ApiError(status, code, message); };
 const missing = () => error('NOT_FOUND', 'Not found.', 404);
@@ -73,7 +77,7 @@ export function createSyntheticIntegrationLedger(store, { mode, now = Date.now }
     ) STRICT;
   `));
   const clock = () => { const time = now(); if (!Number.isSafeInteger(time) || time < 0) error('INVALID_CLOCK', 'Invalid clock.'); return time; };
-  return {
+  const ledger = {
     addCompany(companyId) {
       text(companyId); if (!/^synthetic-[a-z0-9-]+$/.test(companyId)) error('SYNTHETIC_ONLY', 'Use a fictional company identifier.');
       store.run('INSERT INTO integration_demo_company(id) VALUES (?)', companyId);
@@ -94,11 +98,12 @@ export function createSyntheticIntegrationLedger(store, { mode, now = Date.now }
         store.run("UPDATE integration_demo_outbox SET state = 'RECONCILE', lease_token = NULL, lease_until = NULL WHERE company_id = ? AND id = ?", companyId, row.id);
         store.run("INSERT INTO integration_demo_reconciliation(company_id,outbox_id,result) VALUES (?,?,'UNKNOWN') ON CONFLICT(company_id,outbox_id) DO UPDATE SET result = 'UNKNOWN'", companyId, row.id);
       }
-      function enqueue(connectionId, key, kind, input, validateNew = () => {}) {
+      function enqueue(connectionId, key, kind, input, validateNew = () => {}, validateReference = () => {}) {
         const bound = connection(connectionId); synthetic(bound); text(key, 128);
         if (kind === 'SHIPMENT' && bound.provider !== 'NINJA_VAN' || kind === 'MESSAGE' && bound.provider !== 'WHATSAPP_CLOUD') error('CAPABILITY_DISABLED', 'Capability is unavailable.');
         const serialized = encode(input), requestHash = hash(encode({ kind, input }));
         return store.transaction(() => {
+          validateReference();
           const existing = store.get('SELECT * FROM integration_demo_operation WHERE company_id = ? AND connection_id = ? AND idempotency_key = ?', companyId, connectionId, key);
           if (existing) { if (existing.request_hash !== requestHash) error('IDEMPOTENCY_CONFLICT', 'The key was used for a different request.'); return { operationId: existing.id, outboxId: existing.id, replayed: true }; }
           // A replay recovers a stored fact; only a new intent needs current-time permission.
@@ -135,7 +140,9 @@ export function createSyntheticIntegrationLedger(store, { mode, now = Date.now }
           validateProviderRequest(connectionId, prepared);
           if (prepared.kind === 'MESSAGE' && !isTrustedMessageRequest(prepared)) error('TRUSTED_CONSENT_REQUIRED', 'Use a server-owned consent proof.');
           return enqueue(connectionId, key, prepared.kind, prepared, () => {
-            if (prepared.kind === 'MESSAGE') messagingPolicy(assertTrustedMessagePermission(prepared).policy, clock());
+            if (prepared.kind === 'MESSAGE') messagingPolicy(assertTrustedMessagePermission(prepared, store).policy, clock());
+          }, () => {
+            if (prepared.kind === 'MESSAGE') assertTrustedMessageReference(prepared, store);
           });
         },
         validateProviderRequest,
@@ -207,4 +214,5 @@ export function createSyntheticIntegrationLedger(store, { mode, now = Date.now }
       };
     },
   };
+  ledgerStores.set(ledger, store); return ledger;
 }

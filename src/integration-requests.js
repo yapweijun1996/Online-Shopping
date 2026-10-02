@@ -1,6 +1,6 @@
 import { ApiError } from './http.js';
 import { ninjaContractLocation } from './integration-contracts.js';
-import { isConsentProof, refreshConsentProof } from './integration-consent.js';
+import { isConsentProof, assertConsentProofReference, refreshConsentProof } from './integration-consent.js';
 
 const prepared = new WeakSet();
 const trustedMessages = new WeakMap();
@@ -109,7 +109,8 @@ export function buildTrustedWhatsAppMessageRequest(binding, input, proof) {
   trustedMessages.set(value, proof); return value;
 }
 export const isTrustedMessageRequest = value => trustedMessages.has(value);
-export const assertTrustedMessagePermission = value => refreshConsentProof(trustedMessages.get(value));
+export const assertTrustedMessageReference = (value, store) => { assertConsentProofReference(trustedMessages.get(value), store); };
+export const assertTrustedMessagePermission = (value, store) => refreshConsentProof(trustedMessages.get(value), store);
 
 export const isPreparedIntegrationRequest = value => prepared.has(value);
 function canonical(value) {

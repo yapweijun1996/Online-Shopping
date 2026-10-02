@@ -13,9 +13,14 @@ const freeze = value => { if (value && typeof value === 'object') { Object.value
 export const isMessagingAuthority = value => authorities.has(value);
 export const isConsentProof = value => proofs.has(value);
 export const authorityUsesStore = (authority, store) => authorityStores.get(authority) === store && authorities.has(authority);
-export function refreshConsentProof(value) {
+export function assertConsentProofReference(value, store) {
   const source = proofSources.get(value);
-  if (!source) fail('TRUSTED_CONSENT_REQUIRED', 'Use a server-owned consent proof.');
+  if (!source || !authorityUsesStore(source.authority, store)) fail('TRUSTED_CONSENT_REQUIRED', 'Use a consent proof from this Store.');
+  source.authority.assertReference(source.binding, { ...source.input, phoneNumberId: value.phoneNumberId });
+}
+export function refreshConsentProof(value, store) {
+  assertConsentProofReference(value, store);
+  const source = proofSources.get(value);
   return source.authority.resolve(source.binding, source.input);
 }
 
@@ -66,8 +71,10 @@ export function createSyntheticMessagingAuthority(store, { mode, now = Date.now 
     const row = store.get('SELECT * FROM integration_demo_phone_binding WHERE company_id=? AND connection_id=? AND account_id=?', binding.companyId, binding.connectionId, binding.accountId);
     if (!row) missing(); return row;
   }
-  function reference(binding, { orderId, recipient, purpose }) {
-    phoneBinding(binding); bounded(orderId, /^[A-Za-z0-9_-]+$/); bounded(recipient, /^\+[1-9]\d{7,14}$/, 16);
+  function reference(binding, { orderId, recipient, purpose, phoneNumberId }) {
+    const phone = phoneBinding(binding);
+    if (phoneNumberId !== undefined && phoneNumberId !== phone.phone_id) fail('MESSAGE_BINDING_CHANGED', 'The message phone binding has changed.');
+    bounded(orderId, /^[A-Za-z0-9_-]+$/); bounded(recipient, /^\+[1-9]\d{7,14}$/, 16);
     if (purpose !== 'ORDER_CONTACT') fail('PURPOSE_DISABLED', 'Only the existing order-contact purpose is supported.');
     const row = store.get(`SELECT o.buyer_phone,o.whatsapp_opt_in,o.whatsapp_consent_at,o.whatsapp_consent_version
       FROM integration_demo_order_contact m JOIN shop_order o ON o.id=m.order_id
