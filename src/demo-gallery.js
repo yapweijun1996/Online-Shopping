@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import manifest from './public-demo-gallery.json' with { type: 'json' };
 
 // Fictional static galleries are an additive presentation layer. No database
-// row, hero image, seller edit, legacy namespace or customer record is changed.
+// row, hero image, stored seller image, legacy namespace or customer record is changed.
 export function withDemoGallery(product, hero, mode) {
   const entry = product && manifest.products[product.sku];
   if (mode !== 'public-demo' || !entry || product.name !== entry.name ||

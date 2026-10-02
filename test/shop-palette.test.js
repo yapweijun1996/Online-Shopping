@@ -7,8 +7,8 @@ const stylesheet = readFileSync(new URL('../public/shop/tokens.css', import.meta
 const script = readFileSync(new URL('../public/shop/palette.js', import.meta.url), 'utf8');
 const roles = (block) => Object.fromEntries([...block.matchAll(/(--[\w-]+):\s*(#[0-9a-f]{3,6})\s*;/gi)].map(([, name, color]) => [name, color]));
 const blocks = [...stylesheet.matchAll(/([^{}]+)\{([^{}]+)\}/g)];
-const base = roles(blocks.find(([, selector]) => selector.trim() === ':root')[2]);
-const palettes = ['evergreen-teal', 'warm-plum', 'ocean-blue'].map((id) => ({
+const base = roles(blocks.find(([, selector]) => selector.trim().startsWith(':root,'))[2]);
+const palettes = ['evergreen-teal', 'warm-plum', 'ocean-blue', 'high-contrast', 'graphite'].map((id) => ({
   id,
   colors: { ...base, ...roles(blocks.find(([, selector]) => selector.includes(`data-shop-palette="${id}"`))?.[2] || '') },
 }));
@@ -81,5 +81,21 @@ test('failed storage never reports a saved preference', () => {
   runInNewContext(script, { document, window, localStorage });
   assert.equal(document.documentElement.dataset.shopPalette, 'evergreen-teal');
   assert.equal(window.shopPalette.choose('warm-plum'), false);
+  assert.equal(document.documentElement.dataset.shopPalette, 'warm-plum');
+});
+
+test('seller and customer preferences persist independently and share all five accessible palettes', () => {
+  const values = new Map([['online-shopping-shop-palette-v1', 'warm-plum'], ['online-shopping-seller-palette-v1', 'graphite']]);
+  const events = [], document = { documentElement: { dataset: {} } };
+  const window = { addEventListener(name, fn) { events.push(fn); } };
+  const localStorage = { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) };
+  runInNewContext(script, { document, window, localStorage });
+  runInNewContext(readFileSync(new URL('../public/seller/palette.js', import.meta.url), 'utf8'), { document, window, localStorage });
+  assert.equal(window.sellerPalette.current(), 'graphite'); assert.equal(window.shopPalette.current(), 'warm-plum');
+  for (const { id } of palettes) assert.equal(window.sellerPalette.choose(id), true);
+  assert.equal(values.get('online-shopping-shop-palette-v1'), 'warm-plum');
+  assert.equal(window.sellerPalette.choose('forged'), false);
+  for (const fn of events) fn({ key: 'online-shopping-seller-palette-v1', newValue: 'high-contrast' });
+  assert.equal(document.documentElement.dataset.sellerPalette, 'high-contrast');
   assert.equal(document.documentElement.dataset.shopPalette, 'warm-plum');
 });

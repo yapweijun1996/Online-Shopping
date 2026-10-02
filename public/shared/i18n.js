@@ -1599,3 +1599,91 @@ export function setupLanguageMenu(host, { onOpen, showLabel = false } = {}) {
   setLocale(current);
   sync();
 }
+
+const ownerRequestMessages = {
+  "en": {
+    "currencyInherited": "Currency comes from Company Settings and cannot be changed here.",
+    "currencyConflict": "Existing products use another currency. Review prices before changing company currency.",
+    "currencyIntro": "Company currency applies to products. Changing it is blocked when existing products use another currency; historical orders keep their snapshots.",
+    "demoGalleryPhoto": "Fixed demo photo (preview only)",
+    "sellerAppearance": "Seller appearance",
+    "paletteContrast": "High Contrast Navy",
+    "paletteGraphite": "Graphite",
+    "previewPalette": "Preview",
+    "applyPalette": "Apply palette",
+    "paletteSample": "Preview text, controls and notices before applying this palette."
+  },
+  "ms": {
+    "currencyInherited": "Mata wang diwarisi daripada Tetapan Syarikat dan tidak boleh diubah di sini.",
+    "currencyConflict": "Produk sedia ada menggunakan mata wang lain. Semak harga sebelum mengubah mata wang syarikat.",
+    "currencyIntro": "Mata wang syarikat digunakan untuk produk. Perubahan disekat jika produk sedia ada menggunakan mata wang lain; rekod pesanan lama kekal.",
+    "demoGalleryPhoto": "Foto demo tetap (pratonton sahaja)",
+    "sellerAppearance": "Penampilan penjual",
+    "paletteContrast": "Biru Kontras Tinggi",
+    "paletteGraphite": "Grafit",
+    "previewPalette": "Pratonton",
+    "applyPalette": "Gunakan warna",
+    "paletteSample": "Pratonton teks, kawalan dan notis sebelum menggunakan warna ini."
+  },
+  "zh-Hans": {
+    "currencyInherited": "币种继承公司设置，不能在此修改。",
+    "currencyConflict": "现有商品使用其他币种。更改公司币种前须审核价格。",
+    "currencyIntro": "商品继承公司币种。若现有商品使用其他币种，更改将被阻止；历史订单快照保持不变。",
+    "demoGalleryPhoto": "固定演示图片（仅供预览）",
+    "sellerAppearance": "卖家外观",
+    "paletteContrast": "高对比海军蓝",
+    "paletteGraphite": "石墨灰",
+    "previewPalette": "预览",
+    "applyPalette": "应用配色",
+    "paletteSample": "应用前预览文字、控件和提示。"
+  },
+  "vi": {
+    "currencyInherited": "Tiền tệ lấy từ Cài đặt công ty và không thể thay đổi ở đây.",
+    "currencyConflict": "Sản phẩm hiện tại dùng tiền tệ khác. Kiểm tra giá trước khi đổi tiền tệ công ty.",
+    "currencyIntro": "Sản phẩm dùng tiền tệ công ty. Không thể đổi khi sản phẩm hiện tại dùng tiền tệ khác; dữ liệu đơn hàng cũ giữ nguyên.",
+    "demoGalleryPhoto": "Ảnh demo cố định (chỉ xem trước)",
+    "sellerAppearance": "Giao diện người bán",
+    "paletteContrast": "Xanh tương phản cao",
+    "paletteGraphite": "Xám Graphite",
+    "previewPalette": "Xem trước",
+    "applyPalette": "Áp dụng bảng màu",
+    "paletteSample": "Xem trước văn bản, điều khiển và thông báo trước khi áp dụng."
+  },
+  "ja": {
+    "currencyInherited": "通貨は会社設定から引き継がれ、ここでは変更できません。",
+    "currencyConflict": "既存商品は別の通貨です。会社通貨を変更する前に価格を確認してください。",
+    "currencyIntro": "商品には会社の通貨が適用されます。既存商品の通貨が異なる場合は変更できません。過去の注文のスナップショットは保持されます。",
+    "demoGalleryPhoto": "固定デモ画像（プレビューのみ）",
+    "sellerAppearance": "販売者の外観",
+    "paletteContrast": "高コントラストネイビー",
+    "paletteGraphite": "グラファイト",
+    "previewPalette": "プレビュー",
+    "applyPalette": "配色を適用",
+    "paletteSample": "適用する前に文字、操作部、通知を確認できます。"
+  },
+  "ko": {
+    "currencyInherited": "통화는 회사 설정에서 가져오며 여기서 변경할 수 없습니다.",
+    "currencyConflict": "기존 상품이 다른 통화를 사용합니다. 회사 통화를 변경하기 전에 가격을 검토하세요.",
+    "currencyIntro": "상품은 회사 통화를 사용합니다. 기존 상품의 통화가 다르면 변경할 수 없으며 과거 주문 기록은 유지됩니다.",
+    "demoGalleryPhoto": "고정 데모 사진 (미리 보기 전용)",
+    "sellerAppearance": "판매자 화면",
+    "paletteContrast": "고대비 네이비",
+    "paletteGraphite": "그라파이트",
+    "previewPalette": "미리 보기",
+    "applyPalette": "색상 적용",
+    "paletteSample": "적용하기 전에 텍스트, 컨트롤과 알림을 확인하세요."
+  },
+  "th": {
+    "currencyInherited": "สกุลเงินมาจากการตั้งค่าบริษัทและเปลี่ยนที่นี่ไม่ได้",
+    "currencyConflict": "สินค้าที่มีอยู่ใช้สกุลเงินอื่น ตรวจสอบราคาก่อนเปลี่ยนสกุลเงินบริษัท",
+    "currencyIntro": "สินค้าใช้สกุลเงินบริษัท จะเปลี่ยนไม่ได้หากสินค้าที่มีอยู่ใช้สกุลเงินอื่น ประวัติคำสั่งซื้อคงเดิม",
+    "demoGalleryPhoto": "รูปสาธิตคงที่ (ดูตัวอย่างเท่านั้น)",
+    "sellerAppearance": "หน้าตาผู้ขาย",
+    "paletteContrast": "น้ำเงินเข้มความต่างสูง",
+    "paletteGraphite": "เทากราไฟต์",
+    "previewPalette": "ดูตัวอย่าง",
+    "applyPalette": "ใช้ชุดสี",
+    "paletteSample": "ดูตัวอย่างข้อความ ตัวควบคุม และข้อความแจ้งก่อนใช้ชุดสีนี้"
+  }
+};
+for (const { code } of languages) Object.assign(messages[code], ownerRequestMessages[code]);

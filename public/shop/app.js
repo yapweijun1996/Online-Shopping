@@ -1,6 +1,8 @@
+import { mountAppearance } from '../shared/appearance.js';
 import { storageKey } from './storage-scope.js';
 import { categoryIconPath, formatCatalogPrice } from './catalog-presentation.js';
 import { mountShopUpdates } from './update-view.js';
+import { draftSignature } from '../shared/update-guard.js';
 import { mountMobileNavigation } from './mobile-navigation.js';
 import { countryForCurrency, mountAddressBook } from './addresses.js';
 import { mountProfile } from './profile.js';
@@ -14,15 +16,7 @@ import { mountCheckout } from './checkout.js';
 import { createLocalOrderStore, isLocalOrderCurrent } from './local-orders.js';
 
 const byId = (id) => document.getElementById(id);
-const paletteInputs = [...document.querySelectorAll('input[name="shop-palette"]')];
-window.shopPalette.subscribe((current) => {
-  for (const input of paletteInputs) input.checked = input.value === current;
-});
-for (const input of paletteInputs) input.addEventListener('change', () => {
-  if (!input.checked) return;
-  const saved = window.shopPalette.choose(input.value);
-  byId('palette-status').textContent = t(saved ? 'paletteSaved' : 'paletteSessionOnly');
-});
+mountAppearance(document.querySelector('.palette-settings'), 'shop');
 const grid = byId('catalog-grid');
 const list = byId('cart-list');
 const category = byId('catalog-category');
@@ -1215,5 +1209,5 @@ await loadCatalog();
 showRoute();
 
 
-mountShopUpdates(() => ({ dirty: profilePage.isDirty() || addressBook.isDirty(), busy: cartWrites > 0 || checkoutPage.isBusy() }), productUpdateBanner);
+mountShopUpdates(() => ({ dirty: profilePage.isDirty() || addressBook.isDirty(), busy: cartWrites > 0 || checkoutPage.isBusy(), signature: draftSignature() }), productUpdateBanner);
 finishBoot();

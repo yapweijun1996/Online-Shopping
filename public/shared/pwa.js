@@ -12,7 +12,7 @@ function workerVersion(worker) {
   });
 }
 
-export async function registerWorker(script, scope, { returnUrl, target, onState, guard, confirmUpdate } = {}) {
+export async function registerWorker(script, scope, { returnUrl, target, onState, guard, confirmUpdate, currentVersion } = {}) {
   if (!('serviceWorker' in navigator)) return null;
   const registration = await navigator.serviceWorker.register(script, { scope, updateViaCache: 'none' });
   const panel = document.createElement('footer');
@@ -26,7 +26,7 @@ export async function registerWorker(script, scope, { returnUrl, target, onState
   update.hidden = true;
   panel.append(version, check, status, update);
   if (!onState) (target || document.body).append(panel);
-  let current = null;
+  let current = currentVersion || null;
   let available = null;
   let statusKey = '';
   let applying = false;
@@ -35,8 +35,16 @@ export async function registerWorker(script, scope, { returnUrl, target, onState
   let reloadRequested = false;
   let activationTimer;
   let activationPoll;
+  let activationSignature;
   function finishActivation() {
     if (reloadRequested) return;
+    const state = guard?.();
+    if (state?.busy || (activationSignature !== undefined && state?.signature !== activationSignature)) {
+      clearTimeout(activationTimer); clearTimeout(activationPoll);
+      applying = false; applyingWorker = null; reloadReady = true;
+      update.disabled = check.disabled = false; statusKey = 'updateAvailable'; render();
+      return;
+    }
     reloadRequested = true;
     clearTimeout(activationTimer);
     clearTimeout(activationPoll);
@@ -121,6 +129,7 @@ export async function registerWorker(script, scope, { returnUrl, target, onState
     if (reloadReady) { location.reload(); return; }
     if (!registration.waiting) { inspect(); return; }
     applying = true;
+    activationSignature = guard?.().signature;
     update.disabled = check.disabled = true;
     statusKey = 'appUpdating';
     render();

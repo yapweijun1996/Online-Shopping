@@ -82,6 +82,9 @@ export function updateCompanySettings(database, input) {
   const current = getCompanySettings(database);
   const currency = Object.hasOwn(input, 'defaultCurrency') ? input.defaultCurrency : current.defaultCurrency;
   if (!['MYR', 'SGD'].includes(currency)) throw new FieldError('defaultCurrency', 'Choose MYR or SGD.');
+  if (currency !== current.defaultCurrency && database.get('SELECT 1 FROM product WHERE currency <> ? LIMIT 1', currency)) {
+    throw new ApiError(409, 'COMPANY_CURRENCY_CONFLICT', 'Existing products use another currency. Review prices before changing company currency.');
+  }
   let phone = current.sellerWhatsAppPhone;
   const hideBars = Object.hasOwn(input, 'mobileHideBarsOnScroll') ? input.mobileHideBarsOnScroll : current.mobileHideBarsOnScroll;
   if (typeof hideBars !== 'boolean') throw new FieldError('mobileHideBarsOnScroll', 'Choose whether to hide mobile bars on scroll.');

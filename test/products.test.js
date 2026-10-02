@@ -193,7 +193,7 @@ test('seller-managed gallery is bounded, private while inactive, and removable',
   } finally { await f.close(); }
 });
 
-test('seller manages category codes, currency and public chat without rewriting existing products', async () => {
+test('seller manages categories and company currency; mismatched new products are rejected', async () => {
   const f = await fixture();
   try {
     setupShop(f.app.database, { mode: 'production', shopName: 'Example shop' });
@@ -235,16 +235,16 @@ test('seller manages category codes, currency and public chat without rewriting 
     assert.equal((await f.request('GET', '/api/v1/shop')).data.sellerWhatsAppPhone, null);
     const myr = await f.request('POST', '/api/v1/seller/products', draft, headers);
     const sgd = await f.request('POST', '/api/v1/seller/products', { ...draft, sku: 'item-sgd', category: 'WORK', currency: 'SGD' }, headers);
-    assert.equal(myr.response.status, 201);
+    assert.equal(myr.response.status, 400);
+    assert.equal(myr.data.error.field, 'currency');
     assert.equal(sgd.response.status, 201);
-    assert.equal(myr.data.currency, 'MYR');
     assert.equal(sgd.data.currency, 'SGD');
     assert.equal(sgd.data.category, 'Work');
     assert.equal(sgd.data.categoryCode, 'WORK');
     assert.equal((await f.request('PATCH', '/api/v1/seller/categories/WORK', { label: 'Office', active: false }, headers)).data.active, false);
     assert.equal((await f.request('GET', `/api/v1/seller/products`, null, { cookie })).data.items.find((item) => item.id === sgd.data.id).category, 'Office');
     assert.equal((await f.request('PATCH', `/api/v1/seller/products/${sgd.data.id}`, { category: 'WORK', priceMinor: 1100 }, headers)).response.status, 200);
-    const blocked = await f.request('POST', '/api/v1/seller/products', { ...draft, sku: 'item-next', category: 'WORK' }, headers);
+    const blocked = await f.request('POST', '/api/v1/seller/products', { ...draft, sku: 'item-next', category: 'WORK', currency: 'SGD' }, headers);
     assert.equal(blocked.response.status, 400);
     assert.equal(blocked.data.error.field, 'category');
     assert.equal((await f.request('DELETE', '/api/v1/seller/categories/WORK', null, headers)).response.status, 404);

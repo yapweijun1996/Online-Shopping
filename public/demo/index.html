@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#087f83">
+  <title>Fictional company workspace · Online Shopping</title>
+  <link rel="icon" href="/favicon.svg">
+  <script src="/seller/palette.js"></script>
+  <link rel="stylesheet" href="/demo/style.css">
+  <script type="module" src="/demo/app.js"></script>
+</head>
+<body>
+  <header><a href="/seller/">Online Shopping</a><strong id="demo-role">Fictional workspace</strong><div class="demo-actions"><button id="demo-reset" type="button">Reset my demo</button><button id="demo-exit" type="button">Exit demo</button></div></header>
+  <main>
+    <h1>Fictional company workspace</h1>
+    <p class="demo-notice">Private to this demo session. All companies, sellers, customers and orders are fictional. New login starts fresh; this workspace expires after one hour and may reset when the server restarts. No payment, shipment or buyer contact occurs.</p>
+    <p id="demo-status" role="status" aria-live="polite"></p>
+    <section id="demo-workspace" hidden>
+      <label class="company-select">Company <select id="demo-company"></select></label>
+      <section id="demo-admin" hidden>
+        <h2>Companies and seller access</h2>
+        <div class="admin-forms">
+          <form id="demo-company-form"><h3>Add fictional company</h3><label>Name <input name="name" required maxlength="80"></label><label>Currency <select name="currency"><option>MYR</option><option>SGD</option></select></label><button class="primary-button">Add company</button></form>
+          <form id="demo-seller-form"><h3>Add fictional seller to selected company</h3><label>Name <input name="name" required maxlength="80"></label><button class="primary-button">Add demo seller</button></form>
+          <form id="demo-settings-form"><h3>Selected company settings</h3><label>Name <input name="name" required maxlength="80"></label><label>Currency <select name="currency"><option>MYR</option><option>SGD</option></select></label><label class="check-row"><input name="active" type="checkbox">Company enabled</label><button class="primary-button">Save company</button></form>
+        </div>
+        <p>Currency changes are blocked if existing products use another currency. Prices and order snapshots are never converted.</p>
+        <div id="demo-sellers"></div>
+      </section>
+      <nav aria-label="Company resources"><button data-view="products" aria-pressed="true">Products</button><button data-view="orders" aria-pressed="false">Orders</button><button data-view="customers" aria-pressed="false">Customers</button></nav>
+      <section><div class="resource-heading"><h2 id="demo-resource-title">Products</h2><button id="demo-new-product" class="primary-button">Add product</button></div><div id="demo-resources"></div></section>
+      <section id="demo-appearance" class="settings-card"></section>
+    </section>
+    <p id="demo-restart" hidden><a href="/seller/">Start a new demo from the Seller login page</a></p>
+  </main>
+</body>
+</html>

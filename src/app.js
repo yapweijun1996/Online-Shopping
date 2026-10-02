@@ -1,4 +1,5 @@
 import { withDemoGallery } from './demo-gallery.js';
+import { createDemoSandbox } from './demo-sandbox.js';
 import { getShopSetup, setupShop, shopObjectName } from './shop-setup.js';
 import { authenticate, cookieFor, createSession, deleteSession, readSession, sessionCookieFrom } from './auth.js';
 import { ready } from './db.js';
@@ -37,6 +38,8 @@ function requireCsrf(request, session) {
  * the client address it trusts and, optionally, a handler for non-API paths.
  */
 export function createApi({ store, config, serveStatic = null }) {
+  const demoEnabled = config.shopMode === 'public-demo' && getShopSetup(store).mode === 'demo';
+  const demoRoute = createDemoSandbox({ enabled: demoEnabled, production: config.production });
   const loginLimiter = new SqlLimiter(store, 'login', { limit: 5, windowMs: LIMIT_WINDOW_MS });
   const checkoutLimiter = new SqlLimiter(store, 'checkout', { limit: 30, windowMs: LIMIT_WINDOW_MS });
   const orderStatusLimiter = new SqlLimiter(store, 'order-status', { limit: 30, windowMs: LIMIT_WINDOW_MS });
@@ -46,12 +49,17 @@ export function createApi({ store, config, serveStatic = null }) {
     const pathname = url.pathname;
     const method = request.method;
     const expectedOrigin = config.publicOrigin || url.origin;
+    const demoResponse = await demoRoute(request, expectedOrigin, clientAddress);
+    if (demoResponse) return demoResponse;
     if (method === 'GET' && pathname === '/health') return json(200, { status: 'alive' });
     if (method === 'GET' && pathname === '/ready') {
       const healthy = ready(store);
       return json(healthy ? 200 : 503, { status: healthy ? 'ready' : 'unavailable' });
     }
     if (!pathname.startsWith('/api/')) {
+      let decoded;
+      try { decoded = decodeURIComponent(pathname).replace(/\/{2,}/g, '/'); } catch { throw new ApiError(404, 'NOT_FOUND', 'Not found.'); }
+      if (/^\/demo(?:\/|$)/.test(decoded) && !demoEnabled) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
       if (serveStatic) return serveStatic(request, pathname);
       throw new ApiError(404, 'NOT_FOUND', 'Not found.');
     }
@@ -62,6 +70,7 @@ export function createApi({ store, config, serveStatic = null }) {
         ...setup,
         ...(config.shopMode === 'public-demo' ? { demoNamespace: shopObjectName(config.shopMode, config.demoRevision) } : {}),
         currency: company.defaultCurrency,
+        demoRolesAvailable: demoEnabled,
         sellerWhatsAppPhone: config.shopMode === 'public-demo' ? null : setup.mode ? company.sellerWhatsAppPhone : null,
         mobileHideBarsOnScroll: company.mobileHideBarsOnScroll,
       });
@@ -175,7 +184,7 @@ export function createApi({ store, config, serveStatic = null }) {
     if (method === 'GET' && sellerProduct && !sellerProduct[2]) {
       const product = getProduct(store, sellerProduct[1], true);
       if (!product) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
-      return json(200, product);
+      return json(200, withDemoGallery(product, config.shopMode === 'public-demo' ? getProductImage(store, product.id, true) : null, config.shopMode));
     }
     if (method === 'GET' && sellerProduct?.[2] === 'image') {
       return image(getProductImage(store, sellerProduct[1], true));

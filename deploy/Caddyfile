@@ -11,6 +11,17 @@
 		}
 	}
 
+	# Let the backend mode gate decide whether the fictional workspace is available.
+	@demo path /demo /demo/*
+	handle @demo {
+		forward_auth backend:3000 {
+			uri /api/v1/demo/availability
+		}
+		root * /srv/public
+		header Cache-Control "no-cache"
+		file_server
+	}
+
 	redir / /shop/ 302
 	redir /shop /shop/ 302
 	redir /seller /seller/ 302

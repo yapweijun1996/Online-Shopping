@@ -38,7 +38,12 @@ export class ShopStore {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (!apiPath.test(url.pathname)) return env.ASSETS.fetch(request);
+    if (!apiPath.test(url.pathname)) {
+      let decoded;
+      try { decoded = decodeURIComponent(url.pathname).replace(/\/{2,}/g, '/'); } catch { return json(404, { error: { code: 'NOT_FOUND' } }); }
+      if (/^\/demo(?:\/|$)/.test(decoded) && readShopMode(env) !== 'public-demo') return json(404, { error: { code: 'NOT_FOUND' } });
+      return env.ASSETS.fetch(request);
+    }
     // Only this Worker can reach the object, so it sets the client address the object trusts.
     const headers = new Headers(request.headers);
     headers.set('x-real-ip', request.headers.get('cf-connecting-ip') || 'unknown');

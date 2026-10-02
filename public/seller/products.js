@@ -1,4 +1,5 @@
 import { formatMoney, t, translate } from '../shared/i18n.js';
+import { beginMutation } from '../shared/update-guard.js';
 
 function inputFailure(field) { return Object.assign(new Error(field), { field }); }
 
@@ -111,6 +112,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   let formSuccessKey = '';
   let formBaseline = null;
   let saving = false;
+  let mutations = 0;
   let routeSequence = 0;
   let editorStatusKey = '';
   const undoStates = new Map();
@@ -142,6 +144,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   function showImage(state, source = null) {
     imagePanel.hidden = state === 'none';
     preview.hidden = !source;
+    preview.alt = `${form.elements.name.value}: ${t('currentImage')}`;
     if (source) preview.src = source;
     else preview.removeAttribute('src');
     imageStatus.dataset.i18n = { current: 'currentImage', replacement: 'newImage', removed: 'imagePendingRemoval' }[state] || '';
@@ -151,10 +154,11 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   }
 
   function renderGallery() {
+    const storedCount = galleryImages.filter(source => /\/gallery\//.test(source)).length;
     galleryPanel.hidden = !editingId;
-    form.elements.gallery.disabled = !originalImageUrl || pendingRemove || galleryImages.length >= 9;
-    removeImage.disabled = Boolean(editingId && (!galleryLoaded || galleryImages.length));
-    imageRemovalHelp.hidden = !editingId || !originalImageUrl || (galleryLoaded && !galleryImages.length);
+    form.elements.gallery.disabled = saving || !originalImageUrl || pendingRemove || storedCount >= 9;
+    removeImage.disabled = Boolean(editingId && (!galleryLoaded || storedCount));
+    imageRemovalHelp.hidden = !editingId || !originalImageUrl || (galleryLoaded && !storedCount);
     imageRemovalHelp.dataset.i18n = galleryLoaded ? 'removeGalleryFirst' : 'loading';
     imageRemovalHelp.textContent = imageRemovalHelp.hidden ? '' : t(imageRemovalHelp.dataset.i18n);
     galleryList.replaceChildren();
@@ -162,11 +166,13 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       const item = document.createElement('div');
       item.className = 'product-gallery-item';
       const photo = document.createElement('img');
-      photo.src = source; photo.alt = '';
+      photo.src = source; photo.alt = `${form.elements.name.value}: ${t('gallery')} ${galleryList.childElementCount + 1}`;
       const imageId = /\/gallery\/([0-9a-f-]{36})/.exec(source)?.[1];
       const productId = editingId;
-      item.append(photo, button(t('removePhoto'), async () => {
-        if (!imageId) return;
+      const label = document.createElement('p');
+      label.textContent = imageId ? t('gallery') : t('demoGalleryPhoto');
+      item.append(photo, label);
+      if (imageId) item.append(button(t('removePhoto'), async () => {
         try {
           const result = await api('DELETE', `/api/v1/seller/products/${productId}/gallery/${imageId}`);
           if (editingId !== productId) return;
@@ -266,16 +272,20 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   }
 
   async function api(method, path, body) {
-    const response = await fetch(path, {
-      method,
-      headers: { ...(body ? { 'Content-Type': 'application/json' } : {}),
-        ...(method === 'GET' ? {} : { 'X-CSRF-Token': csrfToken() }) },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (response.status === 401) { onUnauthorized(); throw new Error('unauthorized'); }
-    const data = await response.json();
-    if (!response.ok) throw Object.assign(new Error('request'), { status: response.status, field: data.error?.field, code: data.error?.code });
-    return data;
+    const finish = method === 'GET' ? () => {} : beginMutation();
+    if (method !== 'GET') { mutations++; document.dispatchEvent(new Event('updateguardchange')); }
+    try {
+      const response = await fetch(path, {
+        method,
+        headers: { ...(body ? { 'Content-Type': 'application/json' } : {}),
+          ...(method === 'GET' ? {} : { 'X-CSRF-Token': csrfToken() }) },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (response.status === 401) { onUnauthorized(); throw new Error('unauthorized'); }
+      const data = await response.json();
+      if (!response.ok) throw Object.assign(new Error('request'), { status: response.status, field: data.error?.field, code: data.error?.code });
+      return data;
+    } finally { finish(); if (method !== 'GET') { mutations--; document.dispatchEvent(new Event('updateguardchange')); } }
   }
 
   async function load(reset = true) {
@@ -475,7 +485,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   find('#product-search-form').addEventListener('submit', (event) => { event.preventDefault(); load(); });
   more.addEventListener('click', () => load(false));
   removeImage.addEventListener('click', () => {
-    if (!galleryLoaded || galleryImages.length) return;
+    if (!galleryLoaded || galleryImages.some(source => /\/gallery\//.test(source))) return;
     form.elements.image.value = '';
     pendingRemove = Boolean(originalImageUrl);
     showImage(pendingRemove ? 'removed' : 'none');
@@ -503,10 +513,12 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   form.elements.gallery.addEventListener('change', async () => {
     const files = [...form.elements.gallery.files];
     if (!files.length) return;
-    if (files.length + galleryImages.length > 9) { setError('galleryLimit'); form.elements.gallery.value = ''; return; }
+    if (files.length + galleryImages.filter(source => /\/gallery\//.test(source)).length > 9) { setError('galleryLimit'); form.elements.gallery.value = ''; return; }
     form.elements.gallery.disabled = true;
     setError('');
     const productId = editingId;
+    saving = true;
+    const finish = beginMutation();
     try {
       for (const file of files) {
         const imageDataUrl = await readImage(file);
@@ -517,13 +529,14 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       }
       setStatus('productSaved');
     } catch { setError('productError'); }
-    finally { form.elements.gallery.value = ''; renderGallery(); }
+    finally { saving = false; finish(); form.elements.gallery.value = ''; renderGallery(); document.dispatchEvent(new Event('updateguardchange')); }
   });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const save = find('#product-save');
     const productId = editingId;
     saving = true;
+    const finish = beginMutation();
     save.disabled = true;
     setError('');
     try {
@@ -552,7 +565,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       formSuccess.focus({ preventScroll: true });
     } catch (failure) {
       const galleryConflict = pendingRemove && failure.field === 'imageDataUrl';
-      setError(galleryConflict ? 'removeGalleryFirst' : failure.code === 'DUPLICATE_SKU' ? 'duplicateSku' : failure.code === 'DUPLICATE_VARIANT' ? 'duplicateVariant' : 'productError');
+      setError(galleryConflict ? 'removeGalleryFirst' : failure.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : failure.code === 'DUPLICATE_SKU' ? 'duplicateSku' : failure.code === 'DUPLICATE_VARIANT' ? 'duplicateVariant' : 'productError');
       if (galleryConflict && productId && editingId === productId) {
         try {
           const detail = await api('GET', `/api/v1/seller/products/${productId}`);
@@ -563,7 +576,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
         const field = failure.code === 'DUPLICATE_SKU' ? 'sku' : failure.field === 'priceMinor' ? 'price' : failure.field === 'imageDataUrl' ? 'image' : failure.field;
         if (field && form.elements[field]) form.elements[field].focus();
       }
-    } finally { saving = false; save.disabled = false; }
+    } finally { saving = false; finish(); save.disabled = false; document.dispatchEvent(new Event('updateguardchange')); }
   });
 
   const settingsPromise = loadSettings();
@@ -583,5 +596,6 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       editorStatus.textContent = editorStatusKey ? t(editorStatusKey) : '';
     },
     hasUnsavedChanges,
+    isBusy: () => saving || mutations > 0,
   };
 }

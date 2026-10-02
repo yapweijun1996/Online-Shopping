@@ -183,7 +183,8 @@ test('idempotent retries return the original receipt and reject changed intent',
 test('SGD orders retain SGD snapshots and mixed-currency orders make no writes', async () => {
   const f = await fixture();
   try {
-    updateProduct(f.app.database, f.second.id, { currency: 'SGD' });
+    // Historical mixed-currency fixture predates company currency enforcement.
+    f.app.database.run('UPDATE product SET currency = ? WHERE id = ?', 'SGD', f.second.id);
     const mixed = await f.submit('mixed-order-intent-001');
     assert.equal(mixed.response.status, 409);
     assert.equal(mixed.data.error.code, 'MIXED_CURRENCY');
@@ -206,7 +207,8 @@ test('SGD orders retain SGD snapshots and mixed-currency orders make no writes',
 test('a currency change with the same minor amount is rejected as a price change', async () => {
   const f = await fixture();
   try {
-    updateProduct(f.app.database, f.second.id, { currency: 'SGD' });
+    // Historical mixed-currency fixture predates company currency enforcement.
+    f.app.database.run('UPDATE product SET currency = ? WHERE id = ?', 'SGD', f.second.id);
     const single = orderInput(f.second.id, f.first.id);
     const stale = await f.submit('order-intent-currency-0001', {
       ...single,

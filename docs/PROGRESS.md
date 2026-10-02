@@ -1,5 +1,7 @@
 # Progress
 
+**2026-10-02 owner scope:** Candidate Shop v104 / Seller v80 is local and un-deployed. Public Demo remains Shop v103 / Seller v79 on main c1d1f688. The 18-item Production denominator is reconciled in [PRODUCTION_ACCEPTANCE.md](PRODUCTION_ACCEPTANCE.md), including current contact/delivery wording gaps and tenant/release gates. Historical 16/18 local verification below is dated baseline evidence; Production released remains 0/18.
+
 **Updated direction (2026-09-26):** Cloudflare Worker + SQLite Durable Object is the public Demo for simulated transactions with sample pet products. Future Production will use Docker + PostgreSQL on the owner’s server behind Cloudflare Tunnel. This supersedes earlier DEC-04 production-host wording below; the current Docker SQLite adapter has not yet been migrated to PostgreSQL.
 
 **As of 2026-09-26 (Asia/Singapore).** The new Online Shopping application is an **MVP in local development**. The separate `sample/` is a local PWA/API/SQLite prototype. Its functionality and test results do not count toward the new MVP.
@@ -13,7 +15,7 @@ The denominator is the **18 independent AC-01–18 acceptance items** in [SPEC.m
 | Planned | 18/18 | Requirements and acceptance gates recorded in SPEC, including PWA and seven-language UI. |
 | Implemented | 16/18 | AC-01–15 and AC-18 have runnable local paths. Production operations and target-browser PWA installation remain. |
 | Verified | 16/18 | AC-01–15 and AC-18 passed applicable local API/data/browser gates, including responsive keyboard/error states and seven-language journeys. This is local proof only. |
-| Released | 0/18 | Local Docker images and a loopback Compose smoke exist, but no public HTTPS deployment, registry/tag/release, or deployed version/rollback proof exists. |
+| Released | 0/18 | Local Docker images and a loopback Compose smoke exist, but the public Cloudflare Demo does not constitute a Production release; Docker/PostgreSQL and production rollback remain unverified. |
 
 Documentation milestone **M0: 1/5 milestones verified** after the initial documentation audit and local commit. M1–M3 functional slices run locally but their milestone exit gates remain in progress; M4 local quality gates are in progress. This milestone count is separate from the 16/18 locally verified acceptance count.
 

@@ -1,11 +1,16 @@
 import { formatDate, formatMoney, locale, setupLanguageMenu, t } from '../shared/i18n.js';
 import { registerWorker } from '../shared/pwa.js';
+import { confirmModal } from '../shared/modal.js';
+import { draftSignature, mutationsBusy } from '../shared/update-guard.js';
+import { APP_VERSION } from './version.js';
+import { mountDemoEntry } from '../shared/demo-entry.js';
 import { mountProducts } from './products.js';
 import { mountOrders } from './orders.js';
 import { mountCategories, mountCompanySettings } from './settings.js';
 
 const byId = (id) => document.getElementById(id);
 const loginView = byId('login-view');
+mountDemoEntry(loginView.querySelector('.login-card') || loginView);
 const workspace = byId('workspace');
 const sidebar = byId('sidebar');
 const accountWrap = byId('account-wrap');
@@ -56,7 +61,7 @@ function applyRoute() {
 }
 
 function activePage() {
-  return currentView === 'products' ? productsPage : currentView === 'categories' || currentView === 'company' ? settingsPage : null;
+  return currentView === 'products' ? productsPage : currentView === 'categories' || currentView === 'company' ? settingsPage : currentView === 'orders' || currentView === 'review' ? ordersPage : null;
 }
 
 function hasUnsavedChanges() { return activePage()?.hasUnsavedChanges?.() === true; }
@@ -84,6 +89,9 @@ function sessionHint(value) {
 setupLanguageMenu(byId('language'));
 document.title = `${t('sellerPortal')} · Online Shopping`;
 registerWorker('/seller/sw.js', '/seller/', {
+  currentVersion: APP_VERSION,
+  guard: () => ({ dirty: hasUnsavedChanges(), busy: mutationsBusy() || activePage()?.isBusy?.() === true, signature: draftSignature() }),
+  confirmUpdate: confirmModal,
   onState(state, actions) {
     const identity = state.ready ? state.available || 'ready' : '';
     if (identity && identity !== updateIdentity) updateDismissed = false;
@@ -101,13 +109,17 @@ function renderUpdateUI() {
   const check = byId('check-updates-button');
   const notice = byId('seller-update-notice');
   const applying = updateState?.applying === true;
+  const busy = mutationsBusy() || activePage()?.isBusy?.() === true;
+  byId('seller-current-version').textContent = `${t('appVersion')}: Seller ${APP_VERSION}`;
   check.disabled = !updateActions || updateState?.checking === true || applying;
   byId('check-updates-status').textContent = updateState?.statusKey ? t(updateState.statusKey) : '';
   notice.hidden = !updateState?.ready || updateDismissed;
-  byId('seller-update-detail').textContent = t(applying ? 'appUpdating' : 'updateReadyDetail');
-  byId('install-update-button').disabled = applying;
+  byId('seller-update-detail').textContent = `${t('appVersion')}: Seller ${APP_VERSION} · ${t(applying ? 'appUpdating' : 'updateReadyDetail')}`;
+  byId('install-update-button').textContent = `${t('installUpdate')}${updateState?.available ? ` · ${updateState.available}` : ''}`;
+  byId('install-update-button').disabled = applying || busy;
   byId('later-update-button').disabled = applying;
 }
+document.addEventListener('updateguardchange', renderUpdateUI);
 
 function setLoginMessage(key) {
   loginMessageKey = key;
