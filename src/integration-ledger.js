@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { ApiError } from './http.js';
 import { messagingPolicy } from './integration-contracts.js';
+import { isPreparedIntegrationRequest } from './integration-requests.js';
 
 const error = (code, message, status = 409) => { throw new ApiError(status, code, message); };
 const missing = () => error('NOT_FOUND', 'Not found.', 404);
@@ -56,6 +57,10 @@ export function createSyntheticIntegrationLedger(store, { mode, now = Date.now }
       company_id TEXT NOT NULL, outbox_id TEXT NOT NULL, result TEXT NOT NULL CHECK(result IN ('UNKNOWN','FOUND','ABSENT')),
       PRIMARY KEY(company_id,outbox_id), FOREIGN KEY(company_id,outbox_id) REFERENCES integration_demo_outbox(company_id,id)
     ) STRICT;
+    CREATE TABLE IF NOT EXISTS integration_demo_provider_result (
+      company_id TEXT NOT NULL, outbox_id TEXT NOT NULL, result_json TEXT NOT NULL CHECK(json_valid(result_json)),
+      PRIMARY KEY(company_id,outbox_id), FOREIGN KEY(company_id,outbox_id) REFERENCES integration_demo_outbox(company_id,id)
+    ) STRICT;
     CREATE TABLE IF NOT EXISTS integration_demo_projection (
       company_id TEXT NOT NULL, connection_id TEXT NOT NULL, subject_id TEXT NOT NULL,
       sequence INTEGER NOT NULL, status TEXT NOT NULL,
@@ -77,6 +82,13 @@ export function createSyntheticIntegrationLedger(store, { mode, now = Date.now }
       text(companyId); if (!store.get('SELECT id FROM integration_demo_company WHERE id = ?', companyId)) missing();
       const connection = id => { text(id); const row = store.get('SELECT * FROM integration_demo_connection WHERE company_id = ? AND id = ?', companyId, id); if (!row) missing(); return row; };
       const synthetic = row => { if (row.environment !== 'SYNTHETIC') error('NOT_CONFIGURED', 'Provider is not configured.'); if (['SPX','WHATSAPP_QR'].includes(row.provider)) error('CONTRACT_REQUIRED', 'Provider contract or risk review is required.'); };
+      function validateProviderRequest(connectionId, prepared) {
+        if (!isPreparedIntegrationRequest(prepared)) error('INVALID_INPUT', 'Use a validated provider descriptor.', 400);
+        const bound = connection(connectionId), binding = prepared.binding;
+        if (binding.companyId !== companyId || binding.connectionId !== connectionId || binding.accountId !== bound.account_id ||
+            binding.provider !== bound.provider || binding.environment !== bound.environment) missing();
+        synthetic(bound);
+      }
       const outbox = id => { text(id); const row = store.get('SELECT * FROM integration_demo_outbox WHERE company_id = ? AND id = ?', companyId, id); if (!row) missing(); return row; };
       function reconcile(row) {
         store.run("UPDATE integration_demo_outbox SET state = 'RECONCILE', lease_token = NULL, lease_until = NULL WHERE company_id = ? AND id = ?", companyId, row.id);
@@ -122,9 +134,17 @@ export function createSyntheticIntegrationLedger(store, { mode, now = Date.now }
           text(input.consent.version, 80); if (input.kind === 'TEMPLATE') text(input.template, 160);
           return enqueue(connectionId, key, 'MESSAGE', input, () => messagingPolicy(input, clock()));
         },
+        queueProviderRequest(connectionId, key, prepared) {
+          validateProviderRequest(connectionId, prepared);
+          return enqueue(connectionId, key, prepared.kind, prepared, () => { if (prepared.policy) messagingPolicy(prepared.policy, clock()); });
+        },
+        validateProviderRequest,
         getOperation(id) {
           text(id); const row = store.get('SELECT * FROM integration_demo_operation WHERE company_id = ? AND id = ?', companyId, id); if (!row) missing();
-          return { id: row.id, intent: JSON.parse(store.get('SELECT snapshot_json FROM integration_demo_intent WHERE company_id = ? AND id = ?', companyId, row.intent_id).snapshot_json), state: outbox(row.id).state };
+          const intent = store.get('SELECT kind,snapshot_json FROM integration_demo_intent WHERE company_id = ? AND id = ?', companyId, row.intent_id);
+          const result = store.get('SELECT result_json FROM integration_demo_provider_result WHERE company_id = ? AND outbox_id = ?', companyId, row.id);
+          return { id: row.id, connectionId: row.connection_id, kind: intent.kind, intent: JSON.parse(intent.snapshot_json), state: outbox(row.id).state,
+            providerResult: result ? JSON.parse(result.result_json) : null };
         },
         beginAttempt(id) {
           return store.transaction(() => {
@@ -137,13 +157,23 @@ export function createSyntheticIntegrationLedger(store, { mode, now = Date.now }
             return { state: 'LEASED', leaseToken: token };
           });
         },
-        finishAttempt(id, leaseToken, outcome) {
-          text(leaseToken); if (!['ACKNOWLEDGED','SAFE_RETRY','UNKNOWN'].includes(outcome)) error('INVALID_INPUT', 'Invalid outcome.', 400);
+        finishAttempt(id, leaseToken, outcome, result) {
+          text(leaseToken); if (!['ACKNOWLEDGED','SAFE_RETRY','UNKNOWN','REJECTED'].includes(outcome)) error('INVALID_INPUT', 'Invalid outcome.', 400);
+          if (result !== undefined) {
+            fields(result, ['outcome','category','providerId','errorCode','httpStatus']);
+            if (result.outcome !== outcome || !['ACCEPTED','UNVERIFIED_RESPONSE','INVALID_REQUEST','CONFIGURATION_REQUIRED','RATE_LIMIT_RECONCILE','PROVIDER_RECONCILE','NETWORK_UNKNOWN'].includes(result.category)) error('INVALID_INPUT', 'Invalid provider result.', 400);
+            if (result.providerId !== undefined) text(result.providerId, 160);
+            if (result.errorCode !== undefined && (typeof result.errorCode !== 'string' || !/^[A-Za-z0-9_-]{1,80}$/.test(result.errorCode))) error('INVALID_INPUT', 'Invalid provider result.', 400);
+            if (result.httpStatus !== undefined && (!Number.isInteger(result.httpStatus) || result.httpStatus < 100 || result.httpStatus > 599)) error('INVALID_INPUT', 'Invalid provider result.', 400);
+          }
           return store.transaction(() => {
             const row = outbox(id);
             if (row.state !== 'LEASED' || row.lease_token !== leaseToken) error('STALE_ATTEMPT', 'The lease is no longer current.');
-            if (row.lease_until <= clock() || outcome === 'UNKNOWN') { reconcile(row); return { state: 'RECONCILE' }; }
-            const state = outcome === 'ACKNOWLEDGED' ? 'DONE' : row.attempts >= 3 ? 'FAILED' : 'RETRY';
+            // An expired lease cannot persist a late provider response as an accepted fact.
+            if (row.lease_until <= clock()) { reconcile(row); return { state: 'RECONCILE' }; }
+            if (result !== undefined) store.run('INSERT INTO integration_demo_provider_result(company_id,outbox_id,result_json) VALUES (?,?,?) ON CONFLICT(company_id,outbox_id) DO UPDATE SET result_json = excluded.result_json', companyId, id, encode(result));
+            if (outcome === 'UNKNOWN') { reconcile(row); return { state: 'RECONCILE' }; }
+            const state = outcome === 'ACKNOWLEDGED' ? 'DONE' : outcome === 'REJECTED' || row.attempts >= 3 ? 'FAILED' : 'RETRY';
             store.run('UPDATE integration_demo_outbox SET state = ?, lease_token = NULL, lease_until = NULL WHERE company_id = ? AND id = ?', state, companyId, id);
             return { state };
           });
