@@ -82,13 +82,15 @@ export function createSyntheticIntegrationLedger(store, { mode, now = Date.now }
         store.run("UPDATE integration_demo_outbox SET state = 'RECONCILE', lease_token = NULL, lease_until = NULL WHERE company_id = ? AND id = ?", companyId, row.id);
         store.run("INSERT INTO integration_demo_reconciliation(company_id,outbox_id,result) VALUES (?,?,'UNKNOWN') ON CONFLICT(company_id,outbox_id) DO UPDATE SET result = 'UNKNOWN'", companyId, row.id);
       }
-      function enqueue(connectionId, key, kind, input) {
+      function enqueue(connectionId, key, kind, input, validateNew = () => {}) {
         const bound = connection(connectionId); synthetic(bound); text(key, 128);
         if (kind === 'SHIPMENT' && bound.provider !== 'NINJA_VAN' || kind === 'MESSAGE' && bound.provider !== 'WHATSAPP_CLOUD') error('CAPABILITY_DISABLED', 'Capability is unavailable.');
         const serialized = encode(input), requestHash = hash(encode({ kind, input }));
         return store.transaction(() => {
           const existing = store.get('SELECT * FROM integration_demo_operation WHERE company_id = ? AND connection_id = ? AND idempotency_key = ?', companyId, connectionId, key);
           if (existing) { if (existing.request_hash !== requestHash) error('IDEMPOTENCY_CONFLICT', 'The key was used for a different request.'); return { operationId: existing.id, outboxId: existing.id, replayed: true }; }
+          // A replay recovers a stored fact; only a new intent needs current-time permission.
+          validateNew();
           const id = randomUUID();
           store.run('INSERT INTO integration_demo_intent(company_id,id,connection_id,kind,snapshot_json) VALUES (?,?,?,?,?)', companyId, id, connectionId, kind, serialized);
           store.run('INSERT INTO integration_demo_operation(company_id,id,connection_id,intent_id,idempotency_key,request_hash) VALUES (?,?,?,?,?,?)', companyId, id, connectionId, id, key, requestHash);
@@ -118,8 +120,7 @@ export function createSyntheticIntegrationLedger(store, { mode, now = Date.now }
           fields(input, ['recipient','consent','kind','body', ...(input?.kind === 'TEMPLATE' ? ['template','templateApproved'] : ['lastInboundAt'])]);
           text(input.recipient); text(input.body, 4000); fields(input.consent, ['optIn','at','version']);
           text(input.consent.version, 80); if (input.kind === 'TEMPLATE') text(input.template, 160);
-          messagingPolicy(input, clock());
-          return enqueue(connectionId, key, 'MESSAGE', input);
+          return enqueue(connectionId, key, 'MESSAGE', input, () => messagingPolicy(input, clock()));
         },
         getOperation(id) {
           text(id); const row = store.get('SELECT * FROM integration_demo_operation WHERE company_id = ? AND id = ?', companyId, id); if (!row) missing();

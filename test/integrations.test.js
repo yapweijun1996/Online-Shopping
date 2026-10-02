@@ -144,10 +144,14 @@ test('inbox and projection roll back together, without touching an order or paym
 test('messaging requires current consent, an open service window or an approved template', t => {
   const f = fixture(t); f.alpha.addConnection({ id: 'wa', provider: 'WHATSAPP_CLOUD', environment: 'SYNTHETIC', accountId: 'synthetic-wa' });
   const input = { recipient: 'synthetic-recipient', kind: 'TEXT', body: 'Fictional message', consent: { optIn: true, at: f.now(), version: 'synthetic-consent-v1' }, lastInboundAt: f.now() };
-  assert.equal(f.alpha.createMessage('wa', 'message', input).replayed, false);
+  const first = f.alpha.createMessage('wa', 'message', input); assert.equal(first.replayed, false);
+  const attempt = f.alpha.beginAttempt(first.outboxId); assert.equal(f.alpha.finishAttempt(first.outboxId, attempt.leaseToken, 'ACKNOWLEDGED').state, 'DONE');
   assert.throws(() => f.alpha.createMessage('wa', 'no-consent', { ...input, consent: { ...input.consent, optIn: false } }), code('CONSENT_REQUIRED'));
   assert.throws(() => messagingPolicy({ ...input, lastInboundAt: f.now() + 1 }, f.now()), code('MESSAGE_WINDOW_CLOSED'));
   f.advance(86400000); assert.throws(() => f.alpha.createMessage('wa', 'closed', input), code('MESSAGE_WINDOW_CLOSED'));
+  const recovered = f.alpha.createMessage('wa', 'message', input); assert.equal(recovered.replayed, true); assert.equal(recovered.operationId, first.operationId);
+  assert.equal(f.alpha.getOperation(first.operationId).state, 'DONE');
+  assert.throws(() => f.alpha.createMessage('wa', 'message', { ...input, body: 'Changed fictional body' }), code('IDEMPOTENCY_CONFLICT'));
   const { lastInboundAt, ...template } = input;
   assert.throws(() => f.alpha.createMessage('wa', 'unapproved', { ...template, kind: 'TEMPLATE', template: 'synthetic-template', templateApproved: false }), code('APPROVED_TEMPLATE_REQUIRED'));
   assert.equal(f.alpha.createMessage('wa', 'approved', { ...template, kind: 'TEMPLATE', template: 'synthetic-template', templateApproved: true }).replayed, false);
