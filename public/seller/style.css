@@ -406,3 +406,7 @@
 
 .demo-role-entry{display:flex;flex-wrap:wrap;gap:12px;padding:18px;margin-bottom:20px;background:var(--shop-selected-surface);border:1px solid var(--ui-control-border);border-radius:12px}
 .demo-role-entry p{width:100%;margin:0;color:var(--ui-muted);font-size:13px}
+.integration-providers { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 1rem; }
+.integration-provider { border: 1px solid var(--ui-control-border); border-radius: .75rem; padding: 1rem; min-width: 0; overflow-wrap: anywhere; }
+.integration-provider h3 { margin: 0 0 .5rem; }
+.integration-provider p { margin: .5rem 0 0; }

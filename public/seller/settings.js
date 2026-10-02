@@ -1,6 +1,7 @@
 import { t, translate } from '../shared/i18n.js';
 import { mountAppearance } from '../shared/appearance.js';
 import { beginMutation } from '../shared/update-guard.js';
+import { mountIntegrations } from './integrations.js';
 
 let pendingWrites = 0;
 
@@ -144,6 +145,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
   root.prepend(setup);
   const appearance = document.createElement('section'); appearance.className = 'settings-card';
   root.append(appearance); mountAppearance(appearance, 'seller');
+  const integrations = mountIntegrations(root, { csrfToken, onUnauthorized });
   const setupForm = setup.querySelector('form');
   const setupStatus = setup.querySelector('.setup-status');
   const setupButton = setupForm.querySelector('button');
@@ -254,6 +256,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
     refreshLocale() {
       translate(root);
       if (setupState?.mode) showSetup(setupState);
+      integrations.refreshLocale();
       const line = root.querySelector('.settings-status');
       line.textContent = line.dataset.statusKey ? t(line.dataset.statusKey) : '';
     },

@@ -3,6 +3,7 @@ import { ApiError, json, readJson, requireOrigin } from './http.js';
 import { FieldError, boundedText } from './validation.js';
 import { validateProductInput } from './product-input.js';
 import galleries from './public-demo-gallery.json' with { type: 'json' };
+import { integrationCatalog } from '../public/shared/integration-catalog.js';
 
 const COOKIE = 'os_fictional_demo';
 const TTL = 60 * 60 * 1000;
@@ -182,6 +183,11 @@ export function createDemoSandbox({ enabled, production, now = Date.now } = {}) 
         admin(session); const seller = session.data.sellers.find(item => item.id === sellerPath[1]); if (!seller) missing();
         fields(body, ['active', 'expectedRevision'], ['active', 'expectedRevision']); revision(seller, body);
         seller.active = boolean(body.active); seller.revision++; audit(session, seller.id, 'SET_FICTIONAL_ACCESS'); return json(200, seller);
+      }
+      const integrationPath = /^companies\/([^/]+)\/integrations$/.exec(path);
+      if (integrationPath && method === 'GET') {
+        const company = companyFor(session, integrationPath[1]);
+        return json(200, { companyId: company.id, ...integrationCatalog() });
       }
       const match = /^companies\/([^/]+)(?:\/(products|orders|customers)(?:\/([^/]+)(?:\/(confirm|reject))?)?)?$/.exec(path);
       if (!match) missing();

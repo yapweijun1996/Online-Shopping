@@ -10,6 +10,7 @@ import { addGalleryImage, createProduct, deleteGalleryImage, getGalleryImage, ge
 import { decideSellerOrder, getSellerOrder, listSellerOrders } from './seller-orders.js';
 import { createCategory, getCompanySettings, listCategories, updateCategory, updateCompanySettings } from './settings.js';
 import { FieldError } from './validation.js';
+import { integrationCatalog } from '../public/shared/integration-catalog.js';
 
 const productIdPath = /^\/api\/v1\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
 const sellerProductIdPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
@@ -137,6 +138,7 @@ export function createApi({ store, config, serveStatic = null }) {
       return json(200, { signedOut: true }, { 'Set-Cookie': cookieFor('', 0, config.production) });
     }
     if (method === 'GET' && pathname === '/api/v1/seller/setup') return json(200, getShopSetup(store));
+    if (method === 'GET' && pathname === '/api/v1/seller/integrations') return json(200, integrationCatalog());
     if (method === 'POST' && pathname === '/api/v1/seller/setup') {
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
