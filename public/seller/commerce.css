@@ -115,8 +115,10 @@ body{background:var(--ui-canvas)}
 .product-undo{grid-column:2/-1}
 #product-more{margin-top:18px}
 #product-editor-view .product-form{padding:0;border:0;background:transparent}
-.product-editor-layout{grid-template-columns:minmax(0,1fr) minmax(240px,300px);gap:20px}
-.product-editor-main{display:grid;gap:20px;min-width:0}
+.product-editor-layout{grid-template-columns:minmax(0,1fr) minmax(240px,300px);grid-template-areas:"info pricing" "images pricing";gap:20px}
+.product-details-card{grid-area:info}
+.product-pricing-card{grid-area:pricing}
+.product-image-column{grid-area:images}
 .product-details-card,.product-pricing-card,.product-image-column{min-inline-size:0;margin:0;border:1px solid var(--ui-border);border-radius:12px;padding:20px;background:var(--ui-surface)}
 .product-details-card legend,.product-pricing-card legend,.product-image-column legend{float:left;width:100%;padding:0;margin-bottom:21px;font-size:16px;font-weight:750;color:var(--ui-text)}
 .product-details-card>.product-fields{clear:both}
@@ -162,10 +164,8 @@ body{background:var(--ui-canvas)}
  .product-status-chip{grid-column:2;grid-row:2;justify-self:end}
  .product-card-actions{flex-direction:column;align-items:stretch}
  .product-card-main .product-card-price{text-align:right}
- .product-editor-layout{grid-template-columns:minmax(0,1fr)}
+ .product-editor-layout{grid-template-columns:minmax(0,1fr);grid-template-areas:"info" "pricing" "images"}
  .product-pricing-card{position:static}
- .product-editor-main{display:contents}
- .product-image-column{grid-row:3}
  .product-editor-actions{position:static;background:transparent;box-shadow:none;padding:0;margin-top:18px;border:0}
  #product-editor-view .product-form{padding-bottom:0}
 }

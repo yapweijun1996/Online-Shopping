@@ -111,10 +111,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   editorLayout.className = 'product-editor-layout';
   formFields.before(editorLayout);
   details.append(formFields);
-  const mainColumn = document.createElement('div');
-  mainColumn.className = 'product-editor-main';
-  mainColumn.append(details, imageColumn);
-  editorLayout.append(mainColumn, pricing);
+  editorLayout.append(details, pricing, imageColumn);
   const nameLabel = form.elements.name.closest('label');
   nameLabel.classList.add('full');
   formFields.prepend(nameLabel, form.elements.sku.closest('label'), form.elements.category.closest('label'), form.elements.description.closest('label'));
