@@ -150,7 +150,7 @@ byId('demo-settings-form').addEventListener('submit', event => { event.preventDe
   await loadCompanies(); await loadSellers(); await loadResources();
 }); });
 byId('demo-reset').addEventListener('click', () => { if (!window.confirm('Discard changes and reset only your fictional demo workspace?')) return; mutation(async () => {
-  session.csrfToken = (await api('POST', 'reset', {})).csrfToken; await loadCompanies(); await loadSellers(); await loadResources();
+  Object.assign(session, await api('POST', 'reset', {})); await loadCompanies(); await loadSellers(); await loadResources();
 }); });
 byId('demo-exit').addEventListener('click', () => mutation(async () => { await api('DELETE', 'session'); location.assign('/seller/'); }));
 try {

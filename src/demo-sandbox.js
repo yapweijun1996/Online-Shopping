@@ -134,8 +134,14 @@ export function createDemoSandbox({ enabled, production, now = Date.now } = {}) 
       const body = await readJson(request, 1024); fields(body, []);
       requireSession(request);
       if (request.headers.get('x-csrf-token') !== session.csrfToken) forbidden();
-      session.data = freshWorkspace(); session.csrfToken = randomBytes(32).toString('hex');
-      return json(200, { reset: true, csrfToken: session.csrfToken });
+      session.data = freshWorkspace();
+      // Custom memberships disappear on reset; keep a valid fictional Seller
+      // identity without restoring the Admin privileges used to enter this view.
+      if (session.role === 'SELLER' && !session.data.sellers.some(seller => seller.id === session.principalId)) {
+        session.principalId = 'seller-alpha';
+      }
+      session.csrfToken = randomBytes(32).toString('hex');
+      return json(200, { reset: true, role: session.role, principalId: session.principalId, csrfToken: session.csrfToken });
     }
     // Synchronous state changes below cannot interleave after body parsing. A
     // cloned workspace provides rollback if validation or audit insertion fails.

@@ -30,10 +30,10 @@ export function setupShop(store, input) {
           store.get('SELECT 1 FROM general_code LIMIT 1')) {
         throw new ApiError(409, 'SHOP_NOT_EMPTY', 'Demo requires an empty catalog without categories or orders. Choose Production to keep your data.');
       }
-      for (const [code, label] of Object.entries(categories)) createCategory(store, { code, label });
-      for (const product of catalog) createProduct(store, product);
       store.run("UPDATE company_setting SET default_currency = 'MYR', seller_whatsapp_phone = ?, updated_at = ? WHERE id = 1",
         null, new Date().toISOString());
+      for (const [code, label] of Object.entries(categories)) createCategory(store, { code, label });
+      for (const product of catalog) createProduct(store, product);
     }
     store.run('UPDATE shop_setup SET mode = ?, shop_name = ? WHERE id = 1', input.mode, shopName);
     return getShopSetup(store);

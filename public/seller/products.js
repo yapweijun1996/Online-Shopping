@@ -131,7 +131,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     const fields = ['sku', 'name', 'description', 'category', 'price', 'currency', 'variantGroup', 'variantLabel'];
     const image = form.elements.image.files[0];
     return {
-      values: fields.map((field) => form.elements[field].value),
+      values: Object.fromEntries(fields.map((field) => [field, form.elements[field].value])),
       active: form.elements.active.checked,
       image: image ? [image.name, image.size, image.lastModified] : null,
       pendingRemove,
@@ -551,7 +551,13 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
         variantGroup: form.elements.variantGroup.value,
         variantLabel: form.elements.variantLabel.value,
       };
-      if (editingId && formBaseline && payload.active === JSON.parse(formBaseline).active) delete payload.active;
+      if (editingId && formBaseline) {
+        const baseline = JSON.parse(formBaseline);
+        // Metadata edits must not resubmit immutable legacy money fields.
+        if (payload.priceMinor === priceToMinor(baseline.values.price)) delete payload.priceMinor;
+        if (payload.currency === baseline.values.currency) delete payload.currency;
+        if (payload.active === baseline.active) delete payload.active;
+      }
       const file = form.elements.image.files[0];
       if (file) payload.imageDataUrl = await readImage(file);
       else if (pendingRemove) payload.imageDataUrl = null;
@@ -596,6 +602,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       editorStatus.textContent = editorStatusKey ? t(editorStatusKey) : '';
     },
     hasUnsavedChanges,
+    draftSignature: () => JSON.stringify([editingId, form.hidden, formState()]),
     isBusy: () => saving || mutations > 0,
   };
 }

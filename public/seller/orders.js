@@ -432,6 +432,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
     mode,
     isBusy: () => deciding,
     hasUnsavedChanges: () => dialog.open,
+    draftSignature: () => JSON.stringify([dialog.open, dialogAction, selectedId]),
     dispose() {
       active = false;
       ++documentRequest; documents.dispose();

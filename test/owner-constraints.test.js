@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
 import { openDatabase } from '../src/db.js';
 import { createApi } from '../src/app.js';
 import { createSession, ensureAdmin } from '../src/auth.js';
@@ -51,6 +53,49 @@ test('legacy mismatched products allow metadata/deactivation but reject price ed
   assert.equal(updateProduct(store, product.id, { name: 'Reviewed metadata', active: false }).name, 'Reviewed metadata');
   assert.equal(getProduct(store, product.id, true).priceMinor, 900);
   assert.equal(getProduct(store, product.id, true).currency, 'SGD');
+});
+
+test('Seller edit payload permits legacy metadata/deactivation while actual money edits and activation remain blocked', async t => {
+  const store = storeFor(t), product = createProduct(store, input);
+  createOrder(store, 'synthetic-edit-currency-01', checkout(product));
+  const snapshots = ['shop_order', 'order_item', 'order_event'].map(table => store.all(`SELECT * FROM ${table}`));
+  store.run('UPDATE product SET currency = ? WHERE id = ?', 'SGD', product.id);
+  const source = readFileSync(new URL('../public/seller/products.js', import.meta.url), 'utf8');
+  const values = { sku: product.sku, name: product.name, description: product.description, category: product.categoryCode,
+    price: '9.00', currency: 'SGD', variantGroup: '', variantLabel: '' };
+  const elements = Object.fromEntries(Object.entries(values).map(([name, value]) => [name, { value }]));
+  elements.active = { checked: true }; elements.image = { files: [] };
+  const context = { form: { hidden: false, elements }, saving: false, pendingRemove: false, formBaseline: null, editingId: product.id };
+  vm.createContext(context);
+  vm.runInContext(source.slice(source.indexOf('function priceToMinor('), source.indexOf('function readImage(')), context);
+  vm.runInContext(source.slice(source.indexOf('  function formState()'), source.indexOf('  function confirmDiscard()')), context);
+  vm.runInContext('captureBaseline()', context);
+  const start = source.indexOf('      const payload = {');
+  const payloadSource = source.slice(start, source.indexOf('      const file = form.elements.image.files[0];', start));
+  const payload = () => vm.runInContext(`(() => { ${payloadSource} return payload; })()`, context);
+  const session = createSession(store), handle = createApi({ store, config: { publicOrigin: 'https://fixture.test' } });
+  const submit = body => handle(new Request(`https://fixture.test/api/v1/seller/products/${product.id}`, {
+    method: 'PATCH', headers: { origin: 'https://fixture.test', 'content-type': 'application/json',
+      cookie: `seller_session=${session.token}`, 'x-csrf-token': session.csrfToken }, body: JSON.stringify(body),
+  }));
+  elements.name.value = 'Reviewed metadata'; elements.active.checked = false;
+  const metadata = payload();
+  assert.equal(Object.hasOwn(metadata, 'currency'), false);
+  assert.equal(Object.hasOwn(metadata, 'priceMinor'), false);
+  assert.equal((await submit(metadata)).status, 200);
+  assert.equal(getProduct(store, product.id, true).name, 'Reviewed metadata');
+  assert.equal(getProduct(store, product.id, true).active, false);
+  elements.price.value = '10.00';
+  assert.equal((await submit(payload())).status, 409);
+  elements.price.value = '9.00'; elements.currency.value = 'MYR';
+  assert.equal((await submit(payload())).status, 400);
+  elements.currency.value = 'SGD';
+  vm.runInContext('captureBaseline()', context);
+  elements.active.checked = true;
+  assert.equal((await submit(payload())).status, 409);
+  assert.equal(getProduct(store, product.id, true).priceMinor, 900);
+  assert.equal(getProduct(store, product.id, true).currency, 'SGD');
+  assert.deepEqual(['shop_order', 'order_item', 'order_event'].map(table => store.all(`SELECT * FROM ${table}`)), snapshots);
 });
 
 test('all 35 demo seller details expose their unchanged primary image and all six gallery photos', async t => {

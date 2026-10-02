@@ -36,10 +36,11 @@ export async function registerWorker(script, scope, { returnUrl, target, onState
   let activationTimer;
   let activationPoll;
   let activationSignature;
+  let activationDirty = false;
   function finishActivation() {
     if (reloadRequested) return;
     const state = guard?.();
-    if (state?.busy || (activationSignature !== undefined && state?.signature !== activationSignature)) {
+    if (state?.busy || (!activationDirty && state?.dirty) || (activationSignature !== undefined && state?.signature !== activationSignature)) {
       clearTimeout(activationTimer); clearTimeout(activationPoll);
       applying = false; applyingWorker = null; reloadReady = true;
       update.disabled = check.disabled = false; statusKey = 'updateAvailable'; render();
@@ -129,7 +130,9 @@ export async function registerWorker(script, scope, { returnUrl, target, onState
     if (reloadReady) { location.reload(); return; }
     if (!registration.waiting) { inspect(); return; }
     applying = true;
-    activationSignature = guard?.().signature;
+    const acceptedState = guard?.();
+    activationSignature = acceptedState?.signature;
+    activationDirty = acceptedState?.dirty === true;
     update.disabled = check.disabled = true;
     statusKey = 'appUpdating';
     render();
