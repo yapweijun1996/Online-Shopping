@@ -26,3 +26,7 @@ The historical single-company local baseline records AC-01–15 and AC-18 as ver
 | AC-18 languages | Seven ordered locales/resource parity; focused 320px appearance layouts. | Complete deployed core journeys; fictional Admin prototype currently English and excluded from this proof. |
 
 Owner-recorded business/contractual necessity is context, not a legal conclusion or evidence that backups/retention obligations are satisfied. Historical local counts remain clearly labelled; opening additional tenant acceptance gates cannot raise production completion. Record each deployed criterion against its exact artifact/version before marking Released.
+
+## Selected B presentation candidate
+
+B is a local Seller v82 / Shop v105 presentation candidate, separately documented in [SELLER_STUDIO_B.md](SELLER_STUDIO_B.md). Its 144 passing local tests and responsive/PWA fixture checks do not change this 18-item Production denominator, establish native-device acceptance, or close live tenancy/operations gates. PR16 main merge5966ca8 was verified; its merge did not activate a deployment.

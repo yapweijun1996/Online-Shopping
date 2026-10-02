@@ -353,3 +353,11 @@ Deployed Worker `3bd93955-ef88-4995-9fee-9e77bc1635f1` (Shop v38, Seller v42). L
 - Non-destructive public-general-demo-v1 namespace and revision-scoped browser storage preserve both legacy databases and browser data. Idempotent transactional setup and revision reset validation covered. Public contact is suppressed independently of seller settings.
 - 117 tests pass; isolated buyer/seller decisions, stale/CSRF/retry, six widths/seven locales, cart/search/profile/address/zoom/share and browser isolation gates passed. Synthetic PDFs: 76 rows, two destinations, SGD1,902.88, 75 units per destination, 10 summary / 6 packing pages with no recipient spill.
 - Current-tree legacy catalog and 195 historical visual artifacts retired; Git history retained. AI provenance does not guarantee exclusive copyright. Manual packing/browser print only; physical iOS/Safari untested. No live customer writes.
+
+## 2026-10-02 selected B local checkpoint
+
+- PR16 merge5966ca8 and successful main CI verified against reviewed640e545; post-merge live versions remained Seller79/Shop103.
+- Owner-selected B implemented in isolated local branch: forest/ivory login, actual-data dashboard, product rows, grouped add/edit, responsive drawer and five persisted palette choices.
+- Final source3210358: full144/144 and focused25/25; syntax, diff and non-publishing Worker checks pass. Native Tab/visual ordering issue found independently and fixed. Both independent reviews clear assigned paths.
+- Actual fictional desktop/mobile captures saved in docs/assets and six images in Library. Local temporary browser signed out/closed; no shared browser binaries touched.
+- B remains local; PR16 deployment/B submission await the explicit owner response in the parent thread. Production acceptance and future provider/tenant gates remain open.

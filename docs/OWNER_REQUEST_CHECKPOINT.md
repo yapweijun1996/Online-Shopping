@@ -2,7 +2,7 @@
 
 ## Independent review repairs
 
-PR #15 was owner-merged at 2026-10-02 13:10:27 UTC as main `f28c04b1d1655f5002469a98f62c3e65cb73d6bf`; main CI run `37011248501` passed. Its tree matches the original reviewed candidate. Repair branch `codex/owner-review-regressions` starts at that exact merge. Current candidate: **Shop v105 / Seller v81**, not deployed.
+PR #15 was owner-merged at 2026-10-02 13:10:27 UTC as main `f28c04b1d1655f5002469a98f62c3e65cb73d6bf`; main CI run `37011248501` passed. Its tree matches the original reviewed candidate. Repair branch `codex/owner-review-regressions` starts at that exact merge. PR #16 was merged at 2026-10-02 13:58:01 UTC as main `5966ca8626c6c75e8e0ec4e34488a7c47fa29376`; CI run `37016571023` passed and its tree matches reviewed repair `640e545`. Main source is **Shop v105 / Seller v81**, not deployed at the post-merge check. The later selected B implementation is a separate local **Shop v105 / Seller v82** candidate; see [SELLER_STUDIO_B.md](SELLER_STUDIO_B.md).
 
 Independent review found four bounded regressions, reproduced before repair:
 
