@@ -3,7 +3,7 @@ import test from 'node:test';
 import { openDatabase, migrateStore } from '../src/db.js';
 import { getShopSetup, setupShop } from '../src/shop-setup.js';
 import { createProduct, listProducts } from '../src/products.js';
-import { createCategory } from '../src/settings.js';
+import { createCategory, getCompanySettings, updateCompanySettings } from '../src/settings.js';
 import { createApi } from '../src/app.js';
 import { createSession } from '../src/auth.js';
 
@@ -61,6 +61,35 @@ test('demo refuses existing data and rolls back the entire seed on failure', (t)
   assert.equal(getShopSetup(store).mode, null);
   assert.equal(store.get('SELECT COUNT(*) AS n FROM product').n, 0);
   assert.equal(store.get('SELECT COUNT(*) AS n FROM general_code').n, 0);
+});
+
+test('Demo setup establishes MYR before seeding and rolls back settings on failure', async t => {
+  const store = fixture(t);
+  const api = createApi({ store, config: { publicOrigin: 'https://fixture.test' } });
+  const session = createSession(store);
+  const call = (path, body) => api(new Request('https://fixture.test/api/v1/seller/' + path, {
+    method: path === 'company-settings' ? 'PATCH' : 'POST',
+    headers: { origin: 'https://fixture.test', 'content-type': 'application/json',
+      cookie: `seller_session=${session.token}`, 'x-csrf-token': session.csrfToken },
+    body: JSON.stringify(body),
+  }));
+  assert.equal((await call('company-settings', { defaultCurrency: 'SGD' })).status, 200);
+  const before = store.all('SELECT * FROM company_setting');
+  const failingStore = { ...store, run(sql, ...params) {
+    if (params.includes('DEMO-020')) throw new Error('Injected seed failure');
+    return store.run(sql, ...params);
+  } };
+  assert.throws(() => setupShop(failingStore, { mode: 'demo' }), /Injected seed failure/);
+  assert.deepEqual(store.all('SELECT * FROM company_setting'), before);
+  assert.equal(getShopSetup(store).mode, null);
+  assert.equal(store.get('SELECT COUNT(*) AS n FROM product').n, 0);
+  assert.equal(store.get('SELECT COUNT(*) AS n FROM general_code').n, 0);
+  const configured = await call('setup', { mode: 'demo' });
+  assert.equal(configured.status, 200);
+  assert.equal(getCompanySettings(store).defaultCurrency, 'MYR');
+  const products = listProducts(store, new URLSearchParams('limit=100')).items;
+  assert.equal(products.length, 35);
+  assert.ok(products.every(product => product.currency === 'MYR'));
 });
 
 test('existing version 6 catalogs migrate to production without altering products', (t) => {

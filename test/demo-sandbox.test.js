@@ -125,6 +125,39 @@ test('admin manages fictional companies and sellers; disabled access and compani
   assert.equal((await f.call('POST', 'sellers', { name: 'forged', companyId: 'unknown' }, session)).status, 404);
 });
 
+test('reset keeps assumed Sellers valid without restoring Admin privileges or foreign-company access', async t => {
+  const f = fixture(t);
+  for (const membership of ['custom', 'seller-beta']) {
+    const session = await f.login('ADMIN');
+    const sellerId = membership === 'custom'
+      ? (await f.call('POST', 'sellers', { name: 'Synthetic custom Seller', companyId: 'company-beta' }, session)).data.id
+      : membership;
+    session.csrfToken = (await f.call('POST', 'assume-seller', { sellerId }, session)).data.csrfToken;
+    const oldCsrf = session.csrfToken;
+    const reset = await f.call('POST', 'reset', {}, session);
+    assert.equal(reset.status, 200);
+    session.csrfToken = reset.data.csrfToken;
+    assert.notEqual(session.csrfToken, oldCsrf);
+    const identity = await f.call('GET', 'session', null, session);
+    assert.equal(identity.status, 200);
+    assert.equal(identity.data.role, 'SELLER');
+    assert.equal(identity.data.principalId, membership === 'custom' ? 'seller-alpha' : 'seller-beta');
+    assert.equal(reset.data.principalId, identity.data.principalId);
+    assert.equal(reset.data.role, 'SELLER');
+    const ownCompany = membership === 'custom' ? 'company-alpha' : 'company-beta';
+    const companies = await f.call('GET', 'companies', null, session);
+    assert.deepEqual(companies.data.items.map(company => company.id), [ownCompany]);
+    assert.equal((await f.call('GET', `companies/${ownCompany}/products`, null, session)).status, 200);
+    assert.equal((await f.call('GET', `companies/${ownCompany === 'company-alpha' ? 'company-beta' : 'company-alpha'}/products`, null, session)).status, 404);
+    assert.equal((await f.call('GET', 'sellers', null, session)).status, 403);
+    assert.equal((await f.call('POST', 'assume-seller', { sellerId: 'seller-beta' }, session)).status, 403);
+    assert.equal((await f.call('POST', 'reset', {}, { ...session, csrfToken: oldCsrf })).status, 403);
+    assert.equal((await f.call('GET', '/api/v1/seller/products', null, session)).status, 401);
+    assert.equal((await f.call('DELETE', 'session', null, session)).status, 200);
+    assert.equal((await f.call('GET', 'session', null, session)).status, 401);
+  }
+});
+
 test('synthetic API enforces currency, company SKU scope, revision races and immutable order snapshots', async t => {
   const f = fixture(t), session = await f.login('ADMIN');
   const product = (await f.call('GET', 'companies/company-alpha/products', null, session)).data.items[0];

@@ -90,7 +90,7 @@ setupLanguageMenu(byId('language'));
 document.title = `${t('sellerPortal')} · Online Shopping`;
 registerWorker('/seller/sw.js', '/seller/', {
   currentVersion: APP_VERSION,
-  guard: () => ({ dirty: hasUnsavedChanges(), busy: mutationsBusy() || activePage()?.isBusy?.() === true, signature: draftSignature() }),
+  guard: () => ({ dirty: hasUnsavedChanges(), busy: mutationsBusy() || activePage()?.isBusy?.() === true, signature: JSON.stringify([currentRoute, draftSignature(), activePage()?.draftSignature?.()]) }),
   confirmUpdate: confirmModal,
   onState(state, actions) {
     const identity = state.ready ? state.available || 'ready' : '';

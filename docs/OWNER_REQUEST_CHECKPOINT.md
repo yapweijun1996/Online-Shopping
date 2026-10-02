@@ -1,5 +1,28 @@
 # Owner-request candidate — 2026-10-02
 
+## Independent review repairs
+
+PR #15 was owner-merged at 2026-10-02 13:10:27 UTC as main `f28c04b1d1655f5002469a98f62c3e65cb73d6bf`; main CI run `37011248501` passed. Its tree matches the original reviewed candidate. Repair branch `codex/owner-review-regressions` starts at that exact merge. Current candidate: **Shop v105 / Seller v81**, not deployed.
+
+Independent review found four bounded regressions, reproduced before repair:
+
+- Reset after assuming a custom fictional Seller removed its membership but retained its principal; subsequent resource/session/Exit requests returned 403. Reset now preserves valid seed identities or selects seeded Alpha for a removed custom identity, retains Seller privileges, rotates CSRF and returns identity fields. Absolute expiry is unchanged.
+- An empty shop that first saved SGD could not initialize the MYR Demo catalog. MYR is now established after the empty-store guard, before seeding, in the existing transaction. Injected failure rolls back settings and all seed rows; nonempty-store rejection preserves existing currency/data.
+- Seller Edit resubmitted unchanged price/currency, blocking metadata/deactivation of legacy mismatches. It now omits those unchanged money fields. Actual price/currency changes and activation remain rejected by the strict API; order/item/event snapshots are unchanged. List inline deactivation already worked.
+- Activation fingerprint missed primary-image removal and opening an order decision without changed input values. Seller fingerprints now include semantic page state and route; a clean-to-dirty transition also defers reload. Explicitly accepted drafts that remain unchanged still allow reload. The original probe proved a reload request, not silent data loss; the existing native unload prompt was a possible fallback.
+
+Code/test commit `b40cc72d274ef00fc0e6bfdc86798d61425eb43d` passed both independent security/API and PWA/source re-reviews with no actionable findings in their assigned paths. Full Node 24 suite: **142/142**, one worker. JavaScript syntax, whitespace checks and non-publishing Worker dry run pass (742 public assets). The first full run was blocked by sandbox loopback listening; the approved local run passed. Independent synthetic probes additionally verify unchanged expiry, seed identity preservation, foreign-company denial, stale-CSRF denial and nonempty-store preservation.
+
+One isolated Chromium session verified custom Seller creation/assumption/reset/resource loading/Exit, with session 200, foreign-company 404, Admin list 403 and privileged Seller API 401 after reset. The real Edit form saved legacy metadata/deactivation with PATCH 200 and omitted unchanged money fields; SGD 900 stayed unchanged. A held waiting-worker fixture verified primary-image removal and opening an empty rejection dialog during activation each defer reload with **zero native unload prompts**. Cancellation retained removal, explicit retry worked, the Customer cart survived activation, caches ended as `os-seller-v83` / `os-shop-v106` with no API URLs, and no page exceptions occurred. These worker-only identities are synthetic: loaded repair shells remain Seller v81 / Shop v105. Shared binaries were reused; no install/GC or unchanged heavy suite was run.
+
+- [Pending primary-image removal retained during activation](assets/repair-pwa-image-deferred.png)
+- [New order decision retained during activation](assets/repair-pwa-decision-deferred.png)
+- [Legacy metadata/deactivation saved without money changes](assets/repair-legacy-metadata.png)
+
+Read-only deployment verification: public Demo still shows **Shop v103 / Seller v79**; the new version modules, shared update guard and `/demo/` are absent from that release. Cloudflare's latest deployment was `e62c6942-1d8c-4d53-b8e5-85011e0b7a16` at 2026-10-01 20:47:17.737 UTC, running version `c0c8a9d1-69e9-426f-bbc9-535ef78afccb` at 100%. No merge, deployment, production migration, live grant or credential action was performed by this task.
+
+## Original PR #15 scope and evidence
+
 Base: main `c1d1f688458eaa371b80f56f847ffbfe43612de2` (published Shop v103 / Seller v79). Isolated branch: `codex/owner-pwa-gallery-currency-admin-palettes`. Candidate: **Shop v104 / Seller v80**. No deployment, production migration, live grant/credential, real order/payment/contact/logistics action occurred. Original checkout remains unchanged.
 
 | Owner request | Candidate outcome | Evidence / practical limit |
@@ -38,3 +61,5 @@ Runnable API/VM tests are tracked in `test/`. Detailed local browser scripts/log
 Before publishing Demo: independent authorization/security review at exact head, CI, mode/HTTPS/asset/private-cache checks and owner review of the exact release artifact. Older installed clients must finish writes/save drafts before adopting these new guards; this candidate cannot retrofit guards into already cached v103/v79 scripts.
 
 Before Production: implement PostgreSQL and tenant-scoped repositories/composite FKs/RLS/pooled context/browser storage/status/idempotency/documents, prove revocation and all cross-company routes, restore encrypted off-host backups, approve exact migration/grant manifest and rollback, reconcile current contact/delivery acceptance wording, validate retention policy and real HTTPS/installed Safari/iPhone/iPad/desktop target devices. No local test establishes these missing gates.
+
+The current authorized deliverables are version-labelled draft/cart-safe updates, complete existing Seller galleries, company-currency constraints, accessible palette preview/persistence, a reviewable Admin design and isolated fictional implementation, and reconciliation of the 18 original criteria. AC-16 operations and AC-17 installed-device PWA acceptance are original MVP gates still open. The proposed production PostgreSQL tenant adapter/migration, durable grants, IdP/MFA, RLS and cutover are future architecture work, requiring separate exact review and authorization. Listing those gates is not authorization to execute them. Payment/courier automation remains outside the MVP.

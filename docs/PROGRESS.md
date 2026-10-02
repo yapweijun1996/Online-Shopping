@@ -1,6 +1,6 @@
 # Progress
 
-**2026-10-02 owner scope:** Candidate Shop v104 / Seller v80 is local and un-deployed. Public Demo remains Shop v103 / Seller v79 on main c1d1f688. The 18-item Production denominator is reconciled in [PRODUCTION_ACCEPTANCE.md](PRODUCTION_ACCEPTANCE.md), including current contact/delivery wording gaps and tenant/release gates. Historical 16/18 local verification below is dated baseline evidence; Production released remains 0/18.
+**2026-10-02 owner scope:** PR #15 was owner-merged as main f28c04b1. Independently reviewed repairs are a separate Shop v105 / Seller v81 candidate and are not deployed. Public Demo remains Shop v103 / Seller v79 from release c1d1f688. The 18-item Production denominator is reconciled in [PRODUCTION_ACCEPTANCE.md](PRODUCTION_ACCEPTANCE.md), including current contact/delivery wording gaps and tenant/release gates. Historical 16/18 local verification below is dated baseline evidence; Production released remains 0/18.
 
 **Updated direction (2026-09-26):** Cloudflare Worker + SQLite Durable Object is the public Demo for simulated transactions with sample pet products. Future Production will use Docker + PostgreSQL on the owner’s server behind Cloudflare Tunnel. This supersedes earlier DEC-04 production-host wording below; the current Docker SQLite adapter has not yet been migrated to PostgreSQL.
 

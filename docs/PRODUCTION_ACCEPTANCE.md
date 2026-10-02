@@ -1,6 +1,6 @@
 # Production acceptance denominator — 18 items
 
-Reconciled 2026-10-02 against `SPEC.md`, current code/tests and recorded project KB. The denominator remains **18**, not number of features, tests, screenshots or demo deployments. Payment/courier automation stays outside the existing MVP. The current public Demo is Shop v103 / Seller v79 at main `c1d1f688458eaa371b80f56f847ffbfe43612de2`; this candidate is Shop v104 / Seller v80 and is not deployed.
+Reconciled 2026-10-02 against `SPEC.md`, current code/tests and recorded project KB. The denominator remains **18**, not number of features, tests, screenshots or demo deployments. Payment/courier automation stays outside the existing MVP. PR #15 was owner-merged as main `f28c04b1d1655f5002469a98f62c3e65cb73d6bf`; the public Demo still runs Shop v103 / Seller v79 from the earlier `c1d1f688458eaa371b80f56f847ffbfe43612de2` release. This repair candidate is Shop v105 / Seller v81 and is not deployed.
 
 The historical single-company local baseline records AC-01–15 and AC-18 as verified (16/18). AC-16/17 remain open. **Production released: 0/18**. A running Cloudflare Demo does not satisfy the future Docker/PostgreSQL Production denominator. The present full regression and focused browser results preserve evidence for the candidate changes; they do not re-certify every historical browser journey or the unimplemented production tenant adapter.
 
