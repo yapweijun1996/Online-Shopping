@@ -1,6 +1,6 @@
-# Pet Shop color palette proposals
+# Seller and Customer color palettes
 
-The Shop offers Evergreen Teal, Warm Plum, and Ocean Blue in Account → Settings → Shop appearance. Evergreen Teal is the default. The choice is saved in this browser under `online-shopping-shop-palette-v1` and synchronized across tabs. If browser storage is unavailable, the choice applies until the page closes and the UI says it was not saved. Open [the interactive preview](shop-palette-preview.html) to compare the three designs.
+Seller Company Settings and Customer Account → Settings offer Evergreen Teal, Warm Plum, Ocean Blue, High Contrast Navy and Graphite. Each choice has a scoped Preview and an explicit Apply palette action; preview alone does not persist. Evergreen Teal is the default. The choice is saved in this browser under `online-shopping-shop-palette-v1` and synchronized across tabs. If browser storage is unavailable, the choice applies until the page closes and the UI says it was not saved. Seller preference uses `online-shopping-seller-palette-v1`, independently from Customer. The older [three-palette design comparison](shop-palette-preview.html) is a historical reference; runtime Settings includes all five.
 
 ## Decision
 
@@ -11,8 +11,10 @@ The Shop offers Evergreen Teal, Warm Plum, and Ocean Blue in Account → Setting
 | Evergreen Teal | `#087f83` | `#f5f8fa` | `#8095a0` | Familiar and steady |
 | Warm Plum | `#7c426a` | `#fcf8fa` | `#97858e` | Warm and boutique |
 | Ocean Blue | `#235e91` | `#f5f8fb` | `#8296a5` | Calm and conventional |
+| High Contrast Navy | `#143d70` | `#f4f6f8` | `#52616b` | Strong visual boundaries |
+| Graphite | `#364152` | `#f5f5f5` | `#68737e` | Neutral and restrained |
 
-All three keep price and order total at `#a54428`, error at `#aa3946`, success at `#216943`, and the same warning colors. A customer changing a palette must not change what a price, error, or warning means. Text and icons remain alongside status colors.
+All five keep price and order total at `#a54428`, error at `#aa3946`, success at `#216943`, and the same warning colors. A customer changing a palette must not change what a price, error, or warning means. Text and icons remain alongside status colors.
 
 ## Contrast check
 
@@ -31,7 +33,7 @@ The preview computes contrast from the token values. Text pairs use a **4.5:1** 
 | Control border on surface | 3.06:1 | 3:1 |
 | Focus ring on surface | 4.80:1 | 3:1 |
 
-The automated regression covers all three runtime palettes and text, selected, price, warning, error, control border, and focus pairs. This is a bounded color-pair audit, not a complete accessibility certification. Text baked into product photos cannot be controlled by the palette.
+The automated regression covers all five runtime palettes and text, selected, price, warning, error, control border, and focus pairs. This is a bounded color-pair audit, not a complete accessibility certification. Text baked into product photos cannot be controlled by the palette.
 
 Before Evergreen Teal was applied, the input border `#c9d9df` measured about **1.45:1** against white and the focus color `#42b9b5` measured about **2.38:1**. The selected Shop tokens now give interactive control borders at least 3:1 and focus colors at least 4.8:1 on the sampled surface.
 
@@ -39,7 +41,7 @@ Before Evergreen Teal was applied, the input border `#c9d9df` measured about **1
 
 `public/shop/tokens.css` is the runtime Shop color source of truth. `public/shop/palette.js` owns only the customer-local preference and applies its palette before the stylesheet loads. Interactive Shop borders and focus rings read the tokens. Price and status roles are invariant across presets and retain text labels.
 
-Seller-owned company branding and a customer-local appearance preference are separate decisions. The customer palette never edits seller settings or order data.
+Seller and Customer browser appearance preferences are independent. Seller appearance does not change company branding or data. The customer palette never edits seller settings or order data.
 
 ## Regression checks
 

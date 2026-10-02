@@ -1,6 +1,7 @@
 import { t } from '../shared/i18n.js';
 import { registerWorker } from '../shared/pwa.js';
 import { confirmModal } from '../shared/modal.js';
+import { APP_VERSION } from './version.js';
 
 export function mountShopUpdates(guard, productBanner) {
   const settings = document.getElementById('settings-view');
@@ -26,7 +27,7 @@ export function mountShopUpdates(guard, productBanner) {
   function render() {
     const blocked = Boolean(guard().busy);
     title.textContent = t('appUpdate');
-    version.textContent = `${t('appVersion')}: ${state.current || '—'}`;
+    version.textContent = `${t('appVersion')}: Shop ${APP_VERSION}`;
     check.textContent = t('checkUpdates'); check.disabled = state.checking || state.applying || blocked;
     status.textContent = state.statusKey ? t(state.statusKey) : '';
     const updateText = `${t('updateApp')}${state.available ? ` · ${state.available}` : ''}`;
@@ -37,7 +38,7 @@ export function mountShopUpdates(guard, productBanner) {
       button.textContent = updateText;
       button.disabled = state.applying || blocked;
       banner.hidden = !state.ready || (banner === catalogBanner && document.body.dataset.shopRoute !== 'catalog');
-      notice.textContent = t(state.statusKey === 'updateFailed' ? 'updateFailed' : 'updateAvailable');
+      notice.textContent = `${t('appVersion')}: Shop ${APP_VERSION} · ${t(state.statusKey === 'updateFailed' ? 'updateFailed' : 'updateAvailable')}`;
     }
   }
   check.addEventListener('click', () => actions ? actions.check() : connect());
@@ -49,7 +50,7 @@ export function mountShopUpdates(guard, productBanner) {
   async function connect() {
     state.checking = true; render();
     try {
-      return await registerWorker('/shop/sw.js', '/shop/', { guard, confirmUpdate: confirmModal, onState(next, commands) { state = next; actions = commands; render(); } });
+      return await registerWorker('/shop/sw.js', '/shop/', { currentVersion: APP_VERSION, guard, confirmUpdate: confirmModal, onState(next, commands) { state = next; actions = commands; render(); } });
     } catch { state.statusKey = 'updateFailed'; }
     finally { state.checking = false; render(); }
   }

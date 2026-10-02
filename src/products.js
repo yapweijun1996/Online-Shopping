@@ -3,7 +3,7 @@ import { ApiError } from './http.js';
 import { FieldError, boundedText } from './validation.js';
 import { validateProductInput } from './product-input.js';
 import { decodeProductImage } from './product-image.js';
-import { requireActiveCategory } from './settings.js';
+import { getCompanySettings, requireActiveCategory } from './settings.js';
 
 const columns = `p.id, p.sku, p.name, p.description, p.category AS category_code,
   c.label AS category, p.price_minor, p.currency, p.active, p.image_mime, p.variant_group, p.variant_label,
@@ -68,7 +68,9 @@ function duplicateSku(error) {
 }
 
 export function createProduct(database, input) {
-  const product = validateProductInput(input, ['MYR', 'SGD']);
+  const currency = getCompanySettings(database).defaultCurrency;
+  if (!input || typeof input !== 'object' || Array.isArray(input)) validateProductInput(input, [currency]);
+  const product = validateProductInput(input && { currency, ...input }, [currency]);
   requireActiveCategory(database, product.category);
   validateVariantGroup(database, product);
   const id = randomUUID();
@@ -90,7 +92,12 @@ export function createProduct(database, input) {
 export function updateProduct(database, id, input) {
   const existing = getProduct(database, id, true);
   if (!existing) return null;
-  const patch = validateProductInput(input, ['MYR', 'SGD'], { partial: true });
+  const currency = getCompanySettings(database).defaultCurrency;
+  const patch = validateProductInput(input, [existing.currency], { partial: true });
+  // A legacy mismatch requires explicit price review, never a currency relabel.
+  if (existing.currency !== currency && (Object.hasOwn(patch, 'priceMinor') || patch.active === true || Object.hasOwn(patch, 'currency'))) {
+    throw new ApiError(409, 'COMPANY_CURRENCY_CONFLICT', 'Review the existing product currency before changing its price or activating it.');
+  }
   if (Object.hasOwn(patch, 'category') && patch.category !== existing.categoryCode) requireActiveCategory(database, patch.category);
   validateVariantGroup(database, {
     variantGroup: Object.hasOwn(patch, 'variantGroup') ? patch.variantGroup : existing.variantGroup,

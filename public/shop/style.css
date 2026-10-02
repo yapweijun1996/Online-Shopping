@@ -1,3 +1,4 @@
+@import url('/shared/appearance.css');
 @import url('/shared/base.css');
 @import url('/shop/tokens.css');
 .shop-topbar .language-control select,.shop-topbar .language-trigger,.modal-secondary-button,.outline-button{border-color:var(--ui-control-border)}

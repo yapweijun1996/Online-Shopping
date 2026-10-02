@@ -20,7 +20,7 @@ const types = {
 export async function serveStatic(request, pathname) {
   if (request.method !== 'GET' && request.method !== 'HEAD') throw new ApiError(405, 'METHOD_NOT_ALLOWED', 'Method not allowed.');
   if (pathname === '/') return redirect('/shop/');
-  if (pathname === '/seller' || pathname === '/shop') return redirect(`${pathname}/`);
+  if (pathname === '/seller' || pathname === '/shop' || pathname === '/demo') return redirect(`${pathname}/`);
   let decoded;
   try {
     decoded = decodeURIComponent(pathname);

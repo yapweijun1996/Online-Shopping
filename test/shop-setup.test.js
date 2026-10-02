@@ -42,7 +42,7 @@ test('production seeds nothing and supports manual catalog creation', (t) => {
   assert.equal(store.get('SELECT COUNT(*) AS n FROM product').n, 0);
   assert.equal(store.get('SELECT COUNT(*) AS n FROM general_code').n, 0);
   createCategory(store, { code: 'FOOD', label: 'Food' });
-  createProduct(store, { sku: 'FOOD-1', name: 'Cat food', description: 'Food', category: 'FOOD', priceMinor: 100, currency: 'SGD', active: true });
+  createProduct(store, { sku: 'FOOD-1', name: 'Cat food', description: 'Food', category: 'FOOD', priceMinor: 100, currency: 'MYR', active: true });
   assert.equal(listProducts(store, new URLSearchParams()).items.length, 1);
   assert.throws(() => setupShop(store, { mode: 'demo' }), { code: 'SHOP_ALREADY_CONFIGURED' });
 });

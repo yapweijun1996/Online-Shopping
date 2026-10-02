@@ -136,3 +136,9 @@ Customer account/history recovery, OTP, payment, automatic messaging, batch CSV/
 When the persisted shop mode is `demo`, `POST /api/v1/orders` retains item/quantity/price/currency/locale validation but replaces all buyer, recipient and address fields with fixed demo data. It saves `whatsapp_opt_in=0`, null consent metadata and no email. The client cannot activate this behavior in Production. Receipts use `DEMO-` numbers and include `simulation: true`, including idempotent replays; seller summaries/details expose the same marker. There is no payment or dispatch operation.
 
 The current customer UI submits exactly one delivery per order and only checked cart lines. The API retains the existing 1–10 delivery contract for older clients and seller history compatibility. Browser-local Profile is a checkout convenience, not server-authenticated buyer identity.
+
+## Company currency and gallery candidate (2026-10-02)
+
+Product creation inherits `company_setting.default_currency`; omitted currency is accepted, an explicitly different currency fails 400. Product PATCH cannot change its recorded currency. A legacy product whose currency differs from Company Settings rejects price edits, currency patches or activation with 409 `COMPANY_CURRENCY_CONFLICT`; metadata/deactivation remains possible. Changing company currency fails 409 when any active or inactive product uses another currency. No automatic conversion/relabel/snapshot rewrite exists. A historic order retains its original price/currency/events.
+
+In public-demo mode, authenticated Seller GET product detail exposes primary plus immutable fictional gallery photos when the seed identity/hero hash still match. Custom Seller galleries and changed seed identity continue using stored content. The independent `/api/v1/demo/` API has no live store or credential input; its role, company/resource isolation, reset/expiry/limits and production gates are described in ADMIN_MULTI_COMPANY_DESIGN.md.

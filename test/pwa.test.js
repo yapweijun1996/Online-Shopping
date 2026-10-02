@@ -39,6 +39,44 @@ test('shop theme color matches its brand token and is cached offline', () => {
 
 import vm from 'node:vm';
 
+test('activation defers reload for a draft changed or a mutation started after acceptance; loaded shell version stays accurate', async () => {
+  for (const changed of ['draft', 'busy']) {
+    let state, actions, activated, reloads = 0, signature = 'original', busy = false;
+    const waiting = { state: 'installed', addEventListener(name, fn) { if (name === 'statechange') activated = fn; }, postMessage(message, ports) {
+      if (message.type === 'GET_VERSION') ports[0].reply({ version: 'v81' });
+    } };
+    const active = { postMessage(message, ports) { ports[0].reply({ version: 'v79' }); } };
+    const registration = { waiting, active, addEventListener() {}, update: async () => {} };
+    const context = {
+      t: key => key, navigator: { onLine: true, serviceWorker: { controller: active, register: async () => registration, addEventListener() {} } },
+      document: { createElement: () => ({ setAttribute() {}, append() {}, addEventListener() {} }), addEventListener() {} },
+      window: { addEventListener() {} }, location: { reload() { reloads++; } },
+      MessageChannel: class { constructor() { this.port1 = { close() {} }; this.port2 = { reply: data => this.port1.onmessage({ data }) }; } },
+      setTimeout: () => 1, clearTimeout() {},
+    };
+    const source = readFileSync(new URL('../public/shared/pwa.js', import.meta.url), 'utf8').replace("import { t } from './i18n.js';", '').replace('export async function', 'async function');
+    vm.runInNewContext(source, context);
+    await context.registerWorker('/seller/sw.js', '/seller/', { currentVersion: 'v80', guard: () => ({ dirty: signature !== 'original', signature, busy }), confirmUpdate: async () => true,
+      onState(next, commands) { state = next; actions = commands; } });
+    assert.equal(state.current, 'v80'); assert.equal(state.available, 'v81');
+    await actions.update(); assert.equal(state.applying, true);
+    if (changed === 'draft') signature = 'typed during activation'; else busy = true;
+    waiting.state = 'activated'; activated();
+    assert.equal(reloads, 0); assert.equal(state.applying, false); assert.equal(state.ready, true);
+    busy = false; await actions.update(); assert.equal(reloads, 1);
+  }
+});
+
+test('page-wide mutation guard survives route replacement and ends exactly once', () => {
+  const events = [], context = { document: { dispatchEvent(event) { events.push(event.type); } }, Event: class { constructor(type) { this.type = type; } } };
+  vm.runInNewContext(readFileSync(new URL('../public/shared/update-guard.js', import.meta.url), 'utf8').replaceAll('export ', ''), context);
+  const first = context.beginMutation(), second = context.beginMutation();
+  assert.equal(vm.runInNewContext('mutationsBusy()', context), true);
+  first(); first(); assert.equal(vm.runInNewContext('mutationsBusy()', context), true);
+  second(); assert.equal(vm.runInNewContext('mutationsBusy()', context), false);
+  assert.equal(events.length, 4);
+});
+
 test('worker reports its own version and activates early only on explicit request', async () => {
   const handlers = new Map();
   let skips = 0;

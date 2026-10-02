@@ -3,11 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0c2940">
+  <meta name="theme-color" content="#087f83">
   <title>Seller portal · Online Shopping</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="/seller/manifest.webmanifest">
   <link rel="stylesheet" href="/seller/style.css">
+  <script src="/seller/palette.js"></script>
   <script type="module" src="/seller/app.js"></script>
   <link rel="stylesheet" href="/seller/order-print.css">
 </head>
@@ -24,6 +25,7 @@
         <div id="account-menu" class="account-menu" hidden>
           <button id="check-updates-button" type="button" data-i18n="checkUpdates">Check for updates</button>
           <p id="check-updates-status" role="status" aria-live="polite"></p>
+          <p id="seller-current-version"></p>
           <button id="profile-button" type="button" data-i18n="profile">View profile</button>
           <button id="sign-out-button" type="button" data-i18n="signOut">Sign out</button>
         </div>
@@ -107,7 +109,7 @@
         <label class="full"><span data-i18n="description">Description</span><textarea name="description" maxlength="2000" rows="3" required></textarea></label>
         <label><span data-i18n="category">Category</span><select name="category" required></select></label>
         <label><span data-i18n="price">Price</span><input name="price" inputmode="decimal" required></label>
-        <label><span data-i18n="currency">Currency</span><select name="currency"><option value="MYR">MYR</option><option value="SGD">SGD</option></select></label>
+        <label><span data-i18n="currency">Currency</span><input name="currency" readonly aria-describedby="product-currency-help"><small id="product-currency-help" data-i18n="currencyInherited"></small></label>
         <label><span data-i18n="variantGroup">Variant group</span><input name="variantGroup" maxlength="40" autocomplete="off" placeholder="PET-BOWL"></label>
         <label><span data-i18n="variantOption">Option label</span><input name="variantLabel" maxlength="80" autocomplete="off" placeholder="Small"></label>
         <p class="shop-note full" data-i18n="variantHelp">Products with the same group code appear as selectable options. Each option keeps its own SKU and price.</p>

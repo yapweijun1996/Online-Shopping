@@ -1,15 +1,23 @@
 import { t, translate } from '../shared/i18n.js';
+import { mountAppearance } from '../shared/appearance.js';
+import { beginMutation } from '../shared/update-guard.js';
+
+let pendingWrites = 0;
 
 async function request(method, path, body, csrfToken, onUnauthorized) {
-  const response = await fetch(path, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() } : {},
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (response.status === 401) { onUnauthorized(); throw new Error('unauthorized'); }
-  const data = await response.json();
-  if (!response.ok) throw Object.assign(new Error('request'), { code: data.error?.code, field: data.error?.field });
-  return data;
+  const finish = method === 'GET' ? () => {} : beginMutation();
+  if (method !== 'GET') { pendingWrites++; document.dispatchEvent(new Event('updateguardchange')); }
+  try {
+    const response = await fetch(path, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() } : {},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (response.status === 401) { onUnauthorized(); throw new Error('unauthorized'); }
+    const data = await response.json();
+    if (!response.ok) throw Object.assign(new Error('request'), { code: data.error?.code, field: data.error?.field });
+    return data;
+  } finally { finish(); if (method !== 'GET') { pendingWrites--; document.dispatchEvent(new Event('updateguardchange')); } }
 }
 
 function status(root, key, error = false) {
@@ -89,6 +97,7 @@ export function mountCategories(root, { csrfToken, onUnauthorized }) {
   });
   load();
   return {
+    isBusy: () => pendingWrites > 0,
     hasUnsavedChanges() {
       if (form.elements.code.value || form.elements.label.value) return true;
       return [...list.children].some((row, index) =>
@@ -116,7 +125,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
     <p data-i18n="currencyIntro">Choose the default currency for new products. Existing product prices and orders keep their own currency.</p>
     <form id="company-form" class="settings-form">
       <label><span data-i18n="defaultCurrency">Default currency</span><select name="defaultCurrency"><option value="MYR">MYR</option><option value="SGD">SGD</option></select></label>
-      <label><span data-i18n="sellerWhatsAppPhone">Seller WhatsApp number</span><input name="sellerWhatsAppPhone" type="tel" inputmode="tel" autocomplete="tel" maxlength="32" placeholder="+60182727900" aria-describedby="seller-whatsapp-help"></label>
+      <label><span data-i18n="sellerWhatsAppPhone">Seller WhatsApp number</span><input name="sellerWhatsAppPhone" type="tel" inputmode="tel" autocomplete="tel" maxlength="32" placeholder="+60 / +65" aria-describedby="seller-whatsapp-help"></label>
       <p id="seller-whatsapp-help" data-i18n="sellerWhatsAppHelp">The public product page uses this number for Chat. Enter a +60 or +65 number, or leave it blank to turn Chat off.</p>
       <label class="settings-check"><input name="mobileHideBarsOnScroll" type="checkbox"><span data-i18n="mobileHideBarsOnScroll">Hide mobile navigation bars while scrolling down</span></label>
       <p class="settings-check-help" data-i18n="mobileHideBarsHelp">By default, the shop's top search bar and bottom navigation stay visible. Turn this on to hide them when shoppers scroll down and show them when they scroll up.</p>
@@ -133,6 +142,8 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
       <button class="primary-button" type="submit" data-i18n="setupShop" disabled></button>
     </form><p class="setup-status" role="status"></p>`;
   root.prepend(setup);
+  const appearance = document.createElement('section'); appearance.className = 'settings-card';
+  root.append(appearance); mountAppearance(appearance, 'seller');
   const setupForm = setup.querySelector('form');
   const setupStatus = setup.querySelector('.setup-status');
   const setupButton = setupForm.querySelector('button');
@@ -228,13 +239,14 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
       savedState = currentState();
       currencyEdited = phoneEdited = mobileBarsEdited = false;
       status(root, 'settingsSaved');
-    } catch (error) { status(root, error.field === 'sellerWhatsAppPhone' ? 'sellerWhatsAppInvalid' : 'productError', true); }
+    } catch (error) { status(root, error.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : error.field === 'sellerWhatsAppPhone' ? 'sellerWhatsAppInvalid' : 'productError', true); }
     finally {
       for (const input of form.querySelectorAll('input, select')) input.disabled = false;
       saveButton.disabled = false;
     }
   });
   return {
+    isBusy: () => pendingWrites > 0,
     hasUnsavedChanges() {
       return currentState() !== (savedState ?? initialState) ||
         (!setupForm.hidden && JSON.stringify([setupForm.elements.mode.value, setupForm.elements.shopName.value]) !== setupBaseline);

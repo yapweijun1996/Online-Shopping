@@ -1,3 +1,4 @@
+import { beginMutation } from '../shared/update-guard.js';
 import { createOrderDocuments } from './order-documents.js';
 import { formatDate, formatMoney, t, translate } from '../shared/i18n.js';
 
@@ -80,24 +81,27 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
   }
 
   async function request(method, path, body) {
-    const response = await fetch(path, {
-      method,
-      cache: 'no-store',
-      headers: body ? { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() } : {},
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (response.status === 401) {
-      if (isCurrent()) onUnauthorized();
-      throw Object.assign(new Error('unauthorized'), { status: 401 });
-    }
-    let data;
-    try { data = await response.json(); } catch { throw new Error('invalid response'); }
-    if (!response.ok) {
-      throw Object.assign(new Error(data.error?.code || 'request failed'), {
-        status: response.status, code: data.error?.code, field: data.error?.field,
+    const finish = method === 'GET' ? () => {} : beginMutation();
+    try {
+      const response = await fetch(path, {
+        method,
+        cache: 'no-store',
+        headers: body ? { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() } : {},
+        body: body ? JSON.stringify(body) : undefined,
       });
-    }
-    return data;
+      if (response.status === 401) {
+        if (isCurrent()) onUnauthorized();
+        throw Object.assign(new Error('unauthorized'), { status: 401 });
+      }
+      let data;
+      try { data = await response.json(); } catch { throw new Error('invalid response'); }
+      if (!response.ok) {
+        throw Object.assign(new Error(data.error?.code || 'request failed'), {
+          status: response.status, code: data.error?.code, field: data.error?.field,
+        });
+      }
+      return data;
+    } finally { finish(); }
   }
 
   function renderQueue() {
@@ -392,6 +396,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
       body.reason = trimmed;
     }
     deciding = true;
+    document.dispatchEvent(new Event('updateguardchange'));
     decisionSubmit.disabled = true;
     setDialogError('');
     try {
@@ -416,6 +421,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
       }
     } finally {
       deciding = false;
+      document.dispatchEvent(new Event('updateguardchange'));
       if (isCurrent()) decisionSubmit.disabled = false;
     }
   });
@@ -424,6 +430,8 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
   loadQueue();
   return {
     mode,
+    isBusy: () => deciding,
+    hasUnsavedChanges: () => dialog.open,
     dispose() {
       active = false;
       ++documentRequest; documents.dispose();
