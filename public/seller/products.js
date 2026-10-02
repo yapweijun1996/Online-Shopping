@@ -79,20 +79,51 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   retryList.dataset.i18n = 'retry';
   retryList.hidden = true;
   listRecovery.append(clearSearch, retryList);
+  const listHeading = document.createElement('div');
+  listHeading.className = 'product-list-heading';
+  listHeading.setAttribute('aria-hidden', 'true');
+  for (const key of ['product', 'sku', 'price', 'orderStatus', 'actions']) {
+    const label = document.createElement('span');
+    label.dataset.i18n = key;
+    label.textContent = t(key);
+    listHeading.append(label);
+  }
   const formFields = find('.product-fields');
-  const imageColumn = document.createElement('div');
+  const group = (key, className) => {
+    const fieldset = document.createElement('fieldset');
+    fieldset.className = className;
+    const legend = document.createElement('legend');
+    legend.dataset.i18n = key;
+    legend.textContent = t(key);
+    fieldset.append(legend);
+    return fieldset;
+  };
+  const details = group('productInformation', 'product-details-card');
+  const pricing = group('pricingAvailability', 'product-pricing-card');
+  const priceFields = document.createElement('div');
+  priceFields.className = 'product-fields';
+  priceFields.append(form.elements.price.closest('label'), form.elements.currency.closest('label'), form.elements.active.closest('label'));
+  pricing.append(priceFields);
+  const imageColumn = group('productImages', 'product-image-column');
   imageColumn.className = 'product-image-column';
   imageColumn.append(form.elements.image.closest('label'), imagePanel, galleryPanel);
   const editorLayout = document.createElement('div');
   editorLayout.className = 'product-editor-layout';
   formFields.before(editorLayout);
-  editorLayout.append(formFields, imageColumn);
+  details.append(formFields);
+  const mainColumn = document.createElement('div');
+  mainColumn.className = 'product-editor-main';
+  mainColumn.append(details, imageColumn);
+  editorLayout.append(mainColumn, pricing);
+  const nameLabel = form.elements.name.closest('label');
+  nameLabel.classList.add('full');
+  formFields.prepend(nameLabel, form.elements.sku.closest('label'), form.elements.category.closest('label'), form.elements.description.closest('label'));
   const editorActions = document.createElement('div');
   editorActions.className = 'product-editor-actions';
   editorActions.append(find('#product-cancel'), find('#product-save'));
   form.append(editorActions);
   find('.product-form-heading').remove();
-  listView.append(find('.product-toolbar'), status, listRecovery, list, more);
+  listView.append(find('.product-toolbar'), status, listRecovery, listHeading, list, more);
   editorView.append(back, editorStatus, form);
   root.replaceChildren(listView, editorView);
   let originalImageUrl = null;
@@ -237,13 +268,20 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       const detail = document.createElement('p');
       detail.className = 'product-card-identity';
       detail.textContent = `${product.sku} · ${product.category}`;
+      const identity = document.createElement('div');
+      identity.className = 'product-row-identity';
+      detail.textContent = product.category;
+      identity.append(title, detail);
+      const sku = document.createElement('p');
+      sku.className = 'product-row-sku';
+      sku.textContent = product.sku;
       const price = document.createElement('p');
       price.className = 'product-card-price';
       price.textContent = formatMoney(product.priceMinor, product.currency);
       const chip = document.createElement('span');
       chip.className = `product-status-chip${product.active ? '' : ' inactive'}`;
       chip.textContent = t(product.active ? 'active' : 'inactive');
-      main.append(title, detail, price, chip);
+      main.append(identity, sku, price, chip);
       const actions = document.createElement('div');
       actions.className = 'product-card-actions';
       const toggleButton = button(t(product.active ? 'deactivateProduct' : 'activateProduct'),
@@ -344,6 +382,9 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     populateCategories(product.categoryCode);
     form.elements.price.value = (product.priceMinor / 100).toFixed(2);
     form.elements.currency.value = product.currency;
+    const currencyHelp = find('#product-currency-help');
+    currencyHelp.dataset.i18n = product.currency === defaultCurrency ? 'currencyInherited' : 'currencyHistoryNote';
+    currencyHelp.textContent = t(currencyHelp.dataset.i18n);
     form.elements.active.checked = product.active;
     form.elements.variantGroup.value = product.variantGroup || '';
     form.elements.variantLabel.value = product.variantLabel || '';
@@ -392,6 +433,9 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       form.hidden = false;
       populateCategories();
       form.elements.currency.value = defaultCurrency;
+      const currencyHelp = find('#product-currency-help');
+      currencyHelp.dataset.i18n = 'currencyInherited';
+      currencyHelp.textContent = t('currencyInherited');
       captureBaseline();
       return;
     }
