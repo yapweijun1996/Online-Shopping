@@ -406,3 +406,5 @@
 
 .demo-role-entry{display:flex;flex-wrap:wrap;gap:12px;padding:18px;margin-bottom:20px;background:var(--shop-selected-surface);border:1px solid var(--ui-control-border);border-radius:12px}
 .demo-role-entry p{width:100%;margin:0;color:var(--ui-muted);font-size:13px}
+.product-gallery-actions{display:flex;flex-wrap:wrap;gap:6px}
+.product-gallery-actions button{font-size:12px;min-height:40px;padding:8px}

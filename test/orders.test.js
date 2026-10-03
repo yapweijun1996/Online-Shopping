@@ -294,9 +294,10 @@ test('schema version two upgrades without losing catalog records', async () => {
   const f = await fixture();
   await f.app.close();
   const old = new DatabaseSync(f.config.dbPath);
-  old.exec(`DROP TABLE product_gallery_image; DROP TABLE shop_setup; DROP TABLE rate_limit_attempt; DROP TABLE company_setting; DROP TABLE general_code;
+  old.exec(`DROP TRIGGER product_category_insert; DROP TRIGGER product_category_update; DROP TABLE product_gallery_image; DROP TABLE shop_setup; DROP TABLE rate_limit_attempt; DROP TABLE company_setting; DROP TABLE general_code;
     DROP TABLE checkout_idempotency; DROP TABLE order_event; DROP TABLE order_item;
     DROP TABLE delivery; DROP TABLE shop_order; DROP TABLE order_sequence; PRAGMA user_version = 2;`);
+  old.exec('ALTER TABLE product DROP COLUMN gallery_layout_json');
   const productSchema = old.prepare("SELECT sql FROM sqlite_schema WHERE name = 'product'").get().sql;
   old.exec(productSchema.replace(/^CREATE TABLE ["`]?product["`]?/i, 'CREATE TABLE product_v2')
     .replace(/, variant_group TEXT, variant_label TEXT/i, '')
@@ -323,7 +324,7 @@ test('schema version three upgrades an existing order without changing its snaps
   assert.equal(placed.response.status, 201);
   await f.app.close();
   const old = new DatabaseSync(f.config.dbPath);
-  old.exec('DROP TABLE product_gallery_image');
+  old.exec('DROP TABLE product_gallery_image; ALTER TABLE product DROP COLUMN gallery_layout_json');
   old.exec('PRAGMA foreign_keys = OFF; BEGIN IMMEDIATE');
   try {
     for (const table of ['product', 'shop_order', 'order_item']) {

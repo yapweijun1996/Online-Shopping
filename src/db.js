@@ -1,6 +1,6 @@
 import { openNodeStore } from './store.js';
 
-export const SCHEMA_VERSION = 11;
+export const SCHEMA_VERSION = 12;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -269,6 +269,25 @@ export function migrateStore(store) {
       ALTER TABLE product_gallery_image_v11 RENAME TO product_gallery_image;
       CREATE INDEX product_gallery_product ON product_gallery_image(product_id, position);`);
     version = 11;
+  }
+  if (version === 11) {
+    migrate(store, 12, `
+      ALTER TABLE product ADD COLUMN gallery_layout_json TEXT
+        CHECK (gallery_layout_json IS NULL OR (json_valid(gallery_layout_json) AND json_type(gallery_layout_json) = 'array'));
+      CREATE TABLE product_gallery_image_v12 (
+        id TEXT PRIMARY KEY,
+        product_id TEXT NOT NULL REFERENCES product(id) ON DELETE RESTRICT,
+        position INTEGER NOT NULL CHECK (position BETWEEN 1 AND 10),
+        mime TEXT NOT NULL CHECK (mime IN ('image/png', 'image/jpeg', 'image/webp')),
+        data BLOB NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(product_id, position)
+      ) STRICT;
+      INSERT INTO product_gallery_image_v12 SELECT * FROM product_gallery_image;
+      DROP TABLE product_gallery_image;
+      ALTER TABLE product_gallery_image_v12 RENAME TO product_gallery_image;
+      CREATE INDEX product_gallery_product ON product_gallery_image(product_id, position);`);
+    version = 12;
   }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }

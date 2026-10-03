@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {openDatabase,migrateStore} from '../src/db.js';
+import {openDatabase,migrateStore,SCHEMA_VERSION} from '../src/db.js';
 import {setupShop} from '../src/shop-setup.js';
 import {addGalleryImage,getProduct,getProductImage,listProducts} from '../src/products.js';
 import {withDemoGallery} from '../src/demo-gallery.js';
@@ -21,13 +21,15 @@ test('fictional galleries retain hero and never override seller edits, custom ga
 test('v10 gallery migration preserves all existing image bytes, IDs, positions and product data',t=>{
  const s=openDatabase(':memory:');t.after(()=>s.close());setupShop(s,{mode:'demo'});const p=listProducts(s,new URLSearchParams('limit=100')).items[0];
  const data='data:image/png;base64,'+readFileSync(new URL('../public/shop/icons/icon-192.png',import.meta.url)).toString('base64');
- for(let i=0;i<4;i++)addGalleryImage(s,p.id,data);
+ for(let i=0;i<4;i++)addGalleryImage(s,p.id,'data:image/png;base64,'+Buffer.concat([Buffer.from(data.split(',')[1],'base64'),Buffer.from('fixture-'+i)]).toString('base64'));
+ // A real v10 product has no saved layout; discard only this newer fixture column before downgrading.
+ s.run('UPDATE product SET gallery_layout_json = NULL');
  const before=s.all('SELECT * FROM product_gallery_image ORDER BY position'),products=s.all('SELECT * FROM product ORDER BY id');
  s.exec(`ALTER TABLE product_gallery_image RENAME TO gallery_fixture;
  CREATE TABLE product_gallery_image(id TEXT PRIMARY KEY,product_id TEXT NOT NULL REFERENCES product(id) ON DELETE RESTRICT,position INTEGER NOT NULL CHECK(position BETWEEN 1 AND 4),mime TEXT NOT NULL CHECK(mime IN ('image/png','image/jpeg','image/webp')),data BLOB NOT NULL,created_at TEXT NOT NULL,UNIQUE(product_id,position)) STRICT;
  INSERT INTO product_gallery_image SELECT * FROM gallery_fixture;DROP TABLE gallery_fixture;CREATE INDEX product_gallery_product ON product_gallery_image(product_id,position);`);
- s.setSchemaVersion(10);migrateStore(s);assert.equal(s.schemaVersion(),11);assert.deepEqual(s.all('SELECT * FROM product_gallery_image ORDER BY position'),before);assert.deepEqual(s.all('SELECT * FROM product ORDER BY id'),products);
- for(let i=4;i<9;i++)addGalleryImage(s,p.id,data);assert.equal(getProduct(s,p.id).images.length,10);assert.throws(()=>addGalleryImage(s,p.id,data));
+ s.exec('ALTER TABLE product DROP COLUMN gallery_layout_json');s.setSchemaVersion(10);migrateStore(s);assert.equal(s.schemaVersion(),SCHEMA_VERSION);assert.deepEqual(s.all('SELECT * FROM product_gallery_image ORDER BY position'),before);assert.deepEqual(s.all('SELECT * FROM product ORDER BY id'),products);
+ for(let i=4;i<9;i++)addGalleryImage(s,p.id,'data:image/png;base64,'+Buffer.concat([Buffer.from(data.split(',')[1],'base64'),Buffer.from('fixture-'+i)]).toString('base64'));assert.equal(getProduct(s,p.id).images.length,10);assert.throws(()=>addGalleryImage(s,p.id,'data:image/png;base64,'+Buffer.concat([Buffer.from(data.split(',')[1],'base64'),Buffer.from('overflow')]).toString('base64')));
 });
 test('gallery variants are local, hash-verified, bounded and retain reference provenance',()=>{
  const m=JSON.parse(readFileSync(new URL('../src/public-demo-gallery-provenance.json',import.meta.url)));

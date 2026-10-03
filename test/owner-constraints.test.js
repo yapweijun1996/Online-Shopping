@@ -65,7 +65,7 @@ test('Seller edit payload permits legacy metadata/deactivation while actual mone
     price: '9.00', currency: 'SGD', variantGroup: '', variantLabel: '' };
   const elements = Object.fromEntries(Object.entries(values).map(([name, value]) => [name, { value }]));
   elements.active = { checked: true }; elements.image = { files: [] };
-  const context = { form: { hidden: false, elements }, saving: false, pendingRemove: false, formBaseline: null, editingId: product.id };
+  const context = { form: { hidden: false, elements }, saving: false, pendingRemove: false, galleryImages: [], readingGallery: false, formBaseline: null, editingId: product.id };
   vm.createContext(context);
   vm.runInContext(source.slice(source.indexOf('function priceToMinor('), source.indexOf('function readImage(')), context);
   vm.runInContext(source.slice(source.indexOf('  function formState()'), source.indexOf('  function confirmDiscard()')), context);

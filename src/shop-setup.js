@@ -15,9 +15,9 @@ export function setupShop(store, input) {
   if (!input || typeof input !== 'object' || Array.isArray(input) ||
       Object.keys(input).some((key) => !['mode', 'shopName'].includes(key)) ||
       !['demo', 'production'].includes(input.mode)) {
-    throw new FieldError('mode', 'Choose Demo or Production.');
+    throw new FieldError('mode', 'Choose Preview or Production.');
   }
-  const shopName = input.mode === 'demo' ? 'Demo General Store' : boundedText(input.shopName, 'shopName', 80);
+  const shopName = input.mode === 'demo' ? 'Preview General Store' : boundedText(input.shopName, 'shopName', 80);
   return store.transaction(() => {
     const current = getShopSetup(store);
     // Setup is a one-time operation, so retries cannot overwrite seller edits or orders.
@@ -28,7 +28,7 @@ export function setupShop(store, input) {
     if (input.mode === 'demo') {
       if (store.get('SELECT 1 FROM product LIMIT 1') || store.get('SELECT 1 FROM shop_order LIMIT 1') ||
           store.get('SELECT 1 FROM general_code LIMIT 1')) {
-        throw new ApiError(409, 'SHOP_NOT_EMPTY', 'Demo requires an empty catalog without categories or orders. Choose Production to keep your data.');
+        throw new ApiError(409, 'SHOP_NOT_EMPTY', 'Preview requires an empty catalog without categories or orders. Choose Production to keep your data.');
       }
       store.run("UPDATE company_setting SET default_currency = 'MYR', seller_whatsapp_phone = ?, updated_at = ? WHERE id = 1",
         null, new Date().toISOString());

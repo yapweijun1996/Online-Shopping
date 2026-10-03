@@ -164,7 +164,7 @@ test('seller-managed gallery is bounded, private while inactive, and removable',
     const imageDataUrl = `data:image/png;base64,${bytes.toString('base64')}`;
     const created = await f.request('POST', '/api/v1/seller/products', { ...draft, imageDataUrl }, headers);
     const id = created.data.id;
-    const added = await f.request('POST', `/api/v1/seller/products/${id}/gallery`, { imageDataUrl }, headers);
+    const added = await f.request('POST', `/api/v1/seller/products/${id}/gallery`, { imageDataUrl: `data:image/png;base64,${Buffer.concat([bytes,Buffer.from('extra')]).toString('base64')}` }, headers);
     assert.equal(added.response.status, 201);
     assert.equal(added.data.images.length, 2);
     const extra = added.data.images[1];
@@ -183,11 +183,11 @@ test('seller-managed gallery is bounded, private while inactive, and removable',
     assert.equal(deleted.data.images.length, 1);
     assert.equal((await fetch(`${f.origin}${publicPath}`)).status, 404);
     for (let index = 0; index < 9; index++) {
-      const photo = await f.request('POST', `/api/v1/seller/products/${id}/gallery`, { imageDataUrl }, headers);
+      const photo = await f.request('POST', `/api/v1/seller/products/${id}/gallery`, { imageDataUrl: `data:image/png;base64,${Buffer.concat([bytes,Buffer.from('fixture-'+index)]).toString('base64')}` }, headers);
       assert.equal(photo.response.status, 201);
       assert.equal(photo.data.images.length, index + 2);
     }
-    const overflow = await f.request('POST', `/api/v1/seller/products/${id}/gallery`, { imageDataUrl }, headers);
+    const overflow = await f.request('POST', `/api/v1/seller/products/${id}/gallery`, { imageDataUrl: `data:image/png;base64,${Buffer.concat([bytes,Buffer.from('overflow')]).toString('base64')}` }, headers);
     assert.equal(overflow.response.status, 400);
     assert.equal((await f.request('GET', `/api/v1/products/${id}`)).data.images.length, 10);
   } finally { await f.close(); }

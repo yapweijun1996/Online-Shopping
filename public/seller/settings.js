@@ -138,7 +138,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
   setup.innerHTML = `<h2 data-i18n="shopSetup"></h2><p data-i18n="setupIntro"></p>
     <form class="settings-form" id="shop-setup-form">
       <label><span data-i18n="shopMode"></span><select name="mode"><option value="demo" data-i18n="demoMode"></option><option value="production" data-i18n="productionMode"></option></select></label>
-      <label><span data-i18n="shopName"></span><input name="shopName" maxlength="80" value="Demo General Store" required></label>
+      <label><span data-i18n="shopName"></span><input name="shopName" maxlength="80" value="Preview General Store" required></label>
       <button class="primary-button" type="submit" data-i18n="setupShop" disabled></button>
     </form><p class="setup-status" role="status"></p>`;
   root.prepend(setup);
@@ -149,8 +149,8 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
   const setupButton = setupForm.querySelector('button');
   const syncName = () => {
     setupForm.elements.shopName.disabled = setupForm.elements.mode.value === 'demo';
-    if (setupForm.elements.mode.value === 'demo') setupForm.elements.shopName.value = 'Demo General Store';
-    else if (setupForm.elements.shopName.value === 'Demo General Store') setupForm.elements.shopName.value = '';
+    if (setupForm.elements.mode.value === 'demo') setupForm.elements.shopName.value = 'Preview General Store';
+    else if (setupForm.elements.shopName.value === 'Preview General Store') setupForm.elements.shopName.value = '';
   };
   syncName();
   setupForm.elements.mode.addEventListener('change', syncName);

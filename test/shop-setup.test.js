@@ -16,7 +16,7 @@ function fixture(t) {
 test('demo seeds all 35 images and prices once, preserving subsequent edits', (t) => {
   const store = fixture(t);
   assert.equal(getShopSetup(store).mode, null);
-  assert.equal(setupShop(store, { mode: 'demo' }).shopName, 'Demo General Store');
+  assert.equal(setupShop(store, { mode: 'demo' }).shopName, 'Preview General Store');
   const products = listProducts(store, new URLSearchParams('limit=100')).items;
   assert.equal(products.length, 35);
   assert.equal(new Set(products.map((p) => p.sku)).size, 35);
@@ -101,6 +101,7 @@ test('existing version 6 catalogs migrate to production without altering product
     ALTER TABLE company_setting DROP COLUMN seller_whatsapp_phone;
     ALTER TABLE company_setting DROP COLUMN mobile_hide_bars_on_scroll;
     DROP TABLE shop_setup`);
+  store.exec('ALTER TABLE product DROP COLUMN gallery_layout_json');
   store.setSchemaVersion(6);
   migrateStore(store);
   assert.equal(getShopSetup(store).mode, 'production');
@@ -113,6 +114,7 @@ test('version 8 Demo migration never seeds a real contact, then preserves seller
   setupShop(store, { mode: 'demo' });
   store.exec('ALTER TABLE company_setting DROP COLUMN seller_whatsapp_phone');
   store.exec('ALTER TABLE company_setting DROP COLUMN mobile_hide_bars_on_scroll');
+  store.exec('ALTER TABLE product DROP COLUMN gallery_layout_json');
   store.setSchemaVersion(8);
   migrateStore(store);
   assert.equal(store.get('SELECT seller_whatsapp_phone FROM company_setting').seller_whatsapp_phone, null);
@@ -124,6 +126,7 @@ test('version 8 Demo migration never seeds a real contact, then preserves seller
 test('version 9 migration defaults existing shops to always-visible mobile bars', (t) => {
   const store = fixture(t);
   store.exec('ALTER TABLE company_setting DROP COLUMN mobile_hide_bars_on_scroll');
+  store.exec('ALTER TABLE product DROP COLUMN gallery_layout_json');
   store.setSchemaVersion(9);
   migrateStore(store);
   assert.equal(store.get('SELECT mobile_hide_bars_on_scroll FROM company_setting').mobile_hide_bars_on_scroll, 0);
