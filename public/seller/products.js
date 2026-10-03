@@ -99,6 +99,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   let pendingRemove = false;
   let galleryImages = [];
   let originalGallery = [];
+  let galleryReferences = [];
   let galleryLoaded = false;
   let expectedUpdatedAt = null;
   let readingGallery = false;
@@ -118,6 +119,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   let mutations = 0;
   let routeSequence = 0;
   let editorStatusKey = '';
+  let editorLoadSequence = 0;
   const undoStates = new Map();
   const pendingChanges = new Set();
 
@@ -159,7 +161,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
 
   function renderGallery() {
     galleryPanel.hidden = !editingId;
-    form.elements.gallery.disabled = saving || readingGallery || !originalImageUrl || pendingRemove || galleryImages.length >= 10;
+    form.elements.gallery.disabled = saving || readingGallery || !galleryLoaded || !originalImageUrl || pendingRemove || galleryImages.length >= 10;
     removeImage.disabled = Boolean(editingId && (!galleryLoaded || galleryImages.length > 1));
     imageRemovalHelp.hidden = !editingId || !originalImageUrl || (galleryLoaded && galleryImages.length <= 1);
     imageRemovalHelp.dataset.i18n = galleryLoaded ? 'removeGalleryFirst' : 'loading';
@@ -189,15 +191,36 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       remove.dataset.galleryAction = 'remove'; remove.disabled = saving || readingGallery;
       actions.append(primary, earlier, later, remove); item.append(photo, label, actions); galleryList.append(item);
     });
+    const available = galleryReferences.filter(reference => !galleryImages.some(item => item.id === reference.id));
+    if (available.length) {
+      const heading = document.createElement('p'); heading.textContent = t('availableReferencePhotos'); galleryList.append(heading);
+      for (const reference of available) {
+        const item = document.createElement('div'); item.className = 'product-gallery-reference';
+        const photo = document.createElement('img'); photo.src = reference.thumbnail || reference.src; photo.alt = reference.alt || t('gallery');
+        const add = button(t('addReferencePhoto'), () => {
+          if (saving || readingGallery || galleryImages.length >= 10 || !item.isConnected) return;
+          galleryImages.push({ ...reference }); renderGallery(); document.dispatchEvent(new Event('updateguardchange'));
+        });
+        add.disabled = saving || readingGallery || galleryImages.length >= 10;
+        item.append(photo, add); galleryList.append(item);
+      }
+    }
   }
 
-  function acceptGallery(detail) {
+  function acceptGallery(detail, { capture = true } = {}) {
     galleryImages = (detail.galleryItems || []).map(item => ({ ...item }));
     originalGallery = galleryImages.map(item => ({ ...item }));
+    galleryReferences = (detail.galleryReferenceItems || []).map(item => ({ ...item }));
     expectedUpdatedAt = detail.updatedAt;
     galleryLoaded = true;
     renderGallery();
-    captureBaseline();
+    if (capture) captureBaseline();
+    else if (formBaseline) {
+      // Only the fetched gallery joins the confirmed baseline. Metadata typed
+      // while the request was pending must remain dirty.
+      const baseline = JSON.parse(formBaseline); baseline.gallery = formState().gallery;
+      formBaseline = JSON.stringify(baseline);
+    }
   }
 
   function populateCategories(selected = '') {
@@ -334,6 +357,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   }
 
   function resetForm() {
+    editorLoadSequence++;
     editingId = null;
     form.reset();
     form.hidden = true;
@@ -341,6 +365,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     originalImageUrl = null;
     pendingRemove = false;
     galleryImages = [];
+    galleryReferences = [];
     galleryLoaded = false;
     expectedUpdatedAt = null;
     showImage('none');
@@ -351,6 +376,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
 
   async function edit(product, { skipGuard = false, detailLoaded = false } = {}) {
     if (!skipGuard && !confirmDiscard()) return;
+    const sequence = ++editorLoadSequence;
     editingId = product.id;
     form.hidden = false;
     form.elements.sku.value = product.sku;
@@ -382,8 +408,10 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     }
     try {
       const detail = await api('GET', `/api/v1/seller/products/${product.id}`);
-      if (editingId === product.id) acceptGallery(detail);
-    } catch { if (editingId === product.id) setError('productError'); }
+      if (editingId !== product.id || sequence !== editorLoadSequence) return;
+      if (detail.updatedAt !== product.updatedAt) { setError('productChangedReopen'); return; }
+      acceptGallery(detail, { capture: false });
+    } catch { if (editingId === product.id && sequence === editorLoadSequence) setError('productError'); }
   }
 
   async function showRoute(route) {
@@ -583,7 +611,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       const saved = await api(editingId ? 'PATCH' : 'POST', editingId ? `/api/v1/seller/products/${editingId}` : '/api/v1/seller/products', payload);
       resetForm();
       await load();
-      await edit(saved, { skipGuard: true });
+      await edit(saved, { skipGuard: true, detailLoaded: true });
       onSaved(saved.id);
       setFormSuccess('productSaved');
       form.scrollIntoView({ block: 'start' });
@@ -592,10 +620,8 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       const galleryConflict = pendingRemove && failure.field === 'imageDataUrl';
       setError(failure.code === 'PRODUCT_CHANGED' ? 'productChangedReopen' : failure.field === 'gallery' ? 'galleryLimit' : galleryConflict ? 'removeGalleryFirst' : failure.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : failure.code === 'DUPLICATE_SKU' ? 'duplicateSku' : failure.code === 'DUPLICATE_VARIANT' ? 'duplicateVariant' : 'productError');
       if (galleryConflict && productId && editingId === productId) {
-        try {
-          const detail = await api('GET', `/api/v1/seller/products/${productId}`);
-          if (editingId === productId) { acceptGallery(detail); }
-        } catch { /* Keep the actionable server error visible. */ }
+        // A rejected write owns no new baseline. Preserve all draft metadata,
+        // image removals and order so retry and navigation guards remain truthful.
         galleryPanel.scrollIntoView({ block: 'nearest' });
       } else {
         const field = failure.code === 'DUPLICATE_SKU' ? 'sku' : failure.field === 'priceMinor' ? 'price' : failure.field === 'imageDataUrl' ? 'image' : failure.field;

@@ -1698,3 +1698,14 @@ const galleryEditingMessages = {
   ko: { primaryPhoto: '대표 이미지', setPrimaryPhoto: '대표 이미지로 설정', movePhotoEarlier: '앞으로 이동', movePhotoLater: '뒤로 이동', productChangedReopen: '상품이 변경되었습니다. 저장 전에 다시 여세요. 초안은 유지됩니다.', galleryHelp: '이미지는 총 열 장까지입니다. 순서와 대표 이미지를 선택한 뒤 상품을 저장하세요. 취소하면 저장하지 않은 이미지 변경이 삭제됩니다.', galleryLimit: '이미지는 열 장까지입니다. 추가 전에 한 장을 제거하세요.', sellerWhatsAppPhone: '공개 업무용 WhatsApp 번호', sellerWhatsAppHelp: '이 업무용 번호는 상품 페이지의 채팅에 공개됩니다. +60 또는 +65 번호를 입력하거나 비워 두면 채팅이 꺼집니다. 자동 메시지를 활성화하지 않습니다.', demoBrief: '가상 미리 보기 · 결제, 배송 또는 자동 메시지가 없습니다. 가상 프로필과 주소를 사용하세요.' },
 };
 for (const { code } of languages) Object.assign(messages[code], galleryEditingMessages[code]);
+
+const referenceGalleryMessages = {
+  en: { availableReferencePhotos: 'Unselected reference images. Existing uploads are kept; adding a reference uses one of ten places.', addReferencePhoto: 'Add reference image' },
+  ms: { availableReferencePhotos: 'Imej rujukan belum dipilih. Muat naik dikekalkan; setiap rujukan menggunakan satu daripada sepuluh tempat.', addReferencePhoto: 'Tambah imej rujukan' },
+  'zh-Hans': { availableReferencePhotos: '未选中的参考图片。现有上传图片保持不变；添加参考图片会占用十张限额中的一个位置。', addReferencePhoto: '添加参考图片' },
+  vi: { availableReferencePhotos: 'Ảnh tham khảo chưa chọn. Ảnh tải lên được giữ lại; mỗi ảnh tham khảo dùng một trong mười vị trí.', addReferencePhoto: 'Thêm ảnh tham khảo' },
+  th: { availableReferencePhotos: 'รูปอ้างอิงที่ยังไม่เลือก รูปที่อัปโหลดคงเดิม การเพิ่มรูปอ้างอิงใช้หนึ่งในสิบตำแหน่ง', addReferencePhoto: 'เพิ่มรูปอ้างอิง' },
+  ja: { availableReferencePhotos: '未選択の参考画像です。既存のアップロード画像は保持されます。参考画像の追加は十枚の枠を一つ使います。', addReferencePhoto: '参考画像を追加' },
+  ko: { availableReferencePhotos: '선택하지 않은 참고 이미지입니다. 기존 업로드는 유지됩니다. 참고 이미지 추가는 열 자리 중 하나를 사용합니다.', addReferencePhoto: '참고 이미지 추가' },
+};
+for (const { code } of languages) Object.assign(messages[code], referenceGalleryMessages[code]);

@@ -15,31 +15,52 @@ function staticMedia(id) {
 // A saved layout owns order and primary identity. Static references retain their
 // original files; neither reads nor migration rewrite existing product assets.
 export function productGallery(store, product, seller, mode = 'manual') {
-  const row = store.get('SELECT image_data, gallery_layout_json FROM product WHERE id = ?', product.id);
-  const uploads = store.all('SELECT id, mime, data, created_at FROM product_gallery_image WHERE product_id = ? ORDER BY position', product.id);
+  const row = store.get('SELECT gallery_layout_json FROM product WHERE id = ?', product.id);
+  const uploads = store.all('SELECT id, created_at FROM product_gallery_image WHERE product_id = ? ORDER BY position', product.id);
   const media = new Map();
   if (product.imageUrl) media.set('main', { id: 'main', src: product.imageUrl });
   for (const entry of uploads) media.set(entry.id, { id: entry.id,
     src: `/api/v1/${seller ? 'seller/' : ''}products/${product.id}/gallery/${entry.id}${seller ? '' : `?v=${version(entry.created_at)}`}` });
-  let ids;
+  let ids, references = [];
+  const entry = manifest.products[product.sku];
+  // Preview detail verifies one hero before offering immutable references, even
+  // after metadata edits. Lists/variant covers never load image bytes.
+  if (mode === 'public-demo' && entry && product.imageUrl) {
+    const hero = store.get('SELECT image_data FROM product WHERE id = ?', product.id);
+    if (hero.image_data && hash(hero.image_data) === entry.heroSha256) references = entry.media.slice(1).map((_, index) => staticMedia(`static:${product.sku}:${index + 1}`));
+  }
   if (row.gallery_layout_json !== null) {
     ids = JSON.parse(row.gallery_layout_json);
     for (const id of ids) { const item = staticMedia(id); if (item) media.set(id, item); }
   } else {
-    const entry = manifest.products[product.sku];
-    const staticIds = mode === 'public-demo' && entry && product.name === entry.name && row.image_data &&
-      hash(row.image_data) === entry.heroSha256 ? entry.media.slice(1).map((_, index) => `static:${product.sku}:${index + 1}`) : [];
+    // v11 already exposed main + stored uploads. Preserve those authoritative
+    // images if additive references would exceed ten; offer references separately
+    // for explicit selection instead of deleting stored images or blocking edits.
+    const staticIds = product.name === entry?.name && uploads.length <= 4 ? references.map(item => item.id) : [];
     for (const id of staticIds) media.set(id, staticMedia(id));
     ids = [...(product.imageUrl ? ['main'] : []), ...staticIds, ...uploads.map(item => item.id)];
   }
   const items = ids.map(id => media.get(id)).filter(Boolean);
   return { ...product, imageUrl: items[0]?.src || null, images: items.map(item => item.src),
-    imageMedia: items, galleryItems: items };
+    imageMedia: items, galleryItems: items,
+    ...(seller ? { galleryReferenceItems: references.filter(item => !ids.includes(item.id)) } : {}) };
+}
+
+export function productCover(store, product, seller) {
+  const row = store.get('SELECT gallery_layout_json FROM product WHERE id = ?', product.id);
+  if (row.gallery_layout_json === null) return product.imageUrl;
+  const id = JSON.parse(row.gallery_layout_json)[0];
+  if (!id) return null;
+  if (id === 'main') return product.imageUrl;
+  const reference = staticMedia(id);
+  if (reference) return reference.src;
+  const upload = store.get('SELECT id, created_at FROM product_gallery_image WHERE product_id = ? AND id = ?', product.id, id);
+  return upload ? `/api/v1/${seller ? 'seller/' : ''}products/${product.id}/gallery/${upload.id}${seller ? '' : `?v=${version(upload.created_at)}`}` : null;
 }
 
 export function saveProductGallery(store, productId, requested, current) {
   if (!Array.isArray(requested) || requested.length > 20) throw new FieldError('gallery', 'Choose up to ten images.');
-  const allowed = new Map(current.galleryItems.map(item => [item.id, item]));
+  const allowed = new Map([...current.galleryItems, ...(current.galleryReferenceItems || [])].map(item => [item.id, item]));
   const original = store.get('SELECT image_data FROM product WHERE id = ?', productId);
   if (original.image_data) allowed.set('main', { id: 'main' });
   const uploads = store.all('SELECT * FROM product_gallery_image WHERE product_id = ? ORDER BY position', productId);

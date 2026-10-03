@@ -5,7 +5,7 @@ import { validateProductInput } from './product-input.js';
 import { decodeProductImage } from './product-image.js';
 import { getCompanySettings, requireActiveCategory } from './settings.js';
 import { presentCatalogCopy } from './catalog-copy.js';
-import { productGallery, requireGalleryRevision, saveProductGallery } from './product-gallery.js';
+import { productCover, productGallery, requireGalleryRevision, saveProductGallery } from './product-gallery.js';
 
 const columns = `p.id, p.sku, p.name, p.description, p.category AS category_code,
   c.label AS category, p.price_minor, p.currency, p.active, p.image_mime, p.variant_group, p.variant_label,
@@ -50,7 +50,7 @@ function detailFields(database, product, seller, mode) {
   product.variants = product.variantGroup ? database.all(`SELECT ${columns} ${fromProduct}
     WHERE p.variant_group = ? ${seller ? '' : 'AND p.active = 1'} ORDER BY p.variant_label, p.id`, product.variantGroup)
     .map((row) => ({ id: row.id, label: row.variant_label, sku: row.sku, priceMinor: row.price_minor,
-      currency: row.currency, imageUrl: productGallery(database, productFromRow(row, seller), seller, mode).imageUrl,
+      currency: row.currency, imageUrl: productCover(database, productFromRow(row, seller), seller),
       ...(seller ? { active: Boolean(row.active) } : {}) })) : [];
   return product;
 }
@@ -102,13 +102,19 @@ export function updateProduct(database, id, input, mode = 'manual') {
       // Gallery-only edits still advance the shared product revision.
       if (!Object.keys(patch).length) patch = { name: existing.name };
     }
-    patchProduct(database, id, patch);
+    patchProduct(database, id, patch, { galleryChanging: hasGallery });
     if (hasGallery) saveProductGallery(database, id, input.gallery, existing);
+    else if (input.imageDataUrl && !existing.galleryItems.some(item => item.id === 'main')) {
+      // A legacy image-only replacement must become visible. Keep any explicitly
+      // selected primary/order, append the restored main, and reject overflow
+      // atomically rather than accepting an invisible replacement.
+      saveProductGallery(database, id, [...existing.galleryItems.map(item => ({ id: item.id })), { id: 'main' }], existing);
+    }
     return getProduct(database, id, true, mode);
   });
 }
 
-function patchProduct(database, id, input) {
+function patchProduct(database, id, input, { galleryChanging = false } = {}) {
   const existing = getProduct(database, id, true);
   if (!existing) return null;
   const currency = getCompanySettings(database).defaultCurrency;
@@ -123,7 +129,7 @@ function patchProduct(database, id, input) {
     variantLabel: Object.hasOwn(patch, 'variantLabel') ? patch.variantLabel : existing.variantLabel,
     category: patch.category || existing.categoryCode, currency: patch.currency || existing.currency,
   }, id);
-  if (patch.image === null && existing.images.length > (existing.imageUrl ? 1 : 0)) {
+  if (!galleryChanging && patch.image === null && existing.images.length > (existing.imageUrl ? 1 : 0)) {
     throw new FieldError('imageDataUrl', 'Remove gallery images before removing the main image.');
   }
   const mapping = { sku: 'sku', name: 'name', description: 'description', category: 'category', priceMinor: 'price_minor', currency: 'currency', active: 'active', variantGroup: 'variant_group', variantLabel: 'variant_label' };
@@ -209,7 +215,7 @@ export function listProducts(database, params, seller = false, mode = 'manual') 
   const hasMore = rows.length > limit;
   const result = { items: rows.slice(0, limit).map((row) => {
     const product = productFromRow(row, seller);
-    return presentCatalogCopy({ ...product, imageUrl: productGallery(database, product, seller, mode).imageUrl }, mode);
+    return presentCatalogCopy({ ...product, imageUrl: productCover(database, product, seller) }, mode);
   }), nextOffset: hasMore ? offset + limit : null };
   if (!seller) result.categories = database.all(`SELECT DISTINCT c.label AS category ${fromProduct}
     WHERE p.active = 1 ORDER BY c.label`).map((row) => row.category);
