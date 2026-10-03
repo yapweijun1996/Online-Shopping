@@ -10,6 +10,7 @@ import { decideSellerOrder, getSellerOrder, listSellerOrders } from './seller-or
 import { createCategory, getCompanySettings, listCategories, publicBusinessContact, updateCategory, updateCompanySettings } from './settings.js';
 import { FieldError } from './validation.js';
 import { presentCatalogCopy, presentShopName } from './catalog-copy.js';
+import { PRODUCT_MUTATION_BODY_LIMIT } from './request-limits.js';
 
 const productIdPath = /^\/api\/v1\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
 const sellerProductIdPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
@@ -212,7 +213,7 @@ export function createApi({ store, config, serveStatic = null }) {
         (method === 'PATCH' && sellerProduct && !sellerProduct[2])) {
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
-      const body = await readJson(request, 7_500_000);
+      const body = await readJson(request, PRODUCT_MUTATION_BODY_LIMIT);
       if (method === 'POST') {
         const product = createProduct(store, body);
         return json(201, product, { Location: `/api/v1/seller/products/${product.id}` });
