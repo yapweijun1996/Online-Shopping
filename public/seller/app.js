@@ -39,6 +39,7 @@ let settingsPage = null;
 let loginMessageKey = '';
 let workspaceMessageKey = '';
 let dashboardRequest = 0;
+let sessionViewSequence = 0;
 let updateState = null;
 let updateActions = null;
 let updateDismissed = false;
@@ -142,6 +143,7 @@ function setPasswordVisible(visible) {
 }
 
 function showLogin(messageKey = '', clearHint = true) {
+  sessionViewSequence++;
   const leavingWorkspace = !workspace.hidden;
   if (clearHint) sessionHint(false);
   csrfToken = null;
@@ -165,6 +167,7 @@ function showLogin(messageKey = '', clearHint = true) {
 }
 
 function showWorkspace(session) {
+  sessionViewSequence++;
   sessionHint(true);
   csrfToken = session.csrfToken;
   username = session.username;
@@ -266,7 +269,7 @@ async function renderDashboard(content) {
   content.replaceChildren(shell);
   try {
     const response = await fetch('/api/v1/seller/setup', { cache: 'no-store' });
-    if (response.status === 401) { showLogin('authError'); return; }
+    if (response.status === 401) { if (isCurrent()) showLogin('authError'); return; }
     if (!response.ok) throw new Error('setup failed');
     const setup = await response.json();
     if (!isCurrent()) return;
@@ -567,10 +570,16 @@ document.addEventListener('localechange', () => {
 
 if (sessionHint()) {
   showLogin('loading', false);
+  const restoreView = sessionViewSequence;
+  const ownsRestore = () => restoreView === sessionViewSequence;
   fetch('/api/v1/seller/session').then(async (response) => {
-    if (response.ok) showWorkspace(await response.json());
+    if (!ownsRestore()) return;
+    if (response.ok) {
+      const session = await response.json();
+      if (ownsRestore()) showWorkspace(session);
+    }
     else showLogin();
-  }).catch(() => showLogin('networkError'));
+  }).catch(() => { if (ownsRestore()) showLogin('networkError'); });
 } else {
   showLogin();
 }

@@ -319,7 +319,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
           ...(method === 'GET' ? {} : { 'X-CSRF-Token': csrfToken() }) },
         body: body ? JSON.stringify(body) : undefined,
       });
-      if (response.status === 401) { onUnauthorized(); throw new Error('unauthorized'); }
+      if (response.status === 401) { if (isCurrent()) onUnauthorized(); throw new Error('unauthorized'); }
       const data = await response.json();
       if (!response.ok) throw Object.assign(new Error('request'), { status: response.status, field: data.error?.field, code: data.error?.code });
       return data;

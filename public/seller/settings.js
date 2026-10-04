@@ -27,7 +27,7 @@ function status(root, key, error = false) {
   line.dataset.statusKey = key;
 }
 
-export function mountCategories(root, { csrfToken, onUnauthorized }) {
+export function mountCategories(root, { csrfToken, onUnauthorized: notifyUnauthorized }) {
   root.innerHTML = `<section class="settings-card" aria-labelledby="category-heading">
     <h2 id="category-heading" data-i18n="categoryCodes">Category codes</h2>
     <p data-i18n="categoryIntro">Manage the categories available in product forms. Codes stay fixed; deactivate unused categories.</p>
@@ -42,6 +42,7 @@ export function mountCategories(root, { csrfToken, onUnauthorized }) {
   const list = root.querySelector('#category-list');
   const form = root.querySelector('#category-create');
   const isCurrent = () => form.isConnected && root.contains(form);
+  const onUnauthorized = () => { if (isCurrent()) notifyUnauthorized(); };
   let categories = [];
   async function load() {
     try {
@@ -122,7 +123,7 @@ export function mountCategories(root, { csrfToken, onUnauthorized }) {
   };
 }
 
-export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
+export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUnauthorized }) {
   root.innerHTML = `<section class="settings-card" aria-labelledby="company-heading">
     <h2 id="company-heading" data-i18n="companySettings">Company settings</h2>
     <p data-i18n="currencyIntro">Choose the default currency for new products. Existing product prices and orders keep their own currency.</p>
@@ -138,6 +139,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
   </section>`;
   const form = root.querySelector('#company-form');
   const isCurrent = () => form.isConnected && root.contains(form);
+  const onUnauthorized = () => { if (isCurrent()) notifyUnauthorized(); };
   const setup = document.createElement('section');
   setup.className = 'settings-card';
   setup.innerHTML = `<h2 data-i18n="shopSetup"></h2><p data-i18n="setupIntro"></p>
