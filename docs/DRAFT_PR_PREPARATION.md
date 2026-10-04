@@ -9,7 +9,7 @@ Existing galleries could lose their primary/order selection during editing, and 
 The comparison base is main `5966ca8626c6c75e8e0ec4e34488a7c47fa29376`; application evidence is at `4d02572e130e7aa7b8953c51e23f6c44fadfd11b`. The base is an ancestor. The separate integration branch `5b4aa9b5c2b2d9f3e9e96830e91bfe3d73df9fd0` is not an ancestor and its modules are absent. This is a catalog/API/Worker/UI repair, not a pure frontend change. It includes:
 
 - Atomic gallery layout/primary selection, legacy gallery preservation, immutable historical order prices/currencies, and public presentation of the explicitly configured business contact.
-- Schema12 and the shared 7,500,000-byte body budget for product PATCH only; other Worker paths retain the 1 MiB limit. Seller authorization/CSRF remain enforced by the API.
+- Schema12 and two distinct request-body limits. The API's shared Seller product reader raises its limit from 750,000 to 7,500,000 bytes for both `POST /api/v1/seller/products` and `PATCH /api/v1/seller/products/{id}`. The Worker allows 7,500,000 bytes only for PATCH matching the product-ID route; product POST and all other Worker paths retain the 1 MiB ingress limit. Seller authorization/CSRF remain enforced by the API.
 - Customer catalog/checkout ownership, Seller read/save/session ownership, dialog keyboard/focus behavior, browser zoom and PWA cache/version/update protection.
 - Existing synthetic regression harnesses, seven-language presentation fixes and review documentation. No new provider connection, payment, courier, credentials, grants, CI configuration, runtime configuration or production action.
 
