@@ -1,6 +1,6 @@
 # Criterion94 finite closure proposal
 
-Status: **engineering verification matrix of existing MVP behavior; execution in progress**. The12scenarios at390/1280 use one language (English), cached Chromium and synthetic local fixtures. This does not change the user's acceptance scope or certify previously unverified requirements. Do not enumerate language×device×route combinations. Physical/provider/production acceptance remains a separate release gate. Share verification is complete before this batch.
+Status: **fixed engineering verification protocol of existing MVP behavior; execution results are recorded separately at their exact source heads**. The12scenarios at390/1280 use one language (English), cached Chromium and synthetic local fixtures. This does not change the user's acceptance scope or certify previously unverified requirements. Do not enumerate language×device×route combinations. Physical/provider/production acceptance remains a separate release gate. Share verification is complete before this batch.
 
 Existing evidence is scoped, with original heads retained: navigation48 at7508110; pending-image Save16 at169165f; image input/creation74 at169165f; session/offline/history46 plus session UI16 and genuine88→89PWA11 atfd0a9fc; current Share42 on fd0a9fc application bytes. None alone closes overall94. The rows below are **known evidence gaps, not confirmed product bugs**.
 
