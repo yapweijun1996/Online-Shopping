@@ -51,6 +51,7 @@ let categories = [];
 let nextOffset = null;
 let catalogRequest = 0;
 let catalogLoading = false;
+let catalogFilters = { search: '', category: '' };
 let cartRequest = 0;
 let resolvedCart = [];
 let detailPage;
@@ -255,6 +256,7 @@ async function loadCatalog(reset = true) {
       limit: '24', offset: String(reset ? 0 : nextOffset),
       search: byId('catalog-search').value.trim(), category: category.value,
     });
+    if (reset) catalogFilters = { search: params.get('search'), category: params.get('category') };
     const [data, shop] = await Promise.all([api(`/api/v1/products?${params}`), api('/api/v1/shop')]);
     if (request !== catalogRequest) return;
     if ((shop.demoNamespace || '') !== globalThis.shopStorageNamespace) { location.reload(); return; }
@@ -1151,8 +1153,11 @@ function restoreCatalogFilters() {
   syncSearchClear();
 }
 window.addEventListener('popstate', () => {
+  const filters = readCatalogFilters(location.search);
+  const changed = filters.search.trim() !== catalogFilters.search || filters.category !== catalogFilters.category;
   restoreCatalogFilters();
-  loadCatalog();
+  // Product hash navigation must retain loaded pages, scroll and return focus.
+  if (changed) loadCatalog();
   if (readShopRoute(location.hash).page === 'catalog') showRoute();
 });
 window.addEventListener('hashchange', showRoute);
