@@ -11,6 +11,7 @@
     "test": "node --test --test-concurrency=1 test/worker-forwarding.test.js test/priority-fixes.test.js test/demo-sandbox.test.js test/owner-constraints.test.js test/demo-gallery.test.js test/demo-scope.test.js test/product-share.test.js test/image-zoom.test.js test/catalog-presentation.test.js test/cart.test.js test/checkout-input.test.js test/history.test.js test/local-orders.test.js test/i18n.test.js test/orders.test.js test/phone.test.js test/product-input.test.js test/products.test.js test/pwa.test.js test/seller-orders.test.js test/order-documents.test.js test/server.test.js test/store.test.js test/shop-setup.test.js test/shop-route.test.js test/shop-profile.test.js test/shop-addresses.test.js test/mobile-navigation.test.js test/shop-palette.test.js",
     "check": "node scripts/check.js",
     "test:customer-discovery": "node scripts/qa-customer-discovery.mjs",
+    "test:customer-profile-address": "node scripts/qa-customer-profile-address.mjs",
     "worker:dev": "wrangler dev",
     "worker:smoke": "node --env-file=.dev.vars scripts/worker-smoke.js",
     "worker:check": "wrangler deploy --dry-run --outdir .wrangler/dry-run",
