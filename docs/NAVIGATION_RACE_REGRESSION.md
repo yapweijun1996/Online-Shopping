@@ -6,7 +6,7 @@ On unchangedca882f1, repeated390/1280 tests reproduced stale Seller callbacks ch
 
 Product, Company and category callbacks now check their own mounted form/view. Product save completions also retain the initiating route sequence. A committed API write still completes normally; the stale callback cannot reset a later editor or navigate/focus a different page. Mutation bookkeeping still finishes. API authorization, business rules, currency/prices, order policies and CI are unchanged. Seller app/worker versions advance together to86; Shop remains110.
 
-Run `scripts/qa-navigation-races.mjs` with `QA_PLAYWRIGHT_MODULE` pointing to the existing cached Playwright module, `QA_EXPECTED_HEAD` set to the exact source commit and `QA_OUTPUT_DIR` set to the evidence destination. `QA_CASE_FILTER` optionally selects a bounded diagnostic subset; it cannot produce the full42-case acceptance result.
+Run `scripts/qa-navigation-races.mjs` with `QA_PLAYWRIGHT_MODULE` pointing to the existing cached Playwright module, `QA_EXPECTED_HEAD` set to the exact source commit and `QA_OUTPUT_DIR` set to the evidence destination. `QA_CASE_FILTER` optionally selects a bounded diagnostic subset; it cannot produce the full48-case acceptance result.
 
 |Cases|Routes and delayed replies|Checks|
 |---|---|---|
@@ -19,8 +19,9 @@ Run `scripts/qa-navigation-races.mjs` with `QA_PLAYWRIGHT_MODULE` pointing to th
 |E3-E5|Company save200→Categories; category load200→Company; category save200→Company|Status isolation and no detached list mutation|
 |D1-D3|Dashboard setup200→B→Dashboard; product panel200→Company; order panel503→B→Dashboard|Current shell/panels and detached panel isolation|
 |D4|Current Dashboard product panel503→Retry|Panel recovers correctly, including empty order state|
+|N1-N3|Normal current product/Company/category Save|Own editor/rows, success status/focus and controls remain functional|
 
-All21 cases run at390/1280, serially in one cached Chromium browser worker. Responses pass through the actual Worker and API before controlled delivery. Synthetic503 applies only to GET responses; Save200 and409 are actual API results. Independent cases use a real full-page reload; this avoids inheriting the intentionally corrupted source-state of a preceding reproduction. Real native discard confirmations are accepted only for synthetic fixtures. No browser install/GC or Printform suite is run.
+The21 navigation cases plus3 normal product/Company/category Save regressions run at390/1280 (48 checks total), serially in one cached Chromium browser worker. Responses pass through the actual Worker and API before controlled delivery. Synthetic503 applies only to GET responses; Save200 and409 are actual API results. Independent cases use a real full-page reload; this avoids inheriting the intentionally corrupted source-state of a preceding reproduction. Real native discard confirmations are accepted only for synthetic fixtures. No browser install/GC or Printform suite is run.
 
 The harness checks current route/title/fields/status/focus, detached DOM observations, actual committed fixture writes, unchanged prices/currencies and unchanged order tables. API logs retain only method/path/query/body size/status. Random synthetic credentials and tokens are never serialized. Browser contexts, servers and in-memory databases close after each width.
 
