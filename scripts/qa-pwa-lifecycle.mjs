@@ -148,6 +148,12 @@ try {
     await customer.evaluate(async () => { await (await caches.open('qa-unrelated')).put('/qa-unrelated-marker', new Response('Fictional QA preference marker')); localStorage.setItem('qa-preserved-preference', 'fictional-keep'); });
     report.initialWorkers = { shop, seller: sell, cachedAppSHA256: appHash }; return { shop: 'v109', seller: 'v84', sourceHead: historicalHead, actualCachedAppSHA256: appHash };
   });
+  await checked('Controlled predecessor launch uses genuine cached shell before drafts', async () => {
+    const before={shop:await swState(customer,'/shop/'),seller:await swState(seller,'/seller/')};
+    await customer.reload();await customer.locator('.product-add').waitFor();await seller.reload();await seller.locator('.product-gallery-item').first().waitFor();
+    assert.equal((await swState(customer,'/shop/')).controller,'v109');assert.equal((await swState(seller,'/seller/')).controller,'v84');
+    report.controlledLaunch={nativeReloadBeforeAnyDraft:true,sourceHead:historicalHead,appVersions:oldApp,workerVersions:before,known8abBootstrapMismatch:focusFixed};return report.controlledLaunch;
+  });
   await checked('Native110/85 waiting labels preserve Customer cart/Profile and Seller gallery draft', async () => {
     await addTwo(); initialCart = await cartBytes(customer);
     await customer.evaluate(() => { location.hash = '#profile'; }); await customer.locator('#profile-form [name=fullName]').fill('Fictional PWA buyer'); await customer.locator('#profile-form [name=email]').fill('pwa-buyer@example.invalid');
@@ -271,6 +277,16 @@ try {
     await shopCheck(); await customer.waitForFunction(() => document.querySelector('.shop-update-settings [role=status]').textContent.includes('up to date'));
     report.reconnect = { sellerSaved: true, twoSimulationOrders: true, cartClearedOnlyAfterCommittedReceipt: true, shop: await swState(customer, '/shop/'), seller: await swState(seller, '/seller/') };
   });
+  await checked('Fresh current110/85 installation has matching labels/controllers and no spurious reload request',async()=>{
+    const fresh=await browser.newContext({viewport:{width:390,height:844},serviceWorkers:'allow',reducedMotion:'reduce'});
+    try{const cp=await fresh.newPage(),sp=await fresh.newPage();await cp.goto(origin+'/shop/#settings');await sp.goto(origin+'/seller/');for(const page of [cp,sp])await page.waitForFunction(()=>Boolean(navigator.serviceWorker.controller));
+      const cs=await swState(cp,'/shop/'),ss=await swState(sp,'/seller/');assert.equal(cs.controller,'v110');assert.equal(ss.controller,'v85');assert.equal(cs.waiting,null);assert.equal(ss.waiting,null);
+      await cp.waitForFunction(()=>document.querySelector('.shop-update-settings')?.textContent.includes('Shop v110'));await sp.waitForFunction(()=>document.querySelector('#seller-current-version')?.textContent.includes('v85'));
+      await cp.evaluate(async()=>{await (await navigator.serviceWorker.getRegistration('/shop/')).update()});await sp.evaluate(async()=>{await (await navigator.serviceWorker.getRegistration('/seller/')).update()});
+      assert.equal(await cp.locator('.shop-update-settings .primary-button').evaluate(x=>x.hidden),true);assert.equal(await sp.locator('#seller-update-notice').evaluate(x=>x.hidden),true);
+      report.freshInstall={shop:cs,seller:ss,spuriousUpdate:false};await cp.screenshot({path:out+'/fresh-shop110.png',fullPage:true});await sp.screenshot({path:out+'/fresh-seller85.png',fullPage:true});return report.freshInstall;
+    }finally{await fresh.close()}
+  });
   await checked('Actual cache inspection excludes API/private responses and retains independent scopes/unrelated cache', async () => {
     const cacheContents = await customer.evaluate(async () => {
       const result = [];
@@ -289,7 +305,7 @@ try {
     report.cacheContents = cacheContents; report.cachedByteProof = await customer.evaluate(async () => { const result=[];for(const name of await caches.keys()){if(!name.startsWith('os-'))continue;const cache=await caches.open(name);for(const request of await cache.keys()){const path=new URL(request.url).pathname,response=await cache.match(request),bytes=await response.arrayBuffer(),hash=await crypto.subtle.digest('SHA-256',bytes);result.push({cache:name,path,sha256:[...new Uint8Array(hash)].map(x=>x.toString(16).padStart(2,'0')).join(''),bytes:bytes.byteLength});}}return result; });for(const item of report.cachedByteProof){const file='public'+item.path+(item.path.endsWith('/')?'index.html':'');assert.equal(item.sha256,digest(gitBytes(targetHead,file)),item.path);} assert.equal(report.pageErrors.length, 0); assert.equal(report.externalRequests.length, 0);
     await customer.screenshot({ path: out + '/customer-current110-reconnect.png', fullPage: true }); await seller.screenshot({ path: out + '/seller-current85-reconnect.png', fullPage: true });
   });
-} catch (error) { process.exitCode = 1; console.error(error.stack?.replaceAll(config.password,'[REDACTED]'));  }
+} catch (error) { report.failureWorkers={shop:await swState(customer,'/shop/').catch(()=>null),seller:await swState(seller,'/seller/').catch(()=>null)};process.exitCode = 1; console.error(error.stack?.replaceAll(config.password,'[REDACTED]'));  }
 finally {
   controls.releaseProduct?.(); controls.releaseOrder?.(); report.sourceHashesAfter = Object.fromEntries(Object.keys(report.sourceHashes).map(path=>[path,digest(readFileSync(path))]));assert.deepEqual(report.sourceHashesAfter,report.sourceHashes); report.applicationHeadAfter = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   report.runCompleted = !process.exitCode; report.boundaries = { actualHistory: historicalHead + ' to ' + targetHead, genuineStaticBytes: true, oldLoadedVersions: oldApp, oldWorkerVersions: { shop: 'v109', seller: 'v84' }, newWorkerVersions: { shop: 'v110', seller: 'v85' }, currentModalFocusSourceExercised: focusFixed, physicalIOS: 'UNVERIFIED', realEdge: 'UNVERIFIED', production: 'UNVERIFIED', sourceEdited: false };
