@@ -19,7 +19,7 @@ const historicalHead = process.env.QA_PREDECESSOR_HEAD || 'ca882f11d4fa0a58188b7
 const gitBytes = (ref, path) => execFileSync('git', ['show', ref + ':' + path], { maxBuffer: 32 * 1024 * 1024 });
 const oldApp = Object.fromEntries(['shop', 'seller'].map(surface => [surface, /v\d+/.exec(gitBytes(historicalHead, `public/${surface}/version.js`).toString())[0]]));
 const newSeller = /v\d+/.exec(gitBytes(targetHead, 'public/seller/version.js').toString())[0];
-assert.equal(oldApp.shop, 'v110'); assert.ok(['v85','v86'].includes(oldApp.seller)); assert.ok(['v86','v87'].includes(newSeller));
+assert.equal(oldApp.shop, 'v110'); assert.ok(['v85','v86','v87'].includes(oldApp.seller)); assert.ok(['v86','v87','v88'].includes(newSeller));
 for (const surface of ['shop','seller']) assert.equal(/version:\s*'(v\d+)'/.exec(gitBytes(historicalHead,`public/${surface}/sw.js`).toString())[1],oldApp[surface]);
 const focusFixed = gitBytes(historicalHead, 'public/shared/modal.js').toString().includes('export function containDialogFocus');
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');

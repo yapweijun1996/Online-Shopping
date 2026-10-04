@@ -359,6 +359,8 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
 
   function resetForm() {
     editorLoadSequence++;
+    readingGallery = false;
+    find('#product-save').disabled = saving;
     editingId = null;
     form.reset();
     form.hidden = true;
@@ -373,6 +375,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     renderGallery();
     setError('');
     setFormSuccess('');
+    document.dispatchEvent(new Event('updateguardchange'));
   }
 
   async function edit(product, { skipGuard = false, detailLoaded = false } = {}) {
@@ -542,10 +545,12 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   });
   form.elements.image.addEventListener('change', async () => {
     const file = form.elements.image.files[0];
+    const sequence = routeSequence;
+    const ownsRead = () => isCurrent() && sequence === routeSequence && form.elements.image.files[0] === file;
     if (file) {
       try {
         const dataUrl = await readImage(file);
-        if (form.elements.image.files[0] !== file) return;
+        if (!ownsRead()) return;
         pendingRemove = false;
         if (editingId) {
           galleryImages = galleryImages.filter(item => item.id !== 'main');
@@ -554,7 +559,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
         showImage('replacement', dataUrl);
         renderGallery();
       } catch {
-        setError('productError');
+        if (ownsRead()) setError('productError');
       }
     } else showImage(originalImageUrl ? 'current' : 'none', originalImageUrl);
   });
@@ -562,16 +567,25 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     const files = [...form.elements.gallery.files];
     if (!files.length || readingGallery || saving) return;
     if (files.length + galleryImages.length > 10) { setError('galleryLimit'); form.elements.gallery.value = ''; return; }
-    const productId = editingId;
+    const sequence = routeSequence;
+    const ownsRead = () => isCurrent() && sequence === routeSequence;
     readingGallery = true; renderGallery(); find('#product-save').disabled = true; setError('');
     try {
       const data = await Promise.all(files.map(readImage));
-      if (editingId !== productId) return;
+      if (!ownsRead()) return;
       for (const imageDataUrl of data) {
         if (!galleryImages.some(item => item.imageDataUrl === imageDataUrl)) galleryImages.push({ imageDataUrl, src: imageDataUrl });
       }
-    } catch { setError('productError'); }
-    finally { readingGallery = false; form.elements.gallery.value = ''; find('#product-save').disabled = false; renderGallery(); document.dispatchEvent(new Event('updateguardchange')); }
+    } catch { if (ownsRead()) setError('productError'); }
+    finally {
+      if (ownsRead()) {
+        readingGallery = false;
+        form.elements.gallery.value = '';
+        find('#product-save').disabled = saving;
+        renderGallery();
+        document.dispatchEvent(new Event('updateguardchange'));
+      }
+    }
   });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
