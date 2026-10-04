@@ -1,6 +1,6 @@
 import { formatDate, formatMoney, locale, setupLanguageMenu, t } from '../shared/i18n.js';
 import { registerWorker } from '../shared/pwa.js';
-import { confirmModal } from '../shared/modal.js';
+import { confirmModal, containDialogFocus } from '../shared/modal.js';
 import { draftSignature, mutationsBusy } from '../shared/update-guard.js';
 import { APP_VERSION } from './version.js';
 import { mountDemoEntry } from '../shared/demo-entry.js';
@@ -9,6 +9,7 @@ import { mountOrders } from './orders.js';
 import { mountCategories, mountCompanySettings } from './settings.js';
 
 const byId = (id) => document.getElementById(id);
+containDialogFocus(byId('profile-dialog'));
 const loginView = byId('login-view');
 mountDemoEntry(loginView.querySelector('.login-card') || loginView);
 const workspace = byId('workspace');

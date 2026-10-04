@@ -5,6 +5,7 @@ const formatMoney = (minor, currency) => formatCatalogPrice(minor, currency, loc
 import { productHash } from './shop-route.js';
 import { productShareURL, shareProduct } from './product-share.js';
 import { attachImageZoom } from './image-zoom.js';
+import { containDialogFocus } from '../shared/modal.js';
 
 export function sellerChatURL(phone) {
   return typeof phone === 'string' && /^[1-9]\d{7,14}$/.test(phone)
@@ -243,6 +244,7 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
       variants.append(node('h2', '', t('chooseVariant')));
       const options = node('div', 'product-variant-options');
       const chooser = node('dialog', 'variant-dialog');
+      containDialogFocus(chooser);
       chooser.setAttribute('aria-label', t('chooseVariant'));
       const chooserHeader = node('header', 'variant-dialog-header');
       const chooserTitle = node('h2', '', t('chooseVariant'));

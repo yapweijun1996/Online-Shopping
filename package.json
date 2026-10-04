@@ -14,6 +14,7 @@
     "test:customer-profile-address": "node scripts/qa-customer-profile-address.mjs",
     "test:seller-catalog-state": "node scripts/qa-seller-catalog-state.mjs",
     "test:seller-session-ui": "node scripts/qa-seller-session-ui.mjs",
+    "test:usability-palette": "node scripts/qa-usability-palette.mjs",
     "worker:dev": "wrangler dev",
     "worker:smoke": "node --env-file=.dev.vars scripts/worker-smoke.js",
     "worker:check": "wrangler deploy --dry-run --outdir .wrangler/dry-run",
