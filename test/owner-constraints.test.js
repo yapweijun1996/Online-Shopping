@@ -65,14 +65,15 @@ test('Seller edit payload permits legacy metadata/deactivation while actual mone
     price: '9.00', currency: 'SGD', variantGroup: '', variantLabel: '' };
   const elements = Object.fromEntries(Object.entries(values).map(([name, value]) => [name, { value }]));
   elements.active = { checked: true }; elements.image = { files: [] };
-  const context = { form: { hidden: false, elements }, saving: false, pendingRemove: false, galleryImages: [], readingGallery: false, formBaseline: null, editingId: product.id };
+  const context = { form: { hidden: false, elements }, saving: false, pendingRemove: false, galleryImages: [], readingGallery: false,
+    formBaseline: null, editingId: product.id, expectedUpdatedAt: product.updatedAt };
   vm.createContext(context);
   vm.runInContext(source.slice(source.indexOf('function priceToMinor('), source.indexOf('function readImage(')), context);
   vm.runInContext(source.slice(source.indexOf('  function formState()'), source.indexOf('  function confirmDiscard()')), context);
   vm.runInContext('captureBaseline()', context);
   const start = source.indexOf('      const payload = {');
   const payloadSource = source.slice(start, source.indexOf('      const file = form.elements.image.files[0];', start));
-  const payload = () => vm.runInContext(`(() => { ${payloadSource} return payload; })()`, context);
+  const payload = () => vm.runInContext(`(() => { const productId = editingId; ${payloadSource} return payload; })()`, context);
   const session = createSession(store), handle = createApi({ store, config: { publicOrigin: 'https://fixture.test' } });
   const submit = body => handle(new Request(`https://fixture.test/api/v1/seller/products/${product.id}`, {
     method: 'PATCH', headers: { origin: 'https://fixture.test', 'content-type': 'application/json',
@@ -82,17 +83,25 @@ test('Seller edit payload permits legacy metadata/deactivation while actual mone
   const metadata = payload();
   assert.equal(Object.hasOwn(metadata, 'currency'), false);
   assert.equal(Object.hasOwn(metadata, 'priceMinor'), false);
-  assert.equal((await submit(metadata)).status, 200);
+  const saved = await submit(metadata);
+  assert.equal(saved.status, 200);
+  context.expectedUpdatedAt = (await saved.json()).updatedAt;
   assert.equal(getProduct(store, product.id, true).name, 'Reviewed metadata');
   assert.equal(getProduct(store, product.id, true).active, false);
+  const assertBlocked = async (body, status, code) => {
+    assert.equal(body.expectedUpdatedAt, getProduct(store, product.id, true).updatedAt);
+    const response = await submit(body);
+    assert.equal(response.status, status);
+    assert.equal((await response.json()).error.code, code);
+  };
   elements.price.value = '10.00';
-  assert.equal((await submit(payload())).status, 409);
+  await assertBlocked(payload(), 409, 'COMPANY_CURRENCY_CONFLICT');
   elements.price.value = '9.00'; elements.currency.value = 'MYR';
-  assert.equal((await submit(payload())).status, 400);
+  await assertBlocked(payload(), 400, 'INVALID_INPUT');
   elements.currency.value = 'SGD';
   vm.runInContext('captureBaseline()', context);
   elements.active.checked = true;
-  assert.equal((await submit(payload())).status, 409);
+  await assertBlocked(payload(), 409, 'COMPANY_CURRENCY_CONFLICT');
   assert.equal(getProduct(store, product.id, true).priceMinor, 900);
   assert.equal(getProduct(store, product.id, true).currency, 'SGD');
   assert.deepEqual(['shop_order', 'order_item', 'order_event'].map(table => store.all(`SELECT * FROM ${table}`)), snapshots);
