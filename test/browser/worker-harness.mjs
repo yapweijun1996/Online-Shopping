@@ -6,7 +6,7 @@ import { shopObjectName } from '../../src/shop-setup.js';
 import { errorResponse, json } from '../../src/http.js';
 
 export function useWorkerIngress(app, config) {
-  const records = [], controls = { failNextCatalog: false, holdNextCatalog: null, held: null };
+  const records = [], controls = { failNextCatalog: false, holdNextCatalog: null, held: null, responseDelays: [] };
   const api = createApi({ store: app.database, config });
   const env = { SHOP_MODE: config.shopMode, SHOP_DEMO_REVISION: config.demoRevision,
     ASSETS: { fetch: request => serveStatic(request, new URL(request.url).pathname) },
@@ -20,6 +20,14 @@ export function useWorkerIngress(app, config) {
         if (controls.failNextCatalog && request.method === 'GET' && path === '/api/v1/products') { controls.failNextCatalog = false; record.syntheticFailure = true; record.status = 503; return json(503, { error: { code: 'UNAVAILABLE' } }); }
         const result = await api(request, { clientAddress: request.headers.get('x-real-ip') || 'unknown' });
         record.status = result.status;
+        const responseDelay = controls.responseDelays.find(delay => !delay.started && delay.method === request.method && delay.path === path &&
+          Object.entries(delay.query || {}).every(([key, value]) => url.searchParams.get(key) === value));
+        if (responseDelay) {
+          responseDelay.started = true; responseDelay.record = record; record.routeRaceDelayed = true;
+          await new Promise(resolve => { responseDelay.release = resolve; });
+          responseDelay.released = true; record.routeRaceReleased = true;
+          if (responseDelay.failAfterRelease) { record.syntheticFailure = true; record.status = 503; return json(503, { error: { code: 'UNAVAILABLE' } }); }
+        }
         const delay = controls.holdNextCatalog;
         if (request.method === 'GET' && path === '/api/v1/products' && delay && url.searchParams.get('search') === delay.search && url.searchParams.get('offset') === delay.offset) {
           controls.holdNextCatalog = null; record.realAPIDelayed = true;

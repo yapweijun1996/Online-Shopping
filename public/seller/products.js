@@ -95,6 +95,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   listView.append(find('.product-toolbar'), status, listRecovery, list, more);
   editorView.append(back, editorStatus, form);
   root.replaceChildren(listView, editorView);
+  const isCurrent = () => editorView.isConnected && root.contains(editorView);
   let originalImageUrl = null;
   let pendingRemove = false;
   let galleryImages = [];
@@ -237,12 +238,12 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       const [categoryResult, settings] = await Promise.all([
         api('GET', '/api/v1/seller/categories'), api('GET', '/api/v1/seller/company-settings'),
       ]);
-      if (!root.isConnected) return;
+      if (!isCurrent()) return;
       categories = categoryResult.items;
       defaultCurrency = settings.defaultCurrency;
       populateCategories(form.elements.category.value);
     } catch {
-      if (root.isConnected) {
+      if (isCurrent()) {
         setStatus('networkError');
         retryList.hidden = false;
         if (!editorView.hidden) setEditorStatus('networkError');
@@ -337,7 +338,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     try {
       const params = new URLSearchParams({ limit: '24', offset: String(offset), search: query });
       const result = await api('GET', `/api/v1/seller/products?${params}`);
-      if (sequence !== loadSequence || !root.isConnected) return false;
+      if (sequence !== loadSequence || !isCurrent()) return false;
       items = reset ? result.items : [...items, ...result.items];
       if (reset) appliedSearch = query;
       nextOffset = result.nextOffset;
@@ -346,13 +347,13 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       renderList();
       return true;
     } catch {
-      if (sequence === loadSequence && root.isConnected) {
+      if (sequence === loadSequence && isCurrent()) {
         setStatus('networkError');
         retryList.hidden = false;
       }
       return false;
     } finally {
-      if (sequence === loadSequence && root.isConnected) more.disabled = false;
+      if (sequence === loadSequence && isCurrent()) more.disabled = false;
     }
   }
 
@@ -408,10 +409,10 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     }
     try {
       const detail = await api('GET', `/api/v1/seller/products/${product.id}`);
-      if (editingId !== product.id || sequence !== editorLoadSequence) return;
+      if (!isCurrent() || editingId !== product.id || sequence !== editorLoadSequence) return;
       if (detail.updatedAt !== product.updatedAt) { setError('productChangedReopen'); return; }
       acceptGallery(detail, { capture: false });
-    } catch { if (editingId === product.id && sequence === editorLoadSequence) setError('productError'); }
+    } catch { if (isCurrent() && editingId === product.id && sequence === editorLoadSequence) setError('productError'); }
   }
 
   async function showRoute(route) {
@@ -429,7 +430,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     setEditorStatus(route === 'products/new' ? '' : 'loading');
     if (route === 'products/new') {
       await settingsPromise;
-      if (sequence !== routeSequence || !root.isConnected) return;
+      if (sequence !== routeSequence || !isCurrent()) return;
       form.hidden = false;
       populateCategories();
       form.elements.currency.value = defaultCurrency;
@@ -440,11 +441,11 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     try {
       const detail = await api('GET', `/api/v1/seller/products/${id}`);
       await settingsPromise;
-      if (sequence !== routeSequence || !root.isConnected) return;
+      if (sequence !== routeSequence || !isCurrent()) return;
       await edit(detail, { skipGuard: true, detailLoaded: true });
       setEditorStatus('');
     } catch (failure) {
-      if (sequence !== routeSequence || !root.isConnected || failure.status === 401) return;
+      if (sequence !== routeSequence || !isCurrent() || failure.status === 401) return;
       setEditorStatus(failure.status === 404 ? 'productNotFound' : 'networkError');
       if (failure.status !== 404) {
         const retry = button(t('retry'), () => showRoute(route));
@@ -488,7 +489,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     } catch {
       pendingChanges.delete(product.id);
       control.disabled = false;
-      if (root.isConnected) setStatus('productError', product.name);
+      if (isCurrent()) setStatus('productError', product.name);
     }
   }
 
@@ -515,7 +516,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     } catch {
       pendingChanges.delete(product.id);
       control.disabled = false;
-      if (root.isConnected) setStatus('productError', product.name);
+      if (isCurrent()) setStatus('productError', product.name);
     }
   }
 
@@ -577,6 +578,8 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     if (saving || readingGallery || (editingId && !galleryLoaded)) return;
     const save = find('#product-save');
     const productId = editingId;
+    const sequence = routeSequence;
+    const ownsRoute = () => isCurrent() && sequence === routeSequence;
     saving = true;
     const finish = beginMutation();
     save.disabled = true;
@@ -609,14 +612,18 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
         payload.expectedUpdatedAt = expectedUpdatedAt;
       }
       const saved = await api(editingId ? 'PATCH' : 'POST', editingId ? `/api/v1/seller/products/${editingId}` : '/api/v1/seller/products', payload);
+      if (!ownsRoute()) return;
       resetForm();
       await load();
+      if (!ownsRoute()) return;
       await edit(saved, { skipGuard: true, detailLoaded: true });
+      if (!ownsRoute()) return;
       onSaved(saved.id);
       setFormSuccess('productSaved');
       form.scrollIntoView({ block: 'start' });
       formSuccess.focus({ preventScroll: true });
     } catch (failure) {
+      if (!ownsRoute()) return;
       const galleryConflict = pendingRemove && failure.field === 'imageDataUrl';
       setError(failure.code === 'PRODUCT_CHANGED' ? 'productChangedReopen' : failure.field === 'gallery' ? 'galleryLimit' : galleryConflict ? 'removeGalleryFirst' : failure.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : failure.code === 'DUPLICATE_SKU' ? 'duplicateSku' : failure.code === 'DUPLICATE_VARIANT' ? 'duplicateVariant' : 'productError');
       if (galleryConflict && productId && editingId === productId) {
@@ -627,11 +634,11 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
         const field = failure.code === 'DUPLICATE_SKU' ? 'sku' : failure.field === 'priceMinor' ? 'price' : failure.field === 'imageDataUrl' ? 'image' : failure.field;
         if (field && form.elements[field]) form.elements[field].focus();
       }
-    } finally { saving = false; finish(); save.disabled = false; renderGallery(); document.dispatchEvent(new Event('updateguardchange')); }
+    } finally { saving = false; finish(); if (isCurrent()) { save.disabled = false; renderGallery(); } document.dispatchEvent(new Event('updateguardchange')); }
   });
 
   const settingsPromise = loadSettings();
-  settingsPromise.then(() => { if (root.isConnected && loadSequence === 0) load(); });
+  settingsPromise.then(() => { if (isCurrent() && loadSequence === 0) load(); });
   search.placeholder = t('searchNameOrSkuHint');
   return {
     showRoute,

@@ -41,14 +41,15 @@ export function mountCategories(root, { csrfToken, onUnauthorized }) {
   translate(root);
   const list = root.querySelector('#category-list');
   const form = root.querySelector('#category-create');
+  const isCurrent = () => form.isConnected && root.contains(form);
   let categories = [];
   async function load() {
     try {
       const result = await request('GET', '/api/v1/seller/categories', null, csrfToken, onUnauthorized);
-      if (!root.isConnected) return;
+      if (!isCurrent()) return;
       categories = result.items;
       render();
-    } catch { if (root.isConnected) status(root, 'networkError', true); }
+    } catch { if (isCurrent()) status(root, 'networkError', true); }
   }
   function render() {
     list.replaceChildren();
@@ -77,9 +78,10 @@ export function mountCategories(root, { csrfToken, onUnauthorized }) {
         try {
           await request('PATCH', `/api/v1/seller/categories/${encodeURIComponent(category.code)}`,
             { label: label.value, active: active.checked }, csrfToken, onUnauthorized);
-          await load(); status(root, 'categorySaved');
-        } catch (error) { status(root, error.code === 'DUPLICATE_CATEGORY' ? 'duplicateCategory' : 'productError', true); }
-        finally { save.disabled = false; }
+          if (!isCurrent()) return;
+          await load(); if (isCurrent()) status(root, 'categorySaved');
+        } catch (error) { if (isCurrent()) status(root, error.code === 'DUPLICATE_CATEGORY' ? 'duplicateCategory' : 'productError', true); }
+        finally { if (isCurrent()) save.disabled = false; }
       });
       list.append(row);
     }
@@ -91,9 +93,10 @@ export function mountCategories(root, { csrfToken, onUnauthorized }) {
       await request('POST', '/api/v1/seller/categories', {
         code: form.elements.code.value, label: form.elements.label.value,
       }, csrfToken, onUnauthorized);
-      form.reset(); await load(); status(root, 'categorySaved');
-    } catch (error) { status(root, error.code === 'DUPLICATE_CATEGORY' ? 'duplicateCategory' : 'productError', true); }
-    finally { button.disabled = false; }
+      if (!isCurrent()) return;
+      form.reset(); await load(); if (isCurrent()) status(root, 'categorySaved');
+    } catch (error) { if (isCurrent()) status(root, error.code === 'DUPLICATE_CATEGORY' ? 'duplicateCategory' : 'productError', true); }
+    finally { if (isCurrent()) button.disabled = false; }
   });
   load();
   return {
@@ -133,6 +136,8 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
       <button class="primary-button" type="submit" data-i18n="saveSettings">Save settings</button>
     </form><p class="settings-status" role="status"></p>
   </section>`;
+  const form = root.querySelector('#company-form');
+  const isCurrent = () => form.isConnected && root.contains(form);
   const setup = document.createElement('section');
   setup.className = 'settings-card';
   setup.innerHTML = `<h2 data-i18n="shopSetup"></h2><p data-i18n="setupIntro"></p>
@@ -156,6 +161,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
   setupForm.elements.mode.addEventListener('change', syncName);
   let setupState = null;
   function showSetup(value) {
+    if (!isCurrent()) return;
     setupState = value;
     setupForm.hidden = Boolean(value.mode);
     setup.querySelector('h2').dataset.i18n = value.mode ? 'shopConfigured' : 'shopSetup';
@@ -170,8 +176,8 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
     setupButton.disabled = false;
   }
   request('GET', '/api/v1/seller/setup', null, csrfToken, onUnauthorized)
-    .then((value) => { if (root.isConnected) showSetup(value); })
-    .catch(() => { setupStatus.textContent = t('networkError'); });
+    .then((value) => { if (isCurrent()) showSetup(value); })
+    .catch(() => { if (isCurrent()) setupStatus.textContent = t('networkError'); });
   setupForm.addEventListener('submit', async (event) => {
     event.preventDefault(); setupButton.disabled = true;
     setupStatus.textContent = t('loading');
@@ -181,11 +187,10 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
       }, csrfToken, onUnauthorized);
       showSetup(value);
     } catch (error) {
-      setupStatus.textContent = t(['SHOP_ALREADY_CONFIGURED', 'SHOP_NOT_EMPTY'].includes(error.code) ? 'setupConflict' : 'productError');
-    } finally { setupButton.disabled = false; }
+      if (isCurrent()) setupStatus.textContent = t(['SHOP_ALREADY_CONFIGURED', 'SHOP_NOT_EMPTY'].includes(error.code) ? 'setupConflict' : 'productError');
+    } finally { if (isCurrent()) setupButton.disabled = false; }
   });
   translate(root);
-  const form = root.querySelector('#company-form');
   const saveButton = form.querySelector('[type="submit"]');
   const retryButton = form.querySelector('#company-retry');
   saveButton.disabled = true;
@@ -207,7 +212,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
     retryButton.disabled = true;
     try {
       const settings = await request('GET', '/api/v1/seller/company-settings', null, csrfToken, onUnauthorized);
-      if (!root.isConnected) return;
+      if (!isCurrent()) return;
       if (!currencyEdited) form.elements.defaultCurrency.value = settings.defaultCurrency;
       if (!phoneEdited) form.elements.sellerWhatsAppPhone.value = settings.sellerWhatsAppPhone ? `+${settings.sellerWhatsAppPhone}` : '';
       if (!mobileBarsEdited) form.elements.mobileHideBarsOnScroll.checked = settings.mobileHideBarsOnScroll === true;
@@ -220,8 +225,8 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
       retryButton.hidden = true;
       status(root, '');
     } catch {
-      if (root.isConnected) { retryButton.hidden = false; status(root, 'networkError', true); }
-    } finally { retryButton.disabled = false; }
+      if (isCurrent()) { retryButton.hidden = false; status(root, 'networkError', true); }
+    } finally { if (isCurrent()) retryButton.disabled = false; }
   }
   retryButton.addEventListener('click', loadSettings);
   loadSettings();
@@ -234,15 +239,18 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
         sellerWhatsAppPhone: form.elements.sellerWhatsAppPhone.value.trim(),
         mobileHideBarsOnScroll: form.elements.mobileHideBarsOnScroll.checked,
       }, csrfToken, onUnauthorized);
+      if (!isCurrent()) return;
       form.elements.sellerWhatsAppPhone.value = settings.sellerWhatsAppPhone ? `+${settings.sellerWhatsAppPhone}` : '';
       form.elements.mobileHideBarsOnScroll.checked = settings.mobileHideBarsOnScroll;
       savedState = currentState();
       currencyEdited = phoneEdited = mobileBarsEdited = false;
       status(root, 'settingsSaved');
-    } catch (error) { status(root, error.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : error.field === 'sellerWhatsAppPhone' ? 'sellerWhatsAppInvalid' : 'productError', true); }
+    } catch (error) { if (isCurrent()) status(root, error.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : error.field === 'sellerWhatsAppPhone' ? 'sellerWhatsAppInvalid' : 'productError', true); }
     finally {
-      for (const input of form.querySelectorAll('input, select')) input.disabled = false;
-      saveButton.disabled = false;
+      if (isCurrent()) {
+        for (const input of form.querySelectorAll('input, select')) input.disabled = false;
+        saveButton.disabled = false;
+      }
     }
   });
   return {
