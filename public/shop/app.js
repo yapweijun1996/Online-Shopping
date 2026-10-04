@@ -53,6 +53,7 @@ let catalogRequest = 0;
 let catalogLoading = false;
 let catalogFilters = { search: '', category: '' };
 let cartRequest = 0;
+let checkoutRouteRequest = 0;
 let resolvedCart = [];
 let detailPage;
 let profilePage;
@@ -853,6 +854,7 @@ function revealAccountLink(link) {
 document.querySelector('.account-sidebar').addEventListener('focusin', event => revealAccountLink(event.target.closest('a')));
 
 function showRoute() {
+  const checkoutRequest = ++checkoutRouteRequest;
   const parsed = readShopRoute(location.hash);
   const route = parsed.page;
   if (route !== 'orders') { localOrdersRequest++; localOrdersController?.abort(); }
@@ -898,25 +900,28 @@ function showRoute() {
   if (route === 'addresses') addressBook.render();
   if (route === 'checkout') {
     checkoutPage.invalidate();
+    const intent = directPurchase;
+    const ownsCheckoutRead = () => checkoutRequest === checkoutRouteRequest &&
+      location.hash === '#checkout' && directPurchase === intent;
     if (directPurchase) {
-      const intent = directPurchase;
       api(`/api/v1/products/${intent.productId}`).then((product) => {
-        if (location.hash === '#checkout' && directPurchase === intent) {
+        if (ownsCheckoutRead()) {
           checkoutPage.setItems([{ productId: intent.productId, quantity: intent.quantity, product }], { fromCart: false });
           const back = document.querySelector('#checkout-view .shop-actionbar a');
           back.href = productHash(intent.productId); back.dataset.i18n = 'continueShopping'; back.textContent = t('continueShopping');
         }
       }).catch((error) => {
-        if (location.hash !== '#checkout' || directPurchase !== intent) return;
+        if (!ownsCheckoutRead()) return;
         setMessage(error.status === 404 ? 'productUnavailable' : 'networkError');
         location.hash = productHash(intent.productId);
       });
     } else refreshCart().then((valid) => {
-      if (valid && location.hash === '#checkout') {
+      if (!ownsCheckoutRead()) return;
+      if (valid) {
         checkoutPage.setItems(selection.items(resolvedCart));
         const back = document.querySelector('#checkout-view .shop-actionbar a');
         back.href = '#cart'; back.dataset.i18n = 'backToCart'; back.textContent = t('backToCart');
-      } else if (location.hash === '#checkout') location.hash = '#cart';
+      } else location.hash = '#cart';
     });
   }
   if (route === 'receipt') renderReceipt();

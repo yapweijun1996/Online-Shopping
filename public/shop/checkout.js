@@ -18,6 +18,7 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
   let demoMode = false;
   let modeReady = false;
   let itemsReady = false;
+  let viewGeneration = 0;
   let pendingIntent = null;
   let confirmedButNotShown = false;
   let statusKey = '';
@@ -137,6 +138,8 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
       pendingIntent = { key: crypto.randomUUID(), serialized };
     }
     const submit = document.getElementById('submit-order');
+    const submittedGeneration = viewGeneration;
+    const ownsSubmissionView = () => submittedGeneration === viewGeneration && location.hash === '#checkout';
     submitting = true; document.dispatchEvent(new Event('updateguardchange'));
     submit.disabled = true;
     setStatus('submittingOrder');
@@ -150,10 +153,10 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
       });
       const result = await response.json();
       if (!response.ok) {
-        if (result.error?.code === 'IDEMPOTENCY_CONFLICT') pendingIntent = null;
+        if (['IDEMPOTENCY_CONFLICT', 'PRICE_CHANGED'].includes(result.error?.code)) pendingIntent = null;
+        if (!ownsSubmissionView()) return;
         setStatus('');
         if (result.error?.code === 'PRICE_CHANGED') {
-          pendingIntent = null;
           onPriceChanged();
           return;
         }
@@ -166,6 +169,7 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
       setStatus('');
       await onSuccess(result, { orderItems, submittedItems, cartBacked, statusAccessKey: pendingIntent.key });
     } catch {
+      if (!serverConfirmed && !ownsSubmissionView()) return;
       setStatus('');
       setError(serverConfirmed ? 'receiptRenderError' : 'orderNetworkError');
       if (serverConfirmed) confirmedButNotShown = true;
@@ -181,7 +185,7 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
     isBusy: () => submitting,
     refreshAddress,
     setDemoMode(value) { demoMode = value === true; modeReady = true; applyDemo(); refreshAddress(); },
-    invalidate() { itemsReady = false; document.getElementById('submit-order').disabled = true; },
+    invalidate() { viewGeneration++; itemsReady = false; document.getElementById('submit-order').disabled = true; },
     setItems(items, { fromCart = true } = {}) {
       if (submitting) return;
       itemsReady = true;
