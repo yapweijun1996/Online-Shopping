@@ -597,21 +597,23 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
         variantGroup: form.elements.variantGroup.value,
         variantLabel: form.elements.variantLabel.value,
       };
-      if (editingId && formBaseline) {
+      if (productId && formBaseline) {
         const baseline = JSON.parse(formBaseline);
         // Metadata edits must not resubmit immutable legacy money fields.
         if (payload.priceMinor === priceToMinor(baseline.values.price)) delete payload.priceMinor;
         if (payload.currency === baseline.values.currency) delete payload.currency;
         if (payload.active === baseline.active) delete payload.active;
       }
-      const file = form.elements.image.files[0];
-      if (file) payload.imageDataUrl = await readImage(file);
-      else if (pendingRemove) payload.imageDataUrl = null;
-      if (editingId) {
+      // Snapshot the initiating editor before image decoding yields to navigation.
+      if (productId) {
         payload.gallery = galleryImages.map(item => item.imageDataUrl ? { imageDataUrl: item.imageDataUrl } : { id: item.id });
         payload.expectedUpdatedAt = expectedUpdatedAt;
       }
-      const saved = await api(editingId ? 'PATCH' : 'POST', editingId ? `/api/v1/seller/products/${editingId}` : '/api/v1/seller/products', payload);
+      const file = form.elements.image.files[0];
+      if (file) payload.imageDataUrl = await readImage(file);
+      else if (pendingRemove) payload.imageDataUrl = null;
+      if (!ownsRoute()) return;
+      const saved = await api(productId ? 'PATCH' : 'POST', productId ? `/api/v1/seller/products/${productId}` : '/api/v1/seller/products', payload);
       if (!ownsRoute()) return;
       resetForm();
       await load();
