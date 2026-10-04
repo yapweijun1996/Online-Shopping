@@ -174,7 +174,9 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
       setError(serverConfirmed ? 'receiptRenderError' : 'orderNetworkError');
       if (serverConfirmed) confirmedButNotShown = true;
     } finally {
-      submitting = false; document.dispatchEvent(new Event('updateguardchange'));
+      submitting = false;
+      if (statusKey === 'submittingOrder') setStatus('');
+      document.dispatchEvent(new Event('updateguardchange'));
       clearTimeout(timeout);
       refreshAddress();
     }
