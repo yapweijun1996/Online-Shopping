@@ -2,6 +2,17 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
+test('each worker cache version matches its loaded application version', () => {
+  for (const surface of ['shop', 'seller']) {
+    const application = readFileSync(new URL(`../public/${surface}/version.js`, import.meta.url), 'utf8');
+    const worker = readFileSync(new URL(`../public/${surface}/sw.js`, import.meta.url), 'utf8');
+    const appVersion = application.match(/APP_VERSION\s*=\s*'([^']+)'/)?.[1];
+    const workerVersion = worker.match(/version:\s*'([^']+)'/)?.[1];
+    assert.ok(appVersion && workerVersion, `${surface} defines both version identifiers`);
+    assert.equal(workerVersion, appVersion, `${surface} must discover and cache its changed application shell`);
+  }
+});
+
 test('shop and seller manifests have separate scopes and real icon sizes', () => {
   const ids = new Set();
   for (const surface of ['shop', 'seller']) {
