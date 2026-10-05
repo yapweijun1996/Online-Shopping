@@ -107,6 +107,7 @@ for (const version of [10, 11, 12, 13]) test(`PostgreSQL physical schema${versio
   const {postgresSchema12Sql} = await import('../deploy/postgres/schema12.js');
   let sql = version === 13 ? readFileSync(new URL('./fixtures/postgres-schema13.sql',import.meta.url),'utf8') : postgresSchema12Sql;
   if (version < 12) sql = readFileSync(new URL('./fixtures/postgres-schema10.sql',import.meta.url),'utf8');
+  if (version === 11) sql = sql.replace('position BETWEEN 1 AND 4', 'position BETWEEN 1 AND 9');
   await store.exec(sql); await store.setSchemaVersion(version);
   const now = new Date().toISOString(), bytes = readFileSync(new URL('../public/shop/icons/icon-192.png',import.meta.url));
   await store.run("INSERT INTO general_code VALUES ('PRODUCT_CATEGORY','SYNTHETIC','Synthetic',1,?,?)",now,now);

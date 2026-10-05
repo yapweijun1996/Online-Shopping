@@ -107,7 +107,7 @@ try {
     await seller.waitForFunction(() => document.querySelector('.settings-status')?.dataset.statusKey === 'settingsSaved');
     assert.equal((await app.database.get('SELECT seller_whatsapp_phone p FROM company_setting')).p, '60123456789');
     // Switch this disposable fixture to a configured shop: previews never expose contacts.
-    await app.database.run("UPDATE shop_setup SET mode = 'production' WHERE id = 1");
+    await app.database.run("UPDATE shop_setup SET mode = 'production', shop_name = 'Fictional General Store' WHERE id = 1");
     config.shopMode = 'manual';
     await customer.reload();await customer.locator('a.product-chat').waitFor();
     assert.equal(await customer.locator('.product-chat').getAttribute('href'), 'https://wa.me/60123456789');

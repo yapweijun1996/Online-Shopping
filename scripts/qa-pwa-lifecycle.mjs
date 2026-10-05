@@ -162,7 +162,8 @@ try {
     await seller.locator('[name=name]').fill('Fictional PWA saved draft');await seller.locator('[name=description]').fill('Fictional unsaved description');
     await seller.locator('.product-gallery-item').last().locator('[data-gallery-action=remove]').click();assert.equal(await seller.locator('.product-gallery-item').count(), 5);
     phase.sourceHead = targetHead;await shopCheck();await sellerCheck();
-    await customer.waitForFunction(() => [...document.querySelectorAll('.shop-update-settings .primary-button')].some((x) => !x.hidden && x.textContent.includes(`${currentApp.shop}`)));
+    await customer.waitForFunction((expectedVersions) => [...document.querySelectorAll('.shop-update-settings .primary-button')].some((x) => !x.hidden && x.textContent.includes(`${expectedVersions.v110}`)), { v110: currentApp.shop, v85: currentApp.seller, v109: oldWorkers.shop, v84: oldWorkers.seller });
+    await seller.waitForFunction(expected => document.querySelector('#install-update-button')?.textContent.includes(expected), currentApp.seller);
     assert.equal((await swState(customer, '/shop/')).waiting, `${currentApp.shop}`);assert.equal((await swState(seller, '/seller/')).waiting, `${currentApp.seller}`);
     assert.match(await seller.locator('#install-update-button').innerText(), new RegExp(currentApp.seller));assert.match(await seller.locator('#seller-current-version').innerText(), new RegExp(oldApp.seller));
     assert.equal(await seller.locator('[name=name]').inputValue(), 'Fictional PWA saved draft');assert.equal(await seller.locator('.product-gallery-item').count(), 5);
