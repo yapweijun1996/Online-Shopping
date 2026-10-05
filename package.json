@@ -16,10 +16,12 @@
     "worker:deploy": "wrangler deploy"
   },
   "dependencies": {
-    "libphonenumber-js": "1.13.14",
-    "pg-native": "3.9.0"
+    "libphonenumber-js": "1.13.14"
   },
   "devDependencies": {
     "wrangler": "4.145.0"
+  },
+  "optionalDependencies": {
+    "pg-native": "3.9.0"
   }
 }
