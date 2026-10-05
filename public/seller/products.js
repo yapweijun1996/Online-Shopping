@@ -11,6 +11,13 @@ function priceToMinor(value) {
   return Number(minor);
 }
 
+function stockFromInput(value) {
+  const text = value.trim();
+  if (text === '') return null;
+  if (!/^\d{1,7}$/.test(text) || Number(text) > 1_000_000) throw inputFailure('stockQuantity');
+  return Number(text);
+}
+
 function readImage(file) {
   if (!file) return Promise.resolve(undefined);
   if (file.size > 512 * 1024 || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
@@ -128,7 +135,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   function setFormSuccess(key) { formSuccessKey = key; formSuccess.textContent = key ? t(key) : ''; }
   function setEditorStatus(key) { editorStatusKey = key; editorStatus.textContent = key ? t(key) : ''; }
   function formState() {
-    const fields = ['sku', 'name', 'description', 'category', 'price', 'currency', 'variantGroup', 'variantLabel'];
+    const fields = ['sku', 'name', 'description', 'category', 'price', 'currency', 'variantGroup', 'variantLabel', 'stockQuantity'];
     const image = form.elements.image.files[0];
     return {
       values: Object.fromEntries(fields.map((field) => [field, form.elements[field].value])),
@@ -243,7 +250,11 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       const chip = document.createElement('span');
       chip.className = `product-status-chip${product.active ? '' : ' inactive'}`;
       chip.textContent = t(product.active ? 'active' : 'inactive');
-      main.append(title, detail, price, chip);
+      const stock = document.createElement('p');
+      stock.className = 'product-card-identity';
+      stock.textContent = product.stockQuantity === null ? `${t('stockLabel')}: ${t('unlimitedStock')}`
+        : product.stockQuantity === 0 ? t('outOfStock') : `${t('stockLabel')}: ${product.stockQuantity}`;
+      main.append(title, detail, price, stock, chip);
       const actions = document.createElement('div');
       actions.className = 'product-card-actions';
       const toggleButton = button(t(product.active ? 'deactivateProduct' : 'activateProduct'),
@@ -345,6 +356,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     form.elements.price.value = (product.priceMinor / 100).toFixed(2);
     form.elements.currency.value = product.currency;
     form.elements.active.checked = product.active;
+    form.elements.stockQuantity.value = product.stockQuantity ?? '';
     form.elements.variantGroup.value = product.variantGroup || '';
     form.elements.variantLabel.value = product.variantLabel || '';
     form.elements.image.value = '';
@@ -550,6 +562,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
         active: form.elements.active.checked,
         variantGroup: form.elements.variantGroup.value,
         variantLabel: form.elements.variantLabel.value,
+        stockQuantity: stockFromInput(form.elements.stockQuantity.value),
       };
       if (editingId && formBaseline) {
         const baseline = JSON.parse(formBaseline);

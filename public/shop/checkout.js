@@ -159,6 +159,7 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
         }
         setError(result.error?.code === 'MIXED_CURRENCY' ? 'mixedCurrencies' :
           result.error?.code === 'PRODUCT_UNAVAILABLE' ? 'cartUnavailable' :
+          result.error?.code === 'OUT_OF_STOCK' ? 'outOfStockCheckout' :
           result.error?.code === 'INVALID_INPUT' ? 'checkoutInvalid' : 'orderError', result.error?.field);
         return;
       }

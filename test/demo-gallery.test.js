@@ -26,7 +26,7 @@ test('v10 gallery migration preserves all existing image bytes, IDs, positions a
  s.exec(`ALTER TABLE product_gallery_image RENAME TO gallery_fixture;
  CREATE TABLE product_gallery_image(id TEXT PRIMARY KEY,product_id TEXT NOT NULL REFERENCES product(id) ON DELETE RESTRICT,position INTEGER NOT NULL CHECK(position BETWEEN 1 AND 4),mime TEXT NOT NULL CHECK(mime IN ('image/png','image/jpeg','image/webp')),data BLOB NOT NULL,created_at TEXT NOT NULL,UNIQUE(product_id,position)) STRICT;
  INSERT INTO product_gallery_image SELECT * FROM gallery_fixture;DROP TABLE gallery_fixture;CREATE INDEX product_gallery_product ON product_gallery_image(product_id,position);`);
- s.setSchemaVersion(10);migrateStore(s);assert.equal(s.schemaVersion(),11);assert.deepEqual(s.all('SELECT * FROM product_gallery_image ORDER BY position'),before);assert.deepEqual(s.all('SELECT * FROM product ORDER BY id'),products);
+ s.exec('ALTER TABLE product DROP COLUMN stock_quantity');s.setSchemaVersion(10);migrateStore(s);assert.equal(s.schemaVersion(),12);assert.deepEqual(s.all('SELECT * FROM product_gallery_image ORDER BY position'),before);assert.deepEqual(s.all('SELECT * FROM product ORDER BY id'),products);
  for(let i=4;i<9;i++)addGalleryImage(s,p.id,data);assert.equal(getProduct(s,p.id).images.length,10);assert.throws(()=>addGalleryImage(s,p.id,data));
 });
 test('gallery variants are local, hash-verified, bounded and retain reference provenance',()=>{

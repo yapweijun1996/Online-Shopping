@@ -215,6 +215,7 @@ function renderCatalog(startIndex = 0) {
     const name = element('h3');
     const nameLink = element('a', 'product-name-link', product.name); nameLink.href = productHash(product.id); nameLink.dataset.productId = product.id; nameLink.dataset.catalogLink = 'title'; name.append(nameLink);
     body.append(name, element('strong', 'catalog-price', formatCatalogPrice(product.priceMinor, product.currency, locale())));
+    if (product.inStock === false) body.append(element('span', 'catalog-stock', t('outOfStock')));
     card.append(body);
     cards.append(card);
   }

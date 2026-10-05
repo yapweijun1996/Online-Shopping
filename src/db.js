@@ -1,6 +1,6 @@
 import { openNodeStore } from './store.js';
 
-export const SCHEMA_VERSION = 11;
+export const SCHEMA_VERSION = 12;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -269,6 +269,13 @@ export function migrateStore(store) {
       ALTER TABLE product_gallery_image_v11 RENAME TO product_gallery_image;
       CREATE INDEX product_gallery_product ON product_gallery_image(product_id, position);`);
     version = 11;
+  }
+  if (version === 11) {
+    // NULL means unlimited, so existing products keep selling without a stock count.
+    migrate(store, 12, `
+      ALTER TABLE product ADD COLUMN stock_quantity INTEGER
+        CHECK (stock_quantity IS NULL OR stock_quantity BETWEEN 0 AND 1000000);`);
+    version = 12;
   }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }

@@ -1620,7 +1620,14 @@ const ownerRequestMessages = {
     "resetDemoButton": "Reset demo data",
     "resetDemoConfirm": "Restore the fictional catalog, categories, settings and order numbers to their starting state. All demo orders and product edits are removed. This cannot be undone.",
     "resetDemoDone": "Demo data was reset.",
-    "resetDemoFailed": "Could not reset demo data. Try again."
+    "resetDemoFailed": "Could not reset demo data. Try again.",
+    "stockQuantity": "Stock quantity",
+    "stockHelp": "Leave blank for unlimited. Stock is deducted when you confirm an order.",
+    "stockLabel": "Stock",
+    "outOfStock": "Out of stock",
+    "unlimitedStock": "Unlimited",
+    "insufficientStock": "Not enough stock to confirm this order. Update the product stock first.",
+    "outOfStockCheckout": "A product in your cart is out of stock or has too little stock. Review the cart."
   },
   "ms": {
     "currencyInherited": "Mata wang diwarisi daripada Tetapan Syarikat dan tidak boleh diubah di sini.",
@@ -1641,7 +1648,14 @@ const ownerRequestMessages = {
     "resetDemoButton": "Set semula data demo",
     "resetDemoConfirm": "Pulihkan katalog, kategori, tetapan dan nombor pesanan rekaan kepada keadaan asal. Semua pesanan demo dan suntingan produk dipadam. Tindakan ini tidak boleh dibatalkan.",
     "resetDemoDone": "Data demo telah ditetapkan semula.",
-    "resetDemoFailed": "Tidak dapat menetapkan semula data demo. Cuba lagi."
+    "resetDemoFailed": "Tidak dapat menetapkan semula data demo. Cuba lagi.",
+    "stockQuantity": "Kuantiti stok",
+    "stockHelp": "Biarkan kosong untuk tanpa had. Stok ditolak apabila anda mengesahkan pesanan.",
+    "stockLabel": "Stok",
+    "outOfStock": "Kehabisan stok",
+    "unlimitedStock": "Tanpa had",
+    "insufficientStock": "Stok tidak mencukupi untuk mengesahkan pesanan ini. Kemas kini stok produk dahulu.",
+    "outOfStockCheckout": "Produk dalam troli kehabisan stok atau stoknya tidak mencukupi. Semak troli."
   },
   "zh-Hans": {
     "currencyInherited": "币种继承公司设置，不能在此修改。",
@@ -1662,7 +1676,14 @@ const ownerRequestMessages = {
     "resetDemoButton": "重置演示数据",
     "resetDemoConfirm": "将虚构的商品目录、分类、设置和订单编号恢复到初始状态。所有演示订单和商品修改都会被清除，且无法撤销。",
     "resetDemoDone": "演示数据已重置。",
-    "resetDemoFailed": "无法重置演示数据，请重试。"
+    "resetDemoFailed": "无法重置演示数据，请重试。",
+    "stockQuantity": "库存数量",
+    "stockHelp": "留空表示不限量。卖家确认订单时才会扣减库存。",
+    "stockLabel": "库存",
+    "outOfStock": "缺货",
+    "unlimitedStock": "不限量",
+    "insufficientStock": "库存不足，无法确认此订单。请先更新商品库存。",
+    "outOfStockCheckout": "购物车中有商品缺货或库存不足，请检查购物车。"
   },
   "vi": {
     "currencyInherited": "Tiền tệ lấy từ Cài đặt công ty và không thể thay đổi ở đây.",
@@ -1683,7 +1704,14 @@ const ownerRequestMessages = {
     "resetDemoButton": "Đặt lại dữ liệu demo",
     "resetDemoConfirm": "Khôi phục danh mục, nhóm hàng, cài đặt và số đơn hàng giả lập về trạng thái ban đầu. Mọi đơn demo và chỉnh sửa sản phẩm sẽ bị xóa. Không thể hoàn tác.",
     "resetDemoDone": "Đã đặt lại dữ liệu demo.",
-    "resetDemoFailed": "Không thể đặt lại dữ liệu demo. Hãy thử lại."
+    "resetDemoFailed": "Không thể đặt lại dữ liệu demo. Hãy thử lại.",
+    "stockQuantity": "Số lượng tồn kho",
+    "stockHelp": "Để trống nếu không giới hạn. Tồn kho được trừ khi bạn xác nhận đơn hàng.",
+    "stockLabel": "Tồn kho",
+    "outOfStock": "Hết hàng",
+    "unlimitedStock": "Không giới hạn",
+    "insufficientStock": "Không đủ tồn kho để xác nhận đơn này. Hãy cập nhật tồn kho sản phẩm trước.",
+    "outOfStockCheckout": "Một sản phẩm trong giỏ hàng đã hết hoặc không đủ hàng. Hãy kiểm tra giỏ hàng."
   },
   "ja": {
     "currencyInherited": "通貨は会社設定から引き継がれ、ここでは変更できません。",
@@ -1704,7 +1732,14 @@ const ownerRequestMessages = {
     "resetDemoButton": "デモデータをリセット",
     "resetDemoConfirm": "架空の商品カタログ、カテゴリ、設定、注文番号を初期状態に戻します。デモ注文と商品の編集はすべて削除され、元に戻せません。",
     "resetDemoDone": "デモデータをリセットしました。",
-    "resetDemoFailed": "デモデータをリセットできませんでした。もう一度お試しください。"
+    "resetDemoFailed": "デモデータをリセットできませんでした。もう一度お試しください。",
+    "stockQuantity": "在庫数",
+    "stockHelp": "空欄で無制限です。注文を確定したときに在庫が引かれます。",
+    "stockLabel": "在庫",
+    "outOfStock": "在庫切れ",
+    "unlimitedStock": "無制限",
+    "insufficientStock": "在庫が足りないためこの注文を確定できません。先に商品の在庫を更新してください。",
+    "outOfStockCheckout": "カート内の商品が在庫切れか在庫不足です。カートを確認してください。"
   },
   "ko": {
     "currencyInherited": "통화는 회사 설정에서 가져오며 여기서 변경할 수 없습니다.",
@@ -1725,7 +1760,14 @@ const ownerRequestMessages = {
     "resetDemoButton": "데모 데이터 초기화",
     "resetDemoConfirm": "가상 상품 카탈로그, 카테고리, 설정, 주문 번호를 초기 상태로 되돌립니다. 모든 데모 주문과 상품 수정이 삭제되며 되돌릴 수 없습니다.",
     "resetDemoDone": "데모 데이터를 초기화했습니다.",
-    "resetDemoFailed": "데모 데이터를 초기화하지 못했습니다. 다시 시도하세요."
+    "resetDemoFailed": "데모 데이터를 초기화하지 못했습니다. 다시 시도하세요.",
+    "stockQuantity": "재고 수량",
+    "stockHelp": "비워 두면 무제한입니다. 주문을 확정할 때 재고가 차감됩니다.",
+    "stockLabel": "재고",
+    "outOfStock": "품절",
+    "unlimitedStock": "무제한",
+    "insufficientStock": "재고가 부족해 이 주문을 확정할 수 없습니다. 먼저 상품 재고를 수정하세요.",
+    "outOfStockCheckout": "장바구니의 상품이 품절이거나 재고가 부족합니다. 장바구니를 확인하세요."
   },
   "th": {
     "currencyInherited": "สกุลเงินมาจากการตั้งค่าบริษัทและเปลี่ยนที่นี่ไม่ได้",
@@ -1746,7 +1788,14 @@ const ownerRequestMessages = {
     "resetDemoButton": "รีเซ็ตข้อมูลเดโม",
     "resetDemoConfirm": "คืนค่าแคตตาล็อกสมมติ หมวดหมู่ การตั้งค่า และเลขที่คำสั่งซื้อเป็นสถานะเริ่มต้น คำสั่งซื้อเดโมและการแก้ไขสินค้าทั้งหมดจะถูกลบ และย้อนกลับไม่ได้",
     "resetDemoDone": "รีเซ็ตข้อมูลเดโมแล้ว",
-    "resetDemoFailed": "ไม่สามารถรีเซ็ตข้อมูลเดโมได้ โปรดลองอีกครั้ง"
+    "resetDemoFailed": "ไม่สามารถรีเซ็ตข้อมูลเดโมได้ โปรดลองอีกครั้ง",
+    "stockQuantity": "จำนวนสต็อก",
+    "stockHelp": "เว้นว่างหมายถึงไม่จำกัด สต็อกจะถูกหักเมื่อคุณยืนยันคำสั่งซื้อ",
+    "stockLabel": "สต็อก",
+    "outOfStock": "สินค้าหมด",
+    "unlimitedStock": "ไม่จำกัด",
+    "insufficientStock": "สต็อกไม่พอสำหรับยืนยันคำสั่งซื้อนี้ โปรดอัปเดตสต็อกสินค้าก่อน",
+    "outOfStockCheckout": "สินค้าในตะกร้าหมดหรือสต็อกไม่พอ โปรดตรวจสอบตะกร้า"
   }
 };
 for (const { code } of languages) Object.assign(messages[code], ownerRequestMessages[code]);

@@ -99,6 +99,22 @@ function validateDecision(action, input) {
   return { status: 'REJECTED', reason: boundedText(input.reason, 'reason', 500) };
 }
 
+/* Confirming an order takes its quantities from tracked stock; the transaction rolls back if any product is short. */
+function deductStock(database, orderId) {
+  const lines = database.all(`SELECT i.product_id, SUM(i.quantity) AS quantity, p.sku, p.stock_quantity
+    FROM order_item i JOIN delivery d ON d.id = i.delivery_id JOIN product p ON p.id = i.product_id
+    WHERE d.order_id = ? GROUP BY i.product_id`, orderId);
+  for (const line of lines) {
+    if (line.stock_quantity === null) continue;
+    if (line.stock_quantity < line.quantity) {
+      const error = new ApiError(409, 'INSUFFICIENT_STOCK', `Not enough stock for ${line.sku}.`);
+      error.field = 'stock';
+      throw error;
+    }
+    database.run('UPDATE product SET stock_quantity = stock_quantity - ? WHERE id = ?', line.quantity, line.product_id);
+  }
+}
+
 export function decideSellerOrder(database, id, action, input, actorId) {
   if (!['confirm', 'reject'].includes(action)) throw new TypeError('Invalid order action.');
   const decision = validateDecision(action, input);
@@ -115,6 +131,7 @@ export function decideSellerOrder(database, id, action, input, actorId) {
     if (!changed) {
       throw new ApiError(409, 'STALE_REVISION', 'The order changed. Reload and try again.');
     }
+    if (decision.status === 'CONFIRMED') deductStock(database, id);
     database.run(`INSERT INTO order_event
       (order_id, event_type, actor_type, actor_id, previous_status, status, reason, occurred_at)
       VALUES (?, ?, 'SELLER', ?, 'SUBMITTED', ?, ?, ?)`, id, decision.status, actorId, decision.status, decision.reason, now);
