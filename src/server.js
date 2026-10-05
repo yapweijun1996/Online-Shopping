@@ -7,6 +7,7 @@ import { createApi } from './app.js';
 import { ensureAdmin } from './auth.js';
 import { readConfig } from './config.js';
 import { openDatabase } from './db.js';
+import { openPostgresDatabase } from './postgres-db.js';
 import { serveStatic } from './static.js';
 
 function clientAddress(request, config) {
@@ -42,16 +43,16 @@ async function writeFetchResponse(response, result) {
   response.end(body);
 }
 
-export function createApp(config) {
-  const database = openDatabase(config.dbPath);
+export async function createApp(config) {
+  const database = config.databaseUrl ? await openPostgresDatabase(config.databaseUrl) : await openDatabase(config.dbPath);
   try {
-    ensureAdmin(database, config.username, config.password);
-    initializeShop(database, config);
+    await ensureAdmin(database, config.username, config.password);
+    await initializeShop(database, config);
   } catch (error) {
-    database.close();
+    await database.close();
     throw error;
   }
-  const handle = createApi({ store: database, config, serveStatic });
+  const handle = await createApi({ store: database, config, serveStatic });
   const server = createServer(async (request, response) => {
     try {
       const result = await handle(toFetchRequest(request), { clientAddress: clientAddress(request, config) });
@@ -67,8 +68,8 @@ export function createApp(config) {
   });
   server.requestTimeout = 10_000;
   server.headersTimeout = 10_000;
-  return { server, database, close: () => new Promise((resolve, reject) => server.close((error) => {
-    database.close();
+  return { server, database, close: () => new Promise((resolve, reject) => server.close(async (error) => {
+    await database.close();
     if (error) reject(error);
     else resolve();
   })) };
@@ -77,10 +78,10 @@ export function createApp(config) {
 if (process.argv[1] && fileURLToPath(import.meta.url) === fileURLToPath(new URL(`file://${process.argv[1]}`))) {
   try {
     const config = readConfig();
-    const app = createApp(config);
+    const app = await createApp(config);
     app.server.listen(config.port, () => console.log(`Online Shopping listening on port ${app.server.address().port}`));
   } catch (error) {
-    console.error(`Startup failed: ${error.message}`);
+    console.error('Startup failed:', error?.code || error?.name || 'ERROR');
     process.exitCode = 1;
   }
 }

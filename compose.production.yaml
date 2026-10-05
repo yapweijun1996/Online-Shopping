@@ -1,0 +1,106 @@
+name: online-shopping-production
+services:
+  frontend:
+    image: online-shopping-frontend:${DEPLOY_IMAGE_TAG:-local}
+    labels:
+      org.opencontainers.image.revision: ${DEPLOY_IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    volumes:
+      - ./deploy/Caddyfile.production:/etc/caddy/Caddyfile:ro
+    networks: [edge, private]
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+
+  backend:
+    image: online-shopping-backend:${DEPLOY_IMAGE_TAG:-local}
+    labels:
+      org.opencontainers.image.revision: ${DEPLOY_IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    environment:
+      NODE_ENV: production
+      APP_REVISION: ${DEPLOY_IMAGE_TAG:-local}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:?Set ADMIN_USERNAME}
+      ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      DATABASE_PASSWORD_FILE: /run/secrets/database_password
+      DATABASE_HOST: postgres
+      DATABASE_USER: online_shopping_app
+      DATABASE_NAME: online_shopping
+      PUBLIC_ORIGIN: https://shop.gmb01.xyz
+      SELLER_ORIGIN: https://seller.gmb01.xyz
+      TRUST_PROXY: "1"
+      SHOP_MODE: manual
+    secrets: [admin_password, database_password]
+    networks: [private]
+    read_only: true
+    tmpfs: [/tmp]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+
+  postgres:
+    image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+    environment:
+      POSTGRES_USER: online_shopping
+      POSTGRES_DB: online_shopping
+      POSTGRES_PASSWORD_FILE: /run/secrets/database_owner_password
+    secrets: [database_password, database_owner_password]
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./src/postgres/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./deploy/init-postgres.sh:/docker-entrypoint-initdb.d/02-app-role.sh:ro
+    networks: [private]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U online_shopping -d online_shopping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+
+  tunnel:
+    image: cloudflare/cloudflared:latest@sha256:072c067d25ccbe61d46e18f0d0723255f2bb5304f7317caa95b27031520ff92c
+    profiles: [tunnel]
+    command: ["tunnel", "--config", "/etc/cloudflared/config.yml", "--no-autoupdate", "run"]
+    volumes:
+      - ./deploy/cloudflared.yml:/etc/cloudflared/config.yml:ro
+    secrets: [tunnel_credentials]
+    networks: [edge]
+    depends_on:
+      frontend:
+        condition: service_started
+    read_only: true
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+
+secrets:
+  admin_password:
+    file: ${ADMIN_PASSWORD_FILE_HOST:-./.local/admin-password}
+  database_password:
+    file: ${DATABASE_PASSWORD_FILE_HOST:-./.local/postgres-password}
+  database_owner_password:
+    file: ${DATABASE_OWNER_PASSWORD_FILE_HOST:-./.local/postgres-owner-password}
+  tunnel_credentials:
+    file: ${TUNNEL_CREDENTIALS_FILE_HOST:?Set TUNNEL_CREDENTIALS_FILE_HOST}
+
+volumes:
+  pg_data:
+
+networks:
+  edge:
+  private:
+    internal: true

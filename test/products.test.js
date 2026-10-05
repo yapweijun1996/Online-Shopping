@@ -19,8 +19,8 @@ const draft = {
 async function fixture() {
   const directory = mkdtempSync(path.join(tmpdir(), 'online-shopping-products-'));
   const config = { username, password, dbPath: path.join(directory, 'private.db'), production: false, publicOrigin: null };
-  const app = createApp(config);
-  createCategory(app.database, { code: 'EXAMPLE', label: 'Example category' });
+  const app = await createApp(config);
+  await createCategory(app.database, { code: 'EXAMPLE', label: 'Example category' });
   await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve));
   const origin = `http://127.0.0.1:${app.server.address().port}`;
   return {
@@ -196,7 +196,7 @@ test('seller-managed gallery is bounded, private while inactive, and removable',
 test('seller manages categories and company currency; mismatched new products are rejected', async () => {
   const f = await fixture();
   try {
-    setupShop(f.app.database, { mode: 'production', shopName: 'Example shop' });
+    await setupShop(f.app.database, { mode: 'production', shopName: 'Example shop' });
     assert.equal((await f.request('GET', '/api/v1/seller/categories')).response.status, 401);
     const { cookie, csrf } = await f.login();
     const headers = { cookie, 'x-csrf-token': csrf };
@@ -263,13 +263,13 @@ test('schema version one upgrades without losing the provisioned seller', async 
     DROP TABLE delivery; DROP TABLE shop_order; DROP TABLE order_sequence;
     DROP TABLE product; PRAGMA user_version = 1`);
   old.close();
-  const migrated = createApp(config);
+  const migrated = await createApp(config);
   try {
     await new Promise((resolve) => migrated.server.listen(0, '127.0.0.1', resolve));
     const origin = `http://127.0.0.1:${migrated.server.address().port}`;
     assert.equal((await fetch(`${origin}/ready`)).status, 200);
     assert.equal((await fetch(`${origin}/api/v1/seller/session`, { headers: { cookie } })).status, 200);
-    assert.equal(migrated.database.schemaVersion(), SCHEMA_VERSION);
+    assert.equal(await migrated.database.schemaVersion(), SCHEMA_VERSION);
   } finally {
     await migrated.close();
     rmSync(directory, { recursive: true, force: true });

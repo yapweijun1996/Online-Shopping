@@ -11,7 +11,7 @@ function digest(value) {
 
 const orderNoPattern = /^(?:OS|DEMO)-\d{8,}$/;
 
-export function lookupOrderStatuses(database, input, now = Date.now()) {
+export async function lookupOrderStatuses(database, input, now = Date.now()) {
   if (!Array.isArray(input?.orders) || input.orders.length < 1 || input.orders.length > 50 ||
       Object.keys(input).length !== 1) throw new FieldError('orders', 'Supply 1 to 50 order credentials.');
   const seen = new Set();
@@ -24,7 +24,7 @@ export function lookupOrderStatuses(database, input, now = Date.now()) {
         typeof entry.accessKey !== 'string' || !statusAccessKeyPattern.test(entry.accessKey) ||
         seen.has(entry.orderNo)) throw new FieldError('orders', 'Supply valid, unique order credentials.');
     seen.add(entry.orderNo);
-    const row = database.get(`SELECT o.order_no, o.status, o.updated_at, o.tracking_carrier, o.tracking_no FROM checkout_idempotency i
+    const row = await database.get(`SELECT o.order_no, o.status, o.updated_at, o.tracking_carrier, o.tracking_no FROM checkout_idempotency i
       JOIN shop_order o ON o.id = i.order_id
       WHERE i.key_hash = ? AND o.order_no = ? AND o.submitted_at > ?`,
     digest(entry.accessKey), entry.orderNo, cutoff);
@@ -47,17 +47,17 @@ function receipt(row) {
   };
 }
 
-export function createOrder(database, idempotencyKey, input) {
+export async function createOrder(database, idempotencyKey, input) {
   if (typeof idempotencyKey !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(idempotencyKey)) {
     throw new FieldError('Idempotency-Key', 'Supply a valid idempotency key.');
   }
-  const simulation = getShopSetup(database).mode === 'demo';
+  const simulation = (await getShopSetup(database)).mode === 'demo';
   const order = validateOrderInput(input, { simulation });
   const keyHash = digest(idempotencyKey);
   const requestHash = digest(JSON.stringify(order));
 
-  return database.transaction(() => {
-    const existing = database.get(`SELECT i.request_hash, o.order_no, o.currency, o.total_minor, o.submitted_at
+  return await database.transaction(async () => {
+    const existing = await database.get(`SELECT i.request_hash, o.order_no, o.currency, o.total_minor, o.submitted_at
       FROM checkout_idempotency i JOIN shop_order o ON o.id = i.order_id WHERE i.key_hash = ?`, keyHash);
     if (existing) {
       if (existing.request_hash !== requestHash) {
@@ -69,8 +69,8 @@ export function createOrder(database, idempotencyKey, input) {
     let totalMinor = 0;
     let currency = null;
     const requested = new Map();
-    const snapshots = order.deliveries.map((delivery, deliveryIndex) => delivery.items.map((item, itemIndex) => {
-      const product = database.get(`SELECT id, sku, name, price_minor, currency, stock_quantity FROM product
+    const snapshots = await Promise.all(order.deliveries.map(async (delivery, deliveryIndex) => await Promise.all(delivery.items.map(async (item, itemIndex) => {
+      const product = await database.get(`SELECT id, sku, name, price_minor, currency, stock_quantity FROM product
         WHERE id = ? AND active = 1`, item.productId);
       if (!product) {
         const error = new ApiError(409, 'PRODUCT_UNAVAILABLE', 'A selected product is unavailable. Review the cart.');
@@ -106,13 +106,13 @@ export function createOrder(database, idempotencyKey, input) {
         throw new FieldError('deliveries', 'Order total is too large.');
       }
       return { product, quantity: item.quantity, lineTotalMinor };
-    }));
+    }))));
 
-    const sequence = database.get('UPDATE order_sequence SET value = value + 1 WHERE id = 1 RETURNING value');
+    const sequence = await database.get('UPDATE order_sequence SET value = value + 1 WHERE id = 1 RETURNING value');
     const orderNo = `${simulation ? 'DEMO' : 'OS'}-${String(sequence.value).padStart(8, '0')}`;
     const id = randomUUID();
     const now = new Date().toISOString();
-    database.run(`INSERT INTO shop_order
+    await database.run(`INSERT INTO shop_order
       (id, order_no, buyer_name, buyer_phone, buyer_email, whatsapp_opt_in, whatsapp_consent_at,
        whatsapp_consent_version, locale, status, revision, currency, total_minor, submitted_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'SUBMITTED', 1, ?, ?, ?, ?)`,
@@ -123,7 +123,7 @@ export function createOrder(database, idempotencyKey, input) {
 
     for (const [index, delivery] of order.deliveries.entries()) {
       const deliveryId = randomUUID();
-      database.run(`INSERT INTO delivery
+      await database.run(`INSERT INTO delivery
         (id, order_id, position, recipient_name, recipient_phone, address_line1, address_line2,
          address_city, address_region, address_postcode, address_country)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -132,7 +132,7 @@ export function createOrder(database, idempotencyKey, input) {
         delivery.address.postcode, delivery.address.country,
       );
       for (const [itemIndex, snapshot] of snapshots[index].entries()) {
-        database.run(`INSERT INTO order_item
+        await database.run(`INSERT INTO order_item
           (id, delivery_id, position, product_id, sku_snapshot, name_snapshot, price_minor, quantity, line_total_minor, currency)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           randomUUID(), deliveryId, itemIndex, snapshot.product.id, snapshot.product.sku, snapshot.product.name,
@@ -140,10 +140,10 @@ export function createOrder(database, idempotencyKey, input) {
         );
       }
     }
-    database.run(`INSERT INTO order_event
+    await database.run(`INSERT INTO order_event
       (order_id, event_type, actor_type, actor_id, previous_status, status, reason, occurred_at)
       VALUES (?, 'SUBMITTED', 'GUEST', NULL, NULL, 'SUBMITTED', NULL, ?)`, id, now);
-    database.run(`INSERT INTO checkout_idempotency(key_hash, request_hash, order_id, created_at)
+    await database.run(`INSERT INTO checkout_idempotency(key_hash, request_hash, order_id, created_at)
       VALUES (?, ?, ?, ?)`, keyHash, requestHash, id, now);
     return { receipt: { ...(simulation ? { simulation: true } : {}), orderNo, status: 'SUBMITTED', currency, totalMinor, submittedAt: now }, replayed: false };
   });

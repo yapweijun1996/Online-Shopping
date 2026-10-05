@@ -4,14 +4,14 @@ import { normalizeContactPhone } from './phone.js';
 
 const categoryType = 'PRODUCT_CATEGORY';
 
-export function listCategories(database) {
-  return database.all(`SELECT code, label, active FROM general_code
-    WHERE type = ? ORDER BY label COLLATE NOCASE, code`, categoryType)
+export async function listCategories(database) {
+  return (await database.all(`SELECT code, label, active FROM general_code
+    WHERE type = ? ORDER BY label COLLATE NOCASE, code`, categoryType))
     .map((row) => ({ ...row, active: Boolean(row.active) }));
 }
 
-export function requireActiveCategory(database, code) {
-  if (!database.get(`SELECT 1 FROM general_code WHERE type = ? AND code = ? AND active = 1`, categoryType, code)) {
+export async function requireActiveCategory(database, code) {
+  if (!await database.get(`SELECT 1 FROM general_code WHERE type = ? AND code = ? AND active = 1`, categoryType, code)) {
     throw new FieldError('category', 'Choose an active product category.');
   }
 }
@@ -38,51 +38,56 @@ function categoryInput(input, partial = false) {
   return result;
 }
 
-export function createCategory(database, input) {
+export async function createCategory(database, input) {
+  return database.transaction(async () => {
   const category = categoryInput(input);
   const now = new Date().toISOString();
   try {
-    database.run(`INSERT INTO general_code(type, code, label, active, created_at, updated_at)
+    await database.run(`INSERT INTO general_code(type, code, label, active, created_at, updated_at)
       VALUES (?, ?, ?, 1, ?, ?)`, categoryType, category.code, category.label, now, now);
   } catch (error) {
-    if (String(error.message).includes('UNIQUE constraint failed')) throw new ApiError(409, 'DUPLICATE_CATEGORY', 'Category code or label already exists.');
+    if (error.code === '23505' || String(error.message).includes('UNIQUE constraint failed')) throw new ApiError(409, 'DUPLICATE_CATEGORY', 'Category code or label already exists.');
     throw error;
   }
   return { ...category, active: true };
+  });
 }
 
-export function updateCategory(database, code, input) {
+export async function updateCategory(database, code, input) {
+  return database.transaction(async () => {
   const patch = categoryInput(input, true);
-  const existing = database.get('SELECT code, label, active FROM general_code WHERE type = ? AND code = ?', categoryType, code);
+  const existing = await database.get('SELECT code, label, active FROM general_code WHERE type = ? AND code = ?', categoryType, code);
   if (!existing) throw new ApiError(404, 'NOT_FOUND', 'Category not found.');
   const label = patch.label ?? existing.label;
   const active = patch.active ?? Boolean(existing.active);
   try {
-    database.run(`UPDATE general_code SET label = ?, active = ?, updated_at = ? WHERE type = ? AND code = ?`,
+    await database.run(`UPDATE general_code SET label = ?, active = ?, updated_at = ? WHERE type = ? AND code = ?`,
       label, Number(active), new Date().toISOString(), categoryType, code);
   } catch (error) {
-    if (String(error.message).includes('UNIQUE constraint failed')) throw new ApiError(409, 'DUPLICATE_CATEGORY', 'Category label already exists.');
+    if (error.code === '23505' || String(error.message).includes('UNIQUE constraint failed')) throw new ApiError(409, 'DUPLICATE_CATEGORY', 'Category label already exists.');
     throw error;
   }
   return { code, label, active };
+  });
 }
 
-export function getCompanySettings(database) {
-  const row = database.get('SELECT default_currency, seller_whatsapp_phone, mobile_hide_bars_on_scroll FROM company_setting WHERE id = 1');
+export async function getCompanySettings(database) {
+  const row = await database.get('SELECT default_currency, seller_whatsapp_phone, mobile_hide_bars_on_scroll FROM company_setting WHERE id = 1');
   return { defaultCurrency: row.default_currency, sellerWhatsAppPhone: row.seller_whatsapp_phone,
     mobileHideBarsOnScroll: Boolean(row.mobile_hide_bars_on_scroll) };
 }
 
-export function updateCompanySettings(database, input) {
+export async function updateCompanySettings(database, input) {
+  return database.transaction(async () => {
   if (!input || typeof input !== 'object' || Array.isArray(input) ||
       !Object.keys(input).length ||
       Object.keys(input).some((key) => !['defaultCurrency', 'sellerWhatsAppPhone', 'mobileHideBarsOnScroll'].includes(key))) {
     throw new FieldError('companySettings', 'Enter supported company settings.');
   }
-  const current = getCompanySettings(database);
+  const current = await getCompanySettings(database);
   const currency = Object.hasOwn(input, 'defaultCurrency') ? input.defaultCurrency : current.defaultCurrency;
   if (!['MYR', 'SGD'].includes(currency)) throw new FieldError('defaultCurrency', 'Choose MYR or SGD.');
-  if (currency !== current.defaultCurrency && database.get('SELECT 1 FROM product WHERE currency <> ? LIMIT 1', currency)) {
+  if (currency !== current.defaultCurrency && await database.get('SELECT 1 FROM product WHERE currency <> ? LIMIT 1', currency)) {
     throw new ApiError(409, 'COMPANY_CURRENCY_CONFLICT', 'Existing products use another currency. Review prices before changing company currency.');
   }
   let phone = current.sellerWhatsAppPhone;
@@ -97,7 +102,8 @@ export function updateCompanySettings(database, input) {
       } catch { throw new FieldError('sellerWhatsAppPhone', 'Enter a valid +60 or +65 mobile number.'); }
     }
   }
-  database.run('UPDATE company_setting SET default_currency = ?, seller_whatsapp_phone = ?, mobile_hide_bars_on_scroll = ?, updated_at = ? WHERE id = 1',
+  await database.run('UPDATE company_setting SET default_currency = ?, seller_whatsapp_phone = ?, mobile_hide_bars_on_scroll = ?, updated_at = ? WHERE id = 1',
     currency, phone, Number(hideBars), new Date().toISOString());
-  return getCompanySettings(database);
+  return await getCompanySettings(database);
+  });
 }

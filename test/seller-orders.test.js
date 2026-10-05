@@ -14,11 +14,11 @@ async function fixture() {
     username: 'review_owner', password: 'LocalReviewPass123!',
     dbPath: path.join(directory, 'private.db'), production: false, publicOrigin: null,
   };
-  const app = createApp(config);
-  createCategory(app.database, { code: 'EXAMPLES', label: 'Examples' });
+  const app = await createApp(config);
+  await createCategory(app.database, { code: 'EXAMPLES', label: 'Examples' });
   await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve));
   const origin = `http://127.0.0.1:${app.server.address().port}`;
-  const product = createProduct(app.database, {
+  const product = await createProduct(app.database, {
     sku: 'REVIEW-ITEM', name: 'Example review item', description: 'Fictional item',
     category: 'EXAMPLES', priceMinor: 1250, currency: 'MYR', active: true,
   });
@@ -92,14 +92,14 @@ test('customer status credentials reveal only own 90-day seller decision', async
     assert.equal((await lookup([firstCredential, firstCredential])).response.status, 400);
     assert.equal((await lookup([{ orderNo: first.data.orderNo, accessKey: 'guess' }])).response.status, 400);
     const { cookie, csrf } = await f.login();
-    const ids = f.app.database.all('SELECT id FROM shop_order ORDER BY order_no').map(({ id }) => id);
+    const ids = (await f.app.database.all('SELECT id FROM shop_order ORDER BY order_no')).map(({ id }) => id);
     const headers = { origin: f.origin, cookie, 'x-csrf-token': csrf };
     assert.equal((await f.request('POST', `/api/v1/seller/orders/${ids[0]}/confirm`, { expectedRevision: 1 }, headers)).response.status, 200);
     assert.equal((await f.request('POST', `/api/v1/seller/orders/${ids[1]}/reject`, { expectedRevision: 1, reason: 'Unavailable.' }, headers)).response.status, 200);
     const reviewed = await lookup([firstCredential, secondCredential]);
     assert.deepEqual(reviewed.data.items.map(({ status }) => status), ['CONFIRMED', 'REJECTED']);
     assert.ok(!JSON.stringify(reviewed.data).includes('Unavailable.'));
-    f.app.database.run('UPDATE shop_order SET submitted_at = ? WHERE order_no = ?',
+    await f.app.database.run('UPDATE shop_order SET submitted_at = ? WHERE order_no = ?',
       new Date(Date.now() - 91 * 24 * 60 * 60 * 1000).toISOString(), first.data.orderNo);
     assert.deepEqual((await lookup([firstCredential])).data.items, []);
     let limited = false;
@@ -117,9 +117,9 @@ test('seller queue and detail expose one authorized order snapshot with no publi
     const second = await f.submit({ buyerName: 'Another Buyer' });
     assert.equal(first.response.status, 201);
     assert.equal(second.response.status, 201);
-    f.app.database.run(`UPDATE shop_order SET whatsapp_opt_in = 0,
+    await f.app.database.run(`UPDATE shop_order SET whatsapp_opt_in = 0,
       whatsapp_consent_at = NULL, whatsapp_consent_version = NULL WHERE order_no = ?`, second.data.orderNo);
-    const id = f.app.database.get('SELECT id FROM shop_order WHERE order_no = ?', first.data.orderNo).id;
+    const id = (await f.app.database.get('SELECT id FROM shop_order WHERE order_no = ?', first.data.orderNo)).id;
     for (const url of ['/api/v1/seller/orders', `/api/v1/seller/orders/${id}`]) {
       const denied = await f.request('GET', url);
       assert.equal(denied.response.status, 401);
@@ -146,7 +146,7 @@ test('seller queue and detail expose one authorized order snapshot with no publi
     assert.equal(detail.response.headers.get('cache-control'), 'no-store');
     assert.equal(detail.data.buyer.whatsappPhone, '+6581234567');
     assert.equal(detail.data.buyer.whatsappOrderContactOptIn, true);
-    const historical = await f.request('GET', `/api/v1/seller/orders/${f.app.database.get('SELECT id FROM shop_order WHERE order_no = ?', second.data.orderNo).id}`, null, { cookie });
+    const historical = await f.request('GET', `/api/v1/seller/orders/${(await f.app.database.get('SELECT id FROM shop_order WHERE order_no = ?', second.data.orderNo)).id}`, null, { cookie });
     assert.equal(historical.data.buyer.whatsappOrderContactOptIn, false);
     assert.equal(detail.data.deliveries[0].recipient.phone, '+60123456789');
     assert.equal(detail.data.deliveries[0].address.line2, 'Unit 1');
@@ -162,14 +162,14 @@ test('submitted orders have no deletion endpoint and remain readable', async () 
   try {
     const submitted = await f.submit();
     assert.equal(submitted.response.status, 201);
-    const id = f.app.database.get('SELECT id FROM shop_order WHERE order_no = ?', submitted.data.orderNo).id;
+    const id = (await f.app.database.get('SELECT id FROM shop_order WHERE order_no = ?', submitted.data.orderNo)).id;
     const { cookie, csrf } = await f.login();
     const deleted = await f.request('DELETE', `/api/v1/seller/orders/${id}`, null, {
       origin: f.origin, cookie, 'x-csrf-token': csrf,
     });
     assert.equal(deleted.response.status, 404);
     for (const table of ['shop_order', 'delivery', 'order_item', 'order_event', 'checkout_idempotency']) {
-      assert.equal(f.app.database.get(`SELECT COUNT(*) AS count FROM ${table}`).count, 1, table);
+      assert.equal((await f.app.database.get(`SELECT COUNT(*) AS count FROM ${table}`)).count, 1, table);
     }
     assert.equal((await f.request('GET', `/api/v1/seller/orders/${id}`, null, { cookie })).response.status, 200);
   } finally { await f.close(); }
@@ -180,7 +180,7 @@ test('seller decisions require origin, CSRF, current revision, and append audit 
   try {
     await f.submit();
     await f.submit({ buyerName: 'Another Buyer' });
-    const ids = f.app.database.all('SELECT id FROM shop_order ORDER BY order_no').map((row) => row.id);
+    const ids = (await f.app.database.all('SELECT id FROM shop_order ORDER BY order_no')).map((row) => row.id);
     const { cookie, csrf } = await f.login();
     const url = `/api/v1/seller/orders/${ids[0]}/confirm`;
     assert.equal((await f.request('POST', url, { expectedRevision: 1 }, { origin: f.origin })).response.status, 401);
@@ -210,7 +210,7 @@ test('seller decisions require origin, CSRF, current revision, and append audit 
     assert.equal(rejected.data.status, 'REJECTED');
     assert.equal(rejected.data.revision, 2);
     assert.equal(rejected.data.events[1].reason, 'Cannot fulfill this order.');
-    assert.equal(f.app.database.get('SELECT COUNT(*) AS count FROM order_event').count, 4);
+    assert.equal((await f.app.database.get('SELECT COUNT(*) AS count FROM order_event')).count, 4);
   } finally { await f.close(); }
 });
 
@@ -218,17 +218,17 @@ test('simultaneous decisions cannot overwrite one another and audit failure roll
   const f = await fixture();
   try {
     await f.submit();
-    const id = f.app.database.get('SELECT id FROM shop_order').id;
+    const id = (await f.app.database.get('SELECT id FROM shop_order')).id;
     const { cookie, csrf } = await f.login();
     const headers = { origin: f.origin, cookie, 'x-csrf-token': csrf };
     const url = `/api/v1/seller/orders/${id}`;
-    f.app.database.exec(`CREATE TRIGGER fail_review BEFORE INSERT ON order_event
+    await f.app.database.exec(`CREATE TRIGGER fail_review BEFORE INSERT ON order_event
       WHEN NEW.event_type = 'CONFIRMED' BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END;`);
     const failed = await f.request('POST', `${url}/confirm`, { expectedRevision: 1 }, headers);
     assert.equal(failed.response.status, 500);
-    assert.equal(f.app.database.get('SELECT status, revision FROM shop_order WHERE id = ?', id).status, 'SUBMITTED');
-    assert.equal(f.app.database.get('SELECT status, revision FROM shop_order WHERE id = ?', id).revision, 1);
-    f.app.database.exec('DROP TRIGGER fail_review');
+    assert.equal((await f.app.database.get('SELECT status, revision FROM shop_order WHERE id = ?', id)).status, 'SUBMITTED');
+    assert.equal((await f.app.database.get('SELECT status, revision FROM shop_order WHERE id = ?', id)).revision, 1);
+    await f.app.database.exec('DROP TRIGGER fail_review');
     const results = await Promise.all([
       f.request('POST', `${url}/confirm`, { expectedRevision: 1 }, headers),
       f.request('POST', `${url}/reject`, { expectedRevision: 1, reason: 'Cannot fulfill.' }, headers),
@@ -247,9 +247,9 @@ test('tracked stock blocks oversell at checkout and is deducted only when the se
     const session = await f.login();
     const decide = (id, action, body) => f.request('POST', `/api/v1/seller/orders/${id}/${action}`, body,
       { origin: f.origin, cookie: session.cookie, 'x-csrf-token': session.csrf });
-    const stock = () => f.app.database.get('SELECT stock_quantity AS n FROM product WHERE id = ?', f.product.id).n;
+    const stock = async () => (await f.app.database.get('SELECT stock_quantity AS n FROM product WHERE id = ?', f.product.id)).n;
     // Unlimited by default: stock is null and the public API reports it in stock.
-    assert.equal(stock(), null);
+    assert.equal(await stock(), null);
     assert.equal((await f.request('GET', `/api/v1/products/${f.product.id}`)).data.inStock, true);
     // Turn tracking on with 3 units; each test order buys 2.
     const patch = await f.request('PATCH', `/api/v1/seller/products/${f.product.id}`, { stockQuantity: 3 },
@@ -262,23 +262,23 @@ test('tracked stock blocks oversell at checkout and is deducted only when the se
     const second = await f.submit();
     assert.equal(first.response.status, 201);
     assert.equal(second.response.status, 201, 'pending orders do not reserve stock');
-    assert.equal(stock(), 3);
-    const [{ id: firstId }, { id: secondId }] = f.app.database.all('SELECT id FROM shop_order ORDER BY order_no');
+    assert.equal(await stock(), 3);
+    const [{ id: firstId }, { id: secondId }] = await f.app.database.all('SELECT id FROM shop_order ORDER BY order_no');
     assert.equal((await decide(firstId, 'confirm', { expectedRevision: 1 })).response.status, 200);
-    assert.equal(stock(), 1);
+    assert.equal(await stock(), 1);
     const short = await decide(secondId, 'confirm', { expectedRevision: 1 });
     assert.equal(short.response.status, 409);
     assert.equal(short.data.error.code, 'INSUFFICIENT_STOCK');
-    assert.equal(stock(), 1, 'a failed confirmation leaves stock unchanged');
-    assert.equal(f.app.database.get('SELECT status FROM shop_order WHERE id = ?', secondId).status, 'SUBMITTED');
+    assert.equal(await stock(), 1, 'a failed confirmation leaves stock unchanged');
+    assert.equal((await f.app.database.get('SELECT status FROM shop_order WHERE id = ?', secondId)).status, 'SUBMITTED');
     // Not enough left for another 2-unit order at checkout.
     const refused = await f.submit();
     assert.equal(refused.response.status, 409);
     assert.equal(refused.data.error.code, 'OUT_OF_STOCK');
     // Rejecting never touches stock; zero stock reports out of stock publicly.
     assert.equal((await decide(secondId, 'reject', { expectedRevision: 1, reason: 'Short stock' })).response.status, 200);
-    assert.equal(stock(), 1);
-    f.app.database.run('UPDATE product SET stock_quantity = 0 WHERE id = ?', f.product.id);
+    assert.equal(await stock(), 1);
+    await f.app.database.run('UPDATE product SET stock_quantity = 0 WHERE id = ?', f.product.id);
     assert.equal((await f.request('GET', `/api/v1/products/${f.product.id}`)).data.inStock, false);
     // Seller view exposes the count; clearing it returns to unlimited.
     assert.equal((await f.request('PATCH', `/api/v1/seller/products/${f.product.id}`, { stockQuantity: null },
@@ -292,18 +292,18 @@ test('fulfilment moves confirmed orders to shipped and delivered, cancelling res
     const session = await f.login();
     const headers = { origin: f.origin, cookie: session.cookie, 'x-csrf-token': session.csrf };
     const act = (id, action, body) => f.request('POST', `/api/v1/seller/orders/${id}/${action}`, body, headers);
-    const stock = () => f.app.database.get('SELECT stock_quantity AS n FROM product WHERE id = ?', f.product.id).n;
-    f.app.database.run('UPDATE product SET stock_quantity = 10 WHERE id = ?', f.product.id);
+    const stock = async () => (await f.app.database.get('SELECT stock_quantity AS n FROM product WHERE id = ?', f.product.id)).n;
+    await f.app.database.run('UPDATE product SET stock_quantity = 10 WHERE id = ?', f.product.id);
     const key = randomUUID();
     const submitted = await f.submit({ accessKey: key });
-    const id = f.app.database.get('SELECT id FROM shop_order WHERE order_no = ?', submitted.data.orderNo).id;
+    const id = (await f.app.database.get('SELECT id FROM shop_order WHERE order_no = ?', submitted.data.orderNo)).id;
     const buyerStatus = async () => (await f.request('POST', '/api/v1/orders/statuses',
       { orders: [{ orderNo: submitted.data.orderNo, accessKey: key }] }, { origin: f.origin })).data.items[0];
     assert.equal((await f.request('GET', '/api/v1/seller/orders/summary', null, headers)).data.pending, 1);
     // Order of steps is enforced.
     assert.equal((await act(id, 'ship', { expectedRevision: 1, carrier: 'Ninja Van' })).response.status, 409);
     assert.equal((await act(id, 'confirm', { expectedRevision: 1 })).response.status, 200);
-    assert.equal(stock(), 8);
+    assert.equal(await stock(), 8);
     assert.equal((await f.request('GET', '/api/v1/seller/orders/summary', null, headers)).data.pending, 0);
     assert.equal((await act(id, 'deliver', { expectedRevision: 2 })).response.status, 409);
     assert.equal((await act(id, 'ship', { expectedRevision: 2 })).response.status, 400, 'carrier is required');
@@ -323,15 +323,15 @@ test('fulfilment moves confirmed orders to shipped and delivered, cancelling res
     assert.deepEqual(delivered.data.events.map(event => event.status), ['SUBMITTED', 'CONFIRMED', 'SHIPPED', 'DELIVERED']);
     // Cancelling a confirmed order restores its stock and needs a reason.
     const second = await f.submit();
-    const secondId = f.app.database.get('SELECT id FROM shop_order WHERE order_no = ?', second.data.orderNo).id;
+    const secondId = (await f.app.database.get('SELECT id FROM shop_order WHERE order_no = ?', second.data.orderNo)).id;
     await act(secondId, 'confirm', { expectedRevision: 1 });
-    assert.equal(stock(), 6);
+    assert.equal(await stock(), 6);
     assert.equal((await act(secondId, 'cancel', { expectedRevision: 2 })).response.status, 400);
     const cancelled = await act(secondId, 'cancel', { expectedRevision: 2, reason: 'Buyer asked to cancel' });
     assert.equal(cancelled.data.status, 'CANCELLED');
-    assert.equal(stock(), 8);
+    assert.equal(await stock(), 8);
     assert.equal((await act(secondId, 'cancel', { expectedRevision: 3, reason: 'Again' })).response.status, 409);
-    assert.equal(stock(), 8, 'a repeated cancel does not restock twice');
+    assert.equal(await stock(), 8, 'a repeated cancel does not restock twice');
     // Status filter accepts the new states.
     assert.equal((await f.request('GET', '/api/v1/seller/orders?status=DELIVERED', null, headers)).data.items.length, 1);
     assert.equal((await f.request('GET', '/api/v1/seller/orders?status=CANCELLED', null, headers)).data.items.length, 1);

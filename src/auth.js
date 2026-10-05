@@ -29,43 +29,49 @@ function hashToken(token) {
   return createHash('sha256').update(token).digest('hex');
 }
 
-export function ensureAdmin(database, username, password) {
-  const existing = database.get('SELECT username, password_hash FROM admin WHERE id = 1');
-  if (!existing) {
-    database.run('INSERT INTO admin(id, username, password_hash, created_at) VALUES (1, ?, ?, ?)',
-      username, encodePassword(password), new Date().toISOString());
-    return;
-  }
-  if (existing.username !== username || !verifyPassword(password, existing.password_hash)) {
-    throw new Error('Configured admin credentials do not match the provisioned administrator.');
-  }
+export async function ensureAdmin(database, username, password) {
+  return database.transaction(async () => {
+    const existing = await database.get('SELECT username, password_hash FROM admin WHERE id = 1');
+    if (!existing) {
+      await database.run('INSERT INTO admin(id, username, password_hash, created_at) VALUES (1, ?, ?, ?)',
+        username, encodePassword(password), new Date().toISOString());
+      return;
+    }
+    if (existing.username !== username || !verifyPassword(password, existing.password_hash)) {
+      throw new Error('Configured admin credentials do not match the provisioned administrator.');
+    }
+  });
 }
 
 export async function authenticate(database, username, password) {
-  const admin = database.get('SELECT username, password_hash FROM admin WHERE id = 1');
+  const admin = await database.get('SELECT username, password_hash FROM admin WHERE id = 1');
   if (!admin) return false;
   const passwordOk = await verifyPasswordAsync(password, admin.password_hash);
   return admin.username === username && passwordOk;
 }
 
-export function createSession(database) {
+export async function createSession(database) {
+  return database.transaction(async () => {
   const token = randomBytes(32).toString('base64url');
   const csrfToken = randomBytes(32).toString('base64url');
   const now = Date.now();
-  database.run('DELETE FROM session WHERE expires_at <= ?', new Date(now).toISOString());
-  database.run('INSERT INTO session(token_hash, csrf_token, expires_at, created_at) VALUES (?, ?, ?, ?)',
+  await database.run('DELETE FROM session WHERE expires_at <= ?', new Date(now).toISOString());
+  await database.run('INSERT INTO session(token_hash, csrf_token, expires_at, created_at) VALUES (?, ?, ?, ?)',
     hashToken(token), csrfToken, new Date(now + SESSION_MS).toISOString(), new Date(now).toISOString());
   return { token, csrfToken, maxAge: SESSION_MS / 1000 };
+  });
 }
 
-export function readSession(database, token) {
+export async function readSession(database, token) {
   if (!token || token.length > 128) return null;
-  const row = database.get('SELECT token_hash, csrf_token, expires_at FROM session WHERE token_hash = ?', hashToken(token));
+  const row = await database.get('SELECT token_hash, csrf_token, expires_at FROM session WHERE token_hash = ?', hashToken(token));
   return row && row.expires_at > new Date().toISOString() ? row : null;
 }
 
-export function deleteSession(database, token) {
-  if (token) database.run('DELETE FROM session WHERE token_hash = ?', hashToken(token));
+export async function deleteSession(database, token) {
+  return database.transaction(async () => {
+  if (token) await database.run('DELETE FROM session WHERE token_hash = ?', hashToken(token));
+  });
 }
 
 export function cookieFor(token, maxAge, secure) {

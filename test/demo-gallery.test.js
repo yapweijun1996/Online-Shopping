@@ -8,26 +8,26 @@ import {addGalleryImage,getProduct,getProductImage,listProducts} from '../src/pr
 import {withDemoGallery} from '../src/demo-gallery.js';
 import {productMedia} from '../public/shop/product-media.js';
 
-test('fictional galleries retain hero and never override seller edits, custom galleries or other modes',t=>{
- const store=openDatabase(':memory:');t.after(()=>store.close());setupShop(store,{mode:'demo'});
- const id=listProducts(store,new URLSearchParams('limit=100')).items.find(x=>x.sku==='DEMO-001').id;
- const p=getProduct(store,id),hero=getProductImage(store,id);const gallery=withDemoGallery(p,hero,'public-demo');
+test('fictional galleries retain hero and never override seller edits, custom galleries or other modes',async t=>{
+ const store=await openDatabase(':memory:');t.after(async ()=>await store.close());await setupShop(store,{mode:'demo'});
+ const id=(await listProducts(store,new URLSearchParams('limit=100'))).items.find(x=>x.sku==='DEMO-001').id;
+ const p=await getProduct(store,id),hero=await getProductImage(store,id);const gallery=withDemoGallery(p,hero,'public-demo');
  assert.equal(gallery.images[0],p.imageUrl);assert.equal(gallery.images.length,6);assert.equal(gallery.imageMedia.length,6);
  assert.equal(withDemoGallery(p,hero,'manual'),p);assert.equal(withDemoGallery(p,hero,'demo'),p);
  const renamed={...p,name:'Seller replacement'};assert.equal(withDemoGallery(renamed,hero,'public-demo'),renamed);
  assert.equal(withDemoGallery(p,{data:Buffer.from('changed hero')},'public-demo'),p);
  const customized={...p,images:[p.imageUrl,'/api/v1/custom-gallery']};assert.equal(withDemoGallery(customized,hero,'public-demo'),customized);
 });
-test('v10 gallery migration preserves all existing image bytes, IDs, positions and product data',t=>{
- const s=openDatabase(':memory:');t.after(()=>s.close());setupShop(s,{mode:'demo'});const p=listProducts(s,new URLSearchParams('limit=100')).items[0];
+test('v10 gallery migration preserves all existing image bytes, IDs, positions and product data',async t=>{
+ const s=await openDatabase(':memory:');t.after(async ()=>await s.close());await setupShop(s,{mode:'demo'});const p=(await listProducts(s,new URLSearchParams('limit=100'))).items[0];
  const data='data:image/png;base64,'+readFileSync(new URL('../public/shop/icons/icon-192.png',import.meta.url)).toString('base64');
- for(let i=0;i<4;i++)addGalleryImage(s,p.id,data);
- const before=s.all('SELECT * FROM product_gallery_image ORDER BY position'),products=s.all('SELECT * FROM product ORDER BY id');
- s.exec(`ALTER TABLE product_gallery_image RENAME TO gallery_fixture;
+ for(let i=0;i<4;i++)await addGalleryImage(s,p.id,data);
+ const before=await s.all('SELECT * FROM product_gallery_image ORDER BY position'),products=await s.all('SELECT * FROM product ORDER BY id');
+ await s.exec(`ALTER TABLE product_gallery_image RENAME TO gallery_fixture;
  CREATE TABLE product_gallery_image(id TEXT PRIMARY KEY,product_id TEXT NOT NULL REFERENCES product(id) ON DELETE RESTRICT,position INTEGER NOT NULL CHECK(position BETWEEN 1 AND 4),mime TEXT NOT NULL CHECK(mime IN ('image/png','image/jpeg','image/webp')),data BLOB NOT NULL,created_at TEXT NOT NULL,UNIQUE(product_id,position)) STRICT;
  INSERT INTO product_gallery_image SELECT * FROM gallery_fixture;DROP TABLE gallery_fixture;CREATE INDEX product_gallery_product ON product_gallery_image(product_id,position);`);
- s.exec('ALTER TABLE product DROP COLUMN stock_quantity');s.setSchemaVersion(10);migrateStore(s);assert.equal(s.schemaVersion(),13);assert.deepEqual(s.all('SELECT * FROM product_gallery_image ORDER BY position'),before);assert.deepEqual(s.all('SELECT * FROM product ORDER BY id'),products);
- for(let i=4;i<9;i++)addGalleryImage(s,p.id,data);assert.equal(getProduct(s,p.id).images.length,10);assert.throws(()=>addGalleryImage(s,p.id,data));
+ await s.exec('ALTER TABLE product DROP COLUMN stock_quantity');await s.setSchemaVersion(10);await migrateStore(s);assert.equal(await s.schemaVersion(),13);assert.deepEqual(await s.all('SELECT * FROM product_gallery_image ORDER BY position'),before);assert.deepEqual(await s.all('SELECT * FROM product ORDER BY id'),products);
+ for(let i=4;i<9;i++)await addGalleryImage(s,p.id,data);assert.equal((await getProduct(s,p.id)).images.length,10);await assert.rejects(async ()=>await addGalleryImage(s,p.id,data));
 });
 test('gallery variants are local, hash-verified, bounded and retain reference provenance',()=>{
  const m=JSON.parse(readFileSync(new URL('../src/public-demo-gallery-provenance.json',import.meta.url)));

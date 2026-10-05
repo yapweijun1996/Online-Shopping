@@ -12,29 +12,29 @@ const rebuildColumns = {
     'line_total_minor', 'currency'],
 };
 
-function migrate(store, version, sql) {
-  store.transaction(() => {
-    store.exec(sql);
-    store.setSchemaVersion(version);
+async function migrate(store, version, sql) {
+  await store.transaction(async () => {
+    await store.exec(sql);
+    await store.setSchemaVersion(version);
   });
 }
 
-export function openDatabase(file) {
+export async function openDatabase(file) {
   const store = openNodeStore(file);
   try {
-    migrateStore(store);
+    await migrateStore(store);
   } catch (error) {
-    store.close();
+    await store.close();
     throw error;
   }
   return store;
 }
 
 /* Applies pending migrations through the storage contract so every runtime shares one schema. */
-export function migrateStore(store) {
-  let version = store.schemaVersion();
+export async function migrateStore(store) {
+  let version = await store.schemaVersion();
   if (version === 0) {
-    migrate(store, 1, `
+    await migrate(store, 1, `
       CREATE TABLE admin (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         username TEXT NOT NULL UNIQUE,
@@ -51,7 +51,7 @@ export function migrateStore(store) {
     version = 1;
   }
   if (version === 1) {
-    migrate(store, 2, `
+    await migrate(store, 2, `
       CREATE TABLE product (
         id TEXT PRIMARY KEY,
         sku TEXT NOT NULL UNIQUE,
@@ -73,7 +73,7 @@ export function migrateStore(store) {
     version = 2;
   }
   if (version === 2) {
-    migrate(store, 3, `
+    await migrate(store, 3, `
       CREATE TABLE order_sequence (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         value INTEGER NOT NULL CHECK (value >= 0)
@@ -147,7 +147,7 @@ export function migrateStore(store) {
     version = 3;
   }
   if (version === 3) {
-    migrate(store, 4, `
+    await migrate(store, 4, `
       CREATE TABLE general_code (
         type TEXT NOT NULL CHECK (type = 'PRODUCT_CATEGORY'),
         code TEXT NOT NULL,
@@ -166,18 +166,18 @@ export function migrateStore(store) {
   if (version === 4) {
     // SQLite cannot relax a CHECK constraint in place, so rebuild each affected table.
     // rebuildTransaction suspends foreign-key enforcement until the rebuild is complete.
-    store.rebuildTransaction(() => {
+    await store.rebuildTransaction(async () => {
       for (const table of ['product', 'shop_order', 'order_item']) {
-        const schema = store.get('SELECT sql FROM sqlite_schema WHERE type = ? AND name = ?', 'table', table)?.sql;
+        const schema = (await store.get('SELECT sql FROM sqlite_schema WHERE type = ? AND name = ?', 'table', table))?.sql;
         if (!schema || !schema.includes("currency = 'MYR'")) throw new Error(`Unexpected ${table} currency schema.`);
-        store.exec(schema.replace(new RegExp(`^CREATE TABLE ["\x60]?${table}["\x60]?`, 'i'), `CREATE TABLE ${table}_new`)
+        await store.exec(schema.replace(new RegExp(`^CREATE TABLE ["\x60]?${table}["\x60]?`, 'i'), `CREATE TABLE ${table}_new`)
           .replace("currency = 'MYR'", "currency IN ('MYR', 'SGD')"));
         const columns = rebuildColumns[table].join(', ');
-        store.exec(`INSERT INTO ${table}_new (${columns}) SELECT ${columns} FROM ${table}`);
-        store.exec(`DROP TABLE ${table}`);
-        store.exec(`ALTER TABLE ${table}_new RENAME TO ${table}`);
+        await store.exec(`INSERT INTO ${table}_new (${columns}) SELECT ${columns} FROM ${table}`);
+        await store.exec(`DROP TABLE ${table}`);
+        await store.exec(`ALTER TABLE ${table}_new RENAME TO ${table}`);
       }
-      store.exec(`CREATE INDEX product_public ON product(active, category, updated_at);
+      await store.exec(`CREATE INDEX product_public ON product(active, category, updated_at);
         CREATE INDEX shop_order_queue ON shop_order(status, submitted_at DESC);
         CREATE TABLE company_setting (
           id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -192,12 +192,12 @@ export function migrateStore(store) {
           WHEN NEW.category <> OLD.category AND NOT EXISTS
             (SELECT 1 FROM general_code WHERE type = 'PRODUCT_CATEGORY' AND code = NEW.category AND active = 1)
           BEGIN SELECT RAISE(ABORT, 'Unknown active product category'); END;`);
-      store.setSchemaVersion(5);
+      await store.setSchemaVersion(5);
     });
     version = 5;
   }
   if (version === 5) {
-    migrate(store, 6, `
+    await migrate(store, 6, `
       CREATE TABLE rate_limit_attempt (
         id INTEGER PRIMARY KEY,
         bucket TEXT NOT NULL,
@@ -209,7 +209,7 @@ export function migrateStore(store) {
     version = 6;
   }
   if (version === 6) {
-    migrate(store, 7, `
+    await migrate(store, 7, `
       CREATE TABLE shop_setup (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         mode TEXT CHECK (mode IN ('demo', 'production')),
@@ -221,7 +221,7 @@ export function migrateStore(store) {
     version = 7;
   }
   if (version === 7) {
-    migrate(store, 8, `
+    await migrate(store, 8, `
       ALTER TABLE product ADD COLUMN variant_group TEXT;
       ALTER TABLE product ADD COLUMN variant_label TEXT;
       CREATE UNIQUE INDEX product_variant_option ON product(variant_group, variant_label COLLATE NOCASE);
@@ -239,7 +239,7 @@ export function migrateStore(store) {
     version = 8;
   }
   if (version === 8) {
-    migrate(store, 9, `
+    await migrate(store, 9, `
       ALTER TABLE company_setting ADD COLUMN seller_whatsapp_phone TEXT
         CHECK (seller_whatsapp_phone IS NULL OR
           (length(seller_whatsapp_phone) BETWEEN 8 AND 15 AND seller_whatsapp_phone NOT GLOB '*[^0-9]*'));
@@ -248,13 +248,13 @@ export function migrateStore(store) {
     version = 9;
   }
   if (version === 9) {
-    migrate(store, 10, `
+    await migrate(store, 10, `
       ALTER TABLE company_setting ADD COLUMN mobile_hide_bars_on_scroll INTEGER NOT NULL DEFAULT 0
         CHECK (mobile_hide_bars_on_scroll IN (0, 1));`);
     version = 10;
   }
   if (version === 10) {
-    migrate(store, 11, `
+    await migrate(store, 11, `
       CREATE TABLE product_gallery_image_v11 (
         id TEXT PRIMARY KEY,
         product_id TEXT NOT NULL REFERENCES product(id) ON DELETE RESTRICT,
@@ -272,50 +272,50 @@ export function migrateStore(store) {
   }
   if (version === 11) {
     // NULL means unlimited, so existing products keep selling without a stock count.
-    migrate(store, 12, `
+    await migrate(store, 12, `
       ALTER TABLE product ADD COLUMN stock_quantity INTEGER
         CHECK (stock_quantity IS NULL OR stock_quantity BETWEEN 0 AND 1000000);`);
     version = 12;
   }
   if (version === 12) {
     // Fulfilment adds order statuses, so the CHECK constraints are rebuilt and tracking columns added.
-    store.rebuildTransaction(() => {
-      const rebuild = (table, columns, from, to) => {
-        const schema = store.get('SELECT sql FROM sqlite_schema WHERE type = ? AND name = ?', 'table', table)?.sql;
+    await store.rebuildTransaction(async () => {
+      const rebuild = async (table, columns, from, to) => {
+        const schema = (await store.get('SELECT sql FROM sqlite_schema WHERE type = ? AND name = ?', 'table', table))?.sql;
         if (schema?.includes(to)) return; // already rebuilt, e.g. a database restored to an earlier version number
         if (!schema || !schema.includes(from)) throw new Error(`Unexpected ${table} status schema.`);
-        store.exec(schema.replace(new RegExp(`^CREATE TABLE ["\x60]?${table}["\x60]?`, 'i'), `CREATE TABLE ${table}_new`).replace(from, to));
-        store.exec(`INSERT INTO ${table}_new (${columns}) SELECT ${columns} FROM ${table}`);
-        store.exec(`DROP TABLE ${table}`);
-        store.exec(`ALTER TABLE ${table}_new RENAME TO ${table}`);
+        await store.exec(schema.replace(new RegExp(`^CREATE TABLE ["\x60]?${table}["\x60]?`, 'i'), `CREATE TABLE ${table}_new`).replace(from, to));
+        await store.exec(`INSERT INTO ${table}_new (${columns}) SELECT ${columns} FROM ${table}`);
+        await store.exec(`DROP TABLE ${table}`);
+        await store.exec(`ALTER TABLE ${table}_new RENAME TO ${table}`);
       };
       const statuses = "'SUBMITTED', 'CONFIRMED', 'REJECTED', 'SHIPPED', 'DELIVERED', 'CANCELLED'";
-      rebuild('shop_order', rebuildColumns.shop_order.join(', '),
+      await rebuild('shop_order', rebuildColumns.shop_order.join(', '),
         "status IN ('SUBMITTED', 'CONFIRMED', 'REJECTED')", `status IN (${statuses})`);
-      rebuild('order_event', 'id, order_id, event_type, actor_type, actor_id, previous_status, status, reason, occurred_at',
+      await rebuild('order_event', 'id, order_id, event_type, actor_type, actor_id, previous_status, status, reason, occurred_at',
         "event_type IN ('SUBMITTED', 'CONFIRMED', 'REJECTED')", `event_type IN (${statuses})`);
-      const orderSql = store.get('SELECT sql FROM sqlite_schema WHERE type = ? AND name = ?', 'table', 'shop_order').sql;
-      if (!orderSql.includes('tracking_carrier')) store.exec('ALTER TABLE shop_order ADD COLUMN tracking_carrier TEXT');
-      if (!orderSql.includes('tracking_no')) store.exec('ALTER TABLE shop_order ADD COLUMN tracking_no TEXT');
-      store.exec(`CREATE INDEX IF NOT EXISTS shop_order_queue ON shop_order(status, submitted_at DESC);
+      const orderSql = (await store.get('SELECT sql FROM sqlite_schema WHERE type = ? AND name = ?', 'table', 'shop_order')).sql;
+      if (!orderSql.includes('tracking_carrier')) await store.exec('ALTER TABLE shop_order ADD COLUMN tracking_carrier TEXT');
+      if (!orderSql.includes('tracking_no')) await store.exec('ALTER TABLE shop_order ADD COLUMN tracking_no TEXT');
+      await store.exec(`CREATE INDEX IF NOT EXISTS shop_order_queue ON shop_order(status, submitted_at DESC);
         CREATE INDEX IF NOT EXISTS order_event_history ON order_event(order_id, id);`);
-      store.setSchemaVersion(13);
+      await store.setSchemaVersion(13);
     });
     version = 13;
   }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }
 
-export function ready(store) {
+export async function ready(store) {
   try {
-    return store.schemaVersion() === SCHEMA_VERSION &&
-      Boolean(store.get('SELECT id FROM admin WHERE id = 1')) &&
-      Boolean(store.get('SELECT id FROM order_sequence WHERE id = 1')) &&
-      Boolean(store.get('SELECT id FROM company_setting WHERE id = 1')) &&
-      Boolean(store.get('SELECT id FROM shop_setup WHERE id = 1')) &&
-      ['session', 'product', 'general_code', 'shop_order', 'delivery', 'order_item', 'order_event', 'checkout_idempotency',
+    return await store.schemaVersion() === SCHEMA_VERSION &&
+      Boolean(await store.get('SELECT id FROM admin WHERE id = 1')) &&
+      Boolean(await store.get('SELECT id FROM order_sequence WHERE id = 1')) &&
+      Boolean(await store.get('SELECT id FROM company_setting WHERE id = 1')) &&
+      Boolean(await store.get('SELECT id FROM shop_setup WHERE id = 1')) &&
+      (await Promise.all(['session', 'product', 'general_code', 'shop_order', 'delivery', 'order_item', 'order_event', 'checkout_idempotency',
         'rate_limit_attempt', 'shop_setup']
-        .every((table) => Array.isArray(store.all(`SELECT * FROM ${table} LIMIT 0`)));
+        .map(async (table) => Array.isArray(await store.all(`SELECT * FROM ${table} LIMIT 0`))))).every(Boolean);
   } catch {
     return false;
   }

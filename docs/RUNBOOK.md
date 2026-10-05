@@ -1,5 +1,7 @@
 # Runbook: run locally, Docker and Demo
 
+For `shop.gmb01.xyz` and `seller.gmb01.xyz`, use the [OrbStack/PostgreSQL production runbook](ORBSTACK_DEPLOY.md). The two-container commands below are the retained SQLite local stack.
+
 How to start the application locally, with Docker Compose, and as the Cloudflare Worker Demo. For release gates and operations see [DEPLOY.md](DEPLOY.md); for the shop's current behavior see [FEATURES.md](FEATURES.md).
 
 ## Run locally

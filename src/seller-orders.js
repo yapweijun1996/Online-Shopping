@@ -35,31 +35,31 @@ function summary(row) {
 }
 
 /* Number of orders waiting for a decision, used for the seller's new-order alert. */
-export function pendingOrderSummary(database) {
-  const { pending } = database.get("SELECT COUNT(*) AS pending FROM shop_order WHERE status = 'SUBMITTED'");
-  const latest = database.get("SELECT MAX(submitted_at) AS at FROM shop_order WHERE status = 'SUBMITTED'").at;
+export async function pendingOrderSummary(database) {
+  const { pending } = await database.get("SELECT COUNT(*) AS pending FROM shop_order WHERE status = 'SUBMITTED'");
+  const latest = (await database.get("SELECT MAX(submitted_at) AS at FROM shop_order WHERE status = 'SUBMITTED'")).at;
   return { pending, latestSubmittedAt: latest };
 }
 
-export function listSellerOrders(database, params) {
+export async function listSellerOrders(database, params) {
   const status = params.get('status') || '';
   if (status && !statuses.has(status)) throw new FieldError('status', 'Choose a valid order status.');
   const search = boundedText(params.get('search'), 'search', 40, false);
   const limit = listNumber(params, 'limit', 20, 100);
   const offset = listNumber(params, 'offset', 0, 10_000);
   if (limit < 1) throw new FieldError('limit', 'Enter a valid list range.');
-  const rows = database.all(`SELECT ${queueColumns} FROM shop_order
+  const rows = await database.all(`SELECT ${queueColumns} FROM shop_order
     WHERE (? = '' OR status = ?) AND (? = '' OR instr(lower(order_no), lower(?)) > 0)
     ORDER BY submitted_at DESC, id DESC LIMIT ? OFFSET ?`, status, status, search, search, limit + 1, offset);
   return { items: rows.slice(0, limit).map(summary), nextOffset: rows.length > limit ? offset + limit : null };
 }
 
-function readSellerOrder(database, id) {
-  const row = database.get(`SELECT ${orderColumns} FROM shop_order WHERE id = ?`, id);
+async function readSellerOrder(database, id) {
+  const row = await database.get(`SELECT ${orderColumns} FROM shop_order WHERE id = ?`, id);
   if (!row) return null;
-  const deliveries = database.all(`SELECT id, position, recipient_name, recipient_phone,
+  const deliveries = await Promise.all((await database.all(`SELECT id, position, recipient_name, recipient_phone,
     address_line1, address_line2, address_city, address_region, address_postcode, address_country
-    FROM delivery WHERE order_id = ? ORDER BY position`, id).map((delivery) => ({
+    FROM delivery WHERE order_id = ? ORDER BY position`, id)).map(async (delivery) => ({
     id: delivery.id,
     position: delivery.position,
     recipient: { fullName: delivery.recipient_name, phone: delivery.recipient_phone },
@@ -68,15 +68,15 @@ function readSellerOrder(database, id) {
       city: delivery.address_city, region: delivery.address_region,
       postcode: delivery.address_postcode, country: delivery.address_country,
     },
-    items: database.all(`SELECT product_id, sku_snapshot, name_snapshot, price_minor,
-      quantity, line_total_minor, currency FROM order_item WHERE delivery_id = ? ORDER BY position`, delivery.id).map((item) => ({
+    items: (await database.all(`SELECT product_id, sku_snapshot, name_snapshot, price_minor,
+      quantity, line_total_minor, currency FROM order_item WHERE delivery_id = ? ORDER BY position`, delivery.id)).map((item) => ({
         productId: item.product_id, sku: item.sku_snapshot, name: item.name_snapshot,
         priceMinor: item.price_minor, quantity: item.quantity,
         lineTotalMinor: item.line_total_minor, currency: item.currency,
       })),
-  }));
-  const events = database.all(`SELECT event_type, actor_type, actor_id, previous_status,
-    status, reason, occurred_at FROM order_event WHERE order_id = ? ORDER BY id`, id)
+  })));
+  const events = (await database.all(`SELECT event_type, actor_type, actor_id, previous_status,
+    status, reason, occurred_at FROM order_event WHERE order_id = ? ORDER BY id`, id))
     .map((event) => ({
       type: event.event_type, actorType: event.actor_type, actorId: event.actor_id,
       previousStatus: event.previous_status, status: event.status,
@@ -94,8 +94,8 @@ function readSellerOrder(database, id) {
   };
 }
 
-export function getSellerOrder(database, id) {
-  return database.transaction(() => readSellerOrder(database, id));
+export async function getSellerOrder(database, id) {
+  return await database.transaction(async () => await readSellerOrder(database, id));
 }
 
 function validateDecision(action, input) {
@@ -119,10 +119,10 @@ function validateDecision(action, input) {
 }
 
 /* Confirming an order takes its quantities from tracked stock; the transaction rolls back if any product is short. */
-function deductStock(database, orderId) {
-  const lines = database.all(`SELECT i.product_id, SUM(i.quantity) AS quantity, p.sku, p.stock_quantity
+async function deductStock(database, orderId) {
+  const lines = await database.all(`SELECT i.product_id, SUM(i.quantity) AS quantity, p.sku, p.stock_quantity
     FROM order_item i JOIN delivery d ON d.id = i.delivery_id JOIN product p ON p.id = i.product_id
-    WHERE d.order_id = ? GROUP BY i.product_id`, orderId);
+    WHERE d.order_id = ? GROUP BY i.product_id, p.sku, p.stock_quantity`, orderId);
   for (const line of lines) {
     if (line.stock_quantity === null) continue;
     if (line.stock_quantity < line.quantity) {
@@ -130,43 +130,43 @@ function deductStock(database, orderId) {
       error.field = 'stock';
       throw error;
     }
-    database.run('UPDATE product SET stock_quantity = stock_quantity - ? WHERE id = ?', line.quantity, line.product_id);
+    await database.run('UPDATE product SET stock_quantity = stock_quantity - ? WHERE id = ?', line.quantity, line.product_id);
   }
 }
 
 /* Cancelling a confirmed order returns its quantities to tracked stock. */
-function restoreStock(database, orderId) {
-  database.run(`UPDATE product SET stock_quantity = stock_quantity + COALESCE((
+async function restoreStock(database, orderId) {
+  await database.run(`UPDATE product SET stock_quantity = stock_quantity + COALESCE((
       SELECT SUM(i.quantity) FROM order_item i JOIN delivery d ON d.id = i.delivery_id
       WHERE d.order_id = ? AND i.product_id = product.id), 0)
     WHERE stock_quantity IS NOT NULL AND id IN (
       SELECT i.product_id FROM order_item i JOIN delivery d ON d.id = i.delivery_id WHERE d.order_id = ?)`, orderId, orderId);
 }
 
-export function decideSellerOrder(database, id, action, input, actorId) {
+export async function decideSellerOrder(database, id, action, input, actorId) {
   if (!Object.hasOwn(transitions, action)) throw new TypeError('Invalid order action.');
   const decision = validateDecision(action, input);
   const now = new Date().toISOString();
-  database.transaction(() => {
-    const current = database.get('SELECT status, revision FROM shop_order WHERE id = ?', id);
+  await database.transaction(async () => {
+    const current = await database.get('SELECT status, revision FROM shop_order WHERE id = ?', id);
     if (!current) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
     const { from } = transitions[action];
     if (current.status !== from || current.revision !== input.expectedRevision) {
       throw new ApiError(409, 'STALE_REVISION', 'The order changed. Reload and try again.');
     }
     const tracking = decision.tracking;
-    const changed = database.get(`UPDATE shop_order SET status = ?, revision = revision + 1, updated_at = ?
+    const changed = await database.get(`UPDATE shop_order SET status = ?, revision = revision + 1, updated_at = ?
       ${tracking ? ', tracking_carrier = ?, tracking_no = ?' : ''}
       WHERE id = ? AND status = ? AND revision = ? RETURNING id`,
     decision.status, now, ...(tracking ? [tracking.carrier, tracking.trackingNo] : []), id, from, input.expectedRevision);
     if (!changed) {
       throw new ApiError(409, 'STALE_REVISION', 'The order changed. Reload and try again.');
     }
-    if (decision.status === 'CONFIRMED') deductStock(database, id);
-    if (decision.status === 'CANCELLED') restoreStock(database, id);
-    database.run(`INSERT INTO order_event
+    if (decision.status === 'CONFIRMED') await deductStock(database, id);
+    if (decision.status === 'CANCELLED') await restoreStock(database, id);
+    await database.run(`INSERT INTO order_event
       (order_id, event_type, actor_type, actor_id, previous_status, status, reason, occurred_at)
       VALUES (?, ?, 'SELLER', ?, ?, ?, ?, ?)`, id, decision.status, actorId, from, decision.status, decision.reason, now);
   });
-  return getSellerOrder(database, id);
+  return await getSellerOrder(database, id);
 }

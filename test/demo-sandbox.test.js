@@ -8,12 +8,12 @@ import { createDemoSandbox } from '../src/demo-sandbox.js';
 import { errorResponse } from '../src/http.js';
 import worker from '../src/worker.js';
 
-function fixture(t, mode = 'public-demo') {
-  const store = openDatabase(':memory:'); t.after(() => store.close());
+async function fixture(t, mode = 'public-demo') {
+  const store = await openDatabase(':memory:'); t.after(async () => await store.close());
   const config = { shopMode: mode, production: true, publicOrigin: 'https://demo.example.test', username: 'synthetic-owner' };
-  initializeShop(store, config);
-  if (mode === 'manual') setupShop(store, { mode: 'production', shopName: 'Synthetic production fixture' });
-  const handle = createApi({ store, config, serveStatic: () => new Response('fixture asset') });
+  await initializeShop(store, config);
+  if (mode === 'manual') await setupShop(store, { mode: 'production', shopName: 'Synthetic production fixture' });
+  const handle = await createApi({ store, config, serveStatic: () => new Response('fixture asset') });
   const call = async (method, path, body, session = {}, overrides = {}) => {
     const response = await handle(new Request(`https://demo.example.test${path.startsWith('/') ? path : '/api/v1/demo/' + path}`, {
       method, headers: { origin: config.publicOrigin, ...(body ? { 'content-type': 'application/json' } : {}),
@@ -31,7 +31,7 @@ function fixture(t, mode = 'public-demo') {
 }
 
 test('passwordless fictional roles cannot authorize the existing seller API or change persistent rows', async t => {
-  const f = fixture(t), before = f.store.all('SELECT * FROM product ORDER BY id');
+  const f = await fixture(t), before = await f.store.all('SELECT * FROM product ORDER BY id');
   assert.equal((await f.call('GET', '/api/v1/shop')).data.demoRolesAvailable, true);
   assert.equal((await f.call('GET', 'availability')).status, 200);
   assert.equal((await f.call('POST', 'session', { role: 'SUPER_ADMIN' })).status, 400);
@@ -40,13 +40,13 @@ test('passwordless fictional roles cannot authorize the existing seller API or c
   const session = await f.login('SELLER');
   assert.equal((await f.call('GET', 'companies', null, session)).data.items.length, 1);
   for (const path of ['/api/v1/seller/session', '/api/v1/seller/products', '/api/v1/seller/orders', '/api/v1/seller/company-settings']) assert.equal((await f.call('GET', path, null, session)).status, 401);
-  assert.equal(f.store.get('SELECT COUNT(*) AS n FROM session').n, 0);
-  assert.equal(f.store.get('SELECT COUNT(*) AS n FROM shop_order').n, 0);
-  assert.deepEqual(f.store.all('SELECT * FROM product ORDER BY id'), before);
+  assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM session')).n, 0);
+  assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM shop_order')).n, 0);
+  assert.deepEqual(await f.store.all('SELECT * FROM product ORDER BY id'), before);
 });
 
 test('public demo login opens the normal seller session without a password, only in public-demo mode', async t => {
-  const f = fixture(t);
+  const f = await fixture(t);
   assert.equal((await f.call('POST', '/api/v1/seller/demo-session', null, {}, { origin: 'https://attacker.invalid' })).status, 403);
   const result = await f.call('POST', '/api/v1/seller/demo-session');
   assert.equal(result.status, 200);
@@ -54,45 +54,45 @@ test('public demo login opens the normal seller session without a password, only
   const session = { cookie: result.response.headers.get('set-cookie').split(';')[0], csrfToken: result.data.csrfToken };
   assert.equal((await f.call('GET', '/api/v1/seller/products', null, session)).status, 200);
   for (const mode of ['manual', 'demo']) {
-    const other = fixture(t, mode);
+    const other = await fixture(t, mode);
     assert.equal((await other.call('POST', '/api/v1/seller/demo-session')).status, 404);
-    assert.equal(other.store.get('SELECT COUNT(*) AS n FROM session').n, 0);
+    assert.equal((await other.store.get('SELECT COUNT(*) AS n FROM session')).n, 0);
   }
 });
 
 test('seller can reset the public demo to its seeded state, and only there', async t => {
-  const f = fixture(t);
+  const f = await fixture(t);
   const login = await f.call('POST', '/api/v1/seller/demo-session');
   const session = { cookie: login.response.headers.get('set-cookie').split(';')[0], csrfToken: login.data.csrfToken };
-  const seeded = f.store.get('SELECT COUNT(*) AS n FROM product').n;
+  const seeded = (await f.store.get('SELECT COUNT(*) AS n FROM product')).n;
   assert.ok(seeded > 0);
   // Diverge from the seed: edit a product, add a category, create an order.
-  f.store.run("UPDATE product SET name = 'Edited by visitor', active = 0");
-  f.store.run("INSERT INTO general_code(type, code, label, active, created_at, updated_at) VALUES ('PRODUCT_CATEGORY', 'EXTRA', 'Extra', 1, 'x', 'x')");
-  f.store.run("UPDATE order_sequence SET value = 7 WHERE id = 1");
+  await f.store.run("UPDATE product SET name = 'Edited by visitor', active = 0");
+  await f.store.run("INSERT INTO general_code(type, code, label, active, created_at, updated_at) VALUES ('PRODUCT_CATEGORY', 'EXTRA', 'Extra', 1, 'x', 'x')");
+  await f.store.run("UPDATE order_sequence SET value = 7 WHERE id = 1");
   assert.equal((await f.call('POST', '/api/v1/seller/demo/reset', { confirm: true })).status, 401);
   assert.equal((await f.call('POST', '/api/v1/seller/demo/reset', { confirm: true }, { cookie: session.cookie })).status, 403);
   assert.equal((await f.call('POST', '/api/v1/seller/demo/reset', { confirm: false }, session)).status, 400);
   assert.equal((await f.call('POST', '/api/v1/seller/demo/reset', { confirm: true }, session, { origin: 'https://attacker.invalid' })).status, 403);
-  assert.equal(f.store.get("SELECT COUNT(*) AS n FROM product WHERE name = 'Edited by visitor'").n, seeded);
+  assert.equal((await f.store.get("SELECT COUNT(*) AS n FROM product WHERE name = 'Edited by visitor'")).n, seeded);
   const result = await f.call('POST', '/api/v1/seller/demo/reset', { confirm: true }, session);
   assert.equal(result.status, 200);
   assert.deepEqual(result.data, { reset: true, products: seeded });
-  assert.equal(f.store.get('SELECT COUNT(*) AS n FROM product').n, seeded);
-  assert.equal(f.store.get("SELECT COUNT(*) AS n FROM product WHERE name = 'Edited by visitor' OR active = 0").n, 0);
-  assert.equal(f.store.get("SELECT COUNT(*) AS n FROM general_code WHERE code = 'EXTRA'").n, 0);
-  assert.equal(f.store.get('SELECT value FROM order_sequence WHERE id = 1').value, 0);
-  assert.equal(f.store.get('SELECT COUNT(*) AS n FROM session').n, 1);
+  assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM product')).n, seeded);
+  assert.equal((await f.store.get("SELECT COUNT(*) AS n FROM product WHERE name = 'Edited by visitor' OR active = 0")).n, 0);
+  assert.equal((await f.store.get("SELECT COUNT(*) AS n FROM general_code WHERE code = 'EXTRA'")).n, 0);
+  assert.equal((await f.store.get('SELECT value FROM order_sequence WHERE id = 1')).value, 0);
+  assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM session')).n, 1);
   assert.equal((await f.call('GET', '/api/v1/seller/products', null, session)).status, 200);
   for (const mode of ['manual', 'demo']) {
-    const other = fixture(t, mode);
+    const other = await fixture(t, mode);
     assert.equal((await other.call('POST', '/api/v1/seller/demo/reset', { confirm: true })).status, 401);
   }
 });
 
 test('production and legacy demo modes expose no bypass endpoints or demo pages, including encoded paths', async t => {
   for (const mode of ['manual', 'demo']) {
-    const f = fixture(t, mode);
+    const f = await fixture(t, mode);
     assert.equal((await f.call('GET', '/api/v1/shop')).data.demoRolesAvailable, false);
     assert.equal((await f.call('GET', 'availability')).status, 404);
     for (const [method, path, body] of [['POST', 'session', { role: 'ADMIN' }], ['GET', 'companies'], ['POST', 'reset', {}]]) assert.equal((await f.call(method, path, body)).status, 404);
@@ -111,7 +111,7 @@ test('production and legacy demo modes expose no bypass endpoints or demo pages,
 });
 
 test('malformed product bodies, missing CSRF and foreign origins cannot mutate fictional records', async t => {
-  const f = fixture(t), session = await f.login('SELLER');
+  const f = await fixture(t), session = await f.login('SELLER');
   const path = 'companies/company-alpha/products', products = (await f.call('GET', path, null, session)).data.items;
   for (const body of [[], 'bad', { expectedRevision: 1, companyId: 'company-beta' }]) assert.equal((await f.call('PATCH', `${path}/${products[0].id}`, body, session)).status, 400);
   assert.equal((await f.call('PATCH', `${path}/${products[0].id}`, { expectedRevision: 1, name: 'blocked' }, session, { 'x-csrf-token': '' })).status, 403);
@@ -120,7 +120,7 @@ test('malformed product bodies, missing CSRF and foreign origins cannot mutate f
 });
 
 test('seller rejects foreign company and resource IDs, spoofed roles and access administration', async t => {
-  const f = fixture(t), session = await f.login('ADMIN');
+  const f = await fixture(t), session = await f.login('ADMIN');
   const alpha = (await f.call('GET', 'companies/company-alpha/products', null, session)).data.items;
   const beta = (await f.call('GET', 'companies/company-beta/products', null, session)).data.items;
   const orders = (await f.call('GET', 'companies/company-beta/orders', null, session)).data.items;
@@ -142,7 +142,7 @@ test('seller rejects foreign company and resource IDs, spoofed roles and access 
 });
 
 test('logins are isolated; reset invalidates CSRF and IDs; exit destroys only its own workspace', async t => {
-  const f = fixture(t), a = await f.login('ADMIN'), b = await f.login('ADMIN');
+  const f = await fixture(t), a = await f.login('ADMIN'), b = await f.login('ADMIN');
   const product = (await f.call('GET', 'companies/company-alpha/products', null, a)).data.items[0];
   assert.equal((await f.call('PATCH', `companies/company-alpha/products/${product.id}`, { expectedRevision: 1, name: 'Fictional edit' }, a)).status, 200);
   assert.equal((await f.call('GET', `companies/company-alpha/products/${product.id}`, null, b)).status, 404);
@@ -159,7 +159,7 @@ test('logins are isolated; reset invalidates CSRF and IDs; exit destroys only it
 });
 
 test('admin manages fictional companies and sellers; disabled access and companies cannot be assumed', async t => {
-  const f = fixture(t), session = await f.login('ADMIN');
+  const f = await fixture(t), session = await f.login('ADMIN');
   assert.equal((await f.call('POST', 'companies', { name: 'Fictional Gamma', currency: 'SGD' }, session, { 'x-csrf-token': '' })).status, 403);
   const company = await f.call('POST', 'companies', { name: 'Fictional Gamma', currency: 'SGD' }, session); assert.equal(company.status, 201);
   const seller = await f.call('POST', 'sellers', { name: 'Demo Gamma', companyId: company.data.id }, session); assert.equal(seller.status, 201);
@@ -171,7 +171,7 @@ test('admin manages fictional companies and sellers; disabled access and compani
 });
 
 test('reset keeps assumed Sellers valid without restoring Admin privileges or foreign-company access', async t => {
-  const f = fixture(t);
+  const f = await fixture(t);
   for (const membership of ['custom', 'seller-beta']) {
     const session = await f.login('ADMIN');
     const sellerId = membership === 'custom'
@@ -204,7 +204,7 @@ test('reset keeps assumed Sellers valid without restoring Admin privileges or fo
 });
 
 test('synthetic API enforces currency, company SKU scope, revision races and immutable order snapshots', async t => {
-  const f = fixture(t), session = await f.login('ADMIN');
+  const f = await fixture(t), session = await f.login('ADMIN');
   const product = (await f.call('GET', 'companies/company-alpha/products', null, session)).data.items[0];
   const original = (await f.call('GET', 'companies/company-alpha/orders', null, session)).data.items[0];
   assert.equal((await f.call('PATCH', 'companies/company-alpha', { currency: 'SGD', expectedRevision: 1 }, session)).status, 409);
@@ -223,7 +223,7 @@ test('synthetic API enforces currency, company SKU scope, revision races and imm
 });
 
 test('audit failure rolls back synthetic changes; expired sessions and login bursts fail closed', async t => {
-  const f = fixture(t), session = await f.login('ADMIN');
+  const f = await fixture(t), session = await f.login('ADMIN');
   const product = (await f.call('GET', 'companies/company-alpha/products', null, session)).data.items[0];
   for (let i = 0; i < 100; i++) assert.equal((await f.call('PATCH', `companies/company-alpha/products/${product.id}`, { expectedRevision: i + 1, priceMinor: 100 + i }, session)).status, 200);
   const before = (await f.call('GET', `companies/company-alpha/products/${product.id}`, null, session)).data;

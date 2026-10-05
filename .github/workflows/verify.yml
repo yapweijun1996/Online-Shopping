@@ -11,6 +11,17 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: online_shopping_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d online_shopping_test"
+          --health-interval 5s --health-timeout 3s --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -20,8 +31,12 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - run: python3 test/auto-update.test.py
       - run: npm run check
       - run: npm test
+        env:
+          NODE_ENV: test
+          SHOP_TEST_DATABASE_URL: postgres://postgres@127.0.0.1:5432/online_shopping_test
       - run: npm run worker:check
         env:
           WRANGLER_SEND_METRICS: 'false'

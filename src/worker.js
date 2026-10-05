@@ -1,10 +1,10 @@
-import { initializeShop, shopObjectName } from './shop-setup.js';
-import { createApi } from './app.js';
-import { ensureAdmin } from './auth.js';
-import { readWorkerConfig, readShopMode, readDemoRevision } from './config.js';
-import { migrateStore } from './db.js';
-import { openDurableStore } from './durable-store.js';
-import { errorResponse, json, readBody } from './http.js';
+import { initializeShop, shopObjectName } from '../worker-runtime/shop-setup.js';
+import { createApi } from '../worker-runtime/app.js';
+import { ensureAdmin } from '../worker-runtime/auth.js';
+import { readWorkerConfig, readShopMode, readDemoRevision } from '../worker-runtime/config.js';
+import { migrateStore } from '../worker-runtime/db.js';
+import { openDurableStore } from '../worker-runtime/durable-store.js';
+import { errorResponse, json, readBody } from '../worker-runtime/http.js';
 
 const apiPath = /^\/(?:api\/|health$|ready$)/;
 const MAX_FORWARD_BODY = 1024 * 1024;

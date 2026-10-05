@@ -1,0 +1,8 @@
+tunnel: ed99f4f9-9ca0-46fd-b642-6ac3296231f8
+credentials-file: /run/secrets/tunnel_credentials
+ingress:
+  - hostname: shop.gmb01.xyz
+    service: http://frontend:80
+  - hostname: seller.gmb01.xyz
+    service: http://frontend:80
+  - service: http_status:404

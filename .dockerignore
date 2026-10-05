@@ -17,3 +17,5 @@ docs
 .dev.vars
 .dev.vars.*
 .wrangler
+
+worker-runtime

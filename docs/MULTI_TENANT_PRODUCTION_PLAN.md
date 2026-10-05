@@ -1,6 +1,6 @@
 # Multi-tenant production plan (Docker, PostgreSQL, SuperAdmin)
 
-**Status: plan approved in outline by the owner on 2026-10-05; nothing here is implemented.** It turns the review draft in [ADMIN_MULTI_COMPANY_DESIGN.md](ADMIN_MULTI_COMPANY_DESIGN.md) into ordered, separately mergeable phases. The data model, authorization and migration rules in that draft still apply; this plan adds the owner's decisions, the runtime question and the build order.
+**Status: multi-tenant plan approved in outline; tenancy and account phases are not implemented.** The separate [single-shop OrbStack deployment](ORBSTACK_DEPLOY.md) implements async Node storage, PostgreSQL and the latest customer/seller hostnames; it does not implement the full tenant roadmap. It turns the review draft in [ADMIN_MULTI_COMPANY_DESIGN.md](ADMIN_MULTI_COMPANY_DESIGN.md) into ordered, separately mergeable phases. The data model, authorization and migration rules in that draft still apply; this plan adds the owner's decisions, the runtime question and the build order.
 
 ## Owner decisions (2026-10-05)
 

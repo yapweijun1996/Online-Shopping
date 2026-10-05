@@ -1,6 +1,6 @@
 # Docker deployment and data boundary
 
-**Status: local Compose smoke verified; no production release.** See [README](../README.md) for local startup. This document records the chosen deployment shape and gates, not a claim that a public host exists.
+**Current self-hosted deployment:** see [OrbStack + PostgreSQL + Cloudflare Tunnel](ORBSTACK_DEPLOY.md) for the new two-hostname stack. The sections below describe the retained SQLite stack and historical release gates. See [README](../README.md) for local startup. This document records the chosen deployment shape and gates, not a claim that a public host exists.
 
 ## Topology
 

@@ -1,0 +1,60 @@
+{
+  auto_https off
+}
+
+(proxy) {
+  reverse_proxy backend:3000 {
+    header_up X-Real-IP {header.CF-Connecting-IP}
+  }
+}
+
+(headers) {
+  encode zstd gzip
+  header X-Content-Type-Options nosniff
+  header Referrer-Policy strict-origin-when-cross-origin
+  header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+  header Cache-Control "no-cache"
+}
+
+http://shop.gmb01.xyz {
+  import headers
+  @private path /seller /seller/* /api/v1/seller/* /demo /demo/* /api/v1/demo/*
+  handle @private {
+    respond 404
+  }
+  @api path /api/* /health /ready
+  handle @api {
+    import proxy
+  }
+  redir / /shop/ 302
+  redir /shop /shop/ 302
+  handle {
+    root * /srv/public
+    file_server
+  }
+}
+
+http://seller.gmb01.xyz {
+  import headers
+  @private {
+    path /shop /shop/* /demo /demo/* /api/v1/demo/* /api/v1/orders /api/v1/orders/*
+    not path /shop/tokens.css
+  }
+  handle @private {
+    respond 404
+  }
+  @api path /api/* /health /ready
+  handle @api {
+    import proxy
+  }
+  redir / /seller/ 302
+  redir /seller /seller/ 302
+  handle {
+    root * /srv/public
+    file_server
+  }
+}
+
+:80 {
+  respond 404
+}

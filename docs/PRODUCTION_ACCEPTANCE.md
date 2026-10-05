@@ -2,7 +2,7 @@
 
 Reconciled 2026-10-02 against `SPEC.md`, current code/tests and recorded project KB. The denominator remains **18**, not number of features, tests, screenshots or demo deployments. Payment/courier automation stays outside the existing MVP. PR #15 was owner-merged as main `f28c04b1d1655f5002469a98f62c3e65cb73d6bf`; the public Demo still runs Shop v103 / Seller v79 from the earlier `c1d1f688458eaa371b80f56f847ffbfe43612de2` release. This repair candidate is Shop v105 / Seller v81 and is not deployed.
 
-The historical single-company local baseline records AC-01–15 and AC-18 as verified (16/18). AC-16/17 remain open. **Production released: 0/18**. A running Cloudflare Demo does not satisfy the future Docker/PostgreSQL Production denominator. The present full regression and focused browser results preserve evidence for the candidate changes; they do not re-certify every historical browser journey or the unimplemented production tenant adapter.
+The historical single-company local baseline records AC-01–15 and AC-18 as verified (16/18). AC-16/17 remain open. **Historical production/tenant acceptance ledger: 0/18; it is not a count of the newly verified deployment checks.** A running Cloudflare Demo does not satisfy the future Docker/PostgreSQL Production denominator. The present full regression and focused browser results preserve evidence for the candidate changes; they do not re-certify every historical browser journey or the unimplemented production tenant adapter.
 
 | Item | Current single-company evidence | Remaining production/tenant gate |
 | --- | --- | --- |
@@ -26,3 +26,8 @@ The historical single-company local baseline records AC-01–15 and AC-18 as ver
 | AC-18 languages | Seven ordered locales/resource parity; focused 320px appearance layouts. | Complete deployed core journeys; fictional Admin prototype currently English and excluded from this proof. |
 
 Owner-recorded business/contractual necessity is context, not a legal conclusion or evidence that backups/retention obligations are satisfied. Historical local counts remain clearly labelled; opening additional tenant acceptance gates cannot raise production completion. Record each deployed criterion against its exact artifact/version before marking Released.
+
+
+### Deployed single-shop instance, 2026-10-05
+
+The OrbStack/PostgreSQL instance at `shop.gmb01.xyz` and `seller.gmb01.xyz` now has verified HTTPS readiness, isolated Node/database networking, separate customer/seller origins, a restricted application database account, a hash-verified SQLite import, and a restored-backup application smoke test. A fresh-volume initialization test and public browser login/logout check passed. See [current evidence](PROGRESS.md#2026-10-05-single-shop-orbstackpostgresql-deployment) and [operations](ORBSTACK_DEPLOY.md). These establish the listed deployment sub-items; they do not implement tenant isolation, multi-account roles, off-machine disaster recovery or physical-device PWA installation/update, and do not automatically close the full AC-16/17 gates.

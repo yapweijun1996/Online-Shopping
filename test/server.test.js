@@ -16,7 +16,7 @@ const productionPassword = 'Q7z!rK8mP4vN2tL6';
 async function fixture() {
   const directory = mkdtempSync(path.join(tmpdir(), 'online-shopping-test-'));
   const config = { username, password, dbPath: path.join(directory, 'private.db'), production: false, publicOrigin: null };
-  const app = createApp(config);
+  const app = await createApp(config);
   await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve));
   const origin = `http://127.0.0.1:${app.server.address().port}`;
   return {
@@ -69,7 +69,7 @@ test('file-backed credentials are read without a trailing newline', () => {
 test('readiness fails closed when schema version changes while liveness stays up', async () => {
   const f = await fixture();
   try {
-    f.app.database.setSchemaVersion(SCHEMA_VERSION + 1);
+    await f.app.database.setSchemaVersion(SCHEMA_VERSION + 1);
     assert.equal((await f.request('GET', '/health')).response.status, 200);
     assert.equal((await f.request('GET', '/ready')).response.status, 503);
   } finally {
@@ -125,8 +125,8 @@ test('session persists across restart and configured identity cannot silently ch
     const login = await f.request('POST', '/api/v1/seller/session', { username, password });
     const cookie = login.response.headers.get('set-cookie').split(';')[0];
     await f.app.close();
-    assert.throws(() => createApp({ ...f.config, password: 'DifferentPrivatePass123!' }), /do not match/);
-    restarted = createApp(f.config);
+    await assert.rejects(async () => await createApp({ ...f.config, password: 'DifferentPrivatePass123!' }), /do not match/);
+    restarted = await createApp(f.config);
     await new Promise((resolve) => restarted.server.listen(0, '127.0.0.1', resolve));
     const response = await fetch(`http://127.0.0.1:${restarted.server.address().port}/api/v1/seller/session`, { headers: { cookie } });
     assert.equal(response.status, 200);

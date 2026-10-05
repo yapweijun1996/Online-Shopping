@@ -37,8 +37,8 @@ function requireCsrf(request, session) {
  * server and the Cloudflare Durable Object share one set of routes. The runtime supplies
  * the client address it trusts and, optionally, a handler for non-API paths.
  */
-export function createApi({ store, config, serveStatic = null }) {
-  const demoEnabled = config.shopMode === 'public-demo' && getShopSetup(store).mode === 'demo';
+export async function createApi({ store, config, serveStatic = null }) {
+  const demoEnabled = config.shopMode === 'public-demo' && (await getShopSetup(store)).mode === 'demo';
   const demoRoute = createDemoSandbox({ enabled: demoEnabled, production: config.production });
   const loginLimiter = new SqlLimiter(store, 'login', { limit: 5, windowMs: LIMIT_WINDOW_MS });
   const checkoutLimiter = new SqlLimiter(store, 'checkout', { limit: 30, windowMs: LIMIT_WINDOW_MS });
@@ -49,13 +49,15 @@ export function createApi({ store, config, serveStatic = null }) {
     const url = new URL(request.url);
     const pathname = url.pathname;
     const method = request.method;
-    const expectedOrigin = config.publicOrigin || url.origin;
+    const expectedOrigin = pathname.startsWith('/api/v1/seller/')
+      ? config.sellerOrigin || config.publicOrigin || url.origin
+      : config.publicOrigin || url.origin;
     const demoResponse = await demoRoute(request, expectedOrigin, clientAddress);
     if (demoResponse) return demoResponse;
-    if (method === 'GET' && pathname === '/health') return json(200, { status: 'alive' });
+    if (method === 'GET' && pathname === '/health') return json(200, { status: 'alive', ...(config.appRevision ? { revision: config.appRevision } : {}) });
     if (method === 'GET' && pathname === '/ready') {
-      const healthy = ready(store);
-      return json(healthy ? 200 : 503, { status: healthy ? 'ready' : 'unavailable' });
+      const healthy = await ready(store);
+      return json(healthy ? 200 : 503, { status: healthy ? 'ready' : 'unavailable', ...(config.appRevision ? { revision: config.appRevision } : {}) });
     }
     if (!pathname.startsWith('/api/')) {
       let decoded;
@@ -65,8 +67,8 @@ export function createApi({ store, config, serveStatic = null }) {
       throw new ApiError(404, 'NOT_FOUND', 'Not found.');
     }
     if (method === 'GET' && pathname === '/api/v1/shop') {
-      const setup = getShopSetup(store);
-      const company = getCompanySettings(store);
+      const setup = await getShopSetup(store);
+      const company = await getCompanySettings(store);
       return json(200, {
         ...setup,
         ...(config.shopMode === 'public-demo' ? { demoNamespace: shopObjectName(config.shopMode, config.demoRevision) } : {}),
@@ -76,50 +78,50 @@ export function createApi({ store, config, serveStatic = null }) {
         mobileHideBarsOnScroll: company.mobileHideBarsOnScroll,
       });
     }
-    if (method === 'GET' && pathname === '/api/v1/products') return json(200, listProducts(store, url.searchParams));
+    if (method === 'GET' && pathname === '/api/v1/products') return json(200, await listProducts(store, url.searchParams));
     const galleryImage = productGalleryPath.exec(pathname);
     if (method === 'GET' && galleryImage && !galleryImage[1]) {
-      const value = getGalleryImage(store, galleryImage[2], galleryImage[3]);
+      const value = await getGalleryImage(store, galleryImage[2], galleryImage[3]);
       return image(value, Boolean(value) && url.searchParams.get('v') === value.version);
     }
     const publicProduct = productIdPath.exec(pathname);
     if (method === 'GET' && publicProduct) {
       if (publicProduct[2] === 'image') {
-        const value = getProductImage(store, publicProduct[1]);
+        const value = await getProductImage(store, publicProduct[1]);
         return image(value, Boolean(value) && url.searchParams.get('v') === value.version);
       }
-      const product = getProduct(store, publicProduct[1]);
+      const product = await getProduct(store, publicProduct[1]);
       if (!product) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
-      return json(200, withDemoGallery(product, config.shopMode === 'public-demo' ? getProductImage(store, product.id) : null, config.shopMode));
+      return json(200, withDemoGallery(product, config.shopMode === 'public-demo' ? await getProductImage(store, product.id) : null, config.shopMode));
     }
     if (method === 'POST' && pathname === '/api/v1/orders') {
       requireOrigin(request, expectedOrigin);
-      if (!checkoutLimiter.attempt(clientAddress)) {
+      if (!await checkoutLimiter.attempt(clientAddress)) {
         throw new ApiError(429, 'RATE_LIMITED', 'Too many submissions. Try again later.');
       }
       const body = await readJson(request, 128 * 1024);
-      const result = createOrder(store, request.headers.get('idempotency-key'), body);
+      const result = await createOrder(store, request.headers.get('idempotency-key'), body);
       return json(result.replayed ? 200 : 201, result.receipt);
     }
     if (method === 'POST' && pathname === '/api/v1/orders/statuses') {
       requireOrigin(request, expectedOrigin);
-      if (!orderStatusLimiter.attempt(clientAddress)) {
+      if (!await orderStatusLimiter.attempt(clientAddress)) {
         throw new ApiError(429, 'RATE_LIMITED', 'Too many status checks. Try again later.');
       }
-      return json(200, lookupOrderStatuses(store, await readJson(request, 12 * 1024)));
+      return json(200, await lookupOrderStatuses(store, await readJson(request, 12 * 1024)));
     }
     if (!pathname.startsWith('/api/v1/seller/')) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
 
     if (method === 'POST' && pathname === '/api/v1/seller/session') {
       requireOrigin(request, expectedOrigin);
-      if (!loginLimiter.attempt(clientAddress)) throw new ApiError(429, 'RATE_LIMITED', 'Too many attempts. Try later.');
+      if (!await loginLimiter.attempt(clientAddress)) throw new ApiError(429, 'RATE_LIMITED', 'Too many attempts. Try later.');
       const body = await readJson(request);
       if (typeof body.username !== 'string' || typeof body.password !== 'string' ||
-          body.username.length > 64 || body.password.length > 256 || !(await authenticate(store, body.username, body.password))) {
+          body.username.length > 64 || body.password.length > 256 || !await authenticate(store, body.username, body.password)) {
         throw new ApiError(401, 'UNAUTHORIZED', 'Invalid credentials.');
       }
-      loginLimiter.clear(clientAddress);
-      const session = createSession(store);
+      await loginLimiter.clear(clientAddress);
+      const session = await createSession(store);
       return json(200, { username: config.username, role: 'SUPER_ADMIN', csrfToken: session.csrfToken }, {
         'Set-Cookie': cookieFor(session.token, session.maxAge, config.production),
       });
@@ -129,15 +131,15 @@ export function createApi({ store, config, serveStatic = null }) {
     if (method === 'POST' && pathname === '/api/v1/seller/demo-session') {
       if (!demoEnabled) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
       requireOrigin(request, expectedOrigin);
-      if (!demoLoginLimiter.attempt(clientAddress)) throw new ApiError(429, 'RATE_LIMITED', 'Too many attempts. Try later.');
-      const session = createSession(store);
+      if (!await demoLoginLimiter.attempt(clientAddress)) throw new ApiError(429, 'RATE_LIMITED', 'Too many attempts. Try later.');
+      const session = await createSession(store);
       return json(200, { username: config.username, role: 'SUPER_ADMIN', csrfToken: session.csrfToken }, {
         'Set-Cookie': cookieFor(session.token, session.maxAge, config.production),
       });
     }
 
     const token = sessionCookieFrom(request.headers.get('cookie') ?? '');
-    const session = readSession(store, token);
+    const session = await readSession(store, token);
     if (!session) throw new ApiError(401, 'UNAUTHORIZED', 'Sign in required.');
     if (method === 'GET' && pathname === '/api/v1/seller/session') {
       return json(200, { username: config.username, role: 'SUPER_ADMIN', csrfToken: session.csrf_token });
@@ -145,14 +147,14 @@ export function createApi({ store, config, serveStatic = null }) {
     if (method === 'DELETE' && pathname === '/api/v1/seller/session') {
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
-      deleteSession(store, token);
+      await deleteSession(store, token);
       return json(200, { signedOut: true }, { 'Set-Cookie': cookieFor('', 0, config.production) });
     }
-    if (method === 'GET' && pathname === '/api/v1/seller/setup') return json(200, getShopSetup(store));
+    if (method === 'GET' && pathname === '/api/v1/seller/setup') return json(200, await getShopSetup(store));
     if (method === 'POST' && pathname === '/api/v1/seller/setup') {
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
-      return json(200, setupShop(store, await readJson(request)));
+      return json(200, await setupShop(store, await readJson(request)));
     }
     if (method === 'POST' && pathname === '/api/v1/seller/demo/reset') {
       if (!demoEnabled) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
@@ -160,16 +162,16 @@ export function createApi({ store, config, serveStatic = null }) {
       requireCsrf(request, session);
       const body = await readJson(request, 1024);
       if (Object.keys(body).length !== 1 || body.confirm !== true) throw new FieldError('confirm', 'Confirm the reset.');
-      return json(200, resetDemo(store));
+      return json(200, await resetDemo(store));
     }
     if (method === 'GET' && pathname === '/api/v1/seller/products') {
-      return json(200, listProducts(store, url.searchParams, true));
+      return json(200, await listProducts(store, url.searchParams, true));
     }
     if (method === 'GET' && pathname === '/api/v1/seller/categories') {
-      return json(200, { items: listCategories(store) });
+      return json(200, { items: await listCategories(store) });
     }
     if (method === 'GET' && pathname === '/api/v1/seller/company-settings') {
-      return json(200, getCompanySettings(store));
+      return json(200, await getCompanySettings(store));
     }
     if ((method === 'POST' && pathname === '/api/v1/seller/categories') ||
         (method === 'PATCH' && pathname.startsWith('/api/v1/seller/categories/')) ||
@@ -177,21 +179,21 @@ export function createApi({ store, config, serveStatic = null }) {
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
       const body = await readJson(request);
-      if (pathname === '/api/v1/seller/company-settings') return json(200, updateCompanySettings(store, body));
-      if (method === 'POST') return json(201, createCategory(store, body));
+      if (pathname === '/api/v1/seller/company-settings') return json(200, await updateCompanySettings(store, body));
+      if (method === 'POST') return json(201, await createCategory(store, body));
       let code;
       try { code = decodeURIComponent(pathname.slice('/api/v1/seller/categories/'.length)); }
       catch { throw new ApiError(404, 'NOT_FOUND', 'Category not found.'); }
       if (!code || code.includes('/')) throw new ApiError(404, 'NOT_FOUND', 'Category not found.');
-      return json(200, updateCategory(store, code, body));
+      return json(200, await updateCategory(store, code, body));
     }
-    if (method === 'GET' && pathname === '/api/v1/seller/orders/summary') return json(200, pendingOrderSummary(store));
+    if (method === 'GET' && pathname === '/api/v1/seller/orders/summary') return json(200, await pendingOrderSummary(store));
     if (method === 'GET' && pathname === '/api/v1/seller/orders') {
-      return json(200, listSellerOrders(store, url.searchParams));
+      return json(200, await listSellerOrders(store, url.searchParams));
     }
     const sellerOrder = sellerOrderIdPath.exec(pathname);
     if (method === 'GET' && sellerOrder && !sellerOrder[2]) {
-      const order = getSellerOrder(store, sellerOrder[1]);
+      const order = await getSellerOrder(store, sellerOrder[1]);
       if (!order) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
       return json(200, order);
     }
@@ -199,23 +201,23 @@ export function createApi({ store, config, serveStatic = null }) {
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
       const body = await readJson(request);
-      return json(200, decideSellerOrder(store, sellerOrder[1], sellerOrder[2], body, config.username));
+      return json(200, await decideSellerOrder(store, sellerOrder[1], sellerOrder[2], body, config.username));
     }
     const sellerProduct = sellerProductIdPath.exec(pathname);
     if (method === 'GET' && sellerProduct && !sellerProduct[2]) {
-      const product = getProduct(store, sellerProduct[1], true);
+      const product = await getProduct(store, sellerProduct[1], true);
       if (!product) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
-      return json(200, withDemoGallery(product, config.shopMode === 'public-demo' ? getProductImage(store, product.id, true) : null, config.shopMode));
+      return json(200, withDemoGallery(product, config.shopMode === 'public-demo' ? await getProductImage(store, product.id, true) : null, config.shopMode));
     }
     if (method === 'GET' && sellerProduct?.[2] === 'image') {
-      return image(getProductImage(store, sellerProduct[1], true));
+      return image(await getProductImage(store, sellerProduct[1], true));
     }
     if (galleryImage?.[1]) {
-      if (method === 'GET') return image(getGalleryImage(store, galleryImage[2], galleryImage[3], true));
+      if (method === 'GET') return image(await getGalleryImage(store, galleryImage[2], galleryImage[3], true));
       if (method === 'DELETE') {
         requireOrigin(request, expectedOrigin);
         requireCsrf(request, session);
-        return json(200, deleteGalleryImage(store, galleryImage[2], galleryImage[3]));
+        return json(200, await deleteGalleryImage(store, galleryImage[2], galleryImage[3]));
       }
     }
     if (method === 'POST' && /^\/api\/v1\/seller\/products\/[0-9a-f-]{36}\/gallery$/.test(pathname)) {
@@ -226,7 +228,7 @@ export function createApi({ store, config, serveStatic = null }) {
       if (!body || Object.keys(body).length !== 1 || !Object.hasOwn(body, 'imageDataUrl')) {
         throw new FieldError('imageDataUrl', 'Choose an image.');
       }
-      return json(201, addGalleryImage(store, id, body.imageDataUrl));
+      return json(201, await addGalleryImage(store, id, body.imageDataUrl));
     }
     if ((method === 'POST' && pathname === '/api/v1/seller/products') ||
         (method === 'PATCH' && sellerProduct && !sellerProduct[2])) {
@@ -234,10 +236,10 @@ export function createApi({ store, config, serveStatic = null }) {
       requireCsrf(request, session);
       const body = await readJson(request, 750_000);
       if (method === 'POST') {
-        const product = createProduct(store, body);
+        const product = await createProduct(store, body);
         return json(201, product, { Location: `/api/v1/seller/products/${product.id}` });
       }
-      const product = updateProduct(store, sellerProduct[1], body);
+      const product = await updateProduct(store, sellerProduct[1], body);
       if (!product) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
       return json(200, product);
     }

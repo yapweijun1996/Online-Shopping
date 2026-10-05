@@ -69,11 +69,32 @@ export function readConfig(env = process.env) {
   if (dbPath === publicDir || dbPath.startsWith(`${publicDir}${path.sep}`)) {
     throw new Error('DB_PATH must be outside the public directory.');
   }
-  if (production && !env.DB_PATH) throw new Error('DB_PATH is required in production.');
+  if (production && !env.DB_PATH && !env.DATABASE_URL && !env.DATABASE_PASSWORD_FILE) throw new Error('DB_PATH is required in production.');
   const publicOrigin = validatePublicOrigin(env.PUBLIC_ORIGIN || null, production);
+  const sellerOrigin = env.SELLER_ORIGIN ? validatePublicOrigin(env.SELLER_ORIGIN, production) : publicOrigin;
+  let databaseUrl = env.DATABASE_URL || null;
+  if (env.DATABASE_PASSWORD_FILE) {
+    if (databaseUrl) throw new Error('Set only one of DATABASE_URL and DATABASE_PASSWORD_FILE.');
+    let dbPassword;
+    try { dbPassword = readFileSync(env.DATABASE_PASSWORD_FILE, 'utf8').replace(/\r?\n$/, ''); }
+    catch { throw new Error('DATABASE_PASSWORD_FILE cannot be read.'); }
+    if (!dbPassword) throw new Error('Database password is required.');
+    const host = env.DATABASE_HOST || 'postgres';
+    const user = env.DATABASE_USER || 'online_shopping';
+    const name = env.DATABASE_NAME || 'online_shopping';
+    if (![host, user, name].every(value => /^[a-zA-Z0-9_.-]+$/.test(value))) throw new Error('Invalid database connection setting.');
+    databaseUrl = `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(dbPassword)}@${host}:5432/${name}`;
+  }
+  if (databaseUrl) {
+    let url;
+    try { url = new URL(databaseUrl); } catch { throw new Error('Invalid DATABASE_URL.'); }
+    if (!['postgres:', 'postgresql:'].includes(url.protocol)) throw new Error('DATABASE_URL must use PostgreSQL.');
+  }
+  const appRevision = env.APP_REVISION || null;
+  if (appRevision && !/^(local|[0-9a-f]{40})$/.test(appRevision)) throw new Error('APP_REVISION must be a commit SHA or local.');
   const port = Number(env.PORT || 3000);
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('PORT must be a valid port.');
   const trustProxy = env.TRUST_PROXY === '1';
   if (env.TRUST_PROXY && !trustProxy) throw new Error('TRUST_PROXY must be 1 when set.');
-  return { production, username, password, dbPath, publicOrigin, port, trustProxy, shopMode: readShopMode(env), demoRevision: readDemoRevision(env) };
+  return { production, username, password, dbPath, databaseUrl, publicOrigin, sellerOrigin, appRevision, port, trustProxy, shopMode: readShopMode(env), demoRevision: readDemoRevision(env) };
 }
