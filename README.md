@@ -46,6 +46,7 @@ Make it easy for a seller to set up products, for a customer to shop without reg
 - [Runbook](docs/RUNBOOK.md): run locally, with Docker Compose, and as the Cloudflare Demo
 - [Current features and behavior](docs/FEATURES.md): what the shop and seller portal do today
 - [Deployment and release gates](docs/DEPLOY.md) and [public Demo controls](docs/PUBLIC_DEMO.md)
+- [GitHub main automatic deployment](docs/AUTO_DEPLOY.md): CI-gated OrbStack updates, backups and rollback
 
 **Product definition**
 
