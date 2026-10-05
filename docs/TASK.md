@@ -54,3 +54,23 @@
 ## Resume point
 
 The Demo host and DEC-06 retention basis are recorded. The checkout retry fix has local tests but awaits Demo deployment and browser confirmation. The PostgreSQL stack and encrypted restore pass synthetic local checks; obtain the Production server and hostname, copy backups to a real off-host destination, restore from that destination, and prove deployed HTTPS and rollback. AC-17 still needs target-device installation and update checks. Production artifact inspection remains REL-01. Do not copy sample credentials, customer access links, logistics workflow, or UI into the new app.
+
+### Owner-authorized buyer/seller milestone (2026-09-30)
+
+The owner's fresh instruction authorizes scoped tested fixes and publishing the existing Demo shop; older no-push notes above describe the historical gate, not current authorization. Current work: seller cached-queue/detail recovery, authenticated printable order summaries and confirmed-only packing sheets, pending approved storefront typography. Local unit/API and synthetic browser/PDF gates are tracked in SELLER_ACCEPTANCE.md. Commit/push/deploy require action-specific review and exact-head CI; release is not claimed before live verification. No production order writes, credentials/grants changes, payments or messages are authorized.
+
+
+### Backlog from the 2026-10-05 seller panel review (Planned, nothing implemented)
+
+| ID | Priority / status | Depends on | Done condition and evidence needed |
+| --- | --- | --- | --- |
+| SEL-01 | P1 / Implemented locally 2026-10-05 (not deployed) | — | Optional per-product stock (blank = unlimited); deducted when the seller confirms, refused at checkout if it exceeds stock; out-of-stock shown in the shop. Covered by `test/seller-orders.test.js`. Restocking on cancellation waits for SEL-02. |
+| SEL-02 | P1 / Implemented locally 2026-10-05 (not deployed) | — | Three-step fulfilment (Confirmed → Shipped → Delivered, cancel from Confirmed with stock restored), courier dropdown with Other, tracking number, buyer-visible status, audit events, migration 13. Covered by `test/seller-orders.test.js`, `test/local-orders.test.js`, `test/shop-route.test.js`. |
+| SEL-03 | P1 / Implemented locally 2026-10-05 (not deployed) | SEL-02 | Pending-order count endpoint, menu badge, page-title count and opt-in browser notification while the portal is open. Background push is not implemented. |
+| SEL-04 | P1 / Planned | [ADMIN_MULTI_COMPANY_DESIGN.md](ADMIN_MULTI_COMPANY_DESIGN.md) | More than one seller account with roles, password change and recovery. |
+| DEC-07 | P0 / Decided 2026-10-05 | — | Owner decision: keep submitted orders permanently, with a seller-initiated manual deletion function (to be built and verified; deletion must remove contact and address data and leave an audit record). AC-16 stays open until that function and recovery are verified. |
+| INT-01 | P2 / Planned, build behind an off-by-default switch (owner has no Meta account yet) | SEL-02, owner decisions in [INTEGRATIONS.md](INTEGRATIONS.md) | WhatsApp Business Cloud API order notifications with approved templates, consent check, webhook signature check and a send log; Demo sends only to the visitor's own number or is simulated. |
+| INT-02 | P2 / Planned | SEL-02 | One courier integration (aggregator or Ninja Van): create shipment, fetch label, receive status updates. Vendor terms must be verified first. |
+| INT-03 | P3 / On hold | Owner decision | Baileys (QR) WhatsApp for the Demo only: separate long-running Node service, disposable test number, fixed templates, rate limits. Not for production. |
+| SEL-05 | P1 / Planned | DEC-07 | Seller-initiated permanent deletion of an order's buyer contact and delivery data with confirmation and an audit event; tests prove nothing else about the order is lost. |
+| TEN-00 | P0 / Plan recorded 2026-10-05 | owner open items | [MULTI_TENANT_PRODUCTION_PLAN.md](MULTI_TENANT_PRODUCTION_PLAN.md): phases 0 to 8 for Docker, PostgreSQL, tenants at `/s/{shop-code}/`, SuperAdmin with TOTP, manual deletion, backups and a seeded Demo. Each phase is separately merged. |

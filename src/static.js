@@ -11,6 +11,8 @@ const types = {
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
   '.webmanifest': 'application/manifest+json',
 };
@@ -18,7 +20,7 @@ const types = {
 export async function serveStatic(request, pathname) {
   if (request.method !== 'GET' && request.method !== 'HEAD') throw new ApiError(405, 'METHOD_NOT_ALLOWED', 'Method not allowed.');
   if (pathname === '/') return redirect('/shop/');
-  if (pathname === '/seller' || pathname === '/shop') return redirect(`${pathname}/`);
+  if (pathname === '/seller' || pathname === '/shop' || pathname === '/demo') return redirect(`${pathname}/`);
   let decoded;
   try {
     decoded = decodeURIComponent(pathname);
@@ -44,7 +46,7 @@ export async function serveStatic(request, pathname) {
     headers: {
       'Content-Type': type,
       'Content-Length': String(body.length),
-      'Cache-Control': 'no-cache',
+      'Cache-Control': /^\/demo-assets\/[A-Z0-9-]+\/view-\d+-[a-f0-9]{12}-\d+\.jpg$/.test(pathname) ? 'public, max-age=31536000, immutable' : 'no-cache',
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'strict-origin-when-cross-origin',
       'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",

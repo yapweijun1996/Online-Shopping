@@ -4,7 +4,7 @@ import { initializePostgresSchema } from './postgres-schema.js';
 
 const require = createRequire(import.meta.url);
 const NativeClient = require('pg-native');
-const integerFields = new Set(['id', 'count', 'value', 'total_minor', 'line_total_minor', 'attempted_at']);
+const integerFields = new Set(['id', 'count', 'value', 'total_minor', 'line_total_minor', 'attempted_at', 'quantity', 'pending']);
 
 function connectionValue(value) {
   return `'${String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;

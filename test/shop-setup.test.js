@@ -3,7 +3,7 @@ import test from 'node:test';
 import { openDatabase, migrateStore } from '../src/db.js';
 import { getShopSetup, setupShop } from '../src/shop-setup.js';
 import { createProduct, listProducts } from '../src/products.js';
-import { createCategory } from '../src/settings.js';
+import { createCategory, getCompanySettings, updateCompanySettings } from '../src/settings.js';
 import { createApi } from '../src/app.js';
 import { createSession } from '../src/auth.js';
 
@@ -16,19 +16,19 @@ function fixture(t) {
 test('demo seeds all 35 images and prices once, preserving subsequent edits', (t) => {
   const store = fixture(t);
   assert.equal(getShopSetup(store).mode, null);
-  assert.equal(setupShop(store, { mode: 'demo' }).shopName, 'Paws & Whiskers Pet Shop');
+  assert.equal(setupShop(store, { mode: 'demo' }).shopName, 'Demo General Store');
   const products = listProducts(store, new URLSearchParams('limit=100')).items;
   assert.equal(products.length, 35);
   assert.equal(new Set(products.map((p) => p.sku)).size, 35);
   assert.ok(products.every((p) => p.currency === 'MYR' && p.imageUrl));
-  assert.equal(products.find((p) => p.sku === 'PET-DEMO-001').priceMinor, 3690);
-  assert.equal(products.find((p) => p.sku === 'PET-DEMO-010').priceMinor, 186900);
-  assert.equal(store.get('SELECT COUNT(*) AS n FROM general_code').n, 5);
-  assert.equal(store.get('SELECT seller_whatsapp_phone FROM company_setting').seller_whatsapp_phone, '60182727900');
-  store.run("UPDATE product SET name = 'Seller edit', active = 0 WHERE sku = 'PET-DEMO-001'");
+  assert.equal(products.find((p) => p.sku === 'DEMO-001').priceMinor, 2490);
+  assert.equal(products.find((p) => p.sku === 'DEMO-010').priceMinor, 2690);
+  assert.equal(store.get('SELECT COUNT(*) AS n FROM general_code').n, 7);
+  assert.equal(store.get('SELECT seller_whatsapp_phone FROM company_setting').seller_whatsapp_phone, null);
+  store.run("UPDATE product SET name = 'Seller edit', active = 0 WHERE sku = 'DEMO-001'");
   store.run('UPDATE company_setting SET seller_whatsapp_phone = NULL WHERE id = 1');
   setupShop(store, { mode: 'demo' });
-  assert.equal(store.get("SELECT name FROM product WHERE sku = 'PET-DEMO-001'").name, 'Seller edit');
+  assert.equal(store.get("SELECT name FROM product WHERE sku = 'DEMO-001'").name, 'Seller edit');
   assert.equal(store.get('SELECT COUNT(*) AS n FROM product').n, 35);
   assert.equal(store.get('SELECT seller_whatsapp_phone FROM company_setting').seller_whatsapp_phone, null);
   assert.throws(() => setupShop(store, { mode: 'production', shopName: 'Live' }), { code: 'SHOP_ALREADY_CONFIGURED' });
@@ -42,7 +42,7 @@ test('production seeds nothing and supports manual catalog creation', (t) => {
   assert.equal(store.get('SELECT COUNT(*) AS n FROM product').n, 0);
   assert.equal(store.get('SELECT COUNT(*) AS n FROM general_code').n, 0);
   createCategory(store, { code: 'FOOD', label: 'Food' });
-  createProduct(store, { sku: 'FOOD-1', name: 'Cat food', description: 'Food', category: 'FOOD', priceMinor: 100, currency: 'SGD', active: true });
+  createProduct(store, { sku: 'FOOD-1', name: 'Cat food', description: 'Food', category: 'FOOD', priceMinor: 100, currency: 'MYR', active: true });
   assert.equal(listProducts(store, new URLSearchParams()).items.length, 1);
   assert.throws(() => setupShop(store, { mode: 'demo' }), { code: 'SHOP_ALREADY_CONFIGURED' });
 });
@@ -54,7 +54,7 @@ test('demo refuses existing data and rolls back the entire seed on failure', (t)
   assert.equal(getShopSetup(store).mode, null);
   store.run('DELETE FROM general_code');
   const failingStore = { ...store, run(sql, ...params) {
-    if (params.includes('PET-DEMO-020')) throw new Error('Injected failure');
+    if (params.includes('DEMO-020')) throw new Error('Injected failure');
     return store.run(sql, ...params);
   } };
   assert.throws(() => setupShop(failingStore, { mode: 'demo' }), /Injected failure/);
@@ -63,11 +63,41 @@ test('demo refuses existing data and rolls back the entire seed on failure', (t)
   assert.equal(store.get('SELECT COUNT(*) AS n FROM general_code').n, 0);
 });
 
+test('Demo setup establishes MYR before seeding and rolls back settings on failure', async t => {
+  const store = fixture(t);
+  const api = createApi({ store, config: { publicOrigin: 'https://fixture.test' } });
+  const session = createSession(store);
+  const call = (path, body) => api(new Request('https://fixture.test/api/v1/seller/' + path, {
+    method: path === 'company-settings' ? 'PATCH' : 'POST',
+    headers: { origin: 'https://fixture.test', 'content-type': 'application/json',
+      cookie: `seller_session=${session.token}`, 'x-csrf-token': session.csrfToken },
+    body: JSON.stringify(body),
+  }));
+  assert.equal((await call('company-settings', { defaultCurrency: 'SGD' })).status, 200);
+  const before = store.all('SELECT * FROM company_setting');
+  const failingStore = { ...store, run(sql, ...params) {
+    if (params.includes('DEMO-020')) throw new Error('Injected seed failure');
+    return store.run(sql, ...params);
+  } };
+  assert.throws(() => setupShop(failingStore, { mode: 'demo' }), /Injected seed failure/);
+  assert.deepEqual(store.all('SELECT * FROM company_setting'), before);
+  assert.equal(getShopSetup(store).mode, null);
+  assert.equal(store.get('SELECT COUNT(*) AS n FROM product').n, 0);
+  assert.equal(store.get('SELECT COUNT(*) AS n FROM general_code').n, 0);
+  const configured = await call('setup', { mode: 'demo' });
+  assert.equal(configured.status, 200);
+  assert.equal(getCompanySettings(store).defaultCurrency, 'MYR');
+  const products = listProducts(store, new URLSearchParams('limit=100')).items;
+  assert.equal(products.length, 35);
+  assert.ok(products.every(product => product.currency === 'MYR'));
+});
+
 test('existing version 6 catalogs migrate to production without altering products', (t) => {
   const store = fixture(t);
   setupShop(store, { mode: 'demo' });
   store.exec(`DROP TABLE product_gallery_image;
     DROP INDEX product_variant_option; DROP INDEX product_variant_group;
+    ALTER TABLE product DROP COLUMN stock_quantity;
     ALTER TABLE product DROP COLUMN variant_group; ALTER TABLE product DROP COLUMN variant_label;
     ALTER TABLE company_setting DROP COLUMN seller_whatsapp_phone;
     ALTER TABLE company_setting DROP COLUMN mobile_hide_bars_on_scroll;
@@ -79,14 +109,15 @@ test('existing version 6 catalogs migrate to production without altering product
   assert.equal(store.get('SELECT seller_whatsapp_phone FROM company_setting').seller_whatsapp_phone, null);
 });
 
-test('version 8 Demo migration seeds contact once, then preserves seller changes', (t) => {
+test('version 8 Demo migration never seeds a real contact, then preserves seller changes', (t) => {
   const store = fixture(t);
   setupShop(store, { mode: 'demo' });
+  store.exec('ALTER TABLE product DROP COLUMN stock_quantity');
   store.exec('ALTER TABLE company_setting DROP COLUMN seller_whatsapp_phone');
   store.exec('ALTER TABLE company_setting DROP COLUMN mobile_hide_bars_on_scroll');
   store.setSchemaVersion(8);
   migrateStore(store);
-  assert.equal(store.get('SELECT seller_whatsapp_phone FROM company_setting').seller_whatsapp_phone, '60182727900');
+  assert.equal(store.get('SELECT seller_whatsapp_phone FROM company_setting').seller_whatsapp_phone, null);
   store.run('UPDATE company_setting SET seller_whatsapp_phone = NULL WHERE id = 1');
   migrateStore(store);
   assert.equal(store.get('SELECT seller_whatsapp_phone FROM company_setting').seller_whatsapp_phone, null);
@@ -94,6 +125,7 @@ test('version 8 Demo migration seeds contact once, then preserves seller changes
 
 test('version 9 migration defaults existing shops to always-visible mobile bars', (t) => {
   const store = fixture(t);
+  store.exec('ALTER TABLE product DROP COLUMN stock_quantity');
   store.exec('ALTER TABLE company_setting DROP COLUMN mobile_hide_bars_on_scroll');
   store.setSchemaVersion(9);
   migrateStore(store);
@@ -115,7 +147,7 @@ test('setup API enforces session, origin and CSRF; public catalog exposes demo i
   const publicShop = await (await call('/api/v1/shop')).json();
   assert.equal(publicShop.mode, 'demo');
   assert.equal(publicShop.currency, 'MYR');
-  assert.equal(publicShop.sellerWhatsAppPhone, '60182727900');
+  assert.equal(publicShop.sellerWhatsAppPhone, null);
   assert.equal(publicShop.mobileHideBarsOnScroll, false);
   const page = await (await call('/api/v1/products?limit=100')).json();
   assert.equal(page.items.length, 35);
@@ -178,10 +210,10 @@ test('deployment demo initializes once; object routing isolates legacy data', as
   initializeShop(store, { shopMode: 'manual' });
   assert.equal(getShopSetup(store).mode, null);
   initializeShop(store, { shopMode: 'demo' });
-  store.run("UPDATE product SET name = 'Preserved edit' WHERE sku = 'PET-DEMO-001'");
+  store.run("UPDATE product SET name = 'Preserved edit' WHERE sku = 'DEMO-001'");
   initializeShop(store, { shopMode: 'demo' });
   assert.equal(store.get('SELECT COUNT(*) AS n FROM product').n, 35);
-  assert.equal(store.get("SELECT name FROM product WHERE sku = 'PET-DEMO-001'").name, 'Preserved edit');
+  assert.equal(store.get("SELECT name FROM product WHERE sku = 'DEMO-001'").name, 'Preserved edit');
   assert.notEqual(shopObjectName('demo'), shopObjectName('manual'));
   assert.equal(shopObjectName('manual'), 'shop');
   assert.equal(readShopMode({}), 'manual');

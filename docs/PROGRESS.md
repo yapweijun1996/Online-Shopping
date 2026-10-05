@@ -1,5 +1,15 @@
 # Progress
 
+**2026-10-05 stock, fulfilment, alerts:** PR #22 merged optional stock (SEL-01). The next change adds fulfilment statuses with tracking (SEL-02) and in-portal new-order alerts (SEL-03), schema version 13, Shop v110 / Seller v90. Locally verified on Node 24: syntax check, 147 tests, and a headless Chromium run of confirm → ship (with a custom courier) → tracking shown, with the menu badge and title count, and no console errors. Not deployed and not tried on a phone.
+
+**2026-10-05 review and demo update:** Merged PRs #17–#20 (Shop v108 / Seller v87): passwordless Demo login, Demo data reset, version/update controls on the seller sign-in page, removal of the catalog Demo banner, README split into [RUNBOOK.md](RUNBOOK.md) and [FEATURES.md](FEATURES.md), a configurable proxy client-IP source (`CLIENT_IP_SOURCE`), and removal of the unused `my-durable-worker/` scaffold. Locally verified on Node 24: syntax check, 144 tests, `worker:check` dry run and `npm audit` with zero vulnerabilities. Not deployed from the cloud session (no Cloudflare credentials) and not checked on a live device. The seller panel gap review is in [SELLER_PANEL_REVIEW.md](SELLER_PANEL_REVIEW.md); WhatsApp and courier planning is in [INTEGRATIONS.md](INTEGRATIONS.md). Both are planning documents only.
+
+**2026-10-02 owner scope:** PR #15 was owner-merged as main f28c04b1. Independently reviewed repairs are a separate Shop v105 / Seller v81 candidate and are not deployed. Public Demo remains Shop v103 / Seller v79 from release c1d1f688. The 18-item Production denominator is reconciled in [PRODUCTION_ACCEPTANCE.md](PRODUCTION_ACCEPTANCE.md), including current contact/delivery wording gaps and tenant/release gates. Historical 16/18 local verification below is dated baseline evidence; Production released remains 0/18.
+
+**Updated direction (2026-09-26):** Cloudflare Worker + SQLite Durable Object is the public Demo for simulated transactions with sample pet products. Future Production will use Docker + PostgreSQL on the owner’s server behind Cloudflare Tunnel. This supersedes earlier DEC-04 production-host wording below; the current Docker SQLite adapter has not yet been migrated to PostgreSQL.
+
+**As of 2026-09-26 (Asia/Singapore).** The new Online Shopping application is an **MVP in local development**. The separate `sample/` is a local PWA/API/SQLite prototype. Its functionality and test results do not count toward the new MVP.
+
 **Current state (2026-09-29, Asia/Singapore):** The Cloudflare Worker + SQLite Durable Object hosts a public **Demo** with simulated orders. A separate Docker + PostgreSQL Production stack now passes local synthetic checks, including encrypted backup and isolated restore. It has not been deployed to the owner's server or connected to a real off-host backup destination. The default local Docker stack still uses SQLite. The separate `sample/` prototype does not count toward this application's acceptance.
 
 ## Evidence-based state
@@ -313,3 +323,52 @@ Deployed Worker `3bd93955-ef88-4995-9fee-9e77bc1635f1` (Shop v38, Seller v42). L
 - Shop PWA v75 refreshes seller decisions in browser-local My orders when opened or on the new Refresh statuses action. Each new checkout saves its browser-generated UUID v4 idempotency key in IndexedDB as a status credential. A same-origin, rate-limited batch API matches its stored hash and order number, then returns only `SUBMITTED`, `CONFIRMED` or `REJECTED` plus update time for orders within 90 days. The key is absent from the legacy localStorage receipt and from URLs; the public response contains no buyer, recipient, address, item or rejection-reason data. Older v74 receipts have no credential, so their live seller status remains unavailable. The last known status is cached with an explicit stale warning if refresh fails. See [API contract](API.md), [UI specification](UI_SPEC.md) and [mobile capture](../ui/customer-order-status-mobile.png).
 - Isolated local Demo browser QA created a synthetic Customer profile and address, placed `DEMO-00000001` through the real Shop checkout, and saw Submitted in My orders. Local Seller API then confirmed that order; Customer Refresh statuses showed Confirmed and its update time, including after page reload. Actual IndexedDB inspection found only the intended order/item/status/credential fields and no synthetic contact/address data; localStorage did not contain the credential. Offline refresh kept the cached Confirmed result with a stale warning; the expected failed network request produced one browser console error. English 320/390/820/1440px and Chinese 320/390px had no horizontal document overflow. API tests covered wrong credentials, same-origin enforcement, 90-day cutoff, status-only response, confirm and reject. Syntax check, 94 Node tests, Worker dry run (53 assets) and Markdown-link check passed. Physical-device storage and installed-PWA update remain unverified.
 - Deployment `a3043537-9be7-48f7-a76d-653a592bb9c3` served Shop v75. Public `/ready` returned ready, the Shop API remained in Demo mode, and eight changed Shop/shared assets matched the committed bytes. A random, incorrect UUID v4 credential for an existing Demo order returned an empty `items` list; a fresh public browser profile opened My orders with the new copy and zero console errors or warnings. No public order or seller decision was created in this release check. Public authenticated status change, physical-device storage and installed-PWA update remain unverified.
+
+
+## Seller review and printable documents — 2026-09-30
+
+- Added resilient cached queue/detail retry and current-revision order summary / confirmed-only manual packing checklist. Documents validate immutable snapshot minor-unit arithmetic and isolate destinations; no tax, payment or shipment claims. Native dialog supports focus/Escape and cleans private print nodes.
+- Local gates: 105 unit/API tests; synthetic buyer → authenticated seller confirm/reject → buyer status; stale revisions, CSRF, duplicate decision and failures; seller six widths/seven locales. Chromium PDF fixtures: 76 long-name rows over two destinations, SGD 1,902.88, 75 units each; eight summary pages and six packing pages rendered. Buyer stable quantity, search/history, profile/address interruption and gallery zoom checks passed. Pending storefront typography preserved; Shop v95 / Seller v75 caches prepared.
+- No live customer reads/writes or orders performed. Physical iOS/Safari and OS print dialog remain untested. Manual packing is document-only; payment, carrier integration and production backup/recovery remain outside this milestone.
+
+
+## A4 PrintForm engine refinement — 2026-10-01
+
+- Pinned the actual MIT PrintForm.js engine at revision 091ab04743a8da37059a2776536ff723b33ea8c7. Separate Studio project is untouched. Seller review detail uses normal document scrolling with a compact sticky desktop queue.
+- Preview renders true 210×297mm A4 sheets; the same formatted DOM is cloned for printing, with 14mm safe margins, repeated destination/column headers and page-number footers. Engine measures natural, unscaled content before preview fitting; oversized content fails closed. No customer records are cached by the engine.
+- Local gates: 105 tests, syntax, Worker dry run and audit zero vulnerabilities. Synthetic authenticated seller decisions/retry/CSRF/stale checks; eight review widths 320–1920px; five preview widths × seven locales and focus/Escape. PDF long-item fixture: two destinations, 76 rows, SGD1,902.88,75 units each; 10 summary pages and 6 packing pages, exact totals, repeated identifiers and no destination spill. Preview and print page counts agree. Physical Safari/OS print dialog untested.
+
+
+## Catalog desktop density — 2026-10-01
+
+- Owner-approved comparison refinement uses five cards from 1180px, four from 1000px, three in intermediate desktop widths and retains two on mobile. Header and catalog share a 1280px shell; smaller card radius/gaps and two-line titles preserve actual images/names/prices. Repeated card category labels and generic catalog subtitle removed.
+- Catalog MYR display uses RM with localized digits/grouping and exact two-decimal minor units; other currencies remain explicit Intl currency values. Shared commercial-document currency formatting is unchanged. Actual category text drives semantic SVG selection with neutral unknown-category fallback; existing category filter/URL behavior retained. No discounts, sales, stock or fulfillment promises invented.
+- Local gates: 107 tests, syntax, Worker dry run, audit zero vulnerabilities; 320–1920px column/alignment checks, seven locales/menus/badges, non-pet long-name/high-price/missing-image fixture, category focus/touch/history/error recovery and cart/search/zoom/profile/address/orders regressions. Shop cache v96; seller A4 v76 unchanged.
+
+- Final A4 accessibility review removes duplicated title IDs created by repeated engine headers, keeping exactly one accessible dialog title. Long-form PDF regression asserts the invariant; Seller cache v77. Shop v96 public catalog, nine buyer regressions, readiness and exact asset checks passed; no live mutations.
+
+
+## Six-column desktop catalog — 2026-10-01
+
+- User-requested six cards per row from 1280px; five at1180–1279px, four at1000–1179px, three at761–999px and two on mobile. Existing typography/image fitting/header/price hierarchy retained. Shop cache v97.
+- Local107tests/check/Worker/audit pass; breakpoint edges including1279/1280, seven locale utilities, non-pet long labels/high prices/missing images, category touch/keyboard/URL/back scroll, search, stable cart and product zoom passed. No customer writes.
+
+
+## Shop v98 desktop product hierarchy
+- Desktop title, reference price, actual SKU/category and purchase controls form one aligned summary; gallery uses 42/58 columns (38/62 on tablets). Mobile sticky controls remain 52px. MYR formatting matches catalog RM presentation without changing minor-unit amounts.
+- 107 automated tests, syntax, Worker dry-run, dependency audit (zero vulnerabilities), and diff checks passed. Browser layout checks passed at 320/375/393/430/761/820/980/1099/1100/1280/1440/1920; seven-locale checks and cart quantity/search/zoom/checkout/order error regressions passed.
+- Screenshots use real catalog images. Chromium automated checks do not establish physical iOS/Safari behavior. No real orders, payments or messages were created. Seller v77 unchanged.
+
+
+## Shop v99 product sharing
+- The share-shaped control previously only copied a link (confirmed on the exact reported public product with intercepted APIs). It now invokes native Web Share directly under click activation where available, otherwise copies the canonical query-free product URL. Native cancellation does not copy; clipboard denial exposes a selected manual-copy field. Native completion copy is deliberately not a delivery guarantee.
+- Pending clicks are serialized; route interruption suppresses stale feedback/fallback. Seven locales include accessible labels and honest completion/cancel copy. The new module is offline cached.
+- 113 tests and syntax/Worker dry-run passed. Browser checks at 320/375/393/430/1280/1920 passed native activation, capability fallback, cancel, denied clipboard/manual copy, repeated click and route interruption with all external calls intercepted. Physical native OS sharing panels remain untested.
+
+
+## Public fictional Demo — prepared release
+
+- 35 original AI-generated illustrations and fictional product descriptions across seven generic categories; image hashes and generation provenance recorded. Seven-category pilot and all remaining images pixel-inspected. No seeded variants or extra galleries, real seller contact or customer/order records.
+- Non-destructive public-general-demo-v1 namespace and revision-scoped browser storage preserve both legacy databases and browser data. Idempotent transactional setup and revision reset validation covered. Public contact is suppressed independently of seller settings.
+- 117 tests pass; isolated buyer/seller decisions, stale/CSRF/retry, six widths/seven locales, cart/search/profile/address/zoom/share and browser isolation gates passed. Synthetic PDFs: 76 rows, two destinations, SGD1,902.88, 75 units per destination, 10 summary / 6 packing pages with no recipient spill.
+- Current-tree legacy catalog and 195 historical visual artifacts retired; Git history retained. AI provenance does not guarantee exclusive copyright. Manual packing/browser print only; physical iOS/Safari untested. No live customer writes.

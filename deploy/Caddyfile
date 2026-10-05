@@ -7,8 +7,19 @@
 	@api path /api/* /health /ready
 	handle @api {
 		reverse_proxy backend:3000 {
-			header_up X-Real-IP {remote_host}
+			header_up X-Real-IP {$CLIENT_IP_SOURCE:{remote_host}}
 		}
+	}
+
+	# Let the backend mode gate decide whether the fictional workspace is available.
+	@demo path /demo /demo/*
+	handle @demo {
+		forward_auth backend:3000 {
+			uri /api/v1/demo/availability
+		}
+		root * /srv/public
+		header Cache-Control "no-cache"
+		file_server
 	}
 
 	redir / /shop/ 302

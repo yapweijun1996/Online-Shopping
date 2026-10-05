@@ -7,6 +7,10 @@
   <title>Online Shopping</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="/shop/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/shop/icons/icon-192.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="OS Shop">
   <script src="/shop/palette.js"></script>
   <link rel="stylesheet" href="/shop/style.css">
   <script type="module" src="/shop/app.js"></script>
@@ -23,28 +27,32 @@
   </div>
   <a class="skip-link" href="#catalog-results" data-i18n="browseProducts">Browse products</a>
   <header class="topbar shop-topbar">
-    <a class="brand" href="/shop/"><img class="brand-mark" src="/favicon.svg" alt=""><span data-i18n="shop">Shop</span></a>
+    <a class="brand" href="/shop/"><img class="shop-brand-logo" src="/favicon.svg" width="38" height="38" alt=""><span class="brand-copy"><strong id="shop-brand-name">Shop</strong><small id="shop-brand-kind" data-i18n="shop">Shop</small></span></a>
     <form id="catalog-search-form" class="header-search" role="search">
+      <button id="search-cancel" class="search-back" type="button" aria-label="Cancel" data-i18n-aria="cancel" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 5-7 7 7 7M7 12h14"/></svg></button>
       <label class="sr-only" for="catalog-search" data-i18n="searchProducts">Search products</label>
-      <input id="catalog-search" type="search" maxlength="100" autocomplete="off" placeholder="Search products">
+      <input id="catalog-search" type="search" enterkeyhint="search" maxlength="100" autocomplete="off" placeholder="Search products">
       <button type="submit" aria-label="Search" data-i18n-aria="applySearch"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.4"/><path d="m16 16 4.5 4.5"/></svg></button>
     </form>
     <nav class="shop-nav" data-i18n-aria="shop" aria-label="Shop">
-      <a href="#catalog" data-i18n="browse">Browse</a>
       <a href="#cart" data-i18n-aria="cart" aria-label="Cart"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 4h2l2.3 11.5h11.7L21 7H5"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg><span data-i18n="cart">Cart</span> <span id="cart-count" class="cart-count">0</span></a>
     </nav>
     <div id="language" class="language-menu shop-language"></div>
     <div class="shop-account">
-      <button id="profile-menu-button" class="language-trigger" type="button" aria-expanded="false" aria-controls="profile-menu" data-i18n-aria="customerProfile"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/></svg></button>
+      <button id="profile-menu-button" class="language-trigger" type="button" aria-expanded="false" aria-controls="profile-menu" aria-haspopup="true" data-i18n-aria="account"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/></svg><span class="utility-label" data-i18n="account">Account</span></button>
       <nav id="profile-menu" class="language-options" hidden><a href="#profile" data-i18n="customerProfile">Profile</a><a href="#orders" data-i18n="myOrders">My orders</a><a href="#addresses" data-i18n="myAddresses">My addresses</a><a href="#settings" data-i18n="settings">Settings</a></nav>
     </div>
   </header>
+  <section id="search-focus-panel" class="search-focus-panel" aria-label="Search products" data-i18n-aria="searchProducts" hidden>
+    <section><div class="search-section-heading"><h2 data-i18n="recentSearches">Recent searches</h2><button id="search-history-clear" type="button" data-i18n="clearSearchHistory">Clear history</button></div><div id="search-recent"></div></section>
+    <section><h2 data-i18n="searchSuggestions">Search suggestions</h2><div id="search-suggestions"></div></section>
+    <p id="search-demo-note" class="shop-note" data-i18n="demoBrief" hidden></p>
+  </section>
   <main class="shop-main">
-    <aside id="demo-banner" class="demo-banner" hidden><strong data-i18n="demoMode">Demo — Pet Shop</strong><span data-i18n="demoBrief"></span></aside>
     <section id="catalog-view" aria-labelledby="catalog-title">
       <div class="catalog-layout">
         <div class="catalog-results" id="catalog-results" tabindex="-1">
-          <div class="catalog-intro"><div><p id="catalog-shop-name" class="eyebrow"></p><h2 id="catalog-title" data-i18n="browseProducts">Browse products</h2><p data-i18n="catalogSubtitle">Find something useful for every day.</p><p id="catalog-count" class="catalog-count" aria-live="polite"></p></div><div class="catalog-filter"><label for="catalog-category" data-i18n="category">Category</label><select id="catalog-category"><option value="" data-i18n="allCategories">All categories</option></select></div></div>
+          <div class="catalog-intro"><div><p id="catalog-shop-name" class="eyebrow"></p><h2 id="catalog-title" data-i18n="browseProducts">Browse products</h2><p id="catalog-count" class="catalog-count" aria-live="polite"></p></div><div class="catalog-filter"><label for="catalog-category" data-i18n="category">Category</label><select id="catalog-category"><option value="" data-i18n="allCategories">All categories</option></select></div></div>
           <nav class="category-rail" aria-label="Category" data-i18n-aria="category" id="category-rail"></nav>
           <p id="catalog-query" class="catalog-query" hidden></p>
           <p id="catalog-status" class="shop-status" role="status" data-i18n="loading">Loading…</p>
@@ -74,6 +82,7 @@
       <p class="shop-note" data-i18n="localOrdersIntro">Orders are kept on this browser for 90 days. Seller decisions refresh here for new orders on this browser.</p>
       <p id="local-orders-status" class="shop-note" role="status"></p>
       <div class="local-orders-toolbar"><button id="refresh-order-statuses" class="outline-button" type="button" data-i18n="refreshOrderStatuses" hidden>Refresh statuses</button><p id="local-orders-sync-status" class="shop-note" role="status"></p></div>
+      <nav id="order-filters" class="order-filters" aria-label="Order status" data-i18n-aria="orderStatus"></nav>
       <div id="local-orders-list" class="local-orders-list"></div>
     </section>
     <section id="profile-view" class="profile-page account-page" aria-labelledby="profile-title" hidden>
@@ -120,6 +129,12 @@
       <p id="cart-persistence" class="shop-note" hidden></p>
       <p id="cart-status" class="shop-status" role="status"></p>
       <button id="cart-retry" class="outline-button" type="button" data-i18n="retry" hidden>Try again</button>
+      <div id="cart-empty" class="cart-empty" hidden>
+        <svg class="empty-bag" viewBox="0 0 180 150" aria-hidden="true"><circle cx="90" cy="75" r="65" fill="var(--shop-accent-soft)"/><path d="M55 55h70l8 74H47l8-74Z" fill="white" stroke="currentColor" stroke-width="3"/><path d="M72 58V43a18 18 0 0 1 36 0v15" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/></svg>
+        <h2 data-i18n="emptyCart">Your cart is empty.</h2>
+        <a class="primary-button empty-browse" href="#catalog" data-i18n="continueShopping">Continue shopping</a>
+        <nav id="empty-cart-categories" class="empty-cart-categories" aria-label="Category" data-i18n-aria="category"></nav>
+      </div>
       <div class="cart-columns" aria-hidden="true"><span data-i18n="product">Product</span><span data-i18n="unitPrice">Unit price</span><span data-i18n="quantity">Quantity</span><span data-i18n="itemSubtotal">Subtotal</span><span data-i18n="actions">Actions</span></div>
       <div id="cart-list" class="cart-list"></div>
       <div id="cart-skeleton" class="cart-list cart-skeleton loading-placeholder" aria-hidden="true" hidden></div>

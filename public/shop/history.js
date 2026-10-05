@@ -1,3 +1,4 @@
+import { storageKey } from './storage-scope.js';
 const KEY = 'online-shopping-contact-history-v1';
 const MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
 const MAX_ENTRIES = 10;
@@ -28,7 +29,7 @@ export function createContactHistory(storage = globalThis.localStorage, now = ()
   let data = { savedAt: 0, buyerPhones: [], recipientPhones: [], addresses: [] };
   let persistent = true;
   let storedText = null;
-  try { storedText = storage.getItem(KEY); }
+  try { storedText = storage.getItem(storageKey(KEY)); }
   catch { persistent = false; }
   try {
     const stored = JSON.parse(storedText || 'null');
@@ -42,11 +43,11 @@ export function createContactHistory(storage = globalThis.localStorage, now = ()
           (value) => JSON.stringify(Object.values(value).map((field) => field.toLowerCase()))),
       };
     } else if (storedText && persistent) {
-      storage.removeItem(KEY);
+      storage.removeItem(storageKey(KEY));
     }
   } catch {
     if (storedText && persistent) {
-      try { storage.removeItem(KEY); }
+      try { storage.removeItem(storageKey(KEY)); }
       catch { persistent = false; }
     }
   }
@@ -71,13 +72,13 @@ export function createContactHistory(storage = globalThis.localStorage, now = ()
         addresses: recentUnique([...destinations, ...data.addresses],
           (value) => JSON.stringify(Object.values(value).map((field) => field.toLowerCase()))),
       };
-      try { storage.setItem(KEY, JSON.stringify(data)); }
+      try { storage.setItem(storageKey(KEY), JSON.stringify(data)); }
       catch { persistent = false; }
       return persistent;
     },
     clear() {
       data = { savedAt: 0, buyerPhones: [], recipientPhones: [], addresses: [] };
-      try { storage.removeItem(KEY); }
+      try { storage.removeItem(storageKey(KEY)); }
       catch { persistent = false; }
       return persistent;
     },

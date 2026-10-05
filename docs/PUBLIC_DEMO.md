@@ -1,0 +1,43 @@
+# Public fictional Demo
+
+The public demo is a single-store commerce simulation, not a marketplace or a real offer. There are 35 invented products in seven categories. Every product has six reviewed AI-generated illustrations: its unchanged original hero and five useful angle, surface, construction or plain-tabletop views. The two source manifests map each SKU to original source, original published hero, gallery source and responsive-variant hashes. These are fictional illustrations with no intended trademarks or seller watermarks. This is provenance evidence, not an exclusive-copyright guarantee. Gallery JPEG variants have a maximum edge of 160, 640 or 1254 pixels; actual raster dimensions are recorded. Original generation outputs remain outside the repository.
+
+## Original product galleries
+
+The gallery overlay applies only in public-demo mode when SKU, name and original hero hash match and no seller-uploaded extra gallery exists. It retains the existing hero API URL and makes no product, gallery, namespace or revision writes. A changed hero/name or a seller gallery uses the stored seller content. Seller detail responses now use the same six-photo presentation overlay with their authenticated primary-image URL, so the editor shows all existing demo photos. Static fixture photos are labelled as demo photos without a delete control; custom stored gallery photos retain their authenticated removal controls. No database gallery/hero writes occur.
+
+The gallery supports ten total images. Schema 11 expands stored extra-image positions from 1–4 to 1–9 in a transaction that preserves rows, IDs, bytes and positions. The 35 fictional galleries each contain six images, totaling 210, with no duplicate padding. The provenance manifest records available prompts, hero reference hashes, pixel-review decisions and 630 encoded variant hashes. Two recovered carrier outputs explicitly mark their lost exact prompt text rather than reconstructing it. Hashed assets cache immutably; thumbnails load lazily at low priority, and the full-resolution viewer image is assigned when opened. Keyboard arrows, thumbnail selection, swipe, zoom, browser Back and photo-position restoration are supported. See [viewer gestures and verification](GALLERY_GESTURES.md) for wheel, pinch, pan and browser-zoom behavior.
+
+For a rollback after schema 11 has been opened, deploy a forward-compatible change that disables the presentation overlay while retaining schema 11 and the existing asset URLs. Do not deploy schema-10-only code or change/reset the namespace to undo this gallery release.
+
+## Isolation, seed and reset
+
+- Worker: `SHOP_MODE=public-demo`, `SHOP_DEMO_REVISION=v1` routes to `public-general-demo-v1`. `manual` still routes to `shop`; legacy `demo` still routes to `pet-shop-demo-v1`. Those databases are not deleted, copied or migrated by switching mode.
+- Node: use an explicit new empty `DB_PATH` for each isolated local demo. Never point Demo setup/reset at an existing database.
+- Setup seeds once inside a transaction, refuses existing unconfigured catalog/categories/orders, and preserves later edits and simulation orders. No customers or orders are seeded initially.
+- Reset means choose a new lowercase revision label (`v2`, for example) and a new local database when testing Node. Worker routing opens a new object. No delete/reset endpoint exists. Keep prior revision labels for rollback; changing back restores their existing data.
+- The server returns the public Demo namespace. Browser cart/orders/profile/addresses/contact/search/selection/receipt data use revision-scoped keys. Existing legacy keys stay untouched. Initial API failure keeps the retryable boot overlay; no unscoped data is read before namespace resolution. A changed namespace during catalog refresh reloads before reusing stores.
+
+## Privacy and external actions
+
+Public-demo APIs always return no seller contact, including if an authenticated seller edits contact settings. Product Chat therefore cannot open a real contact. Client checkout uses fictional buyer/recipient/address data in Demo mode; server validation independently replaces supplied personal fields and never grants contact permission. Order state still requires the correct opaque access key, and seller actions retain session/CSRF/stale-revision checks. Production/manual behavior is unchanged.
+
+Use synthetic profiles and addresses for testing. Browser-local information is not a public account system: profiles/orders are local to that browser and the revision scope is data separation, not an origin-level security boundary. No payment provider, delivery integration or automatic notification exists. Packing and PDF remain browser-print/manual workflows.
+
+## Audit and remaining historical limits
+
+Before substitution the public storefront reported Demo mode and 35 seed products. Every public detail was fetched read-only: 35 images total, zero extra gallery images, zero variant products. The old seed contained 35 third-party marketplace images/descriptions and a real contact default. Those seed assets/contact default were removed from current source. 195 historical UI evidence/design artifacts were retired because their catalog/privacy provenance was not reliable enough for a public client demonstration; fresh evidence uses this fictional catalog. No real customer/order records were queried during the audit.
+
+Database files, secrets, local evidence and original-generation outputs are not part of the release. Git history retains older source/artifacts; this update does not rewrite history, revoke existing old copies or claim a forensic cleanup of historical commits. Gallery deployment rollback must retain schema 11 as described above; the existing namespace configuration remains unchanged. Prior browser-local/old database records remain private to their original scope.
+
+## Fictional Admin/Seller candidate
+
+Candidate v105/v81 adds two passwordless buttons only when `/api/v1/shop` explicitly reports public-demo eligibility: **Login as Admin** and **Login as Demo Seller**. They enter `/demo/`, a separate session-private in-memory workspace. New login/reset/exit/one-hour expiry never grant access to the existing Seller API. Reset preserves seeded Seller identities; removed custom memberships return to seeded Alpha without restoring Admin privileges or extending expiry. All prototype companies/customers/orders are fictional; no live credentials or grants are created. Manual/production mode returns 404 for demo endpoints/pages. See [ADMIN_MULTI_COMPANY_DESIGN.md](ADMIN_MULTI_COMPANY_DESIGN.md) for bounds, authorization and production migration gates. This candidate is not published.
+
+## Passwordless demo login
+
+In `public-demo` mode with a Demo-configured shop, the seller sign-in page offers **Demo login · no password**. It calls `POST /api/v1/seller/demo-session`, which issues the same seller session as a password login (same cookie, CSRF token and permissions) after the Origin check and a per-client rate limit. Anyone who opens the public Demo can therefore edit its shared fictional store. The endpoint returns 404 in manual, legacy demo and production modes. To discard visitor changes, set a new `SHOP_DEMO_REVISION`. The isolated sandbox at `/demo/` remains available through its own API.
+
+## Reset demo data
+
+In `public-demo` mode, Seller → Settings shows **Reset demo data**. After a confirmation it calls `POST /api/v1/seller/demo/reset` (session, Origin and CSRF required, body `{"confirm": true}`), which in one transaction deletes all orders, products, galleries and categories, resets the order number sequence and company settings, and re-seeds the 35 fictional products. The admin account, sessions and rate limits are kept. The endpoint returns 404 outside the public Demo and 409 if the shop is not in Demo mode. Setting a new `SHOP_DEMO_REVISION` still gives a completely fresh object without deleting the old one.

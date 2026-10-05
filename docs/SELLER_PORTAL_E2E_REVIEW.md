@@ -127,7 +127,7 @@ After creating a product, the portal reopens it in Edit product and focuses SKU.
 
 **Severity:** P2 · **Evidence:** deployed Demo dashboard and Company settings inspected.
 
-The dashboard says “Choose Demo ... or Production” and offers Shop setup even though Company settings confirms that Paws & Whiskers Pet Shop is already configured in Demo mode. The dashboard always renders the same setup text and button in `public/seller/app.js:150-161`; it does not read setup state. The configured setup panel also repeats first-time guidance above editable company settings on mobile.
+The dashboard says “Choose Demo ... or Production” and offers Shop setup even though Company settings confirms that Demo General Store is already configured in Demo mode. The dashboard always renders the same setup text and button in `public/seller/app.js:150-161`; it does not read setup state. The configured setup panel also repeats first-time guidance above editable company settings on mobile.
 
 **Fix and acceptance:** Render configured shop name/mode plus useful entry points or status on the dashboard. Show setup choices only before setup; after setup, present the configuration as completed and place editable settings first.
 

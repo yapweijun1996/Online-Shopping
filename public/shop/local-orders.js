@@ -1,9 +1,21 @@
+import { storageKey } from './storage-scope.js';
 import { ORDER_RETENTION_MS, statusAccessKeyPattern } from '../shared/order-status.js';
 
 const DB_NAME = 'online-shopping-local-orders';
 const STORE_NAME = 'orders';
 export { ORDER_RETENTION_MS };
-const statuses = new Set(['SUBMITTED', 'CONFIRMED', 'REJECTED']);
+export const ORDER_CLOCK_SKEW_MS = 5 * 60 * 1000;
+const statuses = new Set(['SUBMITTED', 'CONFIRMED', 'REJECTED', 'SHIPPED', 'DELIVERED', 'CANCELLED']);
+
+function trackingFields(source) {
+  const carrier = typeof source?.trackingCarrier === 'string' ? source.trackingCarrier.slice(0, 40) : '';
+  if (!carrier) return {};
+  return { trackingCarrier: carrier, trackingNo: typeof source.trackingNo === 'string' ? source.trackingNo.slice(0, 60) : null };
+}
+
+export function safeOrderImage(value) {
+  return typeof value === 'string' && /^\/api\/v1\/products\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/image(?:\?v=[0-9a-z]+)?$/i.test(value) ? value : null;
+}
 
 function normalizeOrder(receipt, items = [], accessKey = receipt?.statusAccessKey) {
   if (!receipt || !/^(?:OS|DEMO)-\d{8,}$/.test(receipt.orderNo) ||
@@ -18,7 +30,7 @@ function normalizeOrder(receipt, items = [], accessKey = receipt?.statusAccessKe
         !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 100 ||
         !Number.isSafeInteger(item.unitPriceMinor) || item.unitPriceMinor < 0) return null;
     lines.push({ productId: item.productId, name: item.name, quantity: item.quantity,
-      unitPriceMinor: item.unitPriceMinor });
+      unitPriceMinor: item.unitPriceMinor, ...(safeOrderImage(item.imageUrl) ? { imageUrl: safeOrderImage(item.imageUrl) } : {}) });
   }
   const statusAccessKey = typeof accessKey === 'string' && statusAccessKeyPattern.test(accessKey) ? accessKey : null;
   const status = statusAccessKey && statuses.has(receipt.status) ? receipt.status : null;
@@ -27,12 +39,12 @@ function normalizeOrder(receipt, items = [], accessKey = receipt?.statusAccessKe
   return { orderNo: receipt.orderNo, submittedAt: receipt.submittedAt,
     totalMinor: receipt.totalMinor, currency: receipt.currency,
     simulation: receipt.simulation === true, items: lines,
-    ...(statusAccessKey ? { statusAccessKey, status, statusUpdatedAt } : {}) };
+    ...(statusAccessKey ? { statusAccessKey, status, statusUpdatedAt, ...trackingFields(receipt) } : {}) };
 }
 
 export function isLocalOrderCurrent(order, now = Date.now()) {
   const submitted = Date.parse(order.submittedAt);
-  return Number.isFinite(submitted) && submitted <= now && now - submitted < ORDER_RETENTION_MS;
+  return Number.isFinite(submitted) && submitted <= now + ORDER_CLOCK_SKEW_MS && now - submitted < ORDER_RETENTION_MS;
 }
 
 function openDatabase(provider) {
@@ -47,7 +59,7 @@ function openDatabase(provider) {
       clearTimeout(timeout);
       reject(error);
     }
-    try { request = provider.open(DB_NAME, 1); } catch (error) { fail(error); return; }
+    try { request = provider.open(storageKey(DB_NAME), 1); } catch (error) { fail(error); return; }
     request.onupgradeneeded = () => {
       if (!request.result.objectStoreNames.contains(STORE_NAME)) {
         request.result.createObjectStore(STORE_NAME, { keyPath: 'orderNo' });
@@ -101,7 +113,7 @@ export async function createLocalOrderStore(provider = globalThis.indexedDB, now
     }
   }
 
-  async function refresh() {
+  async function refreshNow() {
     if (database) {
       const opened = database;
       try {
@@ -130,6 +142,11 @@ export async function createLocalOrderStore(provider = globalThis.indexedDB, now
     return false;
   }
 
+  let mutation = Promise.resolve();
+  function serialize(operation) {
+    const result = mutation.then(operation); mutation = result.catch(() => {}); return result;
+  }
+  const refresh = () => serialize(refreshNow);
   await refresh();
 
   return {
@@ -140,7 +157,7 @@ export async function createLocalOrderStore(provider = globalThis.indexedDB, now
         .map((order) => ({ ...order, items: order.items.map((item) => ({ ...item })) }));
     },
     refresh,
-    async save(receipt, items = [], accessKey) {
+    save(receipt, items = [], accessKey) { return serialize(async () => {
       const order = normalizeOrder(receipt, items, accessKey);
       if (!order || !isLocalOrderCurrent(order, now())) return false;
       const previous = memory.get(order.orderNo);
@@ -152,8 +169,8 @@ export async function createLocalOrderStore(provider = globalThis.indexedDB, now
       }
       memory.set(order.orderNo, order);
       return persist((store) => store.put(order));
-    },
-    async updateStatuses(items) {
+    }); },
+    updateStatuses(items) { return serialize(async () => {
       if (!Array.isArray(items)) return false;
       const updated = [];
       for (const item of items) {
@@ -161,13 +178,13 @@ export async function createLocalOrderStore(provider = globalThis.indexedDB, now
         if (!previous?.statusAccessKey || !statuses.has(item.status) ||
             typeof item.updatedAt !== 'string' || !Number.isFinite(Date.parse(item.updatedAt)) ||
             Date.parse(item.updatedAt) < Date.parse(previous.statusUpdatedAt || previous.submittedAt)) continue;
-        const order = { ...previous, status: item.status, statusUpdatedAt: item.updatedAt };
+        const order = { ...previous, status: item.status, statusUpdatedAt: item.updatedAt, ...trackingFields(item) };
         memory.set(order.orderNo, order);
         updated.push(order);
       }
       if (!updated.length) return true;
       return persist((store) => { for (const order of updated) store.put(order); });
-    },
+    }); },
     close() { database?.close(); database = null; },
   };
 }

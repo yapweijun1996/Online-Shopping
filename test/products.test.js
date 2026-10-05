@@ -182,10 +182,18 @@ test('seller-managed gallery is bounded, private while inactive, and removable',
     assert.equal(deleted.response.status, 200);
     assert.equal(deleted.data.images.length, 1);
     assert.equal((await fetch(`${f.origin}${publicPath}`)).status, 404);
+    for (let index = 0; index < 9; index++) {
+      const photo = await f.request('POST', `/api/v1/seller/products/${id}/gallery`, { imageDataUrl }, headers);
+      assert.equal(photo.response.status, 201);
+      assert.equal(photo.data.images.length, index + 2);
+    }
+    const overflow = await f.request('POST', `/api/v1/seller/products/${id}/gallery`, { imageDataUrl }, headers);
+    assert.equal(overflow.response.status, 400);
+    assert.equal((await f.request('GET', `/api/v1/products/${id}`)).data.images.length, 10);
   } finally { await f.close(); }
 });
 
-test('seller manages category codes, currency and public chat without rewriting existing products', async () => {
+test('seller manages categories and company currency; mismatched new products are rejected', async () => {
   const f = await fixture();
   try {
     setupShop(f.app.database, { mode: 'production', shopName: 'Example shop' });
@@ -215,28 +223,28 @@ test('seller manages category codes, currency and public chat without rewriting 
     assert.equal(settings.data.defaultCurrency, 'SGD');
     assert.equal(settings.data.sellerWhatsAppPhone, null);
     assert.equal((await f.request('GET', '/api/v1/shop')).data.currency, 'SGD');
-    const contact = await f.request('PATCH', '/api/v1/seller/company-settings', { sellerWhatsAppPhone: '+60182727900' }, headers);
-    assert.equal(contact.data.sellerWhatsAppPhone, '60182727900');
+    const contact = await f.request('PATCH', '/api/v1/seller/company-settings', { sellerWhatsAppPhone: '+60123456789' }, headers);
+    assert.equal(contact.data.sellerWhatsAppPhone, '60123456789');
     assert.equal(contact.data.defaultCurrency, 'SGD');
-    assert.equal((await f.request('GET', '/api/v1/shop')).data.sellerWhatsAppPhone, '60182727900');
+    assert.equal((await f.request('GET', '/api/v1/shop')).data.sellerWhatsAppPhone, '60123456789');
     const invalidContact = await f.request('PATCH', '/api/v1/seller/company-settings', { sellerWhatsAppPhone: '+60123' }, headers);
     assert.equal(invalidContact.response.status, 400);
     assert.equal(invalidContact.data.error.field, 'sellerWhatsAppPhone');
-    assert.equal((await f.request('GET', '/api/v1/shop')).data.sellerWhatsAppPhone, '60182727900');
+    assert.equal((await f.request('GET', '/api/v1/shop')).data.sellerWhatsAppPhone, '60123456789');
     assert.equal((await f.request('PATCH', '/api/v1/seller/company-settings', { sellerWhatsAppPhone: '' }, headers)).data.sellerWhatsAppPhone, null);
     assert.equal((await f.request('GET', '/api/v1/shop')).data.sellerWhatsAppPhone, null);
     const myr = await f.request('POST', '/api/v1/seller/products', draft, headers);
     const sgd = await f.request('POST', '/api/v1/seller/products', { ...draft, sku: 'item-sgd', category: 'WORK', currency: 'SGD' }, headers);
-    assert.equal(myr.response.status, 201);
+    assert.equal(myr.response.status, 400);
+    assert.equal(myr.data.error.field, 'currency');
     assert.equal(sgd.response.status, 201);
-    assert.equal(myr.data.currency, 'MYR');
     assert.equal(sgd.data.currency, 'SGD');
     assert.equal(sgd.data.category, 'Work');
     assert.equal(sgd.data.categoryCode, 'WORK');
     assert.equal((await f.request('PATCH', '/api/v1/seller/categories/WORK', { label: 'Office', active: false }, headers)).data.active, false);
     assert.equal((await f.request('GET', `/api/v1/seller/products`, null, { cookie })).data.items.find((item) => item.id === sgd.data.id).category, 'Office');
     assert.equal((await f.request('PATCH', `/api/v1/seller/products/${sgd.data.id}`, { category: 'WORK', priceMinor: 1100 }, headers)).response.status, 200);
-    const blocked = await f.request('POST', '/api/v1/seller/products', { ...draft, sku: 'item-next', category: 'WORK' }, headers);
+    const blocked = await f.request('POST', '/api/v1/seller/products', { ...draft, sku: 'item-next', category: 'WORK', currency: 'SGD' }, headers);
     assert.equal(blocked.response.status, 400);
     assert.equal(blocked.data.error.field, 'category');
     assert.equal((await f.request('DELETE', '/api/v1/seller/categories/WORK', null, headers)).response.status, 404);

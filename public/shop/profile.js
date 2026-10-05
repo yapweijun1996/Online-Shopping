@@ -1,3 +1,4 @@
+import { storageKey } from './storage-scope.js';
 import { t, translate } from '../shared/i18n.js';
 
 const KEY = 'online-shopping-profile-v1';
@@ -48,14 +49,14 @@ function readSavedProfile(saved) {
 
 export function createProfileStore(storage) {
   let value = null;
-  try { value = readSavedProfile(JSON.parse(storage?.getItem(KEY) || 'null')); } catch { /* An incomplete profile cannot unlock checkout. */ }
+  try { value = readSavedProfile(JSON.parse(storage?.getItem(storageKey(KEY)) || 'null')); } catch { /* An incomplete profile cannot unlock checkout. */ }
   return {
     get: () => value ? { ...value } : null,
     save(input) {
       const next = normalizeProfile(input);
       // Do not claim persistence when browser storage is blocked.
       if (!storage) throw new Error('profileSaveFailed');
-      try { storage.setItem(KEY, JSON.stringify(next)); } catch { throw new Error('profileSaveFailed'); }
+      try { storage.setItem(storageKey(KEY), JSON.stringify(next)); } catch { throw new Error('profileSaveFailed'); }
       value = next;
       return { ...value };
     },

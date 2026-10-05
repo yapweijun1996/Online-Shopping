@@ -1,7 +1,6 @@
 import { openNodeStore } from './store.js';
-import { DEMO_SELLER_WHATSAPP_PHONE } from './demo-defaults.js';
 
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 13;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -244,7 +243,7 @@ export function migrateStore(store) {
       ALTER TABLE company_setting ADD COLUMN seller_whatsapp_phone TEXT
         CHECK (seller_whatsapp_phone IS NULL OR
           (length(seller_whatsapp_phone) BETWEEN 8 AND 15 AND seller_whatsapp_phone NOT GLOB '*[^0-9]*'));
-      UPDATE company_setting SET seller_whatsapp_phone = '${DEMO_SELLER_WHATSAPP_PHONE}'
+      UPDATE company_setting SET seller_whatsapp_phone = NULL
         WHERE id = 1 AND EXISTS (SELECT 1 FROM shop_setup WHERE mode = 'demo');`);
     version = 9;
   }
@@ -253,6 +252,56 @@ export function migrateStore(store) {
       ALTER TABLE company_setting ADD COLUMN mobile_hide_bars_on_scroll INTEGER NOT NULL DEFAULT 0
         CHECK (mobile_hide_bars_on_scroll IN (0, 1));`);
     version = 10;
+  }
+  if (version === 10) {
+    migrate(store, 11, `
+      CREATE TABLE product_gallery_image_v11 (
+        id TEXT PRIMARY KEY,
+        product_id TEXT NOT NULL REFERENCES product(id) ON DELETE RESTRICT,
+        position INTEGER NOT NULL CHECK (position BETWEEN 1 AND 9),
+        mime TEXT NOT NULL CHECK (mime IN ('image/png', 'image/jpeg', 'image/webp')),
+        data BLOB NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(product_id, position)
+      ) STRICT;
+      INSERT INTO product_gallery_image_v11 SELECT * FROM product_gallery_image;
+      DROP TABLE product_gallery_image;
+      ALTER TABLE product_gallery_image_v11 RENAME TO product_gallery_image;
+      CREATE INDEX product_gallery_product ON product_gallery_image(product_id, position);`);
+    version = 11;
+  }
+  if (version === 11) {
+    // NULL means unlimited, so existing products keep selling without a stock count.
+    migrate(store, 12, `
+      ALTER TABLE product ADD COLUMN stock_quantity INTEGER
+        CHECK (stock_quantity IS NULL OR stock_quantity BETWEEN 0 AND 1000000);`);
+    version = 12;
+  }
+  if (version === 12) {
+    // Fulfilment adds order statuses, so the CHECK constraints are rebuilt and tracking columns added.
+    store.rebuildTransaction(() => {
+      const rebuild = (table, columns, from, to) => {
+        const schema = store.get('SELECT sql FROM sqlite_schema WHERE type = ? AND name = ?', 'table', table)?.sql;
+        if (schema?.includes(to)) return; // already rebuilt, e.g. a database restored to an earlier version number
+        if (!schema || !schema.includes(from)) throw new Error(`Unexpected ${table} status schema.`);
+        store.exec(schema.replace(new RegExp(`^CREATE TABLE ["\x60]?${table}["\x60]?`, 'i'), `CREATE TABLE ${table}_new`).replace(from, to));
+        store.exec(`INSERT INTO ${table}_new (${columns}) SELECT ${columns} FROM ${table}`);
+        store.exec(`DROP TABLE ${table}`);
+        store.exec(`ALTER TABLE ${table}_new RENAME TO ${table}`);
+      };
+      const statuses = "'SUBMITTED', 'CONFIRMED', 'REJECTED', 'SHIPPED', 'DELIVERED', 'CANCELLED'";
+      rebuild('shop_order', rebuildColumns.shop_order.join(', '),
+        "status IN ('SUBMITTED', 'CONFIRMED', 'REJECTED')", `status IN (${statuses})`);
+      rebuild('order_event', 'id, order_id, event_type, actor_type, actor_id, previous_status, status, reason, occurred_at',
+        "event_type IN ('SUBMITTED', 'CONFIRMED', 'REJECTED')", `event_type IN (${statuses})`);
+      const orderSql = store.get('SELECT sql FROM sqlite_schema WHERE type = ? AND name = ?', 'table', 'shop_order').sql;
+      if (!orderSql.includes('tracking_carrier')) store.exec('ALTER TABLE shop_order ADD COLUMN tracking_carrier TEXT');
+      if (!orderSql.includes('tracking_no')) store.exec('ALTER TABLE shop_order ADD COLUMN tracking_no TEXT');
+      store.exec(`CREATE INDEX IF NOT EXISTS shop_order_queue ON shop_order(status, submitted_at DESC);
+        CREATE INDEX IF NOT EXISTS order_event_history ON order_event(order_id, id);`);
+      store.setSchemaVersion(13);
+    });
+    version = 13;
   }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }

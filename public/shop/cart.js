@@ -1,3 +1,4 @@
+import { storageKey } from './storage-scope.js';
 const DB_NAME = 'online-shopping-cart';
 const STORE_NAME = 'lines';
 const MAX_QUANTITY = 100;
@@ -14,7 +15,7 @@ function openDatabase(provider) {
       clearTimeout(timeout);
       reject(error);
     }
-    try { request = provider.open(DB_NAME, 1); } catch (error) { fail(error); return; }
+    try { request = provider.open(storageKey(DB_NAME), 1); } catch (error) { fail(error); return; }
     request.onupgradeneeded = () => {
       if (!request.result.objectStoreNames.contains(STORE_NAME)) {
         request.result.createObjectStore(STORE_NAME, { keyPath: 'productId' });
@@ -102,4 +103,11 @@ export async function createCartStore(provider = globalThis.indexedDB) {
     },
     close() { database?.close(); database = null; },
   };
+}
+
+// Product requests may finish after a quantity edit or removal. Their old
+// quantities must never overwrite the current cart source of truth.
+export function resolveCartSnapshot(lines, results) {
+  const products = new Map(results.map(line => [line.productId, line.product]));
+  return lines.map(line => ({ ...line, product: products.get(line.productId) || null }));
 }

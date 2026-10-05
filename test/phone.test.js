@@ -13,3 +13,20 @@ test('contact phone rejects unsupported countries, malformed numbers, and extens
     assert.throws(() => normalizeContactPhone(value), /valid \+60 or \+65/);
   }
 });
+
+
+test('product chat uses wa.me with the validated seller number and no message payload', async () => {
+  const { sellerChatURL } = await import('../public/shop/product-detail.js');
+  for (const input of ['+60 12-345 6789', '+65 8123 4567']) {
+    const phone = normalizeContactPhone(input).slice(1);
+    const url = new URL(sellerChatURL(phone));
+    assert.equal(url.origin, 'https://wa.me');
+    assert.equal(url.pathname, `/${phone}`);
+    assert.equal(url.search, '');
+    assert.equal(url.hash, '');
+  }
+  for (const input of [null, undefined, 60123456789, '', '0123456789', '+60123456789',
+    '60 123456789', '1234567', '1234567890123456', '60123456789?text=private', '60123456789/path']) {
+    assert.equal(sellerChatURL(input), null);
+  }
+});

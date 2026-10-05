@@ -10,6 +10,7 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
+    "run_worker_first": true,
     "html_handling": "auto-trailing-slash",
     "not_found_handling": "none"
   },
@@ -17,6 +18,6 @@
     "bindings": [{ "name": "SHOP", "class_name": "ShopStore" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ShopStore"] }],
-  "vars": { "NODE_ENV": "production", "SHOP_MODE": "demo" },
+  "vars": { "NODE_ENV": "production", "SHOP_MODE": "public-demo", "SHOP_DEMO_REVISION": "v1" },
   "observability": { "enabled": true }
 }

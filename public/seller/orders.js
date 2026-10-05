@@ -1,3 +1,5 @@
+import { beginMutation } from '../shared/update-guard.js';
+import { createOrderDocuments } from './order-documents.js';
 import { formatDate, formatMoney, t, translate } from '../shared/i18n.js';
 
 function node(tag, className = '', value = '') {
@@ -15,7 +17,7 @@ function actionButton(label, onClick, className = 'secondary-button') {
 }
 
 function statusKey(status) {
-  return { SUBMITTED: 'statusSubmitted', CONFIRMED: 'statusConfirmed', REJECTED: 'statusRejected' }[status] || 'orderStatus';
+  return { SUBMITTED: 'statusSubmitted', CONFIRMED: 'statusConfirmed', REJECTED: 'statusRejected', SHIPPED: 'statusShipped', DELIVERED: 'statusDelivered', CANCELLED: 'statusCancelled' }[status] || 'orderStatus';
 }
 
 export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
@@ -35,8 +37,17 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
   const dialog = find('#decision-dialog');
   const reason = find('#decision-reason');
   const reasonLabel = find('#decision-reason-label');
+  const shipFields = find('#decision-ship-fields');
+  const carrier = find('#decision-carrier');
+  const carrierOtherLabel = find('#decision-carrier-other-label');
+  const carrierOther = find('#decision-carrier-other');
+  const tracking = find('#decision-tracking');
   const dialogError = find('#decision-error');
   const decisionSubmit = find('#decision-submit');
+  const documents = createOrderDocuments();
+  const retry = find('#order-retry');
+  let shopName = '';
+  let documentRequest = 0;
   let active = true;
   let items = [];
   let nextOffset = null;
@@ -63,7 +74,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
   function setMessage(key) {
     messageKey = key;
     message.textContent = key ? t(key) : '';
-    message.classList.toggle('is-error', ['copyFailure', 'orderChanged', 'decisionUnknown', 'decisionFailed', 'offlineMessage'].includes(key));
+    message.classList.toggle('is-error', ['documentFailed', 'copyFailure', 'orderChanged', 'decisionUnknown', 'decisionFailed', 'offlineMessage'].includes(key));
   }
   function setListStatus(key) { listStatusKey = key; listStatus.textContent = key ? t(key) : ''; }
   function setDialogError(key) { dialogErrorKey = key; dialogError.textContent = key ? t(key) : ''; }
@@ -71,27 +82,31 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
     detailStatusKey = key;
     detailContent.replaceChildren();
     detailContent.textContent = t(key);
+    if (key === 'orderLoadError' && selectedId) detailContent.append(actionButton(t('retry'), () => openOrder(selectedId), 'secondary-button order-retry'));
   }
 
   async function request(method, path, body) {
-    const response = await fetch(path, {
-      method,
-      cache: 'no-store',
-      headers: body ? { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() } : {},
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (response.status === 401) {
-      if (isCurrent()) onUnauthorized();
-      throw Object.assign(new Error('unauthorized'), { status: 401 });
-    }
-    let data;
-    try { data = await response.json(); } catch { throw new Error('invalid response'); }
-    if (!response.ok) {
-      throw Object.assign(new Error(data.error?.code || 'request failed'), {
-        status: response.status, code: data.error?.code, field: data.error?.field,
+    const finish = method === 'GET' ? () => {} : beginMutation();
+    try {
+      const response = await fetch(path, {
+        method,
+        cache: 'no-store',
+        headers: body ? { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() } : {},
+        body: body ? JSON.stringify(body) : undefined,
       });
-    }
-    return data;
+      if (response.status === 401) {
+        if (isCurrent()) onUnauthorized();
+        throw Object.assign(new Error('unauthorized'), { status: 401 });
+      }
+      let data;
+      try { data = await response.json(); } catch { throw new Error('invalid response'); }
+      if (!response.ok) {
+        throw Object.assign(new Error(data.error?.code || 'request failed'), {
+          status: response.status, code: data.error?.code, field: data.error?.field,
+        });
+      }
+      return data;
+    } finally { finish(); }
   }
 
   function renderQueue() {
@@ -116,6 +131,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
   async function loadQueue(reset = true) {
     if (!isCurrent()) return;
     const requestNumber = ++listRequest;
+    let succeeded = false;
     const offset = reset ? 0 : nextOffset;
     if (offset === null) return;
     const query = reset ? search.value.trim() : appliedSearch;
@@ -123,12 +139,12 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
     if (reset) {
       appliedSearch = query;
       appliedStatus = filter;
-      items = [];
-      nextOffset = null;
-      renderQueue();
+      // Keep the last successful queue visible until its replacement arrives.
+      list.setAttribute('aria-busy', 'true');
     }
     more.disabled = true;
     clearFilters.hidden = true;
+    retry.hidden = true;
     setListStatus('loading');
     try {
       const params = new URLSearchParams({
@@ -137,6 +153,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
       if (filter) params.set('status', filter);
       const result = await request('GET', `/api/v1/seller/orders?${params}`);
       if (!isCurrent() || requestNumber !== listRequest) return;
+      succeeded = true;
       items = reset ? result.items : [...items, ...result.items];
       nextOffset = result.nextOffset;
       renderQueue();
@@ -144,9 +161,9 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
       setListStatus(items.length ? '' : hasCriteria ? 'noMatchingOrders' : mode === 'review' ? 'noPendingOrders' : 'noOrders');
       clearFilters.hidden = Boolean(items.length) || !hasCriteria;
     } catch (error) {
-      if (isCurrent() && requestNumber === listRequest && error.status !== 401) setListStatus('networkError');
+      if (isCurrent() && requestNumber === listRequest && error.status !== 401) { setListStatus('networkError'); retry.hidden = false; }
     } finally {
-      if (isCurrent() && requestNumber === listRequest) more.disabled = false;
+      if (isCurrent() && requestNumber === listRequest) { more.disabled = !succeeded; list.setAttribute('aria-busy', 'false'); }
     }
   }
 
@@ -195,12 +212,27 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
     const head = node('div', 'order-detail-head');
     head.append(node('strong', 'order-number', order.orderNo), node('span', `order-chip ${order.status.toLowerCase()}`, t(statusKey(order.status))));
     fragment.append(head);
+    const documentActions = node('div', 'order-document-actions');
+    for (const kind of order.status === 'CONFIRMED' ? ['summary', 'packing'] : ['summary']) {
+      const button = actionButton(t(kind === 'packing' ? 'packingSheet' : 'orderDocument'), async () => {
+        const requestNumber = ++documentRequest; const id = order.id; button.disabled = true;
+        try {
+          const fresh = await request('GET', `/api/v1/seller/orders/${encodeURIComponent(id)}`);
+          if (!isCurrent() || requestNumber !== documentRequest || selectedId !== id) return;
+          documents.open(fresh, kind, shopName, button);
+        } catch (error) { if (isCurrent() && error.status !== 401) setMessage('documentFailed'); }
+        finally { if (button.isConnected) button.disabled = false; }
+      });
+      documentActions.append(button);
+    }
+    fragment.append(documentActions);
     if (order.simulation) fragment.append(node('p', 'order-simulation-notice', t('orderSimulationNotice')));
     fragment.append(detailGroup('orderSummary', [
       detailField('orderTotal', formatMoney(order.totalMinor, order.currency), false),
       detailField('submittedAt', formatDate(order.submittedAt), false),
       detailField('updatedAt', formatDate(order.updatedAt), false),
       detailField('orderRevision', String(order.revision), false),
+      ...(order.trackingCarrier ? [detailField('carrier', order.trackingCarrier, false), detailField('trackingNumberLabel', order.trackingNo, true)] : []),
     ]));
 
     const buyer = detailGroup('buyerDetails', [
@@ -272,6 +304,19 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
       actions.append(confirm, reject);
       fragment.append(actions);
     }
+    const fulfilment = { CONFIRMED: [['ship', 'shipOrder', 'primary-button'], ['cancel', 'cancelOrder', 'secondary-button']],
+      SHIPPED: [['deliver', 'deliverOrder', 'primary-button']] }[order.status];
+    if (fulfilment) {
+      const actions = node('div', 'order-review-actions');
+      if (!navigator.onLine) actions.append(node('p', 'order-offline-hint', t('offlineMessage')));
+      for (const [action, label, kind] of fulfilment) {
+        const button = actionButton(t(label), (event) => openDecision(action, event.currentTarget), kind);
+        button.dataset.action = action;
+        button.disabled = !navigator.onLine;
+        actions.append(button);
+      }
+      fragment.append(actions);
+    }
     detailStatusKey = '';
     detailContent.replaceChildren(fragment);
   }
@@ -297,24 +342,33 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
   }
 
   function openDecision(action, trigger) {
-    if (!selectedOrder || selectedOrder.status !== 'SUBMITTED' || deciding) return;
+    const requiredStatus = { confirm: 'SUBMITTED', reject: 'SUBMITTED', ship: 'CONFIRMED', cancel: 'CONFIRMED', deliver: 'SHIPPED' }[action];
+    if (!selectedOrder || selectedOrder.status !== requiredStatus || deciding) return;
     if (!navigator.onLine) { setMessage('offlineMessage'); return; }
     dialogAction = action;
     dialogTrigger = trigger;
     reason.value = '';
     setDialogError('');
-    reasonLabel.hidden = action !== 'reject';
-    reason.required = action === 'reject';
-    find('#decision-title').textContent = t(action === 'confirm' ? 'confirmOrder' : 'rejectOrder');
-    find('#decision-intro').textContent = t(action === 'confirm' ? 'confirmQuestion' : 'rejectQuestion');
-    decisionSubmit.textContent = t(action === 'confirm' ? 'confirmOrder' : 'rejectOrder');
+    const needsReason = action === 'reject' || action === 'cancel';
+    reasonLabel.hidden = !needsReason;
+    reason.required = needsReason;
+    reasonLabel.firstElementChild.textContent = t(action === 'cancel' ? 'cancellationReason' : 'rejectionReason');
+    shipFields.hidden = action !== 'ship';
+    carrier.selectedIndex = 0; carrierOther.value = ''; tracking.value = ''; carrierOtherLabel.hidden = true;
+    const labels = { confirm: ['confirmOrder', 'confirmQuestion'], reject: ['rejectOrder', 'rejectQuestion'],
+      ship: ['shipOrder', 'shipQuestion'], deliver: ['deliverOrder', 'deliverQuestion'], cancel: ['cancelOrder', 'cancelQuestion'] }[action];
+    find('#decision-title').textContent = t(labels[0]);
+    find('#decision-intro').textContent = t(labels[1]);
+    decisionSubmit.textContent = t(labels[0]);
     dialog.showModal();
-    if (action === 'reject') reason.focus();
+    if (needsReason) reason.focus();
+    else if (action === 'ship') carrier.focus();
     else decisionSubmit.focus();
   }
 
   find('#order-filter').addEventListener('submit', (event) => {
     event.preventDefault();
+    ++detailRequest; ++documentRequest;
     selectedId = null;
     selectedOrder = null;
     root.classList.remove('order-show-detail');
@@ -328,6 +382,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
     find('#order-filter').requestSubmit();
     search.focus();
   });
+  retry.addEventListener('click', () => loadQueue());
   more.addEventListener('click', () => loadQueue(false));
   back.addEventListener('click', () => {
     root.classList.remove('order-show-detail');
@@ -355,6 +410,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
     dialogTrigger = null;
     dialogAction = null;
   });
+  carrier.addEventListener('change', () => { carrierOtherLabel.hidden = carrier.value !== 'OTHER'; });
   find('#decision-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     if (deciding || !selectedOrder || !dialogAction) return;
@@ -362,46 +418,59 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
     const id = selectedOrder.id;
     const expectedRevision = selectedOrder.revision;
     const body = { expectedRevision };
-    if (action === 'reject') {
+    if (action === 'reject' || action === 'cancel') {
       const trimmed = reason.value.trim();
       if (!trimmed) { setDialogError('reasonRequired'); reason.focus(); return; }
       body.reason = trimmed;
     }
+    if (action === 'ship') {
+      const name = carrier.value === 'OTHER' ? carrierOther.value.trim() : carrier.value;
+      if (!name) { setDialogError('carrierRequired'); carrierOther.focus(); return; }
+      body.carrier = name;
+      if (tracking.value.trim()) body.trackingNo = tracking.value.trim();
+    }
     deciding = true;
+    document.dispatchEvent(new Event('updateguardchange'));
     decisionSubmit.disabled = true;
     setDialogError('');
     try {
       const updated = await request('POST', `/api/v1/seller/orders/${encodeURIComponent(id)}/${action}`, body);
       if (!isCurrent()) return;
       dialog.close();
-      selectedOrder = updated;
-      renderDetail();
-      setMessage(action === 'confirm' ? 'orderConfirmed' : 'orderRejected');
+      if (selectedId === id) { selectedOrder = updated; renderDetail(); }
+      document.dispatchEvent(new Event('ordersdecided'));
+      setMessage({ confirm: 'orderConfirmed', reject: 'orderRejected', ship: 'orderShipped', deliver: 'orderDelivered', cancel: 'orderCancelled' }[action]);
       await loadQueue();
     } catch (error) {
       if (!isCurrent() || error.status === 401) return;
       if (error.status === 409 && error.code === 'STALE_REVISION') {
         dialog.close();
-        await Promise.all([loadQueue(), openOrder(id)]);
+        await Promise.all([loadQueue(), ...(selectedId === id ? [openOrder(id)] : [])]);
         setMessage('orderChanged');
       } else if (!error.status) {
         dialog.close();
-        await Promise.all([loadQueue(), openOrder(id)]);
+        await Promise.all([loadQueue(), ...(selectedId === id ? [openOrder(id)] : [])]);
         setMessage('decisionUnknown');
       } else {
-        setDialogError(error.field === 'reason' ? 'reasonRequired' : 'decisionFailed');
+        setDialogError(error.code === 'INSUFFICIENT_STOCK' ? 'insufficientStock' : error.field === 'reason' ? 'reasonRequired' : 'decisionFailed');
       }
     } finally {
       deciding = false;
+      document.dispatchEvent(new Event('updateguardchange'));
       if (isCurrent()) decisionSubmit.disabled = false;
     }
   });
 
+  request('GET', '/api/v1/shop').then(setup => { if (isCurrent()) shopName = setup.shopName || ''; }).catch(() => {});
   loadQueue();
   return {
     mode,
+    isBusy: () => deciding,
+    hasUnsavedChanges: () => dialog.open,
+    draftSignature: () => JSON.stringify([dialog.open, dialogAction, selectedId]),
     dispose() {
       active = false;
+      ++documentRequest; documents.dispose();
       root.classList.remove('order-show-detail');
       window.removeEventListener('offline', onOffline);
       window.removeEventListener('online', onOnline);

@@ -3,9 +3,17 @@ import { FieldError, boundedText } from './validation.js';
 
 const orderColumns = `id, order_no, buyer_name, buyer_phone, buyer_email, whatsapp_opt_in,
   whatsapp_consent_at, whatsapp_consent_version, locale, status, revision, currency,
-  total_minor, submitted_at, updated_at`;
-const queueColumns = 'id, order_no, buyer_name, status, revision, currency, total_minor, submitted_at, updated_at';
-const statuses = new Set(['SUBMITTED', 'CONFIRMED', 'REJECTED']);
+  total_minor, submitted_at, updated_at, tracking_carrier, tracking_no`;
+const queueColumns = 'id, order_no, buyer_name, status, revision, currency, total_minor, submitted_at, updated_at, tracking_carrier, tracking_no';
+const statuses = new Set(['SUBMITTED', 'CONFIRMED', 'REJECTED', 'SHIPPED', 'DELIVERED', 'CANCELLED']);
+// Each seller action moves an order from one status to the next; cancelling is possible until it ships.
+const transitions = {
+  confirm: { from: 'SUBMITTED', to: 'CONFIRMED' },
+  reject: { from: 'SUBMITTED', to: 'REJECTED' },
+  ship: { from: 'CONFIRMED', to: 'SHIPPED' },
+  deliver: { from: 'SHIPPED', to: 'DELIVERED' },
+  cancel: { from: 'CONFIRMED', to: 'CANCELLED' },
+};
 
 function listNumber(params, key, fallback, maximum) {
   const value = params.get(key);
@@ -22,7 +30,15 @@ function summary(row) {
     id: row.id, orderNo: row.order_no, buyerName: row.buyer_name,
     status: row.status, revision: row.revision, currency: row.currency,
     totalMinor: row.total_minor, submittedAt: row.submitted_at, updatedAt: row.updated_at,
+    ...(row.tracking_carrier ? { trackingCarrier: row.tracking_carrier, trackingNo: row.tracking_no } : {}),
   };
+}
+
+/* Number of orders waiting for a decision, used for the seller's new-order alert. */
+export function pendingOrderSummary(database) {
+  const { pending } = database.get("SELECT COUNT(*) AS pending FROM shop_order WHERE status = 'SUBMITTED'");
+  const latest = database.get("SELECT MAX(submitted_at) AS at FROM shop_order WHERE status = 'SUBMITTED'").at;
+  return { pending, latestSubmittedAt: latest };
 }
 
 export function listSellerOrders(database, params) {
@@ -87,37 +103,70 @@ function validateDecision(action, input) {
       !Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 1) {
     throw new FieldError('expectedRevision', 'Supply the current order revision.');
   }
-  if (action === 'confirm') {
-    if (Object.keys(input).some((key) => key !== 'expectedRevision')) {
-      throw new FieldError('decision', 'Unexpected confirmation field.');
+  const allowed = { confirm: [], deliver: [], reject: ['reason'], cancel: ['reason'], ship: ['carrier', 'trackingNo'] }[action];
+  if (Object.keys(input).some((key) => key !== 'expectedRevision' && !allowed.includes(key))) {
+    throw new FieldError('decision', 'Unexpected order action field.');
+  }
+  const { to } = transitions[action];
+  if (action === 'reject' || action === 'cancel') return { status: to, reason: boundedText(input.reason, 'reason', 500), tracking: null };
+  if (action === 'ship') {
+    return {
+      status: to, reason: null,
+      tracking: { carrier: boundedText(input.carrier, 'carrier', 40), trackingNo: boundedText(input.trackingNo ?? '', 'trackingNo', 60, false) || null },
+    };
+  }
+  return { status: to, reason: null, tracking: null };
+}
+
+/* Confirming an order takes its quantities from tracked stock; the transaction rolls back if any product is short. */
+function deductStock(database, orderId) {
+  const lines = database.all(`SELECT i.product_id, SUM(i.quantity) AS quantity, p.sku, p.stock_quantity
+    FROM order_item i JOIN delivery d ON d.id = i.delivery_id JOIN product p ON p.id = i.product_id
+    WHERE d.order_id = ? GROUP BY i.product_id, p.sku, p.stock_quantity`, orderId);
+  for (const line of lines) {
+    if (line.stock_quantity === null) continue;
+    if (line.stock_quantity < line.quantity) {
+      const error = new ApiError(409, 'INSUFFICIENT_STOCK', `Not enough stock for ${line.sku}.`);
+      error.field = 'stock';
+      throw error;
     }
-    return { status: 'CONFIRMED', reason: null };
+    database.run('UPDATE product SET stock_quantity = stock_quantity - ? WHERE id = ?', line.quantity, line.product_id);
   }
-  if (Object.keys(input).some((key) => !['expectedRevision', 'reason'].includes(key))) {
-    throw new FieldError('decision', 'Unexpected rejection field.');
-  }
-  return { status: 'REJECTED', reason: boundedText(input.reason, 'reason', 500) };
+}
+
+/* Cancelling a confirmed order returns its quantities to tracked stock. */
+function restoreStock(database, orderId) {
+  database.run(`UPDATE product SET stock_quantity = stock_quantity + COALESCE((
+      SELECT SUM(i.quantity) FROM order_item i JOIN delivery d ON d.id = i.delivery_id
+      WHERE d.order_id = ? AND i.product_id = product.id), 0)
+    WHERE stock_quantity IS NOT NULL AND id IN (
+      SELECT i.product_id FROM order_item i JOIN delivery d ON d.id = i.delivery_id WHERE d.order_id = ?)`, orderId, orderId);
 }
 
 export function decideSellerOrder(database, id, action, input, actorId) {
-  if (!['confirm', 'reject'].includes(action)) throw new TypeError('Invalid order action.');
+  if (!Object.hasOwn(transitions, action)) throw new TypeError('Invalid order action.');
   const decision = validateDecision(action, input);
   const now = new Date().toISOString();
   database.transaction(() => {
     const current = database.get('SELECT status, revision FROM shop_order WHERE id = ?', id);
     if (!current) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
-    if (current.status !== 'SUBMITTED' || current.revision !== input.expectedRevision) {
+    const { from } = transitions[action];
+    if (current.status !== from || current.revision !== input.expectedRevision) {
       throw new ApiError(409, 'STALE_REVISION', 'The order changed. Reload and try again.');
     }
-    const changed = database.get(`UPDATE shop_order SET status = ?, revision = revision + 1,
-      updated_at = ? WHERE id = ? AND status = 'SUBMITTED' AND revision = ? RETURNING id`,
-    decision.status, now, id, input.expectedRevision);
+    const tracking = decision.tracking;
+    const changed = database.get(`UPDATE shop_order SET status = ?, revision = revision + 1, updated_at = ?
+      ${tracking ? ', tracking_carrier = ?, tracking_no = ?' : ''}
+      WHERE id = ? AND status = ? AND revision = ? RETURNING id`,
+    decision.status, now, ...(tracking ? [tracking.carrier, tracking.trackingNo] : []), id, from, input.expectedRevision);
     if (!changed) {
       throw new ApiError(409, 'STALE_REVISION', 'The order changed. Reload and try again.');
     }
+    if (decision.status === 'CONFIRMED') deductStock(database, id);
+    if (decision.status === 'CANCELLED') restoreStock(database, id);
     database.run(`INSERT INTO order_event
       (order_id, event_type, actor_type, actor_id, previous_status, status, reason, occurred_at)
-      VALUES (?, ?, 'SELLER', ?, 'SUBMITTED', ?, ?, ?)`, id, decision.status, actorId, decision.status, decision.reason, now);
+      VALUES (?, ?, 'SELLER', ?, ?, ?, ?, ?)`, id, decision.status, actorId, from, decision.status, decision.reason, now);
   });
   return getSellerOrder(database, id);
 }

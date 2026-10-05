@@ -130,7 +130,7 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
     }
     const submittedItems = cartItems.map(({ productId, quantity }) => ({ productId, quantity }));
     const orderItems = cartItems.map(({ productId, quantity, product }) => ({
-      productId, name: product.name, quantity, unitPriceMinor: product.priceMinor,
+      productId, name: product.name, quantity, unitPriceMinor: product.priceMinor, imageUrl: product.imageUrl,
     }));
     const serialized = JSON.stringify(payload);
     // Keep the key until the server confirms an outcome. A lost response may
@@ -168,6 +168,7 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
         }
         setError(result.error?.code === 'MIXED_CURRENCY' ? 'mixedCurrencies' :
           result.error?.code === 'PRODUCT_UNAVAILABLE' ? 'cartUnavailable' :
+          result.error?.code === 'OUT_OF_STOCK' ? 'outOfStockCheckout' :
           result.error?.code === 'INVALID_INPUT' ? 'checkoutInvalid' : 'orderError', result.error?.field);
         return;
       }

@@ -1,5 +1,16 @@
-import { formatMoney, t } from '../shared/i18n.js';
+import { productMedia, setProductMedia } from './product-media.js';
+import { locale, t } from '../shared/i18n.js';
+import { formatCatalogPrice } from './catalog-presentation.js';
+const formatMoney = (minor, currency) => formatCatalogPrice(minor, currency, locale());
 import { productHash } from './shop-route.js';
+import { productShareURL, shareProduct } from './product-share.js';
+import { attachImageZoom } from './image-zoom.js';
+
+export function sellerChatURL(phone) {
+  return typeof phone === 'string' && /^[1-9]\d{7,14}$/.test(phone)
+    ? `https://wa.me/${phone}`
+    : null;
+}
 
 function node(tag, className = '', text) {
   const element = document.createElement(tag);
@@ -26,7 +37,7 @@ function image(product, className, source = product.imageUrl) {
   return element;
 }
 
-export function mountProductDetail(root, { api, addToCart, checkout, shop, notify, updateBanner }) {
+export function mountProductDetail(root, { api, addToCart, checkout, shop, notify, updateBanner, cartQuantity = () => 0 }) {
   let request = 0;
   let product = null;
   let related = [];
@@ -47,7 +58,9 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
   window.addEventListener('scroll', syncFloatingNavigation, { passive: true });
   window.addEventListener('resize', syncFloatingNavigation);
 
+  let imageZoom;
   function closeImage() {
+    imageZoom?.destroy();
     root.querySelectorAll('dialog[open]').forEach((dialog) => dialog.close());
   }
 
@@ -65,7 +78,7 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     back.append(backIcon, node('span', '', t('continueShopping')));
     const navigation = node('nav', 'product-navigation');
     navigation.setAttribute('aria-label', t('productNavigation'));
-    navigation.append(back);
+    navigation.append(back, node('span', 'product-navigation-title', t('productInformation')));
     root.append(navigation);
     if (!product) {
       document.title = `${t(errorKey || 'viewDetails')} · ${shop()?.shopName || t('shop')}`;
@@ -89,35 +102,47 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     document.title = `${product.name} · ${shop()?.shopName || t('shop')}`;
     const layout = node('div', 'product-layout');
     const gallery = node('div', 'product-gallery');
-    const images = product.images?.length ? product.images : (product.imageUrl ? [product.imageUrl] : []);
+    const media = productMedia(product);
+    const images = media.map(item => item.src);
     activeImageIndex = Math.min(activeImageIndex, Math.max(0, images.length - 1));
     const zoom = node('dialog', 'image-viewer');
     zoom.setAttribute('aria-label', product.name);
-    const zoomImage = image(product, 'zoom-image', images[activeImageIndex]);
-    const zoomClose = button('', () => zoom.close(), 'image-close');
+    const zoomImage = images.length ? node('img', 'zoom-image') : image(product, 'zoom-image');
+    zoomImage.alt = media[activeImageIndex]?.alt || product.name;
+    const zoomClose = button('', () => {}, 'image-close');
     zoomClose.setAttribute('aria-label', t('close'));
     zoomClose.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5 19 19M19 5 5 19"/></svg>';
     const zoomHeader = node('div', 'image-viewer-header');
     const zoomCount = node('span', 'image-viewer-count', `${activeImageIndex + 1} / ${images.length}`);
     zoomHeader.append(zoomCount, zoomClose);
     zoom.append(zoomHeader, zoomImage);
-    zoom.addEventListener('click', (event) => { if (event.target === zoom) zoom.close(); });
+
     const imageButton = node('button', 'product-image-button');
     imageButton.type = 'button';
-    imageButton.addEventListener('click', () => zoom.showModal());
+    imageZoom = attachImageZoom(zoom, zoomImage, imageButton, zoomClose);
+    imageButton.addEventListener('click', () => { if (media[activeImageIndex]) setProductMedia(zoomImage, media[activeImageIndex], 'full'); imageZoom.open(); });
     imageButton.setAttribute('aria-label', `${t('zoomImage')}: ${product.name}`);
     imageButton.disabled = !images.length;
-    const mainImage = image(product, 'product-main-image', images[activeImageIndex]);
+    const mainImage = images.length ? node('img', 'product-main-image') : image(product, 'product-main-image');
+    if (media[activeImageIndex]) setProductMedia(mainImage, media[activeImageIndex]);
+    const imageError = node('span', 'product-image-error', t('imageMissing')); imageError.hidden = true;
+    mainImage.addEventListener('error', () => { mainImage.hidden = true; imageError.hidden = false; });
+    mainImage.addEventListener('load', () => { mainImage.hidden = false; imageError.hidden = true; });
     mainImage.draggable = false;
     zoomImage.draggable = false;
     const zoomCue = node('span', 'product-zoom-cue');
     zoomCue.setAttribute('aria-hidden', 'true');
     zoomCue.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>';
-    imageButton.append(mainImage, zoomCue);
+    imageButton.append(mainImage, imageError, zoomCue);
     const imageCount = node('span', 'image-count', `${activeImageIndex + 1} / ${images.length}`);
     imageCount.setAttribute('aria-hidden', 'true');
-    if (images.length > 1) imageButton.append(imageCount);
+    if (images.length) imageButton.append(imageCount);
     gallery.append(imageButton);
+    const photoCaption = node('p', 'product-photo-caption', media[activeImageIndex]?.caption || '');
+    photoCaption.hidden = !photoCaption.textContent; gallery.append(photoCaption);
+    const galleryProductId = product.id;
+    const rememberPhoto = () => { if (product?.id === galleryProductId && location.hash === productHash(galleryProductId)) history.replaceState({ ...history.state, shopGallery: { id: galleryProductId, index: activeImageIndex } }, '', location.href); };
+    zoom.addEventListener('close', rememberPhoto);
     if (images.length > 1) {
       const photoStatus = node('span', 'sr-only');
       photoStatus.setAttribute('role', 'status');
@@ -126,8 +151,12 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
       const viewerThumbs = node('div', 'viewer-thumbnails');
       const updateImage = (index) => {
         activeImageIndex = (index + images.length) % images.length;
-        mainImage.src = images[activeImageIndex];
-        zoomImage.src = images[activeImageIndex];
+        mainImage.hidden = false; imageError.hidden = true;
+        setProductMedia(mainImage, media[activeImageIndex]);
+        photoCaption.textContent = media[activeImageIndex].caption; photoCaption.hidden = !photoCaption.textContent;
+        rememberPhoto();
+        imageZoom.reset();
+        if (zoom.open) setProductMedia(zoomImage, media[activeImageIndex], 'full');
         imageCount.textContent = `${activeImageIndex + 1} / ${images.length}`;
         zoomCount.textContent = imageCount.textContent;
         photoStatus.textContent = `${t('photoNumber').replace('{number}', String(activeImageIndex + 1))} / ${images.length}`;
@@ -168,13 +197,19 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
         });
         surface.addEventListener('pointercancel', () => { pointerStart = null; });
       };
-      swipe(imageButton); swipe(zoomImage);
+      swipe(imageButton);
+      imageZoom.setSwipe(direction => updateImage(activeImageIndex + direction));
       imageButton.addEventListener('click', (event) => {
         if (!ignoreClick) return;
         ignoreClick = false;
         event.stopImmediatePropagation();
       }, true);
+      imageButton.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault(); updateImage(activeImageIndex + (event.key === 'ArrowLeft' ? -1 : 1));
+      });
       zoom.addEventListener('keydown', (event) => {
+        if (event.ctrlKey || event.metaKey || event.altKey || !zoom.open) return;
         if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
         event.preventDefault(); updateImage(activeImageIndex + (event.key === 'ArrowLeft' ? -1 : 1));
       });
@@ -182,7 +217,9 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
         const thumbnail = button('', () => updateImage(index), 'product-thumbnail');
         thumbnail.setAttribute('aria-label', t('photoNumber').replace('{number}', String(index + 1)));
         thumbnail.setAttribute('aria-pressed', String(index === activeImageIndex));
-        thumbnail.append(image(product, '', source));
+        const preview = node('img');
+        setProductMedia(preview, media[index], 'thumbnail');
+        thumbnail.append(preview);
         thumbs.append(thumbnail);
         const viewerThumbnail = thumbnail.cloneNode(true);
         viewerThumbnail.addEventListener('click', () => updateImage(index));
@@ -195,8 +232,11 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     const title = node('h1', '', product.name);
     title.id = 'detail-title'; title.tabIndex = -1;
     const headingBlock = node('div', 'product-heading-block');
-    headingBlock.append(node('strong', 'product-price', formatMoney(product.priceMinor, product.currency)),
-      title);
+    const priceBlock = node('div', 'product-price-block');
+    priceBlock.append(node('span', 'product-price-label', t(shop()?.mode === 'demo' ? 'referencePrice' : 'unitPrice')), node('strong', 'product-price', formatMoney(product.priceMinor, product.currency)));
+    const keyDetails = node('dl', 'product-key-details');
+    for (const [label, value] of [[t('sku'), product.sku], [t('category'), product.category]]) keyDetails.append(node('dt', '', label), node('dd', '', value));
+    headingBlock.append(title, priceBlock, keyDetails);
     const selectionBlock = node('div', 'product-selection-block');
     if (product.variants?.length > 1) {
       const variants = node('div', 'product-variants');
@@ -278,12 +318,10 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     stepper.append(minus, quantity, plus);
     const subtotal = node('p', 'product-subtotal');
     quantityRow.append(label, stepper, subtotal);
-    const feedback = node('p', 'detail-feedback', statusKey ? t(statusKey) : '');
+    const feedback = node('p', 'detail-feedback', statusKey && statusKey !== 'addedToCart' ? t(statusKey) : '');
     feedback.setAttribute('role', 'status');
     feedback.dataset.state = statusKey === 'addedToCart' ? 'success' : statusKey ? 'error' : '';
     const purchaseBar = node('div', 'product-purchase');
-    const cartLink = link(t('viewCart'), '#cart', 'outline-button');
-    cartLink.hidden = statusKey !== 'addedToCart';
     function syncQuantity() {
       quantityValue = quantity.value;
       const count = quantity.valueAsNumber;
@@ -324,24 +362,25 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
         const added = await addToCart(selectedProduct, count);
         if (capturedRequest !== request) return;
         statusKey = added ? 'addedToCart' : 'quantityLimit';
-        feedback.textContent = t(statusKey);
+        feedback.textContent = added ? '' : t(statusKey);
         feedback.dataset.state = added ? 'success' : 'error';
-        cartLink.hidden = !added;
       } catch {
         if (capturedRequest === request) { statusKey = 'networkError'; feedback.textContent = t(statusKey); feedback.dataset.state = 'error'; }
       } finally {
         if (capturedRequest === request) {
           busy = false;
           for (const control of purchaseBar.querySelectorAll('button')) control.disabled = false;
+          if (soldOut) add.disabled = buy.disabled = true;
           syncQuantity();
           if (localePending) { localePending = false; render(); }
         }
       }
     }
     const sellerPhone = shop()?.sellerWhatsAppPhone;
-    const chatAvailable = typeof sellerPhone === 'string' && /^[1-9]\d{7,14}$/.test(sellerPhone);
+    const chatURL = sellerChatURL(sellerPhone);
+    const chatAvailable = Boolean(chatURL);
     const chat = chatAvailable
-      ? link('', `https://web.whatsapp.com/send/?phone=${sellerPhone}`, 'product-chat')
+      ? link('', chatURL, 'product-chat')
       : button('', () => notify?.('chatUnavailable'), 'product-chat');
     chat.setAttribute('aria-label', t(chatAvailable ? 'openWhatsApp' : 'chatUnavailable'));
     if (chatAvailable) {
@@ -352,30 +391,47 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     chat.append(node('span', '', t('chat')));
     const add = button(t('addToCart'), () => purchase(false), 'product-add');
     const buy = button(t('buyNow'), () => purchase(true), 'primary-button product-buy');
-    add.disabled = buy.disabled = busy;
+    const soldOut = product.inStock === false;
+    add.disabled = buy.disabled = busy || soldOut;
+    if (soldOut) { feedback.textContent = t('outOfStock'); feedback.dataset.state = 'error'; }
     purchaseBar.append(chat, add, buy);
     const shareStatus = node('p', 'shop-note'); shareStatus.setAttribute('role', 'status');
     const shareField = node('input', 'share-url'); shareField.readOnly = true; shareField.hidden = true;
     shareField.setAttribute('aria-label', t('productLink'));
-    const share = button(t('copyProductLink'), async () => {
-      const url = new URL(productHash(product.id), location.href).href;
-      try { await navigator.clipboard.writeText(url); shareStatus.textContent = t('linkCopied'); }
-      catch { shareField.value = url; shareField.hidden = false; shareField.focus(); shareField.select(); shareStatus.textContent = t('copyLinkHelp'); }
+    let sharing = false;
+    const share = button(t('shareProduct'), async () => {
+      if (sharing) return;
+      sharing = true; share.disabled = true; share.setAttribute('aria-busy', 'true');
+      shareStatus.textContent = ''; shareField.hidden = true;
+      const id = product.id;
+      const url = productShareURL(id, location.href);
+      const isCurrent = () => share.isConnected && !root.hidden && location.hash === productHash(id);
+      const result = await shareProduct({ title: product.name, url }, navigator, isCurrent);
+      if (result && isCurrent()) {
+        shareStatus.textContent = t(result);
+        if (result === 'copyLinkHelp') {
+          shareField.value = url; shareField.hidden = false; shareField.focus(); shareField.select();
+        }
+      }
+      sharing = false; share.disabled = false; share.removeAttribute('aria-busy');
     }, 'text-button');
     share.className = 'product-share';
-    share.setAttribute('aria-label', t('copyProductLink'));
+    share.setAttribute('aria-label', t('shareProduct'));
+    share.title = t('shareProduct');
     share.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12.5 16 8M8 11.5l8 4.5"/><circle cx="6" cy="12" r="2"/><circle cx="18" cy="7" r="2"/><circle cx="18" cy="17" r="2"/></svg>';
     const cartNavigation = link('', '#cart', 'product-nav-cart');
     cartNavigation.setAttribute('aria-label', t('viewCart'));
     cartNavigation.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 4h2l2.3 11.5h11.7L21 7H5"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg>';
+    cartNavigation.append(node('span', 'product-cart-count'));
     navigation.append(share, cartNavigation);
+    updateCartCount();
     headingBlock.append(shareStatus, shareField);
-    selectionBlock.append(quantityRow, purchaseBar, feedback, cartLink);
+    selectionBlock.append(quantityRow, purchaseBar, feedback);
     const demo = shop()?.mode === 'demo';
     const serviceDetails = node('div', 'product-service-details');
     const serviceRows = demo
-      ? [['demoOrderInformation', 'demoBrief']]
-      : [['shipping', 'shippingUnconfirmed'], ['returnsAndGuarantees', 'returnsUnconfirmed']];
+      ? [['stockAndDelivery', 'demoAvailability'], ['demoOrderInformation', 'demoBrief']]
+      : [['stockAndDelivery', 'availabilityUnconfirmed'], ['shipping', 'shippingUnconfirmed'], ['returnsAndGuarantees', 'returnsUnconfirmed']];
     for (const [heading, copy] of serviceRows) {
       const section = node('details', 'product-service-row');
       section.append(node('summary', '', t(heading)), node('p', '', t(copy)));
@@ -416,7 +472,9 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
       const list = node('div', 'related-grid');
       for (const item of related) {
         const card = link('', productHash(item.id), 'related-card');
-        card.append(image(item, 'related-image'), node('h3', '', item.name), node('strong', '', formatMoney(item.priceMinor, item.currency)));
+        const relatedImage = image(item, 'related-image');
+        relatedImage.loading = 'lazy'; relatedImage.decoding = 'async';
+        card.append(relatedImage, node('h3', '', item.name), node('strong', '', formatMoney(item.priceMinor, item.currency)));
         list.append(card);
       }
       section.append(list);
@@ -436,6 +494,8 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
       const result = await api(`/api/v1/products/${id}`);
       if (version !== request) return;
       product = result;
+      const savedPhoto = history.state?.shopGallery;
+      if (savedPhoto?.id === id && Number.isInteger(savedPhoto.index)) activeImageIndex = Math.max(0, Math.min(savedPhoto.index, productMedia(result).length - 1));
       if (previousGroup && result.variantGroup === previousGroup) quantityValue = previousQuantity;
       render(true);
       const params = new URLSearchParams({ category: result.category, limit: '5' });
@@ -451,7 +511,17 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
       errorKey = error.status === 404 ? 'productUnavailable' : 'networkError'; render(true);
     }
   }
+  function updateCartCount() {
+    const control = root.querySelector('.product-nav-cart');
+    if (!control) return;
+    const count = cartQuantity();
+    const badge = control.querySelector('.product-cart-count');
+    badge.textContent = count > 99 ? '99+' : String(count);
+    badge.hidden = count === 0;
+    control.setAttribute('aria-label', `${t('cart')}: ${count}`);
+  }
   return {
+    updateCartCount,
     show,
     hide() { request++; currentId = undefined; product = null; busy = false; closeImage(); },
     refreshLocale() { if (busy) localePending = true; else render(); },

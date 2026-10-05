@@ -1,6 +1,6 @@
 (() => {
   const storageKey = 'online-shopping-shop-palette-v1';
-  const paletteIds = new Set(['evergreen-teal', 'warm-plum', 'ocean-blue']);
+  const paletteIds = new Set(['evergreen-teal', 'warm-plum', 'ocean-blue', 'high-contrast', 'graphite']);
   const defaultPalette = 'evergreen-teal';
   const validPalette = (value) => paletteIds.has(value) ? value : defaultPalette;
   let current = defaultPalette;

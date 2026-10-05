@@ -240,3 +240,100 @@ test('simultaneous decisions cannot overwrite one another and audit failure roll
     assert.ok(['CONFIRMED', 'REJECTED'].includes(detail.data.status));
   } finally { await f.close(); }
 });
+
+test('tracked stock blocks oversell at checkout and is deducted only when the seller confirms', async () => {
+  const f = await fixture();
+  try {
+    const session = await f.login();
+    const decide = (id, action, body) => f.request('POST', `/api/v1/seller/orders/${id}/${action}`, body,
+      { origin: f.origin, cookie: session.cookie, 'x-csrf-token': session.csrf });
+    const stock = () => f.app.database.get('SELECT stock_quantity AS n FROM product WHERE id = ?', f.product.id).n;
+    // Unlimited by default: stock is null and the public API reports it in stock.
+    assert.equal(stock(), null);
+    assert.equal((await f.request('GET', `/api/v1/products/${f.product.id}`)).data.inStock, true);
+    // Turn tracking on with 3 units; each test order buys 2.
+    const patch = await f.request('PATCH', `/api/v1/seller/products/${f.product.id}`, { stockQuantity: 3 },
+      { origin: f.origin, cookie: session.cookie, 'x-csrf-token': session.csrf });
+    assert.equal(patch.response.status, 200);
+    assert.equal(patch.data.stockQuantity, 3);
+    assert.equal((await f.request('PATCH', `/api/v1/seller/products/${f.product.id}`, { stockQuantity: -1 },
+      { origin: f.origin, cookie: session.cookie, 'x-csrf-token': session.csrf })).response.status, 400);
+    const first = await f.submit();
+    const second = await f.submit();
+    assert.equal(first.response.status, 201);
+    assert.equal(second.response.status, 201, 'pending orders do not reserve stock');
+    assert.equal(stock(), 3);
+    const [{ id: firstId }, { id: secondId }] = f.app.database.all('SELECT id FROM shop_order ORDER BY order_no');
+    assert.equal((await decide(firstId, 'confirm', { expectedRevision: 1 })).response.status, 200);
+    assert.equal(stock(), 1);
+    const short = await decide(secondId, 'confirm', { expectedRevision: 1 });
+    assert.equal(short.response.status, 409);
+    assert.equal(short.data.error.code, 'INSUFFICIENT_STOCK');
+    assert.equal(stock(), 1, 'a failed confirmation leaves stock unchanged');
+    assert.equal(f.app.database.get('SELECT status FROM shop_order WHERE id = ?', secondId).status, 'SUBMITTED');
+    // Not enough left for another 2-unit order at checkout.
+    const refused = await f.submit();
+    assert.equal(refused.response.status, 409);
+    assert.equal(refused.data.error.code, 'OUT_OF_STOCK');
+    // Rejecting never touches stock; zero stock reports out of stock publicly.
+    assert.equal((await decide(secondId, 'reject', { expectedRevision: 1, reason: 'Short stock' })).response.status, 200);
+    assert.equal(stock(), 1);
+    f.app.database.run('UPDATE product SET stock_quantity = 0 WHERE id = ?', f.product.id);
+    assert.equal((await f.request('GET', `/api/v1/products/${f.product.id}`)).data.inStock, false);
+    // Seller view exposes the count; clearing it returns to unlimited.
+    assert.equal((await f.request('PATCH', `/api/v1/seller/products/${f.product.id}`, { stockQuantity: null },
+      { origin: f.origin, cookie: session.cookie, 'x-csrf-token': session.csrf })).data.stockQuantity, null);
+  } finally { await f.close(); }
+});
+
+test('fulfilment moves confirmed orders to shipped and delivered, cancelling restocks, and buyers see tracking', async () => {
+  const f = await fixture();
+  try {
+    const session = await f.login();
+    const headers = { origin: f.origin, cookie: session.cookie, 'x-csrf-token': session.csrf };
+    const act = (id, action, body) => f.request('POST', `/api/v1/seller/orders/${id}/${action}`, body, headers);
+    const stock = () => f.app.database.get('SELECT stock_quantity AS n FROM product WHERE id = ?', f.product.id).n;
+    f.app.database.run('UPDATE product SET stock_quantity = 10 WHERE id = ?', f.product.id);
+    const key = randomUUID();
+    const submitted = await f.submit({ accessKey: key });
+    const id = f.app.database.get('SELECT id FROM shop_order WHERE order_no = ?', submitted.data.orderNo).id;
+    const buyerStatus = async () => (await f.request('POST', '/api/v1/orders/statuses',
+      { orders: [{ orderNo: submitted.data.orderNo, accessKey: key }] }, { origin: f.origin })).data.items[0];
+    assert.equal((await f.request('GET', '/api/v1/seller/orders/summary', null, headers)).data.pending, 1);
+    // Order of steps is enforced.
+    assert.equal((await act(id, 'ship', { expectedRevision: 1, carrier: 'Ninja Van' })).response.status, 409);
+    assert.equal((await act(id, 'confirm', { expectedRevision: 1 })).response.status, 200);
+    assert.equal(stock(), 8);
+    assert.equal((await f.request('GET', '/api/v1/seller/orders/summary', null, headers)).data.pending, 0);
+    assert.equal((await act(id, 'deliver', { expectedRevision: 2 })).response.status, 409);
+    assert.equal((await act(id, 'ship', { expectedRevision: 2 })).response.status, 400, 'carrier is required');
+    assert.equal((await act(id, 'ship', { expectedRevision: 2, carrier: 'Ninja Van', extra: 1 })).response.status, 400);
+    const shipped = await act(id, 'ship', { expectedRevision: 2, carrier: 'Ninja Van', trackingNo: 'NV123456' });
+    assert.equal(shipped.response.status, 200);
+    assert.equal(shipped.data.status, 'SHIPPED');
+    assert.equal(shipped.data.trackingCarrier, 'Ninja Van');
+    assert.equal(shipped.data.trackingNo, 'NV123456');
+    assert.deepEqual(await buyerStatus(), { orderNo: submitted.data.orderNo, status: 'SHIPPED',
+      updatedAt: shipped.data.updatedAt, trackingCarrier: 'Ninja Van', trackingNo: 'NV123456' });
+    // A shipped order can no longer be cancelled; it can be delivered.
+    assert.equal((await act(id, 'cancel', { expectedRevision: 3, reason: 'Too late' })).response.status, 409);
+    const delivered = await act(id, 'deliver', { expectedRevision: 3 });
+    assert.equal(delivered.data.status, 'DELIVERED');
+    assert.equal((await act(id, 'deliver', { expectedRevision: 4 })).response.status, 409);
+    assert.deepEqual(delivered.data.events.map(event => event.status), ['SUBMITTED', 'CONFIRMED', 'SHIPPED', 'DELIVERED']);
+    // Cancelling a confirmed order restores its stock and needs a reason.
+    const second = await f.submit();
+    const secondId = f.app.database.get('SELECT id FROM shop_order WHERE order_no = ?', second.data.orderNo).id;
+    await act(secondId, 'confirm', { expectedRevision: 1 });
+    assert.equal(stock(), 6);
+    assert.equal((await act(secondId, 'cancel', { expectedRevision: 2 })).response.status, 400);
+    const cancelled = await act(secondId, 'cancel', { expectedRevision: 2, reason: 'Buyer asked to cancel' });
+    assert.equal(cancelled.data.status, 'CANCELLED');
+    assert.equal(stock(), 8);
+    assert.equal((await act(secondId, 'cancel', { expectedRevision: 3, reason: 'Again' })).response.status, 409);
+    assert.equal(stock(), 8, 'a repeated cancel does not restock twice');
+    // Status filter accepts the new states.
+    assert.equal((await f.request('GET', '/api/v1/seller/orders?status=DELIVERED', null, headers)).data.items.length, 1);
+    assert.equal((await f.request('GET', '/api/v1/seller/orders?status=CANCELLED', null, headers)).data.items.length, 1);
+  } finally { await f.close(); }
+});

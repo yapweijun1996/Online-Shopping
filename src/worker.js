@@ -1,7 +1,7 @@
 import { initializeShop, shopObjectName } from './shop-setup.js';
 import { createApi } from './app.js';
 import { ensureAdmin } from './auth.js';
-import { readWorkerConfig, readShopMode } from './config.js';
+import { readWorkerConfig, readShopMode, readDemoRevision } from './config.js';
 import { migrateStore } from './db.js';
 import { openDurableStore } from './durable-store.js';
 import { errorResponse, json, readBody } from './http.js';
@@ -38,7 +38,12 @@ export class ShopStore {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (!apiPath.test(url.pathname)) return env.ASSETS.fetch(request);
+    if (!apiPath.test(url.pathname)) {
+      let decoded;
+      try { decoded = decodeURIComponent(url.pathname).replace(/\/{2,}/g, '/'); } catch { return json(404, { error: { code: 'NOT_FOUND' } }); }
+      if (/^\/demo(?:\/|$)/.test(decoded) && readShopMode(env) !== 'public-demo') return json(404, { error: { code: 'NOT_FOUND' } });
+      return env.ASSETS.fetch(request);
+    }
     // Only this Worker can reach the object, so it sets the client address the object trusts.
     const headers = new Headers(request.headers);
     headers.set('x-real-ip', request.headers.get('cf-connecting-ip') || 'unknown');
@@ -52,7 +57,7 @@ export default {
       }
       headers.delete('content-length');
     }
-    const stub = env.SHOP.get(env.SHOP.idFromName(shopObjectName(readShopMode(env))), { locationHint: 'apac' });
+    const stub = env.SHOP.get(env.SHOP.idFromName(shopObjectName(readShopMode(env), readDemoRevision(env))), { locationHint: 'apac' });
     return stub.fetch(new Request(request.url, { method: request.method, headers, body }));
   },
 };

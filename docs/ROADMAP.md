@@ -12,4 +12,6 @@
 
 ## Deferred work
 
+The Docker, PostgreSQL and multi-tenant production path is planned in [MULTI_TENANT_PRODUCTION_PLAN.md](MULTI_TENANT_PRODUCTION_PLAN.md). Post-MVP candidates and their prerequisites are reviewed in [SELLER_PANEL_REVIEW.md](SELLER_PANEL_REVIEW.md) (seller panel gaps) and [INTEGRATIONS.md](INTEGRATIONS.md) (WhatsApp and couriers). The list below is the original exclusion list and still applies until the owner schedules those items.
+
 Payment, inventory/shipping automation, customer accounts/OTP and cross-device recovery, outbound WhatsApp automation, courier/AWB/tracking, and CSV/Excel batch export are outside these milestones. Verify any external platform/import contract before adding an integration milestone.

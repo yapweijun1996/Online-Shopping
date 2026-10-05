@@ -39,6 +39,105 @@ test('shop theme color matches its brand token and is cached offline', () => {
 
 import vm from 'node:vm';
 
+test('Seller activation defers reload for primary-image removal and newly opened order decisions without an unload prompt', async () => {
+  const seller = readFileSync(new URL('../public/seller/app.js', import.meta.url), 'utf8');
+  const product = readFileSync(new URL('../public/seller/products.js', import.meta.url), 'utf8');
+  const orders = readFileSync(new URL('../public/seller/orders.js', import.meta.url), 'utf8');
+  for (const scenario of ['remove clean image', 'remove image in accepted dirty form', 'open order decision']) {
+    const elements = Object.fromEntries(['sku', 'name', 'description', 'category', 'price', 'currency', 'variantGroup', 'variantLabel', 'stockQuantity']
+      .map(name => [name, { name, type: 'text', value: name }]));
+    elements.active = { name: 'active', type: 'checkbox', checked: true };
+    elements.image = { name: 'image', type: 'file', value: '', files: [] };
+    const handlers = new Map();
+    let state, actions, reloads = 0, accepted = true;
+    const worker = version => ({ state: 'installed', addEventListener(type, fn) { handlers.set(type, fn); },
+      postMessage(message, ports) { if (message.type === 'GET_VERSION') ports[0].reply({ version }); } });
+    const waiting = worker('next'), active = worker('current');
+    const registration = { waiting, active, addEventListener() {}, async update() {} };
+    const context = { form: { hidden: false, elements }, saving: false, pendingRemove: false, formBaseline: null,
+      galleryLoaded: true, galleryImages: [], originalImageUrl: '/synthetic-primary-image', editingId: 'synthetic-product',
+      showImage() {}, renderGallery() {}, dialog: { open: false }, dialogAction: null, selectedId: 'synthetic-order',
+      currentRoute: scenario.startsWith('open') ? 'review' : 'products/synthetic-product', t: key => key,
+      navigator: { onLine: true, serviceWorker: { controller: active, register: async () => registration, addEventListener() {} } },
+      document: { querySelectorAll: () => Object.values(elements), createElement: () => ({ setAttribute() {}, append() {}, addEventListener() {} }), addEventListener() {} },
+      window: { addEventListener() {} }, location: { reload() { reloads++; } },
+      MessageChannel: class { constructor() { this.port1 = { close() {} }; this.port2 = { reply: data => this.port1.onmessage({ data }) }; } },
+      setTimeout: () => 1, clearTimeout() {},
+    };
+    vm.createContext(context);
+    vm.runInContext(readFileSync(new URL('../public/shared/update-guard.js', import.meta.url), 'utf8').replaceAll('export ', ''), context);
+    vm.runInContext(product.slice(product.indexOf('  function formState()'), product.indexOf('  function confirmDiscard()')), context);
+    const pageSource = scenario.startsWith('open') ? orders : product;
+    const fingerprint = pageSource.match(/draftSignature: ([^\n]+),/)?.[1];
+    context.activePage = () => ({ draftSignature: fingerprint ? () => vm.runInContext(`(${fingerprint})()`, context) : undefined });
+    const productDirty = vm.runInContext('hasUnsavedChanges', context);
+    context.hasUnsavedChanges = () => scenario.startsWith('open') ? context.dialog.open : productDirty();
+    vm.runInContext('captureBaseline()', context);
+    if (scenario.includes('dirty')) elements.name.value = 'Previously accepted draft';
+    const guardSource = seller.match(/guard: \(\) => (\([^\n]+\)),/)[1];
+    const guard = () => vm.runInContext(guardSource, context);
+    const domBefore = vm.runInContext('draftSignature()', context);
+    vm.runInContext(readFileSync(new URL('../public/shared/pwa.js', import.meta.url), 'utf8')
+      .replace("import { t } from './i18n.js';", '').replace('export async function', 'async function'), context);
+    await context.registerWorker('/seller/sw.js', '/seller/', { currentVersion: 'current', guard,
+      confirmUpdate: async () => accepted, onState(next, commands) { state = next; actions = commands; } });
+    await actions.update(); assert.equal(state.applying, true);
+    if (scenario.startsWith('open')) { context.dialog.open = true; context.dialogAction = 'reject'; }
+    else {
+      const body = product.match(/removeImage\.addEventListener\('click', \(\) => \{([\s\S]*?)\n  \}\);/)[1];
+      vm.runInContext(`(() => { ${body} })()`, context);
+    }
+    assert.equal(vm.runInContext('draftSignature()', context), domBefore, 'field values are unchanged');
+    assert.equal(guard().dirty, true);
+    waiting.state = 'activated'; handlers.get('statechange')();
+    assert.equal(reloads, 0, scenario);
+    assert.equal(state.applying, false); assert.equal(state.ready, true);
+    accepted = false; await actions.update(); assert.equal(reloads, 0);
+    accepted = true; await actions.update(); assert.equal(reloads, 1);
+  }
+});
+
+test('activation defers reload for a draft changed or a mutation started after acceptance; loaded shell version stays accurate', async () => {
+  for (const changed of ['draft', 'busy', 'dirty', 'accepted dirty']) {
+    let state, actions, activated, reloads = 0, signature = 'original', busy = false, dirty = changed === 'accepted dirty';
+    const waiting = { state: 'installed', addEventListener(name, fn) { if (name === 'statechange') activated = fn; }, postMessage(message, ports) {
+      if (message.type === 'GET_VERSION') ports[0].reply({ version: 'v81' });
+    } };
+    const active = { postMessage(message, ports) { ports[0].reply({ version: 'v79' }); } };
+    const registration = { waiting, active, addEventListener() {}, update: async () => {} };
+    const context = {
+      t: key => key, navigator: { onLine: true, serviceWorker: { controller: active, register: async () => registration, addEventListener() {} } },
+      document: { createElement: () => ({ setAttribute() {}, append() {}, addEventListener() {} }), addEventListener() {} },
+      window: { addEventListener() {} }, location: { reload() { reloads++; } },
+      MessageChannel: class { constructor() { this.port1 = { close() {} }; this.port2 = { reply: data => this.port1.onmessage({ data }) }; } },
+      setTimeout: () => 1, clearTimeout() {},
+    };
+    const source = readFileSync(new URL('../public/shared/pwa.js', import.meta.url), 'utf8').replace("import { t } from './i18n.js';", '').replace('export async function', 'async function');
+    vm.runInNewContext(source, context);
+    await context.registerWorker('/seller/sw.js', '/seller/', { currentVersion: 'v80', guard: () => ({ dirty: dirty || signature !== 'original', signature, busy }), confirmUpdate: async () => true,
+      onState(next, commands) { state = next; actions = commands; } });
+    assert.equal(state.current, 'v80'); assert.equal(state.available, 'v81');
+    await actions.update(); assert.equal(state.applying, true);
+    if (changed === 'draft') signature = 'typed during activation';
+    else if (changed === 'busy') busy = true;
+    else if (changed === 'dirty') dirty = true;
+    waiting.state = 'activated'; activated();
+    if (changed === 'accepted dirty') { assert.equal(reloads, 1); continue; }
+    assert.equal(reloads, 0); assert.equal(state.applying, false); assert.equal(state.ready, true);
+    busy = false; await actions.update(); assert.equal(reloads, 1);
+  }
+});
+
+test('page-wide mutation guard survives route replacement and ends exactly once', () => {
+  const events = [], context = { document: { dispatchEvent(event) { events.push(event.type); } }, Event: class { constructor(type) { this.type = type; } } };
+  vm.runInNewContext(readFileSync(new URL('../public/shared/update-guard.js', import.meta.url), 'utf8').replaceAll('export ', ''), context);
+  const first = context.beginMutation(), second = context.beginMutation();
+  assert.equal(vm.runInNewContext('mutationsBusy()', context), true);
+  first(); first(); assert.equal(vm.runInNewContext('mutationsBusy()', context), true);
+  second(); assert.equal(vm.runInNewContext('mutationsBusy()', context), false);
+  assert.equal(events.length, 4);
+});
+
 test('worker reports its own version and activates early only on explicit request', async () => {
   const handlers = new Map();
   let skips = 0;

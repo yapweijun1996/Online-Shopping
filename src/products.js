@@ -3,10 +3,10 @@ import { ApiError } from './http.js';
 import { FieldError, boundedText } from './validation.js';
 import { validateProductInput } from './product-input.js';
 import { decodeProductImage } from './product-image.js';
-import { requireActiveCategory } from './settings.js';
+import { getCompanySettings, requireActiveCategory } from './settings.js';
 
 const columns = `p.id, p.sku, p.name, p.description, p.category AS category_code,
-  c.label AS category, p.price_minor, p.currency, p.active, p.image_mime, p.variant_group, p.variant_label,
+  c.label AS category, p.price_minor, p.currency, p.active, p.image_mime, p.variant_group, p.variant_label, p.stock_quantity,
   p.created_at, p.updated_at`;
 const fromProduct = `FROM product p JOIN general_code c
   ON c.type = 'PRODUCT_CATEGORY' AND c.code = p.category`;
@@ -24,7 +24,8 @@ function productFromRow(row, seller = false) {
     id: row.id, sku: row.sku, name: row.name, description: row.description,
     category: row.category, priceMinor: row.price_minor, currency: row.currency,
     variantGroup: row.variant_group, variantLabel: row.variant_label,
-    ...(seller ? { categoryCode: row.category_code, active: Boolean(row.active) } : {}),
+    ...(seller ? { categoryCode: row.category_code, active: Boolean(row.active), stockQuantity: row.stock_quantity }
+      : { inStock: row.stock_quantity === null || row.stock_quantity > 0 }),
     imageUrl: row.image_mime ? imagePath : null,
     ...(seller ? { createdAt: row.created_at, updatedAt: row.updated_at } : {}),
   };
@@ -51,7 +52,7 @@ function detailFields(database, product, seller) {
     WHERE p.variant_group = ? ${seller ? '' : 'AND p.active = 1'} ORDER BY p.variant_label, p.id`, product.variantGroup)
     .map((row) => ({ id: row.id, label: row.variant_label, sku: row.sku, priceMinor: row.price_minor,
       currency: row.currency, imageUrl: productFromRow(row, seller).imageUrl,
-      ...(seller ? { active: Boolean(row.active) } : {}) })) : [];
+      ...(seller ? { active: Boolean(row.active), stockQuantity: row.stock_quantity } : { inStock: row.stock_quantity === null || row.stock_quantity > 0 }) })) : [];
   return product;
 }
 
@@ -68,7 +69,9 @@ function duplicateSku(error) {
 }
 
 export function createProduct(database, input) {
-  const product = validateProductInput(input, ['MYR', 'SGD']);
+  const currency = getCompanySettings(database).defaultCurrency;
+  if (!input || typeof input !== 'object' || Array.isArray(input)) validateProductInput(input, [currency]);
+  const product = validateProductInput(input && { currency, ...input }, [currency]);
   requireActiveCategory(database, product.category);
   validateVariantGroup(database, product);
   const id = randomUUID();
@@ -76,12 +79,12 @@ export function createProduct(database, input) {
   try {
     database.run(`INSERT INTO product
       (id, sku, name, description, category, price_minor, currency, active, image_mime, image_data,
-       variant_group, variant_label, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       variant_group, variant_label, stock_quantity, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       id, product.sku, product.name, product.description, product.category,
       product.priceMinor, product.currency, Number(product.active),
       product.image?.mime || null, product.image?.data || null, product.variantGroup || null,
-      product.variantLabel || null, now, now,
+      product.variantLabel || null, product.stockQuantity ?? null, now, now,
     );
   } catch (error) { duplicateSku(error); }
   return getProduct(database, id, true);
@@ -90,7 +93,12 @@ export function createProduct(database, input) {
 export function updateProduct(database, id, input) {
   const existing = getProduct(database, id, true);
   if (!existing) return null;
-  const patch = validateProductInput(input, ['MYR', 'SGD'], { partial: true });
+  const currency = getCompanySettings(database).defaultCurrency;
+  const patch = validateProductInput(input, [existing.currency], { partial: true });
+  // A legacy mismatch requires explicit price review, never a currency relabel.
+  if (existing.currency !== currency && (Object.hasOwn(patch, 'priceMinor') || patch.active === true || Object.hasOwn(patch, 'currency'))) {
+    throw new ApiError(409, 'COMPANY_CURRENCY_CONFLICT', 'Review the existing product currency before changing its price or activating it.');
+  }
   if (Object.hasOwn(patch, 'category') && patch.category !== existing.categoryCode) requireActiveCategory(database, patch.category);
   validateVariantGroup(database, {
     variantGroup: Object.hasOwn(patch, 'variantGroup') ? patch.variantGroup : existing.variantGroup,
@@ -100,7 +108,7 @@ export function updateProduct(database, id, input) {
   if (patch.image === null && existing.images.length > (existing.imageUrl ? 1 : 0)) {
     throw new FieldError('imageDataUrl', 'Remove gallery images before removing the main image.');
   }
-  const mapping = { sku: 'sku', name: 'name', description: 'description', category: 'category', priceMinor: 'price_minor', currency: 'currency', active: 'active', variantGroup: 'variant_group', variantLabel: 'variant_label' };
+  const mapping = { sku: 'sku', name: 'name', description: 'description', category: 'category', priceMinor: 'price_minor', currency: 'currency', active: 'active', variantGroup: 'variant_group', variantLabel: 'variant_label', stockQuantity: 'stock_quantity' };
   const assignments = [];
   const values = [];
   for (const [key, column] of Object.entries(mapping)) {
@@ -146,7 +154,7 @@ export function addGalleryImage(database, productId, imageDataUrl) {
     if (!product) throw new ApiError(404, 'NOT_FOUND', 'Product not found.');
     if (!product.image_mime) throw new FieldError('imageDataUrl', 'Add a main image first.');
     const count = database.get('SELECT COUNT(*) AS count FROM product_gallery_image WHERE product_id = ?', productId).count;
-    if (count >= 4) throw new FieldError('imageDataUrl', 'A product supports four additional images.');
+    if (count >= 9) throw new FieldError('imageDataUrl', 'A product supports nine additional images.');
     const id = randomUUID();
     database.run(`INSERT INTO product_gallery_image(id, product_id, position, mime, data, created_at)
       VALUES (?, ?, ?, ?, ?, ?)`, id, productId, count + 1, image.mime, image.data, new Date().toISOString());

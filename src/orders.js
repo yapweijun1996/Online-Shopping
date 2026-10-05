@@ -24,11 +24,14 @@ export function lookupOrderStatuses(database, input, now = Date.now()) {
         typeof entry.accessKey !== 'string' || !statusAccessKeyPattern.test(entry.accessKey) ||
         seen.has(entry.orderNo)) throw new FieldError('orders', 'Supply valid, unique order credentials.');
     seen.add(entry.orderNo);
-    const row = database.get(`SELECT o.order_no, o.status, o.updated_at FROM checkout_idempotency i
+    const row = database.get(`SELECT o.order_no, o.status, o.updated_at, o.tracking_carrier, o.tracking_no FROM checkout_idempotency i
       JOIN shop_order o ON o.id = i.order_id
       WHERE i.key_hash = ? AND o.order_no = ? AND o.submitted_at > ?`,
     digest(entry.accessKey), entry.orderNo, cutoff);
-    if (row) items.push({ orderNo: row.order_no, status: row.status, updatedAt: row.updated_at });
+    if (row) {
+      items.push({ orderNo: row.order_no, status: row.status, updatedAt: row.updated_at,
+        ...(row.tracking_carrier ? { trackingCarrier: row.tracking_carrier, trackingNo: row.tracking_no } : {}) });
+    }
   }
   return { items };
 }
@@ -65,8 +68,9 @@ export function createOrder(database, idempotencyKey, input) {
 
     let totalMinor = 0;
     let currency = null;
+    const requested = new Map();
     const snapshots = order.deliveries.map((delivery, deliveryIndex) => delivery.items.map((item, itemIndex) => {
-      const product = database.get(`SELECT id, sku, name, price_minor, currency FROM product
+      const product = database.get(`SELECT id, sku, name, price_minor, currency, stock_quantity FROM product
         WHERE id = ? AND active = 1`, item.productId);
       if (!product) {
         const error = new ApiError(409, 'PRODUCT_UNAVAILABLE', 'A selected product is unavailable. Review the cart.');
@@ -87,6 +91,13 @@ export function createOrder(database, idempotencyKey, input) {
       if (product.price_minor !== item.expectedPriceMinor) {
         const error = new ApiError(409, 'PRICE_CHANGED', 'A product price changed. Review the cart.');
         error.field = `deliveries.${deliveryIndex}.items.${itemIndex}.expectedPriceMinor`;
+        throw error;
+      }
+      // Stock is only deducted when the seller confirms, but an order the shop cannot cover is refused up front.
+      requested.set(product.id, (requested.get(product.id) || 0) + item.quantity);
+      if (product.stock_quantity !== null && requested.get(product.id) > product.stock_quantity) {
+        const error = new ApiError(409, 'OUT_OF_STOCK', 'A selected product does not have enough stock. Review the cart.');
+        error.field = `deliveries.${deliveryIndex}.items.${itemIndex}.quantity`;
         throw error;
       }
       const lineTotalMinor = product.price_minor * item.quantity;

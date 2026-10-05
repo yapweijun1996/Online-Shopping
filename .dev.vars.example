@@ -6,4 +6,5 @@ ADMIN_PASSWORD=
 PUBLIC_ORIGIN=
 
 # Data mode is separate from HTTPS/security environment. Demo seeds an empty store.
-SHOP_MODE=demo
+SHOP_MODE=public-demo
+SHOP_DEMO_REVISION=v1

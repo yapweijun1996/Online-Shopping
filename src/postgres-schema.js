@@ -44,6 +44,7 @@ CREATE TABLE product (
   image_data BYTEA,
   variant_group TEXT,
   variant_label TEXT,
+  stock_quantity INTEGER CHECK (stock_quantity IS NULL OR stock_quantity BETWEEN 0 AND 1000000),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   CHECK ((image_mime IS NULL AND image_data IS NULL) OR
@@ -79,12 +80,14 @@ CREATE TABLE shop_order (
   whatsapp_consent_at TEXT,
   whatsapp_consent_version TEXT,
   locale TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('SUBMITTED', 'CONFIRMED', 'REJECTED')),
+  status TEXT NOT NULL CHECK (status IN ('SUBMITTED', 'CONFIRMED', 'REJECTED', 'SHIPPED', 'DELIVERED', 'CANCELLED')),
   revision INTEGER NOT NULL CHECK (revision >= 1),
   currency TEXT NOT NULL CHECK (currency IN ('MYR', 'SGD')),
   total_minor BIGINT NOT NULL CHECK (total_minor >= 0),
   submitted_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
+  tracking_carrier TEXT,
+  tracking_no TEXT,
   CHECK ((whatsapp_opt_in = 0 AND whatsapp_consent_at IS NULL AND whatsapp_consent_version IS NULL) OR
          (whatsapp_opt_in = 1 AND whatsapp_consent_at IS NOT NULL AND whatsapp_consent_version IS NOT NULL))
 );
@@ -119,7 +122,7 @@ CREATE TABLE order_item (
 CREATE TABLE order_event (
   id BIGSERIAL PRIMARY KEY,
   order_id TEXT NOT NULL REFERENCES shop_order(id) ON DELETE RESTRICT,
-  event_type TEXT NOT NULL CHECK (event_type IN ('SUBMITTED', 'CONFIRMED', 'REJECTED')),
+  event_type TEXT NOT NULL CHECK (event_type IN ('SUBMITTED', 'CONFIRMED', 'REJECTED', 'SHIPPED', 'DELIVERED', 'CANCELLED')),
   actor_type TEXT NOT NULL CHECK (actor_type IN ('GUEST', 'SELLER')),
   actor_id TEXT,
   previous_status TEXT,

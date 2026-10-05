@@ -3,12 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0c2940">
+  <meta name="theme-color" content="#087f83">
   <title>Seller portal · Online Shopping</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="/seller/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/seller/icons/icon-192.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="OS Seller">
   <link rel="stylesheet" href="/seller/style.css">
+  <script src="/seller/palette.js"></script>
   <script type="module" src="/seller/app.js"></script>
+  <link rel="stylesheet" href="/seller/order-print.css">
 </head>
 <body>
   <header class="topbar">
@@ -23,6 +29,8 @@
         <div id="account-menu" class="account-menu" hidden>
           <button id="check-updates-button" type="button" data-i18n="checkUpdates">Check for updates</button>
           <p id="check-updates-status" role="status" aria-live="polite"></p>
+          <p id="seller-current-version"></p>
+          <button id="alerts-button" type="button"></button>
           <button id="profile-button" type="button" data-i18n="profile">View profile</button>
           <button id="sign-out-button" type="button" data-i18n="signOut">Sign out</button>
         </div>
@@ -37,7 +45,7 @@
       <button class="nav-item" type="button" data-view="products" data-i18n-aria="products"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v14H4zM3 7l2-4h14l2 4M9 12h6"/></svg><span data-i18n="products">Products</span></button>
       <div class="nav-group" data-i18n="salesManager">Sales Manager</div>
       <button class="nav-item" type="button" data-view="orders" data-i18n-aria="salesOrders"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18l-3-2-4 2-4-2-3 2zM8 8h8M8 12h8"/></svg><span data-i18n="salesOrders">Sales Orders</span></button>
-      <button class="nav-item" type="button" data-view="review" data-i18n-aria="orderReview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM8 12l3 3 5-6"/></svg><span data-i18n="orderReview">Sales Order Confirmation</span></button>
+      <button class="nav-item" type="button" data-view="review" data-i18n-aria="orderReview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM8 12l3 3 5-6"/></svg><span data-i18n="orderReview">Sales Order Confirmation</span><span id="pending-badge" class="nav-badge" role="status" hidden></span></button>
       <div class="nav-group" data-i18n="configuration">Configuration</div>
       <button class="nav-item" type="button" data-view="categories" data-i18n-aria="categoryCodes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h6"/></svg><span data-i18n="categoryCodes">Category codes</span></button>
       <button class="nav-item" type="button" data-view="company" data-i18n-aria="companySettings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V7l8-4 8 4v14M2 21h20M9 21v-6h6v6"/></svg><span data-i18n="companySettings">Company settings</span></button>
@@ -70,6 +78,12 @@
           <p id="login-message" class="message" role="alert"></p>
           <button id="login-submit" class="primary-button" type="submit"><span data-i18n="signIn">Sign in</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg></button>
           <p class="privacy-note"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="10" width="12" height="10" rx="2"/><path d="M9 10V7a3 3 0 0 1 6 0v3"/></svg><span data-i18n="protected">Your catalog and orders are private.</span></p>
+          <div class="login-update">
+            <p id="login-version"></p>
+            <button id="login-check-updates" class="text-button" type="button" data-i18n="checkUpdates">Check for updates</button>
+            <button id="login-install-update" class="secondary-button" type="button" data-i18n="installUpdate" hidden>Install update</button>
+            <p id="login-update-status" role="status" aria-live="polite"></p>
+          </div>
         </form>
       </div>
     </section>
@@ -106,13 +120,14 @@
         <label class="full"><span data-i18n="description">Description</span><textarea name="description" maxlength="2000" rows="3" required></textarea></label>
         <label><span data-i18n="category">Category</span><select name="category" required></select></label>
         <label><span data-i18n="price">Price</span><input name="price" inputmode="decimal" required></label>
-        <label><span data-i18n="currency">Currency</span><select name="currency"><option value="MYR">MYR</option><option value="SGD">SGD</option></select></label>
+        <label><span data-i18n="stockQuantity">Stock quantity</span><input name="stockQuantity" inputmode="numeric" autocomplete="off" aria-describedby="product-stock-help"><small id="product-stock-help" data-i18n="stockHelp"></small></label>
+        <label><span data-i18n="currency">Currency</span><input name="currency" readonly aria-describedby="product-currency-help"><small id="product-currency-help" data-i18n="currencyInherited"></small></label>
         <label><span data-i18n="variantGroup">Variant group</span><input name="variantGroup" maxlength="40" autocomplete="off" placeholder="PET-BOWL"></label>
         <label><span data-i18n="variantOption">Option label</span><input name="variantLabel" maxlength="80" autocomplete="off" placeholder="Small"></label>
         <p class="shop-note full" data-i18n="variantHelp">Products with the same group code appear as selectable options. Each option keeps its own SKU and price.</p>
         <label class="full"><span data-i18n="image">Product image</span><input name="image" type="file" accept="image/png,image/jpeg,image/webp"><small data-i18n="imageHelp">PNG, JPEG or WebP, up to 512 KB.</small></label>
         <div id="product-image-panel" class="product-image-panel full" hidden><img id="product-image-preview" class="product-image-preview" alt=""><div><p id="product-image-status" data-i18n="currentImage">Current image</p><button id="product-remove-image" class="secondary-button" type="button" data-i18n="removeImage">Remove image</button><button id="product-restore-image" class="text-button" type="button" data-i18n="restoreImage" hidden>Undo removal</button><p id="product-image-removal-help" class="product-image-removal-help" role="status" hidden></p></div></div>
-        <div id="product-gallery-panel" class="product-gallery-panel full" hidden><h3 data-i18n="gallery">Gallery</h3><p class="shop-note" data-i18n="galleryHelp">Add up to four extra photos after saving the main image. Extra photos can be removed individually.</p><div id="product-gallery-list" class="product-gallery-list"></div><label><span data-i18n="addPhoto">Add photos</span><input name="gallery" type="file" accept="image/png,image/jpeg,image/webp" multiple></label></div>
+        <div id="product-gallery-panel" class="product-gallery-panel full" hidden><h3 data-i18n="gallery">Gallery</h3><p class="shop-note" data-i18n="galleryHelp">Add up to nine extra photos after saving the main image. Extra photos can be removed individually.</p><div id="product-gallery-list" class="product-gallery-list"></div><label><span data-i18n="addPhoto">Add photos</span><input name="gallery" type="file" accept="image/png,image/jpeg,image/webp" multiple></label></div>
         <label class="check-row full"><input name="active" type="checkbox"><span data-i18n="available">Active in shop</span></label>
       </div>
       <p id="product-form-error" class="message" role="alert"></p>
@@ -126,7 +141,7 @@
     <div class="order-toolbar">
       <form id="order-filter" class="order-filter">
         <label><span data-i18n="searchOrderNo">Order number</span><input id="order-search" name="search" type="search" maxlength="40" autocomplete="off"></label>
-        <label id="order-status-label"><span data-i18n="orderStatus">Status</span><select id="order-status" name="status"><option value="" data-i18n="allStatuses">All statuses</option><option value="SUBMITTED" data-i18n="statusSubmitted">Submitted</option><option value="CONFIRMED" data-i18n="statusConfirmed">Confirmed</option><option value="REJECTED" data-i18n="statusRejected">Rejected</option></select></label>
+        <label id="order-status-label"><span data-i18n="orderStatus">Status</span><select id="order-status" name="status"><option value="" data-i18n="allStatuses">All statuses</option><option value="SUBMITTED" data-i18n="statusSubmitted">Submitted</option><option value="CONFIRMED" data-i18n="statusConfirmed">Confirmed</option><option value="REJECTED" data-i18n="statusRejected">Rejected</option><option value="SHIPPED" data-i18n="statusShipped">Shipped</option><option value="DELIVERED" data-i18n="statusDelivered">Delivered</option><option value="CANCELLED" data-i18n="statusCancelled">Cancelled</option></select></label>
         <button type="submit" class="secondary-button" data-i18n="applySearch">Search</button>
       </form>
     </div>
@@ -136,6 +151,7 @@
         <h2 id="order-queue-title" data-i18n="orderQueue">Order queue</h2>
         <p id="order-list-status" class="order-list-status" role="status"></p>
         <button id="order-clear-filters" class="secondary-button order-clear-filters" type="button" data-i18n="resetOrderFilters" hidden>Clear search and filters</button>
+        <button id="order-retry" class="secondary-button order-retry" type="button" data-i18n="retry" hidden>Try again</button>
         <div id="order-list" class="order-list"></div>
         <button id="order-more" class="secondary-button" type="button" data-i18n="loadMore" hidden>Load more</button>
       </section>
@@ -150,6 +166,11 @@
         <h2 id="decision-title"></h2>
         <p id="decision-intro"></p>
         <label id="decision-reason-label" for="decision-reason" hidden><span data-i18n="rejectionReason">Reason for rejection</span><textarea id="decision-reason" name="reason" maxlength="500" rows="4"></textarea></label>
+        <div id="decision-ship-fields" hidden>
+          <label for="decision-carrier"><span data-i18n="carrier">Courier</span><select id="decision-carrier" name="carrier"><option>Ninja Van</option><option>J&amp;T Express</option><option>Pos Laju</option><option>DHL eCommerce</option><option>Flash Express</option><option>SPX Express</option><option value="OTHER" data-i18n="carrierOther">Other courier</option></select></label>
+          <label id="decision-carrier-other-label" for="decision-carrier-other" hidden><span data-i18n="carrierName">Courier name</span><input id="decision-carrier-other" maxlength="40" autocomplete="off"></label>
+          <label for="decision-tracking"><span data-i18n="trackingNumber">Tracking number (optional)</span><input id="decision-tracking" name="trackingNo" maxlength="60" autocomplete="off"></label>
+        </div>
         <p id="decision-error" class="message" role="alert"></p>
         <div class="decision-actions"><button id="decision-cancel" class="secondary-button" type="button" data-i18n="cancelDecision">Cancel</button><button id="decision-submit" class="primary-button" type="submit"></button></div>
       </form>

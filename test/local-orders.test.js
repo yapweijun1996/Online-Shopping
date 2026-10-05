@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createLocalOrderStore, ORDER_RETENTION_MS } from '../public/shop/local-orders.js';
+import { createLocalOrderStore, ORDER_RETENTION_MS, ORDER_CLOCK_SKEW_MS, safeOrderImage } from '../public/shop/local-orders.js';
 
 const submittedAt = '2026-09-29T00:00:00.000Z';
 const receipt = { orderNo: 'DEMO-00000001', currency: 'MYR', totalMinor: 250,
@@ -40,6 +40,21 @@ test('local orders retain a private status credential and update seller decision
   assert.equal(store.list()[0].status, 'CONFIRMED');
 });
 
+test('local orders keep fulfilment status and tracking from the status API, and nothing else', async () => {
+  const store = await createLocalOrderStore(null, () => Date.parse(submittedAt) + 1000);
+  await store.save(receipt, items, statusAccessKey);
+  await store.updateStatuses([{ orderNo: receipt.orderNo, status: 'SHIPPED', updatedAt: '2026-09-29T00:00:02.000Z',
+    trackingCarrier: 'Ninja Van', trackingNo: 'NV123456', buyerPhone: '+60123456789' }]);
+  const [order] = store.list();
+  assert.equal(order.status, 'SHIPPED');
+  assert.equal(order.trackingCarrier, 'Ninja Van');
+  assert.equal(order.trackingNo, 'NV123456');
+  assert.equal(JSON.stringify(order).includes('+60123456789'), false);
+  await store.updateStatuses([{ orderNo: receipt.orderNo, status: 'DELIVERED', updatedAt: '2026-09-29T00:00:03.000Z' }]);
+  assert.equal(store.list()[0].status, 'DELIVERED');
+  assert.equal(store.list()[0].trackingNo, 'NV123456', 'tracking stays once recorded');
+});
+
 test('local orders expire at 90 days and reject invalid records', async () => {
   let now = Date.parse(submittedAt);
   const store = await createLocalOrderStore(null, () => now);
@@ -53,4 +68,30 @@ test('local orders expire at 90 days and reject invalid records', async () => {
   assert.deepEqual(store.list(), []);
   await store.refresh();
   assert.equal(await store.save(receipt, items), false);
+});
+
+ test('near-future server receipts survive immediately with complete sanitized backup', async () => {
+  const now = Date.parse(submittedAt);
+  const store = await createLocalOrderStore(null, () => now);
+  await Promise.all([store.save({ ...receipt, submittedAt: new Date(now + 1000).toISOString() }, items, statusAccessKey), store.refresh()]);
+  const saved = store.list()[0];
+  assert.equal(saved.items.length, 1);
+  assert.equal(saved.statusAccessKey, statusAccessKey);
+  const restored = await createLocalOrderStore(null, () => now);
+  await restored.save(saved, saved.items, saved.statusAccessKey);
+  assert.deepEqual(restored.list(), store.list());
+  assert.equal(JSON.stringify(restored.list()).includes('buyerPhone'), false);
+  await restored.save({ ...receipt, orderNo: 'DEMO-00000002', submittedAt: new Date(now + ORDER_CLOCK_SKEW_MS + 1).toISOString() }, items);
+  assert.equal(restored.list().length, 1);
+});
+
+test('optional order image snapshots allow only public shop product image paths', async () => {
+  const imageUrl = '/api/v1/products/12345678-1234-1234-1234-123456789abc/image?v=abc123';
+  assert.equal(safeOrderImage(imageUrl), imageUrl);
+  for (const value of ['https://external.example/pixel', 'javascript:alert(1)', '//external/pixel', '/api/v1/seller/products/x/image', '/api/v1/products/x/image', imageUrl + '&token=secret']) assert.equal(safeOrderImage(value), null);
+  const store = await createLocalOrderStore(null, () => Date.parse(submittedAt));
+  await store.save(receipt, [{ ...items[0], imageUrl }]);
+  assert.equal(store.list()[0].items[0].imageUrl, imageUrl);
+  await store.save(receipt, [{ ...items[0], imageUrl: 'https://external.example' }]);
+  assert.equal(store.list()[0].items[0].imageUrl, undefined);
 });
