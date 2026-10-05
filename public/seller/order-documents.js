@@ -90,7 +90,7 @@ export function createOrderDocuments() {
       const heading = node('h1', t(kind === 'packing' ? 'packingSheet' : 'orderDocument')); if (!index) heading.id = 'order-document-title';
       section.append(node('p', shopName || t('sellerPortal'), 'order-document-brand'), heading);
       section.append(node('p', data.simulation ? t('documentDemo') : t('documentLimits'), 'order-document-notice'));
-      field(section, t('orderNumber'), data.orderNo); field(section, t('orderStatus'), t({SUBMITTED:'statusSubmitted',CONFIRMED:'statusConfirmed',REJECTED:'statusRejected'}[data.status]));
+      field(section, t('orderNumber'), data.orderNo); field(section, t('orderStatus'), t({SUBMITTED:'statusSubmitted',CONFIRMED:'statusConfirmed',REJECTED:'statusRejected',SHIPPED:'statusShipped',DELIVERED:'statusDelivered',CANCELLED:'statusCancelled'}[data.status]));
       field(section, t('orderRevision'), data.revision); field(section, t('submittedAt'), `${formatDate(data.submittedAt)} (${data.submittedAt})`);
       field(section, t('updatedAt'), `${formatDate(data.updatedAt)} (${data.updatedAt})`);
       if (data.rejectionReason) field(section, t('rejectionReason'), data.rejectionReason);

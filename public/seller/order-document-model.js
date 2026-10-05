@@ -1,6 +1,6 @@
 // Documents consume authenticated immutable order snapshots, never current catalog prices.
 export function orderDocumentModel(order, kind = 'summary') {
-  if (!order || !['summary', 'packing'].includes(kind) || !['SUBMITTED', 'CONFIRMED', 'REJECTED'].includes(order.status) ||
+  if (!order || !['summary', 'packing'].includes(kind) || !['SUBMITTED', 'CONFIRMED', 'REJECTED', 'SHIPPED', 'DELIVERED', 'CANCELLED'].includes(order.status) ||
       !['MYR', 'SGD'].includes(order.currency) || !Number.isSafeInteger(order.totalMinor) || order.totalMinor < 0 ||
       !Number.isSafeInteger(order.revision) || order.revision < 1 || !Array.isArray(order.deliveries) || !order.deliveries.length) {
     throw new TypeError('Invalid order snapshot');

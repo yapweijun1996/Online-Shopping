@@ -15,6 +15,10 @@ Review of the seller modules against what a single-store seller needs to run the
 
 Orders have three statuses only: submitted, confirmed, rejected.
 
+## Update 2026-10-05
+
+Stock (SEL-01), fulfilment statuses (SEL-02) and in-portal new-order alerts (SEL-03) are now implemented locally and documented in [FEATURES.md](FEATURES.md); items 1 to 3 below are done apart from deployment. Orders now have six statuses: submitted, confirmed, rejected, shipped, delivered and cancelled.
+
 ## Missing, by priority
 
 **P1 - needed before selling for real**

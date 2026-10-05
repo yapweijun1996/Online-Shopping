@@ -10,7 +10,7 @@ export function orderHash(orderNo, filter = '') {
   return `#orders/${orderNo}${orderFilterSuffix(filter)}`;
 }
 
-function orderFilterSuffix(filter) { return ['SUBMITTED', 'CONFIRMED', 'REJECTED'].includes(filter) ? `?status=${filter}` : ''; }
+function orderFilterSuffix(filter) { return ['SUBMITTED', 'CONFIRMED', 'REJECTED', 'SHIPPED', 'DELIVERED', 'CANCELLED'].includes(filter) ? `?status=${filter}` : ''; }
 export function ordersHash(filter = '') { return `#orders${orderFilterSuffix(filter)}`; }
 
 export function readShopRoute(hash) {
@@ -20,7 +20,7 @@ export function readShopRoute(hash) {
     const params = new URLSearchParams(search);
     const safeParams = [...params.keys()].every(key => key === 'status');
     const candidate = params.get('status');
-    const filter = ['SUBMITTED', 'CONFIRMED', 'REJECTED'].includes(candidate) ? candidate : '';
+    const filter = ['SUBMITTED', 'CONFIRMED', 'REJECTED', 'SHIPPED', 'DELIVERED', 'CANCELLED'].includes(candidate) ? candidate : '';
     const id = orderPath.slice(7);
     return { page: 'orders', id: safeParams && /^(?:OS|DEMO)-\d{8,}$/.test(id) ? id : null, ...(filter ? { filter } : {}) };
   }

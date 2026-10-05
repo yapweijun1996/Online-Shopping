@@ -40,6 +40,21 @@ test('local orders retain a private status credential and update seller decision
   assert.equal(store.list()[0].status, 'CONFIRMED');
 });
 
+test('local orders keep fulfilment status and tracking from the status API, and nothing else', async () => {
+  const store = await createLocalOrderStore(null, () => Date.parse(submittedAt) + 1000);
+  await store.save(receipt, items, statusAccessKey);
+  await store.updateStatuses([{ orderNo: receipt.orderNo, status: 'SHIPPED', updatedAt: '2026-09-29T00:00:02.000Z',
+    trackingCarrier: 'Ninja Van', trackingNo: 'NV123456', buyerPhone: '+60123456789' }]);
+  const [order] = store.list();
+  assert.equal(order.status, 'SHIPPED');
+  assert.equal(order.trackingCarrier, 'Ninja Van');
+  assert.equal(order.trackingNo, 'NV123456');
+  assert.equal(JSON.stringify(order).includes('+60123456789'), false);
+  await store.updateStatuses([{ orderNo: receipt.orderNo, status: 'DELIVERED', updatedAt: '2026-09-29T00:00:03.000Z' }]);
+  assert.equal(store.list()[0].status, 'DELIVERED');
+  assert.equal(store.list()[0].trackingNo, 'NV123456', 'tracking stays once recorded');
+});
+
 test('local orders expire at 90 days and reject invalid records', async () => {
   let now = Date.parse(submittedAt);
   const store = await createLocalOrderStore(null, () => now);

@@ -7,14 +7,14 @@ import { ApiError, errorResponse, json, readJson, requireOrigin } from './http.j
 import { SqlLimiter } from './limiter.js';
 import { createOrder, lookupOrderStatuses } from './orders.js';
 import { addGalleryImage, createProduct, deleteGalleryImage, getGalleryImage, getProduct, getProductImage, listProducts, updateProduct } from './products.js';
-import { decideSellerOrder, getSellerOrder, listSellerOrders } from './seller-orders.js';
+import { decideSellerOrder, getSellerOrder, listSellerOrders, pendingOrderSummary } from './seller-orders.js';
 import { createCategory, getCompanySettings, listCategories, updateCategory, updateCompanySettings } from './settings.js';
 import { FieldError } from './validation.js';
 
 const productIdPath = /^\/api\/v1\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
 const sellerProductIdPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
 const productGalleryPath = /^\/api\/v1\/(seller\/)?products\/([0-9a-f-]{36})\/gallery\/([0-9a-f-]{36})$/;
-const sellerOrderIdPath = /^\/api\/v1\/seller\/orders\/([0-9a-f-]{36})(?:\/(confirm|reject))?$/;
+const sellerOrderIdPath = /^\/api\/v1\/seller\/orders\/([0-9a-f-]{36})(?:\/(confirm|reject|ship|deliver|cancel))?$/;
 const LIMIT_WINDOW_MS = 15 * 60 * 1000;
 
 function image(value, cacheable = false) {
@@ -185,6 +185,7 @@ export function createApi({ store, config, serveStatic = null }) {
       if (!code || code.includes('/')) throw new ApiError(404, 'NOT_FOUND', 'Category not found.');
       return json(200, updateCategory(store, code, body));
     }
+    if (method === 'GET' && pathname === '/api/v1/seller/orders/summary') return json(200, pendingOrderSummary(store));
     if (method === 'GET' && pathname === '/api/v1/seller/orders') {
       return json(200, listSellerOrders(store, url.searchParams));
     }

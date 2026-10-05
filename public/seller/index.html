@@ -30,6 +30,7 @@
           <button id="check-updates-button" type="button" data-i18n="checkUpdates">Check for updates</button>
           <p id="check-updates-status" role="status" aria-live="polite"></p>
           <p id="seller-current-version"></p>
+          <button id="alerts-button" type="button"></button>
           <button id="profile-button" type="button" data-i18n="profile">View profile</button>
           <button id="sign-out-button" type="button" data-i18n="signOut">Sign out</button>
         </div>
@@ -44,7 +45,7 @@
       <button class="nav-item" type="button" data-view="products" data-i18n-aria="products"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v14H4zM3 7l2-4h14l2 4M9 12h6"/></svg><span data-i18n="products">Products</span></button>
       <div class="nav-group" data-i18n="salesManager">Sales Manager</div>
       <button class="nav-item" type="button" data-view="orders" data-i18n-aria="salesOrders"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18l-3-2-4 2-4-2-3 2zM8 8h8M8 12h8"/></svg><span data-i18n="salesOrders">Sales Orders</span></button>
-      <button class="nav-item" type="button" data-view="review" data-i18n-aria="orderReview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM8 12l3 3 5-6"/></svg><span data-i18n="orderReview">Sales Order Confirmation</span></button>
+      <button class="nav-item" type="button" data-view="review" data-i18n-aria="orderReview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM8 12l3 3 5-6"/></svg><span data-i18n="orderReview">Sales Order Confirmation</span><span id="pending-badge" class="nav-badge" role="status" hidden></span></button>
       <div class="nav-group" data-i18n="configuration">Configuration</div>
       <button class="nav-item" type="button" data-view="categories" data-i18n-aria="categoryCodes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h6"/></svg><span data-i18n="categoryCodes">Category codes</span></button>
       <button class="nav-item" type="button" data-view="company" data-i18n-aria="companySettings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V7l8-4 8 4v14M2 21h20M9 21v-6h6v6"/></svg><span data-i18n="companySettings">Company settings</span></button>
@@ -140,7 +141,7 @@
     <div class="order-toolbar">
       <form id="order-filter" class="order-filter">
         <label><span data-i18n="searchOrderNo">Order number</span><input id="order-search" name="search" type="search" maxlength="40" autocomplete="off"></label>
-        <label id="order-status-label"><span data-i18n="orderStatus">Status</span><select id="order-status" name="status"><option value="" data-i18n="allStatuses">All statuses</option><option value="SUBMITTED" data-i18n="statusSubmitted">Submitted</option><option value="CONFIRMED" data-i18n="statusConfirmed">Confirmed</option><option value="REJECTED" data-i18n="statusRejected">Rejected</option></select></label>
+        <label id="order-status-label"><span data-i18n="orderStatus">Status</span><select id="order-status" name="status"><option value="" data-i18n="allStatuses">All statuses</option><option value="SUBMITTED" data-i18n="statusSubmitted">Submitted</option><option value="CONFIRMED" data-i18n="statusConfirmed">Confirmed</option><option value="REJECTED" data-i18n="statusRejected">Rejected</option><option value="SHIPPED" data-i18n="statusShipped">Shipped</option><option value="DELIVERED" data-i18n="statusDelivered">Delivered</option><option value="CANCELLED" data-i18n="statusCancelled">Cancelled</option></select></label>
         <button type="submit" class="secondary-button" data-i18n="applySearch">Search</button>
       </form>
     </div>
@@ -165,6 +166,11 @@
         <h2 id="decision-title"></h2>
         <p id="decision-intro"></p>
         <label id="decision-reason-label" for="decision-reason" hidden><span data-i18n="rejectionReason">Reason for rejection</span><textarea id="decision-reason" name="reason" maxlength="500" rows="4"></textarea></label>
+        <div id="decision-ship-fields" hidden>
+          <label for="decision-carrier"><span data-i18n="carrier">Courier</span><select id="decision-carrier" name="carrier"><option>Ninja Van</option><option>J&amp;T Express</option><option>Pos Laju</option><option>DHL eCommerce</option><option>Flash Express</option><option>SPX Express</option><option value="OTHER" data-i18n="carrierOther">Other courier</option></select></label>
+          <label id="decision-carrier-other-label" for="decision-carrier-other" hidden><span data-i18n="carrierName">Courier name</span><input id="decision-carrier-other" maxlength="40" autocomplete="off"></label>
+          <label for="decision-tracking"><span data-i18n="trackingNumber">Tracking number (optional)</span><input id="decision-tracking" name="trackingNo" maxlength="60" autocomplete="off"></label>
+        </div>
         <p id="decision-error" class="message" role="alert"></p>
         <div class="decision-actions"><button id="decision-cancel" class="secondary-button" type="button" data-i18n="cancelDecision">Cancel</button><button id="decision-submit" class="primary-button" type="submit"></button></div>
       </form>

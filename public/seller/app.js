@@ -4,6 +4,7 @@ import { confirmModal } from '../shared/modal.js';
 import { draftSignature, mutationsBusy } from '../shared/update-guard.js';
 import { APP_VERSION } from './version.js';
 import { mountDemoEntry } from '../shared/demo-entry.js';
+import { createOrderAlerts } from './alerts.js';
 import { mountProducts } from './products.js';
 import { mountOrders } from './orders.js';
 import { mountCategories, mountCompanySettings } from './settings.js';
@@ -87,7 +88,10 @@ function sessionHint(value) {
 }
 
 setupLanguageMenu(byId('language'));
-document.title = `${t('sellerPortal')} · Online Shopping`;
+const baseTitle = () => `${t('sellerPortal')} · Online Shopping`;
+const orderAlerts = createOrderAlerts({ badge: byId('pending-badge'), button: byId('alerts-button'), baseTitle, onUnauthorized: () => showLogin('authError') });
+document.title = baseTitle();
+document.addEventListener('ordersdecided', () => orderAlerts.poll());
 registerWorker('/seller/sw.js', '/seller/', {
   currentVersion: APP_VERSION,
   guard: () => ({ dirty: hasUnsavedChanges(), busy: mutationsBusy() || activePage()?.isBusy?.() === true, signature: JSON.stringify([currentRoute, draftSignature(), activePage()?.draftSignature?.()]) }),
@@ -157,6 +161,7 @@ function showLogin(messageKey = '', clearHint = true) {
   settingsPage = null;
   ordersPage?.dispose();
   ordersPage = null;
+  orderAlerts.stop();
   byId('workspace-content').replaceChildren();
   loginView.hidden = false;
   workspace.hidden = true;
@@ -180,6 +185,7 @@ function showWorkspace(session) {
   setWorkspaceMessage('');
   loginView.hidden = true;
   workspace.hidden = false;
+  orderAlerts.start();
   sidebar.hidden = false;
   menuButton.hidden = false;
   accountWrap.hidden = false;
@@ -566,7 +572,7 @@ document.addEventListener('localechange', () => {
   else if (settingsPage) settingsPage.refreshLocale();
   else renderView();
   document.documentElement.lang = locale();
-  document.title = `${t('sellerPortal')} · Online Shopping`;
+  orderAlerts.refresh();
   setLoginMessage(loginMessageKey);
   setWorkspaceMessage(workspaceMessageKey);
   renderUpdateUI();

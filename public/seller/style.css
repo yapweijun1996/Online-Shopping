@@ -416,3 +416,9 @@
 .login-update p{margin:0}
 .login-update .text-button{min-height:36px}
 .login-update .secondary-button{width:100%}
+
+.nav-badge{margin-left:auto;min-width:20px;padding:1px 6px;border-radius:999px;background:var(--shop-error);color:#fff;font-size:12px;font-weight:700;line-height:18px;text-align:center}
+.nav-badge[hidden]{display:none}
+#decision-ship-fields{display:grid;gap:14px;margin:14px 0}
+#decision-ship-fields label{display:grid;gap:6px;font-weight:600}
+#decision-ship-fields select,#decision-ship-fields input{width:100%;min-height:44px;padding:8px 12px;border:1px solid var(--ui-control-border);border-radius:8px;background:var(--ui-surface);color:var(--ui-text);font:inherit}
