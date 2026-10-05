@@ -1,5 +1,5 @@
 // Entry is created only after the server explicitly identifies a fictional demo.
-export async function mountDemoEntry(root) {
+export async function mountDemoEntry(root, { onSignedIn } = {}) {
   try {
     const response = await fetch('/api/v1/shop', { cache: 'no-store' });
     if (!response.ok || (await response.json()).demoRolesAvailable !== true || !root.isConnected) return;
@@ -15,6 +15,7 @@ export async function mountDemoEntry(root) {
       try {
         const result = await fetch('/api/v1/seller/demo-session', { method: 'POST', cache: 'no-store' });
         if (!result.ok) throw Error('unavailable');
+        onSignedIn?.();
         location.assign('/seller/');
       } catch {
         status.textContent = 'Demo login unavailable. Try again.';
