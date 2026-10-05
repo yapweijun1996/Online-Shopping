@@ -44,7 +44,7 @@ test('Seller activation defers reload for primary-image removal and newly opened
   const product = readFileSync(new URL('../public/seller/products.js', import.meta.url), 'utf8');
   const orders = readFileSync(new URL('../public/seller/orders.js', import.meta.url), 'utf8');
   for (const scenario of ['remove clean image', 'remove image in accepted dirty form', 'open order decision']) {
-    const elements = Object.fromEntries(['sku', 'name', 'description', 'category', 'price', 'currency', 'variantGroup', 'variantLabel']
+    const elements = Object.fromEntries(['sku', 'name', 'description', 'category', 'price', 'currency', 'variantGroup', 'variantLabel', 'stockQuantity']
       .map(name => [name, { name, type: 'text', value: name }]));
     elements.active = { name: 'active', type: 'checkbox', checked: true };
     elements.image = { name: 'image', type: 'file', value: '', files: [] };

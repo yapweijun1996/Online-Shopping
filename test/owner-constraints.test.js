@@ -62,7 +62,7 @@ test('Seller edit payload permits legacy metadata/deactivation while actual mone
   store.run('UPDATE product SET currency = ? WHERE id = ?', 'SGD', product.id);
   const source = readFileSync(new URL('../public/seller/products.js', import.meta.url), 'utf8');
   const values = { sku: product.sku, name: product.name, description: product.description, category: product.categoryCode,
-    price: '9.00', currency: 'SGD', variantGroup: '', variantLabel: '' };
+    price: '9.00', currency: 'SGD', variantGroup: '', variantLabel: '', stockQuantity: '' };
   const elements = Object.fromEntries(Object.entries(values).map(([name, value]) => [name, { value }]));
   elements.active = { checked: true }; elements.image = { files: [] };
   const context = { form: { hidden: false, elements }, saving: false, pendingRemove: false, formBaseline: null, editingId: product.id };

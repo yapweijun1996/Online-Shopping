@@ -65,8 +65,9 @@ export function createOrder(database, idempotencyKey, input) {
 
     let totalMinor = 0;
     let currency = null;
+    const requested = new Map();
     const snapshots = order.deliveries.map((delivery, deliveryIndex) => delivery.items.map((item, itemIndex) => {
-      const product = database.get(`SELECT id, sku, name, price_minor, currency FROM product
+      const product = database.get(`SELECT id, sku, name, price_minor, currency, stock_quantity FROM product
         WHERE id = ? AND active = 1`, item.productId);
       if (!product) {
         const error = new ApiError(409, 'PRODUCT_UNAVAILABLE', 'A selected product is unavailable. Review the cart.');
@@ -87,6 +88,13 @@ export function createOrder(database, idempotencyKey, input) {
       if (product.price_minor !== item.expectedPriceMinor) {
         const error = new ApiError(409, 'PRICE_CHANGED', 'A product price changed. Review the cart.');
         error.field = `deliveries.${deliveryIndex}.items.${itemIndex}.expectedPriceMinor`;
+        throw error;
+      }
+      // Stock is only deducted when the seller confirms, but an order the shop cannot cover is refused up front.
+      requested.set(product.id, (requested.get(product.id) || 0) + item.quantity);
+      if (product.stock_quantity !== null && requested.get(product.id) > product.stock_quantity) {
+        const error = new ApiError(409, 'OUT_OF_STOCK', 'A selected product does not have enough stock. Review the cart.');
+        error.field = `deliveries.${deliveryIndex}.items.${itemIndex}.quantity`;
         throw error;
       }
       const lineTotalMinor = product.price_minor * item.quantity;

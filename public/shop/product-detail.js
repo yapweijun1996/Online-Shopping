@@ -370,6 +370,7 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
         if (capturedRequest === request) {
           busy = false;
           for (const control of purchaseBar.querySelectorAll('button')) control.disabled = false;
+          if (soldOut) add.disabled = buy.disabled = true;
           syncQuantity();
           if (localePending) { localePending = false; render(); }
         }
@@ -390,7 +391,9 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     chat.append(node('span', '', t('chat')));
     const add = button(t('addToCart'), () => purchase(false), 'product-add');
     const buy = button(t('buyNow'), () => purchase(true), 'primary-button product-buy');
-    add.disabled = buy.disabled = busy;
+    const soldOut = product.inStock === false;
+    add.disabled = buy.disabled = busy || soldOut;
+    if (soldOut) { feedback.textContent = t('outOfStock'); feedback.dataset.state = 'error'; }
     purchaseBar.append(chat, add, buy);
     const shareStatus = node('p', 'shop-note'); shareStatus.setAttribute('role', 'status');
     const shareField = node('input', 'share-url'); shareField.readOnly = true; shareField.hidden = true;

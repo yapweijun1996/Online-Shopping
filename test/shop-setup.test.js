@@ -97,6 +97,7 @@ test('existing version 6 catalogs migrate to production without altering product
   setupShop(store, { mode: 'demo' });
   store.exec(`DROP TABLE product_gallery_image;
     DROP INDEX product_variant_option; DROP INDEX product_variant_group;
+    ALTER TABLE product DROP COLUMN stock_quantity;
     ALTER TABLE product DROP COLUMN variant_group; ALTER TABLE product DROP COLUMN variant_label;
     ALTER TABLE company_setting DROP COLUMN seller_whatsapp_phone;
     ALTER TABLE company_setting DROP COLUMN mobile_hide_bars_on_scroll;
@@ -111,6 +112,7 @@ test('existing version 6 catalogs migrate to production without altering product
 test('version 8 Demo migration never seeds a real contact, then preserves seller changes', (t) => {
   const store = fixture(t);
   setupShop(store, { mode: 'demo' });
+  store.exec('ALTER TABLE product DROP COLUMN stock_quantity');
   store.exec('ALTER TABLE company_setting DROP COLUMN seller_whatsapp_phone');
   store.exec('ALTER TABLE company_setting DROP COLUMN mobile_hide_bars_on_scroll');
   store.setSchemaVersion(8);
@@ -123,6 +125,7 @@ test('version 8 Demo migration never seeds a real contact, then preserves seller
 
 test('version 9 migration defaults existing shops to always-visible mobile bars', (t) => {
   const store = fixture(t);
+  store.exec('ALTER TABLE product DROP COLUMN stock_quantity');
   store.exec('ALTER TABLE company_setting DROP COLUMN mobile_hide_bars_on_scroll');
   store.setSchemaVersion(9);
   migrateStore(store);

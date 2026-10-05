@@ -417,7 +417,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
         await Promise.all([loadQueue(), ...(selectedId === id ? [openOrder(id)] : [])]);
         setMessage('decisionUnknown');
       } else {
-        setDialogError(error.field === 'reason' ? 'reasonRequired' : 'decisionFailed');
+        setDialogError(error.code === 'INSUFFICIENT_STOCK' ? 'insufficientStock' : error.field === 'reason' ? 'reasonRequired' : 'decisionFailed');
       }
     } finally {
       deciding = false;

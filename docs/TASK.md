@@ -64,7 +64,7 @@ The owner's fresh instruction authorizes scoped tested fixes and publishing the 
 
 | ID | Priority / status | Depends on | Done condition and evidence needed |
 | --- | --- | --- | --- |
-| SEL-01 | P1 / Next (owner priority 1 of 3) | — | Product stock quantity, decrement on order, auto-unavailable at zero; concurrency test for the last unit. |
+| SEL-01 | P1 / Implemented locally 2026-10-05 (not deployed) | — | Optional per-product stock (blank = unlimited); deducted when the seller confirms, refused at checkout if it exceeds stock; out-of-stock shown in the shop. Covered by `test/seller-orders.test.js`. Restocking on cancellation waits for SEL-02. |
 | SEL-02 | P1 / Next (owner priority 1 of 3) | — | Fulfilment statuses after confirmation (packed, shipped, delivered, cancelled) with tracking number and carrier; audit events; revision checks. |
 | SEL-03 | P1 / Next (owner priority 1 of 3) | SEL-02 | New-order alert to the seller (channel to be chosen: email, manual WhatsApp prompt or browser push). |
 | SEL-04 | P1 / Planned | [ADMIN_MULTI_COMPANY_DESIGN.md](ADMIN_MULTI_COMPANY_DESIGN.md) | More than one seller account with roles, password change and recovery. |

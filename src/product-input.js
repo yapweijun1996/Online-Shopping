@@ -2,7 +2,7 @@ import { FieldError, boundedText } from './validation.js';
 import { decodeProductImage } from './product-image.js';
 
 const requiredFields = ['sku', 'name', 'description', 'category', 'priceMinor', 'currency', 'active'];
-const fields = [...requiredFields, 'imageDataUrl', 'variantGroup', 'variantLabel'];
+const fields = [...requiredFields, 'imageDataUrl', 'variantGroup', 'variantLabel', 'stockQuantity'];
 
 export function validateProductInput(input, allowedCurrencies, { partial = false } = {}) {
   if (!Array.isArray(allowedCurrencies) || allowedCurrencies.length === 0 ||
@@ -41,6 +41,13 @@ export function validateProductInput(input, allowedCurrencies, { partial = false
   if (keys.includes('active')) {
     if (typeof input.active !== 'boolean') throw new FieldError('active', 'Choose product availability.');
     result.active = input.active;
+  }
+  if (keys.includes('stockQuantity')) {
+    // null means unlimited; a number turns on stock tracking for this product.
+    if (input.stockQuantity !== null && (!Number.isSafeInteger(input.stockQuantity) || input.stockQuantity < 0 || input.stockQuantity > 1_000_000)) {
+      throw new FieldError('stockQuantity', 'Enter a whole stock quantity from 0 to 1,000,000, or leave it blank for unlimited.');
+    }
+    result.stockQuantity = input.stockQuantity;
   }
   if (keys.includes('imageDataUrl')) result.image = decodeProductImage(input.imageDataUrl);
   if (keys.includes('variantGroup')) {
