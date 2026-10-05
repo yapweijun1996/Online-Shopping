@@ -4,6 +4,7 @@ import { confirmModal, containDialogFocus } from '../shared/modal.js';
 import { draftSignature, mutationsBusy } from '../shared/update-guard.js';
 import { APP_VERSION } from './version.js';
 import { mountDemoEntry } from '../shared/demo-entry.js';
+import { snapshotCount } from './studio-copy.js';
 import { mountProducts } from './products.js';
 import { mountOrders } from './orders.js';
 import { mountCategories, mountCompanySettings } from './settings.js';
@@ -11,7 +12,7 @@ import { mountCategories, mountCompanySettings } from './settings.js';
 const byId = (id) => document.getElementById(id);
 containDialogFocus(byId('profile-dialog'));
 const loginView = byId('login-view');
-mountDemoEntry(loginView.querySelector('.login-card') || loginView);
+mountDemoEntry(byId('demo-entry'));
 const workspace = byId('workspace');
 const sidebar = byId('sidebar');
 const accountWrap = byId('account-wrap');
@@ -159,6 +160,7 @@ function showLogin(messageKey = '', clearHint = true) {
   sidebar.hidden = true;
   menuButton.hidden = true;
   accountWrap.hidden = true;
+  byId('shop-context').hidden = true;
   document.body.classList.remove('seller-signed-in');
   setPasswordVisible(false);
   setLoginMessage(messageKey);
@@ -181,6 +183,14 @@ function showWorkspace(session) {
   menuButton.hidden = false;
   accountWrap.hidden = false;
   document.body.classList.add('seller-signed-in');
+  const sessionToken = csrfToken;
+  fetch('/api/v1/seller/setup', { cache: 'no-store' }).then(async response => {
+    if (!response.ok) return;
+    const setup = await response.json();
+    if (workspace.hidden || csrfToken !== sessionToken) return;
+    byId('shop-context').textContent = setup.shopName || t('sellerPortal');
+    byId('shop-context').hidden = false;
+  }).catch(() => {});
   byId('password').value = '';
   syncDrawerAccess();
   applyRoute();
@@ -281,15 +291,37 @@ async function renderDashboard(content) {
     }
 
     const identity = node('section', 'dashboard-identity');
-    identity.append(node('div', 'dashboard-shop-name', setup.shopName || t('shop')),
+    const welcome = node('div', 'dashboard-welcome');
+    welcome.append(node('div', 'dashboard-shop-name', setup.shopName || t('shop')), node('p', '', t('studioOverview')));
+    identity.append(welcome,
       node('span', `dashboard-mode ${setup.mode === 'demo' ? 'is-demo' : ''}`, t(setup.mode === 'demo' ? 'dashboardSimulated' : 'dashboardProduction')));
+    byId('shop-context').textContent = setup.shopName || t('sellerPortal');
+    const stats = node('div', 'dashboard-stats');
+    const stat = (label, value) => {
+      const card = node('section', 'dashboard-stat');
+      const number = node('strong', '', value);
+      number.setAttribute('aria-live', 'polite');
+      card.append(node('p', '', t(label)), number);
+      stats.append(card);
+      return number;
+    };
+    const orderCount = stat('dashboardSubmittedOrders', t('loading'));
+    const productCount = stat('products', t('loading'));
+    const currency = stat('currency', t('loading'));
+    stat('shopSetup', t(setup.mode === 'demo' ? 'dashboardSimulated' : 'dashboardProduction'));
+    fetch('/api/v1/seller/company-settings', { cache: 'no-store' }).then(async response => {
+      if (response.status === 401) { if (isCurrent()) showLogin('authError'); return; }
+      if (!response.ok) throw new Error('settings failed');
+      const settings = await response.json();
+      if (isCurrent()) currency.textContent = settings.defaultCurrency;
+    }).catch(() => { if (isCurrent()) currency.textContent = t('networkError'); });
     const grid = node('div', 'dashboard-grid');
-    shell.replaceChildren(identity, grid);
+    shell.replaceChildren(identity, stats, node('p', 'dashboard-count-help', t('snapshotCountHelp')), grid);
 
     const panels = [
       {
         title: 'dashboardSubmittedOrders', intro: 'dashboardOrdersIntro',
-        path: '/api/v1/seller/orders?status=SUBMITTED&limit=3',
+        path: '/api/v1/seller/orders?status=SUBMITTED&limit=100', count: orderCount,
         action: 'dashboardReviewOrders', view: 'review', empty: 'dashboardNoSubmittedOrders',
         render(item) {
           const row = node('li', 'dashboard-order-row');
@@ -301,7 +333,7 @@ async function renderDashboard(content) {
       },
       {
         title: 'dashboardRecentProducts', intro: 'dashboardProductsIntro',
-        path: '/api/v1/seller/products?limit=3',
+        path: '/api/v1/seller/products?limit=100', count: productCount,
         action: 'dashboardViewProducts', view: 'products', empty: 'noProducts',
         render(item) {
           const row = node('li', 'dashboard-product-row');
@@ -328,15 +360,17 @@ async function renderDashboard(content) {
           if (!result.ok) throw new Error('dashboard preview failed');
           const data = await result.json();
           if (!isCurrent()) return;
+          panel.count.textContent = snapshotCount(data);
           if (!Array.isArray(data.items) || !data.items.length) {
             body.replaceChildren(node('p', 'dashboard-empty', t(panel.empty)));
             return;
           }
           const list = node('ul', 'dashboard-preview-list');
-          for (const item of data.items) list.append(panel.render(item));
+          for (const item of data.items.slice(0, 3)) list.append(panel.render(item));
           body.replaceChildren(list);
         } catch {
           if (!isCurrent()) return;
+          panel.count.textContent = t('networkError');
           const retry = node('button', 'secondary-button', t('retry'));
           retry.type = 'button';
           retry.addEventListener('click', load);
