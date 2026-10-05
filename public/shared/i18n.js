@@ -1614,7 +1614,13 @@ const ownerRequestMessages = {
     "paletteSample": "Preview text, controls and notices before applying this palette.",
     "paletteSampleButton": "Sample button",
     "paletteSampleNotice": "Sample notice",
-    "paletteSampleError": "Sample error message"
+    "paletteSampleError": "Sample error message",
+    "resetDemoTitle": "Reset demo data",
+    "resetDemoIntro": "Restore the fictional catalog, categories, settings and order numbers to their starting state. All demo orders and product edits are removed. This cannot be undone.",
+    "resetDemoButton": "Reset demo data",
+    "resetDemoConfirm": "Restore the fictional catalog, categories, settings and order numbers to their starting state. All demo orders and product edits are removed. This cannot be undone.",
+    "resetDemoDone": "Demo data was reset.",
+    "resetDemoFailed": "Could not reset demo data. Try again."
   },
   "ms": {
     "currencyInherited": "Mata wang diwarisi daripada Tetapan Syarikat dan tidak boleh diubah di sini.",
@@ -1629,7 +1635,13 @@ const ownerRequestMessages = {
     "paletteSample": "Pratonton teks, kawalan dan notis sebelum menggunakan warna ini.",
     "paletteSampleButton": "Butang contoh",
     "paletteSampleNotice": "Notis contoh",
-    "paletteSampleError": "Mesej ralat contoh"
+    "paletteSampleError": "Mesej ralat contoh",
+    "resetDemoTitle": "Set semula data demo",
+    "resetDemoIntro": "Pulihkan katalog, kategori, tetapan dan nombor pesanan rekaan kepada keadaan asal. Semua pesanan demo dan suntingan produk dipadam. Tindakan ini tidak boleh dibatalkan.",
+    "resetDemoButton": "Set semula data demo",
+    "resetDemoConfirm": "Pulihkan katalog, kategori, tetapan dan nombor pesanan rekaan kepada keadaan asal. Semua pesanan demo dan suntingan produk dipadam. Tindakan ini tidak boleh dibatalkan.",
+    "resetDemoDone": "Data demo telah ditetapkan semula.",
+    "resetDemoFailed": "Tidak dapat menetapkan semula data demo. Cuba lagi."
   },
   "zh-Hans": {
     "currencyInherited": "币种继承公司设置，不能在此修改。",
@@ -1644,7 +1656,13 @@ const ownerRequestMessages = {
     "paletteSample": "应用前预览文字、控件和提示。",
     "paletteSampleButton": "示例按钮",
     "paletteSampleNotice": "示例提示",
-    "paletteSampleError": "示例错误信息"
+    "paletteSampleError": "示例错误信息",
+    "resetDemoTitle": "重置演示数据",
+    "resetDemoIntro": "将虚构的商品目录、分类、设置和订单编号恢复到初始状态。所有演示订单和商品修改都会被清除，且无法撤销。",
+    "resetDemoButton": "重置演示数据",
+    "resetDemoConfirm": "将虚构的商品目录、分类、设置和订单编号恢复到初始状态。所有演示订单和商品修改都会被清除，且无法撤销。",
+    "resetDemoDone": "演示数据已重置。",
+    "resetDemoFailed": "无法重置演示数据，请重试。"
   },
   "vi": {
     "currencyInherited": "Tiền tệ lấy từ Cài đặt công ty và không thể thay đổi ở đây.",
@@ -1659,7 +1677,13 @@ const ownerRequestMessages = {
     "paletteSample": "Xem trước văn bản, điều khiển và thông báo trước khi áp dụng.",
     "paletteSampleButton": "Nút mẫu",
     "paletteSampleNotice": "Thông báo mẫu",
-    "paletteSampleError": "Thông báo lỗi mẫu"
+    "paletteSampleError": "Thông báo lỗi mẫu",
+    "resetDemoTitle": "Đặt lại dữ liệu demo",
+    "resetDemoIntro": "Khôi phục danh mục, nhóm hàng, cài đặt và số đơn hàng giả lập về trạng thái ban đầu. Mọi đơn demo và chỉnh sửa sản phẩm sẽ bị xóa. Không thể hoàn tác.",
+    "resetDemoButton": "Đặt lại dữ liệu demo",
+    "resetDemoConfirm": "Khôi phục danh mục, nhóm hàng, cài đặt và số đơn hàng giả lập về trạng thái ban đầu. Mọi đơn demo và chỉnh sửa sản phẩm sẽ bị xóa. Không thể hoàn tác.",
+    "resetDemoDone": "Đã đặt lại dữ liệu demo.",
+    "resetDemoFailed": "Không thể đặt lại dữ liệu demo. Hãy thử lại."
   },
   "ja": {
     "currencyInherited": "通貨は会社設定から引き継がれ、ここでは変更できません。",
@@ -1674,7 +1698,13 @@ const ownerRequestMessages = {
     "paletteSample": "適用する前に文字、操作部、通知を確認できます。",
     "paletteSampleButton": "サンプルボタン",
     "paletteSampleNotice": "サンプル通知",
-    "paletteSampleError": "サンプルエラーメッセージ"
+    "paletteSampleError": "サンプルエラーメッセージ",
+    "resetDemoTitle": "デモデータをリセット",
+    "resetDemoIntro": "架空の商品カタログ、カテゴリ、設定、注文番号を初期状態に戻します。デモ注文と商品の編集はすべて削除され、元に戻せません。",
+    "resetDemoButton": "デモデータをリセット",
+    "resetDemoConfirm": "架空の商品カタログ、カテゴリ、設定、注文番号を初期状態に戻します。デモ注文と商品の編集はすべて削除され、元に戻せません。",
+    "resetDemoDone": "デモデータをリセットしました。",
+    "resetDemoFailed": "デモデータをリセットできませんでした。もう一度お試しください。"
   },
   "ko": {
     "currencyInherited": "통화는 회사 설정에서 가져오며 여기서 변경할 수 없습니다.",
@@ -1689,7 +1719,13 @@ const ownerRequestMessages = {
     "paletteSample": "적용하기 전에 텍스트, 컨트롤과 알림을 확인하세요.",
     "paletteSampleButton": "샘플 버튼",
     "paletteSampleNotice": "샘플 알림",
-    "paletteSampleError": "샘플 오류 메시지"
+    "paletteSampleError": "샘플 오류 메시지",
+    "resetDemoTitle": "데모 데이터 초기화",
+    "resetDemoIntro": "가상 상품 카탈로그, 카테고리, 설정, 주문 번호를 초기 상태로 되돌립니다. 모든 데모 주문과 상품 수정이 삭제되며 되돌릴 수 없습니다.",
+    "resetDemoButton": "데모 데이터 초기화",
+    "resetDemoConfirm": "가상 상품 카탈로그, 카테고리, 설정, 주문 번호를 초기 상태로 되돌립니다. 모든 데모 주문과 상품 수정이 삭제되며 되돌릴 수 없습니다.",
+    "resetDemoDone": "데모 데이터를 초기화했습니다.",
+    "resetDemoFailed": "데모 데이터를 초기화하지 못했습니다. 다시 시도하세요."
   },
   "th": {
     "currencyInherited": "สกุลเงินมาจากการตั้งค่าบริษัทและเปลี่ยนที่นี่ไม่ได้",
@@ -1704,7 +1740,13 @@ const ownerRequestMessages = {
     "paletteSample": "ดูตัวอย่างข้อความ ตัวควบคุม และข้อความแจ้งก่อนใช้ชุดสีนี้",
     "paletteSampleButton": "ปุ่มตัวอย่าง",
     "paletteSampleNotice": "ข้อความแจ้งตัวอย่าง",
-    "paletteSampleError": "ข้อความผิดพลาดตัวอย่าง"
+    "paletteSampleError": "ข้อความผิดพลาดตัวอย่าง",
+    "resetDemoTitle": "รีเซ็ตข้อมูลเดโม",
+    "resetDemoIntro": "คืนค่าแคตตาล็อกสมมติ หมวดหมู่ การตั้งค่า และเลขที่คำสั่งซื้อเป็นสถานะเริ่มต้น คำสั่งซื้อเดโมและการแก้ไขสินค้าทั้งหมดจะถูกลบ และย้อนกลับไม่ได้",
+    "resetDemoButton": "รีเซ็ตข้อมูลเดโม",
+    "resetDemoConfirm": "คืนค่าแคตตาล็อกสมมติ หมวดหมู่ การตั้งค่า และเลขที่คำสั่งซื้อเป็นสถานะเริ่มต้น คำสั่งซื้อเดโมและการแก้ไขสินค้าทั้งหมดจะถูกลบ และย้อนกลับไม่ได้",
+    "resetDemoDone": "รีเซ็ตข้อมูลเดโมแล้ว",
+    "resetDemoFailed": "ไม่สามารถรีเซ็ตข้อมูลเดโมได้ โปรดลองอีกครั้ง"
   }
 };
 for (const { code } of languages) Object.assign(messages[code], ownerRequestMessages[code]);

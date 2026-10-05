@@ -1,6 +1,7 @@
 import { t, translate } from '../shared/i18n.js';
 import { mountAppearance } from '../shared/appearance.js';
 import { beginMutation } from '../shared/update-guard.js';
+import { confirmModal } from '../shared/modal.js';
 
 let pendingWrites = 0;
 
@@ -119,6 +120,28 @@ export function mountCategories(root, { csrfToken, onUnauthorized }) {
   };
 }
 
+/* Offered only when the server says this is the public fictional Demo. */
+async function mountDemoReset(root, csrfToken, onUnauthorized) {
+  try {
+    const shop = await (await fetch('/api/v1/shop', { cache: 'no-store' })).json();
+    if (shop.demoRolesAvailable !== true || !root.isConnected) return;
+  } catch { return; }
+  const card = document.createElement('section'); card.className = 'settings-card';
+  card.innerHTML = `<h2 data-i18n="resetDemoTitle"></h2><p data-i18n="resetDemoIntro"></p>
+    <button class="secondary-button" type="button" data-i18n="resetDemoButton"></button><p class="settings-status" role="status"></p>`;
+  const button = card.querySelector('button'), line = card.querySelector('.settings-status');
+  button.addEventListener('click', async () => {
+    if (!(await confirmModal(t('resetDemoConfirm')))) return;
+    button.disabled = true; line.textContent = t('loading');
+    try {
+      await request('POST', '/api/v1/seller/demo/reset', { confirm: true }, csrfToken, onUnauthorized);
+      line.textContent = t('resetDemoDone');
+      setTimeout(() => location.reload(), 1200);
+    } catch { line.textContent = t('resetDemoFailed'); button.disabled = false; }
+  });
+  root.append(card); translate(card);
+}
+
 export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
   root.innerHTML = `<section class="settings-card" aria-labelledby="company-heading">
     <h2 id="company-heading" data-i18n="companySettings">Company settings</h2>
@@ -184,6 +207,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized }) {
       setupStatus.textContent = t(['SHOP_ALREADY_CONFIGURED', 'SHOP_NOT_EMPTY'].includes(error.code) ? 'setupConflict' : 'productError');
     } finally { setupButton.disabled = false; }
   });
+  mountDemoReset(root, csrfToken, onUnauthorized);
   translate(root);
   const form = root.querySelector('#company-form');
   const saveButton = form.querySelector('[type="submit"]');
