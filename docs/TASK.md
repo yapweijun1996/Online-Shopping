@@ -73,3 +73,4 @@ The owner's fresh instruction authorizes scoped tested fixes and publishing the 
 | INT-02 | P2 / Planned | SEL-02 | One courier integration (aggregator or Ninja Van): create shipment, fetch label, receive status updates. Vendor terms must be verified first. |
 | INT-03 | P3 / On hold | Owner decision | Baileys (QR) WhatsApp for the Demo only: separate long-running Node service, disposable test number, fixed templates, rate limits. Not for production. |
 | SEL-05 | P1 / Planned | DEC-07 | Seller-initiated permanent deletion of an order's buyer contact and delivery data with confirmation and an audit event; tests prove nothing else about the order is lost. |
+| TEN-00 | P0 / Plan recorded 2026-10-05 | owner open items | [MULTI_TENANT_PRODUCTION_PLAN.md](MULTI_TENANT_PRODUCTION_PLAN.md): phases 0 to 8 for Docker, PostgreSQL, tenants at `/s/{shop-code}/`, SuperAdmin with TOTP, manual deletion, backups and a seeded Demo. Each phase is separately merged. |
