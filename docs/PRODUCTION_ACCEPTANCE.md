@@ -1,8 +1,12 @@
 # Production acceptance denominator — 18 items
 
-Reconciled 2026-10-02 against `SPEC.md`, current code/tests and recorded project KB. The denominator remains **18**, not number of features, tests, screenshots or demo deployments. Payment/courier automation stays outside the existing MVP. PR #15 was owner-merged as main `f28c04b1d1655f5002469a98f62c3e65cb73d6bf`; the public Demo still runs Shop v103 / Seller v79 from the earlier `c1d1f688458eaa371b80f56f847ffbfe43612de2` release. This repair candidate is Shop v105 / Seller v81 and is not deployed.
+Reconciled 2026-10-02 against `SPEC.md`, current code/tests and recorded project KB. The denominator remains **18**, not number of features, tests, screenshots or demo deployments. Payment/courier automation stays outside the existing MVP. Owner-merged PR #16 is main `5966ca8626c6c75e8e0ec4e34488a7c47fa29376` (Shop v105 / Seller v81); the public Demo last verified after merge still runs Shop v103 / Seller v79 from the earlier `c1d1f688458eaa371b80f56f847ffbfe43612de2` release. This independent local integration candidate is Shop v105 / Seller v82 and is not deployed. Its synthetic integration ledger/status does not close a production criterion; see [INTEGRATION_FOUNDATION.md](INTEGRATION_FOUNDATION.md).
 
 The historical single-company local baseline records AC-01–15 and AC-18 as verified (16/18). AC-16/17 remain open. **Production released: 0/18**. A running Cloudflare Demo does not satisfy the future Docker/PostgreSQL Production denominator. The present full regression and focused browser results preserve evidence for the candidate changes; they do not re-certify every historical browser journey or the unimplemented production tenant adapter.
+
+The separately local [offline adapter slice](INTEGRATION_ADAPTERS.md) adds credential-free request/response fixtures. Its 168 passing regression tests and independent synthetic review do not change this denominator or certify a provider connection.
+
+The subsequent [trusted-consent and offline signed-ingress slice](INTEGRATION_TRUST_INGRESS.md), based on that adapter checkpoint, has 192 passing regression tests and 50 focused integration tests. It reads existing server order-contact records and tests synthetic revocation, raw Meta signatures, scoped mapping and durable-before-ACK transaction behavior. It adds no production startup route, tenant grant, provider lookup, transport activation or migration. Those local checks also leave the 18-item denominator and production release count unchanged.
 
 | Item | Current single-company evidence | Remaining production/tenant gate |
 | --- | --- | --- |

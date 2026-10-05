@@ -11,6 +11,7 @@ import { createCategory, getCompanySettings, listCategories, publicBusinessConta
 import { FieldError } from './validation.js';
 import { presentCatalogCopy, presentShopName } from './catalog-copy.js';
 import { PRODUCT_MUTATION_BODY_LIMIT } from './request-limits.js';
+import { integrationCatalog } from '../public/shared/integration-catalog.js';
 
 const productIdPath = /^\/api\/v1\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
 const sellerProductIdPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
@@ -139,6 +140,7 @@ export function createApi({ store, config, serveStatic = null }) {
       return json(200, { signedOut: true }, { 'Set-Cookie': cookieFor('', 0, config.production) });
     }
     if (method === 'GET' && pathname === '/api/v1/seller/setup') return json(200, presentShopName(getShopSetup(store)));
+    if (method === 'GET' && pathname === '/api/v1/seller/integrations') return json(200, integrationCatalog());
     if (method === 'POST' && pathname === '/api/v1/seller/setup') {
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
