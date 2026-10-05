@@ -1,4 +1,4 @@
--- PostgreSQL baseline matching SQLite schema 13. Timestamps stay ISO text to preserve API snapshots.
+-- PostgreSQL baseline matching SQLite schema 15. Timestamps stay ISO text to preserve API snapshots.
 CREATE TABLE admin (
         id BIGINT PRIMARY KEY CHECK (id = 1),
         username TEXT NOT NULL UNIQUE,
@@ -44,6 +44,7 @@ CREATE TABLE "product" (
         currency TEXT NOT NULL CHECK (currency IN ('MYR', 'SGD')),
         active BIGINT NOT NULL CHECK (active IN (0, 1)),
         translations_json TEXT NOT NULL DEFAULT '{}' CHECK (translations_json::jsonb IS NOT NULL),
+        gallery_layout_json TEXT CHECK (gallery_layout_json IS NULL OR jsonb_typeof(gallery_layout_json::jsonb) = 'array'),
         image_mime TEXT,
         image_data BYTEA,
         created_at TEXT NOT NULL,
@@ -55,7 +56,7 @@ CREATE TABLE "product" (
 CREATE TABLE "product_gallery_image" (
         id TEXT PRIMARY KEY,
         product_id TEXT NOT NULL REFERENCES product(id) ON DELETE RESTRICT,
-        position BIGINT NOT NULL CHECK (position BETWEEN 1 AND 9),
+        position BIGINT NOT NULL CHECK (position BETWEEN 1 AND 10),
         mime TEXT NOT NULL CHECK (mime IN ('image/png', 'image/jpeg', 'image/webp')),
         data BYTEA NOT NULL,
         created_at TEXT NOT NULL,
@@ -144,7 +145,7 @@ CREATE INDEX product_gallery_product ON product_gallery_image(product_id, positi
 CREATE INDEX shop_order_queue ON shop_order(status, submitted_at DESC);
 CREATE INDEX order_event_history ON order_event(order_id, id);
 CREATE TABLE schema_meta (id BIGINT PRIMARY KEY CHECK(id = 1), version BIGINT NOT NULL);
-INSERT INTO schema_meta VALUES (1, 13);
+INSERT INTO schema_meta VALUES (1, 15);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 INSERT INTO shop_setup(id, mode, shop_name) VALUES (1, NULL, 'Online Shopping');

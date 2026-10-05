@@ -3,25 +3,26 @@ import { ApiError, json, readJson, requireOrigin } from './http.js';
 import { FieldError, boundedText } from './validation.js';
 import { validateProductInput } from './product-input.js';
 import galleries from './public-demo-gallery.json' with { type: 'json' };
+import { integrationCatalog } from '../public/shared/integration-catalog.js';
 
 const COOKIE = 'os_fictional_demo';
 const TTL = 60 * 60 * 1000;
 const MAX_SESSIONS = 32;
 const MAX_ROWS = 100;
 const missing = () => { throw new ApiError(404, 'NOT_FOUND', 'Not found.'); };
-const forbidden = () => { throw new ApiError(403, 'FORBIDDEN', 'This demo role cannot perform that action.'); };
+const forbidden = () => { throw new ApiError(403, 'FORBIDDEN', 'This preview role cannot perform that action.'); };
 const digest = value => createHash('sha256').update(value).digest('hex');
 const tokenFrom = request => request.headers.get('cookie')?.split(';').map(x => x.trim()).find(x => x.startsWith(`${COOKIE}=`))?.slice(COOKIE.length + 1);
 
 function fields(body, allowed, required = []) {
   if (!body || typeof body !== 'object' || Array.isArray(body) ||
       Object.keys(body).some(key => !allowed.includes(key)) || required.some(key => !Object.hasOwn(body, key))) {
-    throw new FieldError('demo', 'Enter supported demo fields.');
+    throw new FieldError('demo', 'Enter supported preview fields.');
   }
 }
 function revision(record, body) {
   if (!Number.isSafeInteger(body.expectedRevision) || body.expectedRevision < 1) throw new FieldError('expectedRevision', 'Enter the current revision.');
-  if (record.revision !== body.expectedRevision) throw new ApiError(409, 'STALE_REVISION', 'Reload the changed demo record.');
+  if (record.revision !== body.expectedRevision) throw new ApiError(409, 'STALE_REVISION', 'Reload the changed preview record.');
 }
 function currency(value) {
   if (!['MYR', 'SGD'].includes(value)) throw new FieldError('currency', 'Choose MYR or SGD.');
@@ -39,7 +40,7 @@ function freshWorkspace() {
   ];
   const sellers = companies.map((company, index) => ({
     id: index ? 'seller-beta' : 'seller-alpha', companyId: company.id,
-    name: index ? 'Demo Seller Beta' : 'Demo Seller Alpha', active: true, revision: 1,
+    name: index ? 'Preview Seller Beta' : 'Preview Seller Alpha', active: true, revision: 1,
   }));
   const products = companies.flatMap(company => Object.entries(galleries.products).map(([sku, gallery], index) => ({
     id: randomUUID(), companyId: company.id, sku, name: gallery.name,
@@ -74,7 +75,7 @@ export function createDemoSandbox({ enabled, production, now = Date.now } = {}) 
   function requireSession(request) {
     const token = tokenFrom(request);
     const session = token && sessions.get(digest(token));
-    if (!session || session.expiresAt <= now()) throw new ApiError(401, 'UNAUTHORIZED', 'Start a new fictional demo session.');
+    if (!session || session.expiresAt <= now()) throw new ApiError(401, 'UNAUTHORIZED', 'Start a new fictional preview session.');
     if (session.role === 'SELLER') {
       const membership = session.data.sellers.find(seller => seller.id === session.principalId);
       if (!membership?.active) forbidden();
@@ -92,7 +93,7 @@ export function createDemoSandbox({ enabled, production, now = Date.now } = {}) 
     return company;
   }
   function admin(session) { if (session.role !== 'ADMIN') forbidden(); }
-  function capacity(rows) { if (rows.length >= MAX_ROWS) throw new ApiError(409, 'DEMO_LIMIT', 'Reset this bounded demo workspace.'); }
+  function capacity(rows) { if (rows.length >= MAX_ROWS) throw new ApiError(409, 'DEMO_LIMIT', 'Reset this bounded preview workspace.'); }
   function audit(session, resource, action) {
     capacity(session.data.audit);
     session.data.audit.push({ id: randomUUID(), actor: session.principalId, role: session.role, resource, action, at: new Date(now()).toISOString() });
@@ -109,12 +110,12 @@ export function createDemoSandbox({ enabled, production, now = Date.now } = {}) 
     if (method === 'POST' && path === 'session') {
       requireOrigin(request, expectedOrigin);
       const body = await readJson(request, 1024); fields(body, ['role'], ['role']);
-      if (!['ADMIN', 'SELLER'].includes(body.role)) throw new FieldError('role', 'Choose a fictional demo role.');
+      if (!['ADMIN', 'SELLER'].includes(body.role)) throw new FieldError('role', 'Choose a fictional preview role.');
       const times = (starts.get(clientAddress) || []).filter(time => time > now() - 60_000);
       if (times.length >= 10 || starts.size >= 128 && !starts.has(clientAddress)) throw new ApiError(429, 'RATE_LIMITED', 'Try again later.');
       times.push(now()); starts.set(clientAddress, times);
       const old = tokenFrom(request); if (old) sessions.delete(digest(old));
-      if (sessions.size >= MAX_SESSIONS) throw new ApiError(429, 'DEMO_CAPACITY', 'Demo workspaces are busy. Try again later.');
+      if (sessions.size >= MAX_SESSIONS) throw new ApiError(429, 'DEMO_CAPACITY', 'Preview workspaces are busy. Try again later.');
       const token = randomBytes(32).toString('hex');
       const session = { role: body.role, principalId: body.role === 'ADMIN' ? 'demo-admin' : 'seller-alpha',
         csrfToken: randomBytes(32).toString('hex'), expiresAt: now() + TTL, data: freshWorkspace() };
@@ -183,6 +184,11 @@ export function createDemoSandbox({ enabled, production, now = Date.now } = {}) 
         fields(body, ['active', 'expectedRevision'], ['active', 'expectedRevision']); revision(seller, body);
         seller.active = boolean(body.active); seller.revision++; audit(session, seller.id, 'SET_FICTIONAL_ACCESS'); return json(200, seller);
       }
+      const integrationPath = /^companies\/([^/]+)\/integrations$/.exec(path);
+      if (integrationPath && method === 'GET') {
+        const company = companyFor(session, integrationPath[1]);
+        return json(200, { companyId: company.id, ...integrationCatalog() });
+      }
       const match = /^companies\/([^/]+)(?:\/(products|orders|customers)(?:\/([^/]+)(?:\/(confirm|reject))?)?)?$/.exec(path);
       if (!match) missing();
       const company = companyFor(session, match[1]);
@@ -213,7 +219,7 @@ export function createDemoSandbox({ enabled, production, now = Date.now } = {}) 
         if (method === 'PATCH') revision(record, body);
         else if (Object.hasOwn(body, 'expectedRevision')) throw new FieldError('expectedRevision', 'This field is for edits.');
         const product = validateProductInput(method === 'POST' ? { currency: company.currency, ...input } : input, [company.currency], { partial: method === 'PATCH' });
-        if (Object.hasOwn(product, 'image') || Object.hasOwn(product, 'variantGroup') || Object.hasOwn(product, 'variantLabel')) throw new FieldError('product', 'Demo editing supports product text, price, category and availability.');
+        if (Object.hasOwn(product, 'image') || Object.hasOwn(product, 'variantGroup') || Object.hasOwn(product, 'variantLabel')) throw new FieldError('product', 'Preview editing supports product text, price, category and availability.');
         const sku = product.sku || record?.sku;
         if (rows.some(item => item.companyId === company.id && item.sku === sku && item.id !== id)) throw new ApiError(409, 'DUPLICATE_SKU', 'SKU already exists in this company.');
         if (record) { Object.assign(record, product); record.revision++; audit(session, record.id, 'UPDATE_PRODUCT'); return json(200, record); }

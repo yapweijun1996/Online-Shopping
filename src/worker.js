@@ -5,9 +5,11 @@ import { readWorkerConfig, readShopMode, readDemoRevision } from '../worker-runt
 import { migrateStore } from '../worker-runtime/db.js';
 import { openDurableStore } from '../worker-runtime/durable-store.js';
 import { errorResponse, json, readBody } from '../worker-runtime/http.js';
+import { PRODUCT_MUTATION_BODY_LIMIT } from './request-limits.js';
 
 const apiPath = /^\/(?:api\/|health$|ready$)/;
 const MAX_FORWARD_BODY = 1024 * 1024;
+const galleryPatchPath = /^\/api\/v1\/seller\/products\/[0-9a-f-]{36}$/;
 
 /*
  * One Durable Object owns the whole shop database: it is the single SQLite writer,
@@ -51,7 +53,11 @@ export default {
     let body = null;
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       try {
-        body = await readBody(request, MAX_FORWARD_BODY);
+        // Only atomic Seller gallery edits need the larger image budget. Other
+        // paths/methods retain the stricter ingress; API authorization still runs.
+        const limit = request.method === 'PATCH' && galleryPatchPath.test(url.pathname)
+          ? PRODUCT_MUTATION_BODY_LIMIT : MAX_FORWARD_BODY;
+        body = await readBody(request, limit);
       } catch (error) {
         return errorResponse(error);
       }

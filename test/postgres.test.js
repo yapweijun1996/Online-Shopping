@@ -99,3 +99,36 @@ test('PostgreSQL unavailable database fails readiness without leaking credential
  const store=openPostgresStore('postgres://postgres@127.0.0.1:1/online_shopping_test',{connectionTimeoutMillis:100});
  try{assert.equal(await ready(store),false)}finally{await store.close()}
 });
+
+// Real PostgreSQL fixtures, independent from the historical synchronous SQL mock suite.
+for (const version of [10, 11, 12, 13]) test(`PostgreSQL physical schema${version} upgrades explicitly to15, preserves bytes and supports gallery writes`, {skip:!base}, async t => {
+  const url = await database(t), store = openPostgresStore(url);
+  t.shoppingClosers.push(() => store.close());
+  const {postgresSchema12Sql} = await import('../deploy/postgres/schema12.js');
+  let sql = version === 13 ? readFileSync(new URL('./fixtures/postgres-schema13.sql',import.meta.url),'utf8') : postgresSchema12Sql;
+  if (version < 12) sql = readFileSync(new URL('./fixtures/postgres-schema10.sql',import.meta.url),'utf8');
+  await store.exec(sql); await store.setSchemaVersion(version);
+  const now = new Date().toISOString(), bytes = readFileSync(new URL('../public/shop/icons/icon-192.png',import.meta.url));
+  await store.run("INSERT INTO general_code VALUES ('PRODUCT_CATEGORY','SYNTHETIC','Synthetic',1,?,?)",now,now);
+  await store.run(`INSERT INTO product(id,sku,name,description,category,price_minor,currency,active,image_mime,image_data,created_at,updated_at)
+    VALUES ('synthetic-preserved','SYNTHETIC','Synthetic item','Fixture','SYNTHETIC',1200,'MYR',1,'image/png',?,?,?)`,bytes,now,now);
+  await assert.rejects(openPostgresDatabase(url), /Unsupported database schema version/);
+  const {upgradePostgres} = await import('../src/postgres/upgrade.js');
+  const original = await store.get('SELECT * FROM product');
+  await assert.rejects(store.transaction(() => upgradePostgres({...store,exec:async sql=>{
+    await store.exec(sql); if (sql.includes('tracking_carrier')) throw Error('synthetic interruption');
+  }},version)), /synthetic interruption/);
+  assert.equal(await store.schemaVersion(),version);
+  assert.deepEqual(await store.get('SELECT * FROM product'),original);
+  const upgraded = await openPostgresDatabase(url,{allowUpgrade:true}); t.shoppingClosers.push(()=>upgraded.close());
+  assert.equal(await upgraded.schemaVersion(),15);
+  assert.deepEqual((await upgraded.get('SELECT image_data FROM product')).image_data,bytes);
+  const {getProduct,updateProduct} = await import('../src/products.js');
+  const before = await getProduct(upgraded,'synthetic-preserved',true);
+  const edited = await updateProduct(upgraded,before.id,{gallery:[{id:'main'},{imageDataUrl:'data:image/png;base64,'+Buffer.concat([bytes,Buffer.from('distinct')]).toString('base64')}],expectedUpdatedAt:before.updatedAt});
+  assert.equal(edited.images.length,2);
+  assert.equal(edited.stockQuantity,null);
+  await assert.rejects(updateProduct(upgraded,before.id,{gallery:[],expectedUpdatedAt:before.updatedAt}),error=>error.code==='PRODUCT_CHANGED');
+  const restarted = await openPostgresDatabase(url);t.shoppingClosers.push(()=>restarted.close());
+  assert.deepEqual((await getProduct(restarted,before.id,true)).galleryItems,edited.galleryItems);
+});

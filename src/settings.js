@@ -77,6 +77,12 @@ export async function getCompanySettings(database) {
     mobileHideBarsOnScroll: Boolean(row.mobile_hide_bars_on_scroll) };
 }
 
+export function publicBusinessContact(settings) {
+  if (!settings.sellerWhatsAppPhone) return null;
+  try { return normalizeContactPhone(`+${settings.sellerWhatsAppPhone}`).slice(1); }
+  catch { return null; }
+}
+
 export async function updateCompanySettings(database, input) {
   return database.transaction(async () => {
   if (!input || typeof input !== 'object' || Array.isArray(input) ||

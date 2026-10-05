@@ -20,14 +20,15 @@ test('fictional galleries retain hero and never override seller edits, custom ga
 });
 test('v10 gallery migration preserves all existing image bytes, IDs, positions and product data',async t=>{
  const s=await openDatabase(':memory:');t.after(async ()=>await s.close());await setupShop(s,{mode:'demo'});const p=(await listProducts(s,new URLSearchParams('limit=100'))).items[0];
- const data='data:image/png;base64,'+readFileSync(new URL('../public/shop/icons/icon-192.png',import.meta.url)).toString('base64');
- for(let i=0;i<4;i++)await addGalleryImage(s,p.id,data);
+ const bytes=readFileSync(new URL('../public/shop/icons/icon-192.png',import.meta.url));
+ const data=i=>'data:image/png;base64,'+Buffer.concat([bytes,Buffer.from('distinct-fixture-'+i)]).toString('base64');
+ for(let i=0;i<4;i++)await addGalleryImage(s,p.id,data(i));
  const before=await s.all('SELECT * FROM product_gallery_image ORDER BY position'),products=await s.all('SELECT * FROM product ORDER BY id');
  await s.exec(`ALTER TABLE product_gallery_image RENAME TO gallery_fixture;
  CREATE TABLE product_gallery_image(id TEXT PRIMARY KEY,product_id TEXT NOT NULL REFERENCES product(id) ON DELETE RESTRICT,position INTEGER NOT NULL CHECK(position BETWEEN 1 AND 4),mime TEXT NOT NULL CHECK(mime IN ('image/png','image/jpeg','image/webp')),data BLOB NOT NULL,created_at TEXT NOT NULL,UNIQUE(product_id,position)) STRICT;
  INSERT INTO product_gallery_image SELECT * FROM gallery_fixture;DROP TABLE gallery_fixture;CREATE INDEX product_gallery_product ON product_gallery_image(product_id,position);`);
- await s.exec('ALTER TABLE product DROP COLUMN stock_quantity');await s.setSchemaVersion(10);await migrateStore(s);assert.equal(await s.schemaVersion(),13);assert.deepEqual(await s.all('SELECT * FROM product_gallery_image ORDER BY position'),before);assert.deepEqual(await s.all('SELECT * FROM product ORDER BY id'),products);
- for(let i=4;i<9;i++)await addGalleryImage(s,p.id,data);assert.equal((await getProduct(s,p.id)).images.length,10);await assert.rejects(async ()=>await addGalleryImage(s,p.id,data));
+ await s.exec('ALTER TABLE product DROP COLUMN stock_quantity');await s.setSchemaVersion(10);await migrateStore(s);assert.equal(await s.schemaVersion(),15);assert.deepEqual(await s.all('SELECT * FROM product_gallery_image ORDER BY position'),before);assert.deepEqual(await s.all('SELECT * FROM product ORDER BY id'),products);
+ for(let i=4;i<9;i++)await addGalleryImage(s,p.id,data(i));assert.equal((await getProduct(s,p.id)).images.length,10);await assert.rejects(async ()=>await addGalleryImage(s,p.id,data(9)));
 });
 test('gallery variants are local, hash-verified, bounded and retain reference provenance',()=>{
  const m=JSON.parse(readFileSync(new URL('../src/public-demo-gallery-provenance.json',import.meta.url)));

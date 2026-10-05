@@ -1,6 +1,6 @@
 import { openNodeStore } from './store.js';
 
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 15;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -272,10 +272,20 @@ export function migrateStore(store) {
   }
   if (version === 11) {
     // NULL means unlimited, so existing products keep selling without a stock count.
-    migrate(store, 12, `
+    const stockPresent = (store.all("SELECT name FROM pragma_table_info('product')")).some(column => column.name === 'stock_quantity');
+    migrate(store, 12, stockPresent ? '' : `
       ALTER TABLE product ADD COLUMN stock_quantity INTEGER
         CHECK (stock_quantity IS NULL OR stock_quantity BETWEEN 0 AND 1000000);`);
     version = 12;
+  }
+  if ([12, 13].includes(version)) {
+    const columns = store.all("SELECT name FROM pragma_table_info('product')");
+    if (!columns.some(column => column.name === 'stock_quantity')) {
+      if (!columns.some(column => column.name === 'gallery_layout_json')) throw new Error('Unrecognized product schema.');
+      store.transaction(() => {
+        store.exec('ALTER TABLE product ADD COLUMN stock_quantity INTEGER CHECK (stock_quantity IS NULL OR stock_quantity BETWEEN 0 AND 1000000)');
+      });
+    }
   }
   if (version === 12) {
     // Fulfilment adds order statuses, so the CHECK constraints are rebuilt and tracking columns added.
@@ -303,18 +313,41 @@ export function migrateStore(store) {
     });
     version = 13;
   }
+  if (version === 13) {
+    store.transaction(() => {
+      const columns = store.all("SELECT name FROM pragma_table_info('product')");
+      if (!columns.some(column => column.name === 'gallery_layout_json')) {
+        store.exec("ALTER TABLE product ADD COLUMN gallery_layout_json TEXT CHECK (gallery_layout_json IS NULL OR (json_valid(gallery_layout_json) AND json_type(gallery_layout_json) = 'array'))");
+      }
+      store.exec(`CREATE TABLE product_gallery_image_v15 (
+        id TEXT PRIMARY KEY,
+        product_id TEXT NOT NULL REFERENCES product(id) ON DELETE RESTRICT,
+        position INTEGER NOT NULL CHECK (position BETWEEN 1 AND 10),
+        mime TEXT NOT NULL CHECK (mime IN ('image/png', 'image/jpeg', 'image/webp')),
+        data BLOB NOT NULL, created_at TEXT NOT NULL, UNIQUE(product_id, position)
+      ) STRICT;
+      INSERT INTO product_gallery_image_v15 SELECT * FROM product_gallery_image;
+      DROP TABLE product_gallery_image;
+      ALTER TABLE product_gallery_image_v15 RENAME TO product_gallery_image;
+      CREATE INDEX product_gallery_product ON product_gallery_image(product_id, position);`);
+      store.setSchemaVersion(15);
+    });
+    version = 15;
+  }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }
 
 export function ready(store) {
   try {
     return store.schemaVersion() === SCHEMA_VERSION &&
+      Array.isArray(store.all('SELECT stock_quantity, gallery_layout_json FROM product LIMIT 0')) &&
+      Array.isArray(store.all('SELECT tracking_carrier, tracking_no FROM shop_order LIMIT 0')) &&
       Boolean(store.get('SELECT id FROM admin WHERE id = 1')) &&
       Boolean(store.get('SELECT id FROM order_sequence WHERE id = 1')) &&
       Boolean(store.get('SELECT id FROM company_setting WHERE id = 1')) &&
       Boolean(store.get('SELECT id FROM shop_setup WHERE id = 1')) &&
       ['session', 'product', 'general_code', 'shop_order', 'delivery', 'order_item', 'order_event', 'checkout_idempotency',
-        'rate_limit_attempt', 'shop_setup']
+        'rate_limit_attempt', 'shop_setup', 'product_gallery_image']
         .every((table) => Array.isArray(store.all(`SELECT * FROM ${table} LIMIT 0`)));
   } catch {
     return false;

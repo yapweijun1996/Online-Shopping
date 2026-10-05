@@ -65,7 +65,7 @@ test('Seller edit payload permits legacy metadata/deactivation while actual mone
     price: '9.00', currency: 'SGD', variantGroup: '', variantLabel: '', stockQuantity: '' };
   const elements = Object.fromEntries(Object.entries(values).map(([name, value]) => [name, { value }]));
   elements.active = { checked: true }; elements.image = { files: [] };
-  const context = { form: { hidden: false, elements }, saving: false, pendingRemove: false, formBaseline: null, editingId: product.id };
+  const context = { galleryImages: [], expectedUpdatedAt: product.updatedAt, productId: product.id, form: { hidden: false, elements }, saving: false, pendingRemove: false, formBaseline: null, editingId: product.id };
   vm.createContext(context);
   vm.runInContext(source.slice(source.indexOf('function priceToMinor('), source.indexOf('function readImage(')), context);
   vm.runInContext(source.slice(source.indexOf('  function formState()'), source.indexOf('  function confirmDiscard()')), context);
@@ -74,10 +74,14 @@ test('Seller edit payload permits legacy metadata/deactivation while actual mone
   const payloadSource = source.slice(start, source.indexOf('      const file = form.elements.image.files[0];', start));
   const payload = () => vm.runInContext(`(() => { ${payloadSource} return payload; })()`, context);
   const session = await createSession(store), handle = await createApi({ store, config: { publicOrigin: 'https://fixture.test' } });
-  const submit = body => handle(new Request(`https://fixture.test/api/v1/seller/products/${product.id}`, {
+  const submit = async body => {
+    // Each policy probe uses the current revision, like a freshly reopened editor.
+    body.expectedUpdatedAt = (await getProduct(store, product.id, true)).updatedAt;
+    return handle(new Request(`https://fixture.test/api/v1/seller/products/${product.id}`, {
     method: 'PATCH', headers: { origin: 'https://fixture.test', 'content-type': 'application/json',
       cookie: `seller_session=${session.token}`, 'x-csrf-token': session.csrfToken }, body: JSON.stringify(body),
   }));
+  };
   elements.name.value = 'Reviewed metadata'; elements.active.checked = false;
   const metadata = payload();
   assert.equal(Object.hasOwn(metadata, 'currency'), false);

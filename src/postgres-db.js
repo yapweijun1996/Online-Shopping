@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { openPostgresStore } from './postgres-store.js';
+import { upgradePostgres } from './postgres/upgrade.js';
 import { SCHEMA_VERSION } from './db.js';
 
 export async function openPostgresDatabase(url, options) {
@@ -12,7 +13,11 @@ export async function openPostgresDatabase(url, options) {
         if (tables.length) throw new Error('PostgreSQL baseline requires an empty database.');
         await store.exec(await readFile(new URL('./postgres/schema.sql', import.meta.url), 'utf8'));
       }
-      const version = await store.schemaVersion();
+      let version = await store.schemaVersion();
+      if (version !== SCHEMA_VERSION && options?.allowUpgrade === true) {
+        await upgradePostgres(store, version);
+        version = await store.schemaVersion();
+      }
       if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
     });
     return store;

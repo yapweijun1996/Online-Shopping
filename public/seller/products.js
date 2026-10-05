@@ -86,26 +86,59 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   retryList.dataset.i18n = 'retry';
   retryList.hidden = true;
   listRecovery.append(clearSearch, retryList);
+  const listHeading = document.createElement('div');
+  listHeading.className = 'product-list-heading';
+  listHeading.setAttribute('aria-hidden', 'true');
+  for (const key of ['product', 'sku', 'price', 'orderStatus', 'actions']) {
+    const label = document.createElement('span');
+    label.dataset.i18n = key;
+    label.textContent = t(key);
+    listHeading.append(label);
+  }
   const formFields = find('.product-fields');
-  const imageColumn = document.createElement('div');
+  const group = (key, className) => {
+    const fieldset = document.createElement('fieldset');
+    fieldset.className = className;
+    const legend = document.createElement('legend');
+    legend.dataset.i18n = key;
+    legend.textContent = t(key);
+    fieldset.append(legend);
+    return fieldset;
+  };
+  const details = group('productInformation', 'product-details-card');
+  const pricing = group('pricingAvailability', 'product-pricing-card');
+  const priceFields = document.createElement('div');
+  priceFields.className = 'product-fields';
+  priceFields.append(form.elements.price.closest('label'), form.elements.currency.closest('label'), form.elements.active.closest('label'));
+  pricing.append(priceFields);
+  const imageColumn = group('productImages', 'product-image-column');
   imageColumn.className = 'product-image-column';
   imageColumn.append(form.elements.image.closest('label'), imagePanel, galleryPanel);
   const editorLayout = document.createElement('div');
   editorLayout.className = 'product-editor-layout';
   formFields.before(editorLayout);
-  editorLayout.append(formFields, imageColumn);
+  details.append(formFields);
+  editorLayout.append(details, pricing, imageColumn);
+  const nameLabel = form.elements.name.closest('label');
+  nameLabel.classList.add('full');
+  formFields.prepend(nameLabel, form.elements.sku.closest('label'), form.elements.category.closest('label'), form.elements.description.closest('label'));
   const editorActions = document.createElement('div');
   editorActions.className = 'product-editor-actions';
   editorActions.append(find('#product-cancel'), find('#product-save'));
   form.append(editorActions);
   find('.product-form-heading').remove();
-  listView.append(find('.product-toolbar'), status, listRecovery, list, more);
+  listView.append(find('.product-toolbar'), status, listRecovery, listHeading, list, more);
   editorView.append(back, editorStatus, form);
   root.replaceChildren(listView, editorView);
+  const isCurrent = () => editorView.isConnected && root.contains(editorView);
   let originalImageUrl = null;
   let pendingRemove = false;
   let galleryImages = [];
+  let originalGallery = [];
+  let galleryReferences = [];
   let galleryLoaded = false;
+  let expectedUpdatedAt = null;
+  let readingGallery = false;
   let categories = [];
   let defaultCurrency = 'MYR';
   let items = [];
@@ -122,6 +155,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   let mutations = 0;
   let routeSequence = 0;
   let editorStatusKey = '';
+  let editorLoadSequence = 0;
   const undoStates = new Map();
   const pendingChanges = new Set();
 
@@ -142,10 +176,11 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       active: form.elements.active.checked,
       image: image ? [image.name, image.size, image.lastModified] : null,
       pendingRemove,
+      gallery: galleryImages.map(({ id, imageDataUrl }) => ({ id, imageDataUrl })),
     };
   }
   function captureBaseline() { formBaseline = JSON.stringify(formState()); }
-  function hasUnsavedChanges() { return saving || (!form.hidden && formBaseline !== JSON.stringify(formState())); }
+  function hasUnsavedChanges() { return saving || readingGallery || (!form.hidden && formBaseline !== JSON.stringify(formState())); }
   function confirmDiscard() { return !hasUnsavedChanges() || window.confirm(t('unsavedChangesConfirm')); }
 
   function showImage(state, source = null) {
@@ -161,35 +196,66 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   }
 
   function renderGallery() {
-    const storedCount = galleryImages.filter(source => /\/gallery\//.test(source)).length;
     galleryPanel.hidden = !editingId;
-    form.elements.gallery.disabled = saving || !originalImageUrl || pendingRemove || storedCount >= 9;
-    removeImage.disabled = Boolean(editingId && (!galleryLoaded || storedCount));
-    imageRemovalHelp.hidden = !editingId || !originalImageUrl || (galleryLoaded && !storedCount);
+    form.elements.gallery.disabled = saving || readingGallery || !galleryLoaded || !originalImageUrl || pendingRemove || galleryImages.length >= 10;
+    removeImage.disabled = Boolean(editingId && (!galleryLoaded || galleryImages.length > 1));
+    imageRemovalHelp.hidden = !editingId || !originalImageUrl || (galleryLoaded && galleryImages.length <= 1);
     imageRemovalHelp.dataset.i18n = galleryLoaded ? 'removeGalleryFirst' : 'loading';
     imageRemovalHelp.textContent = imageRemovalHelp.hidden ? '' : t(imageRemovalHelp.dataset.i18n);
     galleryList.replaceChildren();
-    for (const source of galleryImages) {
+    galleryImages.forEach((entry, index) => {
       const item = document.createElement('div');
-      item.className = 'product-gallery-item';
+      item.className = 'product-gallery-item'; item.dataset.imageId = entry.id || 'new';
       const photo = document.createElement('img');
-      photo.src = source; photo.alt = `${form.elements.name.value}: ${t('gallery')} ${galleryList.childElementCount + 1}`;
-      const imageId = /\/gallery\/([0-9a-f-]{36})/.exec(source)?.[1];
-      const productId = editingId;
-      const label = document.createElement('p');
-      label.textContent = imageId ? t('gallery') : t('demoGalleryPhoto');
-      item.append(photo, label);
-      if (imageId) item.append(button(t('removePhoto'), async () => {
-        try {
-          const result = await api('DELETE', `/api/v1/seller/products/${productId}/gallery/${imageId}`);
-          if (editingId !== productId) return;
-          galleryImages = result.images.slice(1);
-          renderGallery();
-          setError('');
-          setStatus('productSaved');
-        } catch { setError('productError'); }
-      }));
-      galleryList.append(item);
+      photo.src = entry.src;
+      photo.alt = `${form.elements.name.value}: ${t('gallery')} ${index + 1}`;
+      const label = document.createElement('p'); label.textContent = `${index + 1} · ${t(index === 0 ? 'primaryPhoto' : 'gallery')}`;
+      const actions = document.createElement('div'); actions.className = 'product-gallery-actions';
+      const change = fn => {
+        if (saving || readingGallery || !item.isConnected) return;
+        fn(); renderGallery();
+        galleryList.children[Math.min(index, galleryImages.length - 1)]?.querySelector('button:not([disabled])')?.focus({ preventScroll: true });
+        document.dispatchEvent(new Event('updateguardchange'));
+      };
+      const primary = button(t('setPrimaryPhoto'), () => change(() => { galleryImages.splice(index, 1); galleryImages.unshift(entry); showImage('current', entry.src); }), `${t('setPrimaryPhoto')} ${index + 1}`);
+      primary.dataset.galleryAction = 'primary'; primary.disabled = saving || readingGallery || index === 0;
+      const earlier = button(t('movePhotoEarlier'), () => change(() => { [galleryImages[index - 1], galleryImages[index]] = [entry, galleryImages[index - 1]]; showImage('current', galleryImages[0]?.src); }), `${t('movePhotoEarlier')} ${index + 1}`);
+      earlier.dataset.galleryAction = 'earlier'; earlier.disabled = saving || readingGallery || index === 0;
+      const later = button(t('movePhotoLater'), () => change(() => { [galleryImages[index + 1], galleryImages[index]] = [entry, galleryImages[index + 1]]; showImage('current', galleryImages[0]?.src); }), `${t('movePhotoLater')} ${index + 1}`);
+      later.dataset.galleryAction = 'later'; later.disabled = saving || readingGallery || index === galleryImages.length - 1;
+      const remove = button(t('removePhoto'), () => change(() => { galleryImages.splice(index, 1); showImage(galleryImages.length ? 'current' : 'none', galleryImages[0]?.src); }), `${t('removePhoto')} ${index + 1}`);
+      remove.dataset.galleryAction = 'remove'; remove.disabled = saving || readingGallery;
+      actions.append(primary, earlier, later, remove); item.append(photo, label, actions); galleryList.append(item);
+    });
+    const available = galleryReferences.filter(reference => !galleryImages.some(item => item.id === reference.id));
+    if (available.length) {
+      const heading = document.createElement('p'); heading.textContent = t('availableReferencePhotos'); galleryList.append(heading);
+      for (const reference of available) {
+        const item = document.createElement('div'); item.className = 'product-gallery-reference';
+        const photo = document.createElement('img'); photo.src = reference.thumbnail || reference.src; photo.alt = reference.alt || t('gallery');
+        const add = button(t('addReferencePhoto'), () => {
+          if (saving || readingGallery || galleryImages.length >= 10 || !item.isConnected) return;
+          galleryImages.push({ ...reference }); renderGallery(); document.dispatchEvent(new Event('updateguardchange'));
+        });
+        add.disabled = saving || readingGallery || galleryImages.length >= 10;
+        item.append(photo, add); galleryList.append(item);
+      }
+    }
+  }
+
+  function acceptGallery(detail, { capture = true } = {}) {
+    galleryImages = (detail.galleryItems || []).map(item => ({ ...item }));
+    originalGallery = galleryImages.map(item => ({ ...item }));
+    galleryReferences = (detail.galleryReferenceItems || []).map(item => ({ ...item }));
+    expectedUpdatedAt = detail.updatedAt;
+    galleryLoaded = true;
+    renderGallery();
+    if (capture) captureBaseline();
+    else if (formBaseline) {
+      // Only the fetched gallery joins the confirmed baseline. Metadata typed
+      // while the request was pending must remain dirty.
+      const baseline = JSON.parse(formBaseline); baseline.gallery = formState().gallery;
+      formBaseline = JSON.stringify(baseline);
     }
   }
 
@@ -207,12 +273,12 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       const [categoryResult, settings] = await Promise.all([
         api('GET', '/api/v1/seller/categories'), api('GET', '/api/v1/seller/company-settings'),
       ]);
-      if (!root.isConnected) return;
+      if (!isCurrent()) return;
       categories = categoryResult.items;
       defaultCurrency = settings.defaultCurrency;
       populateCategories(form.elements.category.value);
     } catch {
-      if (root.isConnected) {
+      if (isCurrent()) {
         setStatus('networkError');
         retryList.hidden = false;
         if (!editorView.hidden) setEditorStatus('networkError');
@@ -244,6 +310,13 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       const detail = document.createElement('p');
       detail.className = 'product-card-identity';
       detail.textContent = `${product.sku} · ${product.category}`;
+      const identity = document.createElement('div');
+      identity.className = 'product-row-identity';
+      detail.textContent = product.category;
+      identity.append(title, detail);
+      const sku = document.createElement('p');
+      sku.className = 'product-row-sku';
+      sku.textContent = product.sku;
       const price = document.createElement('p');
       price.className = 'product-card-price';
       price.textContent = formatMoney(product.priceMinor, product.currency);
@@ -254,7 +327,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       stock.className = 'product-card-identity';
       stock.textContent = product.stockQuantity === null ? `${t('stockLabel')}: ${t('unlimitedStock')}`
         : product.stockQuantity === 0 ? t('outOfStock') : `${t('stockLabel')}: ${product.stockQuantity}`;
-      main.append(title, detail, price, stock, chip);
+      main.append(identity, sku, price, stock, chip);
       const actions = document.createElement('div');
       actions.className = 'product-card-actions';
       const toggleButton = button(t(product.active ? 'deactivateProduct' : 'activateProduct'),
@@ -292,7 +365,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
           ...(method === 'GET' ? {} : { 'X-CSRF-Token': csrfToken() }) },
         body: body ? JSON.stringify(body) : undefined,
       });
-      if (response.status === 401) { onUnauthorized(); throw new Error('unauthorized'); }
+      if (response.status === 401) { if (isCurrent()) onUnauthorized(); throw new Error('unauthorized'); }
       const data = await response.json();
       if (!response.ok) throw Object.assign(new Error('request'), { status: response.status, field: data.error?.field, code: data.error?.code });
       return data;
@@ -311,7 +384,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     try {
       const params = new URLSearchParams({ limit: '24', offset: String(offset), search: query });
       const result = await api('GET', `/api/v1/seller/products?${params}`);
-      if (sequence !== loadSequence || !root.isConnected) return false;
+      if (sequence !== loadSequence || !isCurrent()) return false;
       items = reset ? result.items : [...items, ...result.items];
       if (reset) appliedSearch = query;
       nextOffset = result.nextOffset;
@@ -320,17 +393,20 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       renderList();
       return true;
     } catch {
-      if (sequence === loadSequence && root.isConnected) {
+      if (sequence === loadSequence && isCurrent()) {
         setStatus('networkError');
         retryList.hidden = false;
       }
       return false;
     } finally {
-      if (sequence === loadSequence && root.isConnected) more.disabled = false;
+      if (sequence === loadSequence && isCurrent()) more.disabled = false;
     }
   }
 
   function resetForm() {
+    editorLoadSequence++;
+    readingGallery = false;
+    find('#product-save').disabled = saving;
     editingId = null;
     form.reset();
     form.hidden = true;
@@ -338,15 +414,19 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     originalImageUrl = null;
     pendingRemove = false;
     galleryImages = [];
+    galleryReferences = [];
     galleryLoaded = false;
+    expectedUpdatedAt = null;
     showImage('none');
     renderGallery();
     setError('');
     setFormSuccess('');
+    document.dispatchEvent(new Event('updateguardchange'));
   }
 
   async function edit(product, { skipGuard = false, detailLoaded = false } = {}) {
     if (!skipGuard && !confirmDiscard()) return;
+    const sequence = ++editorLoadSequence;
     editingId = product.id;
     form.hidden = false;
     form.elements.sku.value = product.sku;
@@ -355,6 +435,9 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     populateCategories(product.categoryCode);
     form.elements.price.value = (product.priceMinor / 100).toFixed(2);
     form.elements.currency.value = product.currency;
+    const currencyHelp = find('#product-currency-help');
+    currencyHelp.dataset.i18n = product.currency === defaultCurrency ? 'currencyInherited' : 'currencyHistoryNote';
+    currencyHelp.textContent = t(currencyHelp.dataset.i18n);
     form.elements.active.checked = product.active;
     form.elements.stockQuantity.value = product.stockQuantity ?? '';
     form.elements.variantGroup.value = product.variantGroup || '';
@@ -374,15 +457,15 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       form.elements.sku.focus();
     }
     if (detailLoaded) {
-      galleryImages = product.images.slice(1);
-      galleryLoaded = true;
-      renderGallery();
+      acceptGallery(product);
       return;
     }
     try {
       const detail = await api('GET', `/api/v1/seller/products/${product.id}`);
-      if (editingId === product.id) { galleryImages = detail.images.slice(1); galleryLoaded = true; renderGallery(); }
-    } catch { if (editingId === product.id) setError('productError'); }
+      if (!isCurrent() || editingId !== product.id || sequence !== editorLoadSequence) return;
+      if (detail.updatedAt !== product.updatedAt) { setError('productChangedReopen'); return; }
+      acceptGallery(detail, { capture: false });
+    } catch { if (isCurrent() && editingId === product.id && sequence === editorLoadSequence) setError('productError'); }
   }
 
   async function showRoute(route) {
@@ -400,10 +483,13 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     setEditorStatus(route === 'products/new' ? '' : 'loading');
     if (route === 'products/new') {
       await settingsPromise;
-      if (sequence !== routeSequence || !root.isConnected) return;
+      if (sequence !== routeSequence || !isCurrent()) return;
       form.hidden = false;
       populateCategories();
       form.elements.currency.value = defaultCurrency;
+      const currencyHelp = find('#product-currency-help');
+      currencyHelp.dataset.i18n = 'currencyInherited';
+      currencyHelp.textContent = t('currencyInherited');
       captureBaseline();
       return;
     }
@@ -411,11 +497,11 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     try {
       const detail = await api('GET', `/api/v1/seller/products/${id}`);
       await settingsPromise;
-      if (sequence !== routeSequence || !root.isConnected) return;
+      if (sequence !== routeSequence || !isCurrent()) return;
       await edit(detail, { skipGuard: true, detailLoaded: true });
       setEditorStatus('');
     } catch (failure) {
-      if (sequence !== routeSequence || !root.isConnected || failure.status === 401) return;
+      if (sequence !== routeSequence || !isCurrent() || failure.status === 401) return;
       setEditorStatus(failure.status === 404 ? 'productNotFound' : 'networkError');
       if (failure.status !== 404) {
         const retry = button(t('retry'), () => showRoute(route));
@@ -459,7 +545,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     } catch {
       pendingChanges.delete(product.id);
       control.disabled = false;
-      if (root.isConnected) setStatus('productError', product.name);
+      if (isCurrent()) setStatus('productError', product.name);
     }
   }
 
@@ -486,7 +572,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     } catch {
       pendingChanges.delete(product.id);
       control.disabled = false;
-      if (root.isConnected) setStatus('productError', product.name);
+      if (isCurrent()) setStatus('productError', product.name);
     }
   }
 
@@ -497,59 +583,74 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   find('#product-search-form').addEventListener('submit', (event) => { event.preventDefault(); load(); });
   more.addEventListener('click', () => load(false));
   removeImage.addEventListener('click', () => {
-    if (!galleryLoaded || galleryImages.some(source => /\/gallery\//.test(source))) return;
+    if (!galleryLoaded || galleryImages.length > 1) return;
     form.elements.image.value = '';
     pendingRemove = Boolean(originalImageUrl);
+    galleryImages = [];
     showImage(pendingRemove ? 'removed' : 'none');
     renderGallery();
   });
   restoreImage.addEventListener('click', () => {
     pendingRemove = false;
+    galleryImages = originalGallery.map(item => ({ ...item }));
     showImage('current', originalImageUrl);
     renderGallery();
   });
   form.elements.image.addEventListener('change', async () => {
     const file = form.elements.image.files[0];
+    const sequence = routeSequence;
+    const ownsRead = () => isCurrent() && sequence === routeSequence && form.elements.image.files[0] === file;
     if (file) {
       try {
         const dataUrl = await readImage(file);
-        if (form.elements.image.files[0] !== file) return;
+        if (!ownsRead()) return;
         pendingRemove = false;
+        if (editingId) {
+          galleryImages = galleryImages.filter(item => item.id !== 'main');
+          galleryImages.unshift({ id: 'main', src: dataUrl });
+        }
         showImage('replacement', dataUrl);
         renderGallery();
       } catch {
-        setError('productError');
+        if (ownsRead()) setError('productError');
       }
     } else showImage(originalImageUrl ? 'current' : 'none', originalImageUrl);
   });
   form.elements.gallery.addEventListener('change', async () => {
     const files = [...form.elements.gallery.files];
-    if (!files.length) return;
-    if (files.length + galleryImages.filter(source => /\/gallery\//.test(source)).length > 9) { setError('galleryLimit'); form.elements.gallery.value = ''; return; }
-    form.elements.gallery.disabled = true;
-    setError('');
-    const productId = editingId;
-    saving = true;
-    const finish = beginMutation();
+    if (!files.length || readingGallery || saving) return;
+    if (files.length + galleryImages.length > 10) { setError('galleryLimit'); form.elements.gallery.value = ''; return; }
+    const sequence = routeSequence;
+    const ownsRead = () => isCurrent() && sequence === routeSequence;
+    readingGallery = true; renderGallery(); find('#product-save').disabled = true; setError('');
     try {
-      for (const file of files) {
-        const imageDataUrl = await readImage(file);
-        const detail = await api('POST', `/api/v1/seller/products/${productId}/gallery`, { imageDataUrl });
-        if (editingId !== productId) break;
-        galleryImages = detail.images.slice(1);
-        renderGallery();
+      const data = await Promise.all(files.map(readImage));
+      if (!ownsRead()) return;
+      for (const imageDataUrl of data) {
+        if (!galleryImages.some(item => item.imageDataUrl === imageDataUrl)) galleryImages.push({ imageDataUrl, src: imageDataUrl });
       }
-      setStatus('productSaved');
-    } catch { setError('productError'); }
-    finally { saving = false; finish(); form.elements.gallery.value = ''; renderGallery(); document.dispatchEvent(new Event('updateguardchange')); }
+    } catch { if (ownsRead()) setError('productError'); }
+    finally {
+      if (ownsRead()) {
+        readingGallery = false;
+        form.elements.gallery.value = '';
+        find('#product-save').disabled = saving;
+        renderGallery();
+        document.dispatchEvent(new Event('updateguardchange'));
+      }
+    }
   });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (saving || readingGallery || (editingId && !galleryLoaded)) return;
     const save = find('#product-save');
     const productId = editingId;
+    const sequence = routeSequence;
+    const ownsRoute = () => isCurrent() && sequence === routeSequence;
     saving = true;
     const finish = beginMutation();
     save.disabled = true;
+    renderGallery();
     setError('');
     try {
       const payload = {
@@ -564,42 +665,50 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
         variantLabel: form.elements.variantLabel.value,
         stockQuantity: stockFromInput(form.elements.stockQuantity.value),
       };
-      if (editingId && formBaseline) {
+      if (productId && formBaseline) {
         const baseline = JSON.parse(formBaseline);
         // Metadata edits must not resubmit immutable legacy money fields.
         if (payload.priceMinor === priceToMinor(baseline.values.price)) delete payload.priceMinor;
         if (payload.currency === baseline.values.currency) delete payload.currency;
         if (payload.active === baseline.active) delete payload.active;
       }
+      // Snapshot the initiating editor before image decoding yields to navigation.
+      if (productId) {
+        payload.gallery = galleryImages.map(item => item.imageDataUrl ? { imageDataUrl: item.imageDataUrl } : { id: item.id });
+        payload.expectedUpdatedAt = expectedUpdatedAt;
+      }
       const file = form.elements.image.files[0];
       if (file) payload.imageDataUrl = await readImage(file);
       else if (pendingRemove) payload.imageDataUrl = null;
-      const saved = await api(editingId ? 'PATCH' : 'POST', editingId ? `/api/v1/seller/products/${editingId}` : '/api/v1/seller/products', payload);
+      if (!ownsRoute()) return;
+      const saved = await api(productId ? 'PATCH' : 'POST', productId ? `/api/v1/seller/products/${productId}` : '/api/v1/seller/products', payload);
+      if (!ownsRoute()) return;
       resetForm();
       await load();
-      await edit(saved, { skipGuard: true });
+      if (!ownsRoute()) return;
+      await edit(saved, { skipGuard: true, detailLoaded: true });
+      if (!ownsRoute()) return;
       onSaved(saved.id);
       setFormSuccess('productSaved');
       form.scrollIntoView({ block: 'start' });
       formSuccess.focus({ preventScroll: true });
     } catch (failure) {
+      if (!ownsRoute()) return;
       const galleryConflict = pendingRemove && failure.field === 'imageDataUrl';
-      setError(galleryConflict ? 'removeGalleryFirst' : failure.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : failure.code === 'DUPLICATE_SKU' ? 'duplicateSku' : failure.code === 'DUPLICATE_VARIANT' ? 'duplicateVariant' : 'productError');
+      setError(failure.code === 'PRODUCT_CHANGED' ? 'productChangedReopen' : failure.field === 'gallery' ? 'galleryLimit' : galleryConflict ? 'removeGalleryFirst' : failure.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : failure.code === 'DUPLICATE_SKU' ? 'duplicateSku' : failure.code === 'DUPLICATE_VARIANT' ? 'duplicateVariant' : 'productError');
       if (galleryConflict && productId && editingId === productId) {
-        try {
-          const detail = await api('GET', `/api/v1/seller/products/${productId}`);
-          if (editingId === productId) { galleryImages = detail.images.slice(1); galleryLoaded = true; renderGallery(); }
-        } catch { /* Keep the actionable server error visible. */ }
+        // A rejected write owns no new baseline. Preserve all draft metadata,
+        // image removals and order so retry and navigation guards remain truthful.
         galleryPanel.scrollIntoView({ block: 'nearest' });
       } else {
         const field = failure.code === 'DUPLICATE_SKU' ? 'sku' : failure.field === 'priceMinor' ? 'price' : failure.field === 'imageDataUrl' ? 'image' : failure.field;
         if (field && form.elements[field]) form.elements[field].focus();
       }
-    } finally { saving = false; finish(); save.disabled = false; document.dispatchEvent(new Event('updateguardchange')); }
+    } finally { saving = false; finish(); if (isCurrent()) { save.disabled = false; renderGallery(); } document.dispatchEvent(new Event('updateguardchange')); }
   });
 
   const settingsPromise = loadSettings();
-  settingsPromise.then(() => { if (root.isConnected && loadSequence === 0) load(); });
+  settingsPromise.then(() => { if (isCurrent() && loadSequence === 0) load(); });
   search.placeholder = t('searchNameOrSkuHint');
   return {
     showRoute,
@@ -616,6 +725,6 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     },
     hasUnsavedChanges,
     draftSignature: () => JSON.stringify([editingId, form.hidden, formState()]),
-    isBusy: () => saving || mutations > 0,
+    isBusy: () => saving || readingGallery || mutations > 0,
   };
 }

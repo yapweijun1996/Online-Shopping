@@ -2,6 +2,17 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
+test('each worker cache version matches its loaded application version', () => {
+  for (const surface of ['shop', 'seller']) {
+    const application = readFileSync(new URL(`../public/${surface}/version.js`, import.meta.url), 'utf8');
+    const worker = readFileSync(new URL(`../public/${surface}/sw.js`, import.meta.url), 'utf8');
+    const appVersion = application.match(/APP_VERSION\s*=\s*'([^']+)'/)?.[1];
+    const workerVersion = worker.match(/version:\s*'([^']+)'/)?.[1];
+    assert.ok(appVersion && workerVersion, `${surface} defines both version identifiers`);
+    assert.equal(workerVersion, appVersion, `${surface} must discover and cache its changed application shell`);
+  }
+});
+
 test('shop and seller manifests have separate scopes and real icon sizes', () => {
   const ids = new Set();
   for (const surface of ['shop', 'seller']) {
@@ -54,7 +65,7 @@ test('Seller activation defers reload for primary-image removal and newly opened
       postMessage(message, ports) { if (message.type === 'GET_VERSION') ports[0].reply({ version }); } });
     const waiting = worker('next'), active = worker('current');
     const registration = { waiting, active, addEventListener() {}, async update() {} };
-    const context = { form: { hidden: false, elements }, saving: false, pendingRemove: false, formBaseline: null,
+    const context = { form: { hidden: false, elements }, saving: false, readingGallery: false, pendingRemove: false, formBaseline: null,
       galleryLoaded: true, galleryImages: [], originalImageUrl: '/synthetic-primary-image', editingId: 'synthetic-product',
       showImage() {}, renderGallery() {}, dialog: { open: false }, dialogAction: null, selectedId: 'synthetic-order',
       currentRoute: scenario.startsWith('open') ? 'review' : 'products/synthetic-product', t: key => key,

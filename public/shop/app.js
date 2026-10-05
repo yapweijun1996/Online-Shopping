@@ -51,7 +51,9 @@ let categories = [];
 let nextOffset = null;
 let catalogRequest = 0;
 let catalogLoading = false;
+let catalogFilters = { search: '', category: '' };
 let cartRequest = 0;
+let checkoutRouteRequest = 0;
 let resolvedCart = [];
 let detailPage;
 let profilePage;
@@ -256,6 +258,7 @@ async function loadCatalog(reset = true) {
       limit: '24', offset: String(reset ? 0 : nextOffset),
       search: byId('catalog-search').value.trim(), category: category.value,
     });
+    if (reset) catalogFilters = { search: params.get('search'), category: params.get('category') };
     const [data, shop] = await Promise.all([api(`/api/v1/products?${params}`), api('/api/v1/shop')]);
     if (request !== catalogRequest) return;
     if ((shop.demoNamespace || '') !== globalThis.shopStorageNamespace) { location.reload(); return; }
@@ -852,6 +855,7 @@ function revealAccountLink(link) {
 document.querySelector('.account-sidebar').addEventListener('focusin', event => revealAccountLink(event.target.closest('a')));
 
 function showRoute() {
+  const checkoutRequest = ++checkoutRouteRequest;
   const parsed = readShopRoute(location.hash);
   const route = parsed.page;
   if (route !== 'orders') { localOrdersRequest++; localOrdersController?.abort(); }
@@ -897,25 +901,28 @@ function showRoute() {
   if (route === 'addresses') addressBook.render();
   if (route === 'checkout') {
     checkoutPage.invalidate();
+    const intent = directPurchase;
+    const ownsCheckoutRead = () => checkoutRequest === checkoutRouteRequest &&
+      location.hash === '#checkout' && directPurchase === intent;
     if (directPurchase) {
-      const intent = directPurchase;
       api(`/api/v1/products/${intent.productId}`).then((product) => {
-        if (location.hash === '#checkout' && directPurchase === intent) {
+        if (ownsCheckoutRead()) {
           checkoutPage.setItems([{ productId: intent.productId, quantity: intent.quantity, product }], { fromCart: false });
           const back = document.querySelector('#checkout-view .shop-actionbar a');
           back.href = productHash(intent.productId); back.dataset.i18n = 'continueShopping'; back.textContent = t('continueShopping');
         }
       }).catch((error) => {
-        if (location.hash !== '#checkout' || directPurchase !== intent) return;
+        if (!ownsCheckoutRead()) return;
         setMessage(error.status === 404 ? 'productUnavailable' : 'networkError');
         location.hash = productHash(intent.productId);
       });
     } else refreshCart().then((valid) => {
-      if (valid && location.hash === '#checkout') {
+      if (!ownsCheckoutRead()) return;
+      if (valid) {
         checkoutPage.setItems(selection.items(resolvedCart));
         const back = document.querySelector('#checkout-view .shop-actionbar a');
         back.href = '#cart'; back.dataset.i18n = 'backToCart'; back.textContent = t('backToCart');
-      } else if (location.hash === '#checkout') location.hash = '#cart';
+      } else location.hash = '#cart';
     });
   }
   if (route === 'receipt') renderReceipt();
@@ -1152,8 +1159,11 @@ function restoreCatalogFilters() {
   syncSearchClear();
 }
 window.addEventListener('popstate', () => {
+  const filters = readCatalogFilters(location.search);
+  const changed = filters.search.trim() !== catalogFilters.search || filters.category !== catalogFilters.category;
   restoreCatalogFilters();
-  loadCatalog();
+  // Product hash navigation must retain loaded pages, scroll and return focus.
+  if (changed) loadCatalog();
   if (readShopRoute(location.hash).page === 'catalog') showRoute();
 });
 window.addEventListener('hashchange', showRoute);
