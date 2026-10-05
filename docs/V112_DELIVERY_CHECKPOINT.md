@@ -18,6 +18,8 @@ QA harnesses await main's asynchronous database/API. Seller fixture login uses a
 
 ## Failure records and remaining boundaries
 
+GitHub push and pull-request CI passed. Cloudflare's branch build initially failed at `npx wrangler preview` because the configuration lacked a `previews` block. The preview configuration now declares a separate ShopStore binding without script_name, giving each preview isolated storage, and non-secret demo variables. Preview admin secrets must already exist in the Preview base config for runtime readiness; this change does not add credentials or alter production bindings. Wrangler preview has no dry-run option, so its actual result is verified through the automatic branch build separately from the production Worker dry-run.
+
 Initial integration tests failed on async fixtures, old schema/version assertions, reused image bytes and incomplete editor fixtures. Initial browser runs found stale synchronous harness calls, missing fixture session hints, a nonexistent palette Cancel control, and an account tab-order expectation omitting main's alerts button. Those failures remain in the local evidence logs and were corrected without skipping tests or suppressing assertions.
 
 PWA lifecycle initially failed because fixed version literals did not match current commits, browser callbacks lacked passed version parameters, and the script checked the Seller waiting worker before installation finished. Version assertions now derive from actual committed version/worker bytes and wait for the native installation state before the same assertions.
