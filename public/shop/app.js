@@ -264,7 +264,6 @@ async function loadCatalog(reset = true) {
     addressBook?.render();
     checkoutPage?.refreshAddress();
     checkoutPage.setDemoMode(shop.mode === 'demo');
-    byId('demo-banner').hidden = shop.mode !== 'demo';
     byId('catalog-shop-name').textContent = shop.shopName || '';
     byId('shop-brand-name').textContent = shop.shopName || t('shop');
     byId('shop-brand-kind').hidden = true;
