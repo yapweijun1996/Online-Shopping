@@ -58,3 +58,18 @@ DEC-06 lawful basis and the real HTTPS hostname (DEC-04) are now recorded. Defin
 ### Owner-authorized buyer/seller milestone (2026-09-30)
 
 The owner's fresh instruction authorizes scoped tested fixes and publishing the existing Demo shop; older no-push notes above describe the historical gate, not current authorization. Current work: seller cached-queue/detail recovery, authenticated printable order summaries and confirmed-only packing sheets, pending approved storefront typography. Local unit/API and synthetic browser/PDF gates are tracked in SELLER_ACCEPTANCE.md. Commit/push/deploy require action-specific review and exact-head CI; release is not claimed before live verification. No production order writes, credentials/grants changes, payments or messages are authorized.
+
+
+### Backlog from the 2026-10-05 seller panel review (Planned, nothing implemented)
+
+| ID | Priority / status | Depends on | Done condition and evidence needed |
+| --- | --- | --- | --- |
+| SEL-01 | P1 / Next (owner priority 1 of 3) | — | Product stock quantity, decrement on order, auto-unavailable at zero; concurrency test for the last unit. |
+| SEL-02 | P1 / Next (owner priority 1 of 3) | — | Fulfilment statuses after confirmation (packed, shipped, delivered, cancelled) with tracking number and carrier; audit events; revision checks. |
+| SEL-03 | P1 / Next (owner priority 1 of 3) | SEL-02 | New-order alert to the seller (channel to be chosen: email, manual WhatsApp prompt or browser push). |
+| SEL-04 | P1 / Planned | [ADMIN_MULTI_COMPANY_DESIGN.md](ADMIN_MULTI_COMPANY_DESIGN.md) | More than one seller account with roles, password change and recovery. |
+| DEC-07 | P0 / Decided 2026-10-05 | — | Owner decision: keep submitted orders permanently, with a seller-initiated manual deletion function (to be built and verified; deletion must remove contact and address data and leave an audit record). AC-16 stays open until that function and recovery are verified. |
+| INT-01 | P2 / Planned, build behind an off-by-default switch (owner has no Meta account yet) | SEL-02, owner decisions in [INTEGRATIONS.md](INTEGRATIONS.md) | WhatsApp Business Cloud API order notifications with approved templates, consent check, webhook signature check and a send log; Demo sends only to the visitor's own number or is simulated. |
+| INT-02 | P2 / Planned | SEL-02 | One courier integration (aggregator or Ninja Van): create shipment, fetch label, receive status updates. Vendor terms must be verified first. |
+| INT-03 | P3 / On hold | Owner decision | Baileys (QR) WhatsApp for the Demo only: separate long-running Node service, disposable test number, fixed templates, rate limits. Not for production. |
+| SEL-05 | P1 / Planned | DEC-07 | Seller-initiated permanent deletion of an order's buyer contact and delivery data with confirmation and an audit event; tests prove nothing else about the order is lost. |
