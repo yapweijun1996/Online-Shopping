@@ -20,7 +20,7 @@ export function mountShopUpdates(guard, productBanner) {
     return { banner, notice, button };
   }
   const catalogBanner = document.createElement('aside'); catalogBanner.className = 'shop-update-banner'; catalogBanner.hidden = true;
-  document.getElementById('demo-banner').after(catalogBanner);
+  document.getElementById('catalog-view').before(catalogBanner);
   const banners = [prepareBanner(catalogBanner)];
   if (productBanner) banners.push(prepareBanner(productBanner));
   let state = {}, actions;

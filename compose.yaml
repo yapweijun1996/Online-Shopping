@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile.frontend
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+      CLIENT_IP_SOURCE: ${CLIENT_IP_SOURCE:-{remote_host}}
     ports:
       - "${FRONTEND_HTTP_BIND:-127.0.0.1:8080}:80"
       - "${FRONTEND_HTTPS_BIND:-127.0.0.1:8443}:443"
