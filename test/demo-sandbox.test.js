@@ -45,6 +45,21 @@ test('passwordless fictional roles cannot authorize the existing seller API or c
   assert.deepEqual(f.store.all('SELECT * FROM product ORDER BY id'), before);
 });
 
+test('public demo login opens the normal seller session without a password, only in public-demo mode', async t => {
+  const f = fixture(t);
+  assert.equal((await f.call('POST', '/api/v1/seller/demo-session', null, {}, { origin: 'https://attacker.invalid' })).status, 403);
+  const result = await f.call('POST', '/api/v1/seller/demo-session');
+  assert.equal(result.status, 200);
+  assert.equal(result.data.role, 'SUPER_ADMIN');
+  const session = { cookie: result.response.headers.get('set-cookie').split(';')[0], csrfToken: result.data.csrfToken };
+  assert.equal((await f.call('GET', '/api/v1/seller/products', null, session)).status, 200);
+  for (const mode of ['manual', 'demo']) {
+    const other = fixture(t, mode);
+    assert.equal((await other.call('POST', '/api/v1/seller/demo-session')).status, 404);
+    assert.equal(other.store.get('SELECT COUNT(*) AS n FROM session').n, 0);
+  }
+});
+
 test('production and legacy demo modes expose no bypass endpoints or demo pages, including encoded paths', async t => {
   for (const mode of ['manual', 'demo']) {
     const f = fixture(t, mode);
