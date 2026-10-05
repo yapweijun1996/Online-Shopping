@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { initializePostgresSchema12, postgresSchema12Sql, postgresUpgradeTo12Sql } from '../src/postgres-schema-compatibility.js';
+import { initializePostgresSchema12, postgresSchema12Sql, postgresUpgradeTo12Sql } from '../deploy/postgres/schema12.js';
 
 // Protocol tests establish decisions and transaction ordering, not PostgreSQL
 // SQL execution or native-worker/API compatibility. Real engine QA is separate.

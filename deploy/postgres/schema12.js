@@ -1,4 +1,4 @@
-import { SCHEMA_VERSION } from './db.js';
+import { SCHEMA_VERSION } from '../../src/db.js';
 
 // Prepared schema12 compatibility for the separate PostgreSQL draft. This
 // module is not imported by application startup; upgrades require explicit opt-in.

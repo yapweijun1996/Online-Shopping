@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { postgresSchema12Sql, postgresUpgradeTo12Sql } from '../src/postgres-schema-compatibility.js';
+import { postgresSchema12Sql, postgresUpgradeTo12Sql } from '../deploy/postgres/schema12.js';
 
 // Emit reviewable synthetic SQL only. No connection, server, credentials,
 // migration, backup or restore is executed by this preparation script.
