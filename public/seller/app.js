@@ -118,6 +118,13 @@ function renderUpdateUI() {
   byId('install-update-button').textContent = `${t('installUpdate')}${updateState?.available ? ` · ${updateState.available}` : ''}`;
   byId('install-update-button').disabled = applying || busy;
   byId('later-update-button').disabled = applying;
+  byId('login-version').textContent = `${t('appVersion')}: Seller ${APP_VERSION}`;
+  byId('login-check-updates').disabled = check.disabled;
+  byId('login-update-status').textContent = byId('check-updates-status').textContent;
+  const loginInstall = byId('login-install-update');
+  loginInstall.hidden = !updateState?.ready;
+  loginInstall.textContent = `${t('installUpdate')}${updateState?.available ? ` · ${updateState.available}` : ''}`;
+  loginInstall.disabled = applying;
 }
 document.addEventListener('updateguardchange', renderUpdateUI);
 
@@ -504,6 +511,8 @@ byId('check-updates-button').addEventListener('click', () => {
   renderUpdateUI();
   updateActions?.check();
 });
+byId('login-check-updates').addEventListener('click', () => byId('check-updates-button').click());
+byId('login-install-update').addEventListener('click', () => updateActions?.update());
 byId('install-update-button').addEventListener('click', () => updateActions?.update());
 byId('later-update-button').addEventListener('click', () => {
   updateDismissed = true;
