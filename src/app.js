@@ -42,6 +42,7 @@ export function createApi({ store, config, serveStatic = null }) {
   const demoRoute = createDemoSandbox({ enabled: demoEnabled, production: config.production });
   const loginLimiter = new SqlLimiter(store, 'login', { limit: 5, windowMs: LIMIT_WINDOW_MS });
   const checkoutLimiter = new SqlLimiter(store, 'checkout', { limit: 30, windowMs: LIMIT_WINDOW_MS });
+  const demoLoginLimiter = new SqlLimiter(store, 'demo-login', { limit: 30, windowMs: LIMIT_WINDOW_MS });
   const orderStatusLimiter = new SqlLimiter(store, 'order-status', { limit: 30, windowMs: LIMIT_WINDOW_MS });
 
   async function route(request, clientAddress) {
@@ -118,6 +119,17 @@ export function createApi({ store, config, serveStatic = null }) {
         throw new ApiError(401, 'UNAUTHORIZED', 'Invalid credentials.');
       }
       loginLimiter.clear(clientAddress);
+      const session = createSession(store);
+      return json(200, { username: config.username, role: 'SUPER_ADMIN', csrfToken: session.csrfToken }, {
+        'Set-Cookie': cookieFor(session.token, session.maxAge, config.production),
+      });
+    }
+
+    // Public fictional demo only: opens the normal seller session without a password.
+    if (method === 'POST' && pathname === '/api/v1/seller/demo-session') {
+      if (!demoEnabled) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+      requireOrigin(request, expectedOrigin);
+      if (!demoLoginLimiter.attempt(clientAddress)) throw new ApiError(429, 'RATE_LIMITED', 'Too many attempts. Try later.');
       const session = createSession(store);
       return json(200, { username: config.username, role: 'SUPER_ADMIN', csrfToken: session.csrfToken }, {
         'Set-Cookie': cookieFor(session.token, session.maxAge, config.production),

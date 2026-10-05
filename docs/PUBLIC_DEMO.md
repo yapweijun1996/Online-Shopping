@@ -33,3 +33,7 @@ Database files, secrets, local evidence and original-generation outputs are not 
 ## Fictional Admin/Seller candidate
 
 Candidate v105/v81 adds two passwordless buttons only when `/api/v1/shop` explicitly reports public-demo eligibility: **Login as Admin** and **Login as Demo Seller**. They enter `/demo/`, a separate session-private in-memory workspace. New login/reset/exit/one-hour expiry never grant access to the existing Seller API. Reset preserves seeded Seller identities; removed custom memberships return to seeded Alpha without restoring Admin privileges or extending expiry. All prototype companies/customers/orders are fictional; no live credentials or grants are created. Manual/production mode returns 404 for demo endpoints/pages. See [ADMIN_MULTI_COMPANY_DESIGN.md](ADMIN_MULTI_COMPANY_DESIGN.md) for bounds, authorization and production migration gates. This candidate is not published.
+
+## Passwordless demo login
+
+In `public-demo` mode with a Demo-configured shop, the seller sign-in page offers **Demo login · no password**. It calls `POST /api/v1/seller/demo-session`, which issues the same seller session as a password login (same cookie, CSRF token and permissions) after the Origin check and a per-client rate limit. Anyone who opens the public Demo can therefore edit its shared fictional store. The endpoint returns 404 in manual, legacy demo and production modes. To discard visitor changes, set a new `SHOP_DEMO_REVISION`. The isolated sandbox at `/demo/` remains available through its own API.

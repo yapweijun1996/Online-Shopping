@@ -411,3 +411,8 @@
 .demo-role-primary{width:100%;font-weight:600}
 .demo-role-link{align-self:center;border:0;background:none;color:var(--ui-muted);font:inherit;font-size:13px;text-decoration:underline;cursor:pointer;min-height:32px}
 .demo-role-link:disabled,.demo-role-primary:disabled{opacity:.6;cursor:default}
+
+.login-update{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:14px;font-size:12px;color:var(--ui-muted)}
+.login-update p{margin:0}
+.login-update .text-button{min-height:36px}
+.login-update .secondary-button{width:100%}

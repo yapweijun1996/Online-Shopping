@@ -40,9 +40,9 @@ export function mountAppearance(root, surface) {
       const modal = createModal();
       const sample = make('section', '', 'appearance-sample palette-preview'); sample.dataset.palette = id;
       sample.append(make('h3', key), make('p', 'paletteSample'));
-      const action = make('button', 'saveProduct', 'primary-button'); action.type = 'button';
+      const action = make('button', 'paletteSampleButton', 'primary-button'); action.type = 'button';
       const field = make('input'); field.readOnly = true; field.value = 'MYR 14.90'; field.setAttribute('aria-label', t('price'));
-      sample.append(field, action, make('p', 'updateAvailable', 'appearance-warning'), make('p', 'productError', 'appearance-error'));
+      sample.append(field, action, make('p', 'paletteSampleNotice', 'appearance-warning'), make('p', 'paletteSampleError', 'appearance-error'));
       const apply = make('button', 'applyPalette', 'primary-button'); apply.type = 'button';
       apply.addEventListener('click', () => { choose(id); modal.close(); });
       modal.content.append(sample, apply);

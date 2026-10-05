@@ -7,6 +7,10 @@
   <title>Seller portal · Online Shopping</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="/seller/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/seller/icons/icon-192.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="OS Seller">
   <link rel="stylesheet" href="/seller/style.css">
   <script src="/seller/palette.js"></script>
   <script type="module" src="/seller/app.js"></script>
@@ -73,6 +77,12 @@
           <p id="login-message" class="message" role="alert"></p>
           <button id="login-submit" class="primary-button" type="submit"><span data-i18n="signIn">Sign in</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg></button>
           <p class="privacy-note"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="10" width="12" height="10" rx="2"/><path d="M9 10V7a3 3 0 0 1 6 0v3"/></svg><span data-i18n="protected">Your catalog and orders are private.</span></p>
+          <div class="login-update">
+            <p id="login-version"></p>
+            <button id="login-check-updates" class="text-button" type="button" data-i18n="checkUpdates">Check for updates</button>
+            <button id="login-install-update" class="secondary-button" type="button" data-i18n="installUpdate" hidden>Install update</button>
+            <p id="login-update-status" role="status" aria-live="polite"></p>
+          </div>
         </form>
       </div>
     </section>

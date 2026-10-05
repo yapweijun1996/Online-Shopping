@@ -1611,7 +1611,10 @@ const ownerRequestMessages = {
     "paletteGraphite": "Graphite",
     "previewPalette": "Preview",
     "applyPalette": "Apply palette",
-    "paletteSample": "Preview text, controls and notices before applying this palette."
+    "paletteSample": "Preview text, controls and notices before applying this palette.",
+    "paletteSampleButton": "Sample button",
+    "paletteSampleNotice": "Sample notice",
+    "paletteSampleError": "Sample error message"
   },
   "ms": {
     "currencyInherited": "Mata wang diwarisi daripada Tetapan Syarikat dan tidak boleh diubah di sini.",
@@ -1623,7 +1626,10 @@ const ownerRequestMessages = {
     "paletteGraphite": "Grafit",
     "previewPalette": "Pratonton",
     "applyPalette": "Gunakan warna",
-    "paletteSample": "Pratonton teks, kawalan dan notis sebelum menggunakan warna ini."
+    "paletteSample": "Pratonton teks, kawalan dan notis sebelum menggunakan warna ini.",
+    "paletteSampleButton": "Butang contoh",
+    "paletteSampleNotice": "Notis contoh",
+    "paletteSampleError": "Mesej ralat contoh"
   },
   "zh-Hans": {
     "currencyInherited": "币种继承公司设置，不能在此修改。",
@@ -1635,7 +1641,10 @@ const ownerRequestMessages = {
     "paletteGraphite": "石墨灰",
     "previewPalette": "预览",
     "applyPalette": "应用配色",
-    "paletteSample": "应用前预览文字、控件和提示。"
+    "paletteSample": "应用前预览文字、控件和提示。",
+    "paletteSampleButton": "示例按钮",
+    "paletteSampleNotice": "示例提示",
+    "paletteSampleError": "示例错误信息"
   },
   "vi": {
     "currencyInherited": "Tiền tệ lấy từ Cài đặt công ty và không thể thay đổi ở đây.",
@@ -1647,7 +1656,10 @@ const ownerRequestMessages = {
     "paletteGraphite": "Xám Graphite",
     "previewPalette": "Xem trước",
     "applyPalette": "Áp dụng bảng màu",
-    "paletteSample": "Xem trước văn bản, điều khiển và thông báo trước khi áp dụng."
+    "paletteSample": "Xem trước văn bản, điều khiển và thông báo trước khi áp dụng.",
+    "paletteSampleButton": "Nút mẫu",
+    "paletteSampleNotice": "Thông báo mẫu",
+    "paletteSampleError": "Thông báo lỗi mẫu"
   },
   "ja": {
     "currencyInherited": "通貨は会社設定から引き継がれ、ここでは変更できません。",
@@ -1659,7 +1671,10 @@ const ownerRequestMessages = {
     "paletteGraphite": "グラファイト",
     "previewPalette": "プレビュー",
     "applyPalette": "配色を適用",
-    "paletteSample": "適用する前に文字、操作部、通知を確認できます。"
+    "paletteSample": "適用する前に文字、操作部、通知を確認できます。",
+    "paletteSampleButton": "サンプルボタン",
+    "paletteSampleNotice": "サンプル通知",
+    "paletteSampleError": "サンプルエラーメッセージ"
   },
   "ko": {
     "currencyInherited": "통화는 회사 설정에서 가져오며 여기서 변경할 수 없습니다.",
@@ -1671,7 +1686,10 @@ const ownerRequestMessages = {
     "paletteGraphite": "그라파이트",
     "previewPalette": "미리 보기",
     "applyPalette": "색상 적용",
-    "paletteSample": "적용하기 전에 텍스트, 컨트롤과 알림을 확인하세요."
+    "paletteSample": "적용하기 전에 텍스트, 컨트롤과 알림을 확인하세요.",
+    "paletteSampleButton": "샘플 버튼",
+    "paletteSampleNotice": "샘플 알림",
+    "paletteSampleError": "샘플 오류 메시지"
   },
   "th": {
     "currencyInherited": "สกุลเงินมาจากการตั้งค่าบริษัทและเปลี่ยนที่นี่ไม่ได้",
@@ -1683,7 +1701,10 @@ const ownerRequestMessages = {
     "paletteGraphite": "เทากราไฟต์",
     "previewPalette": "ดูตัวอย่าง",
     "applyPalette": "ใช้ชุดสี",
-    "paletteSample": "ดูตัวอย่างข้อความ ตัวควบคุม และข้อความแจ้งก่อนใช้ชุดสีนี้"
+    "paletteSample": "ดูตัวอย่างข้อความ ตัวควบคุม และข้อความแจ้งก่อนใช้ชุดสีนี้",
+    "paletteSampleButton": "ปุ่มตัวอย่าง",
+    "paletteSampleNotice": "ข้อความแจ้งตัวอย่าง",
+    "paletteSampleError": "ข้อความผิดพลาดตัวอย่าง"
   }
 };
 for (const { code } of languages) Object.assign(messages[code], ownerRequestMessages[code]);
