@@ -39,4 +39,16 @@ Demo payload construction anonymizes contacts before any network transmission. S
 
 Seller order details offer **Order summary** and, for confirmed orders, **Packing sheet**. Preview uses a fresh authenticated order snapshot; **Print / Save as PDF** opens the browser print workflow. Each destination is isolated with repeated identifying table headers and accurate snapshot quantities/amounts. Demo documents are explicitly simulated. These are manual records/checklists, not tax invoices, payment receipts or courier labels, and do not record packing or shipment state. See [acceptance and QA gates](SELLER_ACCEPTANCE.md).
 
-The current owner-request repair candidate is Shop v106 / Seller v87 with version-labelled safe updates, complete Seller demo galleries, company-inherited readonly product currency, five previewable browser palettes and a separate fictional Admin/Seller sandbox. PR #15 is merged; the repair candidate is not deployed and includes no live tenant migration/grant. See [the reviewable multi-company design](ADMIN_MULTI_COMPANY_DESIGN.md) and [18-item Production acceptance reconciliation](PRODUCTION_ACCEPTANCE.md).
+The owner-request repair work (PR #15) is Shop v105 / Seller v81, and later changes below raise the current versions to Shop v108 / Seller v87. The repair set includes with version-labelled safe updates, complete Seller demo galleries, company-inherited readonly product currency, five previewable browser palettes and a separate fictional Admin/Seller sandbox. PR #15 is merged; the repair candidate is not deployed and includes no live tenant migration/grant. See [the reviewable multi-company design](ADMIN_MULTI_COMPANY_DESIGN.md) and [18-item Production acceptance reconciliation](PRODUCTION_ACCEPTANCE.md).
+
+
+### Public Demo seller features (Shop v108 / Seller v87)
+
+These exist only when the server runs in `public-demo` mode with a Demo-configured shop; production and manual modes return 404 for the endpoints. See [PUBLIC_DEMO.md](PUBLIC_DEMO.md) for the API details and risks.
+
+- **Demo login · no password** on the seller sign-in page opens the same seller session as the owner account, so visitors can try every seller module. The username/password form is unchanged.
+- **Reset demo data** in Seller → Settings restores the seeded 35-product fictional store (orders, products, galleries, categories, company settings and the order number sequence) after a confirmation. The admin account and sessions are kept.
+- The shop catalog no longer shows the "Demo store" notice banner; the product page keeps its own demo note.
+- The seller sign-in page shows the app version, **Check for updates** and, when a new version is ready, **Install update**.
+- Palette previews use dedicated sample labels instead of real update or error messages.
+- Both shells include `apple-touch-icon` and standalone web-app meta tags. Maskable icons and manifest screenshots are not yet provided.
