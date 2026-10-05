@@ -19,7 +19,7 @@
 
 Not as such. A Durable Object is a Cloudflare-hosted service: its storage, single-writer guarantee and persistence come from Cloudflare. The open-source `workerd` runtime behind `wrangler dev` can run a Worker and a Durable Object in a container with local files, but that is a development tool: no managed durability, backups, replication or support, and it would not use PostgreSQL. It is not a sound base for a secure multi-tenant production system.
 
-What does run in Docker is the **Node server** that already exists. The API (`src/app.js`) is runtime-neutral, so Docker with PostgreSQL needs a PostgreSQL storage adapter, not a rewrite of the routes. Recommendation: the Demo also runs from the same Docker image and code, as a second instance with its own database and `SHOP_MODE=public-demo`, so only one storage layer is maintained. The Cloudflare Worker version stays as it is until the Docker Demo replaces it; no new feature work targets it after Phase 1.
+What does run in Docker is the **Node server** that already exists. The API (`src/app.js`) is runtime-neutral, so Docker with PostgreSQL needs a PostgreSQL storage adapter, not a rewrite of the routes. Recommendation: the Demo also runs from the same Docker image and code, as a second instance with its own database and `SHOP_MODE=public-demo`, so only one storage layer is maintained. The Cloudflare Worker version is frozen and removed once the Docker Demo replaces it (see "Consequence for the Cloudflare Worker version").
 
 ## Main technical obstacle
 
@@ -84,10 +84,22 @@ Keeping the Cloudflare Worker and Durable Object for the public Demo is possible
 
 Recommendation: build Production and the Demo as option A (one codebase, one storage layer, fewer bugs), and keep the current Worker Demo online unchanged until that Demo is proven. Choose B if the Demo must stay reachable when the Mac Mini is off and the owner accepts the extra work of two storage layers.
 
-## Still open
-1. Demo hosting: option A or B above.
-2. Whether a shop Owner may rename their own shop code or only the SuperAdmin.
-3. Where the second backup copy goes (external disk, another computer or a free cloud bucket) and how many days of backups to keep.
+## Final decisions (2026-10-05, second round)
+
+| Item | Decision |
+| --- | --- |
+| Demo hosting | Option A: the Demo is a second Docker instance with its own database, published through the same Cloudflare Tunnel. |
+| Host machine | A MacBook Air, temporary, runs Docker, PostgreSQL and the tunnel for both Production and the Demo. Moving to an Ubuntu server or a cloud host later uses the same Compose files. A laptop can sleep, lose power or lose its network, so sleep must be disabled and the machine kept on power while it serves customers. |
+| Renaming a shop code | SuperAdmin only. A shop Owner cannot rename their own shop. |
+| Second backup copy | Deferred. For now only the regular data backup is made (Phase 6), stored outside the project folder. A second copy on another disk or machine should be added before real customers rely on the system, because a single copy on the same machine is lost if the machine fails. |
+
+### Consequence for the Cloudflare Worker version
+
+Production and the Demo both run on the Node server with PostgreSQL, so the application code becomes asynchronous (Phase 1). The Worker's Durable Object cannot run that code: its SQL API only supports transactions through a synchronous callback (`transactionSync`), which cannot wait on asynchronous work. The Worker build is therefore **frozen** at the last pre-conversion commit (tag `worker-demo-final`) and the currently deployed Worker Demo keeps running unchanged, without new features, until the Docker Demo replaces it in Phase 7. After that the Worker files, `wrangler.jsonc`, the Worker CI step and the Worker tests are removed from `main`. History and the tag keep them recoverable.
+
+### Later cloud hosting
+
+When the project moves off the laptop, any small VPS that runs Docker will do (2 vCPU and 4 GB RAM is a reasonable start). Providers with a Singapore region, which suits Malaysian and Singapore customers, include DigitalOcean, Vultr, Linode (Akamai), AWS Lightsail and Hetzner. Prices and regions change, so compare current offers. Prefer a provider that offers automatic disk snapshots, and decide then whether PostgreSQL stays in a container or moves to a managed database.
 
 ## Not in scope here
 Payment, courier booking, WhatsApp messaging and marketing features follow later, per [INTEGRATIONS.md](INTEGRATIONS.md); they build on the tenant and account model from phases 3 and 4.
