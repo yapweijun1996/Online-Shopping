@@ -10,7 +10,7 @@ import { mountCategories, mountCompanySettings } from './settings.js';
 
 const byId = (id) => document.getElementById(id);
 const loginView = byId('login-view');
-mountDemoEntry(loginView.querySelector('.login-card') || loginView);
+mountDemoEntry(loginView.querySelector('.login-card') || loginView, { onSignedIn: () => sessionHint(true) });
 const workspace = byId('workspace');
 const sidebar = byId('sidebar');
 const accountWrap = byId('account-wrap');
