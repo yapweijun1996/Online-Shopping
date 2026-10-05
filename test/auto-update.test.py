@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+import io
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('auto_update', Path(__file__).resolve().parents[1] / 'deploy/auto-update.py')
@@ -89,6 +90,22 @@ class Tests(unittest.TestCase):
         self.assertEqual(u.state['current']['sha'], OLD)
         self.assertEqual(u.state['failed_sha'], NEW)
         self.assertIsNone(u.state['pending'])
+    def test_public_checks_identify_monitor_and_validate_revision(self):
+        u = object.__new__(m.Updater)
+        def response(request, timeout):
+            self.assertEqual(request.get_header('User-agent'), 'OnlineShoppingDeploy/1.0')
+            status = 'ready' if request.full_url.endswith('/ready') else 'alive'
+            return io.BytesIO(json.dumps({'status': status, 'revision': OLD}).encode())
+        # Wrong public revision must fail before container inspection.
+        with patch.object(m.urllib.request, 'urlopen', side_effect=response):
+            with self.assertRaises(RuntimeError): u.health({'sha': NEW})
+    def test_pending_ci_keeps_live_release_unchanged(self):
+        u = Fake(); u.approved = lambda sha: False
+        u.checkout = lambda sha: self.fail('Unapproved checkout attempted')
+        u.poll()
+        self.assertEqual(u.state['current']['sha'], OLD)
+        self.assertEqual(u.state['last_status'], 'waiting_for_ci')
+        self.assertNotIn('build', u.events)
     def test_infrastructure_change_pauses_release(self):
         u = Fake(); u.checkout = lambda sha: '/new'
         with patch.object(m, 'fingerprint', side_effect=[{'schema': 14}, {'schema': 13}]): u.poll()

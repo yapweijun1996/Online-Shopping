@@ -152,7 +152,7 @@ class Updater:
     def health(self, item):
         for host in ['shop.gmb01.xyz', 'seller.gmb01.xyz']:
             for endpoint, expected in [('ready', 'ready'), ('health', 'alive')]:
-                request = urllib.request.Request(f'https://{host}/{endpoint}', headers={'Cache-Control': 'no-cache'})
+                request = urllib.request.Request(f'https://{host}/{endpoint}', headers={'Cache-Control': 'no-cache', 'User-Agent': 'OnlineShoppingDeploy/1.0'})
                 with urllib.request.urlopen(request, timeout=15) as response:
                     body = json.load(response)
                 if body.get('status') != expected or body.get('revision') != item['sha']:
