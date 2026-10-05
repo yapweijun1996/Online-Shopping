@@ -11,6 +11,32 @@ export function getShopSetup(store) {
   return { mode: row.mode, shopName: row.shop_name };
 }
 
+// Writes the fictional starting catalog; callers run it inside a transaction.
+function seedDemo(store) {
+  store.run(`UPDATE company_setting SET default_currency = 'MYR', seller_whatsapp_phone = NULL,
+    mobile_hide_bars_on_scroll = 0, updated_at = ? WHERE id = 1`, new Date().toISOString());
+  for (const [code, label] of Object.entries(categories)) createCategory(store, { code, label });
+  for (const product of catalog) createProduct(store, product);
+}
+
+/*
+ * Restores a Demo shop to its seeded state: orders, products, galleries, categories and
+ * company settings are replaced; the admin account, sessions and rate limits are kept.
+ * All-or-nothing, so a failure leaves the previous data in place.
+ */
+export function resetDemo(store) {
+  return store.transaction(() => {
+    if (getShopSetup(store).mode !== 'demo') {
+      throw new ApiError(409, 'NOT_DEMO', 'Only a Demo shop can be reset.');
+    }
+    for (const table of ['order_event', 'order_item', 'delivery', 'checkout_idempotency', 'shop_order',
+      'product_gallery_image', 'product', 'general_code']) store.run(`DELETE FROM ${table}`);
+    store.run('UPDATE order_sequence SET value = 0 WHERE id = 1');
+    seedDemo(store);
+    return { reset: true, products: catalog.length };
+  });
+}
+
 export function setupShop(store, input) {
   if (!input || typeof input !== 'object' || Array.isArray(input) ||
       Object.keys(input).some((key) => !['mode', 'shopName'].includes(key)) ||
@@ -30,10 +56,7 @@ export function setupShop(store, input) {
           store.get('SELECT 1 FROM general_code LIMIT 1')) {
         throw new ApiError(409, 'SHOP_NOT_EMPTY', 'Demo requires an empty catalog without categories or orders. Choose Production to keep your data.');
       }
-      store.run("UPDATE company_setting SET default_currency = 'MYR', seller_whatsapp_phone = ?, updated_at = ? WHERE id = 1",
-        null, new Date().toISOString());
-      for (const [code, label] of Object.entries(categories)) createCategory(store, { code, label });
-      for (const product of catalog) createProduct(store, product);
+      seedDemo(store);
     }
     store.run('UPDATE shop_setup SET mode = ?, shop_name = ? WHERE id = 1', input.mode, shopName);
     return getShopSetup(store);

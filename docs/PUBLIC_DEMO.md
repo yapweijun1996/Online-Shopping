@@ -37,3 +37,7 @@ Candidate v105/v81 adds two passwordless buttons only when `/api/v1/shop` explic
 ## Passwordless demo login
 
 In `public-demo` mode with a Demo-configured shop, the seller sign-in page offers **Demo login · no password**. It calls `POST /api/v1/seller/demo-session`, which issues the same seller session as a password login (same cookie, CSRF token and permissions) after the Origin check and a per-client rate limit. Anyone who opens the public Demo can therefore edit its shared fictional store. The endpoint returns 404 in manual, legacy demo and production modes. To discard visitor changes, set a new `SHOP_DEMO_REVISION`. The isolated sandbox at `/demo/` remains available through its own API.
+
+## Reset demo data
+
+In `public-demo` mode, Seller → Settings shows **Reset demo data**. After a confirmation it calls `POST /api/v1/seller/demo/reset` (session, Origin and CSRF required, body `{"confirm": true}`), which in one transaction deletes all orders, products, galleries and categories, resets the order number sequence and company settings, and re-seeds the 35 fictional products. The admin account, sessions and rate limits are kept. The endpoint returns 404 outside the public Demo and 409 if the shop is not in Demo mode. Setting a new `SHOP_DEMO_REVISION` still gives a completely fresh object without deleting the old one.

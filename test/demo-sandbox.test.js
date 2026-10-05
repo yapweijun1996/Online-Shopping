@@ -60,6 +60,36 @@ test('public demo login opens the normal seller session without a password, only
   }
 });
 
+test('seller can reset the public demo to its seeded state, and only there', async t => {
+  const f = fixture(t);
+  const login = await f.call('POST', '/api/v1/seller/demo-session');
+  const session = { cookie: login.response.headers.get('set-cookie').split(';')[0], csrfToken: login.data.csrfToken };
+  const seeded = f.store.get('SELECT COUNT(*) AS n FROM product').n;
+  assert.ok(seeded > 0);
+  // Diverge from the seed: edit a product, add a category, create an order.
+  f.store.run("UPDATE product SET name = 'Edited by visitor', active = 0");
+  f.store.run("INSERT INTO general_code(type, code, label, active, created_at, updated_at) VALUES ('PRODUCT_CATEGORY', 'EXTRA', 'Extra', 1, 'x', 'x')");
+  f.store.run("UPDATE order_sequence SET value = 7 WHERE id = 1");
+  assert.equal((await f.call('POST', '/api/v1/seller/demo/reset', { confirm: true })).status, 401);
+  assert.equal((await f.call('POST', '/api/v1/seller/demo/reset', { confirm: true }, { cookie: session.cookie })).status, 403);
+  assert.equal((await f.call('POST', '/api/v1/seller/demo/reset', { confirm: false }, session)).status, 400);
+  assert.equal((await f.call('POST', '/api/v1/seller/demo/reset', { confirm: true }, session, { origin: 'https://attacker.invalid' })).status, 403);
+  assert.equal(f.store.get("SELECT COUNT(*) AS n FROM product WHERE name = 'Edited by visitor'").n, seeded);
+  const result = await f.call('POST', '/api/v1/seller/demo/reset', { confirm: true }, session);
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.data, { reset: true, products: seeded });
+  assert.equal(f.store.get('SELECT COUNT(*) AS n FROM product').n, seeded);
+  assert.equal(f.store.get("SELECT COUNT(*) AS n FROM product WHERE name = 'Edited by visitor' OR active = 0").n, 0);
+  assert.equal(f.store.get("SELECT COUNT(*) AS n FROM general_code WHERE code = 'EXTRA'").n, 0);
+  assert.equal(f.store.get('SELECT value FROM order_sequence WHERE id = 1').value, 0);
+  assert.equal(f.store.get('SELECT COUNT(*) AS n FROM session').n, 1);
+  assert.equal((await f.call('GET', '/api/v1/seller/products', null, session)).status, 200);
+  for (const mode of ['manual', 'demo']) {
+    const other = fixture(t, mode);
+    assert.equal((await other.call('POST', '/api/v1/seller/demo/reset', { confirm: true })).status, 401);
+  }
+});
+
 test('production and legacy demo modes expose no bypass endpoints or demo pages, including encoded paths', async t => {
   for (const mode of ['manual', 'demo']) {
     const f = fixture(t, mode);

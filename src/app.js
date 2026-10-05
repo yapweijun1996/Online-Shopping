@@ -1,6 +1,6 @@
 import { withDemoGallery } from './demo-gallery.js';
 import { createDemoSandbox } from './demo-sandbox.js';
-import { getShopSetup, setupShop, shopObjectName } from './shop-setup.js';
+import { getShopSetup, resetDemo, setupShop, shopObjectName } from './shop-setup.js';
 import { authenticate, cookieFor, createSession, deleteSession, readSession, sessionCookieFrom } from './auth.js';
 import { ready } from './db.js';
 import { ApiError, errorResponse, json, readJson, requireOrigin } from './http.js';
@@ -153,6 +153,14 @@ export function createApi({ store, config, serveStatic = null }) {
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
       return json(200, setupShop(store, await readJson(request)));
+    }
+    if (method === 'POST' && pathname === '/api/v1/seller/demo/reset') {
+      if (!demoEnabled) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+      requireOrigin(request, expectedOrigin);
+      requireCsrf(request, session);
+      const body = await readJson(request, 1024);
+      if (Object.keys(body).length !== 1 || body.confirm !== true) throw new FieldError('confirm', 'Confirm the reset.');
+      return json(200, resetDemo(store));
     }
     if (method === 'GET' && pathname === '/api/v1/seller/products') {
       return json(200, listProducts(store, url.searchParams, true));
