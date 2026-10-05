@@ -56,7 +56,7 @@ Make it easy for a seller to set up products, for a customer to shop without reg
 
 - [Roadmap](docs/ROADMAP.md), [task ledger](docs/TASK.md), and [evidence-based progress](docs/PROGRESS.md)
 - [Production acceptance](docs/PRODUCTION_ACCEPTANCE.md), [seller acceptance](docs/SELLER_ACCEPTANCE.md), and [owner request checkpoint](docs/OWNER_REQUEST_CHECKPOINT.md)
-- [Multi-company admin design](docs/ADMIN_MULTI_COMPANY_DESIGN.md)
+- [Multi-company admin design](docs/ADMIN_MULTI_COMPANY_DESIGN.md) and the phased [multi-tenant production plan](docs/MULTI_TENANT_PRODUCTION_PLAN.md)
 - [Seller panel review and gaps](docs/SELLER_PANEL_REVIEW.md) and [WhatsApp and courier integration plan](docs/INTEGRATIONS.md)
 
 **UI and QA notes**
