@@ -1,6 +1,6 @@
 import { openNodeStore } from './store.js';
 
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -276,6 +276,32 @@ export function migrateStore(store) {
       ALTER TABLE product ADD COLUMN stock_quantity INTEGER
         CHECK (stock_quantity IS NULL OR stock_quantity BETWEEN 0 AND 1000000);`);
     version = 12;
+  }
+  if (version === 12) {
+    // Fulfilment adds order statuses, so the CHECK constraints are rebuilt and tracking columns added.
+    store.rebuildTransaction(() => {
+      const rebuild = (table, columns, from, to) => {
+        const schema = store.get('SELECT sql FROM sqlite_schema WHERE type = ? AND name = ?', 'table', table)?.sql;
+        if (schema?.includes(to)) return; // already rebuilt, e.g. a database restored to an earlier version number
+        if (!schema || !schema.includes(from)) throw new Error(`Unexpected ${table} status schema.`);
+        store.exec(schema.replace(new RegExp(`^CREATE TABLE ["\x60]?${table}["\x60]?`, 'i'), `CREATE TABLE ${table}_new`).replace(from, to));
+        store.exec(`INSERT INTO ${table}_new (${columns}) SELECT ${columns} FROM ${table}`);
+        store.exec(`DROP TABLE ${table}`);
+        store.exec(`ALTER TABLE ${table}_new RENAME TO ${table}`);
+      };
+      const statuses = "'SUBMITTED', 'CONFIRMED', 'REJECTED', 'SHIPPED', 'DELIVERED', 'CANCELLED'";
+      rebuild('shop_order', rebuildColumns.shop_order.join(', '),
+        "status IN ('SUBMITTED', 'CONFIRMED', 'REJECTED')", `status IN (${statuses})`);
+      rebuild('order_event', 'id, order_id, event_type, actor_type, actor_id, previous_status, status, reason, occurred_at',
+        "event_type IN ('SUBMITTED', 'CONFIRMED', 'REJECTED')", `event_type IN (${statuses})`);
+      const orderSql = store.get('SELECT sql FROM sqlite_schema WHERE type = ? AND name = ?', 'table', 'shop_order').sql;
+      if (!orderSql.includes('tracking_carrier')) store.exec('ALTER TABLE shop_order ADD COLUMN tracking_carrier TEXT');
+      if (!orderSql.includes('tracking_no')) store.exec('ALTER TABLE shop_order ADD COLUMN tracking_no TEXT');
+      store.exec(`CREATE INDEX IF NOT EXISTS shop_order_queue ON shop_order(status, submitted_at DESC);
+        CREATE INDEX IF NOT EXISTS order_event_history ON order_event(order_id, id);`);
+      store.setSchemaVersion(13);
+    });
+    version = 13;
   }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }

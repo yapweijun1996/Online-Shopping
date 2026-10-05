@@ -17,7 +17,7 @@ function actionButton(label, onClick, className = 'secondary-button') {
 }
 
 function statusKey(status) {
-  return { SUBMITTED: 'statusSubmitted', CONFIRMED: 'statusConfirmed', REJECTED: 'statusRejected' }[status] || 'orderStatus';
+  return { SUBMITTED: 'statusSubmitted', CONFIRMED: 'statusConfirmed', REJECTED: 'statusRejected', SHIPPED: 'statusShipped', DELIVERED: 'statusDelivered', CANCELLED: 'statusCancelled' }[status] || 'orderStatus';
 }
 
 export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
@@ -37,6 +37,11 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
   const dialog = find('#decision-dialog');
   const reason = find('#decision-reason');
   const reasonLabel = find('#decision-reason-label');
+  const shipFields = find('#decision-ship-fields');
+  const carrier = find('#decision-carrier');
+  const carrierOtherLabel = find('#decision-carrier-other-label');
+  const carrierOther = find('#decision-carrier-other');
+  const tracking = find('#decision-tracking');
   const dialogError = find('#decision-error');
   const decisionSubmit = find('#decision-submit');
   const documents = createOrderDocuments();
@@ -227,6 +232,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
       detailField('submittedAt', formatDate(order.submittedAt), false),
       detailField('updatedAt', formatDate(order.updatedAt), false),
       detailField('orderRevision', String(order.revision), false),
+      ...(order.trackingCarrier ? [detailField('carrier', order.trackingCarrier, false), detailField('trackingNumberLabel', order.trackingNo, true)] : []),
     ]));
 
     const buyer = detailGroup('buyerDetails', [
@@ -298,6 +304,19 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
       actions.append(confirm, reject);
       fragment.append(actions);
     }
+    const fulfilment = { CONFIRMED: [['ship', 'shipOrder', 'primary-button'], ['cancel', 'cancelOrder', 'secondary-button']],
+      SHIPPED: [['deliver', 'deliverOrder', 'primary-button']] }[order.status];
+    if (fulfilment) {
+      const actions = node('div', 'order-review-actions');
+      if (!navigator.onLine) actions.append(node('p', 'order-offline-hint', t('offlineMessage')));
+      for (const [action, label, kind] of fulfilment) {
+        const button = actionButton(t(label), (event) => openDecision(action, event.currentTarget), kind);
+        button.dataset.action = action;
+        button.disabled = !navigator.onLine;
+        actions.append(button);
+      }
+      fragment.append(actions);
+    }
     detailStatusKey = '';
     detailContent.replaceChildren(fragment);
   }
@@ -323,19 +342,27 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
   }
 
   function openDecision(action, trigger) {
-    if (!selectedOrder || selectedOrder.status !== 'SUBMITTED' || deciding) return;
+    const requiredStatus = { confirm: 'SUBMITTED', reject: 'SUBMITTED', ship: 'CONFIRMED', cancel: 'CONFIRMED', deliver: 'SHIPPED' }[action];
+    if (!selectedOrder || selectedOrder.status !== requiredStatus || deciding) return;
     if (!navigator.onLine) { setMessage('offlineMessage'); return; }
     dialogAction = action;
     dialogTrigger = trigger;
     reason.value = '';
     setDialogError('');
-    reasonLabel.hidden = action !== 'reject';
-    reason.required = action === 'reject';
-    find('#decision-title').textContent = t(action === 'confirm' ? 'confirmOrder' : 'rejectOrder');
-    find('#decision-intro').textContent = t(action === 'confirm' ? 'confirmQuestion' : 'rejectQuestion');
-    decisionSubmit.textContent = t(action === 'confirm' ? 'confirmOrder' : 'rejectOrder');
+    const needsReason = action === 'reject' || action === 'cancel';
+    reasonLabel.hidden = !needsReason;
+    reason.required = needsReason;
+    reasonLabel.firstElementChild.textContent = t(action === 'cancel' ? 'cancellationReason' : 'rejectionReason');
+    shipFields.hidden = action !== 'ship';
+    carrier.selectedIndex = 0; carrierOther.value = ''; tracking.value = ''; carrierOtherLabel.hidden = true;
+    const labels = { confirm: ['confirmOrder', 'confirmQuestion'], reject: ['rejectOrder', 'rejectQuestion'],
+      ship: ['shipOrder', 'shipQuestion'], deliver: ['deliverOrder', 'deliverQuestion'], cancel: ['cancelOrder', 'cancelQuestion'] }[action];
+    find('#decision-title').textContent = t(labels[0]);
+    find('#decision-intro').textContent = t(labels[1]);
+    decisionSubmit.textContent = t(labels[0]);
     dialog.showModal();
-    if (action === 'reject') reason.focus();
+    if (needsReason) reason.focus();
+    else if (action === 'ship') carrier.focus();
     else decisionSubmit.focus();
   }
 
@@ -383,6 +410,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
     dialogTrigger = null;
     dialogAction = null;
   });
+  carrier.addEventListener('change', () => { carrierOtherLabel.hidden = carrier.value !== 'OTHER'; });
   find('#decision-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     if (deciding || !selectedOrder || !dialogAction) return;
@@ -390,10 +418,16 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
     const id = selectedOrder.id;
     const expectedRevision = selectedOrder.revision;
     const body = { expectedRevision };
-    if (action === 'reject') {
+    if (action === 'reject' || action === 'cancel') {
       const trimmed = reason.value.trim();
       if (!trimmed) { setDialogError('reasonRequired'); reason.focus(); return; }
       body.reason = trimmed;
+    }
+    if (action === 'ship') {
+      const name = carrier.value === 'OTHER' ? carrierOther.value.trim() : carrier.value;
+      if (!name) { setDialogError('carrierRequired'); carrierOther.focus(); return; }
+      body.carrier = name;
+      if (tracking.value.trim()) body.trackingNo = tracking.value.trim();
     }
     deciding = true;
     document.dispatchEvent(new Event('updateguardchange'));
@@ -404,7 +438,8 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
       if (!isCurrent()) return;
       dialog.close();
       if (selectedId === id) { selectedOrder = updated; renderDetail(); }
-      setMessage(action === 'confirm' ? 'orderConfirmed' : 'orderRejected');
+      document.dispatchEvent(new Event('ordersdecided'));
+      setMessage({ confirm: 'orderConfirmed', reject: 'orderRejected', ship: 'orderShipped', deliver: 'orderDelivered', cancel: 'orderCancelled' }[action]);
       await loadQueue();
     } catch (error) {
       if (!isCurrent() || error.status === 401) return;

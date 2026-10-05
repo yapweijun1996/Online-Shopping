@@ -5,7 +5,13 @@ const DB_NAME = 'online-shopping-local-orders';
 const STORE_NAME = 'orders';
 export { ORDER_RETENTION_MS };
 export const ORDER_CLOCK_SKEW_MS = 5 * 60 * 1000;
-const statuses = new Set(['SUBMITTED', 'CONFIRMED', 'REJECTED']);
+const statuses = new Set(['SUBMITTED', 'CONFIRMED', 'REJECTED', 'SHIPPED', 'DELIVERED', 'CANCELLED']);
+
+function trackingFields(source) {
+  const carrier = typeof source?.trackingCarrier === 'string' ? source.trackingCarrier.slice(0, 40) : '';
+  if (!carrier) return {};
+  return { trackingCarrier: carrier, trackingNo: typeof source.trackingNo === 'string' ? source.trackingNo.slice(0, 60) : null };
+}
 
 export function safeOrderImage(value) {
   return typeof value === 'string' && /^\/api\/v1\/products\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/image(?:\?v=[0-9a-z]+)?$/i.test(value) ? value : null;
@@ -33,7 +39,7 @@ function normalizeOrder(receipt, items = [], accessKey = receipt?.statusAccessKe
   return { orderNo: receipt.orderNo, submittedAt: receipt.submittedAt,
     totalMinor: receipt.totalMinor, currency: receipt.currency,
     simulation: receipt.simulation === true, items: lines,
-    ...(statusAccessKey ? { statusAccessKey, status, statusUpdatedAt } : {}) };
+    ...(statusAccessKey ? { statusAccessKey, status, statusUpdatedAt, ...trackingFields(receipt) } : {}) };
 }
 
 export function isLocalOrderCurrent(order, now = Date.now()) {
@@ -172,7 +178,7 @@ export async function createLocalOrderStore(provider = globalThis.indexedDB, now
         if (!previous?.statusAccessKey || !statuses.has(item.status) ||
             typeof item.updatedAt !== 'string' || !Number.isFinite(Date.parse(item.updatedAt)) ||
             Date.parse(item.updatedAt) < Date.parse(previous.statusUpdatedAt || previous.submittedAt)) continue;
-        const order = { ...previous, status: item.status, statusUpdatedAt: item.updatedAt };
+        const order = { ...previous, status: item.status, statusUpdatedAt: item.updatedAt, ...trackingFields(item) };
         memory.set(order.orderNo, order);
         updated.push(order);
       }

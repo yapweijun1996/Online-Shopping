@@ -703,7 +703,7 @@ function drawLocalOrders(orders) {
   const { id: selectedId, filter = '' } = readShopRoute(location.hash);
   const filters = byId('order-filters'); const focusedFilter = filters.contains(document.activeElement) ? document.activeElement.hash : null; filters.hidden = Boolean(selectedId);
   filters.replaceChildren();
-  for (const state of ['', 'SUBMITTED', 'CONFIRMED', 'REJECTED']) {
+  for (const state of ['', 'SUBMITTED', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'REJECTED', 'CANCELLED']) {
     const link = element('a', 'order-filter', state ? t(`status${state[0]}${state.slice(1).toLowerCase()}`) : t('allOrders'));
     link.href = ordersHash(state); link.setAttribute('aria-current', state === filter ? 'page' : 'false');
     link.addEventListener('click', () => { ordersScroll = 0; previousOrderId = null; }); filters.append(link);
@@ -774,6 +774,7 @@ function appendOrderSummary(card, order, total = true) {
   card.append(element('p', 'shop-note', `${t('submittedAt')}: ${formatDate(order.submittedAt)}`));
   if (total) card.append(element('p', 'shop-note', order.status ? `${t('orderStatus')}: ${t(`status${order.status[0]}${order.status.slice(1).toLowerCase()}`)}` : t('olderOrderStatusUnavailable')));
   if (order.status && order.statusUpdatedAt !== order.submittedAt) card.append(element('p', 'shop-note', `${t('updatedAt')}: ${formatDate(order.statusUpdatedAt)}`));
+  if (order.trackingCarrier) card.append(element('p', 'shop-note', `${t('carrier')}: ${order.trackingCarrier}${order.trackingNo ? ` · ${t('trackingNumberLabel')}: ${order.trackingNo}` : ''}`));
   if (order.simulation) card.append(element('p', 'shop-note', t('localDemoOrder')));
 }
 

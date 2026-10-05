@@ -285,3 +285,55 @@ test('tracked stock blocks oversell at checkout and is deducted only when the se
       { origin: f.origin, cookie: session.cookie, 'x-csrf-token': session.csrf })).data.stockQuantity, null);
   } finally { await f.close(); }
 });
+
+test('fulfilment moves confirmed orders to shipped and delivered, cancelling restocks, and buyers see tracking', async () => {
+  const f = await fixture();
+  try {
+    const session = await f.login();
+    const headers = { origin: f.origin, cookie: session.cookie, 'x-csrf-token': session.csrf };
+    const act = (id, action, body) => f.request('POST', `/api/v1/seller/orders/${id}/${action}`, body, headers);
+    const stock = () => f.app.database.get('SELECT stock_quantity AS n FROM product WHERE id = ?', f.product.id).n;
+    f.app.database.run('UPDATE product SET stock_quantity = 10 WHERE id = ?', f.product.id);
+    const key = randomUUID();
+    const submitted = await f.submit({ accessKey: key });
+    const id = f.app.database.get('SELECT id FROM shop_order WHERE order_no = ?', submitted.data.orderNo).id;
+    const buyerStatus = async () => (await f.request('POST', '/api/v1/orders/statuses',
+      { orders: [{ orderNo: submitted.data.orderNo, accessKey: key }] }, { origin: f.origin })).data.items[0];
+    assert.equal((await f.request('GET', '/api/v1/seller/orders/summary', null, headers)).data.pending, 1);
+    // Order of steps is enforced.
+    assert.equal((await act(id, 'ship', { expectedRevision: 1, carrier: 'Ninja Van' })).response.status, 409);
+    assert.equal((await act(id, 'confirm', { expectedRevision: 1 })).response.status, 200);
+    assert.equal(stock(), 8);
+    assert.equal((await f.request('GET', '/api/v1/seller/orders/summary', null, headers)).data.pending, 0);
+    assert.equal((await act(id, 'deliver', { expectedRevision: 2 })).response.status, 409);
+    assert.equal((await act(id, 'ship', { expectedRevision: 2 })).response.status, 400, 'carrier is required');
+    assert.equal((await act(id, 'ship', { expectedRevision: 2, carrier: 'Ninja Van', extra: 1 })).response.status, 400);
+    const shipped = await act(id, 'ship', { expectedRevision: 2, carrier: 'Ninja Van', trackingNo: 'NV123456' });
+    assert.equal(shipped.response.status, 200);
+    assert.equal(shipped.data.status, 'SHIPPED');
+    assert.equal(shipped.data.trackingCarrier, 'Ninja Van');
+    assert.equal(shipped.data.trackingNo, 'NV123456');
+    assert.deepEqual(await buyerStatus(), { orderNo: submitted.data.orderNo, status: 'SHIPPED',
+      updatedAt: shipped.data.updatedAt, trackingCarrier: 'Ninja Van', trackingNo: 'NV123456' });
+    // A shipped order can no longer be cancelled; it can be delivered.
+    assert.equal((await act(id, 'cancel', { expectedRevision: 3, reason: 'Too late' })).response.status, 409);
+    const delivered = await act(id, 'deliver', { expectedRevision: 3 });
+    assert.equal(delivered.data.status, 'DELIVERED');
+    assert.equal((await act(id, 'deliver', { expectedRevision: 4 })).response.status, 409);
+    assert.deepEqual(delivered.data.events.map(event => event.status), ['SUBMITTED', 'CONFIRMED', 'SHIPPED', 'DELIVERED']);
+    // Cancelling a confirmed order restores its stock and needs a reason.
+    const second = await f.submit();
+    const secondId = f.app.database.get('SELECT id FROM shop_order WHERE order_no = ?', second.data.orderNo).id;
+    await act(secondId, 'confirm', { expectedRevision: 1 });
+    assert.equal(stock(), 6);
+    assert.equal((await act(secondId, 'cancel', { expectedRevision: 2 })).response.status, 400);
+    const cancelled = await act(secondId, 'cancel', { expectedRevision: 2, reason: 'Buyer asked to cancel' });
+    assert.equal(cancelled.data.status, 'CANCELLED');
+    assert.equal(stock(), 8);
+    assert.equal((await act(secondId, 'cancel', { expectedRevision: 3, reason: 'Again' })).response.status, 409);
+    assert.equal(stock(), 8, 'a repeated cancel does not restock twice');
+    // Status filter accepts the new states.
+    assert.equal((await f.request('GET', '/api/v1/seller/orders?status=DELIVERED', null, headers)).data.items.length, 1);
+    assert.equal((await f.request('GET', '/api/v1/seller/orders?status=CANCELLED', null, headers)).data.items.length, 1);
+  } finally { await f.close(); }
+});

@@ -36,9 +36,9 @@ test('order detail routes accept only bounded public order identifiers', () => {
 });
 
 test('order status filters round-trip through list and detail without inventing states', () => {
-  for (const filter of ['SUBMITTED', 'CONFIRMED', 'REJECTED']) {
+  for (const filter of ['SUBMITTED', 'CONFIRMED', 'REJECTED', 'SHIPPED', 'DELIVERED', 'CANCELLED']) {
     assert.equal(readShopRoute(ordersHash(filter)).filter, filter);
     assert.deepEqual(readShopRoute(orderHash('DEMO-00000001', filter)), { page: 'orders', id: 'DEMO-00000001', filter });
   }
-  assert.equal(readShopRoute('#orders?status=DELIVERED').filter, undefined);
+  assert.equal(readShopRoute('#orders?status=REFUNDED').filter, undefined);
 });
