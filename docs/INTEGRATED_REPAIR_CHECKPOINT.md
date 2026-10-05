@@ -1,0 +1,35 @@
+# Integrated owner repair checkpoint — 2026-10-05
+
+The owner reopened the bounded repair and authorized local fixes, commits and a safe branch push. This supersedes the earlier stop-follow-up instruction for this repair only. The original handoff archive remains intact.
+
+## Source and conflicts
+
+The isolated branch is `codex/owner-integration-repair-20261005`, based on QA `35f001259ccce89d3f42af3581439b4549d73681`. Visible local worktrees and remote main/branches were unchanged at admission; no unrelated work was overwritten. Main remains `5966ca8626c6c75e8e0ec4e34488a7c47fa29376`.
+
+`8eb5f3aa34df33262d9dcca49d28ea6aac0083ed` merges offline integration `5b4aa9b5c2b2d9f3e9e96830e91bfe3d73df9fd0`. The five conflict paths were resolved by retaining QA catalog presentation/body limits, adding the authenticated read-only integration catalog, unioning CSS/assets and preserving the complete test inventory. Seller worker/version are v90; Customer stays v112. There are no provider credentials, dispatch, live grants or production integration tables.
+
+`d2d6de7765fbcc8cd65595750ca2bdf6a6eb8dd9` merges Seller B `1b53f8d23dc77de86ec173d7155036101c264baf`. Because B forks from repair `640e545`, whose tree equals squashed main5966, its complete main-equivalent-to-B tree delta was applied to the QA/integration tree. This preserves B ancestry and avoids replaying duplicate historical repairs. Only test inventory and Seller assets/version needed manual union in that actual delta. The owner-selected Commerce Warmth shell, grouped editor, bounded dashboard counts, primary/gallery controls, later callback/session guards, currency policy, seven locales and palette preview remain present. B's older v82 labels do not overwrite the new matched v90 worker/shell.
+
+The final bounded repair adds compatibility/recovery tests and preparation scripts. It does not merge PR10 or the full PostgreSQL production stack. Existing draft PR10 is dirty; PR11 still targets PR10 and its deployed/prepared production topology is not silently activated.
+
+## Database compatibility boundary
+
+SQLite remains schema12; no application migration was changed. The new physical-file synthetic tests verify an isolated schema10 backup upgrade/restore, original product/gallery bytes and identity, historical snapshots/events/idempotency/settings, and rollback of an interrupted schema12 rebuild to schema11. A post-backup order remains in the current synthetic database while the isolated restore contains only pre-backup data, making the reconciliation gap explicit. Cleanly closed fixture files are copied; this is not an online backup, Durable Object migration, off-host restore or production rollback proof. The test's historical fixture construction is not an exposed downgrade operation.
+
+`src/postgres-schema-compatibility.js` prepares the separate PR11 schema for the same target12. Its fresh DDL derives from PR11 `0e2ca70ae5e25304da00f645db030c8f8e46a401`, adding only the gallery-layout array field and gallery position bound1–10. The forward10/11-to12 SQL guards the source version and preserves rows, IDs, image bytes and historical monetary data. Initialization is transaction-locked, refuses unversioned nonempty/unknown/future databases, and requires explicit boolean `allowUpgrade=true` for an existing database. There is no downgrade or truncation. The compatibility module is imported only by tests/preparation, not application startup; the original PG production draft remains unchanged and needs an explicitly reviewed integration and engine/restore validation.
+
+Six PostgreSQL tests establish initialization/upgrade decisions, failure refusal and transaction-call ordering using a synthetic query adapter. They do **not** execute SQL or establish PostgreSQL rollback/restore/native-worker/API compatibility. `scripts/prepare-postgres-schema-proof.mjs` emits the actual fresh/historical/upgrade, interrupted transaction and negative constraint SQL plus a bounded engine/backup/isolated-restore procedure. Generated SQL has **PREPARED_NOT_EXECUTED** status.
+
+The real PostgreSQL16 fixture attempt failed during initdb at `shmget` with `Operation not permitted`; initdb removed the incomplete data directory. No server started and no runtime/configuration/permission alternative was used. Actual PG SQL, concurrent boot, migration and restore remain blocked/unverified. Advancing only a schema-version constant in PR11 is insufficient.
+
+Schema11 application code rejects schema12 databases. Code rollback alone cannot recover data. Any future exact-artifact release needs representative isolated migration/restore, a compatible application or isolated pre-migration restore, and reconciliation of all newer orders/writes. No production data migration, destructive restore or tenant-grant expansion occurs here.
+
+## Verification and remaining gates
+
+Before the final bounded additions, all177 permission-compatible application/Worker/owner/tenant/integration/studio tests passed (170 plus the seven Worker-forwarding tests). The complete package test inventory retains the31 HTTP-listener cases and adds the compatibility/recovery tests; no assertion was removed, skipped or relaxed. Final verification records the exact commit/source hashes and results separately in the review package. The original four listener-bearing test files are not retried under the previous denial. Remote full-suite CI is still required when publication is safe.
+
+The prepared browser runner uses one existing cached Chromium and intercepted local assets/direct Fetch API fixtures, with no HTTP listener. Chromium itself was denied at macOS MachPort bootstrap before any UI case executed. This is **ENVIRONMENT_BLOCKED**, with zero new UI PASS/screenshot claims. No browser install/GC, OS permission change, escalation, alternate identity/runtime or unchanged heavy-suite repeat was used. Combined runtime layout/focus/navigation/gallery/palette testing and physical PWA remain unverified. Older candidate screenshots/results are preserved and labelled historical.
+
+Push and main merge depend on verifying the actual Cloudflare Git connection, production branch, preview configuration and build/deploy commands. The prior expired-auth failure is not retried; no login refresh or new credentials are authorized. An operator was asked to read those existing settings and confirm whether this candidate branch has production side effects. Without that evidence, even branch publication remains held. Production settings must not be altered to bypass the gate. No new remote candidate head or exact-head CI is claimed while held.
+
+The original18-item MVP denominator remains unchanged: historic single-company local16/18, production released0/18. Operations/physical PWA and durable production tenants remain open. Payment/courier automation stays outside that original MVP, and all provider statuses remain NOT_CONFIGURED with dispatch disabled. Local compatibility preparation and passing unit tests do not establish production readiness.
