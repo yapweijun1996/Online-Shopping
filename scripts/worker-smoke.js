@@ -11,12 +11,16 @@ if (parsedOrigin.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].in
   throw new Error('Worker smoke tests are limited to a local HTTP origin.');
 }
 const username = process.env.ADMIN_USERNAME;
-const password = process.env.ADMIN_PASSWORD;
+const password = process.env.ADMIN_PASSWORD || (process.env.ADMIN_PASSWORD_FILE_HOST
+  ? readFileSync(process.env.ADMIN_PASSWORD_FILE_HOST, 'utf8').trimEnd() : '');
 if (!username || !password) throw new Error('Set ADMIN_USERNAME and ADMIN_PASSWORD in ignored .dev.vars.');
+const requestOrigin = process.env.SMOKE_PUBLIC_ORIGIN || origin;
 let pass = 0, fail = 0;
 const check = (label, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${label}${extra ? ' — ' + extra : ''}`); };
 const req = async (method, path, body, headers = {}) => {
-  const r = await fetch(origin + path, { method, redirect: 'manual', headers: { origin, ...(body ? { 'content-type': 'application/json' } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined });
+  const r = await fetch(origin + path, { method, redirect: 'manual', headers: { origin: requestOrigin,
+    ...(process.env.SMOKE_CLIENT_IP ? { 'CF-Connecting-IP': process.env.SMOKE_CLIENT_IP } : {}),
+    ...(body ? { 'content-type': 'application/json' } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined });
   const text = await r.text(); let data; try { data = JSON.parse(text); } catch { data = text; }
   return { r, data };
 };

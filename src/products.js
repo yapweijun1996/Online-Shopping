@@ -56,10 +56,10 @@ function detailFields(database, product, seller) {
 }
 
 function duplicateSku(error) {
-  if (String(error?.message).includes('UNIQUE constraint failed: product.sku')) {
+  if (/UNIQUE constraint failed: product\.sku|unique constraint "product_sku_key"/i.test(String(error?.message))) {
     throw new ApiError(409, 'DUPLICATE_SKU', 'This SKU is already in use.');
   }
-  if (String(error?.message).includes('UNIQUE constraint failed: product.variant_group, product.variant_label')) {
+  if (/UNIQUE constraint failed: product\.variant_group, product\.variant_label|unique constraint "product_variant_option"/i.test(String(error?.message))) {
     const conflict = new ApiError(409, 'DUPLICATE_VARIANT', 'This variant option is already in the group.');
     conflict.field = 'variantLabel';
     throw conflict;
