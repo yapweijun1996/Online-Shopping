@@ -1,4 +1,5 @@
 import { getShopSetup } from './shop-setup.js';
+import { shopIdOf } from './tenant.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { validateOrderInput } from './checkout-input.js';
 import { ApiError } from './http.js';
@@ -26,8 +27,8 @@ export function lookupOrderStatuses(database, input, now = Date.now()) {
     seen.add(entry.orderNo);
     const row = database.get(`SELECT o.order_no, o.status, o.updated_at, o.tracking_carrier, o.tracking_no FROM checkout_idempotency i
       JOIN shop_order o ON o.id = i.order_id
-      WHERE i.key_hash = ? AND o.order_no = ? AND o.submitted_at > ?`,
-    digest(entry.accessKey), entry.orderNo, cutoff);
+      WHERE i.shop_id = ? AND o.shop_id = ? AND i.key_hash = ? AND o.order_no = ? AND o.submitted_at > ?`,
+    shopIdOf(database), shopIdOf(database), digest(entry.accessKey), entry.orderNo, cutoff);
     if (row) {
       items.push({ orderNo: row.order_no, status: row.status, updatedAt: row.updated_at,
         ...(row.tracking_carrier ? { trackingCarrier: row.tracking_carrier, trackingNo: row.tracking_no } : {}) });
@@ -51,6 +52,7 @@ export function createOrder(database, idempotencyKey, input) {
   if (typeof idempotencyKey !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(idempotencyKey)) {
     throw new FieldError('Idempotency-Key', 'Supply a valid idempotency key.');
   }
+  const shopId = shopIdOf(database);
   const simulation = getShopSetup(database).mode === 'demo';
   const order = validateOrderInput(input, { simulation });
   const keyHash = digest(idempotencyKey);
@@ -58,7 +60,8 @@ export function createOrder(database, idempotencyKey, input) {
 
   return database.transaction(() => {
     const existing = database.get(`SELECT i.request_hash, o.order_no, o.currency, o.total_minor, o.submitted_at
-      FROM checkout_idempotency i JOIN shop_order o ON o.id = i.order_id WHERE i.key_hash = ?`, keyHash);
+      FROM checkout_idempotency i JOIN shop_order o ON o.id = i.order_id
+      WHERE i.shop_id = ? AND o.shop_id = ? AND i.key_hash = ?`, shopId, shopId, keyHash);
     if (existing) {
       if (existing.request_hash !== requestHash) {
         throw new ApiError(409, 'IDEMPOTENCY_CONFLICT', 'This submission key was used for different order details.');
@@ -71,7 +74,7 @@ export function createOrder(database, idempotencyKey, input) {
     const requested = new Map();
     const snapshots = order.deliveries.map((delivery, deliveryIndex) => delivery.items.map((item, itemIndex) => {
       const product = database.get(`SELECT id, sku, name, price_minor, currency, stock_quantity FROM product
-        WHERE id = ? AND active = 1`, item.productId);
+        WHERE shop_id = ? AND id = ? AND active = 1`, shopId, item.productId);
       if (!product) {
         const error = new ApiError(409, 'PRODUCT_UNAVAILABLE', 'A selected product is unavailable. Review the cart.');
         error.field = `deliveries.${deliveryIndex}.items.${itemIndex}.productId`;
@@ -108,15 +111,15 @@ export function createOrder(database, idempotencyKey, input) {
       return { product, quantity: item.quantity, lineTotalMinor };
     }));
 
-    const sequence = database.get('UPDATE order_sequence SET value = value + 1 WHERE id = 1 RETURNING value');
+    const sequence = database.get('UPDATE order_sequence SET value = value + 1 WHERE shop_id = ? RETURNING value', shopId);
     const orderNo = `${simulation ? 'DEMO' : 'OS'}-${String(sequence.value).padStart(8, '0')}`;
     const id = randomUUID();
     const now = new Date().toISOString();
     database.run(`INSERT INTO shop_order
-      (id, order_no, buyer_name, buyer_phone, buyer_email, whatsapp_opt_in, whatsapp_consent_at,
+      (id, shop_id, order_no, buyer_name, buyer_phone, buyer_email, whatsapp_opt_in, whatsapp_consent_at,
        whatsapp_consent_version, locale, status, revision, currency, total_minor, submitted_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'SUBMITTED', 1, ?, ?, ?, ?)`,
-      id, orderNo, order.buyer.fullName, order.buyer.whatsappPhone, order.buyer.email,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SUBMITTED', 1, ?, ?, ?, ?)`,
+      id, shopId, orderNo, order.buyer.fullName, order.buyer.whatsappPhone, order.buyer.email,
       Number(order.buyer.whatsappOrderContactOptIn), order.buyer.whatsappOrderContactOptIn ? now : null,
       order.buyer.whatsappOrderContactOptIn ? 'order-contact-v2' : null, order.locale, currency, totalMinor, now, now,
     );
@@ -143,8 +146,8 @@ export function createOrder(database, idempotencyKey, input) {
     database.run(`INSERT INTO order_event
       (order_id, event_type, actor_type, actor_id, previous_status, status, reason, occurred_at)
       VALUES (?, 'SUBMITTED', 'GUEST', NULL, NULL, 'SUBMITTED', NULL, ?)`, id, now);
-    database.run(`INSERT INTO checkout_idempotency(key_hash, request_hash, order_id, created_at)
-      VALUES (?, ?, ?, ?)`, keyHash, requestHash, id, now);
+    database.run(`INSERT INTO checkout_idempotency(shop_id, key_hash, request_hash, order_id, created_at)
+      VALUES (?, ?, ?, ?, ?)`, shopId, keyHash, requestHash, id, now);
     return { receipt: { ...(simulation ? { simulation: true } : {}), orderNo, status: 'SUBMITTED', currency, totalMinor, submittedAt: now }, replayed: false };
   });
 }

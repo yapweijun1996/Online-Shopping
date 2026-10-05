@@ -1,6 +1,6 @@
 # Admin and company isolation — review draft
 
-Candidate: Shop v105 / Seller v81. This document proposes future Production on one Docker/PostgreSQL server behind Cloudflare Tunnel. It does not activate tenants, credentials, grants, migration or hosting. The current application still has one persistent company and one privileged Seller account. The public Demo continues using its existing SQLite Durable Object namespace.
+Terminology update 2026-10-05: the implementation calls a company a **shop** (`shop`, `shop_id`); the first part of the data model is described in [MULTI_TENANT_PRODUCTION_PLAN.md](MULTI_TENANT_PRODUCTION_PLAN.md). Candidate: Shop v105 / Seller v81. This document proposes future Production on one Docker/PostgreSQL server behind Cloudflare Tunnel. It does not activate tenants, credentials, grants, migration or hosting. The current application still has one persistent company and one privileged Seller account. The public Demo continues using its existing SQLite Durable Object namespace.
 
 ## Goal and bounded implementation
 

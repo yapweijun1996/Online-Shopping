@@ -1,3 +1,4 @@
+import { revertTenantSchema } from './helpers/schema13.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { openDatabase, migrateStore } from '../src/db.js';
@@ -26,7 +27,7 @@ test('demo seeds all 35 images and prices once, preserving subsequent edits', (t
   assert.equal(store.get('SELECT COUNT(*) AS n FROM general_code').n, 7);
   assert.equal(store.get('SELECT seller_whatsapp_phone FROM company_setting').seller_whatsapp_phone, null);
   store.run("UPDATE product SET name = 'Seller edit', active = 0 WHERE sku = 'DEMO-001'");
-  store.run('UPDATE company_setting SET seller_whatsapp_phone = NULL WHERE id = 1');
+  store.run('UPDATE company_setting SET seller_whatsapp_phone = NULL');
   setupShop(store, { mode: 'demo' });
   assert.equal(store.get("SELECT name FROM product WHERE sku = 'DEMO-001'").name, 'Seller edit');
   assert.equal(store.get('SELECT COUNT(*) AS n FROM product').n, 35);
@@ -95,6 +96,7 @@ test('Demo setup establishes MYR before seeding and rolls back settings on failu
 test('existing version 6 catalogs migrate to production without altering products', (t) => {
   const store = fixture(t);
   setupShop(store, { mode: 'demo' });
+  revertTenantSchema(store);
   store.exec(`DROP TABLE product_gallery_image;
     DROP INDEX product_variant_option; DROP INDEX product_variant_group;
     ALTER TABLE product DROP COLUMN stock_quantity;
@@ -112,19 +114,21 @@ test('existing version 6 catalogs migrate to production without altering product
 test('version 8 Demo migration never seeds a real contact, then preserves seller changes', (t) => {
   const store = fixture(t);
   setupShop(store, { mode: 'demo' });
+  revertTenantSchema(store);
   store.exec('ALTER TABLE product DROP COLUMN stock_quantity');
   store.exec('ALTER TABLE company_setting DROP COLUMN seller_whatsapp_phone');
   store.exec('ALTER TABLE company_setting DROP COLUMN mobile_hide_bars_on_scroll');
   store.setSchemaVersion(8);
   migrateStore(store);
   assert.equal(store.get('SELECT seller_whatsapp_phone FROM company_setting').seller_whatsapp_phone, null);
-  store.run('UPDATE company_setting SET seller_whatsapp_phone = NULL WHERE id = 1');
+  store.run('UPDATE company_setting SET seller_whatsapp_phone = NULL');
   migrateStore(store);
   assert.equal(store.get('SELECT seller_whatsapp_phone FROM company_setting').seller_whatsapp_phone, null);
 });
 
 test('version 9 migration defaults existing shops to always-visible mobile bars', (t) => {
   const store = fixture(t);
+  revertTenantSchema(store);
   store.exec('ALTER TABLE product DROP COLUMN stock_quantity');
   store.exec('ALTER TABLE company_setting DROP COLUMN mobile_hide_bars_on_scroll');
   store.setSchemaVersion(9);

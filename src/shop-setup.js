@@ -3,18 +3,19 @@ import { ApiError } from './http.js';
 import { createProduct } from './products.js';
 import { createCategory } from './settings.js';
 import { boundedText, FieldError } from './validation.js';
+import { shopIdOf } from './tenant.js';
 
 const categories = { HOME: 'Home', STATIONERY: 'Stationery', KITCHEN: 'Kitchen', TRAVEL: 'Travel', TECH_ACCESSORIES: 'Tech Accessories', APPAREL: 'Apparel', PET_CARE: 'Pet Care' };
 
 export function getShopSetup(store) {
-  const row = store.get('SELECT mode, shop_name FROM shop_setup WHERE id = 1');
-  return { mode: row.mode, shopName: row.shop_name };
+  const row = store.get('SELECT mode, name FROM shop WHERE id = ?', shopIdOf(store));
+  return { mode: row.mode, shopName: row.name };
 }
 
 // Writes the fictional starting catalog; callers run it inside a transaction.
 function seedDemo(store) {
   store.run(`UPDATE company_setting SET default_currency = 'MYR', seller_whatsapp_phone = NULL,
-    mobile_hide_bars_on_scroll = 0, updated_at = ? WHERE id = 1`, new Date().toISOString());
+    mobile_hide_bars_on_scroll = 0, updated_at = ? WHERE shop_id = ?`, new Date().toISOString(), shopIdOf(store));
   for (const [code, label] of Object.entries(categories)) createCategory(store, { code, label });
   for (const product of catalog) createProduct(store, product);
 }
@@ -29,9 +30,15 @@ export function resetDemo(store) {
     if (getShopSetup(store).mode !== 'demo') {
       throw new ApiError(409, 'NOT_DEMO', 'Only a Demo shop can be reset.');
     }
-    for (const table of ['order_event', 'order_item', 'delivery', 'checkout_idempotency', 'shop_order',
-      'product_gallery_image', 'product', 'general_code']) store.run(`DELETE FROM ${table}`);
-    store.run('UPDATE order_sequence SET value = 0 WHERE id = 1');
+    const shopId = shopIdOf(store);
+    const ownOrders = '(SELECT id FROM shop_order WHERE shop_id = ?)';
+    store.run(`DELETE FROM order_event WHERE order_id IN ${ownOrders}`, shopId);
+    store.run(`DELETE FROM order_item WHERE delivery_id IN (SELECT id FROM delivery WHERE order_id IN ${ownOrders})`, shopId);
+    store.run(`DELETE FROM delivery WHERE order_id IN ${ownOrders}`, shopId);
+    for (const table of ['checkout_idempotency', 'shop_order', 'general_code']) store.run(`DELETE FROM ${table} WHERE shop_id = ?`, shopId);
+    store.run('DELETE FROM product_gallery_image WHERE product_id IN (SELECT id FROM product WHERE shop_id = ?)', shopId);
+    store.run('DELETE FROM product WHERE shop_id = ?', shopId);
+    store.run('UPDATE order_sequence SET value = 0 WHERE shop_id = ?', shopId);
     seedDemo(store);
     return { reset: true, products: catalog.length };
   });
@@ -52,13 +59,14 @@ export function setupShop(store, input) {
       throw new ApiError(409, 'SHOP_ALREADY_CONFIGURED', 'Use a separate empty database for another shop mode.');
     }
     if (input.mode === 'demo') {
-      if (store.get('SELECT 1 FROM product LIMIT 1') || store.get('SELECT 1 FROM shop_order LIMIT 1') ||
-          store.get('SELECT 1 FROM general_code LIMIT 1')) {
+      const shopId = shopIdOf(store);
+      if (store.get('SELECT 1 FROM product WHERE shop_id = ? LIMIT 1', shopId) || store.get('SELECT 1 FROM shop_order WHERE shop_id = ? LIMIT 1', shopId) ||
+          store.get('SELECT 1 FROM general_code WHERE shop_id = ? LIMIT 1', shopId)) {
         throw new ApiError(409, 'SHOP_NOT_EMPTY', 'Demo requires an empty catalog without categories or orders. Choose Production to keep your data.');
       }
       seedDemo(store);
     }
-    store.run('UPDATE shop_setup SET mode = ?, shop_name = ? WHERE id = 1', input.mode, shopName);
+    store.run('UPDATE shop SET mode = ?, name = ?, updated_at = ? WHERE id = ?', input.mode, shopName, new Date().toISOString(), shopIdOf(store));
     return getShopSetup(store);
   });
 }

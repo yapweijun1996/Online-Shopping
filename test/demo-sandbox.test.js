@@ -68,8 +68,8 @@ test('seller can reset the public demo to its seeded state, and only there', asy
   assert.ok(seeded > 0);
   // Diverge from the seed: edit a product, add a category, create an order.
   f.store.run("UPDATE product SET name = 'Edited by visitor', active = 0");
-  f.store.run("INSERT INTO general_code(type, code, label, active, created_at, updated_at) VALUES ('PRODUCT_CATEGORY', 'EXTRA', 'Extra', 1, 'x', 'x')");
-  f.store.run("UPDATE order_sequence SET value = 7 WHERE id = 1");
+  f.store.run("INSERT INTO general_code(shop_id, type, code, label, active, created_at, updated_at) VALUES ((SELECT id FROM shop LIMIT 1), 'PRODUCT_CATEGORY', 'EXTRA', 'Extra', 1, 'x', 'x')");
+  f.store.run("UPDATE order_sequence SET value = 7");
   assert.equal((await f.call('POST', '/api/v1/seller/demo/reset', { confirm: true })).status, 401);
   assert.equal((await f.call('POST', '/api/v1/seller/demo/reset', { confirm: true }, { cookie: session.cookie })).status, 403);
   assert.equal((await f.call('POST', '/api/v1/seller/demo/reset', { confirm: false }, session)).status, 400);
@@ -81,7 +81,7 @@ test('seller can reset the public demo to its seeded state, and only there', asy
   assert.equal(f.store.get('SELECT COUNT(*) AS n FROM product').n, seeded);
   assert.equal(f.store.get("SELECT COUNT(*) AS n FROM product WHERE name = 'Edited by visitor' OR active = 0").n, 0);
   assert.equal(f.store.get("SELECT COUNT(*) AS n FROM general_code WHERE code = 'EXTRA'").n, 0);
-  assert.equal(f.store.get('SELECT value FROM order_sequence WHERE id = 1').value, 0);
+  assert.equal(f.store.get('SELECT value FROM order_sequence').value, 0);
   assert.equal(f.store.get('SELECT COUNT(*) AS n FROM session').n, 1);
   assert.equal((await f.call('GET', '/api/v1/seller/products', null, session)).status, 200);
   for (const mode of ['manual', 'demo']) {

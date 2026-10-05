@@ -106,3 +106,23 @@ When the project moves off the laptop, any small VPS that runs Docker will do (2
 
 ## Not in scope here
 Payment, courier booking, WhatsApp messaging and marketing features follow later, per [INTEGRATIONS.md](INTEGRATIONS.md); they build on the tenant and account model from phases 3 and 4.
+
+## Phase 3a status: shop data model (implemented 2026-10-05, not deployed)
+
+Schema version 14 introduces shops. In this repository a "shop" is the tenant that the older design draft calls a "company".
+
+| Item | How it works |
+| --- | --- |
+| Tables | `shop` (id, code, name, status ACTIVE or DISABLED, mode demo or production) and `shop_code_alias` (old codes that redirect). `shop_id NOT NULL` with a foreign key on `product`, `general_code` (categories), `shop_order`, `checkout_idempotency`, `company_setting` and `order_sequence`. The old `shop_setup` table is folded into `shop`. Children such as `delivery`, `order_item`, `order_event` and gallery images reach their shop through their parent. |
+| Per-shop uniqueness | SKU, variant option, category code and label, order number and idempotency key are unique per shop. Each shop has its own order number sequence and settings, so the same SKU, phone number or idempotency key can exist in two shops. |
+| Shop-scoped store | `scopeStore(store, shopId)` ([tenant.js](../src/tenant.js)) returns the store plus a read-only `shopId`. Every repository function reads it with `shopIdOf()` and puts it in each WHERE clause and INSERT. A foreign shop's IDs behave like missing ones (404). |
+| Transitional rule | Code that still passes the plain store works while exactly one shop exists (the existing deployments) and fails closed with `SHOP_CONTEXT_REQUIRED` as soon as a second shop exists. The HTTP layer must therefore resolve a shop for every request before more than one shop is created (Phase 3b). |
+| Shop administration | [shops.js](../src/shops.js): create, list, resolve a code (with redirect to the current code), rename a code (old code kept as an alias, only reserved or taken codes refused), disable and enable. No API or console exposes it yet (Phase 3c). |
+| Existing data | Migration 14 turns the existing data into the shop `main` with its previous name and mode. Counts and rows are preserved. |
+| PostgreSQL | The fresh schema and an in-place upgrade from version 13 are in [postgres-schema.js](../src/postgres-schema.js); the upgrade runs automatically at start-up. Take a backup before the first start of this version. |
+
+### Verification
+
+- SQLite: `npm test` (the new `test/tenant.test.js` covers code rules, isolation of products, categories, settings, orders, order numbers, idempotency, status lookup, stock and fulfilment, code rename and redirect, disable, and demo reset per shop).
+- PostgreSQL: the same tenant tests plus `test/postgres-upgrade.test.js` run against a real server when `PGTEST_HOST`, `PGTEST_PORT`, `PGTEST_DATABASE`, `PGTEST_USER` and `PGTEST_PASSWORD_FILE` point at a disposable database; CI starts a PostgreSQL 16 service and sets them.
+- Cloudflare Durable Object: a local `wrangler dev` object created by the previous release (schema 12, with orders, a gallery image and idempotency keys) was started with this version. It migrated to schema 14 with all data intact, then accepted new orders and a demo reset. A Durable Object enforces foreign keys at all times, so a table that other tables reference cannot be dropped while it still has dependents; migration 14 copies the dependents aside, rebuilds the parents and restores the dependents, and schema 13 no longer rebuilds tables (the earlier version of migration 13 failed on a Durable Object that already held orders).
