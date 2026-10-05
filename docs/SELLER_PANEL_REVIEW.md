@@ -22,7 +22,7 @@ Orders have three statuses only: submitted, confirmed, rejected.
 2. Fulfilment statuses and tracking number after confirmation (SEL-02).
 3. New-order alerts to the seller (SEL-03).
 4. Multiple seller accounts, roles, password change and recovery (SEL-04).
-5. Data retention and deletion policy for buyer contact and address data (DEC-07, AC-16 blocker).
+5. Data retention: the owner decided on permanent retention with a manual deletion function (DEC-07, SEL-05); the deletion function is not built yet.
 
 **P2 - daily operations**
 6. Bulk product actions and CSV import or export.
@@ -44,4 +44,4 @@ Payment gateway, courier label APIs beyond the first integration, tax invoices, 
 
 ## Suggested order
 
-Settle DEC-07 first because it blocks release. Then stock, fulfilment status and order alerts, which let a seller operate. Then multiple accounts, bulk actions and dashboard figures. Integrations in [INTEGRATIONS.md](INTEGRATIONS.md) depend on fulfilment status.
+Owner decisions on 2026-10-05: build stock, fulfilment status and order alerts first (SEL-01 to SEL-03), then the manual deletion function (SEL-05). Then multiple accounts, bulk actions and dashboard figures. Integrations in [INTEGRATIONS.md](INTEGRATIONS.md) depend on fulfilment status.

@@ -31,8 +31,10 @@ Requested for Demo purposes only, then put on hold by the owner. Constraints if 
 | Cost | Per message | Free |
 | Setup | Business verification and template approval | Scan a QR code |
 
-### Owner decisions needed
-1. Does the owner have, or will register, a Meta business account and a dedicated number? Without them the code can be built behind a switch and left off.
+### Owner decisions
+1. Answered 2026-10-05: the owner has no Meta business account or dedicated number yet, so the code is to be built behind a switch that is off by default.
+
+Still open:
 2. Which messages first (suggested: order submitted, order confirmed or rejected, shipped)?
 3. Should buyer replies appear in the seller panel, or stay in WhatsApp?
 
