@@ -7,6 +7,7 @@ import { SqlLimiter } from './limiter.js';
 import { createOrder, lookupOrderStatuses } from './orders.js';
 import { addGalleryImage, createProduct, deleteGalleryImage, getGalleryImage, getProduct, getProductImage, listProducts, updateProduct } from './products.js';
 import { decideSellerOrder, getSellerOrder, listSellerOrders, pendingOrderSummary } from './seller-orders.js';
+import { OPTION_LIMITS } from './option-limits.js';
 import { createOptionType, createOptionValue, listOptionTypes, updateOptionType, updateOptionValue } from './options.js';
 import { createCategory, publicBusinessContact, getCompanySettings, storefrontTexts, listCategories, updateCategory, updateCompanySettings } from './settings.js';
 import { FieldError } from './validation.js';
@@ -197,7 +198,7 @@ export async function createApi({ store, config, serveStatic = null }) {
     const optionRoute = optionTypePath.exec(pathname);
     if (optionRoute) {
       const [, typeId, valuesPart, valueId] = optionRoute;
-      if (method === 'GET' && !typeId) return json(200, { items: await listOptionTypes(store) });
+      if (method === 'GET' && !typeId) return json(200, { items: await listOptionTypes(store), limits: OPTION_LIMITS });
       if (['POST', 'PATCH'].includes(method)) {
         requireOrigin(request, expectedOrigin);
         requireCsrf(request, session);

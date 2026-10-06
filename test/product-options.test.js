@@ -131,4 +131,5 @@ test('seller API manages the library with CSRF and the product API accepts optio
   assert.deepEqual(publicDetail.data.options.map(item => item.value.label), ['Large']);
   assert.equal((await call(`/api/v1/seller/option-types/${type.data.id}`, 'PATCH', { active: false })).data.active, false);
   assert.equal((await call('/api/v1/seller/option-types')).data.items.length, 1);
+  assert.deepEqual((await call('/api/v1/seller/option-types')).data.limits, OPTION_LIMITS);
 });

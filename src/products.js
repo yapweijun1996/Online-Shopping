@@ -5,7 +5,7 @@ import { validateProductInput } from './product-input.js';
 import { decodeProductImage } from './product-image.js';
 import { getCompanySettings, requireActiveCategory } from './settings.js';
 import { presentCatalogCopy } from './catalog-copy.js';
-import { groupUsesOptions, loadProductOptions, optionAxes, setProductOptions } from './options.js';
+import { groupUsesOptions, loadProductOptions, optionAxes, optionError, setProductOptions } from './options.js';
 import { productCover, productGallery, requireGalleryRevision, saveProductGallery } from './product-gallery.js';
 
 const columns = `p.id, p.sku, p.name, p.description, p.category AS category_code,
@@ -36,7 +36,7 @@ function productFromRow(row, seller = false) {
 async function validateVariantGroup(database, product, excludeId = null) {
   // With option types the label is derived from the chosen values, so only the group is required.
   const hasOptions = Array.isArray(product.options) && product.options.length > 0;
-  if (hasOptions && !product.variantGroup) throw new FieldError('options', 'Set a variant group before choosing options.');
+  if (hasOptions && !product.variantGroup) throw optionError('OPTIONS_GROUP_REQUIRED', 'Set a variant group before choosing options.');
   if (!hasOptions && Boolean(product.variantGroup) !== Boolean(product.variantLabel)) {
     throw new FieldError('variantLabel', 'Set both the variant group and option label.');
   }
@@ -99,7 +99,7 @@ export async function createProduct(database, input) {
     const hasOptions = Array.isArray(product.options) && product.options.length > 0;
     if (hasOptions) await setProductOptions(database, id, product.variantGroup, product.options, { newProduct: true });
     else if (product.variantGroup && await groupUsesOptions(database, product.variantGroup, id)) {
-      throw new FieldError('options', 'This variant group is described by option types; choose its options.');
+      throw optionError('OPTIONS_REQUIRED', 'This variant group is described by option types; choose its options.');
     }
     return await getProduct(database, id, true);
   });
@@ -179,7 +179,7 @@ async function saveOptions(database, id, existing, patch) {
   else if (Object.hasOwn(patch, 'variantGroup') && group !== existing.variantGroup) await setProductOptions(database, id, group, []);
   const has = Boolean(await database.get('SELECT 1 FROM product_option WHERE product_id = ?', id));
   if (group && !has && await groupUsesOptions(database, group, id)) {
-    throw new FieldError('options', 'This variant group is described by option types; choose its options.');
+    throw optionError('OPTIONS_REQUIRED', 'This variant group is described by option types; choose its options.');
   }
 }
 

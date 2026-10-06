@@ -65,9 +65,10 @@ test('Seller edit payload permits legacy metadata/deactivation while actual mone
     price: '9.00', currency: 'SGD', variantGroup: '', variantLabel: '', stockQuantity: '' };
   const elements = Object.fromEntries(Object.entries(values).map(([name, value]) => [name, { value }]));
   elements.active = { checked: true }; elements.image = { files: [] };
-  const context = { galleryImages: [], expectedUpdatedAt: product.updatedAt, productId: product.id, form: { hidden: false, elements }, saving: false, pendingRemove: false, formBaseline: null, editingId: product.id };
+  const context = { optionTypes: [], selectedOptions: () => [], galleryImages: [], expectedUpdatedAt: product.updatedAt, productId: product.id, form: { hidden: false, elements }, saving: false, pendingRemove: false, formBaseline: null, editingId: product.id };
   vm.createContext(context);
-  vm.runInContext(source.slice(source.indexOf('function priceToMinor('), source.indexOf('function readImage(')), context);
+  // Price and stock parsing now live in product-fields.js, shared with the variant generator.
+  vm.runInContext(readFileSync(new URL('../public/seller/product-fields.js', import.meta.url), 'utf8').replaceAll('export ', ''), context);
   vm.runInContext(source.slice(source.indexOf('  function formState()'), source.indexOf('  function confirmDiscard()')), context);
   vm.runInContext('captureBaseline()', context);
   const start = source.indexOf('      const payload = {');
