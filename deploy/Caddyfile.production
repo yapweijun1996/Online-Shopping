@@ -28,6 +28,13 @@ http://shop.gmb01.xyz {
   }
   redir / /shop/ 302
   redir /shop /shop/ 302
+  # Content-hashed gallery images never change, so browsers and Cloudflare may keep them for a year.
+  @gallery path_regexp ^/demo-assets/[A-Z0-9-]+/view-\d+-[a-f0-9]{12}-\d+\.jpg$
+  handle @gallery {
+    header Cache-Control "public, max-age=31536000, immutable"
+    root * /srv/public
+    file_server
+  }
   handle {
     root * /srv/public
     file_server

@@ -9,25 +9,46 @@ export function productMedia(product) {
   });
 }
 
+const saveData = () => Boolean(navigator.connection?.saveData);
+const safePreview = (value) => typeof value === 'string' && /^\/[^"'()\\\s]+$/.test(value);
+
 export function setProductMedia(image, media, kind = 'main') {
   image.alt = media.alt;
   image.decoding = 'async';
   image.loading = kind === 'thumbnail' ? 'lazy' : 'eager';
   image.fetchPriority = kind === 'main' ? 'high' : 'low';
   image.removeAttribute('srcset'); image.removeAttribute('sizes');
-  if (kind === 'main' && media.srcset) {
+  // Data Saver keeps the medium size; the large file is only fetched for the zoom view.
+  if (kind === 'main' && media.srcset && !saveData()) {
     image.srcset = media.srcset;
     image.sizes = '(max-width: 760px) 100vw, (max-width: 1000px) 38vw, 500px';
   }
   if (media.width && media.height) { image.width = media.width; image.height = media.height; }
-  image.src = kind === 'thumbnail' ? media.thumbnail : kind === 'full' ? media.full : media.src;
+  const source = kind === 'thumbnail' ? media.thumbnail : kind === 'full' ? media.full : media.src;
+  image.src = source;
+  // Blurred placeholder: the tiny thumbnail while the main image loads, and the already cached
+  // medium size while the large zoom image loads.
+  const preview = kind === 'main' ? media.thumbnail : kind === 'full' ? media.src : '';
+  revealImage(image, preview && preview !== source ? preview : '');
 }
 
-/* Shows a shimmer placeholder, then fades the image in from blurred to sharp once it has decoded. */
-export function revealImage(image) {
+const wired = new WeakSet();
+/*
+ * Shows a placeholder (a blurred low-resolution preview when given, otherwise a shimmer) and
+ * fades the image in from blurred to sharp once it has loaded. Safe to call again when the
+ * source changes.
+ */
+export function revealImage(image, preview = '') {
   image.classList.add('img-reveal');
-  const done = () => image.classList.add('is-loaded');
-  if (image.complete && image.naturalWidth) done();
-  else { image.addEventListener('load', done, { once: true }); image.addEventListener('error', done, { once: true }); }
+  image.classList.remove('is-loaded');
+  image.classList.toggle('has-lqip', safePreview(preview));
+  if (safePreview(preview)) image.style.setProperty('--lqip', `url("${preview}")`);
+  else image.style.removeProperty('--lqip');
+  if (!wired.has(image)) {
+    wired.add(image);
+    const done = () => image.classList.add('is-loaded');
+    image.addEventListener('load', done); image.addEventListener('error', done);
+  }
+  if (image.complete && image.naturalWidth) image.classList.add('is-loaded');
   return image;
 }
