@@ -45,6 +45,8 @@ function requireCsrf(request, session) {
  */
 export async function createApi({ store, config, serveStatic = null }) {
   const demoEnabled = config.shopMode === 'public-demo' && (await getShopSetup(store)).mode === 'demo';
+  // Explicit opt-in: passwordless seller sign-in for a sample site. Never enable it for a real tenant.
+  const quickLogin = demoEnabled || config.sellerQuickLogin === true;
   const demoRoute = createDemoSandbox({ enabled: demoEnabled, production: config.production });
   const loginLimiter = new SqlLimiter(store, 'login', { limit: 5, windowMs: LIMIT_WINDOW_MS });
   const checkoutLimiter = new SqlLimiter(store, 'checkout', { limit: 30, windowMs: LIMIT_WINDOW_MS });
@@ -104,7 +106,7 @@ export async function createApi({ store, config, serveStatic = null }) {
         ...presentShopName(setup),
         ...(config.shopMode === 'public-demo' ? { demoNamespace: shopObjectName(config.shopMode, config.demoRevision) } : {}),
         currency: company.defaultCurrency,
-        demoRolesAvailable: demoEnabled,
+        demoRolesAvailable: quickLogin,
         // This setting is explicitly the public shop contact, never an account or buyer phone.
         sellerWhatsAppPhone: setup.mode && config.shopMode !== 'public-demo' ? publicBusinessContact(company) : null,
         mobileHideBarsOnScroll: company.mobileHideBarsOnScroll,
@@ -160,9 +162,9 @@ export async function createApi({ store, config, serveStatic = null }) {
       });
     }
 
-    // Public fictional demo only: opens the normal seller session without a password.
+    // Sample sites only: opens the normal seller session without a password.
     if (method === 'POST' && pathname === '/api/v1/seller/demo-session') {
-      if (!demoEnabled) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+      if (!quickLogin) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
       requireOrigin(request, expectedOrigin);
       if (!await demoLoginLimiter.attempt(clientAddress)) throw new ApiError(429, 'RATE_LIMITED', 'Too many attempts. Try later.');
       const session = await createSession(store);

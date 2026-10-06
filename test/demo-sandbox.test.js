@@ -234,3 +234,26 @@ test('audit failure rolls back synthetic changes; expired sessions and login bur
   catch (error) { expired = errorResponse(error); }
   assert.equal(expired.status, 401);
 });
+
+test('SELLER_QUICK_LOGIN opts a production site into passwordless seller sign-in', async t => {
+  const build = async quickLogin => {
+    const store = await openDatabase(':memory:'); t.after(async () => await store.close());
+    const config = { shopMode: 'manual', production: true, publicOrigin: 'https://demo.example.test', username: 'synthetic-owner', sellerQuickLogin: quickLogin };
+    await initializeShop(store, config);
+    await setupShop(store, { mode: 'production', shopName: 'Synthetic production fixture' });
+    const handle = await createApi({ store, config, serveStatic: () => new Response('fixture asset') });
+    return (method, path) => handle(new Request(`https://demo.example.test${path}`, { method, headers: { origin: config.publicOrigin } }), { clientAddress: 'synthetic-local-client' });
+  };
+  const off = await build(false);
+  assert.equal((await (await off('GET', '/api/v1/shop')).json()).demoRolesAvailable, false);
+  assert.equal((await off('POST', '/api/v1/seller/demo-session')).status, 404);
+
+  const on = await build(true);
+  assert.equal((await (await on('GET', '/api/v1/shop')).json()).demoRolesAvailable, true);
+  const login = await on('POST', '/api/v1/seller/demo-session');
+  assert.equal(login.status, 200);
+  assert.match(login.headers.get('set-cookie'), /HttpOnly/);
+  assert.ok((await login.json()).csrfToken);
+  // The sandbox and reset routes stay demo-mode only.
+  assert.equal((await on('POST', '/api/v1/demo/session')).status, 404);
+});
