@@ -1487,13 +1487,13 @@ const cartWorkflowMessages = {
 for (const { code } of languages) Object.assign(messages[code], cartWorkflowMessages[code]);
 
 const shopVisualMessages = {
- en: { referencePrice: 'Reference price', stockAndDelivery: 'Availability & delivery', demoAvailability: 'Preview catalog only. Stock and delivery are not offered through this simulation.', availabilityUnconfirmed: 'Stock and delivery availability have not been confirmed. Contact the shop before ordering.' },
- ms: { referencePrice: 'Harga rujukan', stockAndDelivery: 'Stok & penghantaran', demoAvailability: 'Katalog preview sahaja. Simulasi ini tidak menawarkan stok atau penghantaran.', availabilityUnconfirmed: 'Stok dan penghantaran belum disahkan. Hubungi kedai sebelum memesan.' },
- 'zh-Hans': { referencePrice: '参考价', stockAndDelivery: '库存与配送', demoAvailability: '仅示例目录；此模拟不提供真实库存或配送。', availabilityUnconfirmed: '库存和配送情况尚未确认，请在下单前联系商店。' },
- vi: { referencePrice: 'Giá tham khảo', stockAndDelivery: 'Tình trạng & giao hàng', demoAvailability: 'Chỉ là danh mục preview. Mô phỏng không cung cấp hàng hoặc giao hàng.', availabilityUnconfirmed: 'Tình trạng hàng và giao hàng chưa được xác nhận. Liên hệ cửa hàng trước khi đặt.' },
- th: { referencePrice: 'ราคาอ้างอิง', stockAndDelivery: 'สินค้าและการจัดส่ง', demoAvailability: 'เป็นแคตตาล็อกตัวอย่างเท่านั้น ไม่มีสินค้าหรือการจัดส่งจริงในการจำลองนี้', availabilityUnconfirmed: 'ยังไม่ได้ยืนยันสินค้าและการจัดส่ง กรุณาติดต่อร้านก่อนสั่งซื้อ' },
- ja: { referencePrice: '参考価格', stockAndDelivery: '在庫と配送', demoAvailability: 'プレビューカタログのみです。このシミュレーションでは在庫や配送を提供しません。', availabilityUnconfirmed: '在庫と配送は未確認です。注文前に店舗にお問い合わせください。' },
- ko: { referencePrice: '참고 가격', stockAndDelivery: '재고 및 배송', demoAvailability: '미리 보기 카탈로그입니다. 이 시뮬레이션에서는 실제 재고나 배송을 제공하지 않습니다.', availabilityUnconfirmed: '재고와 배송은 확인되지 않았습니다. 주문 전에 매장에 문의하세요.' }
+ en: { inStockLabel: 'In stock', referencePrice: 'Reference price', stockAndDelivery: 'Availability & delivery', demoAvailability: 'Preview catalog only. Stock and delivery are not offered through this simulation.', availabilityUnconfirmed: 'Stock and delivery availability have not been confirmed. Contact the shop before ordering.' },
+ ms: { inStockLabel: 'Ada stok', referencePrice: 'Harga rujukan', stockAndDelivery: 'Stok & penghantaran', demoAvailability: 'Katalog preview sahaja. Simulasi ini tidak menawarkan stok atau penghantaran.', availabilityUnconfirmed: 'Stok dan penghantaran belum disahkan. Hubungi kedai sebelum memesan.' },
+ 'zh-Hans': { inStockLabel: '有货', referencePrice: '参考价', stockAndDelivery: '库存与配送', demoAvailability: '仅示例目录；此模拟不提供真实库存或配送。', availabilityUnconfirmed: '库存和配送情况尚未确认，请在下单前联系商店。' },
+ vi: { inStockLabel: 'Còn hàng', referencePrice: 'Giá tham khảo', stockAndDelivery: 'Tình trạng & giao hàng', demoAvailability: 'Chỉ là danh mục preview. Mô phỏng không cung cấp hàng hoặc giao hàng.', availabilityUnconfirmed: 'Tình trạng hàng và giao hàng chưa được xác nhận. Liên hệ cửa hàng trước khi đặt.' },
+ th: { inStockLabel: 'มีสินค้า', referencePrice: 'ราคาอ้างอิง', stockAndDelivery: 'สินค้าและการจัดส่ง', demoAvailability: 'เป็นแคตตาล็อกตัวอย่างเท่านั้น ไม่มีสินค้าหรือการจัดส่งจริงในการจำลองนี้', availabilityUnconfirmed: 'ยังไม่ได้ยืนยันสินค้าและการจัดส่ง กรุณาติดต่อร้านก่อนสั่งซื้อ' },
+ ja: { inStockLabel: '在庫あり', referencePrice: '参考価格', stockAndDelivery: '在庫と配送', demoAvailability: 'プレビューカタログのみです。このシミュレーションでは在庫や配送を提供しません。', availabilityUnconfirmed: '在庫と配送は未確認です。注文前に店舗にお問い合わせください。' },
+ ko: { inStockLabel: '재고 있음', referencePrice: '참고 가격', stockAndDelivery: '재고 및 배송', demoAvailability: '미리 보기 카탈로그입니다. 이 시뮬레이션에서는 실제 재고나 배송을 제공하지 않습니다.', availabilityUnconfirmed: '재고와 배송은 확인되지 않았습니다. 주문 전에 매장에 문의하세요.' }
 };
 for (const { code } of languages) Object.assign(messages[code], shopVisualMessages[code]);
 
