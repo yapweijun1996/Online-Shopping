@@ -937,3 +937,8 @@ h1,h2{letter-spacing:-.01em}
 .quantity-stepper button::before{width:14px;height:2px}
 .quantity-stepper button:last-child::after{width:2px;height:14px}
 .quantity-stepper button:disabled::before,.quantity-stepper button:disabled::after{opacity:.35}
+
+/* Cart remove is an icon-only button; the accessible name comes from aria-label. */
+.cart-remove{display:inline-flex;align-items:center;justify-content:center;width:44px;min-width:44px;height:44px;min-height:44px;padding:0}
+.cart-remove svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.cart-remove:hover{color:#b3261e;border-color:#b3261e}

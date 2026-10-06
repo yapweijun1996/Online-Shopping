@@ -101,6 +101,8 @@ function element(tag, className, content) {
   return node;
 }
 
+const trashIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>';
+
 function action(label, handler, className = 'outline-button') {
   const button = element('button', className, label);
   button.type = 'button';
@@ -473,10 +475,11 @@ function renderCart() {
     const feedback = element('span', 'cart-quantity-feedback'); feedback.setAttribute('role', 'status'); feedback.hidden = true; controls.append(feedback);
     const unit = element('span', 'cart-unit-price', product ? formatMoney(product.priceMinor, product.currency).replace(/\u00a0/g, ' ') : '—');
     const subtotal = element('strong', 'cart-line-subtotal', product ? formatMoney(product.priceMinor * quantity, product.currency) : '—');
-    const remove = action(t('remove'), async () => {
+    const remove = action('', async () => {
       const name = product?.name || t('productUnavailable');
       if (await confirmModal(t('removeItemConfirm').replace('{name}', name), { title: t('removeItemTitle'), confirmLabel: t('remove') })) await removeLine(productId);
     }); remove.classList.add('cart-remove');
+    remove.innerHTML = trashIcon; remove.setAttribute('aria-label', t('remove')); remove.title = t('remove');
     row.append(detail, unit, controls, subtotal, remove);
     list.append(row);
   }
