@@ -12,6 +12,12 @@ import { OPTION_LIMITS } from './option-limits.js';
 export const OPTION_DISPLAYS = ['button', 'swatch', 'image', 'dropdown'];
 const localePattern = /^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$/;
 const colorPattern = /^#[0-9a-fA-F]{6}$/;
+/* A rejected option choice: 400 with a stable code the seller UI can translate, reported on the `options` field. */
+export function optionError(code, message) {
+  const error = new ApiError(400, code, message);
+  error.field = 'options';
+  return error;
+}
 const duplicate = (error) => error?.code === '23505' || String(error?.message).includes('UNIQUE constraint failed');
 
 function slug(text) {
@@ -219,7 +225,7 @@ export async function setProductOptions(database, productId, variantGroup, optio
     await database.run('DELETE FROM product_option WHERE product_id = ?', productId);
     return;
   }
-  if (!variantGroup) throw new FieldError('options', 'Set a variant group before choosing options.');
+  if (!variantGroup) throw optionError('OPTIONS_GROUP_REQUIRED', 'Set a variant group before choosing options.');
   if (options.length > OPTION_LIMITS.typesPerGroup) throw new FieldError('options', `Use at most ${OPTION_LIMITS.typesPerGroup} option types.`);
   const picked = [];
   for (const item of options) {
@@ -243,7 +249,7 @@ export async function setProductOptions(database, productId, variantGroup, optio
   const mine = picked.map((item) => ({ type: { id: item.typeId }, value: { id: item.valueId } }));
   for (const [, theirs] of siblingOptions) {
     if (!theirs.length) continue;
-    if (typeSet(theirs) !== typeSet(mine)) throw new FieldError('options', 'All products in a variant group must use the same option types.');
+    if (typeSet(theirs) !== typeSet(mine)) throw optionError('OPTIONS_SAME_TYPES', 'All products in a variant group must use the same option types.');
     if (optionKey(theirs) === optionKey(mine)) {
       const conflict = new ApiError(409, 'DUPLICATE_VARIANT', 'This combination already exists in the group.');
       conflict.field = 'options';

@@ -1,22 +1,6 @@
 import { formatMoney, t, translate } from '../shared/i18n.js';
 import { beginMutation } from '../shared/update-guard.js';
-
-function inputFailure(field) { return Object.assign(new Error(field), { field }); }
-
-function priceToMinor(value) {
-  const match = /^(\d{1,8})(?:[.,](\d{1,2}))?$/.exec(value.trim());
-  if (!match) throw inputFailure('price');
-  const minor = BigInt(match[1]) * 100n + BigInt((match[2] || '').padEnd(2, '0'));
-  if (minor < 1n || minor > 1_000_000_000n) throw inputFailure('price');
-  return Number(minor);
-}
-
-function stockFromInput(value) {
-  const text = value.trim();
-  if (text === '') return null;
-  if (!/^\d{1,7}$/.test(text) || Number(text) > 1_000_000) throw inputFailure('stockQuantity');
-  return Number(text);
-}
+import { inputFailure, priceToMinor, stockFromInput } from './product-fields.js';
 
 function readImage(file) {
   if (!file) return Promise.resolve(undefined);
@@ -45,6 +29,36 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   root.replaceChildren(document.getElementById('products-template').content.cloneNode(true));
   translate(root);
   const find = (selector) => root.querySelector(selector);
+  // Seller-defined option types (see options.js); the pickers appear once at least one exists.
+  let optionTypes = [];
+  const optionsBox = find('#product-options');
+  const optionsFields = find('#product-options-fields');
+  const optionsError = find('#product-options-error');
+  const selectedOptions = () => [...optionsFields.querySelectorAll('select')].filter((select) => select.value)
+    .map((select) => ({ typeId: select.dataset.typeId, valueId: select.value }));
+  function renderOptionPickers(options) {
+    const picked = new Map((options ?? selectedOptions().map(({ typeId, valueId }) => ({ type: { id: typeId }, value: { id: valueId } })))
+      .map(({ type, value }) => [type.id, value.id]));
+    optionsFields.replaceChildren();
+    const shown = optionTypes.filter((type) => type.active || picked.has(type.id));
+    optionsBox.hidden = shown.length === 0;
+    for (const type of shown) {
+      const label = document.createElement('label');
+      const select = document.createElement('select');
+      select.dataset.typeId = type.id;
+      select.setAttribute('aria-label', type.name);
+      const none = document.createElement('option'); none.value = ''; none.textContent = t('optionNotSet'); select.append(none);
+      for (const value of type.values.filter((item) => item.active || item.id === picked.get(type.id))) {
+        const option = document.createElement('option'); option.value = value.id; option.textContent = value.label; select.append(option);
+      }
+      select.value = picked.get(type.id) || '';
+      const name = document.createElement('span'); name.textContent = type.name;
+      label.append(name, select);
+      optionsFields.append(label);
+    }
+    optionsError.hidden = true; optionsError.textContent = '';
+  }
+  const optionErrorKey = { OPTIONS_GROUP_REQUIRED: 'optionsGroupNeeded', OPTIONS_SAME_TYPES: 'optionsSameTypes', OPTIONS_REQUIRED: 'optionsRequired', DUPLICATE_VARIANT: 'optionsDuplicate' };
   const form = find('#product-form');
   const status = find('#product-status');
   const formSuccess = find('#product-form-success');
@@ -173,6 +187,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     const image = form.elements.image.files[0];
     return {
       values: Object.fromEntries(fields.map((field) => [field, form.elements[field].value])),
+      options: selectedOptions(),
       active: form.elements.active.checked,
       image: image ? [image.name, image.size, image.lastModified] : null,
       pendingRemove,
@@ -270,11 +285,14 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
 
   async function loadSettings() {
     try {
-      const [categoryResult, settings] = await Promise.all([
+      const [categoryResult, settings, optionResult] = await Promise.all([
         api('GET', '/api/v1/seller/categories'), api('GET', '/api/v1/seller/company-settings'),
+        api('GET', '/api/v1/seller/option-types').catch(() => ({ items: [] })),
       ]);
       if (!isCurrent()) return;
       categories = categoryResult.items;
+      optionTypes = optionResult.items;
+      renderOptionPickers();
       defaultCurrency = settings.defaultCurrency;
       populateCategories(form.elements.category.value);
     } catch {
@@ -409,6 +427,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     find('#product-save').disabled = saving;
     editingId = null;
     form.reset();
+    renderOptionPickers([]);
     form.hidden = true;
     formBaseline = null;
     originalImageUrl = null;
@@ -442,6 +461,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     form.elements.stockQuantity.value = product.stockQuantity ?? '';
     form.elements.variantGroup.value = product.variantGroup || '';
     form.elements.variantLabel.value = product.variantLabel || '';
+    renderOptionPickers(product.options || []);
     form.elements.image.value = '';
     originalImageUrl = product.imageUrl;
     pendingRemove = false;
@@ -664,6 +684,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
         variantGroup: form.elements.variantGroup.value,
         variantLabel: form.elements.variantLabel.value,
         stockQuantity: stockFromInput(form.elements.stockQuantity.value),
+        ...(optionTypes.length ? { options: selectedOptions() } : {}),
       };
       if (productId && formBaseline) {
         const baseline = JSON.parse(formBaseline);
@@ -695,7 +716,9 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     } catch (failure) {
       if (!ownsRoute()) return;
       const galleryConflict = pendingRemove && failure.field === 'imageDataUrl';
-      setError(failure.code === 'PRODUCT_CHANGED' ? 'productChangedReopen' : failure.field === 'gallery' ? 'galleryLimit' : galleryConflict ? 'removeGalleryFirst' : failure.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : failure.code === 'DUPLICATE_SKU' ? 'duplicateSku' : failure.code === 'DUPLICATE_VARIANT' ? 'duplicateVariant' : 'productError');
+      const optionKey = failure.field === 'options' ? (optionErrorKey[failure.code] || 'productError') : null;
+      if (optionKey) { optionsError.textContent = t(optionKey); optionsError.hidden = false; }
+      setError(optionKey || (failure.code === 'PRODUCT_CHANGED' ? 'productChangedReopen' : failure.field === 'gallery' ? 'galleryLimit' : galleryConflict ? 'removeGalleryFirst' : failure.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : failure.code === 'DUPLICATE_SKU' ? 'duplicateSku' : failure.code === 'DUPLICATE_VARIANT' ? 'duplicateVariant' : 'productError'));
       if (galleryConflict && productId && editingId === productId) {
         // A rejected write owns no new baseline. Preserve all draft metadata,
         // image removals and order so retry and navigation guards remain truthful.
@@ -717,6 +740,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       renderList();
       renderGallery();
       populateCategories(form.elements.category.value);
+      renderOptionPickers();
       search.placeholder = t('searchNameOrSkuHint');
       status.textContent = statusKey ? `${statusProductName ? `${statusProductName}: ` : ''}${t(statusKey)}` : '';
       error.textContent = formErrorKey ? t(formErrorKey) : '';
