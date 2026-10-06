@@ -1,34 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="147 146 960 960" role="img" aria-labelledby="title">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="147 146 960 960" color="#087f83" role="img" aria-labelledby="title">
   <title id="title">Online Shopping</title>
-  <defs>
-    <linearGradient id="awning" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#2a97ff"/>
-      <stop offset="1" stop-color="#1485ff"/>
-    </linearGradient>
-    <linearGradient id="frame" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#8dc9fc"/>
-      <stop offset="1" stop-color="#94cefd"/>
-    </linearGradient>
-  </defs>
-
-  <!-- Shop frame and interior -->
-  <path d="M256 600H998V914A90 90 0 0 1 908 1004H346A90 90 0 0 1 256 914Z" fill="url(#frame)"/>
-  <path d="M340 600H912V880A40 40 0 0 1 872 920H380A40 40 0 0 1 340 880Z" fill="#fcfdff"/>
-
-  <!-- Door -->
-  <path d="M511 718A46 46 0 0 1 557 672H694A46 46 0 0 1 740 718V1004H511Z" fill="#046dff"/>
-
-  <!-- Awning stripes -->
-  <path d="M195 490L303 281Q320 248 357 248H455L378 490Z" fill="url(#awning)"/>
-  <path d="M455 248H565L542 490H378Z" fill="#e8f3ff"/>
-  <path d="M565 248H688L712 490H542Z" fill="url(#awning)"/>
-  <path d="M688 248H798L876 490H712Z" fill="#e8f3ff"/>
-  <path d="M798 248H898Q935 248 952 281L1060 490H876Z" fill="url(#awning)"/>
-
-  <!-- Awning scallops -->
-  <path d="M195 490H378V520A91.5 91.5 0 0 1 195 520Z" fill="#036dff"/>
-  <path d="M378 490H542V520A82 82 0 0 1 378 520Z" fill="#c9e1fb"/>
-  <path d="M542 490H712V520A85 85 0 0 1 542 520Z" fill="#036dff"/>
-  <path d="M712 490H876V520A82 82 0 0 1 712 520Z" fill="#c9e1fb"/>
-  <path d="M876 490H1060V520A92 92 0 0 1 876 520Z" fill="#036dff"/>
+  <!--
+    One colour, several tints: every shape uses currentColor with an opacity, so the mark follows the page
+    palette. In the shop and seller pages it is drawn with <use href="/favicon.svg#mark"> and takes the CSS
+    `color` of the element that holds it. Opened on its own (tab icon, offline pages) it falls back to the
+    default teal from the `color` attribute above.
+  -->
+  <g id="mark" fill="currentColor">
+    <path fill-opacity=".45" d="M256 600H998V914A90 90 0 0 1 908 1004H346A90 90 0 0 1 256 914Z"/>
+    <path fill="#fff" d="M340 600H912V880A40 40 0 0 1 872 920H380A40 40 0 0 1 340 880Z"/>
+    <path d="M511 718A46 46 0 0 1 557 672H694A46 46 0 0 1 740 718V1004H511Z"/>
+    <path fill-opacity=".9" d="M195 490L303 281Q320 248 357 248H455L378 490Z"/>
+    <path fill-opacity=".1" d="M455 248H565L542 490H378Z"/>
+    <path fill-opacity=".9" d="M565 248H688L712 490H542Z"/>
+    <path fill-opacity=".1" d="M688 248H798L876 490H712Z"/>
+    <path fill-opacity=".9" d="M798 248H898Q935 248 952 281L1060 490H876Z"/>
+    <path d="M195 490H378V520A91.5 91.5 0 0 1 195 520Z"/>
+    <path fill-opacity=".22" d="M378 490H542V520A82 82 0 0 1 378 520Z"/>
+    <path d="M542 490H712V520A85 85 0 0 1 542 520Z"/>
+    <path fill-opacity=".22" d="M712 490H876V520A82 82 0 0 1 712 520Z"/>
+    <path d="M876 490H1060V520A92 92 0 0 1 876 520Z"/>
+  </g>
 </svg>
