@@ -1,6 +1,5 @@
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
-import { normalizeContactPhone } from './phone.js';
 
 const weakPasswords = new Set(['password', 'password123', 'changeme', 'admin123', 'testpassword', 'replace-me']);
 const placeholderWords = /password|changeme|replace[-_]?me|example|sample|default/i;
@@ -87,7 +86,5 @@ export function readConfig(env = process.env) {
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('PORT must be a valid port.');
   const trustProxy = env.TRUST_PROXY === '1';
   if (env.TRUST_PROXY && !trustProxy) throw new Error('TRUST_PROXY must be 1 when set.');
-  // Optional sales WhatsApp number shown next to the quick-login button (digits only, no +).
-  const quickLoginContact = env.SELLER_QUICK_LOGIN_CONTACT ? normalizeContactPhone(env.SELLER_QUICK_LOGIN_CONTACT).slice(1) : null;
-  return { production, username, password, dbPath, databaseUrl, publicOrigin, sellerOrigin, appRevision, port, trustProxy, shopMode: readShopMode(env), sellerQuickLogin: env.SELLER_QUICK_LOGIN === '1', quickLoginContact, demoRevision: readDemoRevision(env) };
+  return { production, username, password, dbPath, databaseUrl, publicOrigin, sellerOrigin, appRevision, port, trustProxy, shopMode: readShopMode(env), sellerQuickLogin: env.SELLER_QUICK_LOGIN === '1', demoRevision: readDemoRevision(env) };
 }

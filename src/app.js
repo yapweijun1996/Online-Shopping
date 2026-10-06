@@ -107,7 +107,6 @@ export async function createApi({ store, config, serveStatic = null }) {
         ...(config.shopMode === 'public-demo' ? { demoNamespace: shopObjectName(config.shopMode, config.demoRevision) } : {}),
         currency: company.defaultCurrency,
         demoRolesAvailable: quickLogin,
-        ...(quickLogin && config.quickLoginContact ? { quickLoginContact: config.quickLoginContact } : {}),
         // This setting is explicitly the public shop contact, never an account or buyer phone.
         sellerWhatsAppPhone: setup.mode && config.shopMode !== 'public-demo' ? publicBusinessContact(company) : null,
         mobileHideBarsOnScroll: company.mobileHideBarsOnScroll,
