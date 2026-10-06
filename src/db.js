@@ -1,6 +1,6 @@
 import { openNodeStore } from './store.js';
 
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 16;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -334,6 +334,17 @@ export async function migrateStore(store) {
     });
     version = 15;
   }
+  if (version === 15) {
+    // Optional storefront texts shown on the product page; NULL keeps the built-in wording.
+    await store.transaction(async () => {
+      const present = (await store.all("SELECT name FROM pragma_table_info('company_setting')")).map(column => column.name);
+      for (const column of ['availability_text', 'shipping_text', 'returns_text']) {
+        if (!present.includes(column)) await store.exec(`ALTER TABLE company_setting ADD COLUMN ${column} TEXT CHECK (${column} IS NULL OR length(${column}) BETWEEN 1 AND 1000)`);
+      }
+      await store.setSchemaVersion(16);
+    });
+    version = 16;
+  }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }
 
@@ -342,6 +353,7 @@ export async function ready(store) {
     return await store.schemaVersion() === SCHEMA_VERSION &&
       Array.isArray(await store.all('SELECT stock_quantity, gallery_layout_json FROM product LIMIT 0')) &&
       Array.isArray(await store.all('SELECT tracking_carrier, tracking_no FROM shop_order LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT availability_text, shipping_text, returns_text FROM company_setting LIMIT 0')) &&
       Boolean(await store.get('SELECT id FROM admin WHERE id = 1')) &&
       Boolean(await store.get('SELECT id FROM order_sequence WHERE id = 1')) &&
       Boolean(await store.get('SELECT id FROM company_setting WHERE id = 1')) &&

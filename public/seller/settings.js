@@ -157,6 +157,11 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
       <p id="seller-whatsapp-help" data-i18n="sellerWhatsAppHelp">The public product page uses this number for Chat. Enter a +60 or +65 number, or leave it blank to turn Chat off.</p>
       <label class="settings-check"><input name="mobileHideBarsOnScroll" type="checkbox"><span data-i18n="mobileHideBarsOnScroll">Hide mobile navigation bars while scrolling down</span></label>
       <p class="settings-check-help" data-i18n="mobileHideBarsHelp">By default, the shop's top search bar and bottom navigation stay visible. Turn this on to hide them when shoppers scroll down and show them when they scroll up.</p>
+      <h3 data-i18n="storefrontTextsTitle">Product page information</h3>
+      <p id="storefront-texts-help" data-i18n="storefrontTextsHelp">Shown on every product page in the matching section. Leave a box empty to use the shop's standard wording.</p>
+      <label><span data-i18n="stockAndDelivery">Availability &amp; delivery</span><textarea name="availabilityText" rows="3" maxlength="1000" aria-describedby="storefront-texts-help"></textarea></label>
+      <label><span data-i18n="shipping">Shipping</span><textarea name="shippingText" rows="3" maxlength="1000" aria-describedby="storefront-texts-help"></textarea></label>
+      <label><span data-i18n="returnsAndGuarantees">Returns and guarantees</span><textarea name="returnsText" rows="3" maxlength="1000" aria-describedby="storefront-texts-help"></textarea></label>
       <button class="secondary-button" type="button" id="company-retry" data-i18n="retry" hidden>Retry</button>
       <button class="primary-button" type="submit" data-i18n="saveSettings">Save settings</button>
     </form><p class="settings-status" role="status"></p>
@@ -226,16 +231,21 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
   let phoneEdited = false;
   let mobileBarsEdited = false;
   let savedState = null;
+  const textFields = ['availabilityText', 'shippingText', 'returnsText'];
+  let textsEdited = false;
+  const textValues = () => Object.fromEntries(textFields.map(name => [name, form.elements[name].value]));
   const currentState = () => JSON.stringify({
     defaultCurrency: form.elements.defaultCurrency.value,
     sellerWhatsAppPhone: form.elements.sellerWhatsAppPhone.value,
     mobileHideBarsOnScroll: form.elements.mobileHideBarsOnScroll.checked,
+    ...textValues(),
   });
   const initialState = currentState();
   const setupBaseline = JSON.stringify([setupForm.elements.mode.value, setupForm.elements.shopName.value]);
   form.elements.defaultCurrency.addEventListener('change', () => { currencyEdited = true; });
   form.elements.sellerWhatsAppPhone.addEventListener('input', () => { phoneEdited = true; });
   form.elements.mobileHideBarsOnScroll.addEventListener('change', () => { mobileBarsEdited = true; });
+  for (const name of textFields) form.elements[name].addEventListener('input', () => { textsEdited = true; });
   async function loadSettings() {
     retryButton.disabled = true;
     try {
@@ -244,10 +254,12 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
       if (!currencyEdited) form.elements.defaultCurrency.value = settings.defaultCurrency;
       if (!phoneEdited) form.elements.sellerWhatsAppPhone.value = settings.sellerWhatsAppPhone ? `+${settings.sellerWhatsAppPhone}` : '';
       if (!mobileBarsEdited) form.elements.mobileHideBarsOnScroll.checked = settings.mobileHideBarsOnScroll === true;
+      if (!textsEdited) for (const name of textFields) form.elements[name].value = settings[name] || '';
       savedState = JSON.stringify({
         defaultCurrency: settings.defaultCurrency,
         sellerWhatsAppPhone: settings.sellerWhatsAppPhone ? `+${settings.sellerWhatsAppPhone}` : '',
         mobileHideBarsOnScroll: settings.mobileHideBarsOnScroll === true,
+        ...Object.fromEntries(textFields.map(name => [name, settings[name] || ''])),
       });
       saveButton.disabled = false;
       retryButton.hidden = true;
@@ -260,23 +272,25 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
   loadSettings();
   form.addEventListener('submit', async (event) => {
     event.preventDefault(); saveButton.disabled = true;
-    for (const input of form.querySelectorAll('input, select')) input.disabled = true;
+    for (const input of form.querySelectorAll('input, select, textarea')) input.disabled = true;
     try {
       const settings = await request('PATCH', '/api/v1/seller/company-settings', {
         defaultCurrency: form.elements.defaultCurrency.value,
         sellerWhatsAppPhone: form.elements.sellerWhatsAppPhone.value.trim(),
         mobileHideBarsOnScroll: form.elements.mobileHideBarsOnScroll.checked,
+        ...textValues(),
       }, csrfToken, onUnauthorized);
       if (!isCurrent()) return;
       form.elements.sellerWhatsAppPhone.value = settings.sellerWhatsAppPhone ? `+${settings.sellerWhatsAppPhone}` : '';
       form.elements.mobileHideBarsOnScroll.checked = settings.mobileHideBarsOnScroll;
+      for (const name of textFields) form.elements[name].value = settings[name] || '';
       savedState = currentState();
-      currencyEdited = phoneEdited = mobileBarsEdited = false;
+      currencyEdited = phoneEdited = mobileBarsEdited = textsEdited = false;
       status(root, 'settingsSaved');
     } catch (error) { if (isCurrent()) status(root, error.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : error.field === 'sellerWhatsAppPhone' ? 'sellerWhatsAppInvalid' : 'productError', true); }
     finally {
       if (isCurrent()) {
-        for (const input of form.querySelectorAll('input, select')) input.disabled = false;
+        for (const input of form.querySelectorAll('input, select, textarea')) input.disabled = false;
         saveButton.disabled = false;
       }
     }

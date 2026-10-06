@@ -71,10 +71,19 @@ export async function updateCategory(database, code, input) {
   });
 }
 
+const storefrontTextFields = { availabilityText: 'availability_text', shippingText: 'shipping_text', returnsText: 'returns_text' };
+
 export async function getCompanySettings(database) {
-  const row = await database.get('SELECT default_currency, seller_whatsapp_phone, mobile_hide_bars_on_scroll FROM company_setting WHERE id = 1');
+  const row = await database.get(`SELECT default_currency, seller_whatsapp_phone, mobile_hide_bars_on_scroll,
+    availability_text, shipping_text, returns_text FROM company_setting WHERE id = 1`);
   return { defaultCurrency: row.default_currency, sellerWhatsAppPhone: row.seller_whatsapp_phone,
-    mobileHideBarsOnScroll: Boolean(row.mobile_hide_bars_on_scroll) };
+    mobileHideBarsOnScroll: Boolean(row.mobile_hide_bars_on_scroll),
+    availabilityText: row.availability_text, shippingText: row.shipping_text, returnsText: row.returns_text };
+}
+
+// Seller-written product page texts; null means the shop shows its built-in wording.
+export function storefrontTexts(settings) {
+  return { availability: settings.availabilityText, shipping: settings.shippingText, returns: settings.returnsText };
 }
 
 export function publicBusinessContact(settings) {
@@ -87,7 +96,7 @@ export async function updateCompanySettings(database, input) {
   return database.transaction(async () => {
   if (!input || typeof input !== 'object' || Array.isArray(input) ||
       !Object.keys(input).length ||
-      Object.keys(input).some((key) => !['defaultCurrency', 'sellerWhatsAppPhone', 'mobileHideBarsOnScroll'].includes(key))) {
+      Object.keys(input).some((key) => !['defaultCurrency', 'sellerWhatsAppPhone', 'mobileHideBarsOnScroll', ...Object.keys(storefrontTextFields)].includes(key))) {
     throw new FieldError('companySettings', 'Enter supported company settings.');
   }
   const current = await getCompanySettings(database);
@@ -108,8 +117,17 @@ export async function updateCompanySettings(database, input) {
       } catch { throw new FieldError('sellerWhatsAppPhone', 'Enter a valid +60 or +65 mobile number.'); }
     }
   }
-  await database.run('UPDATE company_setting SET default_currency = ?, seller_whatsapp_phone = ?, mobile_hide_bars_on_scroll = ?, updated_at = ? WHERE id = 1',
-    currency, phone, Number(hideBars), new Date().toISOString());
+  const texts = {};
+  for (const [field, column] of Object.entries(storefrontTextFields)) {
+    let value = Object.hasOwn(input, field) ? input[field] : current[field];
+    if (value === null || value === undefined) value = null;
+    else if (typeof value !== 'string') throw new FieldError(field, 'Enter text.');
+    else { value = value.replace(/\r\n/g, '\n').trim(); if (value.length > 1000) throw new FieldError(field, 'Use at most 1000 characters.'); if (!value) value = null; }
+    texts[column] = value;
+  }
+  await database.run(`UPDATE company_setting SET default_currency = ?, seller_whatsapp_phone = ?, mobile_hide_bars_on_scroll = ?,
+    availability_text = ?, shipping_text = ?, returns_text = ?, updated_at = ? WHERE id = 1`,
+    currency, phone, Number(hideBars), texts.availability_text, texts.shipping_text, texts.returns_text, new Date().toISOString());
   return await getCompanySettings(database);
   });
 }

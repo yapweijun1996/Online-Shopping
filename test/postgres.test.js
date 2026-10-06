@@ -7,7 +7,7 @@ import { createApp } from '../src/server.js';
 import { openDatabase, ready } from '../src/db.js';
 import { openPostgresDatabase } from '../src/postgres-db.js';
 import { openPostgresStore, postgresSql } from '../src/postgres-store.js';
-import { createCategory } from '../src/settings.js';
+import { createCategory, getCompanySettings, updateCompanySettings } from '../src/settings.js';
 import { createProduct, addGalleryImage } from '../src/products.js';
 import { createOrder } from '../src/orders.js';
 import { decideSellerOrder } from '../src/seller-orders.js';
@@ -101,7 +101,7 @@ test('PostgreSQL unavailable database fails readiness without leaking credential
 });
 
 // Real PostgreSQL fixtures, independent from the historical synchronous SQL mock suite.
-for (const version of [10, 11, 12, 13]) test(`PostgreSQL physical schema${version} upgrades explicitly to15, preserves bytes and supports gallery writes`, {skip:!base}, async t => {
+for (const version of [10, 11, 12, 13, 14, 15]) test(`PostgreSQL physical schema${version} upgrades explicitly to16, preserves bytes and supports gallery writes`, {skip:!base}, async t => {
   const url = await database(t), store = openPostgresStore(url);
   t.shoppingClosers.push(() => store.close());
   const {postgresSchema12Sql} = await import('../deploy/postgres/schema12.js');
@@ -122,7 +122,7 @@ for (const version of [10, 11, 12, 13]) test(`PostgreSQL physical schema${versio
   assert.equal(await store.schemaVersion(),version);
   assert.deepEqual(await store.get('SELECT * FROM product'),original);
   const upgraded = await openPostgresDatabase(url,{allowUpgrade:true}); t.shoppingClosers.push(()=>upgraded.close());
-  assert.equal(await upgraded.schemaVersion(),15);
+  assert.equal(await upgraded.schemaVersion(),16);
   assert.deepEqual((await upgraded.get('SELECT image_data FROM product')).image_data,bytes);
   const {getProduct,updateProduct} = await import('../src/products.js');
   const before = await getProduct(upgraded,'synthetic-preserved',true);
@@ -132,4 +132,13 @@ for (const version of [10, 11, 12, 13]) test(`PostgreSQL physical schema${versio
   await assert.rejects(updateProduct(upgraded,before.id,{gallery:[],expectedUpdatedAt:before.updatedAt}),error=>error.code==='PRODUCT_CHANGED');
   const restarted = await openPostgresDatabase(url);t.shoppingClosers.push(()=>restarted.close());
   assert.deepEqual((await getProduct(restarted,before.id,true)).galleryItems,edited.galleryItems);
+});
+
+test('PostgreSQL stores, trims and clears the storefront texts', {skip:!base}, async t => {
+  const store = await openPostgresDatabase(await database(t)); t.shoppingClosers.push(()=>store.close());
+  assert.equal((await getCompanySettings(store)).availabilityText, null);
+  const saved = await updateCompanySettings(store, { availabilityText: '  Ships in 2 days  ', shippingText: 'Flat RM 8', returnsText: '' });
+  assert.deepEqual([saved.availabilityText, saved.shippingText, saved.returnsText], ['Ships in 2 days', 'Flat RM 8', null]);
+  await assert.rejects(() => updateCompanySettings(store, { returnsText: 'x'.repeat(1001) }), /at most 1000/);
+  assert.equal((await updateCompanySettings(store, { shippingText: null })).shippingText, null);
 });

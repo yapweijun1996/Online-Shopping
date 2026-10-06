@@ -940,3 +940,4 @@ h1,h2{letter-spacing:-.01em}
 .img-reveal.has-lqip{background:var(--lqip) center/cover no-repeat;filter:blur(12px);animation:none}
 .img-reveal.has-lqip.is-loaded{filter:none;transform:none;background:transparent}
 @media (prefers-reduced-motion:reduce){.img-reveal.has-lqip{filter:none}}
+.product-service-text{white-space:pre-line;overflow-wrap:anywhere}
