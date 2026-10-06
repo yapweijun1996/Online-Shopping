@@ -27,7 +27,7 @@ test('every seller option string exists in all seven languages', () => {
     'optionTranslationsHelp', 'optionSaved', 'optionDuplicate', 'optionError', 'optionsEmpty', 'generatorTitle', 'generatorIntro', 'generatorBaseTitle',
     'generatorSkuPrefix', 'generatorPickValues', 'generatorRows', 'generatorCombination', 'generatorInclude', 'generatorSubmit', 'generatorCreating',
     'generatorDone', 'generatorFailed', 'generatorNeedValues', 'generatorTooMany', 'productOptionsTitle', 'productOptionsHelp', 'optionNotSet',
-    'optionsGroupNeeded', 'optionsSameTypes', 'optionsDuplicate', 'optionsRequired'];
+    'optionsGroupNeeded', 'optionsSameTypes', 'optionsDuplicate', 'optionsRequired', 'optionChangesOthers', 'inStockLabel'];
   for (const [code, strings] of Object.entries(messages)) for (const key of keys) assert.ok(strings[key]?.trim(), `${code}.${key}`);
   for (const code of ['en', 'ms', 'zh-Hans', 'vi', 'th', 'ja', 'ko']) {
     assert.match(messages[code].generatorDone, /\{created\}/); assert.match(messages[code].generatorDone, /\{total\}/);
@@ -44,3 +44,13 @@ test('the editor is reachable from the seller navigation and cached offline', ()
   const worker = readFileSync(new URL('../public/seller/sw.js', import.meta.url), 'utf8');
   assert.match(worker, /\/seller\/options\.js/); assert.match(worker, /\/seller\/product-fields\.js/);
 });
+
+test('phone layout: combination cells carry captions and tap areas stay 44px', () => {
+  const script = readFileSync(new URL('../public/seller/options.js', import.meta.url), 'utf8');
+  assert.match(script, /cell\.dataset\.label/);
+  assert.match(script, /'tap-box'/);
+  const css = readFileSync(new URL('../public/seller/style.css', import.meta.url), 'utf8');
+  assert.match(css, /\.generator-table td::before\{content:attr\(data-label\)/);
+  assert.match(css, /\.settings-form \.tap-box\{[^}]*min-width:44px/);
+});
+
