@@ -5,6 +5,7 @@ import { validateProductInput } from './product-input.js';
 import { decodeProductImage } from './product-image.js';
 import { getCompanySettings, requireActiveCategory } from './settings.js';
 import { presentCatalogCopy } from './catalog-copy.js';
+import { groupUsesOptions, loadProductOptions, optionAxes, setProductOptions } from './options.js';
 import { productCover, productGallery, requireGalleryRevision, saveProductGallery } from './product-gallery.js';
 
 const columns = `p.id, p.sku, p.name, p.description, p.category AS category_code,
@@ -33,7 +34,10 @@ function productFromRow(row, seller = false) {
 }
 
 async function validateVariantGroup(database, product, excludeId = null) {
-  if (Boolean(product.variantGroup) !== Boolean(product.variantLabel)) {
+  // With option types the label is derived from the chosen values, so only the group is required.
+  const hasOptions = Array.isArray(product.options) && product.options.length > 0;
+  if (hasOptions && !product.variantGroup) throw new FieldError('options', 'Set a variant group before choosing options.');
+  if (!hasOptions && Boolean(product.variantGroup) !== Boolean(product.variantLabel)) {
     throw new FieldError('variantLabel', 'Set both the variant group and option label.');
   }
   if (!product.variantGroup) return;
@@ -52,6 +56,11 @@ async function detailFields(database, product, seller, mode) {
   map(async (row) => ({ id: row.id, label: row.variant_label, sku: row.sku, priceMinor: row.price_minor,
     currency: row.currency, imageUrl: await productCover(database, productFromRow(row, seller), seller),
     ...(seller ? { active: Boolean(row.active), stockQuantity: row.stock_quantity } : { inStock: row.stock_quantity === null || row.stock_quantity > 0 }) }))) : [];
+  const optionsById = await loadProductOptions(database, [product.id, ...product.variants.map((variant) => variant.id)]);
+  product.options = optionsById.get(product.id);
+  for (const variant of product.variants) variant.options = optionsById.get(variant.id);
+  // The option types and values in use by the group, in display order, for the storefront selector.
+  product.optionTypes = optionAxes(product.variants.map((variant) => variant.options));
   return product;
 }
 
@@ -87,6 +96,11 @@ export async function createProduct(database, input) {
       product.variantLabel || null, product.stockQuantity ?? null, now, now
       );
     } catch (error) {duplicateSku(error);}
+    const hasOptions = Array.isArray(product.options) && product.options.length > 0;
+    if (hasOptions) await setProductOptions(database, id, product.variantGroup, product.options, { newProduct: true });
+    else if (product.variantGroup && await groupUsesOptions(database, product.variantGroup, id)) {
+      throw new FieldError('options', 'This variant group is described by option types; choose its options.');
+    }
     return await getProduct(database, id, true);
   });
 }
@@ -125,10 +139,13 @@ async function patchProduct(database, id, input, { galleryChanging = false } = {
   if (existing.currency !== currency && (Object.hasOwn(patch, 'priceMinor') || patch.active === true || Object.hasOwn(patch, 'currency'))) {
     throw new ApiError(409, 'COMPANY_CURRENCY_CONFLICT', 'Review the existing product currency before changing its price or activating it.');
   }
+  // Leaving a variant group also drops the option label that belonged to it.
+  if (Object.hasOwn(patch, 'variantGroup') && !patch.variantGroup && !Object.hasOwn(patch, 'variantLabel')) patch.variantLabel = null;
   if (Object.hasOwn(patch, 'category') && patch.category !== existing.categoryCode) await requireActiveCategory(database, patch.category);
   await validateVariantGroup(database, {
     variantGroup: Object.hasOwn(patch, 'variantGroup') ? patch.variantGroup : existing.variantGroup,
     variantLabel: Object.hasOwn(patch, 'variantLabel') ? patch.variantLabel : existing.variantLabel,
+    options: patch.options,
     category: patch.category || existing.categoryCode, currency: patch.currency || existing.currency
   }, id);
   if (!galleryChanging && patch.image === null && existing.images.length > (existing.imageUrl ? 1 : 0)) {
@@ -151,7 +168,19 @@ async function patchProduct(database, id, input, { galleryChanging = false } = {
   try {
     await database.run(`UPDATE product SET ${assignments.join(', ')} WHERE id = ?`, ...values);
   } catch (error) {duplicateSku(error);}
+  await saveOptions(database, id, existing, patch);
   return await getProduct(database, id, true);
+}
+
+// Applies option changes after the product row is updated; moving or leaving a group drops stale options.
+async function saveOptions(database, id, existing, patch) {
+  const group = Object.hasOwn(patch, 'variantGroup') ? patch.variantGroup : existing.variantGroup;
+  if (Object.hasOwn(patch, 'options')) await setProductOptions(database, id, group, patch.options);
+  else if (Object.hasOwn(patch, 'variantGroup') && group !== existing.variantGroup) await setProductOptions(database, id, group, []);
+  const has = Boolean(await database.get('SELECT 1 FROM product_option WHERE product_id = ?', id));
+  if (group && !has && await groupUsesOptions(database, group, id)) {
+    throw new FieldError('options', 'This variant group is described by option types; choose its options.');
+  }
 }
 
 export async function getProduct(database, id, seller = false, mode = 'manual') {

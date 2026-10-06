@@ -1,8 +1,9 @@
 import { SCHEMA_VERSION } from '../db.js';
+import { migrateLegacyVariants } from '../options.js';
 
 // Called only by an explicit operator/test opt-in, inside the store-owned transaction.
 export async function upgradePostgres(store, version) {
-  if (![10, 11, 12, 13, 14, 15].includes(version)) throw new Error(`Unsupported PostgreSQL schema version ${version}.`);
+  if (![10, 11, 12, 13, 14, 15, 16].includes(version)) throw new Error(`Unsupported PostgreSQL schema version ${version}.`);
   const columns = await store.all("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='product'");
   const has = name => columns.some(row => row.column_name === name);
   if (version === 13 && !has('stock_quantity') && !has('gallery_layout_json')) throw new Error('Unrecognized PostgreSQL product schema.');
@@ -27,5 +28,34 @@ export async function upgradePostgres(store, version) {
   for (const column of ['availability_text', 'shipping_text', 'returns_text']) {
     await store.exec(`ALTER TABLE company_setting ADD COLUMN IF NOT EXISTS ${column} TEXT CHECK (${column} IS NULL OR length(${column}) BETWEEN 1 AND 1000)`);
   }
+  await store.exec(`
+    CREATE TABLE IF NOT EXISTS option_type (
+      id TEXT PRIMARY KEY, code TEXT NOT NULL CHECK (length(code) BETWEEN 1 AND 60), name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 60),
+      translations_json TEXT NOT NULL DEFAULT '{}' CHECK (translations_json::jsonb IS NOT NULL),
+      display TEXT NOT NULL DEFAULT 'button' CHECK (display IN ('button', 'swatch', 'image', 'dropdown')),
+      position BIGINT NOT NULL DEFAULT 0, active BIGINT NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE UNIQUE INDEX IF NOT EXISTS option_type_code ON option_type(lower(code));
+    CREATE TABLE IF NOT EXISTS option_value (
+      id TEXT PRIMARY KEY, option_type_id TEXT NOT NULL REFERENCES option_type(id) ON DELETE RESTRICT,
+      code TEXT NOT NULL CHECK (length(code) BETWEEN 1 AND 60), label TEXT NOT NULL CHECK (length(label) BETWEEN 1 AND 80),
+      translations_json TEXT NOT NULL DEFAULT '{}' CHECK (translations_json::jsonb IS NOT NULL),
+      swatch_color TEXT CHECK (swatch_color IS NULL OR swatch_color ~ '^#[0-9a-fA-F]{6}$'),
+      position BIGINT NOT NULL DEFAULT 0, active BIGINT NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE UNIQUE INDEX IF NOT EXISTS option_value_code ON option_value(option_type_id, lower(code));
+    CREATE TABLE IF NOT EXISTS product_option (
+      product_id TEXT NOT NULL REFERENCES product(id) ON DELETE RESTRICT,
+      option_type_id TEXT NOT NULL REFERENCES option_type(id) ON DELETE RESTRICT,
+      option_value_id TEXT NOT NULL REFERENCES option_value(id) ON DELETE RESTRICT,
+      PRIMARY KEY (product_id, option_type_id));
+    CREATE INDEX IF NOT EXISTS product_option_value ON product_option(option_value_id);
+    -- The application role was granted the tables that existed when it was created; give it the new ones.
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'online_shopping_app') THEN
+        GRANT SELECT, INSERT, UPDATE, DELETE ON option_type, option_value, product_option TO online_shopping_app;
+      END IF;
+    END $$;`);
+  await migrateLegacyVariants(store);
   await store.setSchemaVersion(SCHEMA_VERSION);
 }
