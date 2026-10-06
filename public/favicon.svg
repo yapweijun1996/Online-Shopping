@@ -1,71 +1,34 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
-  <title id="title">Online Shop Icon</title>
-  <desc id="desc">A modern teal shopping bag icon with a friendly smile.</desc>
-
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="147 146 960 960" role="img" aria-labelledby="title">
+  <title id="title">Online Shopping</title>
   <defs>
-    <linearGradient id="bg" x1="72" y1="48" x2="440" y2="464" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#19B8AE"/>
-      <stop offset="1" stop-color="#087B82"/>
+    <linearGradient id="awning" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a97ff"/>
+      <stop offset="1" stop-color="#1485ff"/>
     </linearGradient>
-
-    <linearGradient id="bag" x1="150" y1="150" x2="365" y2="390" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#FFFFFF"/>
-      <stop offset="1" stop-color="#EAF8F7"/>
+    <linearGradient id="frame" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8dc9fc"/>
+      <stop offset="1" stop-color="#94cefd"/>
     </linearGradient>
-
-    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%">
-      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#045E63" flood-opacity="0.28"/>
-    </filter>
   </defs>
 
-  <!-- App tile -->
-  <rect x="32" y="32" width="448" height="448" rx="112" fill="url(#bg)"/>
+  <!-- Shop frame and interior -->
+  <path d="M256 600H998V914A90 90 0 0 1 908 1004H346A90 90 0 0 1 256 914Z" fill="url(#frame)"/>
+  <path d="M340 600H912V880A40 40 0 0 1 872 920H380A40 40 0 0 1 340 880Z" fill="#fcfdff"/>
 
-  <!-- Shopping bag -->
-  <g filter="url(#shadow)">
-    <path d="M147 199
-             C147 184 159 172 174 172
-             H338
-             C353 172 365 184 365 199
-             L389 371
-             C392 394 374 414 351 414
-             H161
-             C138 414 120 394 123 371
-             Z"
-          fill="url(#bag)"/>
+  <!-- Door -->
+  <path d="M511 718A46 46 0 0 1 557 672H694A46 46 0 0 1 740 718V1004H511Z" fill="#046dff"/>
 
-    <!-- Right side fold -->
-    <path d="M343 179
-             C360 181 373 192 376 209
-             L398 368
-             C401 388 389 406 370 412
-             C377 401 380 389 378 376
-             L357 214
-             C355 199 350 187 343 179Z"
-          fill="#D7F0EE"/>
+  <!-- Awning stripes -->
+  <path d="M195 490L303 281Q320 248 357 248H455L378 490Z" fill="url(#awning)"/>
+  <path d="M455 248H565L542 490H378Z" fill="#e8f3ff"/>
+  <path d="M565 248H688L712 490H542Z" fill="url(#awning)"/>
+  <path d="M688 248H798L876 490H712Z" fill="#e8f3ff"/>
+  <path d="M798 248H898Q935 248 952 281L1060 490H876Z" fill="url(#awning)"/>
 
-    <!-- Handle -->
-    <path d="M191 214
-             V176
-             C191 140 220 111 256 111
-             C292 111 321 140 321 176
-             V214"
-          fill="none"
-          stroke="#FFFFFF"
-          stroke-width="31"
-          stroke-linecap="round"/>
-
-    <!-- Handle inner teal accents -->
-    <circle cx="191" cy="214" r="12" fill="#0B8588"/>
-    <circle cx="321" cy="214" r="12" fill="#0B8588"/>
-
-    <!-- Smile -->
-    <path d="M188 291
-             C205 331 230 350 256 350
-             C282 350 307 331 324 291"
-          fill="none"
-          stroke="#0B8588"
-          stroke-width="24"
-          stroke-linecap="round"/>
-  </g>
+  <!-- Awning scallops -->
+  <path d="M195 490H378V520A91.5 91.5 0 0 1 195 520Z" fill="#036dff"/>
+  <path d="M378 490H542V520A82 82 0 0 1 378 520Z" fill="#c9e1fb"/>
+  <path d="M542 490H712V520A85 85 0 0 1 542 520Z" fill="#036dff"/>
+  <path d="M712 490H876V520A82 82 0 0 1 712 520Z" fill="#c9e1fb"/>
+  <path d="M876 490H1060V520A92 92 0 0 1 876 520Z" fill="#036dff"/>
 </svg>
