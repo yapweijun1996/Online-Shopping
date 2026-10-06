@@ -8,7 +8,7 @@ const script = readFileSync(new URL('../public/shop/palette.js', import.meta.url
 const roles = (block) => Object.fromEntries([...block.matchAll(/(--[\w-]+):\s*(#[0-9a-f]{3,6})\s*;/gi)].map(([, name, color]) => [name, color]));
 const blocks = [...stylesheet.matchAll(/([^{}]+)\{([^{}]+)\}/g)];
 const base = roles(blocks.find(([, selector]) => selector.trim().startsWith(':root,'))[2]);
-const palettes = ['evergreen-teal', 'warm-plum', 'ocean-blue', 'high-contrast', 'graphite'].map((id) => ({
+const palettes = ['evergreen-teal', 'warm-plum', 'ocean-blue', 'navy-orange', 'high-contrast', 'graphite'].map((id) => ({
   id,
   colors: { ...base, ...roles(blocks.find(([, selector]) => selector.includes(`data-shop-palette="${id}"`))?.[2] || '') },
 }));
@@ -29,6 +29,9 @@ test('all Shop palettes keep readable text, actions, states, borders, and focus'
   const pairs = [
     ['primary button text', '#ffffff', '--ui-primary', 4.5],
     ['accent button text', '#ffffff', '--shop-accent', 4.5],
+    ['action button text', '#ffffff', '--ui-action', 4.5],
+    ['action text on page', '--ui-action', '--ui-surface', 4.5],
+    ['action hover text', '#ffffff', '--ui-primary-hover', 4.5],
     ['body text', '--ui-text', '--ui-surface', 4.5],
     ['body text on canvas', '--ui-text', '--ui-canvas', 4.5],
     ['muted text', '--ui-muted', '--ui-surface', 4.5],
@@ -48,6 +51,7 @@ test('all Shop palettes keep readable text, actions, states, borders, and focus'
     ['focus ring', '--ui-focus', '--ui-surface', 3],
   ];
   for (const { id, colors } of palettes) {
+    if (id !== 'evergreen-teal') assert.ok(blocks.some(([, selector]) => selector.includes(`data-shop-palette="${id}"`)), `${id}: palette block is missing`);
     for (const [label, foreground, background, minimum] of pairs) {
       assert.ok(colors[foreground] || foreground.startsWith('#'), `${id}: missing ${foreground}`);
       assert.ok(colors[background] || background.startsWith('#'), `${id}: missing ${background}`);

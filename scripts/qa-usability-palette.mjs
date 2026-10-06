@@ -11,7 +11,7 @@ const { chromium } = await import(process.env.QA_PLAYWRIGHT_MODULE || 'playwrigh
 const out = resolve(process.env.QA_OUTPUT_DIR || 'output/qa/usability-palette');mkdirSync(out, { recursive: true });
 const head = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 if (process.env.QA_EXPECTED_HEAD) assert.equal(head, process.env.QA_EXPECTED_HEAD);
-const widths = [320, 390, 820, 1440],palettes = ['evergreen-teal', 'warm-plum', 'ocean-blue', 'high-contrast', 'graphite'];
+const widths = [320, 390, 820, 1440],palettes = ['evergreen-teal', 'warm-plum', 'ocean-blue', 'navy-orange', 'high-contrast', 'graphite'];
 const paths = ['public/shop/app.js', 'public/shop/index.html', 'public/shop/style.css', 'public/shop/tokens.css',
 'public/seller/app.js', 'public/seller/style.css', 'public/seller/settings.js', 'public/shared/appearance.js',
 'public/shared/appearance.css', 'public/shared/modal.js', 'public/shop/palette.js', 'public/seller/palette.js',

@@ -47,6 +47,20 @@
   --shop-price-standard: #332738;
 }
 
+/* Navy brand with an orange action color: actions stand out from the brand color (white on #c2410c is 5.2:1). */
+:root[data-shop-palette="navy-orange"], :root[data-seller-palette="navy-orange"], .palette-preview[data-palette="navy-orange"] {
+  --ui-text: #172b3f; --ui-ink: #172b3f; --ui-muted: #54677a;
+  --ui-secondary-text: #34526b; --ui-canvas: #f5f7fa;
+  --ui-border: #dbe2ea; --ui-control-border: #7a8da1;
+  --ui-divider: #e6ecf2; --ui-focus: #1e3a5f;
+  --ui-primary: #1e3a5f; --ui-action: #c2410c; --ui-primary-hover: #9a3412;
+  --ui-hover-surface: #eef2f8; --shop-control-border: #7a8da1;
+  --shop-accent: #274a75; --shop-accent-hover: #1e3a5f;
+  --shop-accent-soft: #e9eef5; --shop-selected-surface: #eef2f8;
+  --shop-selected-strong: #dde6f1; --shop-selected-text: #1e3a5f;
+  --shop-price-standard: #172b3f;
+}
+
 :root[data-shop-palette="ocean-blue"], :root[data-seller-palette="ocean-blue"], .palette-preview[data-palette="ocean-blue"] {
   --ui-text: #18354a; --ui-ink: #18354a; --ui-muted: #566b7a;
   --ui-secondary-text: #36586e; --ui-canvas: #f5f8fb;
