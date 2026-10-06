@@ -1,4 +1,4 @@
--- PostgreSQL baseline matching SQLite schema 15. Timestamps stay ISO text to preserve API snapshots.
+-- PostgreSQL baseline matching SQLite schema 16. Timestamps stay ISO text to preserve API snapshots.
 CREATE TABLE admin (
         id BIGINT PRIMARY KEY CHECK (id = 1),
         username TEXT NOT NULL UNIQUE,
@@ -27,7 +27,10 @@ CREATE TABLE company_setting (
   updated_at TEXT NOT NULL,
   seller_whatsapp_phone TEXT CHECK (seller_whatsapp_phone IS NULL OR
     (length(seller_whatsapp_phone) BETWEEN 8 AND 15 AND seller_whatsapp_phone ~ '^[0-9]+$')),
-  mobile_hide_bars_on_scroll BIGINT NOT NULL DEFAULT 0 CHECK (mobile_hide_bars_on_scroll IN (0, 1))
+  mobile_hide_bars_on_scroll BIGINT NOT NULL DEFAULT 0 CHECK (mobile_hide_bars_on_scroll IN (0, 1)),
+  availability_text TEXT CHECK (availability_text IS NULL OR length(availability_text) BETWEEN 1 AND 1000),
+  shipping_text TEXT CHECK (shipping_text IS NULL OR length(shipping_text) BETWEEN 1 AND 1000),
+  returns_text TEXT CHECK (returns_text IS NULL OR length(returns_text) BETWEEN 1 AND 1000)
 );
 CREATE TABLE shop_setup (
         id BIGINT PRIMARY KEY CHECK (id = 1),
@@ -145,7 +148,7 @@ CREATE INDEX product_gallery_product ON product_gallery_image(product_id, positi
 CREATE INDEX shop_order_queue ON shop_order(status, submitted_at DESC);
 CREATE INDEX order_event_history ON order_event(order_id, id);
 CREATE TABLE schema_meta (id BIGINT PRIMARY KEY CHECK(id = 1), version BIGINT NOT NULL);
-INSERT INTO schema_meta VALUES (1, 15);
+INSERT INTO schema_meta VALUES (1, 16);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 INSERT INTO shop_setup(id, mode, shop_name) VALUES (1, NULL, 'Online Shopping');

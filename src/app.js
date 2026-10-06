@@ -7,7 +7,7 @@ import { SqlLimiter } from './limiter.js';
 import { createOrder, lookupOrderStatuses } from './orders.js';
 import { addGalleryImage, createProduct, deleteGalleryImage, getGalleryImage, getProduct, getProductImage, listProducts, updateProduct } from './products.js';
 import { decideSellerOrder, getSellerOrder, listSellerOrders, pendingOrderSummary } from './seller-orders.js';
-import { createCategory, publicBusinessContact, getCompanySettings, listCategories, updateCategory, updateCompanySettings } from './settings.js';
+import { createCategory, publicBusinessContact, getCompanySettings, storefrontTexts, listCategories, updateCategory, updateCompanySettings } from './settings.js';
 import { FieldError } from './validation.js';
 import { presentCatalogCopy, presentShopName } from './catalog-copy.js';
 import { PRODUCT_MUTATION_BODY_LIMIT } from './request-limits.js';
@@ -79,6 +79,7 @@ export async function createApi({ store, config, serveStatic = null }) {
         // This setting is explicitly the public shop contact, never an account or buyer phone.
         sellerWhatsAppPhone: setup.mode && config.shopMode !== 'public-demo' ? publicBusinessContact(company) : null,
         mobileHideBarsOnScroll: company.mobileHideBarsOnScroll,
+        storefrontTexts: storefrontTexts(company),
       });
     }
     if (method === 'GET' && pathname === '/api/v1/products') return json(200, await listProducts(store, url.searchParams, false, config.shopMode));

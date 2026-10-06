@@ -434,10 +434,14 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     const serviceDetails = node('div', 'product-service-details');
     const serviceRows = demo
       ? [['stockAndDelivery', 'demoAvailability'], ['demoOrderInformation', 'demoBrief']]
-      : [['stockAndDelivery', 'availabilityUnconfirmed'], ['shipping', 'shippingUnconfirmed'], ['returnsAndGuarantees', 'returnsUnconfirmed']];
-    for (const [heading, copy] of serviceRows) {
+      : [['stockAndDelivery', 'availabilityUnconfirmed', 'availability'], ['shipping', 'shippingUnconfirmed', 'shipping'], ['returnsAndGuarantees', 'returnsUnconfirmed', 'returns']];
+    const sellerTexts = shop()?.storefrontTexts || {};
+    for (const [heading, copy, textKey] of serviceRows) {
       const section = node('details', 'product-service-row');
-      section.append(node('summary', '', t(heading)), node('p', '', t(copy)));
+      // Text written by the seller wins; otherwise the shop's standard wording is shown.
+      const custom = !demo && typeof sellerTexts[textKey] === 'string' && sellerTexts[textKey].trim();
+      const paragraph = node('p', custom ? 'product-service-text' : '', custom || t(copy));
+      section.append(node('summary', '', t(heading)), paragraph);
       serviceDetails.append(section);
     }
     if (updateBanner) summary.append(updateBanner);

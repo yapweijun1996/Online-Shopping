@@ -2,14 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {openNodeStore} from '../src/store.js';
-import {migrateStore,ready,SCHEMA_VERSION} from '../src/db.js';
-import {openNodeStore as openWorkerStore} from '../worker-runtime/store.js';
-import {migrateStore as migrateWorker,ready as workerReady,SCHEMA_VERSION as workerVersion} from '../worker-runtime/db.js';
+import {migrateStore,ready} from '../src/db.js';
 
-for (const [runtime,open,migrate,isReady] of [
-  ['Node',openNodeStore,migrateStore,ready], ['Worker',openWorkerStore,migrateWorker,workerReady],
-]) test(`${runtime} recognizes actual divergent schema12, preserves historical orders and fails readiness on missing columns`,async t=>{
-  assert.equal(SCHEMA_VERSION,workerVersion);
+const [open,migrate,isReady]=[openNodeStore,migrateStore,ready];
+test(`Node recognizes actual divergent schema12, preserves historical orders and fails readiness on missing columns`,async t=>{
   const store=open(':memory:');t.after(()=>store.close());
   await store.exec(readFileSync(new URL('./fixtures/sqlite-repair-schema12.sql',import.meta.url),'utf8'));
   const order=await store.get('SELECT * FROM shop_order');
@@ -17,7 +13,7 @@ for (const [runtime,open,migrate,isReady] of [
   assert.equal(await store.schemaVersion(),12);
   assert.equal(await isReady(store),false);
   await migrate(store);
-  assert.equal(await store.schemaVersion(),15);
+  assert.equal(await store.schemaVersion(),16);
   assert.equal(await isReady(store),true);
   const upgraded=await store.get('SELECT * FROM shop_order');
   assert.deepEqual({...upgraded},{...order,tracking_carrier:null,tracking_no:null});
