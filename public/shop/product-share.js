@@ -1,10 +1,7 @@
-import { productHash } from './shop-route.js';
-
+// The shared address is /p/<id>: link-preview crawlers ignore #fragments, so it is served with preview
+// tags and sends browsers on to /shop/#product/<id> (see src/share.js).
 export function productShareURL(id, href) {
-  const url = new URL('./', href);
-  url.search = '';
-  url.hash = productHash(id);
-  return url.href;
+  return new URL(`/p/${id}`, href).href;
 }
 
 // Call directly from the click handler: native sharing requires user activation.

@@ -21,12 +21,26 @@
 
 http://shop.gmb01.xyz {
   import headers
-  @private path /seller /seller/* /api/v1/seller/* /demo /demo/* /api/v1/demo/*
+  @private path /seller /seller/* /api/v1/seller/* /s/* /demo /demo/* /api/v1/demo/*
   handle @private {
     respond 404
   }
   @api path /api/* /health /ready
   handle @api {
+    import proxy
+  }
+  # Share links: /p/<id> is answered by the backend (preview tags for link crawlers, a redirect into the shop
+  # for browsers), and link crawlers asking for the shop home get its preview tags instead of the app shell.
+  @share path /p/*
+  handle @share {
+    import proxy
+  }
+  @crawler_home {
+    path / /shop /shop/
+    header_regexp ua User-Agent (?i)(facebookexternalhit|facebot|meta-externalagent|facebookcatalog|whatsapp|twitterbot|telegrambot|slackbot|discordbot|linkedinbot|pinterest|skypeuripreview|applebot|googlebot|bingbot|line-poker|viber)
+  }
+  handle @crawler_home {
+    rewrite * /s/home
     import proxy
   }
   redir / /shop/ 302
@@ -47,7 +61,7 @@ http://shop.gmb01.xyz {
 http://seller.gmb01.xyz {
   import headers
   @private {
-    path /shop /shop/* /demo /demo/* /api/v1/demo/* /api/v1/orders /api/v1/orders/*
+    path /shop /shop/* /p/* /s/* /demo /demo/* /api/v1/demo/* /api/v1/orders /api/v1/orders/*
     not path /shop/tokens.css
   }
   handle @private {

@@ -11,6 +11,25 @@
 		}
 	}
 
+	# Share links (see src/share.js): /p/<id> goes to the backend; link crawlers asking for the shop home
+	# get its preview tags.
+	@share path /p/*
+	handle @share {
+		reverse_proxy backend:3000 {
+			header_up X-Real-IP {$CLIENT_IP_SOURCE:{remote_host}}
+		}
+	}
+	@crawler_home {
+		path / /shop /shop/
+		header_regexp ua User-Agent (?i)(facebookexternalhit|facebot|meta-externalagent|facebookcatalog|whatsapp|twitterbot|telegrambot|slackbot|discordbot|linkedinbot|pinterest|skypeuripreview|applebot|googlebot|bingbot|line-poker|viber)
+	}
+	handle @crawler_home {
+		rewrite * /s/home
+		reverse_proxy backend:3000 {
+			header_up X-Real-IP {$CLIENT_IP_SOURCE:{remote_host}}
+		}
+	}
+
 	# Let the backend mode gate decide whether the fictional workspace is available.
 	@demo path /demo /demo/*
 	handle @demo {

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { productShareURL, shareProduct } from '../public/shop/product-share.js';
 const id='f83b3b30-b270-471e-a6f8-7f84c28c449b';
 const data={title:'Synthetic product',url:productShareURL(id,'https://example.test/shop/?search=private#product/'+id)};
-test('canonical share URL excludes query and preserves product route',()=>assert.equal(data.url,'https://example.test/shop/#product/'+id));
+test('share URL is the crawler-readable /p/<id> address, without the query or fragment',()=>assert.equal(data.url,'https://example.test/p/'+id));
 test('share invoked synchronously, cancellation never copies',async()=>{let invoked=false,copied=false;const promise=shareProduct(data,{share(){invoked=true;return Promise.reject({name:'AbortError'})},clipboard:{writeText(){copied=true}}});assert.equal(invoked,true);assert.equal(await promise,'shareCancelled');assert.equal(copied,false)});
 test('native completion does not claim copied or delivered',async()=>assert.equal(await shareProduct(data,{share:async()=>{}}),'shareFinished'));
 test('unsupported or denied sharing falls back to successful clipboard only',async()=>{for(const native of [{},{share:async()=>{throw {name:'NotAllowedError'}}},{share(){throw Error('must not call')},canShare:()=>false}]){let copied;assert.equal(await shareProduct(data,{...native,clipboard:{writeText:async url=>{copied=url}}}),'linkCopied');assert.equal(copied,data.url)}});

@@ -13,6 +13,7 @@ import { createCategory, publicBusinessContact, getCompanySettings, storefrontTe
 import { FieldError } from './validation.js';
 import { presentCatalogCopy, presentShopName } from './catalog-copy.js';
 import { PRODUCT_MUTATION_BODY_LIMIT } from './request-limits.js';
+import { isCrawler, previewPage, priceText, summary } from './share.js';
 import { integrationCatalog } from '../public/shared/integration-catalog.js';
 
 const productIdPath = /^\/api\/v1\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
@@ -63,6 +64,31 @@ export async function createApi({ store, config, serveStatic = null }) {
     if (method === 'GET' && pathname === '/ready') {
       const healthy = await ready(store);
       return json(healthy ? 200 : 503, { status: healthy ? 'ready' : 'unavailable', ...(config.appRevision ? { revision: config.appRevision } : {}) });
+    }
+    // Link previews for Facebook, WhatsApp and similar apps (see share.js).
+    const sharePath = /^\/p\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(pathname);
+    if (method === 'GET' && (sharePath || pathname === '/s/home')) {
+      const origin = config.publicOrigin || url.origin;
+      const setup = presentShopName(await getShopSetup(store));
+      const crawler = isCrawler(request.headers.get('user-agent'));
+      const headers = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300' };
+      if (!sharePath) {
+        const page = previewPage({ title: setup.shopName, description: `${setup.shopName} — browse products and order online.`,
+          image: `${origin}/shop/share.png`, imageAlt: setup.shopName, url: `${origin}/shop/`, siteName: setup.shopName, enter: '/shop/' });
+        return new Response(page, { status: 200, headers });
+      }
+      const id = sharePath[1].toLowerCase();
+      const product = await getProduct(store, id, false, config.shopMode);
+      if (!product) return new Response('Product not found.', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' } });
+      const enter = `/shop/#product/${id}`;
+      if (!crawler) return new Response(null, { status: 302, headers: { Location: enter, 'Cache-Control': 'no-store' } });
+      const picture = product.imageMedia?.[0]?.src || product.images?.[0] || product.imageUrl;
+      const page = previewPage({
+        title: product.name, description: summary(`${priceText(product.priceMinor, product.currency)} · ${product.description}`),
+        image: picture ? new URL(picture, origin).href : undefined, imageAlt: product.name, url: `${origin}/p/${id}`,
+        siteName: setup.shopName, type: 'product', price: { amount: (product.priceMinor / 100).toFixed(2), currency: product.currency }, enter,
+      });
+      return new Response(page, { status: 200, headers });
     }
     if (!pathname.startsWith('/api/')) {
       let decoded;
