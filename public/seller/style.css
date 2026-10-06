@@ -413,6 +413,7 @@
 .demo-role-divider{display:flex;align-items:center;gap:12px}
 .demo-role-divider::before,.demo-role-divider::after{content:"";flex:1;border-top:1px solid var(--ui-control-border)}
 .demo-role-primary{width:100%;font-weight:600}
+.demo-role-contact{align-self:center;color:var(--ui-primary);font-size:14px;font-weight:600;text-decoration:underline;min-height:32px;display:inline-flex;align-items:center}
 .demo-role-link{align-self:center;border:0;background:none;color:var(--ui-muted);font:inherit;font-size:13px;text-decoration:underline;cursor:pointer;min-height:32px}
 .demo-role-link:disabled,.demo-role-primary:disabled{opacity:.6;cursor:default}
 

@@ -37,6 +37,7 @@ services:
       TRUST_PROXY: "1"
       SHOP_MODE: manual
       SELLER_QUICK_LOGIN: ${SELLER_QUICK_LOGIN:-0}
+      SELLER_QUICK_LOGIN_CONTACT: ${SELLER_QUICK_LOGIN_CONTACT:-}
     secrets: [admin_password, database_password]
     networks: [private]
     read_only: true
