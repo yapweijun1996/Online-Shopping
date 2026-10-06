@@ -2,14 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { openNodeStore } from '../worker-runtime/store.js';
-import { openDatabase, SCHEMA_VERSION } from '../worker-runtime/db.js';
+import { openSyncStore as openNodeStore, openSyncDatabase as openDatabase } from './helpers/sync-store.js';
+import { SCHEMA_VERSION } from '../src/db.js';
 import { createSyntheticIntegrationLedger } from '../src/integration-ledger.js';
 import { ninjaContractLocation, verifyNinjaSignature, messagingPolicy } from '../src/integration-contracts.js';
 import { integrationCatalog } from '../public/shared/integration-catalog.js';
-import { createApi } from '../worker-runtime/app.js';
-import { createSession, cookieFor } from '../worker-runtime/auth.js';
-import { initializeShop } from '../worker-runtime/shop-setup.js';
+import { createApi } from '../src/app.js';
+import { createSession, cookieFor } from '../src/auth.js';
+import { initializeShop } from '../src/shop-setup.js';
 
 const code = expected => error => error.code === expected;
 const parcel = () => ({ orderRef: 'synthetic-order', weightGrams: 500, addressSnapshot: {
@@ -26,9 +26,9 @@ function fixture(t, wrapped = store => store) {
 }
 
 test('no integration schema or enabled capability appears on normal startup or status read', async t => {
-  const store = openDatabase(':memory:'); t.after(() => store.close());
-  initializeShop(store, { shopMode: 'public-demo', username: 'fictional-owner' });
-  const session = createSession(store), api = createApi({ store, config: { publicOrigin: 'https://fixture.test', shopMode: 'public-demo' } });
+  const store = await openDatabase(':memory:'); t.after(() => store.close());
+  await initializeShop(store, { shopMode: 'public-demo', username: 'fictional-owner' });
+  const session = await createSession(store), api = await createApi({ store, config: { publicOrigin: 'https://fixture.test', shopMode: 'public-demo' } });
   assert.equal((await api(new Request('https://fixture.test/api/v1/seller/integrations'))).status, 401);
   const cookie = cookieFor(session.token, session.maxAge, false).split(';')[0];
   const response = await api(new Request('https://fixture.test/api/v1/seller/integrations', { headers: { cookie } }));
@@ -45,8 +45,8 @@ test('no integration schema or enabled capability appears on normal startup or s
 });
 
 test('fictional company status requires the current membership and rejects forged company context', async t => {
-  const store = openDatabase(':memory:'); t.after(() => store.close()); initializeShop(store, { shopMode: 'public-demo' });
-  const api = createApi({ store, config: { publicOrigin: 'https://fixture.test', shopMode: 'public-demo' } });
+  const store = await openDatabase(':memory:'); t.after(() => store.close()); await initializeShop(store, { shopMode: 'public-demo' });
+  const api = await createApi({ store, config: { publicOrigin: 'https://fixture.test', shopMode: 'public-demo' } });
   const login = await api(new Request('https://fixture.test/api/v1/demo/session', { method: 'POST', headers: { origin: 'https://fixture.test', 'content-type': 'application/json' }, body: JSON.stringify({ role: 'SELLER' }) }));
   assert.equal(login.status, 201); const cookie = login.headers.get('set-cookie').split(';')[0];
   const get = company => api(new Request(`https://fixture.test/api/v1/demo/companies/${company}/integrations`, { headers: { cookie, 'x-company-id': 'company-beta', 'x-role': 'ADMIN' } }));

@@ -16,5 +16,3 @@ docs
 *.log
 .dev.vars
 .dev.vars.*
-
-worker-runtime
