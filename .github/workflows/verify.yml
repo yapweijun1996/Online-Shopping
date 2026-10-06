@@ -37,7 +37,4 @@ jobs:
         env:
           NODE_ENV: test
           SHOP_TEST_DATABASE_URL: postgres://postgres@127.0.0.1:5432/online_shopping_test
-      - run: npm run worker:check
-        env:
-          WRANGLER_SEND_METRICS: 'false'
       - run: npm audit --omit=dev --audit-level=high

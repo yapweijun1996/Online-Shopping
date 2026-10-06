@@ -36,6 +36,6 @@ Legacy third-party product seed images and historical unverified screenshots hav
 
 The future Production target is Docker + PostgreSQL on the owner's server, exposed through Cloudflare Tunnel with a domain and company settings. **PostgreSQL is not implemented yet**: the current Node/Docker adapter still uses SQLite. Keep this as a separate migration after the Demo customer journey is reviewed. The mobile product detail page uses a square image hero with overlay navigation, a white bar after the image scrolls away, and a fixed Chat / Add to cart / Buy now dock. Chat opens the seller's configured WhatsApp number. Unsupported promotion and rating data no longer take space in the purchase path; Demo order limitations, Production fulfillment terms, and the unavailable reviews state are available in expandable disclosures. No voucher, rating, return policy or delivery promise is invented. Cart/checkout refinement and company configuration remain separate work.
 
-## Deploying the Demo Worker
+## Deploying
 
-Run `npm run worker:check` (dry run) and `npm test` first, then `npm run worker:deploy`. Deployment needs Cloudflare credentials (`npx wrangler login`, or `CLOUDFLARE_API_TOKEN` and, if required, `CLOUDFLARE_ACCOUNT_ID`) and network access to the Cloudflare API. Cloud coding sessions without those cannot deploy: merge to `main`, then deploy from a machine that has them. Installed PWAs pick up a new build through the update button because each release bumps the shell version in `version.js` and `sw.js`.
+Production deploys through Docker + PostgreSQL on OrbStack with Cloudflare Tunnel; see [ORBSTACK_DEPLOY.md](ORBSTACK_DEPLOY.md). The Cloudflare Worker Demo was removed (2026-10-06).

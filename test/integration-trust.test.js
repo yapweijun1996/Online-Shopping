@@ -283,5 +283,5 @@ test('malformed signed payloads and batch limits fail without writes; no startup
   const f = trustFixture(t);
   for (const payload of ['{broken',metaPayload({messages:{length:1}}),{object:'wrong',entry:[]},metaPayload({messages:Array.from({length:1001},(_,i)=>inboundText(f.now(),`wamid.SYNTHETIC_${i}`))})]) assert.throws(()=>f.ingress.receive(signed(payload)),code('INVALID_PAYLOAD'));
   assert.equal(count(f,'signed_inbox'),0); assert.equal(count(f,'webhook_receipt'),0);
-  for (const file of ['app','server','worker','db']) assert.doesNotMatch(readFileSync(new URL(`../src/${file}.js`,import.meta.url),'utf8'),/integration-consent|integration-ingress|integration-ledger/);
+  for (const file of ['app','server','db']) assert.doesNotMatch(readFileSync(new URL(`../src/${file}.js`,import.meta.url),'utf8'),/integration-consent|integration-ingress|integration-ledger/);
 });

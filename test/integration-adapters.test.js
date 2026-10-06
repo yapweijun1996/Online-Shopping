@@ -208,6 +208,6 @@ test('known status mapping preserves receipt versus delivery and quarantines unk
 });
 
 test('adapter modules remain outside normal startup and contain no network or credential implementation', () => {
-  for (const file of ['src/app.js','src/server.js','src/worker.js','src/db.js']) assert.doesNotMatch(readFileSync(new URL(`../${file}`, import.meta.url),'utf8'), /integration-adapters|integration-requests|integration-ledger/);
+  for (const file of ['src/app.js','src/server.js','src/db.js']) assert.doesNotMatch(readFileSync(new URL(`../${file}`, import.meta.url),'utf8'), /integration-adapters|integration-requests|integration-ledger/);
   for (const file of ['integration-adapters','integration-requests']) assert.doesNotMatch(readFileSync(new URL(`../src/${file}.js`, import.meta.url),'utf8'), /\bfetch\s*\(|node:https|node:http|Authorization|Bearer|access_token/);
 });

@@ -6,7 +6,6 @@ import { openDatabase } from '../src/db.js';
 import { initializeShop, setupShop } from '../src/shop-setup.js';
 import { createDemoSandbox } from '../src/demo-sandbox.js';
 import { errorResponse } from '../src/http.js';
-import worker from '../src/worker.js';
 
 async function fixture(t, mode = 'public-demo') {
   const store = await openDatabase(':memory:'); t.after(async () => await store.close());
@@ -98,11 +97,6 @@ test('production and legacy demo modes expose no bypass endpoints or demo pages,
     for (const [method, path, body] of [['POST', 'session', { role: 'ADMIN' }], ['GET', 'companies'], ['POST', 'reset', {}]]) assert.equal((await f.call(method, path, body)).status, 404);
     for (const path of ['/demo', '/demo/', '/demo/index.html', '/%64emo/', '//demo/index.html']) assert.equal((await f.call('GET', path)).status, 404, path);
   }
-  let assets = 0;
-  const env = { SHOP_MODE: 'manual', ASSETS: { fetch() { assets++; return new Response('asset'); } } };
-  for (const path of ['/demo', '/demo/', '/%64emo/index.html', '//demo/app.js']) assert.equal((await worker.fetch(new Request('https://example.test' + path), env)).status, 404);
-  assert.equal(assets, 0);
-  assert.match(readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8'), /"run_worker_first": true/);
   const proxy = readFileSync(new URL('../deploy/Caddyfile', import.meta.url), 'utf8');
   assert.match(proxy, /@demo path \/demo \/demo\/\*/);
   assert.match(proxy, /forward_auth backend:3000\s*\{\s*uri \/api\/v1\/demo\/availability/);

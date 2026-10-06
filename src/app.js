@@ -36,7 +36,7 @@ function requireCsrf(request, session) {
 
 /*
  * Runtime-neutral API. Takes a Fetch API Request and returns a Response, so the Node
- * server and the Cloudflare Durable Object share one set of routes. The runtime supplies
+ * server and the test harness share one set of routes. The runtime supplies
  * the client address it trusts and, optionally, a handler for non-API paths.
  */
 export async function createApi({ store, config, serveStatic = null }) {

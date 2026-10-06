@@ -43,7 +43,7 @@ test('migrations run through the store contract and record the schema version', 
 test('application modules use only the portable store contract', () => {
   // Trigger bodies may use BEGIN ... END; only transaction statements are the store's job.
   const forbidden = /\.prepare\(|\bBEGIN\s+(IMMEDIATE|DEFERRED|EXCLUSIVE|TRANSACTION)\b|['"`]BEGIN['"`]|\b(COMMIT|ROLLBACK|PRAGMA)\b|node:sqlite/;
-  const drivers = new Set(['store.js', 'durable-store.js', 'postgres-store.js']);
+  const drivers = new Set(['store.js', 'postgres-store.js']);
   const directory = new URL('../src/', import.meta.url);
   for (const name of readdirSync(directory).filter((entry) => entry.endsWith('.js') && !drivers.has(entry))) {
     assert.doesNotMatch(readFileSync(new URL(name, directory), 'utf8'), forbidden, name);
