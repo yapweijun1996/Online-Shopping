@@ -930,3 +930,10 @@ h1,h2{letter-spacing:-.01em}
 .img-reveal{background:linear-gradient(100deg,#e6eff1 30%,#f5f9f9 50%,#e6eff1 70%);background-size:220% 100%;animation:skeleton-shimmer 1.4s linear infinite;opacity:0;filter:blur(14px);transform:scale(1.02);transition:opacity .45s ease,filter .6s ease,transform .6s ease}
 .img-reveal.is-loaded{opacity:1;filter:none;transform:none;animation:none;background:transparent}
 @media (prefers-reduced-motion:reduce){.img-reveal{transition:none;animation:none;filter:none;transform:none}}
+
+/* Quantity stepper: draw the minus/plus as centred bars instead of font glyphs, which sit off-centre in many fonts. */
+.quantity-stepper button{position:relative;padding:0;font-size:0;line-height:0;color:transparent}
+.quantity-stepper button::before,.quantity-stepper button:last-child::after{content:"";position:absolute;inset:0;margin:auto;border-radius:1px;background:var(--ui-ink)}
+.quantity-stepper button::before{width:14px;height:2px}
+.quantity-stepper button:last-child::after{width:2px;height:14px}
+.quantity-stepper button:disabled::before,.quantity-stepper button:disabled::after{opacity:.35}
