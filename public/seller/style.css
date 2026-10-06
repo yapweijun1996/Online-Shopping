@@ -463,7 +463,7 @@
 .generator-table{width:100%;border-collapse:collapse;font-size:14px}
 .generator-table th,.generator-table td{padding:8px 6px;text-align:left;border-top:1px solid var(--ui-divider);vertical-align:middle}
 .generator-table thead th{border-top:0;color:var(--ui-muted);font-size:13px}
-.generator-table td input:not([type=checkbox]){width:100%;min-width:90px;min-height:40px;padding:6px 8px;border:1px solid var(--ui-control-border);border-radius:8px;background:var(--ui-surface);color:var(--ui-text)}
+.generator-table td input:not([type=checkbox]){width:100%;min-width:90px;min-height:44px;padding:6px 8px;border:1px solid var(--ui-control-border);border-radius:8px;background:var(--ui-surface);color:var(--ui-text)}
 .generator-note{flex-basis:100%;margin:0;color:var(--ui-muted);font-size:13px}
 @media(max-width:760px){.option-value-row{grid-template-columns:1fr 1fr}}
 .product-options-fieldset{margin:0;padding:10px 14px 14px;border:1px solid var(--ui-border);border-radius:10px}
@@ -479,3 +479,20 @@
 .option-value-add input[type=color]{width:44px;height:44px;padding:2px;border:1px solid var(--ui-control-border);border-radius:9px;background:var(--ui-surface)}
 .option-value-add>label:first-child{min-width:0}
 @media(max-width:760px){.option-value-add{grid-template-columns:1fr 1fr}}
+.option-type-card .check-row,.option-generator .check-row,.tap-box{min-height:44px}
+.tap-box{display:inline-flex;align-items:center;justify-content:center;min-width:44px;cursor:pointer}
+.option-type-card .check-row,.option-generator .check-row,.tap-box{min-width:44px}
+.generator-table th:last-child,.generator-table td:last-child{width:56px;text-align:center}
+.settings-form .tap-box{display:inline-flex;min-width:44px;flex:none}
+@media(max-width:560px){
+  .generator-table thead{display:none}
+  .generator-table,.generator-table tbody{display:block}
+  .generator-table tr{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;align-items:end;padding:12px 0;border-top:1px solid var(--ui-divider)}
+  .generator-table tbody th,.generator-table td{border:0;padding:0}
+  .generator-table tbody th{grid-column:1/-1}
+  .generator-table td::before{content:attr(data-label);display:block;margin-bottom:4px;color:var(--ui-muted);font-size:12px}
+  .generator-table td:nth-of-type(1){grid-column:1/-1}
+  .generator-table td:last-child{width:auto;text-align:left}
+  .generator-table td:last-child::before{display:inline;margin:0 8px 0 0;vertical-align:middle}
+  .generator-table td:last-child .tap-box{justify-content:flex-start;gap:8px}
+}

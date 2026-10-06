@@ -48,3 +48,12 @@ test('product page uses the selector when option types exist and keeps the old c
   const worker = readFileSync(new URL('../public/shop/sw.js', import.meta.url), 'utf8');
   assert.match(worker, /\/shop\/option-selector\.js/);
 });
+
+test('option choices are links marked aria-current, not radios, and explain when they change other choices', () => {
+  const source = readFileSync(new URL('../public/shop/option-selector.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /setAttribute\('role', 'radio'\)|aria-checked|radiogroup/);
+  assert.match(source, /setAttribute\('aria-current', 'true'\)/);
+  assert.match(source, /setAttribute\('role', 'group'\)/);
+  assert.match(source, /optionChangesOthers/);
+});
+
