@@ -6,7 +6,7 @@ import { mountIntegrations } from './integrations.js';
 
 let pendingWrites = 0;
 
-async function request(method, path, body, csrfToken, onUnauthorized) {
+export async function request(method, path, body, csrfToken, onUnauthorized) {
   const finish = method === 'GET' ? () => {} : beginMutation();
   if (method !== 'GET') { pendingWrites++; document.dispatchEvent(new Event('updateguardchange')); }
   try {

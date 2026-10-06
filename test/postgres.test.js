@@ -8,7 +8,8 @@ import { openDatabase, ready } from '../src/db.js';
 import { openPostgresDatabase } from '../src/postgres-db.js';
 import { openPostgresStore, postgresSql } from '../src/postgres-store.js';
 import { createCategory, getCompanySettings, updateCompanySettings } from '../src/settings.js';
-import { createProduct, addGalleryImage } from '../src/products.js';
+import { createProduct, addGalleryImage, getProduct } from '../src/products.js';
+import { createOptionType, createOptionValue, updateOptionValue, listOptionTypes } from '../src/options.js';
 import { createOrder } from '../src/orders.js';
 import { decideSellerOrder } from '../src/seller-orders.js';
 import { ensureAdmin } from '../src/auth.js';
@@ -101,7 +102,7 @@ test('PostgreSQL unavailable database fails readiness without leaking credential
 });
 
 // Real PostgreSQL fixtures, independent from the historical synchronous SQL mock suite.
-for (const version of [10, 11, 12, 13, 14, 15]) test(`PostgreSQL physical schema${version} upgrades explicitly to16, preserves bytes and supports gallery writes`, {skip:!base}, async t => {
+for (const version of [10, 11, 12, 13, 14, 15, 16]) test(`PostgreSQL physical schema${version} upgrades explicitly to17, preserves bytes and supports gallery writes`, {skip:!base}, async t => {
   const url = await database(t), store = openPostgresStore(url);
   t.shoppingClosers.push(() => store.close());
   const {postgresSchema12Sql} = await import('../deploy/postgres/schema12.js');
@@ -122,7 +123,7 @@ for (const version of [10, 11, 12, 13, 14, 15]) test(`PostgreSQL physical schema
   assert.equal(await store.schemaVersion(),version);
   assert.deepEqual(await store.get('SELECT * FROM product'),original);
   const upgraded = await openPostgresDatabase(url,{allowUpgrade:true}); t.shoppingClosers.push(()=>upgraded.close());
-  assert.equal(await upgraded.schemaVersion(),16);
+  assert.equal(await upgraded.schemaVersion(),17);
   assert.deepEqual((await upgraded.get('SELECT image_data FROM product')).image_data,bytes);
   const {getProduct,updateProduct} = await import('../src/products.js');
   const before = await getProduct(upgraded,'synthetic-preserved',true);
@@ -141,4 +142,26 @@ test('PostgreSQL stores, trims and clears the storefront texts', {skip:!base}, a
   assert.deepEqual([saved.availabilityText, saved.shippingText, saved.returnsText], ['Ships in 2 days', 'Flat RM 8', null]);
   await assert.rejects(() => updateCompanySettings(store, { returnsText: 'x'.repeat(1001) }), /at most 1000/);
   assert.equal((await updateCompanySettings(store, { shippingText: null })).shippingText, null);
+});
+
+test('PostgreSQL product options: tenant-defined types, combinations, derived labels and case-insensitive uniqueness', {skip:!base}, async t => {
+  const store = await openPostgresDatabase(await database(t)); t.shoppingClosers.push(()=>store.close());
+  await createCategory(store, { code: 'PHONE', label: 'Phones' });
+  const color = await createOptionType(store, { name: 'Colour', display: 'swatch', translations: { 'zh-Hans': '颜色' } });
+  const storage = await createOptionType(store, { name: 'Storage' });
+  await assert.rejects(() => createOptionType(store, { name: 'colour' }), /already exists/);
+  const red = await createOptionValue(store, color.id, { label: 'Red', swatchColor: '#FF0000' });
+  const s256 = await createOptionValue(store, storage.id, { label: '256GB' });
+  const s512 = await createOptionValue(store, storage.id, { label: '512GB' });
+  await assert.rejects(() => createOptionValue(store, color.id, { label: 'RED' }), /already exists/);
+  const product = overrides => ({ name: 'Phone', description: 'd', category: 'PHONE', priceMinor: 1000, currency: 'MYR', active: true, variantGroup: 'ph', ...overrides });
+  const a = await createProduct(store, product({ sku: 'PG-1', options: [{ typeId: color.id, valueId: red.id }, { typeId: storage.id, valueId: s256.id }] }));
+  assert.equal(a.variantLabel, 'Red / 256GB');
+  await createProduct(store, product({ sku: 'PG-2', options: [{ typeId: color.id, valueId: red.id }, { typeId: storage.id, valueId: s512.id }] }));
+  await assert.rejects(() => createProduct(store, product({ sku: 'PG-3', options: [{ typeId: color.id, valueId: red.id }, { typeId: storage.id, valueId: s512.id }] })), /already exists/);
+  await updateOptionValue(store, color.id, red.id, { label: 'Wine' });
+  const detail = await getProduct(store, a.id);
+  assert.deepEqual(detail.variants.map(variant => variant.label).sort(), ['Wine / 256GB', 'Wine / 512GB']);
+  assert.deepEqual(detail.optionTypes.map(axis => axis.name), ['Colour', 'Storage']);
+  assert.equal((await listOptionTypes(store))[0].translations['zh-Hans'], '颜色');
 });

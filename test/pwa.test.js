@@ -65,7 +65,7 @@ test('Seller activation defers reload for primary-image removal and newly opened
       postMessage(message, ports) { if (message.type === 'GET_VERSION') ports[0].reply({ version }); } });
     const waiting = worker('next'), active = worker('current');
     const registration = { waiting, active, addEventListener() {}, async update() {} };
-    const context = { form: { hidden: false, elements }, saving: false, readingGallery: false, pendingRemove: false, formBaseline: null,
+    const context = { optionTypes: [], selectedOptions: () => [], form: { hidden: false, elements }, saving: false, readingGallery: false, pendingRemove: false, formBaseline: null,
       galleryLoaded: true, galleryImages: [], originalImageUrl: '/synthetic-primary-image', editingId: 'synthetic-product',
       showImage() {}, renderGallery() {}, dialog: { open: false }, dialogAction: null, selectedId: 'synthetic-order',
       currentRoute: scenario.startsWith('open') ? 'review' : 'products/synthetic-product', t: key => key,

@@ -9,6 +9,7 @@ import { snapshotCount } from './studio-copy.js';
 import { mountProducts } from './products.js';
 import { mountOrders } from './orders.js';
 import { mountCategories, mountCompanySettings } from './settings.js';
+import { mountOptions } from './options.js';
 
 const byId = (id) => document.getElementById(id);
 containDialogFocus(byId('profile-dialog'));
@@ -48,7 +49,7 @@ let updateDismissed = false;
 let updateView = null;
 let updateIdentity = '';
 const sessionHintKey = 'online-shopping-seller-session-hint';
-const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'review', 'categories', 'company']);
+const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'review', 'categories', 'options', 'company']);
 const PRODUCT_ROUTE = /^products\/(?:new|[0-9a-f-]{36})$/;
 
 function routeFromHash() {
@@ -65,7 +66,7 @@ function applyRoute() {
 }
 
 function activePage() {
-  return currentView === 'products' ? productsPage : currentView === 'categories' || currentView === 'company' ? settingsPage : currentView === 'orders' || currentView === 'review' ? ordersPage : null;
+  return currentView === 'products' ? productsPage : currentView === 'categories' || currentView === 'options' || currentView === 'company' ? settingsPage : currentView === 'orders' || currentView === 'review' ? ordersPage : null;
 }
 
 function hasUnsavedChanges() { return activePage()?.hasUnsavedChanges?.() === true; }
@@ -223,7 +224,7 @@ function renderView() {
   });
   const titleKey = currentView === 'products' && currentRoute !== 'products'
     ? currentRoute === 'products/new' ? 'addProduct' : 'editProduct'
-    : { dashboard: 'dashboard', products: 'products', orders: 'salesOrders', review: 'orderReview', categories: 'categoryCodes', company: 'companySettings' }[currentView];
+    : { dashboard: 'dashboard', products: 'products', orders: 'salesOrders', review: 'orderReview', categories: 'categoryCodes', options: 'optionsNav', company: 'companySettings' }[currentView];
   byId('page-title').dataset.i18n = titleKey;
   byId('page-title').textContent = t(titleKey);
   const content = byId('workspace-content');
@@ -261,6 +262,10 @@ function renderView() {
   productsPage = null;
   if (currentView === 'categories') {
     settingsPage = mountCategories(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError') });
+    return;
+  }
+  if (currentView === 'options') {
+    settingsPage = mountOptions(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError') });
     return;
   }
   if (currentView === 'company') {

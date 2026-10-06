@@ -2,7 +2,7 @@ import { FieldError, boundedText } from './validation.js';
 import { decodeProductImage } from './product-image.js';
 
 const requiredFields = ['sku', 'name', 'description', 'category', 'priceMinor', 'currency', 'active'];
-const fields = [...requiredFields, 'imageDataUrl', 'variantGroup', 'variantLabel', 'stockQuantity'];
+const fields = [...requiredFields, 'imageDataUrl', 'variantGroup', 'variantLabel', 'stockQuantity', 'options'];
 
 export function validateProductInput(input, allowedCurrencies, { partial = false } = {}) {
   if (!Array.isArray(allowedCurrencies) || allowedCurrencies.length === 0 ||
@@ -55,6 +55,7 @@ export function validateProductInput(input, allowedCurrencies, { partial = false
     if (group && !/^[A-Z0-9][A-Z0-9._-]*$/.test(group)) throw new FieldError('variantGroup', 'Enter a valid variant group code.');
     result.variantGroup = group || null;
   }
+  if (keys.includes('options')) result.options = input.options;  // validated against the option library when saved
   if (keys.includes('variantLabel')) result.variantLabel = boundedText(input.variantLabel, 'variantLabel', 80, false) || null;
   return result;
 }
