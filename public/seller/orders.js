@@ -269,12 +269,28 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
       section.append(fields);
       const lines = node('ul', 'order-items');
       for (const item of delivery.items) {
-        const line = node('li');
-        line.append(
-          node('strong', '', item.name),
+        const line = node('li', 'order-item');
+        const thumb = node('span', 'order-item-thumb');
+        if (item.imageUrl) {
+          const image = node('img'); image.src = item.imageUrl; image.alt = ''; image.loading = 'lazy'; image.decoding = 'async';
+          image.addEventListener('error', () => image.remove());
+          thumb.append(image);
+        }
+        const title = node('strong', '', item.name);
+        if (item.productUrl) {
+          // Opens the public product page in a new tab so staff can double-check what was ordered.
+          const link = node('a', 'order-item-link', item.name);
+          link.href = item.productUrl; link.target = '_blank'; link.rel = 'noopener noreferrer';
+          link.title = t('openProductPage');
+          title.textContent = ''; title.append(link);
+        }
+        const text = node('span', 'order-item-text');
+        text.append(
+          title,
           node('span', '', `${item.sku} · ${t('quantity')} ${item.quantity}`),
           node('span', '', `${formatMoney(item.priceMinor, item.currency)} × ${item.quantity} = ${formatMoney(item.lineTotalMinor, item.currency)}`),
         );
+        line.append(thumb, text);
         lines.append(line);
       }
       section.append(node('h4', '', t('orderItems')), lines);

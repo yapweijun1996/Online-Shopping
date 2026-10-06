@@ -1,5 +1,6 @@
 import { ApiError } from './http.js';
 import { FieldError, boundedText } from './validation.js';
+import { productCover } from './product-gallery.js';
 
 const orderColumns = `id, order_no, buyer_name, buyer_phone, buyer_email, whatsapp_opt_in,
   whatsapp_consent_at, whatsapp_consent_version, locale, status, revision, currency,
@@ -68,12 +69,15 @@ async function readSellerOrder(database, id) {
       city: delivery.address_city, region: delivery.address_region,
       postcode: delivery.address_postcode, country: delivery.address_country,
     },
-    items: (await database.all(`SELECT product_id, sku_snapshot, name_snapshot, price_minor,
-      quantity, line_total_minor, currency FROM order_item WHERE delivery_id = ? ORDER BY position`, delivery.id)).map((item) => ({
+    items: await Promise.all((await database.all(`SELECT oi.product_id, oi.sku_snapshot, oi.name_snapshot, oi.price_minor,
+      oi.quantity, oi.line_total_minor, oi.currency, p.image_mime FROM order_item oi
+      JOIN product p ON p.id = oi.product_id WHERE oi.delivery_id = ? ORDER BY oi.position`, delivery.id)).map(async (item) => ({
         productId: item.product_id, sku: item.sku_snapshot, name: item.name_snapshot,
         priceMinor: item.price_minor, quantity: item.quantity,
         lineTotalMinor: item.line_total_minor, currency: item.currency,
-      })),
+        // The product's current cover, so staff can recognise what was ordered (null when it has no image).
+        imageUrl: await productCover(database, { id: item.product_id, imageUrl: item.image_mime ? `/api/v1/seller/products/${item.product_id}/image` : null }, true),
+      }))),
   })));
   const events = (await database.all(`SELECT event_type, actor_type, actor_id, previous_status,
     status, reason, occurred_at FROM order_event WHERE order_id = ? ORDER BY id`, id))
@@ -169,4 +173,12 @@ export async function decideSellerOrder(database, id, action, input, actorId) {
       VALUES (?, ?, 'SELLER', ?, ?, ?, ?, ?)`, id, decision.status, actorId, from, decision.status, decision.reason, now);
   });
   return await getSellerOrder(database, id);
+}
+
+/* Adds a link to each ordered product's public page on the shop origin. */
+export function withProductLinks(order, shopOrigin) {
+  if (!order) return order;
+  return { ...order, deliveries: order.deliveries.map((delivery) => ({ ...delivery, items: delivery.items.map((item) => ({
+    ...item, productUrl: `${shopOrigin}/shop/#product/${item.productId.toLowerCase()}`,
+  })) })) };
 }
