@@ -3,7 +3,7 @@ import { createModal } from './modal.js';
 
 export const paletteChoices = [
   ['evergreen-teal', 'paletteEvergreen'], ['warm-plum', 'palettePlum'],
-  ['ocean-blue', 'paletteOcean'], ['high-contrast', 'paletteContrast'], ['graphite', 'paletteGraphite'],
+  ['ocean-blue', 'paletteOcean'], ['navy-orange', 'paletteNavyOrange'], ['high-contrast', 'paletteContrast'], ['graphite', 'paletteGraphite'],
 ];
 
 export function mountAppearance(root, surface) {
