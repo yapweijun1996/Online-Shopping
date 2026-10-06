@@ -1,4 +1,5 @@
 import { mountAppearance } from '../shared/appearance.js';
+import { mountTabIcon } from '../shared/tab-icon.js';
 import { confirmModal } from '../shared/modal.js';
 import { revealImage } from './product-media.js';
 import { storageKey } from './storage-scope.js';
@@ -19,6 +20,7 @@ import { createLocalOrderStore, isLocalOrderCurrent } from './local-orders.js';
 
 const byId = (id) => document.getElementById(id);
 mountAppearance(document.querySelector('.palette-settings'), 'shop');
+mountTabIcon(window.shopPalette);
 const grid = byId('catalog-grid');
 const list = byId('cart-list');
 const category = byId('catalog-category');

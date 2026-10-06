@@ -2,7 +2,7 @@ importScripts('/shared/sw-core.js');
 
 self.setupOfflineWorker({
   cachePrefix: 'os-seller',
-  version: 'v97',
+  version: 'v98',
   scopePath: '/seller/',
   offlinePage: '/seller/offline.html',
   assets: [
@@ -10,6 +10,6 @@ self.setupOfflineWorker({
     '/seller/integrations.js', '/shared/integration-catalog.js',
     '/seller/commerce.css', '/seller/studio-copy.js', '/seller/assets/studio-leaf.svg',
     '/seller/manifest.webmanifest', '/seller/icons/icon-192.png', '/seller/icons/icon-512.png',
-    '/shared/base.css', '/shared/demo-entry.js', '/shared/appearance.js', '/shared/appearance.css', '/shared/update-guard.js', '/shared/i18n.js', '/shared/pwa.js', '/shared/modal.js', '/shared/offline.js', '/favicon.svg',
+    '/shared/base.css', '/shared/demo-entry.js', '/shared/appearance.js', '/shared/appearance.css', '/shared/update-guard.js', '/shared/i18n.js', '/shared/pwa.js', '/shared/modal.js', '/shared/tab-icon.js', '/shared/offline.js', '/favicon.svg',
   ],
 });

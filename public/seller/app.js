@@ -10,6 +10,7 @@ import { mountProducts } from './products.js';
 import { mountOrders } from './orders.js';
 import { mountCategories, mountCompanySettings } from './settings.js';
 import { mountOptions } from './options.js';
+import { mountTabIcon } from '../shared/tab-icon.js';
 
 const byId = (id) => document.getElementById(id);
 containDialogFocus(byId('profile-dialog'));
@@ -49,6 +50,7 @@ let updateDismissed = false;
 let updateView = null;
 let updateIdentity = '';
 const sessionHintKey = 'online-shopping-seller-session-hint';
+mountTabIcon(window.sellerPalette);
 const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'review', 'categories', 'options', 'company']);
 const PRODUCT_ROUTE = /^products\/(?:new|[0-9a-f-]{36})$/;
 
