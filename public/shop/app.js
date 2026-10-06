@@ -101,8 +101,6 @@ function element(tag, className, content) {
   return node;
 }
 
-const trashIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>';
-
 function action(label, handler, className = 'outline-button') {
   const button = element('button', className, label);
   button.type = 'button';
@@ -357,7 +355,7 @@ function patchCartRow(productId, revision) {
     if (input.value !== String(line.quantity) && !(input === document.activeElement && input.valueAsNumber === line.quantity)) input.value = String(line.quantity);
   }
   const buttons = row.querySelectorAll('.quantity-stepper button');
-  buttons[0].disabled = line.quantity <= 1; buttons[1].disabled = line.quantity >= 100;
+  buttons[1].disabled = line.quantity >= 100;
   row.querySelector('.cart-unit-price').textContent = line.product ? formatMoney(line.product.priceMinor, line.product.currency).replace(/\u00a0/g, ' ') : '—';
   row.querySelector('.cart-line-subtotal').textContent = line.product ? formatMoney(line.product.priceMinor * line.quantity, line.product.currency) : '—';
   const pending = (quantityPending.get(productId) || 0) > 0;
@@ -368,6 +366,7 @@ function patchCartRow(productId, revision) {
   input.setAttribute('aria-invalid', String(Boolean(quantityErrors.get(productId))));
 }
 function changeQuantity(productId, value) {
+  let removalRequested = false;
   const revision = (quantityRevisions.get(productId) || 0) + 1;
   quantityRevisions.set(productId, revision);
   quantityPending.set(productId, (quantityPending.get(productId) || 0) + 1);
@@ -376,6 +375,7 @@ function changeQuantity(productId, value) {
     const current = cartStore.list().find(line => line.productId === productId)?.quantity;
     if (current === undefined) return;
     const next = typeof value === 'function' ? value(current) : value;
+    if (next === 0) { removalRequested = true; return; }
     if (!Number.isInteger(next) || next < 1 || next > 100) {
       quantityErrors.set(productId, 'quantityLimit'); setMessage('quantityLimit'); return;
     }
@@ -394,7 +394,14 @@ function changeQuantity(productId, value) {
     patchCartRow(productId, revision); renderCartSummary();
   }));
   cartMutation = result.catch(() => {});
-  return result;
+  return result.then(() => removalRequested ? confirmRemove(productId) : undefined);
+}
+
+// Quantity can only reach 0 from the stepper or the input; removal then needs an explicit confirmation.
+async function confirmRemove(productId) {
+  const name = resolvedCart.find(line => line.productId === productId)?.product?.name || t('productUnavailable');
+  if (await confirmModal(t('removeItemConfirm').replace('{name}', name), { title: t('removeItemTitle'), confirmLabel: t('remove') })) await removeLine(productId);
+  else patchCartRow(productId);
 }
 
 async function removeLine(productId) {
@@ -405,7 +412,7 @@ async function removeLine(productId) {
     const next = row?.nextElementSibling || row?.previousElementSibling;
     row?.remove(); resolvedCart = resolvedCart.filter(line => line.productId !== productId);
     selection.sync(cartStore.list()); updateCount(); updatePersistence(); renderCartSummary();
-    if (hadFocus) (next?.querySelector('.cart-remove') || byId('cart-empty').querySelector('.empty-browse')).focus({ preventScroll: true });
+    if (hadFocus) (next?.querySelector('.quantity-stepper button') || byId('cart-empty').querySelector('.empty-browse')).focus({ preventScroll: true });
     setMessage('removedFromCart');
   }));
   cartMutation = result.catch(() => setMessage('networkError'));
@@ -462,9 +469,8 @@ function renderCart() {
     input.setAttribute('aria-label', `${t('quantity')}: ${product?.name || t('productUnavailable')}`);
     input.addEventListener('input', () => quantityRevisions.set(productId, (quantityRevisions.get(productId) || 0) + 1));
     input.addEventListener('change', () => changeQuantity(productId, input.valueAsNumber));
-    const decrease = action('−', () => changeQuantity(productId, current => current - 1));
+    const decrease = action('−', () => changeQuantity(productId, current => current - 1));  // reaching 0 asks to remove
     decrease.dataset.focusKey = `decrease-${productId}`;
-    decrease.disabled = quantity <= 1;
     decrease.setAttribute('aria-label', `${t('decreaseQuantity')}: ${product?.name || t('productUnavailable')}`);
     const increase = action('+', () => changeQuantity(productId, current => current + 1));
     increase.dataset.focusKey = `increase-${productId}`;
@@ -475,12 +481,7 @@ function renderCart() {
     const feedback = element('span', 'cart-quantity-feedback'); feedback.setAttribute('role', 'status'); feedback.hidden = true; controls.append(feedback);
     const unit = element('span', 'cart-unit-price', product ? formatMoney(product.priceMinor, product.currency).replace(/\u00a0/g, ' ') : '—');
     const subtotal = element('strong', 'cart-line-subtotal', product ? formatMoney(product.priceMinor * quantity, product.currency) : '—');
-    const remove = action('', async () => {
-      const name = product?.name || t('productUnavailable');
-      if (await confirmModal(t('removeItemConfirm').replace('{name}', name), { title: t('removeItemTitle'), confirmLabel: t('remove') })) await removeLine(productId);
-    }); remove.classList.add('cart-remove');
-    remove.innerHTML = trashIcon; remove.setAttribute('aria-label', t('remove')); remove.title = t('remove');
-    row.append(detail, unit, controls, subtotal, remove);
+    row.append(detail, unit, controls, subtotal);
     list.append(row);
   }
   if (focusedKey) [...list.querySelectorAll('[data-focus-key]')].find(control => control.dataset.focusKey === focusedKey && !control.disabled)?.focus({ preventScroll: true });
