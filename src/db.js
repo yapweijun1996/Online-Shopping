@@ -1,6 +1,7 @@
 import { openNodeStore } from './store.js';
+import { migrateLegacyVariants } from './options.js';
 
-export const SCHEMA_VERSION = 16;
+export const SCHEMA_VERSION = 17;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -11,6 +12,39 @@ const rebuildColumns = {
   order_item: ['id', 'delivery_id', 'position', 'product_id', 'sku_snapshot', 'name_snapshot', 'price_minor', 'quantity',
     'line_total_minor', 'currency'],
 };
+
+
+// Tenant-defined product options (see options.js). Values and types are never deleted, only deactivated.
+const optionTablesSql = `
+  CREATE TABLE IF NOT EXISTS option_type (
+    id TEXT PRIMARY KEY,
+    code TEXT NOT NULL UNIQUE COLLATE NOCASE CHECK (length(code) BETWEEN 1 AND 60),
+    name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 60),
+    translations_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(translations_json)),
+    display TEXT NOT NULL DEFAULT 'button' CHECK (display IN ('button', 'swatch', 'image', 'dropdown')),
+    position INTEGER NOT NULL DEFAULT 0,
+    active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+  ) STRICT;
+  CREATE TABLE IF NOT EXISTS option_value (
+    id TEXT PRIMARY KEY,
+    option_type_id TEXT NOT NULL REFERENCES option_type(id) ON DELETE RESTRICT,
+    code TEXT NOT NULL COLLATE NOCASE CHECK (length(code) BETWEEN 1 AND 60),
+    label TEXT NOT NULL CHECK (length(label) BETWEEN 1 AND 80),
+    translations_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(translations_json)),
+    swatch_color TEXT CHECK (swatch_color IS NULL OR (length(swatch_color) = 7 AND swatch_color LIKE '#%')),
+    position INTEGER NOT NULL DEFAULT 0,
+    active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    UNIQUE (option_type_id, code)
+  ) STRICT;
+  CREATE TABLE IF NOT EXISTS product_option (
+    product_id TEXT NOT NULL REFERENCES product(id) ON DELETE RESTRICT,
+    option_type_id TEXT NOT NULL REFERENCES option_type(id) ON DELETE RESTRICT,
+    option_value_id TEXT NOT NULL REFERENCES option_value(id) ON DELETE RESTRICT,
+    PRIMARY KEY (product_id, option_type_id)
+  ) STRICT;
+  CREATE INDEX IF NOT EXISTS product_option_value ON product_option(option_value_id);`;
 
 async function migrate(store, version, sql) {
   await store.transaction(async () => {
@@ -345,6 +379,14 @@ export async function migrateStore(store) {
     });
     version = 16;
   }
+  if (version === 16) {
+    await store.transaction(async () => {
+      await store.exec(optionTablesSql);
+      await migrateLegacyVariants(store);
+      await store.setSchemaVersion(17);
+    });
+    version = 17;
+  }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }
 
@@ -354,6 +396,9 @@ export async function ready(store) {
       Array.isArray(await store.all('SELECT stock_quantity, gallery_layout_json FROM product LIMIT 0')) &&
       Array.isArray(await store.all('SELECT tracking_carrier, tracking_no FROM shop_order LIMIT 0')) &&
       Array.isArray(await store.all('SELECT availability_text, shipping_text, returns_text FROM company_setting LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT id FROM option_type LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT id FROM option_value LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT product_id FROM product_option LIMIT 0')) &&
       Boolean(await store.get('SELECT id FROM admin WHERE id = 1')) &&
       Boolean(await store.get('SELECT id FROM order_sequence WHERE id = 1')) &&
       Boolean(await store.get('SELECT id FROM company_setting WHERE id = 1')) &&

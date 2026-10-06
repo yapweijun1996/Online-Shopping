@@ -1,4 +1,4 @@
--- PostgreSQL baseline matching SQLite schema 16. Timestamps stay ISO text to preserve API snapshots.
+-- PostgreSQL baseline matching SQLite schema 17. Timestamps stay ISO text to preserve API snapshots.
 CREATE TABLE admin (
         id BIGINT PRIMARY KEY CHECK (id = 1),
         username TEXT NOT NULL UNIQUE,
@@ -148,7 +148,37 @@ CREATE INDEX product_gallery_product ON product_gallery_image(product_id, positi
 CREATE INDEX shop_order_queue ON shop_order(status, submitted_at DESC);
 CREATE INDEX order_event_history ON order_event(order_id, id);
 CREATE TABLE schema_meta (id BIGINT PRIMARY KEY CHECK(id = 1), version BIGINT NOT NULL);
-INSERT INTO schema_meta VALUES (1, 16);
+CREATE TABLE option_type (
+  id TEXT PRIMARY KEY,
+  code TEXT NOT NULL CHECK (length(code) BETWEEN 1 AND 60),
+  name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 60),
+  translations_json TEXT NOT NULL DEFAULT '{}' CHECK (translations_json::jsonb IS NOT NULL),
+  display TEXT NOT NULL DEFAULT 'button' CHECK (display IN ('button', 'swatch', 'image', 'dropdown')),
+  position BIGINT NOT NULL DEFAULT 0,
+  active BIGINT NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX option_type_code ON option_type(lower(code));
+CREATE TABLE option_value (
+  id TEXT PRIMARY KEY,
+  option_type_id TEXT NOT NULL REFERENCES option_type(id) ON DELETE RESTRICT,
+  code TEXT NOT NULL CHECK (length(code) BETWEEN 1 AND 60),
+  label TEXT NOT NULL CHECK (length(label) BETWEEN 1 AND 80),
+  translations_json TEXT NOT NULL DEFAULT '{}' CHECK (translations_json::jsonb IS NOT NULL),
+  swatch_color TEXT CHECK (swatch_color IS NULL OR swatch_color ~ '^#[0-9a-fA-F]{6}$'),
+  position BIGINT NOT NULL DEFAULT 0,
+  active BIGINT NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX option_value_code ON option_value(option_type_id, lower(code));
+CREATE TABLE product_option (
+  product_id TEXT NOT NULL REFERENCES product(id) ON DELETE RESTRICT,
+  option_type_id TEXT NOT NULL REFERENCES option_type(id) ON DELETE RESTRICT,
+  option_value_id TEXT NOT NULL REFERENCES option_value(id) ON DELETE RESTRICT,
+  PRIMARY KEY (product_id, option_type_id)
+);
+CREATE INDEX product_option_value ON product_option(option_value_id);
+INSERT INTO schema_meta VALUES (1, 17);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 INSERT INTO shop_setup(id, mode, shop_name) VALUES (1, NULL, 'Online Shopping');

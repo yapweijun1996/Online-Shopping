@@ -7,6 +7,7 @@ import { SqlLimiter } from './limiter.js';
 import { createOrder, lookupOrderStatuses } from './orders.js';
 import { addGalleryImage, createProduct, deleteGalleryImage, getGalleryImage, getProduct, getProductImage, listProducts, updateProduct } from './products.js';
 import { decideSellerOrder, getSellerOrder, listSellerOrders, pendingOrderSummary } from './seller-orders.js';
+import { createOptionType, createOptionValue, listOptionTypes, updateOptionType, updateOptionValue } from './options.js';
 import { createCategory, publicBusinessContact, getCompanySettings, storefrontTexts, listCategories, updateCategory, updateCompanySettings } from './settings.js';
 import { FieldError } from './validation.js';
 import { presentCatalogCopy, presentShopName } from './catalog-copy.js';
@@ -15,6 +16,7 @@ import { integrationCatalog } from '../public/shared/integration-catalog.js';
 
 const productIdPath = /^\/api\/v1\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
 const sellerProductIdPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
+const optionTypePath = /^\/api\/v1\/seller\/option-types(?:\/([0-9a-f-]{36})(?:(\/values)(?:\/([0-9a-f-]{36}))?)?)?$/;
 const productGalleryPath = /^\/api\/v1\/(seller\/)?products\/([0-9a-f-]{36})\/gallery\/([0-9a-f-]{36})$/;
 const sellerOrderIdPath = /^\/api\/v1\/seller\/orders\/([0-9a-f-]{36})(?:\/(confirm|reject|ship|deliver|cancel))?$/;
 const LIMIT_WINDOW_MS = 15 * 60 * 1000;
@@ -191,6 +193,20 @@ export async function createApi({ store, config, serveStatic = null }) {
       catch { throw new ApiError(404, 'NOT_FOUND', 'Category not found.'); }
       if (!code || code.includes('/')) throw new ApiError(404, 'NOT_FOUND', 'Category not found.');
       return json(200, await updateCategory(store, code, body));
+    }
+    const optionRoute = optionTypePath.exec(pathname);
+    if (optionRoute) {
+      const [, typeId, valuesPart, valueId] = optionRoute;
+      if (method === 'GET' && !typeId) return json(200, { items: await listOptionTypes(store) });
+      if (['POST', 'PATCH'].includes(method)) {
+        requireOrigin(request, expectedOrigin);
+        requireCsrf(request, session);
+        const body = await readJson(request);
+        if (method === 'POST' && !typeId) return json(201, await createOptionType(store, body));
+        if (method === 'PATCH' && typeId && !valuesPart) return json(200, await updateOptionType(store, typeId, body));
+        if (method === 'POST' && typeId && valuesPart && !valueId) return json(201, await createOptionValue(store, typeId, body));
+        if (method === 'PATCH' && typeId && valuesPart && valueId) return json(200, await updateOptionValue(store, typeId, valueId, body));
+      }
     }
     if (method === 'GET' && pathname === '/api/v1/seller/orders/summary') return json(200, await pendingOrderSummary(store));
     if (method === 'GET' && pathname === '/api/v1/seller/orders') {
