@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { openDatabase } from '../worker-runtime/db.js';
+import { openSyncDatabase as openDatabase } from './helpers/sync-store.js';
 import { createSyntheticMessagingAuthority } from '../src/integration-consent.js';
 import { createOfflineMetaIngress } from '../src/integration-ingress.js';
 import { verifyMetaSignature } from '../src/integration-contracts.js';
@@ -18,8 +18,8 @@ const accepted = id => createFixtureIntegrationTransport([{ status: 200, body: {
 const count = (f, table) => f.store.get(`SELECT count(*) n FROM integration_demo_${table}`).n;
 const projection = (f, id = 'wamid.SYNTHETIC001') => f.store.get('SELECT * FROM integration_demo_message_projection WHERE company_id=? AND connection_id=? AND subject_id=?', f.b.companyId, f.b.connectionId, id);
 
-test('caller flags, copied proof, fake authority and implicit mode cannot grant message consent', t => {
-  const f = trustFixture(t, { openWindow: true }), scope = f.ledger.forCompany(f.b.companyId);
+test('caller flags, copied proof, fake authority and implicit mode cannot grant message consent', async t => {
+  const f = await trustFixture(t, { openWindow: true }), scope = f.ledger.forCompany(f.b.companyId);
   assert.throws(() => createSyntheticMessagingAuthority(f.store), code('SYNTHETIC_ONLY'));
   const raw = buildWhatsAppMessageRequest(f.b, { ...intent(), phoneNumberId: '000000000000011', apiVersion: 'v25.0', consent: { optIn: true, at: f.now(), version: 'order-contact-v2' }, lastInboundAt: f.now() });
   assert.throws(() => scope.queueProviderRequest(f.b.connectionId, 'caller', raw), code('TRUSTED_CONSENT_REQUIRED'));
@@ -30,8 +30,8 @@ test('caller flags, copied proof, fake authority and implicit mode cannot grant 
   assert.equal(count(f, 'operation'), 0);
 });
 
-test('server order consent binds company, account, connection, buyer recipient and existing purpose', t => {
-  const f = trustFixture(t, { openWindow: true });
+test('server order consent binds company, account, connection, buyer recipient and existing purpose', async t => {
+  const f = await trustFixture(t, { openWindow: true });
   const proof = f.authority.resolve(f.b, { ...reference(f), kind: 'TEXT', consent: { optIn: false } });
   assert.equal(proof.policy.consent.version, 'order-contact-v2'); assert.equal(proof.phoneNumberId, '000000000000011');
   assert.equal(proof.policy.consent.at, Date.parse(f.store.get('SELECT whatsapp_consent_at FROM shop_order WHERE id=?', f.orderId).whatsapp_consent_at));
@@ -41,8 +41,8 @@ test('server order consent binds company, account, connection, buyer recipient a
   assert.throws(() => f.authority.registerOrder(trustBinding('WHATSAPP_CLOUD','beta'), f.orderId));
 });
 
-test('another Store cannot authorize queue or execution even with identical fictional company/account IDs', t => {
-  const source = trustFixture(t, { openWindow: true }), target = trustFixture(t, { openWindow: true });
+test('another Store cannot authorize queue or execution even with identical fictional company/account IDs', async t => {
+  const source = await trustFixture(t, { openWindow: true }), target = await trustFixture(t, { openWindow: true });
   target.authority.revoke(target.b, target.orderId);
   const foreign = source.prepare(), scope = target.ledger.forCompany(target.b.companyId), transport = accepted('wamid.SYNTHETIC_FOREIGN');
   assert.throws(() => target.authority.assertReference(target.b, { ...foreign.input.authorizationRef, recipient: foreign.input.recipient }), code('NOT_FOUND'));
@@ -53,7 +53,7 @@ test('another Store cannot authorize queue or execution even with identical fict
 });
 
 test('changed phone bindings block stale new queues, pending dispatch and completed replay', async t => {
-  const f = trustFixture(t, { openWindow: true }), scope = f.ledger.forCompany(f.b.companyId), prepared = f.prepare();
+  const f = await trustFixture(t, { openWindow: true }), scope = f.ledger.forCompany(f.b.companyId), prepared = f.prepare();
   const done = scope.queueProviderRequest(f.b.connectionId, 'phone-done', prepared), transport = accepted('wamid.SYNTHETIC_PHONE'), adapter = f.adapter(transport, f.b);
   assert.equal((await adapter.execute(done.operationId)).state, 'DONE');
   const waiting = scope.queueProviderRequest(f.b.connectionId, 'phone-waiting', prepared);
@@ -67,15 +67,15 @@ test('changed phone bindings block stale new queues, pending dispatch and comple
   assert.equal(f.ingress.receive(signed(currentPhoneStatus)).quarantined, 1); assert.equal(projection(f, 'wamid.SYNTHETIC_PHONE'), undefined);
 });
 
-test('signed inbound never grants consent to email-only or historical opt-out orders', t => {
-  const f = trustFixture(t, { openWindow: true }), orderId = f.makeOrder({ phone: '', optIn: false }); f.authority.registerOrder(f.b, orderId);
+test('signed inbound never grants consent to email-only or historical opt-out orders', async t => {
+  const f = await trustFixture(t, { openWindow: true }), orderId = await f.makeOrder({ phone: '', optIn: false }); f.authority.registerOrder(f.b, orderId);
   assert.throws(() => f.authority.resolve(f.b, { orderId, purpose: 'ORDER_CONTACT', recipient: '+60123456789', kind: 'TEXT', consent: { optIn: true } }), code('NOT_FOUND'));
   f.store.run('UPDATE shop_order SET whatsapp_opt_in=0,whatsapp_consent_at=NULL,whatsapp_consent_version=NULL WHERE id=?', f.orderId);
   assert.throws(() => f.authority.resolve(f.b, { ...reference(f), kind: 'TEXT', consent: { optIn: true } }), code('CONSENT_REQUIRED'));
 });
 
 test('revocation blocks new queue and pending execution while completed facts and historical snapshots remain', async t => {
-  const f = trustFixture(t, { openWindow: true }), scope = f.ledger.forCompany(f.b.companyId), prepared = f.prepare();
+  const f = await trustFixture(t, { openWindow: true }), scope = f.ledger.forCompany(f.b.companyId), prepared = f.prepare();
   const before = f.store.all('SELECT * FROM shop_order');
   const done = scope.queueProviderRequest(f.b.connectionId, 'done', prepared), transport = accepted('wamid.SYNTHETIC001'), adapter = f.adapter(transport, f.b);
   assert.equal((await adapter.execute(done.operationId)).state, 'DONE');
@@ -89,7 +89,7 @@ test('revocation blocks new queue and pending execution while completed facts an
 });
 
 test('template approval and shape are read from the current account-bound server fixture record', async t => {
-  const f = trustFixture(t), input = { recipient: '+60123456789', kind: 'TEMPLATE', template: 'synthetic_order_update', language: 'en_US', parameters: ['SYNTHETIC001'] };
+  const f = await trustFixture(t), input = { recipient: '+60123456789', kind: 'TEMPLATE', template: 'synthetic_order_update', language: 'en_US', parameters: ['SYNTHETIC001'] };
   assert.throws(() => f.prepare(input), code('APPROVED_TEMPLATE_REQUIRED'));
   f.authority.setTemplateApproval(f.b, { name: input.template, language: input.language, parameterCount: 1, approved: true });
   assert.throws(() => f.prepare({ ...input, parameters: ['one','two'] }), code('APPROVED_TEMPLATE_REQUIRED'));
@@ -101,7 +101,7 @@ test('template approval and shape are read from the current account-bound server
 
 test('revocation during lease acquisition is rechecked before transmission and records a policy block', async t => {
   let onLease;
-  const f = trustFixture(t, { openWindow: true, wrap: store => ({ ...store, run(sql, ...args) {
+  const f = await trustFixture(t, { openWindow: true, wrap: store => ({ ...store, run(sql, ...args) {
     store.run(sql, ...args); if (onLease && sql.startsWith("UPDATE integration_demo_outbox SET state = 'LEASED'")) onLease();
   } }) });
   const scope = f.ledger.forCompany(f.b.companyId), queued = scope.queueProviderRequest(f.b.connectionId,'lease-revocation',f.prepare());
@@ -114,7 +114,7 @@ test('revocation during lease acquisition is rechecked before transmission and r
 
 test('phone replacement during lease acquisition prevents transmission', async t => {
   let onLease;
-  const f = trustFixture(t, { openWindow: true, wrap: store => ({ ...store, run(sql, ...args) {
+  const f = await trustFixture(t, { openWindow: true, wrap: store => ({ ...store, run(sql, ...args) {
     store.run(sql, ...args); if (onLease && sql.startsWith("UPDATE integration_demo_outbox SET state = 'LEASED'")) onLease();
   } }) });
   const scope = f.ledger.forCompany(f.b.companyId), queued = scope.queueProviderRequest(f.b.connectionId, 'phone-lease', f.prepare());
@@ -125,7 +125,7 @@ test('phone replacement during lease acquisition prevents transmission', async t
 });
 
 test('expired message leases enter UNKNOWN reconciliation even after consent is revoked', async t => {
-  const f = trustFixture(t,{openWindow:true}), scope = f.ledger.forCompany(f.b.companyId);
+  const f = await trustFixture(t,{openWindow:true}), scope = f.ledger.forCompany(f.b.companyId);
   const queued = scope.queueProviderRequest(f.b.connectionId,'expired-revoked',f.prepare()); scope.beginAttempt(queued.operationId);
   f.authority.revoke(f.b,f.orderId); f.advance(86400000);
   const transport = accepted('wamid.SYNTHETIC_UNUSED');
@@ -133,8 +133,8 @@ test('expired message leases enter UNKNOWN reconciliation even after consent is 
   assert.equal(f.store.get('SELECT result FROM integration_demo_reconciliation').result,'UNKNOWN'); assert.equal(transport.requests().length,0);
 });
 
-test('Meta signature validates exact bounded raw bytes, prefix and app key before parsing', t => {
-  const f = trustFixture(t), sample = signed(' { "object" : "whatsapp_business_account", "entry" : [] } ');
+test('Meta signature validates exact bounded raw bytes, prefix and app key before parsing', async t => {
+  const f = await trustFixture(t), sample = signed(' { "object" : "whatsapp_business_account", "entry" : [] } ');
   assert.equal(verifyMetaSignature(sample.rawBody, sample.signature, syntheticKey), true);
   assert.equal(verifyMetaSignature(Buffer.from(JSON.stringify(JSON.parse(sample.rawBody))), sample.signature, syntheticKey), false);
   for (const signature of ['', sample.signature.slice(7), sample.signature.replace('sha256=', 'sha1='), sample.signature+',duplicate']) assert.equal(verifyMetaSignature(sample.rawBody, signature, syntheticKey), false);
@@ -144,8 +144,8 @@ test('Meta signature validates exact bounded raw bytes, prefix and app key befor
   assert.equal(count(f, 'webhook_receipt'), 0);
 });
 
-test('signed batches derive each tenant exclusively from trusted app/WABA/phone mapping', t => {
-  const f = trustFixture(t), alpha = metaPayload({ messages: [inboundText(f.now())] });
+test('signed batches derive each tenant exclusively from trusted app/WABA/phone mapping', async t => {
+  const f = await trustFixture(t), alpha = metaPayload({ messages: [inboundText(f.now())] });
   const beta = metaPayload({ messages: [inboundText(f.now(), 'wamid.SYNTHETIC_BETA')] }, { wabaId: '000000000000002', phoneId: '000000000000012' });
   const batch = { object: alpha.object, entry: [...alpha.entry, ...beta.entry] };
   assert.equal(f.ingress.receive({ ...signed(batch), companyId: 'synthetic-forged', role: 'ADMIN' }).httpStatus, 200);
@@ -156,8 +156,8 @@ test('signed batches derive each tenant exclusively from trusted app/WABA/phone 
   assert.throws(() => createOfflineMetaIngress({ store: {}, authority: f.authority, mode: 'SYNTHETIC', appId: syntheticApp, appSecret: syntheticKey }), code('SYNTHETIC_ONLY'));
 });
 
-test('duplicates inside a batch and across retries do not duplicate windows or retain private text', t => {
-  const f = trustFixture(t), message = inboundText(f.now(), 'wamid.SYNTHETIC_DUPLICATE', '60123456789', 'PRIVATE FICTIONAL BODY');
+test('duplicates inside a batch and across retries do not duplicate windows or retain private text', async t => {
+  const f = await trustFixture(t), message = inboundText(f.now(), 'wamid.SYNTHETIC_DUPLICATE', '60123456789', 'PRIVATE FICTIONAL BODY');
   const payload = metaPayload({ messages: [message,message] });
   assert.equal(f.ingress.receive(signed(payload)).duplicates, 1); assert.equal(f.ingress.receive(signed(payload)).duplicates, 2);
   assert.equal(count(f, 'signed_inbox'), 1); assert.equal(count(f, 'inbound_clock'), 1); assert.equal(count(f, 'webhook_receipt'), 1);
@@ -167,8 +167,8 @@ test('duplicates inside a batch and across retries do not duplicate windows or r
   assert.equal(count(f, 'signed_inbox'), 1); assert.equal(count(f, 'webhook_receipt'), 1);
 });
 
-test('unsupported notification retries have stable identity without invented provider timestamps', t => {
-  const f = trustFixture(t), request = signed(metaPayload({ errors: [{ code: 131051, message: 'PRIVATE FICTIONAL ERROR' }] }));
+test('unsupported notification retries have stable identity without invented provider timestamps', async t => {
+  const f = await trustFixture(t), request = signed(metaPayload({ errors: [{ code: 131051, message: 'PRIVATE FICTIONAL ERROR' }] }));
   const firstTime = f.now(); assert.equal(f.ingress.receive(request).quarantined, 1);
   f.advance(1000); const retry = f.ingress.receive(request);
   assert.equal(retry.httpStatus, 200); assert.equal(retry.duplicates, 1); assert.equal(retry.quarantined, 0);
@@ -178,8 +178,8 @@ test('unsupported notification retries have stable identity without invented pro
   assert.equal(f.store.get('SELECT received_at FROM integration_demo_webhook_receipt').received_at, firstTime);
 });
 
-test('unsupported opaque group status quarantines without starving valid individual events in its batch', t => {
-  const f = trustFixture(t), group = { ...statusEvent(f.now(), 'delivered', 'wamid.SYNTHETIC_GROUP'), recipient_type: 'group', recipient_id: 'U3ludGhldGljR3JvdXA=' };
+test('unsupported opaque group status quarantines without starving valid individual events in its batch', async t => {
+  const f = await trustFixture(t), group = { ...statusEvent(f.now(), 'delivered', 'wamid.SYNTHETIC_GROUP'), recipient_type: 'group', recipient_id: 'U3ludGhldGljR3JvdXA=' };
   const request = signed(metaPayload({ messages: [inboundText(f.now())], statuses: [group] })), first = f.ingress.receive(request);
   assert.equal(first.httpStatus, 200); assert.equal(first.received, 2); assert.equal(first.quarantined, 1);
   assert.equal(count(f, 'inbound_clock'), 1); assert.equal(count(f, 'signed_inbox'), 2);
@@ -187,8 +187,8 @@ test('unsupported opaque group status quarantines without starving valid individ
   assert.equal(count(f, 'webhook_receipt'), 1);
 });
 
-test('future, unsupported and older inbound events cannot open or regress a service window', t => {
-  const f = trustFixture(t);
+test('future, unsupported and older inbound events cannot open or regress a service window', async t => {
+  const f = await trustFixture(t);
   const future = metaPayload({ messages: [inboundText(f.now() + 1000, 'wamid.SYNTHETIC_FUTURE')] });
   assert.equal(f.ingress.receive(signed(future)).quarantined, 1); assert.equal(count(f, 'inbound_clock'), 0);
   assert.throws(() => f.prepare(), code('MESSAGE_WINDOW_CLOSED'));
@@ -201,10 +201,10 @@ test('future, unsupported and older inbound events cannot open or regress a serv
   assert.throws(() => f.prepare(), code('MESSAGE_WINDOW_CLOSED'));
 });
 
-test('inbox, window and receipt commit atomically before ACK; injected failures return no ACK', t => {
+test('inbox, window and receipt commit atomically before ACK; injected failures return no ACK', async t => {
   for (const table of ['signed_inbox','inbound_clock','webhook_receipt']) {
     let active = false;
-    const f = trustFixture(t, { wrap: store => ({ ...store, run(sql, ...args) { if (active && sql.startsWith(`INSERT INTO integration_demo_${table}`)) throw new Error('synthetic commit fault'); return store.run(sql, ...args); } }) });
+    const f = await trustFixture(t, { wrap: store => ({ ...store, run(sql, ...args) { if (active && sql.startsWith(`INSERT INTO integration_demo_${table}`)) throw new Error('synthetic commit fault'); return store.run(sql, ...args); } }) });
     const request = signed(metaPayload({ messages: [inboundText(f.now(),'wamid.SYNTHETIC_A'),inboundText(f.now(),'wamid.SYNTHETIC_B')] }));
     active = true; let ack;
     assert.throws(() => { ack = f.ingress.receive(request); }, /synthetic commit fault/); assert.equal(ack, undefined);
@@ -213,17 +213,17 @@ test('inbox, window and receipt commit atomically before ACK; injected failures 
   }
 });
 
-test('ACKed receipt, inbox and service window survive closing and reopening an isolated file Store', t => {
-  const directory = mkdtempSync(path.join(tmpdir(),'shopping-signed-inbox-')); t.after(() => rmSync(directory,{recursive:true,force:true}));
-  const file = path.join(directory,'synthetic.db'), f = trustFixture(t,{file}); f.openWindow(); f.close();
-  const reopened = openDatabase(file); t.after(() => reopened.close());
+test('ACKed receipt, inbox and service window survive closing and reopening an isolated file Store', async t => {
+  const directory = mkdtempSync(path.join(tmpdir(),'shopping-signed-inbox-')); t.after(async () => rmSync(directory,{recursive:true,force:true}));
+  const file = path.join(directory,'synthetic.db'), f = await trustFixture(t,{file}); f.openWindow(); f.close();
+  const reopened = await openDatabase(file); t.after(async () => reopened.close());
   assert.equal(reopened.get('SELECT count(*) n FROM integration_demo_webhook_receipt').n,1);
   assert.equal(reopened.get('SELECT count(*) n FROM integration_demo_signed_inbox').n,1);
   assert.equal(reopened.get('SELECT count(*) n FROM integration_demo_inbound_clock').n,1);
 });
 
 test('a status arriving before accepted-response persistence waits for correlation and can be reprocessed offline', async t => {
-  const f = trustFixture(t,{openWindow:true}), before = f.store.all('SELECT * FROM shop_order');
+  const f = await trustFixture(t,{openWindow:true}), before = f.store.all('SELECT * FROM shop_order');
   f.ingress.receive(signed(metaPayload({statuses:[statusEvent(f.now(),'delivered')]})));
   assert.equal(f.store.get("SELECT disposition FROM integration_demo_signed_inbox WHERE disposition='WAITING_SUBJECT'").disposition,'WAITING_SUBJECT');
   assert.equal(projection(f), undefined);
@@ -234,7 +234,7 @@ test('a status arriving before accepted-response persistence waits for correlati
 });
 
 test('status correlation requires the exact original individual recipient, including delayed correlation', async t => {
-  const f = trustFixture(t, { openWindow: true }), wrong = { ...statusEvent(f.now(), 'delivered'), recipient_id: '60129876543' };
+  const f = await trustFixture(t, { openWindow: true }), wrong = { ...statusEvent(f.now(), 'delivered'), recipient_id: '60129876543' };
   f.ingress.receive(signed(metaPayload({ statuses: [wrong] })));
   const scope = f.ledger.forCompany(f.b.companyId), queued = scope.queueProviderRequest(f.b.connectionId, 'recipient-status', f.prepare());
   await f.adapter(accepted('wamid.SYNTHETIC001'), f.b).execute(queued.operationId);
@@ -245,7 +245,7 @@ test('status correlation requires the exact original individual recipient, inclu
 });
 
 test('out-of-order and equal-time status events preserve progress; failure conflicts and unknown statuses quarantine', async t => {
-  const f = trustFixture(t,{openWindow:true}), scope = f.ledger.forCompany(f.b.companyId), queued = scope.queueProviderRequest(f.b.connectionId,'status',f.prepare());
+  const f = await trustFixture(t,{openWindow:true}), scope = f.ledger.forCompany(f.b.companyId), queued = scope.queueProviderRequest(f.b.connectionId,'status',f.prepare());
   await f.adapter(accepted('wamid.SYNTHETIC001'),f.b).execute(queued.operationId);
   f.ingress.receive(signed(metaPayload({statuses:[statusEvent(f.now(),'delivered'),statusEvent(f.now(),'read'),statusEvent(f.now()-1000,'sent')]})));
   assert.equal(projection(f).status,'READ');
@@ -254,7 +254,7 @@ test('out-of-order and equal-time status events preserve progress; failure confl
 });
 
 test('sent may progress to a later delivery failure while confirmed delivery contradictions quarantine', async t => {
-  const f = trustFixture(t, { openWindow: true }), scope = f.ledger.forCompany(f.b.companyId);
+  const f = await trustFixture(t, { openWindow: true }), scope = f.ledger.forCompany(f.b.companyId);
   const queued = scope.queueProviderRequest(f.b.connectionId, 'sent-failure', f.prepare());
   await f.adapter(accepted('wamid.SYNTHETIC001'), f.b).execute(queued.operationId);
   f.ingress.receive(signed(metaPayload({ statuses: [statusEvent(f.now(), 'sent')] })));
@@ -270,7 +270,7 @@ test('sent may progress to a later delivery failure while confirmed delivery con
 });
 
 test('unverified provider lookup cannot resolve UNKNOWN, including after a signed uncorrelated status', async t => {
-  const f = trustFixture(t,{openWindow:true}), scope = f.ledger.forCompany(f.b.companyId), queued = scope.queueProviderRequest(f.b.connectionId,'unknown',f.prepare());
+  const f = await trustFixture(t,{openWindow:true}), scope = f.ledger.forCompany(f.b.companyId), queued = scope.queueProviderRequest(f.b.connectionId,'unknown',f.prepare());
   const transport = createFixtureIntegrationTransport([{networkFailure:'TIMEOUT'}]), adapter = f.adapter(transport,f.b);
   assert.equal((await adapter.execute(queued.operationId)).state,'RECONCILE');
   f.ingress.receive(signed(metaPayload({statuses:[statusEvent(f.now(),'delivered')]})));
@@ -279,8 +279,8 @@ test('unverified provider lookup cannot resolve UNKNOWN, including after a signe
   await assert.rejects(adapter.execute(queued.operationId),code('INVALID_STATE')); assert.equal(transport.requests().length,1);
 });
 
-test('malformed signed payloads and batch limits fail without writes; no startup route or public cache change exists', t => {
-  const f = trustFixture(t);
+test('malformed signed payloads and batch limits fail without writes; no startup route or public cache change exists', async t => {
+  const f = await trustFixture(t);
   for (const payload of ['{broken',metaPayload({messages:{length:1}}),{object:'wrong',entry:[]},metaPayload({messages:Array.from({length:1001},(_,i)=>inboundText(f.now(),`wamid.SYNTHETIC_${i}`))})]) assert.throws(()=>f.ingress.receive(signed(payload)),code('INVALID_PAYLOAD'));
   assert.equal(count(f,'signed_inbox'),0); assert.equal(count(f,'webhook_receipt'),0);
   for (const file of ['app','server','db']) assert.doesNotMatch(readFileSync(new URL(`../src/${file}.js`,import.meta.url),'utf8'),/integration-consent|integration-ingress|integration-ledger/);
