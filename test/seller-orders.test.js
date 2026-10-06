@@ -262,25 +262,33 @@ test('tracked stock blocks oversell at checkout and is deducted only when the se
     assert.equal((await f.request('PATCH', `/api/v1/seller/products/${f.product.id}`, { stockQuantity: -1 },
       { origin: f.origin, cookie: session.cookie, 'x-csrf-token': session.csrf })).response.status, 400);
     const first = await f.submit();
-    const second = await f.submit();
     assert.equal(first.response.status, 201);
-    assert.equal(second.response.status, 201, 'pending orders do not reserve stock');
+    // The pending order holds its 2 units: stock is untouched, but only 1 is left to sell.
     assert.equal(await stock(), 3);
-    const [{ id: firstId }, { id: secondId }] = await f.app.database.all('SELECT id FROM shop_order ORDER BY order_no');
+    const held = await f.submit();
+    assert.equal(held.response.status, 409, 'pending orders hold stock');
+    assert.equal(held.data.error.code, 'OUT_OF_STOCK');
+    assert.equal((await f.request('GET', `/api/v1/products/${f.product.id}`)).data.inStock, true);
+    const [{ id: firstId }] = await f.app.database.all('SELECT id FROM shop_order ORDER BY order_no');
     assert.equal((await decide(firstId, 'confirm', { expectedRevision: 1 })).response.status, 200);
     assert.equal(await stock(), 1);
-    const short = await decide(secondId, 'confirm', { expectedRevision: 1 });
-    assert.equal(short.response.status, 409);
-    assert.equal(short.data.error.code, 'INSUFFICIENT_STOCK');
-    assert.equal(await stock(), 1, 'a failed confirmation leaves stock unchanged');
-    assert.equal((await f.app.database.get('SELECT status FROM shop_order WHERE id = ?', secondId)).status, 'SUBMITTED');
     // Not enough left for another 2-unit order at checkout.
     const refused = await f.submit();
     assert.equal(refused.response.status, 409);
     assert.equal(refused.data.error.code, 'OUT_OF_STOCK');
-    // Rejecting never touches stock; zero stock reports out of stock publicly.
-    assert.equal((await decide(secondId, 'reject', { expectedRevision: 1, reason: 'Short stock' })).response.status, 200);
-    assert.equal(await stock(), 1);
+    // Rejecting releases the hold and never touches stock; an unattended order stops holding after the window.
+    await f.app.database.run('UPDATE product SET stock_quantity = 2 WHERE id = ?', f.product.id);
+    const third = await f.submit();
+    assert.equal(third.response.status, 201);
+    assert.equal((await f.request('GET', `/api/v1/products/${f.product.id}`)).data.inStock, false, 'fully held reads as out of stock');
+    assert.equal((await f.submit()).response.status, 409);
+    const thirdId = (await f.app.database.get("SELECT id FROM shop_order WHERE status = 'SUBMITTED'")).id;
+    await f.app.database.run("UPDATE shop_order SET submitted_at = '2000-01-01T00:00:00.000Z' WHERE id = ?", thirdId);
+    assert.equal((await f.submit()).response.status, 201, 'a hold older than the window is released');
+    const pendingIds = (await f.app.database.all("SELECT id FROM shop_order WHERE status = 'SUBMITTED' ORDER BY order_no")).map(row => row.id);
+    assert.equal((await decide(pendingIds.at(-1), 'reject', { expectedRevision: 1, reason: 'Short stock' })).response.status, 200);
+    assert.equal(await stock(), 2);
+    assert.equal((await f.submit()).response.status, 201, 'a rejected order releases its hold');
     await f.app.database.run('UPDATE product SET stock_quantity = 0 WHERE id = ?', f.product.id);
     assert.equal((await f.request('GET', `/api/v1/products/${f.product.id}`)).data.inStock, false);
     // Seller view exposes the count; clearing it returns to unlimited.

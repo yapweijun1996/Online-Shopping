@@ -6,11 +6,12 @@ import { decodeProductImage } from './product-image.js';
 import { getCompanySettings, requireActiveCategory } from './settings.js';
 import { presentCatalogCopy } from './catalog-copy.js';
 import { groupUsesOptions, loadProductOptions, optionAxes, optionError, setProductOptions } from './options.js';
+import { reservedQuantitySql } from './stock-reservation.js';
 import { productCover, productGallery, requireGalleryRevision, saveProductGallery } from './product-gallery.js';
 
-const columns = `p.id, p.sku, p.name, p.description, p.category AS category_code,
+const columns = () => `p.id, p.sku, p.name, p.description, p.category AS category_code,
   c.label AS category, p.price_minor, p.currency, p.active, p.image_mime, p.variant_group, p.variant_label, p.stock_quantity,
-  p.created_at, p.updated_at`;
+  ${reservedQuantitySql('p.id')} AS reserved_quantity, p.created_at, p.updated_at`;
 const fromProduct = `FROM product p JOIN general_code c
   ON c.type = 'PRODUCT_CATEGORY' AND c.code = p.category`;
 
@@ -27,7 +28,7 @@ function productFromRow(row, seller = false) {
     id: row.id, sku: row.sku, name: row.name, description: row.description,
     category: row.category, priceMinor: row.price_minor, currency: row.currency,
     variantGroup: row.variant_group, variantLabel: row.variant_label,
-    ...(seller ? { categoryCode: row.category_code, active: Boolean(row.active), stockQuantity: row.stock_quantity } : { inStock: row.stock_quantity === null || row.stock_quantity > 0 }),
+    ...(seller ? { categoryCode: row.category_code, active: Boolean(row.active), stockQuantity: row.stock_quantity } : { inStock: row.stock_quantity === null || row.stock_quantity - Number(row.reserved_quantity) > 0 }),
     imageUrl: row.image_mime ? imagePath : null,
     ...(seller ? { createdAt: row.created_at, updatedAt: row.updated_at } : {})
   };
@@ -51,11 +52,11 @@ async function validateVariantGroup(database, product, excludeId = null) {
 async function detailFields(database, product, seller, mode) {
   if (!product) return null;
   product = await productGallery(database, product, seller, mode);
-  product.variants = product.variantGroup ? await Promise.all((await database.all(`SELECT ${columns} ${fromProduct}
+  product.variants = product.variantGroup ? await Promise.all((await database.all(`SELECT ${columns()} ${fromProduct}
     WHERE p.variant_group = ? ${seller ? '' : 'AND p.active = 1'} ORDER BY p.variant_label, p.id`, product.variantGroup)).
   map(async (row) => ({ id: row.id, label: row.variant_label, sku: row.sku, priceMinor: row.price_minor,
     currency: row.currency, imageUrl: await productCover(database, productFromRow(row, seller), seller),
-    ...(seller ? { active: Boolean(row.active), stockQuantity: row.stock_quantity } : { inStock: row.stock_quantity === null || row.stock_quantity > 0 }) }))) : [];
+    ...(seller ? { active: Boolean(row.active), stockQuantity: row.stock_quantity } : { inStock: row.stock_quantity === null || row.stock_quantity - Number(row.reserved_quantity) > 0 }) }))) : [];
   const optionsById = await loadProductOptions(database, [product.id, ...product.variants.map((variant) => variant.id)]);
   product.options = optionsById.get(product.id);
   for (const variant of product.variants) variant.options = optionsById.get(variant.id);
@@ -184,7 +185,7 @@ async function saveOptions(database, id, existing, patch) {
 }
 
 export async function getProduct(database, id, seller = false, mode = 'manual') {
-  const row = await database.get(`SELECT ${columns} ${fromProduct} WHERE p.id = ? ${seller ? '' : 'AND p.active = 1'}`, id);
+  const row = await database.get(`SELECT ${columns()} ${fromProduct} WHERE p.id = ? ${seller ? '' : 'AND p.active = 1'}`, id);
   return await detailFields(database, productFromRow(row, seller), seller, mode);
 }
 
@@ -239,7 +240,7 @@ export async function listProducts(database, params, seller = false, mode = 'man
   const offset = parseNumber('offset', 0, 10_000);
   if (limit < 1) throw new FieldError('limit', 'Enter a valid list range.');
   const activeClause = seller ? '' : 'p.active = 1 AND ';
-  const rows = await database.all(`SELECT ${columns} ${fromProduct} WHERE ${activeClause}
+  const rows = await database.all(`SELECT ${columns()} ${fromProduct} WHERE ${activeClause}
     (? = '' OR instr(lower(p.name), lower(?)) > 0 OR instr(lower(p.sku), lower(?)) > 0)
     AND (? = '' OR c.label = ?)
     ORDER BY p.updated_at DESC, p.id DESC LIMIT ? OFFSET ?`, search, search, search, category, category, limit + 1, offset);

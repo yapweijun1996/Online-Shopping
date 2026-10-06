@@ -71,17 +71,19 @@ test('PostgreSQL dual-origin API: login, CSRF, checkout, replay, catalog and sel
 test('PostgreSQL concurrent stock confirmation and limiter preserve atomicity; failures roll back', {skip:!base}, async t => {
   const store = await openPostgresDatabase(await database(t)); t.shoppingClosers.push(()=>store.close());
   const product=await seed(store);
-  const a=await createOrder(store,'pg-stock-intent-0001',input(product)), b=await createOrder(store,'pg-stock-intent-0002',input(product));
+  // Two buyers race for the last unit: the pending order holds it, so exactly one submission is accepted.
+  const race=await Promise.allSettled([createOrder(store,'pg-stock-intent-0001',input(product)),createOrder(store,'pg-stock-intent-0002',input(product))]);
+  assert.equal(race.filter(r=>r.status==='fulfilled').length,1);
+  assert.equal(race.find(r=>r.status==='rejected').reason.code,'OUT_OF_STOCK');
   const rows=await store.all('SELECT id FROM shop_order ORDER BY order_no');
+  assert.equal(rows.length,1);
   const results=await Promise.allSettled(rows.map(row=>decideSellerOrder(store,row.id,'confirm',{expectedRevision:1},username)));
   assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
-  assert.equal(results.find(r=>r.status==='rejected').reason.code,'INSUFFICIENT_STOCK');
   assert.equal((await store.get('SELECT stock_quantity FROM product')).stock_quantity,0);
   await assert.rejects(store.transaction(async()=>{await store.run('UPDATE product SET stock_quantity=9');throw Error('abort')}),/abort/);
   assert.equal((await store.get('SELECT stock_quantity FROM product')).stock_quantity,0);
   const {SqlLimiter}=await import('../src/limiter.js');const limiter=new SqlLimiter(store,'pg-test',{limit:2,windowMs:10000});
   assert.equal((await Promise.all(Array.from({length:8},()=>limiter.attempt('synthetic-key')))).filter(Boolean).length,2);
-  assert.ok(a.receipt.orderNo!==b.receipt.orderNo);
 });
 
 test('SQLite import preserves rows, binary images, hashes and identity sequences; refuses overwrite', {skip:!base}, async t => {
@@ -178,4 +180,17 @@ test('PostgreSQL many buyers ordering at once get unique, gap-free order numbers
   assert.equal(new Set(receipts).size, 60, 'no duplicate order numbers');
   assert.deepEqual([...receipts].sort(), Array.from({ length: 60 }, (_, index) => `OS-${String(index + 1).padStart(8, '0')}`), 'numbers are contiguous');
   assert.equal((await store.get('SELECT COUNT(*) AS n FROM shop_order')).n, 60);
+});
+
+test('PostgreSQL stock holds: 20 buyers racing for 5 units get exactly 5 orders and stock never goes negative', {skip:!base}, async t => {
+  const store = await openPostgresDatabase(await database(t)); t.shoppingClosers.push(()=>store.close());
+  const product = await seed(store);
+  await store.run('UPDATE product SET stock_quantity = 5 WHERE id = ?', product.id);
+  const results = await Promise.allSettled(Array.from({ length: 20 }, (_, index) => createOrder(store, `pg-hold-intent-${String(index).padStart(4, '0')}`, input(product))));
+  assert.equal(results.filter(r => r.status === 'fulfilled').length, 5);
+  assert.ok(results.filter(r => r.status === 'rejected').every(r => r.reason.code === 'OUT_OF_STOCK'));
+  const ids = (await store.all('SELECT id FROM shop_order ORDER BY order_no')).map(row => row.id);
+  const confirmed = await Promise.allSettled(ids.map(id => decideSellerOrder(store, id, 'confirm', { expectedRevision: 1 }, username)));
+  assert.equal(confirmed.filter(r => r.status === 'fulfilled').length, 5, 'every held order can be confirmed');
+  assert.equal((await store.get('SELECT stock_quantity FROM product')).stock_quantity, 0);
 });
