@@ -29,10 +29,18 @@ export function openDurableStore(storage) {
     run: (text, ...params) => { query(text, params); },
     exec: (text) => { sql.exec(text); },
     transaction: (fn) => storage.transactionSync(fn),
-    // Durable Objects always enforce foreign keys; deferring them checks once, at commit.
+    // Durable Objects always enforce foreign keys. DROP/RENAME leaves SQLite's
+    // deferred violation counter stale even when all parent rows are restored.
     rebuildTransaction: (fn) => storage.transactionSync(() => {
       sql.exec('PRAGMA defer_foreign_keys = ON');
-      return fn();
+      const result = fn();
+      // Validate every actual relationship before clearing that stale counter.
+      // Throwing here rolls back the rebuild, including its schema version.
+      if (sql.exec('PRAGMA foreign_key_check').toArray().length) {
+        throw new Error('Rebuilt schema contains invalid foreign key references.');
+      }
+      sql.exec('PRAGMA defer_foreign_keys = OFF');
+      return result;
     }),
     schemaVersion: () => sql.exec('SELECT version FROM schema_meta WHERE id = 1').toArray()[0]?.version ?? 0,
     setSchemaVersion(version) {
