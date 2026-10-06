@@ -138,6 +138,8 @@ test('seller queue and detail expose one authorized order snapshot with no publi
     assert.equal(next.data.nextOffset, null);
     const searched = await f.request('GET', `/api/v1/seller/orders?search=${first.data.orderNo}`, null, { cookie });
     assert.deepEqual(searched.data.items.map(({ orderNo }) => orderNo), [first.data.orderNo]);
+    // List rows say what was bought: first item name, cover (null without an image) and the line count.
+    assert.deepEqual(searched.data.items[0].preview, { itemCount: 1, name: 'Example review item', imageUrl: null });
     const invalid = await f.request('GET', '/api/v1/seller/orders?status=UNKNOWN', null, { cookie });
     assert.equal(invalid.response.status, 400);
     assert.equal(invalid.data.error.field, 'status');

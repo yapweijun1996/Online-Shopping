@@ -42,6 +42,22 @@ export async function pendingOrderSummary(database) {
   return { pending, latestSubmittedAt: latest };
 }
 
+/* First ordered product (name and cover) plus the item count for each order, so a list row says what was bought. */
+async function orderPreviews(database, orderIds) {
+  const previews = new Map();
+  if (!orderIds.length) return previews;
+  const lines = await database.all(`SELECT d.order_id, i.product_id, i.name_snapshot, i.quantity, p.image_mime
+    FROM order_item i JOIN delivery d ON d.id = i.delivery_id JOIN product p ON p.id = i.product_id
+    WHERE d.order_id IN (${orderIds.map(() => '?').join(', ')}) ORDER BY d.order_id, d.position, i.position`, ...orderIds);
+  for (const line of lines) {
+    const preview = previews.get(line.order_id);
+    if (preview) { preview.itemCount += 1; continue; }
+    previews.set(line.order_id, { itemCount: 1, name: line.name_snapshot, imageUrl: await productCover(database,
+      { id: line.product_id, imageUrl: line.image_mime ? `/api/v1/seller/products/${line.product_id}/image` : null }, true) });
+  }
+  return previews;
+}
+
 export async function listSellerOrders(database, params) {
   const status = params.get('status') || '';
   if (status && !statuses.has(status)) throw new FieldError('status', 'Choose a valid order status.');
@@ -52,7 +68,9 @@ export async function listSellerOrders(database, params) {
   const rows = await database.all(`SELECT ${queueColumns} FROM shop_order
     WHERE (? = '' OR status = ?) AND (? = '' OR instr(lower(order_no), lower(?)) > 0)
     ORDER BY submitted_at DESC, id DESC LIMIT ? OFFSET ?`, status, status, search, search, limit + 1, offset);
-  return { items: rows.slice(0, limit).map(summary), nextOffset: rows.length > limit ? offset + limit : null };
+  const page = rows.slice(0, limit);
+  const previews = await orderPreviews(database, page.map((row) => row.id));
+  return { items: page.map((row) => ({ ...summary(row), ...(previews.get(row.id) ? { preview: previews.get(row.id) } : {}) })), nextOffset: rows.length > limit ? offset + limit : null };
 }
 
 async function readSellerOrder(database, id) {
