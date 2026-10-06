@@ -5,6 +5,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import subprocess
@@ -18,6 +19,7 @@ parser.add_argument('--directory', default=str(Path.home() / 'Backups/Online-Sho
 args = parser.parse_args()
 compose = ['docker', '--context', args.context, 'compose', '--env-file', args.env_file,
            '-f', str(ROOT / 'compose.production.yaml')]
+expected_schema = int(re.search(r'export const SCHEMA_VERSION = (\d+);', (ROOT / 'src/db.js').read_text()).group(1))
 directory = Path(args.directory).expanduser().resolve()
 if directory.is_relative_to(ROOT):
     raise SystemExit('Backups must be outside the project folder.')
@@ -40,7 +42,7 @@ try:
         'node', 'scripts/database-evidence.js', '--hold-snapshot'], stdin=subprocess.PIPE,
         stdout=subprocess.PIPE, text=True)
     evidence = json.loads(lease.stdout.readline())
-    if not evidence.get('snapshot') or evidence['schemaVersion'] != 13:
+    if not evidence.get('snapshot') or evidence['schemaVersion'] != expected_schema:
         raise RuntimeError('Source snapshot/schema is unavailable.')
     with os.fdopen(fd, 'wb') as output:
         subprocess.run(exec_pg + ['pg_dump', '-U', 'online_shopping', '-d', 'online_shopping',
