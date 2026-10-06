@@ -18,6 +18,10 @@
 .account-menu button:hover{background:var(--ui-hover-surface)}
 .account-menu p{margin:0 8px;padding:0 4px;color:var(--ui-muted);font-size:12px;line-height:1.4}
 .account-menu p:empty{display:none}
+.account-menu-update{margin-top:6px;padding-top:6px;border-top:1px solid var(--ui-border)}
+.account-menu-update #seller-current-version{margin-bottom:2px;font-size:13px}
+.account-menu-update #check-updates-button{color:var(--ui-primary);font-weight:600}
+.account-menu-update p[role=status]{padding-bottom:4px;font-size:13px}
 .sidebar{position:fixed;top:0;left:0;width:248px;height:100vh;height:100dvh;background:var(--ui-surface);border-right:1px solid var(--ui-border);padding:0 13px 16px;display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden;z-index:15;transition:width .18s ease}
 .sidebar-head{flex:none;min-height:72px;margin-inline:-13px;padding:0 16px;border-bottom:1px solid var(--ui-border);display:flex;align-items:center;justify-content:space-between;gap:6px}
 .sidebar-brand{min-width:0;width:100%;display:flex;align-items:center;gap:10px;border:0;background:transparent;border-radius:10px;padding:6px 3px;text-align:left;color:var(--ui-text);font-size:15px;font-weight:750}

@@ -29,12 +29,14 @@
       <div class="account-wrap" id="account-wrap" hidden>
         <button id="account-button" class="account-button" type="button" data-i18n-aria="account" aria-expanded="false" aria-controls="account-menu"><span class="avatar" aria-hidden="true"></span><span data-i18n="account">Account</span><span aria-hidden="true">⌄</span></button>
         <div id="account-menu" class="account-menu" hidden>
-          <button id="check-updates-button" type="button" data-i18n="checkUpdates">Check for updates</button>
-          <p id="check-updates-status" role="status" aria-live="polite"></p>
-          <p id="seller-current-version"></p>
           <button id="alerts-button" type="button"></button>
           <button id="profile-button" type="button" data-i18n="profile">View profile</button>
           <button id="sign-out-button" type="button" data-i18n="signOut">Sign out</button>
+          <div class="account-menu-update">
+            <p id="seller-current-version"></p>
+            <button id="check-updates-button" type="button" data-i18n="checkUpdates">Check for updates</button>
+            <p id="check-updates-status" role="status" aria-live="polite"></p>
+          </div>
         </div>
       </div>
     </div>
