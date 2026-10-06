@@ -34,6 +34,23 @@ class Fake(m.Updater):
         if self.fail == 'rollback': raise RuntimeError()
 
 class Tests(unittest.TestCase):
+    def test_docker_config_is_private_and_has_no_credential_helper(self):
+        with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as home:
+            for name in ('contexts', 'buildx', 'cli-plugins'): (Path(home) / '.docker' / name).mkdir(parents=True)
+            (Path(home) / '.docker/config.json').write_text(json.dumps({'credsStore': 'desktop'}))
+            directory = Path(m.isolated_docker_config(root, home))
+            config = json.loads((directory / 'config.json').read_text())
+            self.assertNotIn('credsStore', config)
+            self.assertEqual(config['currentContext'], 'orbstack')
+            for name in ('contexts', 'buildx', 'cli-plugins'): self.assertEqual((directory / name).resolve(), (Path(home) / '.docker' / name).resolve())
+            self.assertEqual(m.isolated_docker_config(root, home), str(directory))
+
+    def test_run_uses_the_private_docker_config(self):
+        with tempfile.TemporaryDirectory() as root:
+            u = Fake(); u.root = Path(root)
+            seen = u.run([__import__('sys').executable, '-c', 'import os;print(os.environ["DOCKER_CONFIG"])'], capture=True).strip()
+            self.assertEqual(seen, str(Path(root) / 'docker-config'))
+
     def test_ci_requires_exact_successful_main_push(self):
         run = dict(id=1, run_attempt=1, head_sha=NEW, head_branch='main', event='push', path='.github/workflows/verify.yml', status='completed', conclusion='success')
         self.assertTrue(m.ci_passed({'workflow_runs': [run]}, NEW))

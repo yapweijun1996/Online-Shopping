@@ -62,3 +62,7 @@ Broader acceptance remains separate: target-device PWA installation/update, mult
 ## Automatic main updates
 
 See [AUTO_DEPLOY.md](AUTO_DEPLOY.md) for CI-gated main polling, immutable release checkouts, verified predeployment backups, application rollback and the installed LaunchAgents. Once installed, operate through the rendered release configuration; running workspace Compose directly would replace revision-tagged images with the default `local` version.
+
+## Automatic deployment and the Docker credential helper
+
+The updater runs every Docker command with its own `DOCKER_CONFIG` (`<state dir>/docker-config`) that has no `credsStore`. A global `~/.docker/config.json` that names Docker Desktop's credential helper can stall: builds then hang at "load metadata" until the 15-minute timeout and the release is left as `build_failed`/`failed_release_waiting`. The private config keeps the shared contexts, builders and plugins, so public base images are pulled anonymously and nothing depends on Docker Desktop. After changing `deploy/auto-update.py`, copy it over `<state dir>/auto-update.py`; the LaunchAgent runs that installed copy.
