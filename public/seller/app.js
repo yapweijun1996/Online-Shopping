@@ -99,7 +99,7 @@ const orderAlerts = createOrderAlerts({ badge: byId('pending-badge'), button: by
 document.title = baseTitle();
 document.addEventListener('ordersdecided', () => orderAlerts.poll());
 registerWorker('/seller/sw.js', '/seller/', {
-  currentVersion: APP_VERSION,
+  currentVersion: APP_VERSION, autoUpdate: true,
   guard: () => ({ dirty: hasUnsavedChanges(), busy: mutationsBusy() || activePage()?.isBusy?.() === true, signature: JSON.stringify([currentRoute, draftSignature(), activePage()?.draftSignature?.()]) }),
   confirmUpdate: confirmModal,
   onState(state, actions) {

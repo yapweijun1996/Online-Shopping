@@ -12,7 +12,7 @@ function workerVersion(worker) {
   });
 }
 
-export async function registerWorker(script, scope, { returnUrl, target, onState, guard, confirmUpdate, currentVersion } = {}) {
+export async function registerWorker(script, scope, { returnUrl, target, onState, guard, confirmUpdate, currentVersion, autoUpdate = false } = {}) {
   if (!('serviceWorker' in navigator)) return null;
   const registration = await navigator.serviceWorker.register(script, { scope, updateViaCache: 'none' });
   const panel = document.createElement('footer');
@@ -37,6 +37,21 @@ export async function registerWorker(script, scope, { returnUrl, target, onState
   let activationPoll;
   let activationSignature;
   let activationDirty = false;
+  let autoTimer;
+  const AUTO_KEY = `pwa-auto-update:${script}`;
+  // Applies a ready update without a click, but only when no order submission or unsaved draft would be lost.
+  function autoApply() {
+    clearTimeout(autoTimer);
+    if (!autoUpdate || applying || reloadRequested || (!registration.waiting && !reloadReady)) return;
+    const state = guard?.();
+    if (state?.busy || state?.dirty) { autoTimer = setTimeout(autoApply, 10000); return; }
+    try {
+      // A release that fails to take over must not reload the page in a loop.
+      if (Date.now() - Number(sessionStorage.getItem(AUTO_KEY) || 0) < 30000) return;
+      sessionStorage.setItem(AUTO_KEY, String(Date.now()));
+    } catch { /* Storage may be unavailable; the throttle is best-effort. */ }
+    applyUpdate({ silent: true });
+  }
   function finishActivation() {
     if (reloadRequested) return;
     const state = guard?.();
@@ -44,6 +59,7 @@ export async function registerWorker(script, scope, { returnUrl, target, onState
       clearTimeout(activationTimer); clearTimeout(activationPoll);
       applying = false; applyingWorker = null; reloadReady = true;
       update.disabled = check.disabled = false; statusKey = 'updateAvailable'; render();
+      autoApply();
       return;
     }
     reloadRequested = true;
@@ -67,7 +83,7 @@ export async function registerWorker(script, scope, { returnUrl, target, onState
     status.textContent = statusKey ? t(statusKey) : '';
     update.textContent = `${t('updateApp')}${available ? ` · ${available}` : ''}`;
     update.hidden = !registration.waiting && !reloadReady;
-    onState?.({ current, available, statusKey, ready: !update.hidden, checking: check.disabled, applying }, { check: () => checkForUpdates(true), update: applyUpdate });
+    onState?.({ current, available, statusKey, ready: !update.hidden, checking: check.disabled, applying }, { check: () => checkForUpdates(true), update: () => applyUpdate() });
   }
   async function inspect() {
     if (!current) current = await workerVersion(navigator.serviceWorker.controller || registration.active);
@@ -82,6 +98,7 @@ export async function registerWorker(script, scope, { returnUrl, target, onState
       statusKey = '';
     }
     render();
+    autoApply();
   }
   function watch(worker) {
     if (!worker) return;
@@ -123,9 +140,9 @@ export async function registerWorker(script, scope, { returnUrl, target, onState
     finally { if (!applying) check.disabled = false; render(); }
   }
   check.addEventListener('click', () => checkForUpdates(true));
-  async function applyUpdate() {
+  async function applyUpdate({ silent = false } = {}) {
     if (applying || guard?.().busy) return;
-    const accepted = confirmUpdate ? (!guard?.().dirty || await confirmUpdate(t('updateConfirm'))) : window.confirm(t('updateConfirm'));
+    const accepted = silent || (confirmUpdate ? (!guard?.().dirty || await confirmUpdate(t('updateConfirm'))) : window.confirm(t('updateConfirm')));
     if (!accepted || applying || guard?.().busy) return;
     if (reloadReady) { location.reload(); return; }
     if (!registration.waiting) { inspect(); return; }
@@ -151,12 +168,14 @@ export async function registerWorker(script, scope, { returnUrl, target, onState
       activationFailed();
     }, 15000);
   }
-  update.addEventListener('click', applyUpdate);
+  update.addEventListener('click', () => applyUpdate());
   document.addEventListener('localechange', render);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') checkForUpdates();
   });
   window.addEventListener('online', () => checkForUpdates());
+  document.addEventListener('updateguardchange', autoApply);
+  if (autoUpdate) setInterval(() => { if (document.visibilityState === 'visible') checkForUpdates(); }, 300000);
   await inspect();
   checkForUpdates();
   return registration;
