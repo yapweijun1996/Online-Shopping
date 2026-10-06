@@ -396,8 +396,8 @@ body:has(.variant-dialog[open]){overflow:hidden}
 
 .shop-topbar{grid-template-columns:auto minmax(150px,1fr) auto auto auto}
 .shop-account{position:relative}
-.shop-account nav a{display:block;text-decoration:none;padding:12px 16px;border-radius:8px;color:var(--ui-ink)}
-.shop-account nav a:hover{background:var(--shop-accent-soft)}
+.shop-account nav a,.shop-account nav button{display:block;width:100%;text-align:left;text-decoration:none;font:inherit;padding:12px 16px;border:0;background:transparent;border-radius:8px;color:var(--ui-ink);cursor:pointer}
+.shop-account nav a:hover,.shop-account nav button:hover{background:var(--shop-accent-soft)}
 .profile-page{max-width:850px;margin-inline:auto}
 .cart-select-all{margin:0 0 16px}
 .cart-row{grid-template-columns:24px 115px minmax(0,1fr)}
@@ -791,7 +791,7 @@ html.image-zoom-open{overflow:hidden}
  .shop-topbar .header-search{min-width:0;width:100%;max-width:650px;justify-self:center}
  .shop-topbar .shop-nav a,.shop-topbar .language-trigger{display:inline-flex;align-items:center;justify-content:center;gap:7px;width:auto;min-width:44px;min-height:44px;height:44px;padding:8px 10px;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--ui-ink);font-size:14px;font-weight:600;line-height:1.2;white-space:nowrap}
  .shop-topbar .shop-nav a:hover,.shop-topbar .language-trigger:hover,.shop-topbar .language-trigger[aria-expanded=true]{background:var(--ui-hover-surface);border-color:transparent}
- .shop-topbar .shop-nav a:focus-visible,.shop-topbar .language-trigger:focus-visible,.shop-account nav a:focus-visible{outline:2px solid var(--ui-focus);outline-offset:-2px}
+ .shop-topbar .shop-nav a:focus-visible,.shop-topbar .language-trigger:focus-visible,.shop-account nav a:focus-visible,.shop-account nav button:focus-visible{outline:2px solid var(--ui-focus);outline-offset:-2px}
  .shop-topbar .shop-nav svg,.shop-topbar .language-trigger svg{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
  .shop-topbar .language-trigger .utility-chevron{width:14px;height:14px}
  .shop-topbar .utility-label{max-width:110px;overflow:hidden;text-overflow:ellipsis}
