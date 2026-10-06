@@ -376,3 +376,33 @@ test('activation message failure leaves page intact and retry succeeds', async (
   assert.equal(h.state.applying, false); assert.equal(h.state.statusKey, 'updateFailed');
   await h.commands.update(); assert.equal(skips, 2);
 });
+
+test('autoUpdate applies a ready update without a click only when nothing would be lost', async () => {
+  for (const scenario of ['clean', 'dirty', 'busy']) {
+    let activated, reloads = 0, skips = 0;
+    const timers = [];
+    const waiting = { state: 'installed', addEventListener(name, fn) { if (name === 'statechange') activated = fn; }, postMessage(message, ports) {
+      if (message.type === 'GET_VERSION') ports[0].reply({ version: 'v81' });
+      if (message.type === 'SKIP_WAITING') skips++;
+    } };
+    const active = { postMessage(message, ports) { ports[0].reply({ version: 'v79' }); } };
+    const registration = { waiting, active, addEventListener() {}, update: async () => {} };
+    const context = {
+      t: key => key, navigator: { onLine: true, serviceWorker: { controller: active, register: async () => registration, addEventListener() {} } },
+      document: { createElement: () => ({ setAttribute() {}, append() {}, addEventListener() {} }), addEventListener() {}, visibilityState: 'visible', body: { append() {} } },
+      window: { addEventListener() {}, confirm() { throw new Error('auto update must not ask'); } }, location: { reload() { reloads++; } },
+      MessageChannel: class { constructor() { this.port1 = { close() {} }; this.port2 = { reply: data => this.port1.onmessage({ data }) }; } },
+      setTimeout: fn => timers.push(fn), clearTimeout() {}, setInterval() {},
+      sessionStorage: { getItem: () => null, setItem() {} },
+    };
+    vm.createContext(context);
+    vm.runInContext(readFileSync(new URL('../public/shared/pwa.js', import.meta.url), 'utf8')
+      .replace("import { t } from './i18n.js';", '').replace('export async function', 'async function'), context);
+    await context.registerWorker('/seller/sw.js', '/seller/', { currentVersion: 'v79', autoUpdate: true,
+      guard: () => ({ dirty: scenario === 'dirty', busy: scenario === 'busy', signature: 's' }) });
+    if (scenario !== 'clean') { assert.equal(skips, 0, `${scenario} update is held back`); continue; }
+    assert.equal(skips, 1, 'clean page updates by itself');
+    waiting.state = 'activated'; activated();
+    assert.equal(reloads, 1);
+  }
+});

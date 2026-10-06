@@ -50,7 +50,7 @@ export function mountShopUpdates(guard, productBanner) {
   async function connect() {
     state.checking = true; render();
     try {
-      return await registerWorker('/shop/sw.js', '/shop/', { currentVersion: APP_VERSION, guard, confirmUpdate: confirmModal, onState(next, commands) { state = next; actions = commands; render(); } });
+      return await registerWorker('/shop/sw.js', '/shop/', { currentVersion: APP_VERSION, autoUpdate: true, guard, confirmUpdate: confirmModal, onState(next, commands) { state = next; actions = commands; render(); } });
     } catch { state.statusKey = 'updateFailed'; }
     finally { state.checking = false; render(); }
   }
