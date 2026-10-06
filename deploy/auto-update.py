@@ -44,6 +44,25 @@ def atomic_json(path, value):
             os.unlink(temporary)
 
 
+def isolated_docker_config(root, home=None):
+    """Return a private DOCKER_CONFIG directory without a credential helper.
+
+    The global ~/.docker/config.json may name Docker Desktop's credential helper. When that helper
+    stalls, every build hangs while resolving public base images, even though the stack runs on
+    OrbStack. This private config keeps the shared contexts, builders and plugins but has no
+    credsStore, so public images are pulled anonymously and nothing depends on Docker Desktop.
+    """
+    directory = Path(root) / 'docker-config'
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    atomic_json(directory / 'config.json', {'currentContext': 'orbstack'})
+    source = Path(home or Path.home()) / '.docker'
+    for name in ('contexts', 'buildx', 'cli-plugins'):
+        link, target = directory / name, source / name
+        if target.exists() and not link.is_symlink() and not link.exists():
+            link.symlink_to(target)
+    return str(directory)
+
+
 def ci_passed(payload, revision):
     runs = [run for run in payload.get('workflow_runs', [])
             if run.get('head_sha') == revision and run.get('head_branch') == 'main'
@@ -82,6 +101,7 @@ class Updater:
                 raise RuntimeError('Invalid release state.')
 
     def run(self, command, *, capture=False, timeout=120, env=None):
+        env = dict(os.environ if env is None else env, DOCKER_CONFIG=isolated_docker_config(self.root))
         return subprocess.run(command, check=True, text=True, capture_output=capture,
                               timeout=timeout, env=env).stdout
 
