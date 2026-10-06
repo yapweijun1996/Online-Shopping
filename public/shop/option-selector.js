@@ -45,7 +45,7 @@ export function renderOptionSelector(product, { t, locale, productHash }) {
     const name = element('span', 'option-name', localized(axis, 'name', locale));
     name.id = `option-${axis.id}`;
     const group = element('div', 'option-choices');
-    group.setAttribute('role', 'radiogroup');
+    group.setAttribute('role', 'group');
     group.setAttribute('aria-labelledby', name.id);
     if (axis.display === 'dropdown') {
       const select = element('select', 'option-select');
@@ -65,11 +65,12 @@ export function renderOptionSelector(product, { t, locale, productHash }) {
         const target = targetFor(product, axis.id, value.id);
         const selected = picks.get(axis.id) === value.id;
         const choice = element('a', `option-choice option-style-${axis.display}`);
-        choice.setAttribute('role', 'radio');
-        choice.setAttribute('aria-checked', String(selected));
+        // Links, not radios: Enter opens the combination, and the chosen one is marked as current.
+        if (selected) choice.setAttribute('aria-current', 'true');
         if (target) choice.href = productHash(target.variant.id);
         if (selected) choice.classList.add('is-selected');
-        if (target && !target.exact && !selected) choice.classList.add('is-unavailable');
+        const switches = target && !target.exact && !selected;
+        if (switches) choice.classList.add('is-unavailable');
         if (target?.variant.inStock === false) choice.classList.add('is-soldout');
         if (axis.display === 'swatch' && swatchPattern.test(value.swatchColor || '')) {
           const dot = element('span', 'option-swatch');
@@ -83,6 +84,7 @@ export function renderOptionSelector(product, { t, locale, productHash }) {
         }
         choice.append(element('span', 'option-label', localized(value, 'label', locale)));
         if (target?.variant.inStock === false) choice.append(element('span', 'sr-only', ` — ${t('outOfStock')}`));
+        if (switches) choice.append(element('span', 'sr-only', ` — ${t('optionChangesOthers')}`));
         group.append(choice);
       }
     }

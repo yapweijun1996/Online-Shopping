@@ -234,7 +234,12 @@ export function mountOptions(root, { csrfToken, onUnauthorized: notifyUnauthoriz
       price.addEventListener('input', () => { state.price = price.value; });
       stock.addEventListener('input', () => { state.stock = stock.value; });
       include.addEventListener('change', () => { state.include = include.checked; syncSubmit(); });
-      for (const control of [sku, price, stock, include]) { const cell = el('td'); cell.append(control); tr.append(cell); }
+      const includeBox = el('label', 'tap-box'); includeBox.append(include);  // a 44px tap area around the checkbox
+      const labels = [t('sku'), t('price'), t('stockQuantity'), t('generatorInclude')];
+      [sku, price, stock, includeBox].forEach((control, position) => {
+        const cell = el('td'); cell.dataset.label = labels[position];  // shown as a caption when rows stack on a phone
+        cell.append(control); tr.append(cell);
+      });
       tbody.append(tr);
     });
     syncSubmit();
