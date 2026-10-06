@@ -100,7 +100,8 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
     const needsConsent = !demoMode && Boolean(profile?.phone);
     consent.required = needsConsent;
     consent.closest('label').hidden = !needsConsent;
-    if (!needsConsent) consent.checked = false;
+    // The order-contact consent is pre-ticked whenever it applies (and stays required).
+    consent.checked = needsConsent;
   }
 
   function applyDemo() {
