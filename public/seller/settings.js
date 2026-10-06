@@ -158,7 +158,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
       <label class="settings-check"><input name="mobileHideBarsOnScroll" type="checkbox"><span data-i18n="mobileHideBarsOnScroll">Hide mobile navigation bars while scrolling down</span></label>
       <p class="settings-check-help" data-i18n="mobileHideBarsHelp">By default, the shop's top search bar and bottom navigation stay visible. Turn this on to hide them when shoppers scroll down and show them when they scroll up.</p>
       <h3 data-i18n="storefrontTextsTitle">Product page information</h3>
-      <p id="storefront-texts-help" data-i18n="storefrontTextsHelp">Shown on every product page in the matching section. Leave a box empty to use the shop's standard wording.</p>
+      <p id="storefront-texts-help" data-i18n="storefrontTextsHelp">Shown on every product page in the matching section. Leave a box empty to hide that section.</p>
       <label><span data-i18n="stockAndDelivery">Availability &amp; delivery</span><textarea name="availabilityText" rows="3" maxlength="1000" aria-describedby="storefront-texts-help"></textarea></label>
       <label><span data-i18n="shipping">Shipping</span><textarea name="shippingText" rows="3" maxlength="1000" aria-describedby="storefront-texts-help"></textarea></label>
       <label><span data-i18n="returnsAndGuarantees">Returns and guarantees</span><textarea name="returnsText" rows="3" maxlength="1000" aria-describedby="storefront-texts-help"></textarea></label>
