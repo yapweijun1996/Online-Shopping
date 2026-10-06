@@ -1154,6 +1154,11 @@ accountButton.addEventListener('click', () => {
 });
 document.addEventListener('click', (event) => { if (!event.target.closest('.shop-account')) closeAccountMenu(); });
 accountMenu.addEventListener('click', closeAccountMenu);
+// Opens Settings, where the update status and the "Update now" button live, and starts a check.
+byId('profile-menu-check-updates').addEventListener('click', () => {
+  location.hash = '#settings';
+  document.querySelector('.shop-update-settings .outline-button')?.click();
+});
 window.addEventListener('hashchange', closeAccountMenu);
 document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !accountMenu.hidden) { closeAccountMenu(); accountButton.focus(); } });
 byId('settings-clear-history').addEventListener('click', () => {
