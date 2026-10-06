@@ -345,9 +345,22 @@ async function renderDashboard(content) {
         action: 'dashboardReviewOrders', view: 'review', empty: 'dashboardNoSubmittedOrders',
         render(item) {
           const row = node('li', 'dashboard-order-row');
-          const line = node('div', 'dashboard-row-line');
+          const link = node('a', 'dashboard-order-link');
+          link.href = '#review';
+          const thumb = node('span', 'dashboard-order-thumb');
+          if (item.preview?.imageUrl) {
+            const image = node('img'); image.src = item.preview.imageUrl; image.alt = ''; image.loading = 'lazy'; image.decoding = 'async';
+            image.addEventListener('error', () => image.remove());
+            thumb.append(image);
+          }
+          const text = node('span', 'dashboard-order-text');
+          const line = node('span', 'dashboard-row-line');
           line.append(node('strong', '', item.orderNo), node('span', 'dashboard-status', t('statusSubmitted')));
-          row.append(line, node('span', 'dashboard-row-meta', `${formatMoney(item.totalMinor, item.currency)} · ${formatDate(item.submittedAt)}`));
+          const what = item.preview ? `${item.buyerName} · ${item.preview.name}${item.preview.itemCount > 1 ? ` +${item.preview.itemCount - 1}` : ''}` : item.buyerName;
+          text.append(line, node('span', 'dashboard-row-buyer', what),
+            node('span', 'dashboard-row-meta', `${formatMoney(item.totalMinor, item.currency)} · ${formatDate(item.submittedAt)}`));
+          link.append(thumb, text);
+          row.append(link);
           return row;
         },
       },
