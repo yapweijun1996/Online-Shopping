@@ -22,3 +22,12 @@ export function setProductMedia(image, media, kind = 'main') {
   if (media.width && media.height) { image.width = media.width; image.height = media.height; }
   image.src = kind === 'thumbnail' ? media.thumbnail : kind === 'full' ? media.full : media.src;
 }
+
+/* Shows a shimmer placeholder, then fades the image in from blurred to sharp once it has decoded. */
+export function revealImage(image) {
+  image.classList.add('img-reveal');
+  const done = () => image.classList.add('is-loaded');
+  if (image.complete && image.naturalWidth) done();
+  else { image.addEventListener('load', done, { once: true }); image.addEventListener('error', done, { once: true }); }
+  return image;
+}
