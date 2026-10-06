@@ -7,7 +7,9 @@ const directives = (value) => Object.fromEntries(value.split(';').map(item => it
 
 test('production Caddy allows only the Cloudflare Web Analytics beacon as third-party origin', () => {
   const csp = directives(policy('../deploy/Caddyfile.production'));
-  assert.deepEqual(csp['script-src'], ["'self'", 'https://static.cloudflareinsights.com/beacon.min.js']);
+  assert.deepEqual(csp['script-src'], ["'self'", 'https://static.cloudflareinsights.com/beacon.min.js', 'https://static.cloudflareinsights.com/beacon.min.js/']);
+  // The injected URL carries a version suffix, which only the prefix form matches (CSP paths are exact unless they end in '/').
+  assert.ok('/beacon.min.js/v31edd6df95cf4e85bb4c19e7a9bdbcba1788362987495'.startsWith(new URL(csp['script-src'][2]).pathname));
   assert.deepEqual(csp['connect-src'], ["'self'", 'https://cloudflareinsights.com']);
   assert.deepEqual(csp['default-src'], ["'self'"]);
   assert.deepEqual(csp['object-src'], ["'none'"]);
