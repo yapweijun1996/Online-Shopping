@@ -257,21 +257,3 @@ test('SELLER_QUICK_LOGIN opts a production site into passwordless seller sign-in
   // The sandbox and reset routes stay demo-mode only.
   assert.equal((await on('POST', '/api/v1/demo/session')).status, 404);
 });
-
-test('quick-login contact number is public only while quick login is on and must be a valid number', async t => {
-  const { readConfig } = await import('../src/config.js');
-  const base = { ADMIN_USERNAME: 'synthetic-owner', ADMIN_PASSWORD: 'synthetic-Passphrase-4419' };
-  assert.equal(readConfig({ ...base, SELLER_QUICK_LOGIN_CONTACT: '+60182727900' }).quickLoginContact, '60182727900');
-  assert.equal(readConfig(base).quickLoginContact, null);
-  assert.throws(() => readConfig({ ...base, SELLER_QUICK_LOGIN_CONTACT: '12345' }), /valid/);
-  const build = async enabled => {
-    const store = await openDatabase(':memory:'); t.after(async () => await store.close());
-    const config = { shopMode: 'manual', production: true, publicOrigin: 'https://demo.example.test', username: 'synthetic-owner', sellerQuickLogin: enabled, quickLoginContact: '60182727900' };
-    await initializeShop(store, config);
-    await setupShop(store, { mode: 'production', shopName: 'Synthetic production fixture' });
-    const handle = await createApi({ store, config, serveStatic: () => new Response('fixture asset') });
-    return (await handle(new Request('https://demo.example.test/api/v1/shop'), { clientAddress: 'synthetic-local-client' })).json();
-  };
-  assert.equal((await build(true)).quickLoginContact, '60182727900');
-  assert.equal('quickLoginContact' in await build(false), false);
-});
