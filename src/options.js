@@ -181,13 +181,13 @@ export async function loadProductOptions(database, productIds) {
   if (!productIds.length) return result;
   const rows = await database.all(`SELECT po.product_id, t.id AS type_id, t.code AS type_code, t.name AS type_name,
       t.translations_json AS type_translations, t.display, v.id AS value_id, v.code AS value_code, v.label,
-      v.translations_json AS value_translations, v.swatch_color
+      v.translations_json AS value_translations, v.swatch_color, v.position AS value_position
     FROM product_option po JOIN option_type t ON t.id = po.option_type_id JOIN option_value v ON v.id = po.option_value_id
     WHERE po.product_id IN (${placeholders(productIds)}) ORDER BY t.position, t.name, t.id`, ...productIds);
   for (const row of rows) {
     result.get(row.product_id).push({
       type: { id: row.type_id, code: row.type_code, name: row.type_name, translations: JSON.parse(row.type_translations), display: row.display },
-      value: { id: row.value_id, code: row.value_code, label: row.label, translations: JSON.parse(row.value_translations), swatchColor: row.swatch_color },
+      value: { id: row.value_id, code: row.value_code, label: row.label, translations: JSON.parse(row.value_translations), swatchColor: row.swatch_color, position: row.value_position },
     });
   }
   return result;
@@ -272,7 +272,8 @@ export function optionAxes(variantOptions) {
       axes.get(type.id).values.set(value.id, value);
     }
   }
-  return [...axes.values()].map((axis) => ({ ...axis, values: [...axis.values.values()] }));
+  const byPosition = (a, b) => a.position - b.position || a.label.localeCompare(b.label);
+  return [...axes.values()].map((axis) => ({ ...axis, values: [...axis.values.values()].sort(byPosition) }));
 }
 
 /* True when other products in the group are described by options (new products must then use them too). */

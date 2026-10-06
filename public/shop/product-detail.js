@@ -4,6 +4,7 @@ import { formatCatalogPrice } from './catalog-presentation.js';
 const formatMoney = (minor, currency) => formatCatalogPrice(minor, currency, locale());
 import { productHash } from './shop-route.js';
 import { productShareURL, shareProduct } from './product-share.js';
+import { renderOptionSelector } from './option-selector.js';
 import { attachImageZoom } from './image-zoom.js';
 import { containDialogFocus } from '../shared/modal.js';
 
@@ -240,7 +241,10 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     for (const [label, value] of [[t('sku'), product.sku], [t('category'), product.category]]) keyDetails.append(node('dt', '', label), node('dd', '', value));
     headingBlock.append(title, priceBlock, keyDetails);
     const selectionBlock = node('div', 'product-selection-block');
-    if (product.variants?.length > 1) {
+    if (product.variants?.length > 1 && product.optionTypes?.length) {
+      // Seller-defined option types: one row per type; each combination is its own product.
+      selectionBlock.append(renderOptionSelector(product, { t, locale: locale(), productHash }));
+    } else if (product.variants?.length > 1) {
       const variants = node('div', 'product-variants');
       variants.append(node('h2', '', t('chooseVariant')));
       const options = node('div', 'product-variant-options');
