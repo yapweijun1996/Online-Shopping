@@ -1,4 +1,4 @@
-// Entry is created only after the server explicitly identifies a fictional demo.
+// Entry is created only after the server explicitly enables passwordless sign-in for this site.
 export async function mountDemoEntry(root, { onSignedIn } = {}) {
   try {
     const response = await fetch('/api/v1/shop', { cache: 'no-store' });
@@ -6,9 +6,9 @@ export async function mountDemoEntry(root, { onSignedIn } = {}) {
     const section = document.createElement('section'); section.className = 'demo-role-entry';
     const divider = document.createElement('p'); divider.className = 'demo-role-divider'; divider.textContent = 'or';
     const button = document.createElement('button'); button.type = 'button'; button.className = 'secondary-button demo-role-primary';
-    button.textContent = 'Demo login · no password';
+    button.textContent = 'Try the seller dashboard · no password';
     const note = document.createElement('p'); note.className = 'demo-role-note';
-    note.textContent = 'Signs in to this fictional demo store with the same seller account.';
+    note.textContent = 'Opens the seller dashboard of this sample store so you can explore it. No password needed.';
     const status = document.createElement('p'); status.setAttribute('role', 'status');
     button.addEventListener('click', async () => {
       button.disabled = true;
@@ -18,7 +18,7 @@ export async function mountDemoEntry(root, { onSignedIn } = {}) {
         onSignedIn?.();
         location.assign('/seller/');
       } catch {
-        status.textContent = 'Demo login unavailable. Try again.';
+        status.textContent = 'Quick sign-in is unavailable. Try again.';
         button.disabled = false;
       }
     });
