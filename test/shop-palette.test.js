@@ -51,6 +51,7 @@ test('all Shop palettes keep readable text, actions, states, borders, and focus'
     ['focus ring', '--ui-focus', '--ui-surface', 3],
   ];
   for (const { id, colors } of palettes) {
+    if (id !== 'evergreen-teal') assert.ok(blocks.some(([, selector]) => selector.includes(`data-shop-palette="${id}"`)), `${id}: palette block is missing`);
     for (const [label, foreground, background, minimum] of pairs) {
       assert.ok(colors[foreground] || foreground.startsWith('#'), `${id}: missing ${foreground}`);
       assert.ok(colors[background] || background.startsWith('#'), `${id}: missing ${background}`);
