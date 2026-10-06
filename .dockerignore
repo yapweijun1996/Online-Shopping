@@ -16,6 +16,5 @@ docs
 *.log
 .dev.vars
 .dev.vars.*
-.wrangler
 
 worker-runtime

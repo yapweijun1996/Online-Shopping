@@ -1,4 +1,4 @@
-import { productMedia, setProductMedia } from './product-media.js';
+import { productMedia, revealImage, setProductMedia } from './product-media.js';
 import { locale, t } from '../shared/i18n.js';
 import { formatCatalogPrice } from './catalog-presentation.js';
 const formatMoney = (minor, currency) => formatCatalogPrice(minor, currency, locale());
@@ -35,7 +35,7 @@ function image(product, className, source = product.imageUrl) {
   const element = node('img', className);
   element.src = source;
   element.alt = product.name;
-  return element;
+  return revealImage(element);
 }
 
 export function mountProductDetail(root, { api, addToCart, checkout, shop, notify, updateBanner, cartQuantity = () => 0 }) {

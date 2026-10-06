@@ -10,10 +10,6 @@
     "start": "node --env-file-if-exists=.env src/server.js",
     "test": "node --test --test-concurrency=1 \"test/*.test.js\"",
     "check": "node scripts/check.js",
-    "worker:dev": "wrangler dev",
-    "worker:smoke": "node --env-file=.dev.vars scripts/worker-smoke.js",
-    "worker:check": "wrangler deploy --dry-run --outdir .wrangler/dry-run",
-    "worker:deploy": "wrangler deploy",
     "test:integrations": "node --test --test-concurrency=1 test/integrations.test.js test/integration-adapters.test.js test/integration-trust.test.js",
     "test:studio": "node --test --test-concurrency=1 test/seller-studio.test.js",
     "test:customer-discovery": "node scripts/qa-customer-discovery.mjs",
@@ -27,8 +23,5 @@
   "dependencies": {
     "libphonenumber-js": "1.13.14",
     "pg": "8.23.1"
-  },
-  "devDependencies": {
-    "wrangler": "4.145.0"
   }
 }

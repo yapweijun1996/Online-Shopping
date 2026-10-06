@@ -39,16 +39,6 @@ function validatePublicOrigin(publicOrigin, production) {
   return publicOrigin;
 }
 
-/* Worker configuration comes from wrangler vars and secrets; it is production unless explicitly development. */
-export function readWorkerConfig(env) {
-  const production = env.NODE_ENV !== 'development';
-  const username = (env.ADMIN_USERNAME || '').trim();
-  const password = env.ADMIN_PASSWORD || '';
-  validateAdmin(username, password, production);
-  const publicOrigin = validatePublicOrigin(env.PUBLIC_ORIGIN || null, production);
-  return { production, username, password, publicOrigin, trustProxy: true, shopMode: readShopMode(env), demoRevision: readDemoRevision(env) };
-}
-
 export function readConfig(env = process.env) {
   const production = env.NODE_ENV === 'production';
   const username = (env.ADMIN_USERNAME || '').trim();

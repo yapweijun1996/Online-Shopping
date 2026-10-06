@@ -1,4 +1,5 @@
 import { mountAppearance } from '../shared/appearance.js';
+import { revealImage } from './product-media.js';
 import { storageKey } from './storage-scope.js';
 import { categoryIconPath, formatCatalogPrice } from './catalog-presentation.js';
 import { mountShopUpdates } from './update-view.js';
@@ -112,7 +113,8 @@ function imageFor(product, className) {
   image.src = product.imageUrl;
   image.alt = product.name;
   image.loading = 'lazy';
-  return image;
+  image.decoding = 'async';
+  return revealImage(image);
 }
 
 function setCatalogStatus(key) {
