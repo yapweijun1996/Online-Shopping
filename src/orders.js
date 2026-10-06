@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { validateOrderInput } from './checkout-input.js';
 import { ApiError } from './http.js';
 import { FieldError } from './validation.js';
+import { reservedQuantity } from './stock-reservation.js';
 import { ORDER_RETENTION_MS, statusAccessKeyPattern } from '../public/shared/order-status.js';
 
 function digest(value) {
@@ -93,9 +94,9 @@ export async function createOrder(database, idempotencyKey, input) {
         error.field = `deliveries.${deliveryIndex}.items.${itemIndex}.expectedPriceMinor`;
         throw error;
       }
-      // Stock is only deducted when the seller confirms, but an order the shop cannot cover is refused up front.
+      // Stock is only deducted when the seller confirms, but pending orders hold their units so the last one is not sold twice.
       requested.set(product.id, (requested.get(product.id) || 0) + item.quantity);
-      if (product.stock_quantity !== null && requested.get(product.id) > product.stock_quantity) {
+      if (product.stock_quantity !== null && requested.get(product.id) > product.stock_quantity - await reservedQuantity(database, product.id)) {
         const error = new ApiError(409, 'OUT_OF_STOCK', 'A selected product does not have enough stock. Review the cart.');
         error.field = `deliveries.${deliveryIndex}.items.${itemIndex}.quantity`;
         throw error;
