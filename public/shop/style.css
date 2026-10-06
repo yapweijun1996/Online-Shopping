@@ -927,8 +927,8 @@ h1,h2{letter-spacing:-.01em}
 .catalog-stock{display:inline-block;margin-top:6px;font-size:12px;font-weight:600;color:var(--shop-error)}
 
 /* Image reveal: shimmer placeholder, then blurred -> sharp fade-in. */
-.img-reveal{background:linear-gradient(100deg,#e6eff1 30%,#f5f9f9 50%,#e6eff1 70%);background-size:220% 100%;animation:skeleton-shimmer 1.4s linear infinite;opacity:0;filter:blur(14px);transform:scale(1.02);transition:opacity .45s ease,filter .6s ease,transform .6s ease}
-.img-reveal.is-loaded{opacity:1;filter:none;transform:none;animation:none;background:transparent}
+.img-reveal{background:linear-gradient(100deg,#e6eff1 30%,#f5f9f9 50%,#e6eff1 70%);background-size:220% 100%;animation:skeleton-shimmer 1.4s linear infinite;filter:blur(14px);transform:scale(1.02);transition:filter .6s ease,transform .6s ease}
+.img-reveal.is-loaded{filter:none;transform:none;animation:none;background:transparent}
 @media (prefers-reduced-motion:reduce){.img-reveal{transition:none;animation:none;filter:none;transform:none}}
 
 /* Quantity stepper: draw the minus/plus as centred bars instead of font glyphs, which sit off-centre in many fonts. */
@@ -937,3 +937,6 @@ h1,h2{letter-spacing:-.01em}
 .quantity-stepper button::before{width:14px;height:2px}
 .quantity-stepper button:last-child::after{width:2px;height:14px}
 .quantity-stepper button:disabled::before,.quantity-stepper button:disabled::after{opacity:.35}
+.img-reveal.has-lqip{background:var(--lqip) center/cover no-repeat;filter:blur(12px);animation:none}
+.img-reveal.has-lqip.is-loaded{filter:none;transform:none;background:transparent}
+@media (prefers-reduced-motion:reduce){.img-reveal.has-lqip{filter:none}}

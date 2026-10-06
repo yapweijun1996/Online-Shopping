@@ -223,6 +223,7 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
         thumbnail.append(preview);
         thumbs.append(thumbnail);
         const viewerThumbnail = thumbnail.cloneNode(true);
+        const viewerPreview = viewerThumbnail.querySelector('img'); if (viewerPreview) revealImage(viewerPreview);  // clones keep classes but not load listeners
         viewerThumbnail.addEventListener('click', () => updateImage(index));
         viewerThumbs.append(viewerThumbnail);
       });
