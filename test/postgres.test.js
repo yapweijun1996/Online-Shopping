@@ -165,3 +165,17 @@ test('PostgreSQL product options: tenant-defined types, combinations, derived la
   assert.deepEqual(detail.optionTypes.map(axis => axis.name), ['Colour', 'Storage']);
   assert.equal((await listOptionTypes(store))[0].translations['zh-Hans'], '颜色');
 });
+
+test('PostgreSQL many buyers ordering at once get unique, gap-free order numbers; a failed submission burns no number', {skip:!base}, async t => {
+  const store = await openPostgresDatabase(await database(t)); t.shoppingClosers.push(()=>store.close());
+  const product = await seed(store);
+  await store.run('UPDATE product SET stock_quantity = NULL WHERE id = ?', product.id);
+  const submissions = Array.from({ length: 60 }, (_, index) => createOrder(store, `pg-concurrent-intent-${String(index).padStart(4, '0')}`, input(product)));
+  // A rejected submission interleaved with the rest must roll back its number.
+  const stale = createOrder(store, 'pg-concurrent-stale-0001', input({ ...product, priceMinor: product.priceMinor + 1 })).catch(error => error);
+  const receipts = (await Promise.all(submissions)).map(result => result.receipt.orderNo);
+  assert.equal((await stale).code, 'PRICE_CHANGED');
+  assert.equal(new Set(receipts).size, 60, 'no duplicate order numbers');
+  assert.deepEqual([...receipts].sort(), Array.from({ length: 60 }, (_, index) => `OS-${String(index + 1).padStart(8, '0')}`), 'numbers are contiguous');
+  assert.equal((await store.get('SELECT COUNT(*) AS n FROM shop_order')).n, 60);
+});
