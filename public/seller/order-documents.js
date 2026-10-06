@@ -1,6 +1,7 @@
 import PrintForm from './vendor/printform.js';
 import { formatDate, formatMoney, t } from '../shared/i18n.js';
 import { orderDocumentModel } from './order-document-model.js';
+import { containDialogFocus } from '../shared/modal.js';
 
 function node(tag, text = '', className = '') {
   const element = document.createElement(tag); element.textContent = text; element.className = className; return element;
@@ -10,6 +11,7 @@ export function createOrderDocuments() {
   let printing = false;
   let printRoot = null;
   const dialog = node('dialog', '', 'order-document-dialog'); dialog.id = 'order-document-dialog';
+  containDialogFocus(dialog);
   dialog.setAttribute('aria-labelledby', 'order-document-title');
   const toolbar = node('div', '', 'order-document-toolbar');
   const close = node('button', t('close')); close.type = 'button'; close.addEventListener('click', () => dialog.close());

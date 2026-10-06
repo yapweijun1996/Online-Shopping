@@ -1,7 +1,22 @@
 import { t } from './i18n.js';
 
+export function containDialogFocus(dialog) {
+  dialog.addEventListener('keydown', event => {
+    if (!dialog.open || event.key !== 'Tab' || event.altKey || event.ctrlKey || event.metaKey) return;
+    const items = [...dialog.querySelectorAll('button, input, textarea, select, a[href], [tabindex]')]
+      .filter(element => !element.matches(':disabled') && element.tabIndex >= 0 && element.getClientRects().length && getComputedStyle(element).visibility !== 'hidden');
+    const first = items[0], last = items.at(-1), active = document.activeElement;
+    // Native dialog tabbing can leave the document for browser chrome at a boundary.
+    if (!items.length || !dialog.contains(active) || (event.shiftKey ? active === first : active === last)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first)?.focus();
+    }
+  });
+}
+
 export function createModal(variant = '') {
   const dialog = document.createElement('dialog');
+  containDialogFocus(dialog);
   dialog.className = 'app-modal';
   if (variant) dialog.classList.add(`app-modal-${variant}`);
   const header = document.createElement('header');

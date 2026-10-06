@@ -15,7 +15,7 @@ async function api(method, path, body) {
     headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(method !== 'GET' ? { 'X-CSRF-Token': session?.csrfToken || '' } : {}) },
     body: body ? JSON.stringify(body) : undefined });
   const data = await result.json();
-  if (!result.ok) throw Object.assign(new Error(data.error?.message || 'Demo unavailable.'), { status: result.status, code: data.error?.code });
+  if (!result.ok) throw Object.assign(new Error(data.error?.message || 'Preview unavailable.'), { status: result.status, code: data.error?.code });
   return data;
 }
 function companyPath(collection = '') { return `companies/${selectedCompany.id}${collection ? `/${collection}` : ''}`; }
@@ -45,12 +45,12 @@ async function loadSellers() {
   byId('demo-sellers').replaceChildren(...sellers.map(seller => {
     const row = node('article', '', 'seller-row');
     row.append(node('strong', seller.name), node('span', companies.find(company => company.id === seller.companyId)?.name || seller.companyId));
-    row.append(button(seller.active ? 'Disable demo access' : 'Enable demo access', () => mutation(async () => {
+    row.append(button(seller.active ? 'Disable preview access' : 'Enable preview access', () => mutation(async () => {
       await api('PATCH', `sellers/${seller.id}`, { active: !seller.active, expectedRevision: seller.revision }); await loadSellers(); status('Fictional access updated.');
     })));
-    if (seller.active) row.append(button('View as this demo seller', () => mutation(async () => {
+    if (seller.active) row.append(button('View as this seller', () => mutation(async () => {
       const next = await api('POST', 'assume-seller', { sellerId: seller.id }); session = { ...session, ...next };
-      byId('demo-admin').hidden = true; byId('demo-role').textContent = 'Demo Seller · fictional';
+      byId('demo-admin').hidden = true; byId('demo-role').textContent = 'Seller preview · fictional';
       await loadCompanies(); await loadResources(); status('Seller view uses this membership only. New Admin login starts a fresh workspace.');
     })));
     return row;
@@ -149,13 +149,13 @@ byId('demo-settings-form').addEventListener('submit', event => { event.preventDe
   await api('PATCH', companyPath(), { name: form.elements.name.value, currency: form.elements.currency.value, active: form.elements.active.checked, expectedRevision: selectedCompany.revision });
   await loadCompanies(); await loadSellers(); await loadResources();
 }); });
-byId('demo-reset').addEventListener('click', () => { if (!window.confirm('Discard changes and reset only your fictional demo workspace?')) return; mutation(async () => {
+byId('demo-reset').addEventListener('click', () => { if (!window.confirm('Discard changes and reset only your fictional preview workspace?')) return; mutation(async () => {
   Object.assign(session, await api('POST', 'reset', {})); await loadCompanies(); await loadSellers(); await loadResources();
 }); });
 byId('demo-exit').addEventListener('click', () => mutation(async () => { await api('DELETE', 'session'); location.assign('/seller/'); }));
 try {
   session = await api('GET', 'session');
-  byId('demo-role').textContent = `${session.role === 'ADMIN' ? 'Admin' : 'Demo Seller'} · fictional`;
+  byId('demo-role').textContent = `${session.role === 'ADMIN' ? 'Admin' : 'Seller preview'} · fictional`;
   byId('demo-admin').hidden = session.role !== 'ADMIN'; byId('demo-workspace').hidden = false;
   mountAppearance(byId('demo-appearance'), 'seller');
   await loadCompanies(); await loadSellers(); await loadResources();

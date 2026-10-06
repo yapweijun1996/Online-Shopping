@@ -4,6 +4,8 @@ import { FieldError, boundedText } from './validation.js';
 import { validateProductInput } from './product-input.js';
 import { decodeProductImage } from './product-image.js';
 import { getCompanySettings, requireActiveCategory } from './settings.js';
+import { presentCatalogCopy } from './catalog-copy.js';
+import { productCover, productGallery, requireGalleryRevision, saveProductGallery } from './product-gallery.js';
 
 const columns = `p.id, p.sku, p.name, p.description, p.category AS category_code,
   c.label AS category, p.price_minor, p.currency, p.active, p.image_mime, p.variant_group, p.variant_label, p.stock_quantity,
@@ -24,8 +26,7 @@ function productFromRow(row, seller = false) {
     id: row.id, sku: row.sku, name: row.name, description: row.description,
     category: row.category, priceMinor: row.price_minor, currency: row.currency,
     variantGroup: row.variant_group, variantLabel: row.variant_label,
-    ...(seller ? { categoryCode: row.category_code, active: Boolean(row.active), stockQuantity: row.stock_quantity }
-      : { inStock: row.stock_quantity === null || row.stock_quantity > 0 }),
+    ...(seller ? { categoryCode: row.category_code, active: Boolean(row.active), stockQuantity: row.stock_quantity } : { inStock: row.stock_quantity === null || row.stock_quantity > 0 }),
     imageUrl: row.image_mime ? imagePath : null,
     ...(seller ? { createdAt: row.created_at, updatedAt: row.updated_at } : {}),
   };
@@ -43,24 +44,22 @@ function validateVariantGroup(database, product, excludeId = null) {
   }
 }
 
-function detailFields(database, product, seller) {
+function detailFields(database, product, seller, mode) {
   if (!product) return null;
-  const gallery = database.all(`SELECT id, created_at FROM product_gallery_image WHERE product_id = ? ORDER BY position`, product.id);
-  product.images = [product.imageUrl, ...gallery.map((entry) =>
-    `/api/v1/${seller ? 'seller/' : ''}products/${product.id}/gallery/${entry.id}${seller ? '' : `?v=${imageVersion(entry.created_at)}`}`)].filter(Boolean);
+  product = productGallery(database, product, seller, mode);
   product.variants = product.variantGroup ? database.all(`SELECT ${columns} ${fromProduct}
     WHERE p.variant_group = ? ${seller ? '' : 'AND p.active = 1'} ORDER BY p.variant_label, p.id`, product.variantGroup)
     .map((row) => ({ id: row.id, label: row.variant_label, sku: row.sku, priceMinor: row.price_minor,
-      currency: row.currency, imageUrl: productFromRow(row, seller).imageUrl,
+      currency: row.currency, imageUrl: productCover(database, productFromRow(row, seller), seller),
       ...(seller ? { active: Boolean(row.active), stockQuantity: row.stock_quantity } : { inStock: row.stock_quantity === null || row.stock_quantity > 0 }) })) : [];
   return product;
 }
 
 function duplicateSku(error) {
-  if (String(error?.message).includes('UNIQUE constraint failed: product.sku')) {
+  if ((error?.code === '23505' && error.constraint === 'product_sku_key') || String(error?.message).includes('UNIQUE constraint failed: product.sku')) {
     throw new ApiError(409, 'DUPLICATE_SKU', 'This SKU is already in use.');
   }
-  if (String(error?.message).includes('UNIQUE constraint failed: product.variant_group, product.variant_label')) {
+  if ((error?.code === '23505' && error.constraint === 'product_variant_option') || String(error?.message).includes('UNIQUE constraint failed: product.variant_group, product.variant_label')) {
     const conflict = new ApiError(409, 'DUPLICATE_VARIANT', 'This variant option is already in the group.');
     conflict.field = 'variantLabel';
     throw conflict;
@@ -69,6 +68,7 @@ function duplicateSku(error) {
 }
 
 export function createProduct(database, input) {
+  return database.transaction(() => {
   const currency = getCompanySettings(database).defaultCurrency;
   if (!input || typeof input !== 'object' || Array.isArray(input)) validateProductInput(input, [currency]);
   const product = validateProductInput(input && { currency, ...input }, [currency]);
@@ -88,9 +88,35 @@ export function createProduct(database, input) {
     );
   } catch (error) { duplicateSku(error); }
   return getProduct(database, id, true);
+  });
 }
 
-export function updateProduct(database, id, input) {
+export function updateProduct(database, id, input, mode = 'manual') {
+  return database.transaction(() => {
+    const existing = getProduct(database, id, true, mode);
+    if (!existing) return null;
+    const hasGallery = input && Object.hasOwn(input, 'gallery');
+    let patch = input;
+    if (hasGallery) {
+      requireGalleryRevision(existing, input.expectedUpdatedAt);
+      const { gallery, expectedUpdatedAt, ...metadata } = input;
+      patch = metadata;
+      // Gallery-only edits still advance the shared product revision.
+      if (!Object.keys(patch).length) patch = { name: existing.name };
+    }
+    patchProduct(database, id, patch, { galleryChanging: hasGallery });
+    if (hasGallery) saveProductGallery(database, id, input.gallery, existing);
+    else if (input.imageDataUrl && !existing.galleryItems.some(item => item.id === 'main')) {
+      // A legacy image-only replacement must become visible. Keep any explicitly
+      // selected primary/order, append the restored main, and reject overflow
+      // atomically rather than accepting an invisible replacement.
+      saveProductGallery(database, id, [...existing.galleryItems.map(item => ({ id: item.id })), { id: 'main' }], existing);
+    }
+    return getProduct(database, id, true, mode);
+  });
+}
+
+function patchProduct(database, id, input, { galleryChanging = false } = {}) {
   const existing = getProduct(database, id, true);
   if (!existing) return null;
   const currency = getCompanySettings(database).defaultCurrency;
@@ -105,7 +131,7 @@ export function updateProduct(database, id, input) {
     variantLabel: Object.hasOwn(patch, 'variantLabel') ? patch.variantLabel : existing.variantLabel,
     category: patch.category || existing.categoryCode, currency: patch.currency || existing.currency,
   }, id);
-  if (patch.image === null && existing.images.length > (existing.imageUrl ? 1 : 0)) {
+  if (!galleryChanging && patch.image === null && existing.images.length > (existing.imageUrl ? 1 : 0)) {
     throw new FieldError('imageDataUrl', 'Remove gallery images before removing the main image.');
   }
   const mapping = { sku: 'sku', name: 'name', description: 'description', category: 'category', priceMinor: 'price_minor', currency: 'currency', active: 'active', variantGroup: 'variant_group', variantLabel: 'variant_label', stockQuantity: 'stock_quantity' };
@@ -121,16 +147,16 @@ export function updateProduct(database, id, input) {
     values.push(patch.image?.mime || null, patch.image?.data || null);
   }
   assignments.push('updated_at = ?');
-  values.push(new Date().toISOString(), id);
+  values.push(new Date(Math.max(Date.now(), Date.parse(existing.updatedAt) + 1)).toISOString(), id);
   try {
     database.run(`UPDATE product SET ${assignments.join(', ')} WHERE id = ?`, ...values);
   } catch (error) { duplicateSku(error); }
   return getProduct(database, id, true);
 }
 
-export function getProduct(database, id, seller = false) {
+export function getProduct(database, id, seller = false, mode = 'manual') {
   const row = database.get(`SELECT ${columns} ${fromProduct} WHERE p.id = ? ${seller ? '' : 'AND p.active = 1'}`, id);
-  return detailFields(database, productFromRow(row, seller), seller);
+  return detailFields(database, productFromRow(row, seller), seller, mode);
 }
 
 export function getProductImage(database, id, seller = false) {
@@ -146,35 +172,32 @@ export function getGalleryImage(database, productId, imageId, seller = false) {
   return row && { mime: row.mime, data: row.data, version: imageVersion(row.created_at) };
 }
 
-export function addGalleryImage(database, productId, imageDataUrl) {
+export function addGalleryImage(database, productId, imageDataUrl, mode = 'manual') {
   const image = decodeProductImage(imageDataUrl);
   if (!image) throw new FieldError('imageDataUrl', 'Choose an image.');
   return database.transaction(() => {
     const product = database.get('SELECT image_mime FROM product WHERE id = ?', productId);
     if (!product) throw new ApiError(404, 'NOT_FOUND', 'Product not found.');
     if (!product.image_mime) throw new FieldError('imageDataUrl', 'Add a main image first.');
-    const count = database.get('SELECT COUNT(*) AS count FROM product_gallery_image WHERE product_id = ?', productId).count;
-    if (count >= 9) throw new FieldError('imageDataUrl', 'A product supports nine additional images.');
-    const id = randomUUID();
-    database.run(`INSERT INTO product_gallery_image(id, product_id, position, mime, data, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)`, id, productId, count + 1, image.mime, image.data, new Date().toISOString());
-    return getProduct(database, productId, true);
+    const current = getProduct(database, productId, true, mode);
+    saveProductGallery(database, productId, [...current.galleryItems.map(item => ({ id: item.id })), { imageDataUrl }], current);
+    database.run('UPDATE product SET updated_at = ? WHERE id = ?', new Date(Math.max(Date.now(), Date.parse(current.updatedAt) + 1)).toISOString(), productId);
+    return getProduct(database, productId, true, mode);
   });
 }
 
-export function deleteGalleryImage(database, productId, imageId) {
+export function deleteGalleryImage(database, productId, imageId, mode = 'manual') {
   return database.transaction(() => {
     const entry = database.get('SELECT position FROM product_gallery_image WHERE id = ? AND product_id = ?', imageId, productId);
     if (!entry) throw new ApiError(404, 'NOT_FOUND', 'Image not found.');
-    database.run('DELETE FROM product_gallery_image WHERE id = ?', imageId);
-    for (const row of database.all('SELECT id FROM product_gallery_image WHERE product_id = ? AND position > ? ORDER BY position', productId, entry.position)) {
-      database.run('UPDATE product_gallery_image SET position = position - 1 WHERE id = ?', row.id);
-    }
-    return getProduct(database, productId, true);
+    const current = getProduct(database, productId, true, mode);
+    saveProductGallery(database, productId, current.galleryItems.filter(item => item.id !== imageId).map(item => ({ id: item.id })), current);
+    database.run('UPDATE product SET updated_at = ? WHERE id = ?', new Date(Math.max(Date.now(), Date.parse(current.updatedAt) + 1)).toISOString(), productId);
+    return getProduct(database, productId, true, mode);
   });
 }
 
-export function listProducts(database, params, seller = false) {
+export function listProducts(database, params, seller = false, mode = 'manual') {
   const search = boundedText(params.get('search'), 'search', 100, false);
   const category = boundedText(params.get('category'), 'category', 80, false);
   const parseNumber = (key, fallback, maximum) => {
@@ -192,7 +215,10 @@ export function listProducts(database, params, seller = false) {
     AND (? = '' OR c.label = ?)
     ORDER BY p.updated_at DESC, p.id DESC LIMIT ? OFFSET ?`, search, search, search, category, category, limit + 1, offset);
   const hasMore = rows.length > limit;
-  const result = { items: rows.slice(0, limit).map((row) => productFromRow(row, seller)), nextOffset: hasMore ? offset + limit : null };
+  const result = { items: rows.slice(0, limit).map((row) => {
+    const product = productFromRow(row, seller);
+    return presentCatalogCopy({ ...product, imageUrl: productCover(database, product, seller) }, mode);
+  }), nextOffset: hasMore ? offset + limit : null };
   if (!seller) result.categories = database.all(`SELECT DISTINCT c.label AS category ${fromProduct}
     WHERE p.active = 1 ORDER BY c.label`).map((row) => row.category);
   return result;

@@ -1,4 +1,5 @@
 import { beginMutation } from '../shared/update-guard.js';
+import { containDialogFocus } from '../shared/modal.js';
 import { createOrderDocuments } from './order-documents.js';
 import { formatDate, formatMoney, t, translate } from '../shared/i18n.js';
 
@@ -35,6 +36,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
   const search = find('#order-search');
   const status = find('#order-status');
   const dialog = find('#decision-dialog');
+  containDialogFocus(dialog);
   const reason = find('#decision-reason');
   const reasonLabel = find('#decision-reason-label');
   const shipFields = find('#decision-ship-fields');

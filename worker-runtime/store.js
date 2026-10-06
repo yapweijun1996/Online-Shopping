@@ -25,12 +25,15 @@ export function openNodeStore(file) {
   const database = new DatabaseSync(file, { timeout: 5000 });
   if (file !== ':memory:') chmodSync(file, 0o600);
   database.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
+  let inTransaction = false;
   return {
     get: (sql, ...params) => database.prepare(sql).get(...params),
     all: (sql, ...params) => database.prepare(sql).all(...params),
     run: (sql, ...params) => { database.prepare(sql).run(...params); },
     exec: (sql) => database.exec(sql),
     transaction(fn) {
+      if (inTransaction) return fn();
+      inTransaction = true;
       database.exec('BEGIN IMMEDIATE');
       try {
         const result = fn();
@@ -39,7 +42,7 @@ export function openNodeStore(file) {
       } catch (error) {
         database.exec('ROLLBACK');
         throw error;
-      }
+      } finally { inTransaction = false; }
     },
     rebuildTransaction(fn) {
       database.exec('PRAGMA foreign_keys = OFF');

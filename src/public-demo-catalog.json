@@ -2,7 +2,7 @@
   {
     "sku": "DEMO-001",
     "name": "Desk lamp",
-    "description": "Fictional demo desk lamp for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview desk lamp for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "HOME",
     "priceMinor": 2490,
     "currency": "MYR",
@@ -12,7 +12,7 @@
   {
     "sku": "DEMO-006",
     "name": "Notebook",
-    "description": "Fictional demo notebook for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview notebook for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "STATIONERY",
     "priceMinor": 1890,
     "currency": "MYR",
@@ -22,7 +22,7 @@
   {
     "sku": "DEMO-011",
     "name": "Ceramic mug",
-    "description": "Fictional demo ceramic mug for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview ceramic mug for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "KITCHEN",
     "priceMinor": 2990,
     "currency": "MYR",
@@ -32,7 +32,7 @@
   {
     "sku": "DEMO-016",
     "name": "Daypack",
-    "description": "Fictional demo daypack for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview daypack for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "TRAVEL",
     "priceMinor": 1590,
     "currency": "MYR",
@@ -42,7 +42,7 @@
   {
     "sku": "DEMO-021",
     "name": "Phone stand",
-    "description": "Fictional demo phone stand for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview phone stand for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "TECH_ACCESSORIES",
     "priceMinor": 3490,
     "currency": "MYR",
@@ -52,7 +52,7 @@
   {
     "sku": "DEMO-026",
     "name": "Plain T-shirt",
-    "description": "Fictional demo plain t-shirt for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview plain t-shirt for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "APPAREL",
     "priceMinor": 1290,
     "currency": "MYR",
@@ -62,7 +62,7 @@
   {
     "sku": "DEMO-031",
     "name": "Pet food bowl",
-    "description": "Fictional demo pet food bowl for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview pet food bowl for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "PET_CARE",
     "priceMinor": 990,
     "currency": "MYR",
@@ -72,7 +72,7 @@
   {
     "sku": "DEMO-002",
     "name": "Storage basket",
-    "description": "Fictional demo storage basket for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview storage basket for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "HOME",
     "priceMinor": 2690,
     "currency": "MYR",
@@ -82,7 +82,7 @@
   {
     "sku": "DEMO-007",
     "name": "Pen set",
-    "description": "Fictional demo pen set for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview pen set for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "STATIONERY",
     "priceMinor": 2090,
     "currency": "MYR",
@@ -92,7 +92,7 @@
   {
     "sku": "DEMO-012",
     "name": "Lunch box",
-    "description": "Fictional demo lunch box for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview lunch box for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "KITCHEN",
     "priceMinor": 3190,
     "currency": "MYR",
@@ -102,7 +102,7 @@
   {
     "sku": "DEMO-017",
     "name": "Packing cubes",
-    "description": "Fictional demo packing cubes for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview packing cubes for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "TRAVEL",
     "priceMinor": 1790,
     "currency": "MYR",
@@ -112,7 +112,7 @@
   {
     "sku": "DEMO-022",
     "name": "Cable organizer",
-    "description": "Fictional demo cable organizer for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview cable organizer for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "TECH_ACCESSORIES",
     "priceMinor": 3690,
     "currency": "MYR",
@@ -122,7 +122,7 @@
   {
     "sku": "DEMO-027",
     "name": "Canvas tote",
-    "description": "Fictional demo canvas tote for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview canvas tote for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "APPAREL",
     "priceMinor": 1490,
     "currency": "MYR",
@@ -132,7 +132,7 @@
   {
     "sku": "DEMO-032",
     "name": "Pet blanket",
-    "description": "Fictional demo pet blanket for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview pet blanket for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "PET_CARE",
     "priceMinor": 1190,
     "currency": "MYR",
@@ -142,7 +142,7 @@
   {
     "sku": "DEMO-003",
     "name": "Throw pillow",
-    "description": "Fictional demo throw pillow for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview throw pillow for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "HOME",
     "priceMinor": 2890,
     "currency": "MYR",
@@ -152,7 +152,7 @@
   {
     "sku": "DEMO-008",
     "name": "Pencil case",
-    "description": "Fictional demo pencil case for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview pencil case for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "STATIONERY",
     "priceMinor": 2290,
     "currency": "MYR",
@@ -162,7 +162,7 @@
   {
     "sku": "DEMO-013",
     "name": "Cutting board",
-    "description": "Fictional demo cutting board for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview cutting board for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "KITCHEN",
     "priceMinor": 3390,
     "currency": "MYR",
@@ -172,7 +172,7 @@
   {
     "sku": "DEMO-018",
     "name": "Travel pouch",
-    "description": "Fictional demo travel pouch for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview travel pouch for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "TRAVEL",
     "priceMinor": 1990,
     "currency": "MYR",
@@ -182,7 +182,7 @@
   {
     "sku": "DEMO-023",
     "name": "Laptop sleeve",
-    "description": "Fictional demo laptop sleeve for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview laptop sleeve for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "TECH_ACCESSORIES",
     "priceMinor": 3890,
     "currency": "MYR",
@@ -192,7 +192,7 @@
   {
     "sku": "DEMO-028",
     "name": "Cap",
-    "description": "Fictional demo cap for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview cap for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "APPAREL",
     "priceMinor": 1690,
     "currency": "MYR",
@@ -202,7 +202,7 @@
   {
     "sku": "DEMO-033",
     "name": "Pet toy ball",
-    "description": "Fictional demo pet toy ball for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview pet toy ball for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "PET_CARE",
     "priceMinor": 1390,
     "currency": "MYR",
@@ -212,7 +212,7 @@
   {
     "sku": "DEMO-004",
     "name": "Plant pot",
-    "description": "Fictional demo plant pot for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview plant pot for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "HOME",
     "priceMinor": 3090,
     "currency": "MYR",
@@ -222,7 +222,7 @@
   {
     "sku": "DEMO-009",
     "name": "Desk organizer",
-    "description": "Fictional demo desk organizer for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview desk organizer for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "STATIONERY",
     "priceMinor": 2490,
     "currency": "MYR",
@@ -232,7 +232,7 @@
   {
     "sku": "DEMO-014",
     "name": "Kitchen towel",
-    "description": "Fictional demo kitchen towel for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview kitchen towel for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "KITCHEN",
     "priceMinor": 3590,
     "currency": "MYR",
@@ -242,7 +242,7 @@
   {
     "sku": "DEMO-019",
     "name": "Water bottle",
-    "description": "Fictional demo water bottle for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview water bottle for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "TRAVEL",
     "priceMinor": 2190,
     "currency": "MYR",
@@ -252,7 +252,7 @@
   {
     "sku": "DEMO-024",
     "name": "Mouse pad",
-    "description": "Fictional demo mouse pad for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview mouse pad for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "TECH_ACCESSORIES",
     "priceMinor": 4090,
     "currency": "MYR",
@@ -262,7 +262,7 @@
   {
     "sku": "DEMO-029",
     "name": "Scarf",
-    "description": "Fictional demo scarf for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview scarf for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "APPAREL",
     "priceMinor": 1890,
     "currency": "MYR",
@@ -272,7 +272,7 @@
   {
     "sku": "DEMO-034",
     "name": "Pet grooming brush",
-    "description": "Fictional demo pet grooming brush for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview pet grooming brush for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "PET_CARE",
     "priceMinor": 1590,
     "currency": "MYR",
@@ -282,7 +282,7 @@
   {
     "sku": "DEMO-005",
     "name": "Wall clock",
-    "description": "Fictional demo wall clock for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview wall clock for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "HOME",
     "priceMinor": 3290,
     "currency": "MYR",
@@ -292,7 +292,7 @@
   {
     "sku": "DEMO-010",
     "name": "Sticky note pad",
-    "description": "Fictional demo sticky note pad for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview sticky note pad for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "STATIONERY",
     "priceMinor": 2690,
     "currency": "MYR",
@@ -302,7 +302,7 @@
   {
     "sku": "DEMO-015",
     "name": "Serving bowl",
-    "description": "Fictional demo serving bowl for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview serving bowl for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "KITCHEN",
     "priceMinor": 3790,
     "currency": "MYR",
@@ -312,7 +312,7 @@
   {
     "sku": "DEMO-020",
     "name": "Luggage tag",
-    "description": "Fictional demo luggage tag for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview luggage tag for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "TRAVEL",
     "priceMinor": 2390,
     "currency": "MYR",
@@ -322,7 +322,7 @@
   {
     "sku": "DEMO-025",
     "name": "Tablet pouch",
-    "description": "Fictional demo tablet pouch for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview tablet pouch for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "TECH_ACCESSORIES",
     "priceMinor": 4290,
     "currency": "MYR",
@@ -332,7 +332,7 @@
   {
     "sku": "DEMO-030",
     "name": "Socks",
-    "description": "Fictional demo socks for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview socks for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "APPAREL",
     "priceMinor": 2090,
     "currency": "MYR",
@@ -342,7 +342,7 @@
   {
     "sku": "DEMO-035",
     "name": "Pet carrier bag",
-    "description": "Fictional demo pet carrier bag for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or contact will occur.",
+    "description": "Fictional preview pet carrier bag for browsing and order-flow testing. The AI-generated image illustrates an invented item. Price and appearance are sample data, not a real offer. No payment, delivery or automatic contact will occur.",
     "category": "PET_CARE",
     "priceMinor": 1790,
     "currency": "MYR",

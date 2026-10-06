@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#087f83">
+  <meta name="theme-color" content="#24553e">
   <title>Seller portal · Online Shopping</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="/seller/manifest.webmanifest">
@@ -15,13 +15,15 @@
   <script src="/seller/palette.js"></script>
   <script type="module" src="/seller/app.js"></script>
   <link rel="stylesheet" href="/seller/order-print.css">
+  <link rel="stylesheet" href="/seller/commerce.css">
 </head>
 <body>
   <header class="topbar">
     <button class="icon-button mobile-only" id="open-menu" type="button" data-i18n-aria="openMenu" aria-controls="sidebar" aria-expanded="false">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
-    <a class="brand" href="/seller/" data-i18n-aria="sellerPortal"><img class="brand-mark" src="/favicon.svg" alt=""><span data-i18n="sellerPortal">Seller portal</span></a>
+    <a class="brand" href="/seller/" data-i18n-aria="sellerPortal"><img class="brand-mark" src="/seller/assets/studio-leaf.svg" alt=""><span>Seller Studio</span></a>
+    <p id="shop-context" class="shop-context" hidden></p>
     <div class="top-actions">
       <div id="language" class="language-menu"></div>
       <div class="account-wrap" id="account-wrap" hidden>
@@ -39,7 +41,7 @@
   </header>
   <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
   <aside id="sidebar" class="sidebar" hidden>
-    <div class="sidebar-head"><button id="collapse-nav" class="sidebar-brand" type="button" data-i18n-aria="collapse" aria-controls="sidebar" aria-expanded="true"><img class="brand-mark" src="/favicon.svg" alt=""><span data-i18n="sellerPortal">Seller portal</span><svg class="brand-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button><div class="sidebar-brand-static" aria-hidden="true"><img class="brand-mark" src="/favicon.svg" alt=""><span data-i18n="sellerPortal">Seller portal</span></div><button id="close-menu" class="icon-button mobile-only" type="button" data-i18n-aria="closeMenu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg></button></div>
+    <div class="sidebar-head"><button id="collapse-nav" class="sidebar-brand" type="button" data-i18n-aria="collapse" aria-controls="sidebar" aria-expanded="true"><img class="brand-mark" src="/seller/assets/studio-leaf.svg" alt=""><span>Seller Studio</span><svg class="brand-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button><div class="sidebar-brand-static" aria-hidden="true"><img class="brand-mark" src="/seller/assets/studio-leaf.svg" alt=""><span>Seller Studio</span></div><button id="close-menu" class="icon-button mobile-only" type="button" data-i18n-aria="closeMenu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg></button></div>
     <nav aria-label="Seller portal" data-i18n-aria="sellerPortal">
       <button class="nav-item active" type="button" data-view="dashboard" data-i18n-aria="dashboard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5V21H3zM9 21v-7h6v7"/></svg><span data-i18n="dashboard">Dashboard</span></button>
       <button class="nav-item" type="button" data-view="products" data-i18n-aria="products"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v14H4zM3 7l2-4h14l2 4M9 12h6"/></svg><span data-i18n="products">Products</span></button>
@@ -58,8 +60,8 @@
         <div class="login-intro-content">
           <img class="brand-mark large" src="/favicon.svg" alt="">
           <p class="eyebrow" data-i18n="loginPrompt">Seller access only</p>
-          <h1 data-i18n="signInTitle">Welcome back</h1>
-          <p class="login-intro-lead" data-i18n="signInIntro">Sign in to manage products and orders.</p>
+          <h1 data-i18n="studioHero">Your shop, beautifully managed.</h1>
+          <p class="login-intro-lead" data-i18n="studioHeroIntro">A calm workspace for your products, customers and orders.</p>
           <ul class="login-features">
             <li><span class="login-feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.3 8.4 8 10 4.7-1.6 8-5 8-10V6zM9 12l2 2 4-4"/></svg></span><span><strong data-i18n="loginPrompt">Seller access only</strong><small data-i18n="accessFeature">Only signed-in sellers can manage the catalog and orders.</small></span></li>
             <li><span class="login-feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 7h18v13H3zM3 7l3-4h12l3 4M9 12h6"/></svg></span><span><strong data-i18n="products">Products</strong><small data-i18n="catalogFeature">Add products, update details and control availability.</small></span></li>
@@ -69,6 +71,7 @@
       </div>
       <div class="login-area">
         <form id="login-form" class="login-card">
+          <div class="studio-login-brand"><img src="/seller/assets/studio-leaf.svg" alt="" width="40" height="40"><span>Seller Studio</span></div>
           <h2 data-i18n="signInAccount">Sign in to your account</h2>
           <p class="login-card-lead" data-i18n="signInCardIntro">Use your seller credentials to continue.</p>
           <label for="username" data-i18n="username">Username</label>
@@ -85,6 +88,7 @@
             <p id="login-update-status" role="status" aria-live="polite"></p>
           </div>
         </form>
+        <div id="demo-entry"></div>
       </div>
     </section>
     <section id="workspace" hidden>
@@ -127,7 +131,7 @@
         <p class="shop-note full" data-i18n="variantHelp">Products with the same group code appear as selectable options. Each option keeps its own SKU and price.</p>
         <label class="full"><span data-i18n="image">Product image</span><input name="image" type="file" accept="image/png,image/jpeg,image/webp"><small data-i18n="imageHelp">PNG, JPEG or WebP, up to 512 KB.</small></label>
         <div id="product-image-panel" class="product-image-panel full" hidden><img id="product-image-preview" class="product-image-preview" alt=""><div><p id="product-image-status" data-i18n="currentImage">Current image</p><button id="product-remove-image" class="secondary-button" type="button" data-i18n="removeImage">Remove image</button><button id="product-restore-image" class="text-button" type="button" data-i18n="restoreImage" hidden>Undo removal</button><p id="product-image-removal-help" class="product-image-removal-help" role="status" hidden></p></div></div>
-        <div id="product-gallery-panel" class="product-gallery-panel full" hidden><h3 data-i18n="gallery">Gallery</h3><p class="shop-note" data-i18n="galleryHelp">Add up to nine extra photos after saving the main image. Extra photos can be removed individually.</p><div id="product-gallery-list" class="product-gallery-list"></div><label><span data-i18n="addPhoto">Add photos</span><input name="gallery" type="file" accept="image/png,image/jpeg,image/webp" multiple></label></div>
+        <div id="product-gallery-panel" class="product-gallery-panel full" hidden><h3 data-i18n="gallery">Gallery</h3><p class="shop-note" data-i18n="galleryHelp">Up to ten images in total. Arrange images and choose the primary image, then save the product. Cancel discards unsaved image changes.</p><div id="product-gallery-list" class="product-gallery-list"></div><label><span data-i18n="addPhoto">Add photos</span><input name="gallery" type="file" accept="image/png,image/jpeg,image/webp" multiple></label></div>
         <label class="check-row full"><input name="active" type="checkbox"><span data-i18n="available">Active in shop</span></label>
       </div>
       <p id="product-form-error" class="message" role="alert"></p>

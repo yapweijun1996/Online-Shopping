@@ -19,5 +19,13 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ShopStore"] }],
   "vars": { "NODE_ENV": "production", "SHOP_MODE": "public-demo", "SHOP_DEMO_REVISION": "v1" },
+  "previews": {
+    // Omitting script_name gives each preview its own ShopStore namespace.
+    // Configure preview admin secrets in the Preview base config, never here.
+    "durable_objects": {
+      "bindings": [{ "name": "SHOP", "class_name": "ShopStore" }]
+    },
+    "vars": { "NODE_ENV": "development", "SHOP_MODE": "public-demo", "SHOP_DEMO_REVISION": "preview-v1" }
+  },
   "observability": { "enabled": true }
 }
