@@ -1,4 +1,5 @@
 import { mountAppearance } from '../shared/appearance.js';
+import { confirmModal } from '../shared/modal.js';
 import { revealImage } from './product-media.js';
 import { storageKey } from './storage-scope.js';
 import { categoryIconPath, formatCatalogPrice } from './catalog-presentation.js';
@@ -472,7 +473,10 @@ function renderCart() {
     const feedback = element('span', 'cart-quantity-feedback'); feedback.setAttribute('role', 'status'); feedback.hidden = true; controls.append(feedback);
     const unit = element('span', 'cart-unit-price', product ? formatMoney(product.priceMinor, product.currency).replace(/\u00a0/g, ' ') : '—');
     const subtotal = element('strong', 'cart-line-subtotal', product ? formatMoney(product.priceMinor * quantity, product.currency) : '—');
-    const remove = action(t('remove'), () => removeLine(productId)); remove.classList.add('cart-remove');
+    const remove = action(t('remove'), async () => {
+      const name = product?.name || t('productUnavailable');
+      if (await confirmModal(t('removeItemConfirm').replace('{name}', name), { title: t('removeItemTitle'), confirmLabel: t('remove') })) await removeLine(productId);
+    }); remove.classList.add('cart-remove');
     row.append(detail, unit, controls, subtotal, remove);
     list.append(row);
   }

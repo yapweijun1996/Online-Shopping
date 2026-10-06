@@ -57,18 +57,19 @@ export function createModal(variant = '') {
   } };
 }
 
-export function confirmModal(message) {
+/* Shared confirmation dialog. Defaults keep the app-update wording; pass options for other confirmations. */
+export function confirmModal(message, { title = t('updateApp'), confirmLabel = t('updateApp') } = {}) {
   const modal = createModal('confirm');
   return new Promise(resolve => {
     let accepted = false;
     const text = document.createElement('p'); text.textContent = message;
     const actions = document.createElement('div'); actions.className = 'modal-confirm-actions';
     const cancel = document.createElement('button'); cancel.textContent = t('cancel'); cancel.type = 'button'; cancel.className = 'modal-secondary-button';
-    const update = document.createElement('button'); update.textContent = t('updateApp'); update.type = 'button'; update.className = 'primary-button';
+    const confirm = document.createElement('button'); confirm.textContent = confirmLabel; confirm.type = 'button'; confirm.className = 'primary-button';
     cancel.addEventListener('click', modal.close);
-    update.addEventListener('click', () => { accepted = true; modal.close(); });
-    actions.append(cancel, update);
+    confirm.addEventListener('click', () => { accepted = true; modal.close(); });
+    actions.append(cancel, confirm);
     modal.content.append(text, actions);
-    modal.open(t('updateApp'), () => { modal.content.parentElement.remove(); resolve(accepted); });
+    modal.open(title, () => { modal.content.parentElement.remove(); resolve(accepted); });
   });
 }
