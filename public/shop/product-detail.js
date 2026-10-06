@@ -436,20 +436,21 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     selectionBlock.append(quantityRow, purchaseBar, feedback);
     const demo = shop()?.mode === 'demo';
     const serviceDetails = node('div', 'product-service-details');
-    const serviceRows = demo
-      ? [['stockAndDelivery', 'demoAvailability'], ['demoOrderInformation', 'demoBrief']]
-      : [['stockAndDelivery', 'availabilityUnconfirmed', 'availability'], ['shipping', 'shippingUnconfirmed', 'shipping'], ['returnsAndGuarantees', 'returnsUnconfirmed', 'returns']];
     const sellerTexts = shop()?.storefrontTexts || {};
-    for (const [heading, copy, textKey] of serviceRows) {
+    // A section appears only when the seller wrote text for it (Company settings); the preview shop keeps its notices.
+    const serviceRows = demo
+      ? [['stockAndDelivery', t('demoAvailability'), false], ['demoOrderInformation', t('demoBrief'), false]]
+      : [['stockAndDelivery', 'availability'], ['shipping', 'shipping'], ['returnsAndGuarantees', 'returns']]
+        .map(([heading, key]) => [heading, typeof sellerTexts[key] === 'string' ? sellerTexts[key].trim() : '', true])
+        .filter(([, text]) => text);
+    for (const [heading, text, custom] of serviceRows) {
       const section = node('details', 'product-service-row');
-      // Text written by the seller wins; otherwise the shop's standard wording is shown.
-      const custom = !demo && typeof sellerTexts[textKey] === 'string' && sellerTexts[textKey].trim();
-      const paragraph = node('p', custom ? 'product-service-text' : '', custom || t(copy));
-      section.append(node('summary', '', t(heading)), paragraph);
+      section.append(node('summary', '', t(heading)), node('p', custom ? 'product-service-text' : '', text));
       serviceDetails.append(section);
     }
     if (updateBanner) summary.append(updateBanner);
-    summary.append(headingBlock, selectionBlock, serviceDetails);
+    summary.append(headingBlock, selectionBlock);
+    if (serviceRows.length) summary.append(serviceDetails);
     layout.append(gallery, summary);
     if (demo) {
       const demoNote = node('p', 'product-demo-note', t('demoNotice'));
