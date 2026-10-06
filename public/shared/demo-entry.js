@@ -2,7 +2,8 @@
 export async function mountDemoEntry(root, { onSignedIn } = {}) {
   try {
     const response = await fetch('/api/v1/shop', { cache: 'no-store' });
-    if (!response.ok || (await response.json()).demoRolesAvailable !== true || !root.isConnected) return;
+    const shop = response.ok ? await response.json() : {};
+    if (shop.demoRolesAvailable !== true || !root.isConnected) return;
     const section = document.createElement('section'); section.className = 'demo-role-entry';
     const divider = document.createElement('p'); divider.className = 'demo-role-divider'; divider.textContent = 'or';
     const button = document.createElement('button'); button.type = 'button'; button.className = 'secondary-button demo-role-primary';
@@ -23,6 +24,13 @@ export async function mountDemoEntry(root, { onSignedIn } = {}) {
       }
     });
     section.append(divider, button, note, status);
+    if (/^[0-9]{8,15}$/.test(shop.quickLoginContact ?? '')) {
+      const contact = document.createElement('a'); contact.className = 'demo-role-contact';
+      contact.href = `https://wa.me/${shop.quickLoginContact}?text=${encodeURIComponent('Hi, I tried the online shop system and I am interested.')}`;
+      contact.target = '_blank'; contact.rel = 'noopener noreferrer';
+      contact.textContent = 'Interested? Chat with us on WhatsApp';
+      section.append(contact);
+    }
     const submit = root.querySelector('#login-submit');
     if (submit) submit.after(section); else root.append(section);
   } catch { /* Normal production login does not depend on demo availability. */ }
