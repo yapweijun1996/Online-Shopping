@@ -6,7 +6,7 @@ import { ApiError, errorResponse, json, readJson, requireOrigin } from './http.j
 import { SqlLimiter } from './limiter.js';
 import { createOrder, lookupOrderStatuses } from './orders.js';
 import { addGalleryImage, createProduct, deleteGalleryImage, getGalleryImage, getProduct, getProductImage, listProducts, updateProduct } from './products.js';
-import { decideSellerOrder, getSellerOrder, listSellerOrders, pendingOrderSummary } from './seller-orders.js';
+import { decideSellerOrder, getSellerOrder, listSellerOrders, pendingOrderSummary, withProductLinks } from './seller-orders.js';
 import { OPTION_LIMITS } from './option-limits.js';
 import { createOptionType, createOptionValue, listOptionTypes, updateOptionType, updateOptionValue } from './options.js';
 import { createCategory, publicBusinessContact, getCompanySettings, storefrontTexts, listCategories, updateCategory, updateCompanySettings } from './settings.js';
@@ -246,13 +246,13 @@ export async function createApi({ store, config, serveStatic = null }) {
     if (method === 'GET' && sellerOrder && !sellerOrder[2]) {
       const order = await getSellerOrder(store, sellerOrder[1]);
       if (!order) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
-      return json(200, order);
+      return json(200, withProductLinks(order, config.publicOrigin || url.origin));
     }
     if (method === 'POST' && sellerOrder?.[2]) {
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
       const body = await readJson(request);
-      return json(200, await decideSellerOrder(store, sellerOrder[1], sellerOrder[2], body, config.username));
+      return json(200, withProductLinks(await decideSellerOrder(store, sellerOrder[1], sellerOrder[2], body, config.username), config.publicOrigin || url.origin));
     }
     const sellerProduct = sellerProductIdPath.exec(pathname);
     if (method === 'GET' && sellerProduct && !sellerProduct[2]) {

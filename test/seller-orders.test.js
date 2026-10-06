@@ -151,6 +151,9 @@ test('seller queue and detail expose one authorized order snapshot with no publi
     assert.equal(detail.data.deliveries[0].recipient.phone, '+60123456789');
     assert.equal(detail.data.deliveries[0].address.line2, 'Unit 1');
     assert.equal(detail.data.deliveries[0].items[0].priceMinor, 1250);
+    // Staff can recognise the item: the product page opens on the shop origin and the cover is the seller image path (null without an image).
+    assert.equal(detail.data.deliveries[0].items[0].productUrl, `${f.origin}/shop/#product/${f.product.id.toLowerCase()}`);
+    assert.equal(detail.data.deliveries[0].items[0].imageUrl, null);
     assert.equal(detail.data.deliveries[0].items[0].lineTotalMinor, 2500);
     assert.equal(detail.data.events[0].type, 'SUBMITTED');
     assert.equal(detail.data.events.length, 1);
