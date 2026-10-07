@@ -1,6 +1,7 @@
 import { beginMutation } from '../shared/update-guard.js';
 import { containDialogFocus } from '../shared/modal.js';
 import { createOrderDocuments } from './order-documents.js';
+import { documentTitleKey } from './order-document-model.js';
 import { formatDate, formatMoney, t, translate } from '../shared/i18n.js';
 
 function node(tag, className = '', value = '') {
@@ -228,7 +229,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
     fragment.append(head);
     const documentActions = node('div', 'order-document-actions');
     for (const kind of order.status === 'CONFIRMED' ? ['summary', 'packing'] : ['summary']) {
-      const button = actionButton(t(kind === 'packing' ? 'packingSheet' : 'orderDocument'), async () => {
+      const button = actionButton(t(documentTitleKey(kind, order.status)), async () => {
         const requestNumber = ++documentRequest; const id = order.id; button.disabled = true;
         try {
           const fresh = await request('GET', `/api/v1/seller/orders/${encodeURIComponent(id)}`);

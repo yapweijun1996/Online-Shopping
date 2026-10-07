@@ -1,6 +1,6 @@
 import PrintForm from './vendor/printform.js';
 import { formatDate, formatMoney, t } from '../shared/i18n.js';
-import { orderDocumentModel } from './order-document-model.js';
+import { documentTitleKey, orderDocumentModel } from './order-document-model.js';
 import { containDialogFocus } from '../shared/modal.js';
 
 function node(tag, text = '', className = '') {
@@ -89,7 +89,7 @@ export function createOrderDocuments() {
     close.textContent = t('close'); print.textContent = t('printSavePdf');
     data.deliveries.forEach((delivery, index) => {
       const section = node('section', '', `order-document-page ${kind === 'packing' ? 'packing-document' : ''}`);
-      const heading = node('h1', t(kind === 'packing' ? 'packingSheet' : 'orderDocument')); if (!index) heading.id = 'order-document-title';
+      const heading = node('h1', t(documentTitleKey(kind, order.status))); if (!index) heading.id = 'order-document-title';
       section.append(node('p', shopName || t('sellerPortal'), 'order-document-brand'), heading);
       section.append(node('p', data.simulation ? t('documentDemo') : t('documentLimits'), 'order-document-notice'));
       field(section, t('orderNumber'), data.orderNo); field(section, t('orderStatus'), t({SUBMITTED:'statusSubmitted',CONFIRMED:'statusConfirmed',REJECTED:'statusRejected',SHIPPED:'statusShipped',DELIVERED:'statusDelivered',CANCELLED:'statusCancelled'}[data.status]));
