@@ -740,8 +740,8 @@ function drawLocalOrders(orders) {
       const items = element('ul', 'local-order-items');
       for (const item of order.items) {
         const row = element('li');
-        // The picture and name open the product page, so a buyer can check or reorder what they bought.
-        const link = element('a', 'order-item-link'); link.href = productHash(item.productId);
+        // The picture and name open the product page in a new tab, so the order stays open while a buyer checks or reorders.
+        const link = element('a', 'order-item-link'); link.href = productHash(item.productId); link.target = '_blank'; link.rel = 'noopener noreferrer';
         link.append(orderThumbnail(item), element('span', '', `${item.name} × ${item.quantity}`));
         row.append(link, element('strong', '', formatMoney(item.unitPriceMinor * item.quantity, order.currency)));
         items.append(row);
