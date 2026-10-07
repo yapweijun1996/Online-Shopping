@@ -416,6 +416,8 @@ export async function migrateStore(store) {
   if (version === 18) {
     // Data only: one shared photo gallery per listing, and the per-variant copies of it are removed.
     await store.transaction(async () => {
+      // The gallery copy below reads the preview columns, so they must exist before schema 20 is reached.
+      await addThumbnailColumns(store);
       await migrateSharedGalleries(store);
       await store.setSchemaVersion(19);
     });
@@ -424,16 +426,20 @@ export async function migrateStore(store) {
   if (version === 19) {
     // Small previews of product and gallery images, so lists need not download full-size photos.
     await store.transaction(async () => {
-      for (const table of ['product', 'product_gallery_image']) {
-        const present = (await store.all(`SELECT name FROM pragma_table_info('${table}')`)).map(column => column.name);
-        if (!present.includes('thumb_mime')) await store.exec(`ALTER TABLE ${table} ADD COLUMN thumb_mime TEXT CHECK (thumb_mime IS NULL OR thumb_mime IN ('image/png', 'image/jpeg', 'image/webp'))`);
-        if (!present.includes('thumb_data')) await store.exec(`ALTER TABLE ${table} ADD COLUMN thumb_data BLOB`);
-      }
+      await addThumbnailColumns(store);
       await store.setSchemaVersion(20);
     });
     version = 20;
   }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
+}
+
+async function addThumbnailColumns(store) {
+  for (const table of ['product', 'product_gallery_image']) {
+    const present = (await store.all(`SELECT name FROM pragma_table_info('${table}')`)).map(column => column.name);
+    if (!present.includes('thumb_mime')) await store.exec(`ALTER TABLE ${table} ADD COLUMN thumb_mime TEXT CHECK (thumb_mime IS NULL OR thumb_mime IN ('image/png', 'image/jpeg', 'image/webp'))`);
+    if (!present.includes('thumb_data')) await store.exec(`ALTER TABLE ${table} ADD COLUMN thumb_data BLOB`);
+  }
 }
 
 export async function ready(store) {
