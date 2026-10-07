@@ -53,13 +53,14 @@ const sessionHintKey = 'online-shopping-seller-session-hint';
 mountTabIcon(window.sellerPalette);
 const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'review', 'categories', 'options', 'company']);
 const PRODUCT_ROUTE = /^products\/(?:new|[0-9a-f-]{36})$/;
+const ORDER_ROUTE = /^(?:orders|review)\/[0-9a-f-]{36}$/;
 
 function routeFromHash() {
   const route = location.hash.slice(1);
-  return VALID_VIEWS.has(route) || PRODUCT_ROUTE.test(route) ? route : 'dashboard';
+  return VALID_VIEWS.has(route) || PRODUCT_ROUTE.test(route) || ORDER_ROUTE.test(route) ? route : 'dashboard';
 }
 
-function viewFromRoute(route) { return route.startsWith('products/') ? 'products' : route; }
+function viewFromRoute(route) { return route.split('/')[0]; }
 
 function applyRoute() {
   currentRoute = routeFromHash();
@@ -233,14 +234,23 @@ function renderView() {
   if (currentView === 'orders' || currentView === 'review') {
     productsPage = null;
     settingsPage = null;
+    const orderId = currentRoute.split('/')[1] || null;
     if (ordersPage?.mode !== currentView) {
       ordersPage?.dispose();
       ordersPage = mountOrders(content, {
         mode: currentView,
         csrfToken: () => csrfToken,
         onUnauthorized: () => showLogin('authError'),
+        initialOrderId: orderId,
+        // Keep the address in step with the open order so a refresh or a shared link returns to it.
+        onSelect(id) {
+          const route = id ? `${currentView}/${id}` : currentView;
+          if (route === currentRoute) return;
+          currentRoute = route;
+          history.replaceState(history.state, '', `#${route}`);
+        },
       });
-    }
+    } else ordersPage.showOrder(orderId);
     return;
   }
   ordersPage?.dispose();
@@ -346,7 +356,7 @@ async function renderDashboard(content) {
         render(item) {
           const row = node('li', 'dashboard-order-row');
           const link = node('a', 'dashboard-order-link');
-          link.href = '#review';
+          link.href = `#review/${item.id}`;
           const thumb = node('span', 'dashboard-order-thumb');
           if (item.preview?.imageUrl) {
             const image = node('img'); image.src = item.preview.imageUrl; image.alt = ''; image.loading = 'lazy'; image.decoding = 'async';

@@ -21,7 +21,7 @@ function statusKey(status) {
   return { SUBMITTED: 'statusSubmitted', CONFIRMED: 'statusConfirmed', REJECTED: 'statusRejected', SHIPPED: 'statusShipped', DELIVERED: 'statusDelivered', CANCELLED: 'statusCancelled' }[status] || 'orderStatus';
 }
 
-export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
+export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrderId = null, onSelect = () => {} }) {
   root.replaceChildren(document.getElementById('orders-template').content.cloneNode(true));
   translate(root);
   const find = (selector) => root.querySelector(selector);
@@ -355,6 +355,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
     const requestNumber = ++detailRequest;
     selectedId = id;
     selectedOrder = null;
+    onSelect(id);
     root.classList.add('order-show-detail');
     renderQueue();
     showDetailStatus('loading');
@@ -400,6 +401,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
     ++detailRequest; ++documentRequest;
     selectedId = null;
     selectedOrder = null;
+    onSelect(null);
     root.classList.remove('order-show-detail');
     showDetailStatus('selectOrder');
     setMessage('');
@@ -414,6 +416,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
   retry.addEventListener('click', () => loadQueue());
   more.addEventListener('click', () => loadQueue(false));
   back.addEventListener('click', () => {
+    onSelect(null);
     root.classList.remove('order-show-detail');
     (list.querySelector('.order-card.selected') || search).focus();
   });
@@ -492,8 +495,19 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
 
   request('GET', '/api/v1/shop').then(setup => { if (isCurrent()) shopName = setup.shopName || ''; }).catch(() => {});
   loadQueue();
+  if (initialOrderId) openOrder(initialOrderId);
   return {
     mode,
+    // Called by the router when the address changes: open that order, or return to the list.
+    showOrder(id) {
+      if (id) { if (id !== selectedId || !root.classList.contains('order-show-detail')) openOrder(id); return; }
+      if (!selectedId) return;
+      ++detailRequest; ++documentRequest;
+      selectedId = null; selectedOrder = null;
+      root.classList.remove('order-show-detail');
+      showDetailStatus('selectOrder');
+      renderQueue();
+    },
     isBusy: () => deciding,
     hasUnsavedChanges: () => dialog.open,
     draftSignature: () => JSON.stringify([dialog.open, dialogAction, selectedId]),
