@@ -194,3 +194,20 @@ test('PostgreSQL stock holds: 20 buyers racing for 5 units get exactly 5 orders 
   assert.equal(confirmed.filter(r => r.status === 'fulfilled').length, 5, 'every held order can be confirmed');
   assert.equal((await store.get('SELECT stock_quantity FROM product')).stock_quantity, 0);
 });
+
+test('PostgreSQL public list collapses variant groups to one card with the group size and price spread', {skip:!base}, async t => {
+  const store = await openPostgresDatabase(await database(t)); t.shoppingClosers.push(()=>store.close());
+  const {listProducts} = await import('../src/products.js');
+  await createCategory(store, { code: 'WEAR', label: 'Wear' });
+  const make = (sku, price, extra = {}) => createProduct(store, { sku, name: 'Tee', description: 'x', category: 'WEAR', priceMinor: price, currency: 'MYR', active: true, ...extra });
+  await make('TEE-S', 1200, { variantGroup: 'TEE', variantLabel: 'S', stockQuantity: 0 });
+  await make('TEE-M', 1400, { variantGroup: 'TEE', variantLabel: 'M' });
+  await make('TEE-L', 1600, { variantGroup: 'TEE', variantLabel: 'L' });
+  await make('MUG', 900);
+  const shop = (await listProducts(store, new URLSearchParams(''), false)).items;
+  assert.deepEqual(shop.map(p => p.sku).sort(), ['MUG', 'TEE-M']);
+  const tee = shop.find(p => p.sku === 'TEE-M');
+  assert.deepEqual([tee.variantCount, tee.priceVaries, tee.priceMinor], [3, true, 1400]);
+  assert.deepEqual((await listProducts(store, new URLSearchParams('search=TEE-L'), false)).items.map(p => p.sku), ['TEE-L']);
+  assert.equal((await listProducts(store, new URLSearchParams(''), true)).items.length, 4);
+});

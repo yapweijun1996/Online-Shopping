@@ -515,7 +515,7 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
       try {
         const response = await api(`/api/v1/products?${params}`);
         if (version !== request) return;
-        related = response.items.filter((item) => item.id !== id).slice(0, 4);
+        related = response.items.filter((item) => item.id !== id && !(result.variantGroup && item.variantGroup === result.variantGroup)).slice(0, 4);
         renderRelated();
       } catch { /* Product details remain usable without recommendations. */ }
     } catch (error) {
