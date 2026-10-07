@@ -104,7 +104,7 @@ test('PostgreSQL unavailable database fails readiness without leaking credential
 });
 
 // Real PostgreSQL fixtures, independent from the historical synchronous SQL mock suite.
-for (const version of [10, 11, 12, 13, 14, 15, 16]) test(`PostgreSQL physical schema${version} upgrades explicitly to17, preserves bytes and supports gallery writes`, {skip:!base}, async t => {
+for (const version of [10, 11, 12, 13, 14, 15, 16, 17]) test(`PostgreSQL physical schema${version} upgrades explicitly to18, preserves bytes and supports gallery writes`, {skip:!base}, async t => {
   const url = await database(t), store = openPostgresStore(url);
   t.shoppingClosers.push(() => store.close());
   const {postgresSchema12Sql} = await import('../deploy/postgres/schema12.js');
@@ -125,7 +125,8 @@ for (const version of [10, 11, 12, 13, 14, 15, 16]) test(`PostgreSQL physical sc
   assert.equal(await store.schemaVersion(),version);
   assert.deepEqual(await store.get('SELECT * FROM product'),original);
   const upgraded = await openPostgresDatabase(url,{allowUpgrade:true}); t.shoppingClosers.push(()=>upgraded.close());
-  assert.equal(await upgraded.schemaVersion(),17);
+  assert.equal(await upgraded.schemaVersion(),18);
+  assert.equal((await upgraded.get("SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_name IN ('integration_connection','shipment','shipment_event','message_outbox','message_inbound','webhook_receipt','integration_audit')")).n,7);
   assert.deepEqual((await upgraded.get('SELECT image_data FROM product')).image_data,bytes);
   const {getProduct,updateProduct} = await import('../src/products.js');
   const before = await getProduct(upgraded,'synthetic-preserved',true);
