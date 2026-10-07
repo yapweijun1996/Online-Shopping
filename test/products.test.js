@@ -8,6 +8,8 @@ import { SCHEMA_VERSION } from '../src/db.js';
 import { createApp } from '../src/server.js';
 import { createCategory } from '../src/settings.js';
 import { setupShop } from '../src/shop-setup.js';
+import { openDatabase } from '../src/db.js';
+import { createProduct, listProducts } from '../src/products.js';
 
 const username = 'product_owner';
 const password = 'LocalProductPass123!';
@@ -274,4 +276,33 @@ test('schema version one upgrades without losing the provisioned seller', async 
     await migrated.close();
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test('the public list shows one card per variant group (cheapest in-stock variant, group size, price spread); the seller list keeps every SKU', async () => {
+  const store = await openDatabase(':memory:');
+  try {
+    await createCategory(store, { code: 'WEAR', label: 'Wear' });
+    const base = { description: 'x', category: 'WEAR', currency: 'MYR', active: true };
+    const make = (sku, price, extra = {}) => createProduct(store, { ...base, sku, name: 'Tee', priceMinor: price, ...extra });
+    await make('TEE-S', 1200, { variantGroup: 'TEE', variantLabel: 'S', stockQuantity: 0 });
+    await make('TEE-M', 1400, { variantGroup: 'TEE', variantLabel: 'M' });
+    await make('TEE-L', 1600, { variantGroup: 'TEE', variantLabel: 'L' });
+    await make('MUG', 900);
+    await make('SAME-A', 500, { variantGroup: 'SAME', variantLabel: 'A' });
+    await make('SAME-B', 500, { variantGroup: 'SAME', variantLabel: 'B' });
+    await createProduct(store, { ...base, sku: 'GONE', name: 'Tee', priceMinor: 100, active: false, variantGroup: 'TEE', variantLabel: 'XL' });
+    const list = async (query = '', seller = false) => (await listProducts(store, new URLSearchParams(query), seller)).items;
+    const shop = await list();
+    assert.deepEqual(shop.map((p) => p.sku).sort(), ['MUG', 'SAME-A', 'TEE-M'].sort(), 'the sold-out size is skipped, the inactive one never shown');
+    const tee = shop.find((p) => p.variantGroup === 'TEE');
+    assert.equal(tee.variantCount, 3); assert.equal(tee.priceVaries, true); assert.equal(tee.priceMinor, 1400);
+    const same = shop.find((p) => p.variantGroup === 'SAME');
+    assert.equal(same.variantCount, 2); assert.equal(same.priceVaries, false);
+    assert.equal(shop.find((p) => p.sku === 'MUG').variantCount, 1);
+    assert.deepEqual((await list('search=TEE-L')).map((p) => p.sku), ['TEE-L'], 'a search finds a variant by its own SKU');
+    assert.equal((await list('', true)).length, 7, 'the seller list keeps every SKU');
+    assert.equal((await list('limit=2')).length, 2);
+    const page = await listProducts(store, new URLSearchParams('limit=2'), false);
+    assert.notEqual(page.nextOffset, null);
+  } finally { await store.close(); }
 });
