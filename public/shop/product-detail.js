@@ -493,14 +493,19 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     }
   }
 
+  const isSibling = (id) => Boolean(product && id && product.id !== id && product.variants?.some((variant) => variant.id === id));
   async function show(id, force = false) {
     if (!force && currentId === id && product) return;
     const previousGroup = product?.variantGroup;
     const previousQuantity = quantityValue;
+    // Choosing another option of the same product keeps the page on screen (no skeleton, scroll or focus reset).
+    const sibling = !force && isSibling(id);
     currentId = id;
     const version = ++request;
-    product = null; related = []; quantityValue = '1'; activeImageIndex = 0; busy = false; statusKey = ''; errorKey = id ? '' : 'productUnavailable';
-    render(true);
+    if (!sibling) {
+      product = null; related = []; quantityValue = '1'; activeImageIndex = 0; busy = false; statusKey = ''; errorKey = id ? '' : 'productUnavailable';
+      render(true);
+    }
     if (!id) return;
     try {
       const result = await api(`/api/v1/products/${id}`);
@@ -509,7 +514,8 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
       const savedPhoto = history.state?.shopGallery;
       if (savedPhoto?.id === id && Number.isInteger(savedPhoto.index)) activeImageIndex = Math.max(0, Math.min(savedPhoto.index, productMedia(result).length - 1));
       if (previousGroup && result.variantGroup === previousGroup) quantityValue = previousQuantity;
-      render(true);
+      activeImageIndex = sibling ? 0 : activeImageIndex; statusKey = '';
+      render(!sibling);
       const params = new URLSearchParams({ category: result.category, limit: '5' });
       // Recommendations are optional and must never block purchase or reset quantity/focus.
       try {
@@ -535,6 +541,7 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
   return {
     updateCartCount,
     show,
+    isSibling,
     hide() { request++; currentId = undefined; product = null; busy = false; closeImage(); },
     refreshLocale() { if (busy) localePending = true; else render(); },
   };

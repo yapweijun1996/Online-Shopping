@@ -897,13 +897,14 @@ function showRoute() {
     if (active) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   }
+  const optionSwitch = route === 'product' && previousRoute === 'product' && detailPage.isSibling(parsed.id);
   if (route === 'product') detailPage.show(parsed.id);
   else {
     detailPage.hide();
     document.title = shopInfo?.shopName || t('shop');
   }
   if (catalogRoute && previousRoute === 'product') { restoreCatalogFocus = Boolean(catalogReturnFocus); restoreCatalogLinkFocus(); }
-  if (previousRoute !== route || route === 'product') {
+  if (!optionSwitch && (previousRoute !== route || route === 'product')) {
     window.scrollTo(0, catalogRoute && previousRoute === 'product' ? catalogScroll : 0);
   }
   previousRoute = route;
