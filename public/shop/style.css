@@ -630,6 +630,7 @@ body:has(.app-modal[open]) .shop-actionbar{visibility:hidden}
 .catalog-card-actions button{border:1px solid var(--ui-control-border);background:var(--ui-surface);color:var(--ui-primary);font-weight:700;border-radius:8px}
 .catalog-card-actions button:hover{background:var(--shop-accent-soft)}
 .product-price-label{font-size:12px;color:var(--ui-muted)}
+.product-price-range{font-size:13px;line-height:18px;color:var(--ui-muted)}
 .product-navigation-title{display:none}
 .product-heading-block{gap:8px}
 .product-price{background:transparent;padding:0;border-radius:0;line-height:1.15;letter-spacing:-.035em}

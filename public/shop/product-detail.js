@@ -237,8 +237,14 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     const headingBlock = node('div', 'product-heading-block');
     const priceBlock = node('div', 'product-price-block');
     priceBlock.append(node('span', 'product-price-label', t(shop()?.mode === 'demo' ? 'referencePrice' : 'unitPrice')), node('strong', 'product-price', formatMoney(product.priceMinor, product.currency)));
+    // Variants have their own SKUs, but shoppers pick options, not codes: the SKU stays on the seller side and in orders.
+    const prices = (product.variants || []).filter((variant) => variant.currency === product.currency).map((variant) => variant.priceMinor);
+    if (prices.length > 1 && Math.min(...prices) !== Math.max(...prices)) {
+      priceBlock.append(node('span', 'product-price-range', t('priceRangeFormat')
+        .replace('{from}', formatMoney(Math.min(...prices), product.currency)).replace('{to}', formatMoney(Math.max(...prices), product.currency))));
+    }
     const keyDetails = node('dl', 'product-key-details');
-    for (const [label, value] of [[t('sku'), product.sku], [t('category'), product.category]]) keyDetails.append(node('dt', '', label), node('dd', '', value));
+    for (const [label, value] of [[t('category'), product.category]]) keyDetails.append(node('dt', '', label), node('dd', '', value));
     headingBlock.append(title, priceBlock, keyDetails);
     const selectionBlock = node('div', 'product-selection-block');
     if (product.variants?.length > 1 && product.optionTypes?.length) {
@@ -459,7 +465,7 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     const description = node('section', 'product-description-section');
     description.append(node('h2', '', t('productInformation')));
     const specs = node('dl', 'detail-specifications');
-    for (const [key, value] of [[t('sku'), product.sku], [t('category'), product.category]]) {
+    for (const [key, value] of [[t('category'), product.category]]) {
       specs.append(node('dt', '', key), node('dd', '', value));
     }
     description.append(specs, node('h3', 'description-heading', t('description')),
