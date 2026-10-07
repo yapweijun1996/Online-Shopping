@@ -69,6 +69,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
 
   if (mode === 'review') {
     find('#order-status-label').hidden = true;
+    find('#order-filter').classList.add('single-field');
     status.disabled = true;
   }
 
@@ -124,6 +125,17 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
       const name = node('span', 'order-card-buyer', order.buyerName);
       const meta = node('span', 'order-card-meta', `${formatMoney(order.totalMinor, order.currency)} · ${formatDate(order.submittedAt)}`);
       button.append(heading, chip, name, meta);
+      if (order.preview) {
+        const thumb = node('span', 'order-card-thumb');
+        if (order.preview.imageUrl) {
+          const image = node('img'); image.src = order.preview.imageUrl; image.alt = ''; image.loading = 'lazy'; image.decoding = 'async';
+          image.addEventListener('error', () => image.remove());
+          thumb.append(image);
+        }
+        const what = node('span', 'order-card-item', `${order.preview.name}${order.preview.itemCount > 1 ? ` +${order.preview.itemCount - 1}` : ''}`);
+        const row = node('span', 'order-card-preview'); row.append(thumb, what);
+        button.append(row);
+      }
       button.addEventListener('click', () => openOrder(order.id));
       list.append(button);
     }

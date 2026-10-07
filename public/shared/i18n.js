@@ -1518,6 +1518,8 @@ export function locale() { return current; }
 export function t(key) { return messages[current]?.[key] || messages.en[key] || key; }
 export function formatMoney(minor, currency) {
   if (!Number.isSafeInteger(minor) || minor < 0) throw new RangeError('minor must be a non-negative safe integer');
+  // Same "RM 12.00" style as the catalog (formatCatalogPrice) so one price never reads two ways.
+  if (currency === 'MYR') return 'RM\u00a0' + new Intl.NumberFormat(current, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(minor / 100);
   const formatter = new Intl.NumberFormat(current, { style: 'currency', currency });
   const scale = 10 ** formatter.resolvedOptions().maximumFractionDigits;
   return formatter.format(minor / scale);

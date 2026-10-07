@@ -4,6 +4,8 @@ import { beginMutation } from '../shared/update-guard.js';
 import { confirmModal } from '../shared/modal.js';
 import { mountIntegrations } from './integrations.js';
 
+const SHOW_INTEGRATIONS = false;
+
 let pendingWrites = 0;
 
 export async function request(method, path, body, csrfToken, onUnauthorized) {
@@ -180,7 +182,8 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
   root.prepend(setup);
   const appearance = document.createElement('section'); appearance.className = 'settings-card';
   root.append(appearance); mountAppearance(appearance, 'seller');
-  const integrations = mountIntegrations(root, { csrfToken, onUnauthorized });
+  // Provider cards stay hidden until a provider can really be connected; an all-"Not configured" list reads as unfinished.
+  const integrations = SHOW_INTEGRATIONS ? mountIntegrations(root, { csrfToken, onUnauthorized }) : { refreshLocale() {} };
   const setupForm = setup.querySelector('form');
   const setupStatus = setup.querySelector('.setup-status');
   const setupButton = setupForm.querySelector('button');
