@@ -350,3 +350,22 @@ test('fulfilment moves confirmed orders to shipped and delivered, cancelling res
     assert.equal((await f.request('GET', '/api/v1/seller/orders?status=CANCELLED', null, headers)).data.items.length, 1);
   } finally { await f.close(); }
 });
+
+test('the order list accepts one status or a comma-separated set, and rejects unknown or repeated ones', async () => {
+  const f = await fixture();
+  try {
+    const session = await f.login();
+    const first = await f.submit(); const second = await f.submit();
+    assert.equal(first.response.status, 201); assert.equal(second.response.status, 201);
+    const list = (query) => f.request('GET', `/api/v1/seller/orders${query}`, null, { cookie: session.cookie });
+    assert.equal((await list('?status=SUBMITTED')).data.items.length, 2);
+    assert.equal((await list('?status=SUBMITTED,REJECTED')).data.items.length, 2, 'a set includes its pending member');
+    assert.equal((await list('?status=REJECTED')).data.items.length, 0);
+    assert.equal((await list('?status=CONFIRMED,SHIPPED,DELIVERED,CANCELLED')).data.items.length, 0, 'pending orders are not confirmations');
+    assert.equal((await list('')).data.items.length, 2, 'no status means every order');
+    for (const bad of ['?status=NOPE', '?status=SUBMITTED,NOPE', '?status=SUBMITTED,SUBMITTED']) {
+      const result = await list(bad);
+      assert.equal(result.response.status, 400, bad); assert.equal(result.data.error.field, 'status');
+    }
+  } finally { await f.close(); }
+});

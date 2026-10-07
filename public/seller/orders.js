@@ -19,8 +19,16 @@ function actionButton(label, onClick, className = 'secondary-button') {
 }
 
 function statusKey(status) {
-  return { SUBMITTED: 'statusSubmitted', CONFIRMED: 'statusConfirmed', REJECTED: 'statusRejected', SHIPPED: 'statusShipped', DELIVERED: 'statusDelivered', CANCELLED: 'statusCancelled' }[status] || 'orderStatus';
+  // Seller wording: a new order is Pending, a confirmed order that is called off is Void.
+  return { SUBMITTED: 'sellerStatusSubmitted', CONFIRMED: 'statusConfirmed', REJECTED: 'statusRejected', SHIPPED: 'statusShipped', DELIVERED: 'statusDelivered', CANCELLED: 'sellerStatusCancelled' }[status] || 'orderStatus';
 }
+
+/* Sales Orders hold orders waiting for a decision (and rejected ones); once confirmed an order moves to
+   Sales Order Confirmation, where it is shipped, delivered or voided. */
+const SCOPES = {
+  orders: { defaultFilter: 'SUBMITTED', filters: ['SUBMITTED', 'REJECTED', 'SUBMITTED,REJECTED'] },
+  confirmations: { defaultFilter: 'CONFIRMED', filters: ['CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'CONFIRMED,SHIPPED,DELIVERED,CANCELLED'] },
+};
 
 export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrderId = null, onSelect = () => {} }) {
   root.replaceChildren(document.getElementById('orders-template').content.cloneNode(true));
@@ -64,15 +72,22 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
   let dialogErrorKey = '';
   let listRequest = 0;
   let appliedSearch = '';
-  let appliedStatus = mode === 'review' ? 'SUBMITTED' : '';
+  const scope = SCOPES[mode];
+  let appliedStatus = scope.defaultFilter;
   let detailRequest = 0;
   let deciding = false;
 
-  if (mode === 'review') {
-    find('#order-status-label').hidden = true;
-    find('#order-filter').classList.add('single-field');
-    status.disabled = true;
+  function renderStatusOptions() {
+    const chosen = status.value || scope.defaultFilter;
+    status.replaceChildren(...scope.filters.map((value) => {
+      const option = node('option', '', value.includes(',') ? t('allStatuses') : t(statusKey(value)));
+      option.value = value;
+      return option;
+    }));
+    status.value = scope.filters.includes(chosen) ? chosen : scope.defaultFilter;
   }
+  renderStatusOptions();
+  status.addEventListener('change', () => find('#order-filter').requestSubmit());
 
   function isCurrent() { return active && shell.isConnected; }
   function setMessage(key) {
@@ -150,7 +165,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
     const offset = reset ? 0 : nextOffset;
     if (offset === null) return;
     const query = reset ? search.value.trim() : appliedSearch;
-    const filter = mode === 'review' ? 'SUBMITTED' : reset ? status.value : appliedStatus;
+    const filter = reset ? status.value : appliedStatus;
     if (reset) {
       appliedSearch = query;
       appliedStatus = filter;
@@ -172,8 +187,8 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
       items = reset ? result.items : [...items, ...result.items];
       nextOffset = result.nextOffset;
       renderQueue();
-      const hasCriteria = Boolean(query || (mode !== 'review' && filter));
-      setListStatus(items.length ? '' : hasCriteria ? 'noMatchingOrders' : mode === 'review' ? 'noPendingOrders' : 'noOrders');
+      const hasCriteria = Boolean(query || filter !== scope.defaultFilter);
+      setListStatus(items.length ? '' : hasCriteria ? 'noMatchingOrders' : mode === 'orders' ? 'noPendingOrders' : 'noOrders');
       clearFilters.hidden = Boolean(items.length) || !hasCriteria;
     } catch (error) {
       if (isCurrent() && requestNumber === listRequest && error.status !== 401) { setListStatus('networkError'); retry.hidden = false; }
@@ -322,7 +337,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
     history.append(events);
     fragment.append(history);
 
-    if (mode === 'review' && order.status === 'SUBMITTED') {
+    if (order.status === 'SUBMITTED') {
       const actions = node('div', 'order-review-actions');
       const confirm = actionButton(t('confirmOrder'), (event) => openDecision('confirm', event.currentTarget), 'primary-button');
       const reject = actionButton(t('rejectOrder'), (event) => openDecision('reject', event.currentTarget), 'secondary-button');
@@ -410,7 +425,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
   });
   clearFilters.addEventListener('click', () => {
     search.value = '';
-    status.value = '';
+    status.value = scope.defaultFilter;
     find('#order-filter').requestSubmit();
     search.focus();
   });
@@ -523,6 +538,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
     refreshLocale() {
       if (!isCurrent()) return;
       translate(root);
+      renderStatusOptions();
       renderQueue();
       if (selectedOrder) renderDetail();
       else showDetailStatus(detailStatusKey);

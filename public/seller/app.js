@@ -51,12 +51,13 @@ let updateView = null;
 let updateIdentity = '';
 const sessionHintKey = 'online-shopping-seller-session-hint';
 mountTabIcon(window.sellerPalette);
-const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'review', 'categories', 'options', 'company']);
+const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'confirmations', 'categories', 'options', 'company']);
 const PRODUCT_ROUTE = /^products\/(?:new|[0-9a-f-]{36})$/;
-const ORDER_ROUTE = /^(?:orders|review)\/[0-9a-f-]{36}$/;
+const ORDER_ROUTE = /^(?:orders|confirmations)\/[0-9a-f-]{36}$/;
 
 function routeFromHash() {
-  const route = location.hash.slice(1);
+  // `review` was the old address of the queue of orders waiting for a decision, which is now Sales Orders.
+  const route = location.hash.slice(1).replace(/^review(?=\/|$)/, 'orders');
   return VALID_VIEWS.has(route) || PRODUCT_ROUTE.test(route) || ORDER_ROUTE.test(route) ? route : 'dashboard';
 }
 
@@ -65,11 +66,13 @@ function viewFromRoute(route) { return route.split('/')[0]; }
 function applyRoute() {
   currentRoute = routeFromHash();
   currentView = viewFromRoute(currentRoute);
+  // Old `#review` links are rewritten to the Sales Orders address.
+  if (location.hash.slice(1).startsWith('review')) history.replaceState(history.state, '', `#${currentRoute}`);
   renderView();
 }
 
 function activePage() {
-  return currentView === 'products' ? productsPage : currentView === 'categories' || currentView === 'options' || currentView === 'company' ? settingsPage : currentView === 'orders' || currentView === 'review' ? ordersPage : null;
+  return currentView === 'products' ? productsPage : currentView === 'categories' || currentView === 'options' || currentView === 'company' ? settingsPage : currentView === 'orders' || currentView === 'confirmations' ? ordersPage : null;
 }
 
 function hasUnsavedChanges() { return activePage()?.hasUnsavedChanges?.() === true; }
@@ -227,11 +230,11 @@ function renderView() {
   });
   const titleKey = currentView === 'products' && currentRoute !== 'products'
     ? currentRoute === 'products/new' ? 'addProduct' : 'editProduct'
-    : { dashboard: 'dashboard', products: 'products', orders: 'salesOrders', review: 'orderReview', categories: 'categoryCodes', options: 'optionsNav', company: 'companySettings' }[currentView];
+    : { dashboard: 'dashboard', products: 'products', orders: 'salesOrders', confirmations: 'orderReview', categories: 'categoryCodes', options: 'optionsNav', company: 'companySettings' }[currentView];
   byId('page-title').dataset.i18n = titleKey;
   byId('page-title').textContent = t(titleKey);
   const content = byId('workspace-content');
-  if (currentView === 'orders' || currentView === 'review') {
+  if (currentView === 'orders' || currentView === 'confirmations') {
     productsPage = null;
     settingsPage = null;
     const orderId = currentRoute.split('/')[1] || null;
@@ -352,11 +355,11 @@ async function renderDashboard(content) {
       {
         title: 'dashboardSubmittedOrders', intro: 'dashboardOrdersIntro',
         path: '/api/v1/seller/orders?status=SUBMITTED&limit=100', count: orderCount,
-        action: 'dashboardReviewOrders', view: 'review', empty: 'dashboardNoSubmittedOrders',
+        action: 'dashboardReviewOrders', view: 'orders', empty: 'dashboardNoSubmittedOrders',
         render(item) {
           const row = node('li', 'dashboard-order-row');
           const link = node('a', 'dashboard-order-link');
-          link.href = `#review/${item.id}`;
+          link.href = `#orders/${item.id}`;
           const thumb = node('span', 'dashboard-order-thumb');
           if (item.preview?.imageUrl) {
             const image = node('img'); image.src = item.preview.imageUrl; image.alt = ''; image.loading = 'lazy'; image.decoding = 'async';
@@ -365,7 +368,7 @@ async function renderDashboard(content) {
           }
           const text = node('span', 'dashboard-order-text');
           const line = node('span', 'dashboard-row-line');
-          line.append(node('strong', '', item.orderNo), node('span', 'dashboard-status', t('statusSubmitted')));
+          line.append(node('strong', '', item.orderNo), node('span', 'dashboard-status', t('sellerStatusSubmitted')));
           const what = item.preview ? `${item.buyerName} · ${item.preview.name}${item.preview.itemCount > 1 ? ` +${item.preview.itemCount - 1}` : ''}` : item.buyerName;
           text.append(line, node('span', 'dashboard-row-buyer', what),
             node('span', 'dashboard-row-meta', `${formatMoney(item.totalMinor, item.currency)} · ${formatDate(item.submittedAt)}`));
