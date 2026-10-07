@@ -1,5 +1,6 @@
 import { beginMutation } from '../shared/update-guard.js';
 import { containDialogFocus } from '../shared/modal.js';
+import { revealImage } from '../shared/image-reveal.js';
 import { createOrderDocuments } from './order-documents.js';
 import { documentTitleKey } from './order-document-model.js';
 import { statusKey } from './order-status-label.js';
@@ -142,7 +143,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
       if (order.preview) {
         const thumb = node('span', 'order-card-thumb');
         if (order.preview.imageUrl) {
-          const image = node('img'); image.src = order.preview.imageUrl; image.alt = ''; image.loading = 'lazy'; image.decoding = 'async';
+          const image = node('img'); revealImage(image); image.src = order.preview.imageUrl; image.alt = ''; image.loading = 'lazy'; image.decoding = 'async';
           image.addEventListener('error', () => image.remove());
           thumb.append(image);
         }
@@ -322,7 +323,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
         const line = node('li', 'order-item');
         const thumb = node('span', 'order-item-thumb');
         if (item.imageUrl) {
-          const image = node('img'); image.src = item.imageUrl; image.alt = ''; image.loading = 'lazy'; image.decoding = 'async';
+          const image = node('img'); revealImage(image); image.src = item.imageUrl; image.alt = ''; image.loading = 'lazy'; image.decoding = 'async';
           image.addEventListener('error', () => image.remove());
           thumb.append(image);
         }

@@ -561,3 +561,9 @@
 .product-variant-here{font-size:12px;font-weight:700;color:var(--ui-primary,#0b7b7d)}
 @media(max-width:640px){.product-variant-row{grid-template-columns:1fr 1fr;row-gap:4px}}
 #product-add-variant{margin-top:10px}
+
+/* Images fade in from a blurred shimmer to sharp instead of popping in (see shared/image-reveal.js). */
+.img-reveal{background:linear-gradient(100deg,#e6eff1 30%,#f5f9f9 50%,#e6eff1 70%);background-size:220% 100%;animation:img-shimmer 1.4s linear infinite;filter:blur(10px);transition:filter .5s ease}
+.img-reveal.is-loaded{filter:none;animation:none;background:transparent}
+@keyframes img-shimmer{to{background-position:-220% 0}}
+@media (prefers-reduced-motion:reduce){.img-reveal{transition:none;animation:none;filter:none}}

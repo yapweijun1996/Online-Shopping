@@ -1,5 +1,6 @@
 import { formatDate, formatMoney, locale, setupLanguageMenu, t } from '../shared/i18n.js';
 import { registerWorker } from '../shared/pwa.js';
+import { revealImage } from '../shared/image-reveal.js';
 import { confirmModal, containDialogFocus } from '../shared/modal.js';
 import { draftSignature, mutationsBusy } from '../shared/update-guard.js';
 import { APP_VERSION } from './version.js';
@@ -367,7 +368,7 @@ async function renderDashboard(content) {
           link.href = `#orders/${item.id}`;
           const thumb = node('span', 'dashboard-order-thumb');
           if (item.preview?.imageUrl) {
-            const image = node('img'); image.src = item.preview.imageUrl; image.alt = ''; image.loading = 'lazy'; image.decoding = 'async';
+            const image = node('img'); revealImage(image); image.src = item.preview.imageUrl; image.alt = ''; image.loading = 'lazy'; image.decoding = 'async';
             image.addEventListener('error', () => image.remove());
             thumb.append(image);
           }
@@ -393,7 +394,7 @@ async function renderDashboard(content) {
           link.href = `#products/${item.id}`;
           const thumb = node('span', 'dashboard-order-thumb');
           if (item.imageUrl) {
-            const image = node('img'); image.src = item.imageUrl; image.alt = ''; image.loading = 'lazy'; image.decoding = 'async';
+            const image = node('img'); revealImage(image); image.src = item.imageUrl; image.alt = ''; image.loading = 'lazy'; image.decoding = 'async';
             image.addEventListener('error', () => image.remove());
             thumb.append(image);
           }
