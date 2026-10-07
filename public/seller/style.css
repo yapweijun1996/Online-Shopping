@@ -517,3 +517,8 @@
   .generator-table td:last-child::before{display:inline;margin:0 8px 0 0;vertical-align:middle}
   .generator-table td:last-child .tap-box{justify-content:flex-start;gap:8px}
 }
+
+/* Larger hit areas that do not move the layout. */
+.topbar .brand{position:relative}
+.topbar .brand::after{content:"";position:absolute;inset:-6px}
+#login-check-updates{min-height:44px}

@@ -105,7 +105,7 @@
     </section>
     <section id="settings-view" class="profile-page account-page" aria-labelledby="settings-title" hidden>
       <div class="shop-heading"><h1 id="settings-title" data-i18n="settings">Settings</h1></div>
-      <div class="checkout-section settings-general"><a href="#profile" data-i18n="editProfile">Edit profile</a><p class="shop-note" data-i18n="shopSettingsHelp"></p><button id="settings-clear-history" class="outline-button" type="button" data-i18n="clearHistory">Clear saved suggestions</button><p id="settings-status" role="status"></p></div>
+      <div class="checkout-section settings-general"><a class="text-link" href="#profile" data-i18n="editProfile">Edit profile</a><p class="shop-note" data-i18n="shopSettingsHelp"></p><button id="settings-clear-history" class="outline-button" type="button" data-i18n="clearHistory">Clear saved suggestions</button><p id="settings-status" role="status"></p></div>
       <section class="checkout-section palette-settings" aria-labelledby="palette-title">
         <h2 id="palette-title" data-i18n="paletteTitle">Shop appearance</h2>
         <p class="shop-note" data-i18n="paletteHelp">Choose a color palette for this browser. Prices and notices keep their meaning.</p>
@@ -140,7 +140,7 @@
       <div id="cart-list" class="cart-list"></div>
       <div id="cart-skeleton" class="cart-list cart-skeleton loading-placeholder" aria-hidden="true" hidden></div>
       <p class="shop-note" data-i18n="cartPriceNote"></p>
-      <a href="#catalog" data-i18n="continueShopping">Continue shopping</a>
+      <a class="text-link" href="#catalog" data-i18n="continueShopping">Continue shopping</a>
       <div class="shop-actionbar">
         <label class="check-row"><input id="cart-select-all" type="checkbox"><span data-i18n="selectAll">Select all</span></label>
         <p id="cart-selected-count" role="status"></p>
@@ -156,7 +156,7 @@
         <fieldset id="buyer-section" class="checkout-section">
           <legend data-i18n="buyerDetails">Buyer details</legend>
           <dl id="checkout-buyer" class="receipt-details"></dl>
-          <a href="#profile" data-profile-return="checkout" data-i18n="editProfile">Edit profile</a>
+          <a class="text-link" href="#profile" data-profile-return="checkout" data-i18n="editProfile">Edit profile</a>
           <label class="check-row"><input id="whatsapp-opt-in" name="whatsappOrderContactOptIn" type="checkbox" required checked><span data-i18n="whatsappConsent">I agree to receive WhatsApp messages from the seller about this order. Required to place an order; no marketing.</span></label>
         </fieldset>
         <section class="checkout-section checkout-address-section" aria-labelledby="delivery-title"><div class="address-page-heading"><h2 id="delivery-title" data-i18n="deliveryAddress">Delivery address</h2><button id="change-address" class="outline-button" type="button" data-i18n="changeAddress">Change</button></div><div id="checkout-address"></div></section>

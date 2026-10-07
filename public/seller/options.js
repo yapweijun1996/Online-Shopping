@@ -185,6 +185,8 @@ export function mountOptions(root, { csrfToken, onUnauthorized: notifyUnauthoriz
 
   function renderTypes() {
     list.replaceChildren();
+    // The variant generator is only useful once an option type exists, so it stays hidden until then.
+    root.querySelector('.option-generator').hidden = !types.length;
     if (!types.length) { list.append(el('p', 'settings-check-help', t('optionsEmpty'))); return; }
     for (const type of types) list.append(typeCard(type));
   }
