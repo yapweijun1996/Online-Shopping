@@ -78,7 +78,7 @@ Rules:
 4. Seller UI: one row per listing, variants edited inside it.
 
 PR 2 must not merge before PR 1 is deployed and verified, otherwise the updater stops at `manual_migration_required`.
-Integration tables (planned schema 18 in `INTEGRATION_DESIGN.md`) move to schema 20.
+Integration tables (planned schema 18 in `INTEGRATION_DESIGN.md`) move to schema 21.
 
 ## Not covered
 
