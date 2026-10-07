@@ -59,15 +59,17 @@ async function orderPreviews(database, orderIds) {
 }
 
 export async function listSellerOrders(database, params) {
-  const status = params.get('status') || '';
-  if (status && !statuses.has(status)) throw new FieldError('status', 'Choose a valid order status.');
+  const requested = (params.get('status') || '').split(',').filter(Boolean);
+  if (requested.length > statuses.size || requested.some((value) => !statuses.has(value)) || new Set(requested).size !== requested.length) {
+    throw new FieldError('status', 'Choose a valid order status.');
+  }
   const search = boundedText(params.get('search'), 'search', 40, false);
   const limit = listNumber(params, 'limit', 20, 100);
   const offset = listNumber(params, 'offset', 0, 10_000);
   if (limit < 1) throw new FieldError('limit', 'Enter a valid list range.');
   const rows = await database.all(`SELECT ${queueColumns} FROM shop_order
-    WHERE (? = '' OR status = ?) AND (? = '' OR instr(lower(order_no), lower(?)) > 0)
-    ORDER BY submitted_at DESC, id DESC LIMIT ? OFFSET ?`, status, status, search, search, limit + 1, offset);
+    WHERE (${requested.length ? `status IN (${requested.map(() => '?').join(', ')})` : '1 = 1'}) AND (? = '' OR instr(lower(order_no), lower(?)) > 0)
+    ORDER BY submitted_at DESC, id DESC LIMIT ? OFFSET ?`, ...requested, search, search, limit + 1, offset);
   const page = rows.slice(0, limit);
   const previews = await orderPreviews(database, page.map((row) => row.id));
   return { items: page.map((row) => ({ ...summary(row), ...(previews.get(row.id) ? { preview: previews.get(row.id) } : {}) })), nextOffset: rows.length > limit ? offset + limit : null };

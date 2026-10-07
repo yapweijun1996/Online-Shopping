@@ -11,7 +11,7 @@ function storePreference(value) {
 }
 
 /*
- * Shows how many orders wait for a decision: a badge on the review menu item, a count in the
+ * Shows how many orders wait for a decision: a badge on the Sales Orders menu item, a count in the
  * page title and, if the seller opts in, a browser notification when a newer order arrives.
  * It polls while the portal is open; it is not a background push service.
  */
