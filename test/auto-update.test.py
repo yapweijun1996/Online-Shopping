@@ -22,6 +22,11 @@ class Fake(m.Updater):
         self.events.append('build')
         if self.fail == 'build': raise RuntimeError()
     def backup(self): self.events.append('backup')
+    def violations(self, candidate): return self.problems if hasattr(self, 'problems') else []
+    def migrate(self, candidate):
+        self.events.append('migrate')
+        if self.fail == 'migrate': raise RuntimeError()
+        return True
     def remote_head(self): return NEW
     def approved(self, sha): return True
     def save(self, status, **fields):
@@ -125,8 +130,87 @@ class Tests(unittest.TestCase):
         self.assertNotIn('build', u.events)
     def test_infrastructure_change_pauses_release(self):
         u = Fake(); u.checkout = lambda sha: '/new'
-        with patch.object(m, 'fingerprint', side_effect=[{'schema': 14}, {'schema': 13}]): u.poll()
+        with patch.object(m, 'fingerprint', side_effect=[{'tunnel': 'a'}, {'tunnel': 'b'}]): u.poll()
         self.assertEqual(u.state['last_status'], 'manual_migration_required')
         self.assertNotIn('build', u.events)
+
+    def test_schema_upgrade_runs_after_backup_and_before_cutover(self):
+        u = Fake()
+        u.deploy({'sha': NEW, 'release': '/new'})
+        self.assertLess(u.events.index('backup'), u.events.index('migrate'))
+        self.assertLess(u.events.index('migrate'), u.events.index('activate:' + NEW))
+        self.assertEqual(u.state['current']['sha'], NEW)
+
+    def test_failed_schema_upgrade_never_cuts_over(self):
+        u = Fake(); u.fail = 'migrate'
+        with self.assertRaises(RuntimeError): u.deploy({'sha': NEW, 'release': '/new'})
+        self.assertNotIn('activate:' + NEW, u.events)
+        self.assertEqual(u.state['current']['sha'], OLD)
+        self.assertEqual(u.state['last_status'], 'migration_failed')
+        self.assertEqual(u.state['failed_sha'], NEW)
+
+    def test_compose_policy_violation_pauses_before_build(self):
+        u = Fake(); u.problems = ['service postgres changed']
+        u.deploy({'sha': NEW, 'release': '/new'})
+        self.assertEqual(u.state['last_status'], 'manual_migration_required')
+        self.assertEqual(u.state['reasons'], ['service postgres changed'])
+        for event in ('build', 'backup', 'migrate', 'activate:' + NEW): self.assertNotIn(event, u.events)
+
+    def test_schema_version_is_read_from_the_release(self):
+        with tempfile.TemporaryDirectory() as folder:
+            (Path(folder) / 'src').mkdir(); (Path(folder) / 'src/db.js').write_text('export const SCHEMA_VERSION = 18;\n')
+            self.assertEqual(m.schema_version(folder), 18)
+
+    def test_migrate_skips_when_the_schema_is_unchanged_and_refuses_downgrades(self):
+        with tempfile.TemporaryDirectory() as old, tempfile.TemporaryDirectory() as new:
+            for folder, version in ((old, 17), (new, 17)):
+                (Path(folder) / 'src').mkdir(); (Path(folder) / 'src/db.js').write_text(f'export const SCHEMA_VERSION = {version};\n')
+            u = object.__new__(m.Updater); u.state = {'current': {'sha': OLD, 'release': old}}
+            self.assertFalse(u.migrate({'sha': NEW, 'release': new}))
+            (Path(new) / 'src/db.js').write_text('export const SCHEMA_VERSION = 16;\n')
+            with self.assertRaises(RuntimeError): u.migrate({'sha': NEW, 'release': new})
+
+    def test_migrate_runs_the_candidate_image_as_owner_and_checks_the_version(self):
+        with tempfile.TemporaryDirectory() as old, tempfile.TemporaryDirectory() as new, tempfile.TemporaryDirectory() as root:
+            for folder, version in ((old, 17), (new, 18)):
+                (Path(folder) / 'src').mkdir(); (Path(folder) / 'src/db.js').write_text(f'export const SCHEMA_VERSION = {version};\n')
+            (Path(root) / 'runtime.env').write_text('DATABASE_OWNER_PASSWORD_FILE_HOST=/secrets/owner\n')
+            u = object.__new__(m.Updater); u.root = Path(root); u.state = {'current': {'sha': OLD, 'release': old}}
+            seen = []
+            def fake_run(command, **kw): seen.append(command); return 'noise\n{"version": 18}\n'
+            u.run = fake_run
+            self.assertTrue(u.migrate({'sha': NEW, 'release': new}))
+            command = seen[0]
+            self.assertIn('online-shopping-backend:' + NEW, command)
+            self.assertIn('/secrets/owner:/run/secrets/owner:ro', command)
+            self.assertIn(m.PROJECT + '_private', command)
+            u.run = lambda command, **kw: '{"version": 17}\n'
+            with self.assertRaises(RuntimeError): u.migrate({'sha': NEW, 'release': new})
+
+    def test_compose_policy(self):
+        R1, R2 = '/r/old', '/r/new'
+        base = lambda r: {'services': {
+            'postgres': {'image': 'pg', 'volumes': [{'type': 'bind', 'source': r + '/deploy/init.sh', 'target': '/i'}]},
+            'tunnel': {'image': 'cf'}, 'backend': {'image': 'app', 'environment': {'A': '1'}}},
+            'secrets': {'s': {'file': '/secret'}}, 'volumes': {'pg_data': {}}, 'networks': {'private': {'internal': True}}}
+        old = base(R1)
+        # Application changes, new secrets and a new loopback-only service are fine; release paths are ignored.
+        new = base(R2); new['services']['backend']['environment']['B'] = '2'
+        new['services']['qr'] = {'image': 'qr', 'ports': [{'host_ip': '127.0.0.1', 'published': '9'}]}
+        new['secrets']['extra'] = {'file': '/x'}
+        self.assertEqual(m.compose_violations(old, new, R1, R2), [])
+        for label, mutate in [
+            ('postgres image', lambda c: c['services']['postgres'].update(image='other')),
+            ('tunnel removed', lambda c: c['services'].pop('tunnel')),
+            ('secret path', lambda c: c['secrets']['s'].update(file='/elsewhere')),
+            ('volume removed', lambda c: c['volumes'].pop('pg_data')),
+            ('privileged', lambda c: c['services']['backend'].update(privileged=True)),
+            ('host network', lambda c: c['services']['backend'].update(network_mode='host')),
+            ('docker socket', lambda c: c['services']['backend'].update(volumes=[{'type': 'bind', 'source': '/var/run/docker.sock', 'target': '/s'}])),
+            ('public port', lambda c: c['services']['backend'].update(ports=[{'host_ip': '0.0.0.0', 'published': '80'}])),
+            ('open port', lambda c: c['services']['backend'].update(ports=[{'published': '80'}])),
+        ]:
+            bad = base(R2); mutate(bad)
+            self.assertTrue(m.compose_violations(old, bad, R1, R2), label)
 
 if __name__ == '__main__': unittest.main()
