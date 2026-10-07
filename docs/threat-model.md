@@ -201,7 +201,7 @@ Hold these true; a change that weakens one is at least P1.
 | Replay window / key rotation for webhooks | Missing | Documented gap in `docs/INTEGRATION_TRUST_INGRESS.md` |
 | Provider contract/registry and deterministic simulation providers | Partial | Fixture transport only; no live providers |
 | Dependency audit in CI; pinned GitHub Actions by SHA; pinned base images by digest | Implemented | `verify.yml`, `compose.production.yaml` |
-| CI-gated auto-deploy with protected-file fingerprint and rollback | Implemented | `deploy/auto-update.py`, `docs/AUTO_DEPLOY.md` |
+| CI-gated auto-deploy with a tunnel/database gate, compose policy checks, backup-then-migrate and rollback | Implemented | `deploy/auto-update.py`, `docs/AUTO_DEPLOY.md` |
 | Per-account login lockout, CAPTCHA, global abuse caps | Missing | Only per-IP limits |
 | Encrypted backups | Missing (owner decision) | `docs/MULTI_TENANT_PRODUCTION_PLAN.md` |
 

@@ -17,8 +17,11 @@ REPOSITORY = 'yapweijun1996/Online-Shopping'
 REMOTE = 'https://github.com/' + REPOSITORY + '.git'
 PROJECT = 'online-shopping-production'
 SHA = re.compile(r'^[0-9a-f]{40}$')
-PROTECTED = ('compose.production.yaml', 'deploy/cloudflared.yml', 'deploy/init-postgres.sh',
-             'src/postgres/schema.sql', 'src/postgres-db.js')
+# Files whose change always needs the operator: the tunnel definition and database initialisation.
+PROTECTED = ('deploy/cloudflared.yml', 'deploy/init-postgres.sh')
+# Compose services whose definition must not change automatically (the database and the tunnel).
+# Everything else in compose.production.yaml may change, within compose_violations() below.
+GATED_SERVICES = ('postgres', 'tunnel')
 
 
 def atomic_json(path, value):
@@ -80,12 +83,53 @@ def fingerprint(release):
         if path.is_symlink() or not path.is_file():
             raise RuntimeError('Protected deployment file is missing or a symlink.')
         result[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return result
+
+
+def schema_version(release):
     text = (Path(release) / 'src/db.js').read_text()
     version = re.search(r'export const SCHEMA_VERSION = (\d+);', text)
     if not version:
         raise RuntimeError('Schema version is unavailable.')
-    result['schemaVersion'] = int(version.group(1))
-    return result
+    return int(version.group(1))
+
+
+def _normalised(value, release):
+    # Rendered compose files embed the release directory in bind-mount paths; ignore that part.
+    return json.dumps(value, sort_keys=True).replace(str(release), '<release>')
+
+
+def compose_violations(current, candidate, current_release, candidate_release):
+    """Reasons a rendered compose change must wait for the operator (empty list: safe to deploy).
+
+    The database and tunnel services and every existing secret and volume must be unchanged. Other
+    services (the application, and new ones such as a WhatsApp QR worker) may change, but may not gain
+    host privileges, host-wide bind mounts or ports published beyond the loopback interface.
+    """
+    problems = []
+    old, new = current.get('services', {}), candidate.get('services', {})
+    for name in GATED_SERVICES:
+        if name in old and _normalised(old[name], current_release) != _normalised(new.get(name), candidate_release):
+            problems.append(f'service {name} changed')
+    for section in ('secrets', 'volumes', 'networks'):
+        for key, definition in current.get(section, {}).items():
+            if _normalised(definition, current_release) != _normalised(candidate.get(section, {}).get(key), candidate_release):
+                problems.append(f'{section[:-1]} {key} changed')
+    for name, service in new.items():
+        if name in GATED_SERVICES:
+            continue
+        if service.get('privileged') or service.get('cap_add') or service.get('devices'):
+            problems.append(f'service {name} requests host privileges')
+        if service.get('network_mode') == 'host' or service.get('pid') == 'host' or service.get('ipc') == 'host':
+            problems.append(f'service {name} shares a host namespace')
+        for volume in service.get('volumes', []):
+            source = str(volume.get('source', ''))
+            if volume.get('type') == 'bind' and not source.startswith(str(candidate_release) + '/'):
+                problems.append(f'service {name} mounts a host path outside the release')
+        for port in service.get('ports', []):
+            if port.get('host_ip') not in ('127.0.0.1', '::1'):
+                problems.append(f'service {name} publishes a port beyond loopback')
+    return problems
 
 
 class Updater:
@@ -165,9 +209,42 @@ class Updater:
                   '-v', str(Path(item['release']) / 'deploy/Caddyfile.production') + ':/etc/caddy/Caddyfile:ro',
                   'online-shopping-frontend:' + item['sha'], 'validate', '--config', '/etc/caddy/Caddyfile'])
 
+    def services(self, item):
+        config = json.loads((self.root / 'configs' / (item['sha'] + '.json')).read_text())
+        return config.get('services', {})
+
+    def violations(self, candidate):
+        current = self.state['current']
+        old = json.loads((self.root / 'configs' / (current['sha'] + '.json')).read_text())
+        new = json.loads((self.root / 'configs' / (candidate['sha'] + '.json')).read_text())
+        return compose_violations(old, new, current['release'], candidate['release'])
+
+    def migrate(self, candidate):
+        """Upgrade the database schema as its owner before traffic moves. Returns True when it ran.
+
+        The upgrade is one transaction and runs after a verified backup; failure leaves the schema as it was.
+        """
+        before, after = schema_version(self.state['current']['release']), schema_version(candidate['release'])
+        if after == before:
+            return False
+        if after < before:
+            raise RuntimeError('Schema downgrades are never automatic.')
+        runtime = dict(line.split('=', 1) for line in (self.root / 'runtime.env').read_text().splitlines() if '=' in line)
+        owner = runtime['DATABASE_OWNER_PASSWORD_FILE_HOST']
+        script = Path(candidate['release']) / 'scripts/upgrade-database.mjs'
+        output = self.run(['docker', '--context', 'orbstack', 'run', '--rm', '--network', PROJECT + '_private',
+                           '-v', owner + ':/run/secrets/owner:ro', '-v', str(script) + ':/app/scripts/upgrade-database.mjs:ro',
+                           '--entrypoint', 'node', 'online-shopping-backend:' + candidate['sha'],
+                           '/app/scripts/upgrade-database.mjs'], capture=True, timeout=300)
+        if json.loads(output.strip().splitlines()[-1]).get('version') != after:
+            raise RuntimeError('Database schema is not at the expected version after the upgrade.')
+        return True
+
     def activate(self, item):
+        # Application services only: the database and the tunnel are never recreated automatically.
+        names = [name for name in self.services(item) if name not in GATED_SERVICES]
         self.run(self.compose(item) + ['up', '-d', '--no-deps', '--no-build', '--wait',
-                                       '--wait-timeout', '90', '--force-recreate', 'backend', 'frontend'], timeout=120)
+                                       '--wait-timeout', '90', '--force-recreate'] + names, timeout=180)
 
     def health(self, item):
         for host in ['shop.gmb01.xyz', 'seller.gmb01.xyz']:
@@ -192,6 +269,10 @@ class Updater:
     def deploy(self, candidate):
         try:
             self.render(candidate)
+            reasons = self.violations(candidate)
+            if reasons:
+                self.save('manual_migration_required', sha=candidate['sha'], reasons=reasons)
+                return
             self.build(candidate)
         except Exception:
             self.save('build_failed', failed_sha=candidate['sha'])
@@ -202,7 +283,12 @@ class Updater:
             self.save('superseded', sha=candidate['sha'])
             return
         previous = self.state['current']
-        self.save('deploying', pending=candidate)
+        try:
+            migrated = self.migrate(candidate)
+        except Exception:
+            self.save('migration_failed', failed_sha=candidate['sha'])
+            raise
+        self.save('deploying', pending=candidate, migrated=migrated)
         try:
             self.activate(candidate)
             self.health(candidate)
