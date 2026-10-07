@@ -258,7 +258,7 @@ export async function listProducts(database, params, seller = false, mode = 'man
     // The seller sees one row per listing too (its oldest variant, or the one that matches the search), with totals
     // over all of its variants; the variants themselves are managed inside the listing.
     ? await database.all(`SELECT * FROM (
-        SELECT ${columns()}, ROW_NUMBER() OVER (PARTITION BY p.listing_id ORDER BY p.created_at, p.id) AS group_rank,
+        SELECT ${columns()}, ROW_NUMBER() OVER (PARTITION BY p.listing_id ORDER BY p.created_at, p.sku, p.id) AS group_rank,
           ${siblings('COUNT(*)')} AS group_size, ${siblings('MIN(x.price_minor)')} AS group_min_price,
           ${siblings('MAX(x.price_minor)')} AS group_max_price, ${siblings('SUM(x.active)')} AS group_active,
           ${siblings('CASE WHEN COUNT(*) <> COUNT(x.stock_quantity) THEN NULL ELSE SUM(x.stock_quantity) END')} AS group_stock

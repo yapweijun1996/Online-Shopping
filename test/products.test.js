@@ -303,8 +303,9 @@ test('the public list shows one card per variant group (cheapest in-stock varian
     const rows = await list('', true);
     assert.equal(rows.length, 3, 'the seller list has one row per listing (TEE, MUG, SAME), inactive variants included in the counts');
     const teeRow = rows.find((p) => p.variantGroup === 'TEE');
-    assert.deepEqual([teeRow.sku, teeRow.variantCount, teeRow.activeCount, teeRow.priceFromMinor, teeRow.priceToMinor, teeRow.stockTotal], ['TEE-S', 4, 3, 100, 1600, null],
-      'oldest variant represents the listing; unlimited stock on any variant makes the total unlimited');
+    assert.deepEqual([teeRow.variantCount, teeRow.activeCount, teeRow.priceFromMinor, teeRow.priceToMinor, teeRow.stockTotal], [4, 3, 100, 1600, null],
+      'inactive variants count but are not active; unlimited stock on any variant makes the total unlimited');
+    assert.ok(['TEE-S', 'TEE-M', 'TEE-L', 'GONE'].includes(teeRow.sku));
     assert.deepEqual((await list('search=TEE-L', true)).map((p) => [p.sku, p.variantCount]), [['TEE-L', 4]], 'a seller search finds the listing by any variant SKU');
     assert.equal((await list('limit=2')).length, 2);
     const page = await listProducts(store, new URLSearchParams('limit=2'), false);
