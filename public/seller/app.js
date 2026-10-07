@@ -388,7 +388,19 @@ async function renderDashboard(content) {
         action: 'dashboardViewProducts', view: 'products', empty: 'noProducts',
         render(item) {
           const row = node('li', 'dashboard-product-row');
-          row.append(node('strong', '', item.name), node('span', 'dashboard-row-meta', item.sku));
+          // The row opens the product's edit page, like an order row opens its order.
+          const link = node('a', 'dashboard-order-link');
+          link.href = `#products/${item.id}`;
+          const thumb = node('span', 'dashboard-order-thumb');
+          if (item.imageUrl) {
+            const image = node('img'); image.src = item.imageUrl; image.alt = ''; image.loading = 'lazy'; image.decoding = 'async';
+            image.addEventListener('error', () => image.remove());
+            thumb.append(image);
+          }
+          const text = node('span', 'dashboard-order-text');
+          text.append(node('strong', '', item.name), node('span', 'dashboard-row-meta', item.sku));
+          link.append(thumb, text);
+          row.append(link);
           return row;
         },
       },
