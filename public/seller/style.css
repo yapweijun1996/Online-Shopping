@@ -555,8 +555,9 @@
 .product-variants-panel{margin:0 0 16px;padding:12px 14px;border:1px solid var(--ui-border);border-radius:10px;background:var(--ui-hover-surface)}
 .product-variants-panel h3{margin:0 0 4px;font-size:15px}
 .product-variants-list{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:6px}
-.product-variant-row{display:grid;grid-template-columns:minmax(80px,1.2fr) minmax(90px,1.4fr) auto auto auto auto;gap:10px;align-items:center;padding:8px 10px;border-radius:8px;background:var(--ui-surface,#fff);font-size:14px}
+.product-variant-row{display:grid;grid-template-columns:minmax(80px,1.2fr) minmax(90px,1.4fr) auto auto auto auto auto;gap:10px;align-items:center;padding:8px 10px;border-radius:8px;background:var(--ui-surface,#fff);font-size:14px}
 .product-variant-row.current{outline:2px solid var(--ui-primary,#0b7b7d)}
 .product-variant-name{font-weight:700}.product-variant-sku{color:var(--ui-muted);overflow-wrap:anywhere}
 .product-variant-here{font-size:12px;font-weight:700;color:var(--ui-primary,#0b7b7d)}
 @media(max-width:640px){.product-variant-row{grid-template-columns:1fr 1fr;row-gap:4px}}
+#product-add-variant{margin-top:10px}
