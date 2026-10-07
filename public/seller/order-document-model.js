@@ -1,3 +1,9 @@
+// A new order is a Sales Order (SO); the Sales Order Confirmation (SOC) exists only once it has been confirmed.
+export function documentTitleKey(kind, status) {
+  if (kind === 'packing') return 'packingSheet';
+  return ['CONFIRMED', 'SHIPPED', 'DELIVERED'].includes(status) ? 'salesOrderConfirmationDocument' : 'salesOrderDocument';
+}
+
 // Documents consume authenticated immutable order snapshots, never current catalog prices.
 export function orderDocumentModel(order, kind = 'summary') {
   if (!order || !['summary', 'packing'].includes(kind) || !['SUBMITTED', 'CONFIRMED', 'REJECTED', 'SHIPPED', 'DELIVERED', 'CANCELLED'].includes(order.status) ||
