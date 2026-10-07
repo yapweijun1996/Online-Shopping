@@ -151,6 +151,11 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   let originalGallery = [];
   let galleryReferences = [];
   let galleryLoaded = false;
+  // A product with several variants shows one shared gallery: only its main variant edits it, and the product image above
+  // is this variant's own photo, which never touches the shared photos.
+  let sharedGallery = false;
+  let galleryEditable = true;
+  let galleryHolderId = null;
   let expectedUpdatedAt = null;
   let readingGallery = false;
   let categories = [];
@@ -217,6 +222,16 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     imageRemovalHelp.hidden = !editingId || !originalImageUrl || (galleryLoaded && galleryImages.length <= 1);
     imageRemovalHelp.dataset.i18n = galleryLoaded ? 'removeGalleryFirst' : 'loading';
     imageRemovalHelp.textContent = imageRemovalHelp.hidden ? '' : t(imageRemovalHelp.dataset.i18n);
+    const sharedNote = find('#product-gallery-shared-note'), openMain = find('#product-open-main');
+    sharedNote.hidden = !sharedGallery;
+    if (sharedGallery) sharedNote.textContent = t(galleryEditable ? 'sharedGalleryHolderNote' : 'sharedGalleryNote');
+    openMain.hidden = !sharedGallery || galleryEditable;
+    if (sharedGallery) {
+      form.elements.gallery.disabled = !galleryEditable || saving || readingGallery || !galleryLoaded || galleryImages.length >= 10;
+      removeImage.disabled = !galleryLoaded;
+      imageRemovalHelp.hidden = true;
+    }
+    const preview = (state, source) => { if (!sharedGallery) showImage(state, source); };
     galleryList.replaceChildren();
     galleryImages.forEach((entry, index) => {
       const item = document.createElement('div');
@@ -232,17 +247,17 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
         galleryList.children[Math.min(index, galleryImages.length - 1)]?.querySelector('button:not([disabled])')?.focus({ preventScroll: true });
         document.dispatchEvent(new Event('updateguardchange'));
       };
-      const primary = button(t('setPrimaryPhoto'), () => change(() => { galleryImages.splice(index, 1); galleryImages.unshift(entry); showImage('current', entry.src); }), `${t('setPrimaryPhoto')} ${index + 1}`);
-      primary.dataset.galleryAction = 'primary'; primary.disabled = saving || readingGallery || index === 0;
-      const earlier = button(t('movePhotoEarlier'), () => change(() => { [galleryImages[index - 1], galleryImages[index]] = [entry, galleryImages[index - 1]]; showImage('current', galleryImages[0]?.src); }), `${t('movePhotoEarlier')} ${index + 1}`);
-      earlier.dataset.galleryAction = 'earlier'; earlier.disabled = saving || readingGallery || index === 0;
-      const later = button(t('movePhotoLater'), () => change(() => { [galleryImages[index + 1], galleryImages[index]] = [entry, galleryImages[index + 1]]; showImage('current', galleryImages[0]?.src); }), `${t('movePhotoLater')} ${index + 1}`);
-      later.dataset.galleryAction = 'later'; later.disabled = saving || readingGallery || index === galleryImages.length - 1;
-      const remove = button(t('removePhoto'), () => change(() => { galleryImages.splice(index, 1); showImage(galleryImages.length ? 'current' : 'none', galleryImages[0]?.src); }), `${t('removePhoto')} ${index + 1}`);
-      remove.dataset.galleryAction = 'remove'; remove.disabled = saving || readingGallery;
+      const primary = button(t('setPrimaryPhoto'), () => change(() => { galleryImages.splice(index, 1); galleryImages.unshift(entry); preview('current', entry.src); }), `${t('setPrimaryPhoto')} ${index + 1}`);
+      primary.dataset.galleryAction = 'primary'; primary.disabled = !galleryEditable || saving || readingGallery || index === 0;
+      const earlier = button(t('movePhotoEarlier'), () => change(() => { [galleryImages[index - 1], galleryImages[index]] = [entry, galleryImages[index - 1]]; preview('current', galleryImages[0]?.src); }), `${t('movePhotoEarlier')} ${index + 1}`);
+      earlier.dataset.galleryAction = 'earlier'; earlier.disabled = !galleryEditable || saving || readingGallery || index === 0;
+      const later = button(t('movePhotoLater'), () => change(() => { [galleryImages[index + 1], galleryImages[index]] = [entry, galleryImages[index + 1]]; preview('current', galleryImages[0]?.src); }), `${t('movePhotoLater')} ${index + 1}`);
+      later.dataset.galleryAction = 'later'; later.disabled = !galleryEditable || saving || readingGallery || index === galleryImages.length - 1;
+      const remove = button(t('removePhoto'), () => change(() => { galleryImages.splice(index, 1); preview(galleryImages.length ? 'current' : 'none', galleryImages[0]?.src); }), `${t('removePhoto')} ${index + 1}`);
+      remove.dataset.galleryAction = 'remove'; remove.disabled = !galleryEditable || saving || readingGallery;
       actions.append(primary, earlier, later, remove); item.append(photo, label, actions); galleryList.append(item);
     });
-    const available = galleryReferences.filter(reference => !galleryImages.some(item => item.id === reference.id));
+    const available = !galleryEditable ? [] : galleryReferences.filter(reference => !galleryImages.some(item => item.id === reference.id));
     if (available.length) {
       const heading = document.createElement('p'); heading.textContent = t('availableReferencePhotos'); galleryList.append(heading);
       for (const reference of available) {
@@ -259,7 +274,11 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   }
 
   function acceptGallery(detail, { capture = true } = {}) {
-    galleryImages = (detail.galleryItems || []).map(item => ({ ...item }));
+    sharedGallery = Boolean(detail.galleryShared);
+    galleryHolderId = detail.galleryHolderId || null;
+    galleryEditable = !sharedGallery || galleryHolderId === detail.id;
+    // Shared photos only: this variant's own photo is the product image above, not part of the gallery.
+    galleryImages = (detail.galleryItems || []).filter(item => !sharedGallery || item.shared).map(item => ({ ...item }));
     originalGallery = galleryImages.map(item => ({ ...item }));
     galleryReferences = (detail.galleryReferenceItems || []).map(item => ({ ...item }));
     expectedUpdatedAt = detail.updatedAt;
@@ -481,6 +500,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     galleryImages = [];
     galleryReferences = [];
     galleryLoaded = false;
+    sharedGallery = false; galleryEditable = true; galleryHolderId = null;
     expectedUpdatedAt = null;
     showImage('none');
     renderGallery();
@@ -514,6 +534,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     showImage(product.imageUrl ? 'current' : 'none', product.imageUrl);
     galleryImages = [];
     galleryLoaded = false;
+    sharedGallery = false; galleryEditable = true; galleryHolderId = null;
     renderGallery();
     setError('');
     setFormSuccess('');
@@ -646,16 +667,17 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   }
 
   find('#product-new').addEventListener('click', () => onNavigate('products/new'));
+  find('#product-open-main').addEventListener('click', () => { if (galleryHolderId) onNavigate(`products/${galleryHolderId}`); });
   find('#product-cancel').addEventListener('click', () => onNavigate('products'));
   form.addEventListener('input', () => { if (formSuccessKey) setFormSuccess(''); });
   form.addEventListener('change', () => { if (formSuccessKey) setFormSuccess(''); });
   find('#product-search-form').addEventListener('submit', (event) => { event.preventDefault(); load(); });
   more.addEventListener('click', () => load(false));
   removeImage.addEventListener('click', () => {
-    if (!galleryLoaded || galleryImages.length > 1) return;
+    if (!galleryLoaded || (galleryImages.length > 1 && !sharedGallery)) return;
     form.elements.image.value = '';
     pendingRemove = Boolean(originalImageUrl);
-    galleryImages = [];
+    if (!sharedGallery) galleryImages = [];
     showImage(pendingRemove ? 'removed' : 'none');
     renderGallery();
   });
@@ -674,7 +696,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
         const dataUrl = await readImage(file);
         if (!ownsRead()) return;
         pendingRemove = false;
-        if (editingId) {
+        if (editingId && !sharedGallery) {
           galleryImages = galleryImages.filter(item => item.id !== 'main');
           galleryImages.unshift({ id: 'main', src: dataUrl });
         }
@@ -744,8 +766,10 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       }
       // Snapshot the initiating editor before image decoding yields to navigation.
       if (productId) {
-        payload.gallery = galleryImages.map(item => item.imageDataUrl ? { imageDataUrl: item.imageDataUrl } : { id: item.id });
-        payload.expectedUpdatedAt = expectedUpdatedAt;
+        if (galleryEditable) {
+          payload.gallery = galleryImages.map(item => item.imageDataUrl ? { imageDataUrl: item.imageDataUrl } : { id: item.id });
+          payload.expectedUpdatedAt = expectedUpdatedAt;
+        }
       }
       const file = form.elements.image.files[0];
       if (file) payload.imageDataUrl = await readImage(file);

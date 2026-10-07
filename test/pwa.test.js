@@ -66,7 +66,7 @@ test('Seller activation defers reload for primary-image removal and newly opened
     const waiting = worker('next'), active = worker('current');
     const registration = { waiting, active, addEventListener() {}, async update() {} };
     const context = { optionTypes: [], selectedOptions: () => [], form: { hidden: false, elements }, saving: false, readingGallery: false, pendingRemove: false, formBaseline: null,
-      galleryLoaded: true, galleryImages: [], originalImageUrl: '/synthetic-primary-image', editingId: 'synthetic-product',
+      galleryLoaded: true, galleryImages: [], galleryEditable: true, sharedGallery: false, originalImageUrl: '/synthetic-primary-image', editingId: 'synthetic-product',
       showImage() {}, renderGallery() {}, dialog: { open: false }, dialogAction: null, selectedId: 'synthetic-order',
       currentRoute: scenario.startsWith('open') ? 'review' : 'products/synthetic-product', t: key => key,
       navigator: { onLine: true, serviceWorker: { controller: active, register: async () => registration, addEventListener() {} } },
