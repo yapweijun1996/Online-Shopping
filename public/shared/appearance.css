@@ -12,4 +12,4 @@
 .appearance-sample .primary-button{background:var(--ui-primary);color:#fff}
 .appearance-warning{padding:12px;background:var(--shop-warning-background);color:var(--shop-warning-text);border-radius:8px}
 .appearance-error{color:var(--shop-error)}
-@media(max-width:480px){.appearance-option{align-items:flex-start}.appearance-option label{flex-wrap:wrap}}
+@media(max-width:480px){.appearance-option{align-items:center}.appearance-option label{flex-wrap:nowrap}}
