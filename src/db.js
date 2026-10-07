@@ -1,8 +1,7 @@
 import { openNodeStore } from './store.js';
 import { migrateLegacyVariants } from './options.js';
-import { INTEGRATION_TABLE_NAMES, sqliteIntegrationTablesSql } from './integration-tables.js';
 
-export const SCHEMA_VERSION = 18;
+export const SCHEMA_VERSION = 17;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -388,13 +387,6 @@ export async function migrateStore(store) {
     });
     version = 17;
   }
-  if (version === 17) {
-    await store.transaction(async () => {
-      await store.exec(sqliteIntegrationTablesSql);
-      await store.setSchemaVersion(18);
-    });
-    version = 18;
-  }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }
 
@@ -407,7 +399,6 @@ export async function ready(store) {
       Array.isArray(await store.all('SELECT id FROM option_type LIMIT 0')) &&
       Array.isArray(await store.all('SELECT id FROM option_value LIMIT 0')) &&
       Array.isArray(await store.all('SELECT product_id FROM product_option LIMIT 0')) &&
-      (await Promise.all(INTEGRATION_TABLE_NAMES.map(async (table) => Array.isArray(await store.all(`SELECT * FROM ${table} LIMIT 0`))))).every(Boolean) &&
       Boolean(await store.get('SELECT id FROM admin WHERE id = 1')) &&
       Boolean(await store.get('SELECT id FROM order_sequence WHERE id = 1')) &&
       Boolean(await store.get('SELECT id FROM company_setting WHERE id = 1')) &&
