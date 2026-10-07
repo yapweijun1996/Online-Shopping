@@ -122,6 +122,11 @@
     <form id="product-form" class="product-form" hidden>
       <div class="product-form-heading"><h2 id="product-form-title" data-i18n="addProduct">Add product</h2><button id="product-cancel" type="button" class="text-button" data-i18n="cancelEdit">Cancel edit</button></div>
       <p id="product-form-success" class="product-form-success" role="status" tabindex="-1"></p>
+      <section id="product-variants" class="product-variants-panel" aria-labelledby="product-variants-title" hidden>
+        <h3 id="product-variants-title" data-i18n="variantsPanelTitle">Variants</h3>
+        <p class="shop-note" data-i18n="variantManageHint">Title, description and category are shared by all variants. Price, stock and photos are set per variant.</p>
+        <ul id="product-variants-list" class="product-variants-list"></ul>
+      </section>
       <div class="product-fields">
         <label><span data-i18n="sku">SKU</span><input name="sku" maxlength="40" required autocomplete="off"></label>
         <label><span data-i18n="name">Name</span><input name="name" maxlength="120" required></label>

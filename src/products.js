@@ -253,9 +253,17 @@ export async function listProducts(database, params, seller = false, mode = 'man
   if (limit < 1) throw new FieldError('limit', 'Enter a valid list range.');
   const activeClause = seller ? '' : 'p.active = 1 AND ';
   const filters = `(? = '' OR instr(lower(p.name), lower(?)) > 0 OR instr(lower(p.sku), lower(?)) > 0) AND (? = '' OR c.label = ?)`;
+  const siblings = (expression) => `(SELECT ${expression} FROM product x WHERE x.listing_id = p.listing_id)`;
   const rows = seller
-    ? await database.all(`SELECT ${columns()} ${fromProduct} WHERE ${activeClause} ${filters}
-      ORDER BY p.updated_at DESC, p.id DESC LIMIT ? OFFSET ?`, search, search, search, category, category, limit + 1, offset)
+    // The seller sees one row per listing too (its oldest variant, or the one that matches the search), with totals
+    // over all of its variants; the variants themselves are managed inside the listing.
+    ? await database.all(`SELECT * FROM (
+        SELECT ${columns()}, ROW_NUMBER() OVER (PARTITION BY p.listing_id ORDER BY p.created_at, p.id) AS group_rank,
+          ${siblings('COUNT(*)')} AS group_size, ${siblings('MIN(x.price_minor)')} AS group_min_price,
+          ${siblings('MAX(x.price_minor)')} AS group_max_price, ${siblings('SUM(x.active)')} AS group_active,
+          ${siblings('CASE WHEN COUNT(*) <> COUNT(x.stock_quantity) THEN NULL ELSE SUM(x.stock_quantity) END')} AS group_stock
+        ${fromProduct} WHERE ${activeClause} ${filters}) listed
+      WHERE group_rank = 1 ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?`, search, search, search, category, category, limit + 1, offset)
     // Shoppers see one card per product: the variants of a group collapse to its cheapest in-stock variant
     // (the one that matches the search), with the group size and whether its prices differ.
     : await database.all(`SELECT * FROM (
@@ -268,7 +276,10 @@ export async function listProducts(database, params, seller = false, mode = 'man
   const hasMore = rows.length > limit;
   const result = { items: await Promise.all(rows.slice(0, limit).map(async (row) => {
       const product = productFromRow(row, seller);
-      const group = seller ? {} : { variantCount: Number(row.group_size), priceVaries: Number(row.group_max_price) !== row.price_minor };
+      const group = seller ? { variantCount: Number(row.group_size), activeCount: Number(row.group_active),
+        priceFromMinor: Number(row.group_min_price), priceToMinor: Number(row.group_max_price),
+        stockTotal: row.group_stock === null ? null : Number(row.group_stock) }
+        : { variantCount: Number(row.group_size), priceVaries: Number(row.group_max_price) !== row.price_minor };
       return presentCatalogCopy({ ...product, ...group, imageUrl: await productCover(database, product, seller) }, mode);
     })), nextOffset: hasMore ? offset + limit : null };
   if (!seller) result.categories = (await database.all(`SELECT DISTINCT c.label AS category ${fromProduct}
