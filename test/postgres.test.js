@@ -104,7 +104,7 @@ test('PostgreSQL unavailable database fails readiness without leaking credential
 });
 
 // Real PostgreSQL fixtures, independent from the historical synchronous SQL mock suite.
-for (const version of [10, 11, 12, 13, 14, 15, 16]) test(`PostgreSQL physical schema${version} upgrades explicitly to17, preserves bytes and supports gallery writes`, {skip:!base}, async t => {
+for (const version of [10, 11, 12, 13, 14, 15, 16]) test(`PostgreSQL physical schema${version} upgrades explicitly to18, preserves bytes and supports gallery writes`, {skip:!base}, async t => {
   const url = await database(t), store = openPostgresStore(url);
   t.shoppingClosers.push(() => store.close());
   const {postgresSchema12Sql} = await import('../deploy/postgres/schema12.js');
@@ -125,7 +125,7 @@ for (const version of [10, 11, 12, 13, 14, 15, 16]) test(`PostgreSQL physical sc
   assert.equal(await store.schemaVersion(),version);
   assert.deepEqual(await store.get('SELECT * FROM product'),original);
   const upgraded = await openPostgresDatabase(url,{allowUpgrade:true}); t.shoppingClosers.push(()=>upgraded.close());
-  assert.equal(await upgraded.schemaVersion(),17);
+  assert.equal(await upgraded.schemaVersion(),18);
   assert.deepEqual((await upgraded.get('SELECT image_data FROM product')).image_data,bytes);
   const {getProduct,updateProduct} = await import('../src/products.js');
   const before = await getProduct(upgraded,'synthetic-preserved',true);
@@ -210,4 +210,28 @@ test('PostgreSQL public list collapses variant groups to one card with the group
   assert.deepEqual([tee.variantCount, tee.priceVaries, tee.priceMinor], [3, true, 1400]);
   assert.deepEqual((await listProducts(store, new URLSearchParams('search=TEE-L'), false)).items.map(p => p.sku), ['TEE-L']);
   assert.equal((await listProducts(store, new URLSearchParams(''), true)).items.length, 4);
+});
+
+test('PostgreSQL schema 17 upgrades into listings, keeping every product id and order line', {skip:!base}, async t => {
+  const url = await database(t);
+  const store = await openPostgresDatabase(url); t.shoppingClosers.push(()=>store.close());
+  await createCategory(store, { code: 'WEAR', label: 'Wear' });
+  const make = (sku, extra = {}) => createProduct(store, { sku, name: 'Tee', description: 'Soft', category: 'WEAR', priceMinor: 1200, currency: 'MYR', active: true, stockQuantity: 5, ...extra });
+  const tee = await make('TEE', { variantGroup: 'TEE', variantLabel: 'S' });
+  const teeM = await make('TEE-M', { variantGroup: 'TEE', variantLabel: 'M' });
+  const mug = await make('MUG', { name: 'Mug' });
+  const order = await createOrder(store, 'pg-listing-intent-0001', input(teeM));
+  const before = await store.all('SELECT id, sku, name, price_minor, stock_quantity FROM product ORDER BY id');
+  // Put the database back into its schema 17 shape.
+  await store.exec('ALTER TABLE product ALTER COLUMN listing_id DROP NOT NULL; UPDATE product SET listing_id = NULL; DELETE FROM listing');
+  await store.setSchemaVersion(17);
+  const upgraded = await openPostgresDatabase(url, { allowUpgrade: true }); t.shoppingClosers.push(()=>upgraded.close());
+  assert.equal(await upgraded.schemaVersion(), 18);
+  assert.deepEqual(await upgraded.all('SELECT id, sku, name, price_minor, stock_quantity FROM product ORDER BY id'), before);
+  assert.equal((await upgraded.get('SELECT COUNT(*)::int AS n FROM listing')).n, 2);
+  assert.equal((await getProduct(upgraded, tee.id, true)).listingId, (await getProduct(upgraded, teeM.id, true)).listingId);
+  assert.notEqual((await getProduct(upgraded, mug.id, true)).listingId, (await getProduct(upgraded, tee.id, true)).listingId);
+  await assert.rejects(upgraded.run("UPDATE product SET listing_id = NULL WHERE id = ?", mug.id), /null value|not-null/i);
+  assert.ok(order);
+  assert.equal((await upgraded.get('SELECT COUNT(*)::int AS n FROM order_item WHERE product_id = ?', teeM.id)).n, 1);
 });

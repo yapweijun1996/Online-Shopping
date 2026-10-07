@@ -1,9 +1,10 @@
 import { SCHEMA_VERSION } from '../db.js';
 import { migrateLegacyVariants } from '../options.js';
+import { migrateListings } from '../listings.js';
 
 // Called only by an explicit operator/test opt-in, inside the store-owned transaction.
 export async function upgradePostgres(store, version) {
-  if (![10, 11, 12, 13, 14, 15, 16].includes(version)) throw new Error(`Unsupported PostgreSQL schema version ${version}.`);
+  if (![10, 11, 12, 13, 14, 15, 16, 17].includes(version)) throw new Error(`Unsupported PostgreSQL schema version ${version}.`);
   const columns = await store.all("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='product'");
   const has = name => columns.some(row => row.column_name === name);
   if (version === 13 && !has('stock_quantity') && !has('gallery_layout_json')) throw new Error('Unrecognized PostgreSQL product schema.');
@@ -57,5 +58,19 @@ export async function upgradePostgres(store, version) {
       END IF;
     END $$;`);
   await migrateLegacyVariants(store);
+  await store.exec(`
+    CREATE TABLE IF NOT EXISTS listing (
+      id TEXT PRIMARY KEY, code TEXT UNIQUE, name TEXT NOT NULL, description TEXT NOT NULL, category TEXT NOT NULL,
+      translations_json TEXT NOT NULL DEFAULT '{}' CHECK (translations_json::jsonb IS NOT NULL),
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    ALTER TABLE product ADD COLUMN IF NOT EXISTS listing_id TEXT REFERENCES listing(id) ON DELETE RESTRICT;
+    CREATE INDEX IF NOT EXISTS product_listing ON product(listing_id);
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'online_shopping_app') THEN
+        GRANT SELECT, INSERT, UPDATE, DELETE ON listing TO online_shopping_app;
+      END IF;
+    END $$;`);
+  await migrateListings(store);
+  await store.exec('ALTER TABLE product ALTER COLUMN listing_id SET NOT NULL');
   await store.setSchemaVersion(SCHEMA_VERSION);
 }
