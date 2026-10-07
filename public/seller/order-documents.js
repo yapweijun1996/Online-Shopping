@@ -1,6 +1,7 @@
 import PrintForm from './vendor/printform.js';
 import { formatDate, formatMoney, t } from '../shared/i18n.js';
 import { documentTitleKey, orderDocumentModel } from './order-document-model.js';
+import './trail-copy.js';
 import { containDialogFocus } from '../shared/modal.js';
 
 function node(tag, text = '', className = '') {
@@ -92,7 +93,13 @@ export function createOrderDocuments() {
       const heading = node('h1', t(documentTitleKey(kind, order.status))); if (!index) heading.id = 'order-document-title';
       section.append(node('p', shopName || t('sellerPortal'), 'order-document-brand'), heading);
       section.append(node('p', data.simulation ? t('documentDemo') : t('documentLimits'), 'order-document-notice'));
-      field(section, t('orderNumber'), data.orderNo); field(section, t('orderStatus'), t({SUBMITTED:'sellerStatusSubmitted',CONFIRMED:'statusConfirmed',REJECTED:'statusRejected',SHIPPED:'statusShipped',DELIVERED:'statusDelivered',CANCELLED:'sellerStatusCancelled'}[data.status]));
+      const confirmation = (order.documents || []).find((doc) => doc.type === 'SALES_ORDER_CONFIRMATION');
+      field(section, t('orderNumber'), data.orderNo);
+      if (confirmation && kind === 'packing') field(section, t('salesOrderConfirmationDocument'), confirmation.number);
+      if (confirmation && kind === 'summary' && documentTitleKey(kind, order.status) === 'salesOrderConfirmationDocument') {
+        field(section, t('documentNumber'), confirmation.number); field(section, t('issuedAt'), formatDate(confirmation.issuedAt));
+      }
+      field(section, t('orderStatus'), t({SUBMITTED:'sellerStatusSubmitted',CONFIRMED:'statusConfirmed',REJECTED:'statusRejected',SHIPPED:'statusShipped',DELIVERED:'statusDelivered',CANCELLED:'sellerStatusCancelled'}[data.status]));
       field(section, t('orderRevision'), data.revision); field(section, t('submittedAt'), `${formatDate(data.submittedAt)} (${data.submittedAt})`);
       field(section, t('updatedAt'), `${formatDate(data.updatedAt)} (${data.updatedAt})`);
       if (data.rejectionReason) field(section, t('rejectionReason'), data.rejectionReason);
