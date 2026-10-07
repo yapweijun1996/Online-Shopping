@@ -1,6 +1,7 @@
 import { ApiError } from './http.js';
 import { FieldError, boundedText } from './validation.js';
 import { productCover } from './product-gallery.js';
+import { documentTrail } from './document-trail.js';
 
 const orderColumns = `id, order_no, buyer_name, buyer_phone, buyer_email, whatsapp_opt_in,
   whatsapp_consent_at, whatsapp_consent_version, locale, status, revision, currency,
@@ -115,6 +116,7 @@ async function readSellerOrder(database, id) {
       whatsappConsentVersion: row.whatsapp_consent_version,
     },
     deliveries, events,
+    documents: documentTrail(row.order_no, events, { carrier: row.tracking_carrier, trackingNo: row.tracking_no }),
   };
 }
 

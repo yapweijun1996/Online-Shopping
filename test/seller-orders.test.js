@@ -369,3 +369,34 @@ test('the order list accepts one status or a comma-separated set, and rejects un
     }
   } finally { await f.close(); }
 });
+
+test('seller order detail carries the document trail: SO, then SOC after confirmation, void kept with its reason', async () => {
+  const f = await fixture();
+  try {
+    const session = await f.login();
+    const headers = { origin: f.origin, cookie: session.cookie, 'x-csrf-token': session.csrf };
+    const submitted = await f.submit();
+    const { id } = await f.app.database.get('SELECT id FROM shop_order WHERE order_no = ?', submitted.data.orderNo);
+    const detail = async () => (await f.request('GET', `/api/v1/seller/orders/${id}`, null, { cookie: session.cookie })).data;
+    const act = (action, body) => f.request('POST', `/api/v1/seller/orders/${id}/${action}`, body, headers);
+    const digits = submitted.data.orderNo.replace('OS-', '');
+
+    let docs = (await detail()).documents;
+    assert.deepEqual(docs.map((doc) => doc.type), ['SALES_ORDER']);
+    assert.equal(docs[0].number, submitted.data.orderNo);
+
+    assert.equal((await act('confirm', { expectedRevision: 1 })).response.status, 200);
+    docs = (await detail()).documents;
+    assert.deepEqual(docs.map((doc) => doc.type), ['SALES_ORDER', 'SALES_ORDER_CONFIRMATION']);
+    assert.equal(docs[1].number, `SOC-${digits}`);
+    assert.equal(docs[1].actorId, f.config.username);
+
+    assert.equal((await act('cancel', { expectedRevision: 2, reason: 'Customer asked to cancel' })).response.status, 200);
+    docs = (await detail()).documents;
+    const confirmation = docs.find((doc) => doc.type === 'SALES_ORDER_CONFIRMATION');
+    assert.equal(confirmation.state, 'VOID');
+    assert.equal(confirmation.number, `SOC-${digits}`);
+    assert.equal(confirmation.reason, 'Customer asked to cancel');
+    assert.equal(docs.find((doc) => doc.type === 'SALES_ORDER').state, 'ISSUED');
+  } finally { await f.close(); }
+});

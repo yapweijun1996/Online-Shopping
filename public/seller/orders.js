@@ -2,6 +2,7 @@ import { beginMutation } from '../shared/update-guard.js';
 import { containDialogFocus } from '../shared/modal.js';
 import { createOrderDocuments } from './order-documents.js';
 import { documentTitleKey } from './order-document-model.js';
+import './trail-copy.js';
 import { formatDate, formatMoney, t, translate } from '../shared/i18n.js';
 
 function node(tag, className = '', value = '') {
@@ -235,6 +236,29 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
     return section;
   }
 
+  // Sales Order -> Sales Order Confirmation -> Shipment -> Delivery, each with its number, time and who did it.
+  function documentTrailSection(order) {
+    const names = { SALES_ORDER: 'salesOrderDocument', SALES_ORDER_CONFIRMATION: 'salesOrderConfirmationDocument', SHIPMENT: 'documentShipment', DELIVERY: 'documentDelivery' };
+    const section = node('section', 'order-detail-group');
+    section.append(node('h3', '', t('documentsTrail')));
+    const list = node('ol', 'document-trail');
+    const person = (who) => who?.actorType === 'SELLER' ? who.actorId : t('guestBuyer');
+    for (const doc of order.documents || []) {
+      const item = node('li', 'document-trail-item');
+      const head = node('div', 'document-trail-head');
+      head.append(node('strong', '', t(names[doc.type])));
+      const number = [doc.carrier, doc.number].filter(Boolean).join(' · ');
+      if (number) head.append(node('span', 'document-number', number));
+      const ended = doc.state === 'VOID' ? 'sellerStatusCancelled' : doc.state === 'REJECTED' ? 'statusRejected' : '';
+      if (ended) head.append(node('span', `order-chip ${doc.state === 'VOID' ? 'cancelled' : 'rejected'}`, t(ended)));
+      item.append(head, node('span', 'document-trail-meta', `${t('issuedAt')}: ${formatDate(doc.issuedAt)} · ${person(doc)}`));
+      if (ended && doc.endedAt) item.append(node('span', 'document-trail-meta', `${t(ended)}: ${formatDate(doc.endedAt)} · ${person(doc.endedBy)}${doc.reason ? ` · ${doc.reason}` : ''}`));
+      list.append(item);
+    }
+    section.append(list);
+    return section;
+  }
+
   function renderDetail() {
     if (!selectedOrder) { showDetailStatus(detailStatusKey); return; }
     const order = selectedOrder;
@@ -263,6 +287,8 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
       detailField('updatedAt', formatDate(order.updatedAt), false),
       ...(order.trackingCarrier ? [detailField('carrier', order.trackingCarrier, false), detailField('trackingNumberLabel', order.trackingNo, true)] : []),
     ]));
+
+    fragment.append(documentTrailSection(order));
 
     const buyer = detailGroup('buyerDetails', [
       detailField('fullName', order.buyer.fullName, !order.simulation),
