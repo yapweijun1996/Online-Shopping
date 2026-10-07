@@ -135,9 +135,10 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
       productId, name: product.name, quantity, unitPriceMinor: product.priceMinor, imageUrl: product.imageUrl,
     }));
     const serialized = JSON.stringify(payload);
-    if (!pendingIntent || pendingIntent.serialized !== serialized) {
-      pendingIntent = { key: crypto.randomUUID(), serialized };
-    }
+    // Keep the key until the server gives an outcome. A lost response may already be a committed order,
+    // even if the buyer then edits the form (language, address) before retrying.
+    if (!pendingIntent) pendingIntent = { key: crypto.randomUUID(), serialized, orderItems, submittedItems, cartBacked };
+    const intent = pendingIntent;
     const submit = document.getElementById('submit-order');
     const submittedGeneration = viewGeneration;
     const ownsSubmissionView = () => submittedGeneration === viewGeneration && location.hash === '#checkout';
@@ -148,11 +149,19 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
     const timeout = setTimeout(() => controller.abort(), 12_000);
     let serverConfirmed = false;
     try {
-      const response = await fetch('/api/v1/orders', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': pendingIntent.key },
-        body: serialized, signal: controller.signal,
+      const submitIntent = (body) => fetch('/api/v1/orders', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': intent.key },
+        body, signal: controller.signal,
       });
-      const result = await response.json();
+      let response = await submitIntent(serialized);
+      let result = await response.json();
+      let originalOrder = false;
+      // The key already belongs to an earlier body: replay that exact body to receive the original order.
+      if (result.error?.code === 'IDEMPOTENCY_CONFLICT' && serialized !== intent.serialized) {
+        response = await submitIntent(intent.serialized);
+        result = await response.json();
+        originalOrder = response.ok;
+      }
       if (!response.ok) {
         if (['IDEMPOTENCY_CONFLICT', 'PRICE_CHANGED'].includes(result.error?.code)) pendingIntent = null;
         if (!ownsSubmissionView()) return;
@@ -169,7 +178,12 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
       }
       serverConfirmed = true;
       setStatus('');
-      await onSuccess(result, { orderItems, submittedItems, cartBacked, statusAccessKey: pendingIntent.key });
+      await onSuccess(result, {
+        orderItems: originalOrder ? intent.orderItems : orderItems,
+        submittedItems: originalOrder ? intent.submittedItems : submittedItems,
+        cartBacked: originalOrder ? false : cartBacked,
+        statusAccessKey: intent.key,
+      });
     } catch {
       if (!serverConfirmed && !ownsSubmissionView()) return;
       setStatus('');
