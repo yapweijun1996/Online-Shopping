@@ -4,12 +4,13 @@ import { FieldError, boundedText } from './validation.js';
 import { validateProductInput } from './product-input.js';
 import { decodeProductImage } from './product-image.js';
 import { getCompanySettings, requireActiveCategory } from './settings.js';
+import { shopIdOf } from './tenant.js';
 
 const columns = `p.id, p.sku, p.name, p.description, p.category AS category_code,
   c.label AS category, p.price_minor, p.currency, p.active, p.image_mime, p.variant_group, p.variant_label, p.stock_quantity,
   p.created_at, p.updated_at`;
 const fromProduct = `FROM product p JOIN general_code c
-  ON c.type = 'PRODUCT_CATEGORY' AND c.code = p.category`;
+  ON c.shop_id = p.shop_id AND c.type = 'PRODUCT_CATEGORY' AND c.code = p.category`;
 
 /* Public image URLs carry this token so browsers may cache them until the product changes. */
 export function imageVersion(updatedAt) {
@@ -36,8 +37,8 @@ function validateVariantGroup(database, product, excludeId = null) {
     throw new FieldError('variantLabel', 'Set both the variant group and option label.');
   }
   if (!product.variantGroup) return;
-  const related = database.get(`SELECT category, currency FROM product WHERE variant_group = ?
-    AND (? IS NULL OR id <> ?) LIMIT 1`, product.variantGroup, excludeId, excludeId);
+  const related = database.get(`SELECT category, currency FROM product WHERE shop_id = ? AND variant_group = ?
+    AND (? IS NULL OR id <> ?) LIMIT 1`, shopIdOf(database), product.variantGroup, excludeId, excludeId);
   if (related && (related.category !== product.category || related.currency !== product.currency)) {
     throw new FieldError('variantGroup', 'Variants must share a category and currency.');
   }
@@ -49,7 +50,7 @@ function detailFields(database, product, seller) {
   product.images = [product.imageUrl, ...gallery.map((entry) =>
     `/api/v1/${seller ? 'seller/' : ''}products/${product.id}/gallery/${entry.id}${seller ? '' : `?v=${imageVersion(entry.created_at)}`}`)].filter(Boolean);
   product.variants = product.variantGroup ? database.all(`SELECT ${columns} ${fromProduct}
-    WHERE p.variant_group = ? ${seller ? '' : 'AND p.active = 1'} ORDER BY p.variant_label, p.id`, product.variantGroup)
+    WHERE p.shop_id = ? AND p.variant_group = ? ${seller ? '' : 'AND p.active = 1'} ORDER BY p.variant_label, p.id`, shopIdOf(database), product.variantGroup)
     .map((row) => ({ id: row.id, label: row.variant_label, sku: row.sku, priceMinor: row.price_minor,
       currency: row.currency, imageUrl: productFromRow(row, seller).imageUrl,
       ...(seller ? { active: Boolean(row.active), stockQuantity: row.stock_quantity } : { inStock: row.stock_quantity === null || row.stock_quantity > 0 }) })) : [];
@@ -57,10 +58,10 @@ function detailFields(database, product, seller) {
 }
 
 function duplicateSku(error) {
-  if (/UNIQUE constraint failed: product\.sku|unique constraint "product_sku_key"/i.test(String(error?.message))) {
+  if (/UNIQUE constraint failed: product\.(?:shop_id, product\.)?sku|unique constraint "product_(?:shop_id_)?sku_key"/i.test(String(error?.message))) {
     throw new ApiError(409, 'DUPLICATE_SKU', 'This SKU is already in use.');
   }
-  if (/UNIQUE constraint failed: product\.variant_group, product\.variant_label|unique constraint "product_variant_option"/i.test(String(error?.message))) {
+  if (/UNIQUE constraint failed: product\.(?:shop_id, product\.)?variant_group, product\.variant_label|unique constraint "product_variant_option"/i.test(String(error?.message))) {
     const conflict = new ApiError(409, 'DUPLICATE_VARIANT', 'This variant option is already in the group.');
     conflict.field = 'variantLabel';
     throw conflict;
@@ -78,10 +79,10 @@ export function createProduct(database, input) {
   const now = new Date().toISOString();
   try {
     database.run(`INSERT INTO product
-      (id, sku, name, description, category, price_minor, currency, active, image_mime, image_data,
+      (id, shop_id, sku, name, description, category, price_minor, currency, active, image_mime, image_data,
        variant_group, variant_label, stock_quantity, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      id, product.sku, product.name, product.description, product.category,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      id, shopIdOf(database), product.sku, product.name, product.description, product.category,
       product.priceMinor, product.currency, Number(product.active),
       product.image?.mime || null, product.image?.data || null, product.variantGroup || null,
       product.variantLabel || null, product.stockQuantity ?? null, now, now,
@@ -123,26 +124,26 @@ export function updateProduct(database, id, input) {
   assignments.push('updated_at = ?');
   values.push(new Date().toISOString(), id);
   try {
-    database.run(`UPDATE product SET ${assignments.join(', ')} WHERE id = ?`, ...values);
+    database.run(`UPDATE product SET ${assignments.join(', ')} WHERE id = ? AND shop_id = ?`, ...values, shopIdOf(database));
   } catch (error) { duplicateSku(error); }
   return getProduct(database, id, true);
 }
 
 export function getProduct(database, id, seller = false) {
-  const row = database.get(`SELECT ${columns} ${fromProduct} WHERE p.id = ? ${seller ? '' : 'AND p.active = 1'}`, id);
+  const row = database.get(`SELECT ${columns} ${fromProduct} WHERE p.shop_id = ? AND p.id = ? ${seller ? '' : 'AND p.active = 1'}`, shopIdOf(database), id);
   return detailFields(database, productFromRow(row, seller), seller);
 }
 
 export function getProductImage(database, id, seller = false) {
   const row = database.get(`SELECT image_mime AS mime, image_data AS data, updated_at FROM product
-    WHERE id = ? ${seller ? '' : 'AND active = 1'}`, id);
+    WHERE shop_id = ? AND id = ? ${seller ? '' : 'AND active = 1'}`, shopIdOf(database), id);
   return row && { mime: row.mime, data: row.data, version: imageVersion(row.updated_at) };
 }
 
 export function getGalleryImage(database, productId, imageId, seller = false) {
   const row = database.get(`SELECT i.mime, i.data, i.created_at FROM product_gallery_image i
-    JOIN product p ON p.id = i.product_id WHERE i.id = ? AND i.product_id = ? ${seller ? '' : 'AND p.active = 1'}`,
-    imageId, productId);
+    JOIN product p ON p.id = i.product_id WHERE p.shop_id = ? AND i.id = ? AND i.product_id = ? ${seller ? '' : 'AND p.active = 1'}`,
+    shopIdOf(database), imageId, productId);
   return row && { mime: row.mime, data: row.data, version: imageVersion(row.created_at) };
 }
 
@@ -150,7 +151,7 @@ export function addGalleryImage(database, productId, imageDataUrl) {
   const image = decodeProductImage(imageDataUrl);
   if (!image) throw new FieldError('imageDataUrl', 'Choose an image.');
   return database.transaction(() => {
-    const product = database.get('SELECT image_mime FROM product WHERE id = ?', productId);
+    const product = database.get('SELECT image_mime FROM product WHERE shop_id = ? AND id = ?', shopIdOf(database), productId);
     if (!product) throw new ApiError(404, 'NOT_FOUND', 'Product not found.');
     if (!product.image_mime) throw new FieldError('imageDataUrl', 'Add a main image first.');
     const count = database.get('SELECT COUNT(*) AS count FROM product_gallery_image WHERE product_id = ?', productId).count;
@@ -164,7 +165,8 @@ export function addGalleryImage(database, productId, imageDataUrl) {
 
 export function deleteGalleryImage(database, productId, imageId) {
   return database.transaction(() => {
-    const entry = database.get('SELECT position FROM product_gallery_image WHERE id = ? AND product_id = ?', imageId, productId);
+    const entry = database.get(`SELECT i.position FROM product_gallery_image i JOIN product p ON p.id = i.product_id
+      WHERE p.shop_id = ? AND i.id = ? AND i.product_id = ?`, shopIdOf(database), imageId, productId);
     if (!entry) throw new ApiError(404, 'NOT_FOUND', 'Image not found.');
     database.run('DELETE FROM product_gallery_image WHERE id = ?', imageId);
     for (const row of database.all('SELECT id FROM product_gallery_image WHERE product_id = ? AND position > ? ORDER BY position', productId, entry.position)) {
@@ -187,13 +189,13 @@ export function listProducts(database, params, seller = false) {
   const offset = parseNumber('offset', 0, 10_000);
   if (limit < 1) throw new FieldError('limit', 'Enter a valid list range.');
   const activeClause = seller ? '' : 'p.active = 1 AND ';
-  const rows = database.all(`SELECT ${columns} ${fromProduct} WHERE ${activeClause}
+  const rows = database.all(`SELECT ${columns} ${fromProduct} WHERE p.shop_id = ? AND ${activeClause}
     (? = '' OR instr(lower(p.name), lower(?)) > 0 OR instr(lower(p.sku), lower(?)) > 0)
     AND (? = '' OR c.label = ?)
-    ORDER BY p.updated_at DESC, p.id DESC LIMIT ? OFFSET ?`, search, search, search, category, category, limit + 1, offset);
+    ORDER BY p.updated_at DESC, p.id DESC LIMIT ? OFFSET ?`, shopIdOf(database), search, search, search, category, category, limit + 1, offset);
   const hasMore = rows.length > limit;
   const result = { items: rows.slice(0, limit).map((row) => productFromRow(row, seller)), nextOffset: hasMore ? offset + limit : null };
   if (!seller) result.categories = database.all(`SELECT DISTINCT c.label AS category ${fromProduct}
-    WHERE p.active = 1 ORDER BY c.label`).map((row) => row.category);
+    WHERE p.shop_id = ? AND p.active = 1 ORDER BY c.label`, shopIdOf(database)).map((row) => row.category);
   return result;
 }

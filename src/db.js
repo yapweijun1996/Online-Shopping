@@ -1,6 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import { openNodeStore } from './store.js';
 
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -278,30 +279,214 @@ export function migrateStore(store) {
     version = 12;
   }
   if (version === 12) {
-    // Fulfilment adds order statuses, so the CHECK constraints are rebuilt and tracking columns added.
-    store.rebuildTransaction(() => {
-      const rebuild = (table, columns, from, to) => {
-        const schema = store.get('SELECT sql FROM sqlite_schema WHERE type = ? AND name = ?', 'table', table)?.sql;
-        if (schema?.includes(to)) return; // already rebuilt, e.g. a database restored to an earlier version number
-        if (!schema || !schema.includes(from)) throw new Error(`Unexpected ${table} status schema.`);
-        store.exec(schema.replace(new RegExp(`^CREATE TABLE ["\x60]?${table}["\x60]?`, 'i'), `CREATE TABLE ${table}_new`).replace(from, to));
-        store.exec(`INSERT INTO ${table}_new (${columns}) SELECT ${columns} FROM ${table}`);
-        store.exec(`DROP TABLE ${table}`);
-        store.exec(`ALTER TABLE ${table}_new RENAME TO ${table}`);
-      };
-      const statuses = "'SUBMITTED', 'CONFIRMED', 'REJECTED', 'SHIPPED', 'DELIVERED', 'CANCELLED'";
-      rebuild('shop_order', rebuildColumns.shop_order.join(', '),
-        "status IN ('SUBMITTED', 'CONFIRMED', 'REJECTED')", `status IN (${statuses})`);
-      rebuild('order_event', 'id, order_id, event_type, actor_type, actor_id, previous_status, status, reason, occurred_at',
-        "event_type IN ('SUBMITTED', 'CONFIRMED', 'REJECTED')", `event_type IN (${statuses})`);
+    // Fulfilment adds courier and tracking columns. The wider status CHECK constraints come with
+    // migration 14, which rebuilds those tables anyway; rebuilding them twice is avoided because a
+    // Durable Object cannot drop a table that other tables still reference.
+    store.transaction(() => {
       const orderSql = store.get('SELECT sql FROM sqlite_schema WHERE type = ? AND name = ?', 'table', 'shop_order').sql;
       if (!orderSql.includes('tracking_carrier')) store.exec('ALTER TABLE shop_order ADD COLUMN tracking_carrier TEXT');
       if (!orderSql.includes('tracking_no')) store.exec('ALTER TABLE shop_order ADD COLUMN tracking_no TEXT');
-      store.exec(`CREATE INDEX IF NOT EXISTS shop_order_queue ON shop_order(status, submitted_at DESC);
-        CREATE INDEX IF NOT EXISTS order_event_history ON order_event(order_id, id);`);
       store.setSchemaVersion(13);
     });
     version = 13;
+  }
+  if (version === 13) {
+    // Multi-shop: every shop owns its products, categories, orders, settings and order numbers.
+    // Existing data becomes the default shop with code "main".
+    //
+    // Tables other tables point at (product, shop_order) cannot simply be dropped and recreated
+    // where foreign keys are always enforced, as in a Durable Object. So the dependents are copied
+    // aside and dropped first, the parents are rebuilt, and the dependents are recreated and refilled.
+    store.rebuildTransaction(() => {
+      const now = new Date().toISOString();
+      const setup = store.get('SELECT mode, shop_name FROM shop_setup WHERE id = 1');
+      const shopId = randomUUID();
+      store.exec(`CREATE TABLE shop (
+          id TEXT PRIMARY KEY,
+          code TEXT NOT NULL UNIQUE,
+          name TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('ACTIVE', 'DISABLED')),
+          mode TEXT CHECK (mode IN ('demo', 'production')),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        ) STRICT;
+        CREATE TABLE shop_code_alias (
+          code TEXT PRIMARY KEY,
+          shop_id TEXT NOT NULL REFERENCES shop(id) ON DELETE RESTRICT,
+          created_at TEXT NOT NULL
+        ) STRICT;`);
+      store.run("INSERT INTO shop(id, code, name, status, mode, created_at, updated_at) VALUES (?, 'main', ?, 'ACTIVE', ?, ?, ?)",
+        shopId, setup.shop_name, setup.mode, now, now);
+      // Children first. The old triggers name general_code, which is rebuilt below.
+      store.exec('DROP TRIGGER product_category_insert; DROP TRIGGER product_category_update;');
+      const dependents = ['order_item', 'product_gallery_image', 'delivery', 'order_event', 'checkout_idempotency'];
+      for (const table of dependents) store.exec(`CREATE TABLE ${table}_bak AS SELECT * FROM ${table}`);
+      for (const table of dependents) store.exec(`DROP TABLE ${table}`);
+      const copy = (table, columns) => {
+        store.exec(`INSERT INTO ${table}_new (shop_id, ${columns}) SELECT '${shopId}', ${columns} FROM ${table}`);
+        store.exec(`DROP TABLE ${table}`);
+        store.exec(`ALTER TABLE ${table}_new RENAME TO ${table}`);
+      };
+      store.exec(`CREATE TABLE general_code_new (
+          shop_id TEXT NOT NULL REFERENCES shop(id) ON DELETE RESTRICT,
+          type TEXT NOT NULL CHECK (type = 'PRODUCT_CATEGORY'),
+          code TEXT NOT NULL,
+          label TEXT NOT NULL,
+          active INTEGER NOT NULL CHECK (active IN (0, 1)),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (shop_id, type, code),
+          UNIQUE (shop_id, type, label)
+        ) STRICT`);
+      copy('general_code', 'type, code, label, active, created_at, updated_at');
+      store.exec(`CREATE TABLE product_new (
+          id TEXT PRIMARY KEY,
+          shop_id TEXT NOT NULL REFERENCES shop(id) ON DELETE RESTRICT,
+          sku TEXT NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT NOT NULL,
+          category TEXT NOT NULL,
+          price_minor INTEGER NOT NULL CHECK (price_minor BETWEEN 1 AND 1000000000),
+          currency TEXT NOT NULL CHECK (currency IN ('MYR', 'SGD')),
+          active INTEGER NOT NULL CHECK (active IN (0, 1)),
+          translations_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(translations_json)),
+          image_mime TEXT,
+          image_data BLOB,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          variant_group TEXT,
+          variant_label TEXT,
+          stock_quantity INTEGER CHECK (stock_quantity IS NULL OR stock_quantity BETWEEN 0 AND 1000000),
+          UNIQUE (shop_id, sku),
+          CHECK ((image_mime IS NULL AND image_data IS NULL) OR
+                 (image_mime IN ('image/png', 'image/jpeg', 'image/webp') AND image_data IS NOT NULL))
+        ) STRICT`);
+      copy('product', `id, sku, name, description, category, price_minor, currency, active, translations_json,
+        image_mime, image_data, created_at, updated_at, variant_group, variant_label, stock_quantity`);
+      store.exec(`CREATE INDEX product_public ON product(shop_id, active, category, updated_at);
+        CREATE INDEX product_variant_group ON product(shop_id, variant_group, active);
+        CREATE UNIQUE INDEX product_variant_option ON product(shop_id, variant_group, variant_label COLLATE NOCASE);
+        CREATE TRIGGER product_category_insert BEFORE INSERT ON product
+          WHEN NOT EXISTS (SELECT 1 FROM general_code WHERE shop_id = NEW.shop_id AND type = 'PRODUCT_CATEGORY'
+            AND code = NEW.category AND active = 1)
+          BEGIN SELECT RAISE(ABORT, 'Unknown active product category'); END;
+        CREATE TRIGGER product_category_update BEFORE UPDATE OF category ON product
+          WHEN NEW.category <> OLD.category AND NOT EXISTS (SELECT 1 FROM general_code WHERE shop_id = NEW.shop_id
+            AND type = 'PRODUCT_CATEGORY' AND code = NEW.category AND active = 1)
+          BEGIN SELECT RAISE(ABORT, 'Unknown active product category'); END;`);
+      store.exec(`CREATE TABLE shop_order_new (
+          id TEXT PRIMARY KEY,
+          shop_id TEXT NOT NULL REFERENCES shop(id) ON DELETE RESTRICT,
+          order_no TEXT NOT NULL,
+          buyer_name TEXT NOT NULL,
+          buyer_phone TEXT NOT NULL,
+          buyer_email TEXT,
+          whatsapp_opt_in INTEGER NOT NULL CHECK (whatsapp_opt_in IN (0, 1)),
+          whatsapp_consent_at TEXT,
+          whatsapp_consent_version TEXT,
+          locale TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('SUBMITTED', 'CONFIRMED', 'REJECTED', 'SHIPPED', 'DELIVERED', 'CANCELLED')),
+          revision INTEGER NOT NULL CHECK (revision >= 1),
+          currency TEXT NOT NULL CHECK (currency IN ('MYR', 'SGD')),
+          total_minor INTEGER NOT NULL CHECK (total_minor >= 0),
+          submitted_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          tracking_carrier TEXT,
+          tracking_no TEXT,
+          UNIQUE (shop_id, order_no),
+          CHECK ((whatsapp_opt_in = 0 AND whatsapp_consent_at IS NULL AND whatsapp_consent_version IS NULL) OR
+                 (whatsapp_opt_in = 1 AND whatsapp_consent_at IS NOT NULL AND whatsapp_consent_version IS NOT NULL))
+        ) STRICT`);
+      copy('shop_order', `id, order_no, buyer_name, buyer_phone, buyer_email, whatsapp_opt_in, whatsapp_consent_at,
+        whatsapp_consent_version, locale, status, revision, currency, total_minor, submitted_at, updated_at,
+        tracking_carrier, tracking_no`);
+      store.exec('CREATE INDEX shop_order_queue ON shop_order(shop_id, status, submitted_at DESC)');
+      store.exec(`CREATE TABLE company_setting_new (
+          shop_id TEXT PRIMARY KEY REFERENCES shop(id) ON DELETE RESTRICT,
+          default_currency TEXT NOT NULL CHECK (default_currency IN ('MYR', 'SGD')),
+          updated_at TEXT NOT NULL,
+          seller_whatsapp_phone TEXT CHECK (seller_whatsapp_phone IS NULL OR
+            (length(seller_whatsapp_phone) BETWEEN 8 AND 15 AND seller_whatsapp_phone NOT GLOB '*[^0-9]*')),
+          mobile_hide_bars_on_scroll INTEGER NOT NULL DEFAULT 0 CHECK (mobile_hide_bars_on_scroll IN (0, 1))
+        ) STRICT`);
+      copy('company_setting', 'default_currency, updated_at, seller_whatsapp_phone, mobile_hide_bars_on_scroll');
+      store.exec(`CREATE TABLE order_sequence_new (
+          shop_id TEXT PRIMARY KEY REFERENCES shop(id) ON DELETE RESTRICT,
+          value INTEGER NOT NULL CHECK (value >= 0)
+        ) STRICT`);
+      copy('order_sequence', 'value');
+      // Dependents come back with their data, now pointing at the rebuilt parents.
+      store.exec(`CREATE TABLE delivery (
+          id TEXT PRIMARY KEY,
+          order_id TEXT NOT NULL REFERENCES shop_order(id) ON DELETE RESTRICT,
+          position INTEGER NOT NULL CHECK (position >= 0),
+          recipient_name TEXT NOT NULL,
+          recipient_phone TEXT NOT NULL,
+          address_line1 TEXT NOT NULL,
+          address_line2 TEXT,
+          address_city TEXT,
+          address_region TEXT,
+          address_postcode TEXT NOT NULL,
+          address_country TEXT NOT NULL,
+          UNIQUE(order_id, position)
+        ) STRICT;
+        INSERT INTO delivery SELECT id, order_id, position, recipient_name, recipient_phone, address_line1, address_line2,
+          address_city, address_region, address_postcode, address_country FROM delivery_bak;
+        CREATE TABLE order_item (
+          id TEXT PRIMARY KEY,
+          delivery_id TEXT NOT NULL REFERENCES delivery(id) ON DELETE RESTRICT,
+          position INTEGER NOT NULL CHECK (position >= 0),
+          product_id TEXT NOT NULL REFERENCES product(id) ON DELETE RESTRICT,
+          sku_snapshot TEXT NOT NULL,
+          name_snapshot TEXT NOT NULL,
+          price_minor INTEGER NOT NULL CHECK (price_minor >= 0),
+          quantity INTEGER NOT NULL CHECK (quantity BETWEEN 1 AND 100),
+          line_total_minor INTEGER NOT NULL CHECK (line_total_minor >= 0),
+          currency TEXT NOT NULL CHECK (currency IN ('MYR', 'SGD')),
+          UNIQUE(delivery_id, position)
+        ) STRICT;
+        INSERT INTO order_item SELECT id, delivery_id, position, product_id, sku_snapshot, name_snapshot, price_minor, quantity,
+          line_total_minor, currency FROM order_item_bak;
+        CREATE TABLE order_event (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          order_id TEXT NOT NULL REFERENCES shop_order(id) ON DELETE RESTRICT,
+          event_type TEXT NOT NULL CHECK (event_type IN ('SUBMITTED', 'CONFIRMED', 'REJECTED', 'SHIPPED', 'DELIVERED', 'CANCELLED')),
+          actor_type TEXT NOT NULL CHECK (actor_type IN ('GUEST', 'SELLER')),
+          actor_id TEXT,
+          previous_status TEXT,
+          status TEXT NOT NULL,
+          reason TEXT,
+          occurred_at TEXT NOT NULL
+        ) STRICT;
+        INSERT INTO order_event(id, order_id, event_type, actor_type, actor_id, previous_status, status, reason, occurred_at)
+          SELECT id, order_id, event_type, actor_type, actor_id, previous_status, status, reason, occurred_at FROM order_event_bak;
+        CREATE INDEX order_event_history ON order_event(order_id, id);
+        CREATE TABLE product_gallery_image (
+          id TEXT PRIMARY KEY,
+          product_id TEXT NOT NULL REFERENCES product(id) ON DELETE RESTRICT,
+          position INTEGER NOT NULL CHECK (position BETWEEN 1 AND 9),
+          mime TEXT NOT NULL CHECK (mime IN ('image/png', 'image/jpeg', 'image/webp')),
+          data BLOB NOT NULL,
+          created_at TEXT NOT NULL,
+          UNIQUE(product_id, position)
+        ) STRICT;
+        INSERT INTO product_gallery_image SELECT id, product_id, position, mime, data, created_at FROM product_gallery_image_bak;
+        CREATE INDEX product_gallery_product ON product_gallery_image(product_id, position);
+        CREATE TABLE checkout_idempotency (
+          shop_id TEXT NOT NULL REFERENCES shop(id) ON DELETE RESTRICT,
+          key_hash TEXT NOT NULL,
+          request_hash TEXT NOT NULL,
+          order_id TEXT NOT NULL UNIQUE REFERENCES shop_order(id) ON DELETE RESTRICT,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (shop_id, key_hash)
+        ) STRICT;
+        INSERT INTO checkout_idempotency(shop_id, key_hash, request_hash, order_id, created_at)
+          SELECT '${shopId}', key_hash, request_hash, order_id, created_at FROM checkout_idempotency_bak;`);
+      for (const table of dependents) store.exec(`DROP TABLE ${table}_bak`);
+      store.exec('DROP TABLE shop_setup');
+      store.setSchemaVersion(14);
+    });
+    version = 14;
   }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }
@@ -310,11 +495,11 @@ export function ready(store) {
   try {
     return store.schemaVersion() === SCHEMA_VERSION &&
       Boolean(store.get('SELECT id FROM admin WHERE id = 1')) &&
-      Boolean(store.get('SELECT id FROM order_sequence WHERE id = 1')) &&
-      Boolean(store.get('SELECT id FROM company_setting WHERE id = 1')) &&
-      Boolean(store.get('SELECT id FROM shop_setup WHERE id = 1')) &&
+      Boolean(store.get('SELECT shop_id FROM order_sequence LIMIT 1')) &&
+      Boolean(store.get('SELECT shop_id FROM company_setting LIMIT 1')) &&
+      Boolean(store.get('SELECT id FROM shop LIMIT 1')) &&
       ['session', 'product', 'general_code', 'shop_order', 'delivery', 'order_item', 'order_event', 'checkout_idempotency',
-        'rate_limit_attempt', 'shop_setup']
+        'rate_limit_attempt', 'shop', 'shop_code_alias']
         .every((table) => Array.isArray(store.all(`SELECT * FROM ${table} LIMIT 0`)));
   } catch {
     return false;

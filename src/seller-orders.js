@@ -1,5 +1,6 @@
 import { ApiError } from './http.js';
 import { FieldError, boundedText } from './validation.js';
+import { shopIdOf } from './tenant.js';
 
 const orderColumns = `id, order_no, buyer_name, buyer_phone, buyer_email, whatsapp_opt_in,
   whatsapp_consent_at, whatsapp_consent_version, locale, status, revision, currency,
@@ -36,8 +37,9 @@ function summary(row) {
 
 /* Number of orders waiting for a decision, used for the seller's new-order alert. */
 export function pendingOrderSummary(database) {
-  const { pending } = database.get("SELECT COUNT(*) AS pending FROM shop_order WHERE status = 'SUBMITTED'");
-  const latest = database.get("SELECT MAX(submitted_at) AS at FROM shop_order WHERE status = 'SUBMITTED'").at;
+  const shopId = shopIdOf(database);
+  const { pending } = database.get("SELECT COUNT(*) AS pending FROM shop_order WHERE shop_id = ? AND status = 'SUBMITTED'", shopId);
+  const latest = database.get("SELECT MAX(submitted_at) AS at FROM shop_order WHERE shop_id = ? AND status = 'SUBMITTED'", shopId).at;
   return { pending, latestSubmittedAt: latest };
 }
 
@@ -49,13 +51,13 @@ export function listSellerOrders(database, params) {
   const offset = listNumber(params, 'offset', 0, 10_000);
   if (limit < 1) throw new FieldError('limit', 'Enter a valid list range.');
   const rows = database.all(`SELECT ${queueColumns} FROM shop_order
-    WHERE (? = '' OR status = ?) AND (? = '' OR instr(lower(order_no), lower(?)) > 0)
-    ORDER BY submitted_at DESC, id DESC LIMIT ? OFFSET ?`, status, status, search, search, limit + 1, offset);
+    WHERE shop_id = ? AND (? = '' OR status = ?) AND (? = '' OR instr(lower(order_no), lower(?)) > 0)
+    ORDER BY submitted_at DESC, id DESC LIMIT ? OFFSET ?`, shopIdOf(database), status, status, search, search, limit + 1, offset);
   return { items: rows.slice(0, limit).map(summary), nextOffset: rows.length > limit ? offset + limit : null };
 }
 
 function readSellerOrder(database, id) {
-  const row = database.get(`SELECT ${orderColumns} FROM shop_order WHERE id = ?`, id);
+  const row = database.get(`SELECT ${orderColumns} FROM shop_order WHERE shop_id = ? AND id = ?`, shopIdOf(database), id);
   if (!row) return null;
   const deliveries = database.all(`SELECT id, position, recipient_name, recipient_phone,
     address_line1, address_line2, address_city, address_region, address_postcode, address_country
@@ -130,7 +132,7 @@ function deductStock(database, orderId) {
       error.field = 'stock';
       throw error;
     }
-    database.run('UPDATE product SET stock_quantity = stock_quantity - ? WHERE id = ?', line.quantity, line.product_id);
+    database.run('UPDATE product SET stock_quantity = stock_quantity - ? WHERE shop_id = ? AND id = ?', line.quantity, shopIdOf(database), line.product_id);
   }
 }
 
@@ -139,8 +141,8 @@ function restoreStock(database, orderId) {
   database.run(`UPDATE product SET stock_quantity = stock_quantity + COALESCE((
       SELECT SUM(i.quantity) FROM order_item i JOIN delivery d ON d.id = i.delivery_id
       WHERE d.order_id = ? AND i.product_id = product.id), 0)
-    WHERE stock_quantity IS NOT NULL AND id IN (
-      SELECT i.product_id FROM order_item i JOIN delivery d ON d.id = i.delivery_id WHERE d.order_id = ?)`, orderId, orderId);
+    WHERE shop_id = ? AND stock_quantity IS NOT NULL AND id IN (
+      SELECT i.product_id FROM order_item i JOIN delivery d ON d.id = i.delivery_id WHERE d.order_id = ?)`, orderId, shopIdOf(database), orderId);
 }
 
 export function decideSellerOrder(database, id, action, input, actorId) {
@@ -148,7 +150,7 @@ export function decideSellerOrder(database, id, action, input, actorId) {
   const decision = validateDecision(action, input);
   const now = new Date().toISOString();
   database.transaction(() => {
-    const current = database.get('SELECT status, revision FROM shop_order WHERE id = ?', id);
+    const current = database.get('SELECT status, revision FROM shop_order WHERE shop_id = ? AND id = ?', shopIdOf(database), id);
     if (!current) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
     const { from } = transitions[action];
     if (current.status !== from || current.revision !== input.expectedRevision) {
@@ -157,8 +159,8 @@ export function decideSellerOrder(database, id, action, input, actorId) {
     const tracking = decision.tracking;
     const changed = database.get(`UPDATE shop_order SET status = ?, revision = revision + 1, updated_at = ?
       ${tracking ? ', tracking_carrier = ?, tracking_no = ?' : ''}
-      WHERE id = ? AND status = ? AND revision = ? RETURNING id`,
-    decision.status, now, ...(tracking ? [tracking.carrier, tracking.trackingNo] : []), id, from, input.expectedRevision);
+      WHERE shop_id = ? AND id = ? AND status = ? AND revision = ? RETURNING id`,
+    decision.status, now, ...(tracking ? [tracking.carrier, tracking.trackingNo] : []), shopIdOf(database), id, from, input.expectedRevision);
     if (!changed) {
       throw new ApiError(409, 'STALE_REVISION', 'The order changed. Reload and try again.');
     }

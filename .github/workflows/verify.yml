@@ -11,6 +11,20 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: shop_app
+          POSTGRES_PASSWORD: ci-only-test-password
+          POSTGRES_DB: online_shopping
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shop_app -d online_shopping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -23,6 +37,16 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm test
+      - name: Tenant isolation and schema upgrade tests on PostgreSQL
+        run: |
+          printf 'ci-only-test-password' > "$RUNNER_TEMP/pg-password"
+          node --test --test-concurrency=1 test/tenant.test.js test/postgres-upgrade.test.js
+        env:
+          PGTEST_HOST: 127.0.0.1
+          PGTEST_PORT: '5432'
+          PGTEST_DATABASE: online_shopping
+          PGTEST_USER: shop_app
+          PGTEST_PASSWORD_FILE: ${{ runner.temp }}/pg-password
       - run: npm run worker:check
         env:
           WRANGLER_SEND_METRICS: 'false'

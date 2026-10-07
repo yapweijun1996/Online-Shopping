@@ -1,3 +1,4 @@
+import { revertTenantSchema } from './helpers/schema13.js';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -103,7 +104,7 @@ test('checkout requires explicit WhatsApp order-contact permission before any wr
       assert.equal(result.data.error.field, 'whatsappOrderContactOptIn');
       assert.equal(f.app.database.get('SELECT COUNT(*) AS count FROM shop_order').count, 0);
       assert.equal(f.app.database.get('SELECT COUNT(*) AS count FROM checkout_idempotency').count, 0);
-      assert.equal(f.app.database.get('SELECT value FROM order_sequence WHERE id = 1').value, 0);
+      assert.equal(f.app.database.get('SELECT value FROM order_sequence').value, 0);
     }
     const accepted = await f.submit('contact-intent-00000001', original);
     assert.equal(accepted.response.status, 201);
@@ -294,6 +295,7 @@ test('schema version two upgrades without losing catalog records', async () => {
   const f = await fixture();
   await f.app.close();
   const old = new DatabaseSync(f.config.dbPath);
+  revertTenantSchema({ exec: (sql) => old.exec(sql), get: (sql) => old.prepare(sql).get() });
   old.exec(`DROP TABLE product_gallery_image; DROP TABLE shop_setup; DROP TABLE rate_limit_attempt; DROP TABLE company_setting; DROP TABLE general_code;
     DROP TABLE checkout_idempotency; DROP TABLE order_event; DROP TABLE order_item;
     DROP TABLE delivery; DROP TABLE shop_order; DROP TABLE order_sequence; PRAGMA user_version = 2;`);
@@ -324,6 +326,7 @@ test('schema version three upgrades an existing order without changing its snaps
   assert.equal(placed.response.status, 201);
   await f.app.close();
   const old = new DatabaseSync(f.config.dbPath);
+  revertTenantSchema({ exec: (sql) => old.exec(sql), get: (sql) => old.prepare(sql).get() });
   old.exec('DROP TABLE product_gallery_image');
   old.exec('PRAGMA foreign_keys = OFF; BEGIN IMMEDIATE');
   try {
