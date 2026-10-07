@@ -264,3 +264,18 @@ body{background:var(--ui-canvas)}
 .product-gallery-panel .product-gallery-actions [data-gallery-action=remove]{border-color:transparent;background:transparent;color:#a3362b}
 .product-gallery-panel .product-gallery-actions [data-gallery-action=remove]:hover:not(:disabled){background:#fbeceb}
 .product-gallery-panel .product-gallery-reference{width:auto}
+
+/* Desktop product list: actions side by side and aligned under their heading; status on one line. */
+@media(min-width:1181px){
+ .product-list-heading{grid-template-columns:minmax(0,1fr) 110px 108px 130px 210px}
+ .product-list-heading>:last-child{text-align:right}
+ .product-card{grid-template-columns:58px minmax(0,1fr) 210px}
+ .product-card-main{grid-template-columns:minmax(0,1fr) 110px 108px 130px}
+ .product-card-actions{flex-wrap:nowrap;white-space:nowrap}
+}
+/* Product form: a field never stretches taller than its neighbour, so rows line up. */
+.product-fields label:not(.check-row){align-content:start}
+/* Keep Save / Cancel in reach on a long form (desktop; phones already pin them). */
+@media(min-width:1051px){
+ .product-editor-actions{position:sticky;bottom:0;z-index:5;padding:12px 0 calc(12px + env(safe-area-inset-bottom));margin-top:20px;border-top:1px solid var(--ui-border);background:var(--ui-canvas)}
+}
