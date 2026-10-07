@@ -245,7 +245,6 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized }) {
       detailField('orderTotal', formatMoney(order.totalMinor, order.currency), false),
       detailField('submittedAt', formatDate(order.submittedAt), false),
       detailField('updatedAt', formatDate(order.updatedAt), false),
-      detailField('orderRevision', String(order.revision), false),
       ...(order.trackingCarrier ? [detailField('carrier', order.trackingCarrier, false), detailField('trackingNumberLabel', order.trackingNo, true)] : []),
     ]));
 
