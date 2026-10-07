@@ -406,3 +406,21 @@ test('autoUpdate applies a ready update without a click only when nothing would 
     assert.equal(reloads, 1);
   }
 });
+
+test('a new worker stores fresh copies of its files, never the browser HTTP cache copies of the previous release', async () => {
+  const handlers = new Map();
+  const added = [];
+  class FakeRequest { constructor(url, init = {}) { this.url = url; this.cache = init.cache || 'default'; } }
+  const context = {
+    Request: FakeRequest,
+    caches: { open: async () => ({ add: async (request) => { added.push(request); }, addAll: async () => { throw new Error('addAll would read the HTTP cache'); } }) },
+    self: { addEventListener: (type, handler) => handlers.set(type, handler) },
+  };
+  vm.runInNewContext(readFileSync(new URL('../public/shared/sw-core.js', import.meta.url), 'utf8'), context);
+  context.self.setupOfflineWorker({ cachePrefix: 'test', version: 'v1', assets: ['/shop/', '/shared/i18n.js', '/shop/app.js'], scopePath: '/shop/' });
+  let installing;
+  handlers.get('install')({ waitUntil: (promise) => { installing = promise; } });
+  await installing;
+  assert.deepEqual(added.map((request) => request.url), ['/shop/', '/shared/i18n.js', '/shop/app.js']);
+  assert.ok(added.every((request) => request.cache === 'reload'), 'every file is fetched past the HTTP cache');
+});
