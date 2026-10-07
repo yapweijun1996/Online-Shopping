@@ -4,6 +4,17 @@
 
 Facts below are marked **[repo]** (checked in this repository), **[docs]** (taken from the earlier vendor-contract notes dated 2026-10-02) or **[assumed]** (general knowledge, to be verified against vendor documentation before work starts).
 
+## 0. Owner decisions recorded (2026-10-07)
+
+- **Tenancy:** one stack per tenant, each tenant with its **own PostgreSQL database** (option A in section 3).
+- **Schema 18, secrets (write-only, encrypted, verified on save), Ninja Van flow, WhatsApp Cloud API with approved templates and per-order consent:** approved as written.
+- **Shopee Express:** not integrated; manual tracking entry now, an aggregator later if wanted.
+- **First messages:** order submitted, order confirmed or rejected, order shipped.
+- **WhatsApp QR:** approved for the sample site **and open to live clients**, provided the client is told the risk and accepts it (section 6.4 is updated accordingly).
+- **Updater gate: option (b)** approved: the updater is upgraded once so that later schema upgrades and ordinary compose changes deploy by themselves (after a verified backup). The change is written and tested locally (`deploy/auto-update.py`, `scripts/upgrade-database.mjs`, 20 updater tests) and waits for its PR to be opened and reviewed; it must be installed once by copying the file over the installed updater (section 7).
+- **Buyer replies: shown in the seller panel** (section 6.5).
+- **Still open:** base-path URLs (`/abc/`) now or later (section 10, item 4).
+
 ## 1. Goals
 
 1. A seller connects **their own** Ninja Van account and **their own** WhatsApp Business account by pasting credentials into the seller page; nothing vendor-specific is baked into the code or the deploy files.
@@ -11,7 +22,7 @@ Facts below are marked **[repo]** (checked in this repository), **[docs]** (take
 3. A sample site can let a visitor try WhatsApp by scanning a QR code, clearly separated from production.
 4. Everything ships through the existing auto-deploy gate, with as few manual steps as possible.
 
-Non-goals: payments, marketplace sync, buyer reply inbox in the seller panel (open decision 3 below).
+Non-goals: payments, marketplace sync. Showing buyer replies in the seller panel **is** in scope (section 6.5).
 
 ## 2. What exists today
 
@@ -70,6 +81,9 @@ message_outbox
   status (QUEUED|SENDING|ACCEPTED|DELIVERED|READ|FAILED|RECONCILE)
   provider_message_id, attempts, next_attempt_at, last_error
 
+message_inbound     -- buyer replies, WhatsApp Cloud only (6.5)
+  id, connection_id, order_id nullable, from_hash, provider_message_id unique,
+  kind (TEXT|MEDIA_UNSUPPORTED|OTHER), body text nullable, received_at, read_at nullable
 webhook_receipt     -- provider, dedupe_key unique, verified boolean, received_at
 integration_audit   -- who connected, rotated or disconnected, no secret values
 ```
@@ -109,13 +123,24 @@ No public contract **[docs]**. Plan: do not integrate. Offer the existing manual
 4. A webhook (verified with Meta's signature) records delivery, read and failure into the outbox.
 5. Cost is per message and billed by Meta to the seller's account, not to this system.
 
-### 6.4 WhatsApp QR (sample site only)
+### 6.5 Buyer replies in the seller panel
 
-- Unofficial client (for example Baileys): **against WhatsApp's terms; the paired number can be banned [docs]**. It must never be offered to a production tenant.
-- Runs as a separate container with a persistent session volume; the backend talks to it over the private Docker network with an internal token.
-- Only fixed templates; only to the number the visitor enters; limits per visitor, per number and per hour; a visible notice to use a spare number.
-- Enabled only when `SELLER_QUICK_LOGIN` is on, so it disappears with the sample site's open login.
-- Needs one new compose service, a volume and an env flag (a protected-file change).
+- Replies arrive on the same verified Meta webhook as delivery statuses. Each one is stored once in `message_inbound` (deduplicated by the provider message id), matched to an order by the recipient number of the most recent message sent to that buyer, and shown in the order detail and a **Replies** list with an unread count in the seller menu.
+- First release is **read-only**: the seller sees the text and opens the WhatsApp chat (the link already on the order page) to answer. Answering inside the panel with free text is possible only within the 24-hour window and is deferred (open decision 7).
+- Only text is stored; media and unsupported types appear as "media, open WhatsApp".
+- Privacy: replies are personal data. They are kept for the same retention period as orders (90 days on the buyer side, to be confirmed with DEC-07), deleted with the order, never written to logs, and only the hash of the sender number is indexed.
+- With the QR option (6.4) the replies would also exist locally in the unofficial session; they are shown the same way but not guaranteed, because that session can drop.
+- The webhook rejects unsigned or replayed deliveries (section 8) and never trusts the sender number alone to link an order.
+
+### 6.4 WhatsApp QR (sample site, and live clients who accept the risk)
+
+- Unofficial client (for example Baileys): **against WhatsApp's terms; the paired number can be banned [docs]**. This is the client's own number and the client's own risk, so it is **opt-in per tenant**, off by default.
+- **Risk acknowledgement:** before the QR is shown, the seller must read a plain-language notice (the number may be banned; the official Business API is the supported route; a spare number is recommended; messages stop if WhatsApp disconnects the session) and tick a box. The acknowledgement (who, when, notice version) is stored in `integration_audit`. Without it the QR is never generated.
+- Runs as a separate container per tenant stack with a persistent session volume; the backend talks to it over the private Docker network with an internal token.
+- Fixed message templates only (the same kinds as 6.3), sent only to buyers who ticked consent, with limits per hour and per recipient, so the page cannot be used to send spam. On the sample site the visitor-entered number is additionally limited per visitor.
+- The seller can **Disconnect** at any time, which deletes the stored session. The page shows connected or disconnected status and the last error.
+- On the sample site it is enabled together with `SELLER_QUICK_LOGIN`; for a live tenant it is enabled by that tenant's own setting.
+- Needs one new compose service, a volume and an env flag (a protected-file change, part of Release P).
 
 ## 7. Releases and the auto-deploy gate
 
@@ -127,9 +152,9 @@ Protected files (`compose.production.yaml`, `deploy/cloudflared.yml`, `deploy/in
 How to pass the gate for Release P (decision 2):
 
 - **(a) One manual deploy** of that release with a prepared script (backup, schema upgrade as database owner, deploy), then never again.
-- **(b) Upgrade the updater once** so it can take a verified backup, run the schema upgrade as the database owner and deploy by itself. After one reinstall, schema changes also auto-deploy. This changes the safety gate, so it needs the owner's explicit approval and a reviewed diff.
+- **(b) Upgrade the updater once (chosen)** so it can take a verified backup, run the schema upgrade as the database owner and deploy by itself. Compose changes are then judged by meaning: only the `postgres` and `tunnel` services, existing secrets, volumes and networks, and host-level privileges (privileged, host namespaces, host mounts, non-loopback ports) still pause for the owner; `cloudflared.yml` and `init-postgres.sh` also still pause. One known limit: the previous release refuses a newer schema, so a release that fails its health checks *after* a successful upgrade cannot be rolled back automatically and is restored from the verified backup; migrations must be additive.
 
-Both need one manual step now; (b) removes all future ones. Design neutral on which to pick.
+Both need one manual step now; (b) removes all future ones. **Decision: (b).**
 
 ## 8. Privacy and abuse controls
 
@@ -148,19 +173,20 @@ Both need one manual step now; (b) removes all future ones. Design neutral on wh
 | 1 | Seller "Connections" page (write-only secrets, connect check, audit) | no | none |
 | 2 | Ninja Van: sandbox shipment, tracking fill, label, webhook | no | Ninja Van sandbox client id/secret |
 | 3 | WhatsApp Cloud: templates, outbox, webhook, status | no | Meta test app, test number, approved templates |
-| 4 | Sample-site QR service | with P | spare test number |
+| 4 | WhatsApp QR service (sample site and opt-in tenants) | with P | spare test number |
 | 5 | Production hardening: reconciliation view, monitoring, retention job | no | none |
 
 Each phase ends with: tests including provider contract fixtures and a retry/duplicate test (as for checkout), a browser check, and a live check after auto-deploy.
 
 ## 10. Decisions needed from the owner
 
-1. **Second courier:** an aggregator (EasyParcel/Delyva) or manual tracking only for non-Ninja Van parcels?
-2. **Release P gate:** (a) one manual deploy, or (b) upgrade the updater once (approve a reviewed diff)?
-3. **Buyer replies:** show WhatsApp replies in the seller panel, or leave them in WhatsApp?
-4. **Tenancy:** confirm A (stack per tenant) and decide whether base-path URLs (`/abc/`) are in scope or later.
-5. **Which messages first:** suggested order submitted, confirmed or rejected, shipped.
-6. **Sample-site QR:** proceed despite the ban risk, with the safeguards in 6.4, or skip it and use the official test number only?
+1. ~~Second courier~~ **Answered:** manual tracking now, an aggregator later if wanted.
+2. ~~Release P gate~~ **Answered:** (b), upgrade the updater once after reviewing the diff.
+3. ~~Buyer replies~~ **Answered:** shown in the seller panel, read-only first (6.5).
+4. **Tenancy:** A is confirmed (own PostgreSQL database per tenant). **Still open:** are base-path URLs (`/abc/`) in scope now or later?
+5. ~~Which messages first~~ **Answered:** order submitted, confirmed or rejected, shipped.
+6. ~~Sample-site QR~~ **Answered:** proceed, also for live clients who accept the risk (6.4).
+7. **Answering from the panel:** after read-only replies ship, should the seller be able to type a free-text answer inside the 24-hour window, or keep answering in WhatsApp?
 
 ## 11. Risks
 
