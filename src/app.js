@@ -7,6 +7,7 @@ import { SqlLimiter } from './limiter.js';
 import { createOrder, lookupOrderStatuses } from './orders.js';
 import { addGalleryImage, createProduct, deleteGalleryImage, getGalleryImage, getProduct, getProductImage, listProducts, updateProduct } from './products.js';
 import { decideSellerOrder, getSellerOrder, listSellerOrders, pendingOrderSummary, withProductLinks } from './seller-orders.js';
+import { listAuditEvents } from './audit-log.js';
 import { OPTION_LIMITS } from './option-limits.js';
 import { createOptionType, createOptionValue, listOptionTypes, updateOptionType, updateOptionValue } from './options.js';
 import { createCategory, publicBusinessContact, getCompanySettings, storefrontTexts, listCategories, updateCategory, updateCompanySettings } from './settings.js';
@@ -241,6 +242,7 @@ export async function createApi({ store, config, serveStatic = null }) {
     if (method === 'GET' && pathname === '/api/v1/seller/orders') {
       return json(200, await listSellerOrders(store, url.searchParams));
     }
+    if (method === 'GET' && pathname === '/api/v1/seller/audit-log') return json(200, await listAuditEvents(store, url.searchParams));
     const sellerOrder = sellerOrderIdPath.exec(pathname);
     if (method === 'GET' && sellerOrder && !sellerOrder[2]) {
       const order = await getSellerOrder(store, sellerOrder[1]);
