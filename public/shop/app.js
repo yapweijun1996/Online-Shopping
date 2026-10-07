@@ -740,7 +740,10 @@ function drawLocalOrders(orders) {
       const items = element('ul', 'local-order-items');
       for (const item of order.items) {
         const row = element('li');
-        row.append(orderThumbnail(item), element('span', '', `${item.name} × ${item.quantity}`), element('strong', '', formatMoney(item.unitPriceMinor * item.quantity, order.currency)));
+        // The picture and name open the product page, so a buyer can check or reorder what they bought.
+        const link = element('a', 'order-item-link'); link.href = productHash(item.productId);
+        link.append(orderThumbnail(item), element('span', '', `${item.name} × ${item.quantity}`));
+        row.append(link, element('strong', '', formatMoney(item.unitPriceMinor * item.quantity, order.currency)));
         items.append(row);
       }
       detail.append(items);
@@ -781,7 +784,9 @@ function orderStatusBadge(order) {
 function orderThumbnail(item) {
   const box = element('span', 'order-thumbnail'); box.setAttribute('aria-hidden', 'true');
   box.textContent = '▧';
-  if (item?.imageUrl) { const img = element('img'); img.alt = ''; img.loading = 'lazy'; img.src = item.imageUrl; img.addEventListener('error', () => img.remove()); box.append(img); }
+  // Orders saved before images were recorded fall back to the product's public image; a missing image leaves the placeholder.
+  const source = item?.imageUrl || (/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(item?.productId || '') ? `/api/v1/products/${item.productId}/image` : null);
+  if (source) { const img = element('img'); img.alt = ''; img.loading = 'lazy'; img.src = source; img.addEventListener('error', () => img.remove()); box.append(img); }
   return box;
 }
 function appendOrderSummary(card, order, total = true) {

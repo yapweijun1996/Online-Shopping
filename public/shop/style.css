@@ -963,3 +963,8 @@ h1,h2{letter-spacing:-.01em}
 
 /* Standalone text links get a thumb-sized hit area without changing how they look. */
 .text-link{display:inline-flex;align-items:center;min-height:44px;color:var(--ui-primary);font-weight:650;text-decoration:underline;text-underline-offset:3px}
+
+/* Order detail: picture and name are one link to the product page. */
+.order-detail .local-order-items li>.order-item-link{display:flex;align-items:center;gap:12px;flex:1;min-width:100px;color:inherit;text-decoration:none}
+.order-item-link span:not(.order-thumbnail){min-width:0;overflow-wrap:anywhere;text-decoration:underline;text-underline-offset:3px;font-weight:600}
+.order-item-link:focus-visible{outline:2px solid var(--ui-focus);outline-offset:3px;border-radius:8px}
