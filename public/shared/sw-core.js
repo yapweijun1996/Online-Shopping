@@ -9,7 +9,9 @@ self.setupOfflineWorker = ({ cachePrefix, version, assets, scopePath, offlinePag
   });
 
   self.addEventListener('install', (event) => {
-    event.waitUntil(caches.open(cacheName).then((cache) => cache.addAll(assets)));
+    // `reload` skips the browser's HTTP cache. The edge sets a 4-hour browser max-age on scripts, so a plain
+    // addAll() could store the previous release's scripts under the new version and mix them with the new HTML.
+    event.waitUntil(caches.open(cacheName).then((cache) => Promise.all(assets.map((path) => cache.add(new Request(path, { cache: 'reload' }))))));
   });
 
   self.addEventListener('activate', (event) => {
