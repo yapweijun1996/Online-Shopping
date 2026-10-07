@@ -164,7 +164,7 @@ async function patchProduct(database, id, input, { galleryChanging = false } = {
     options: patch.options,
     category: patch.category || existing.categoryCode, currency: patch.currency || existing.currency
   }, id);
-  if (!galleryChanging && patch.image === null && existing.images.length > (existing.imageUrl ? 1 : 0)) {
+  if (!galleryChanging && !existing.galleryShared && patch.image === null && existing.images.length > (existing.imageUrl ? 1 : 0)) {
     throw new FieldError('imageDataUrl', 'Remove gallery images before removing the main image.');
   }
   const mapping = { sku: 'sku', name: 'name', description: 'description', category: 'category', priceMinor: 'price_minor', currency: 'currency', active: 'active', variantGroup: 'variant_group', variantLabel: 'variant_label', stockQuantity: 'stock_quantity' };

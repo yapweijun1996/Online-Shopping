@@ -54,6 +54,9 @@ test('replacing a colour photo, even the holder\'s, never changes the shared gal
     assert.equal((await getProduct(store, white.id, true)).galleryItems[0].id, 'main', 'the new white photo is shown first on white');
     await updateProduct(store, black.id, { imageDataUrl: photo('new black') });
     assert.deepEqual(sharedIds(await getProduct(store, black.id, true)), shared);
+    const removed = await updateProduct(store, black.id, { imageDataUrl: null });
+    assert.equal(removed.galleryItems[0].id !== 'main', true, 'a colour can drop its own photo and falls back to the shared ones');
+    assert.deepEqual(sharedIds(removed), shared);
   } finally { await store.close(); }
 });
 
