@@ -53,7 +53,7 @@ let updateIdentity = '';
 const sessionHintKey = 'online-shopping-seller-session-hint';
 mountTabIcon(window.sellerPalette);
 const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'confirmations', 'audit', 'categories', 'options', 'company']);
-const PRODUCT_ROUTE = /^products\/(?:new|[0-9a-f-]{36})$/;
+const PRODUCT_ROUTE = /^products\/(?:new(?:\/[0-9a-f-]{36})?|[0-9a-f-]{36})$/;
 const ORDER_ROUTE = /^(?:orders|confirmations)\/[0-9a-f-]{36}$/;
 
 function routeFromHash() {
@@ -230,7 +230,7 @@ function renderView() {
     else button.removeAttribute('aria-current');
   });
   const titleKey = currentView === 'products' && currentRoute !== 'products'
-    ? currentRoute === 'products/new' ? 'addProduct' : 'editProduct'
+    ? currentRoute.startsWith('products/new') ? 'addProduct' : 'editProduct'
     : { dashboard: 'dashboard', products: 'products', orders: 'salesOrders', confirmations: 'orderReview', audit: 'auditLog', categories: 'categoryCodes', options: 'optionsNav', company: 'companySettings' }[currentView];
   byId('page-title').dataset.i18n = titleKey;
   byId('page-title').textContent = t(titleKey);

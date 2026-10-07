@@ -348,6 +348,18 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       state.className = `product-status-chip${variant.active ? '' : ' inactive'}`;
       state.textContent = t(variant.active ? 'active' : 'inactive');
       row.append(name, code, price, stock, state);
+      if (variant.id !== detail.id) {
+        const switchButton = button(t(variant.active ? 'deactivateProduct' : 'activateProduct'), async (event) => {
+          const control = event.currentTarget;
+          control.disabled = true;
+          try {
+            await api('PATCH', `/api/v1/seller/products/${variant.id}`, { active: !variant.active });
+            if (!isCurrent() || editingId !== detail.id) return;
+            renderVariants(await api('GET', `/api/v1/seller/products/${detail.id}`));
+          } catch { control.disabled = false; if (isCurrent()) setError('productError'); }
+        }, `${t(variant.active ? 'deactivateProduct' : 'activateProduct')}: ${variant.label || variant.sku} (${variant.sku})`);
+        row.append(switchButton);
+      }
       if (variant.id === detail.id) {
         const here = document.createElement('span');
         here.className = 'product-variant-here';
@@ -571,12 +583,27 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     editorView.hidden = false;
     resetForm();
     setEditorStatus(route === 'products/new' ? '' : 'loading');
-    if (route === 'products/new') {
+    const variantOf = /^products\/new\/([0-9a-f-]{36})$/.exec(route)?.[1];
+    if (route === 'products/new' || variantOf) {
       await settingsPromise;
+      let base = null;
+      if (variantOf) {
+        try { base = await api('GET', `/api/v1/seller/products/${variantOf}`); } catch { setEditorStatus('productNotFound'); return; }
+      }
       if (sequence !== routeSequence || !isCurrent()) return;
       form.hidden = false;
-      populateCategories();
-      form.elements.currency.value = defaultCurrency;
+      populateCategories(base?.categoryCode);
+      form.elements.currency.value = base?.currency || defaultCurrency;
+      if (base) {
+        // A new variant starts from the shared details of the product it joins; SKU, options and price are its own.
+        form.elements.name.value = base.name;
+        form.elements.description.value = base.description;
+        form.elements.price.value = (base.priceMinor / 100).toFixed(2);
+        form.elements.variantGroup.value = base.variantGroup || '';
+        form.elements.active.checked = true;
+        setEditorStatus('');
+        form.elements.sku.focus();
+      }
       const currencyHelp = find('#product-currency-help');
       currencyHelp.dataset.i18n = 'currencyInherited';
       currencyHelp.textContent = t('currencyInherited');
@@ -667,6 +694,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   }
 
   find('#product-new').addEventListener('click', () => onNavigate('products/new'));
+  find('#product-add-variant').addEventListener('click', () => { if (editingId) onNavigate(`products/new/${editingId}`); });
   find('#product-open-main').addEventListener('click', () => { if (galleryHolderId) onNavigate(`products/${galleryHolderId}`); });
   find('#product-cancel').addEventListener('click', () => onNavigate('products'));
   form.addEventListener('input', () => { if (formSuccessKey) setFormSuccess(''); });
