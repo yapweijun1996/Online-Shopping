@@ -1,10 +1,9 @@
 import { SCHEMA_VERSION } from '../db.js';
 import { migrateLegacyVariants } from '../options.js';
-import { INTEGRATION_TABLE_NAMES, postgresIntegrationTablesSql } from '../integration-tables.js';
 
 // Called only by an explicit operator/test opt-in, inside the store-owned transaction.
 export async function upgradePostgres(store, version) {
-  if (![10, 11, 12, 13, 14, 15, 16, 17].includes(version)) throw new Error(`Unsupported PostgreSQL schema version ${version}.`);
+  if (![10, 11, 12, 13, 14, 15, 16].includes(version)) throw new Error(`Unsupported PostgreSQL schema version ${version}.`);
   const columns = await store.all("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='product'");
   const has = name => columns.some(row => row.column_name === name);
   if (version === 13 && !has('stock_quantity') && !has('gallery_layout_json')) throw new Error('Unrecognized PostgreSQL product schema.');
@@ -58,12 +57,5 @@ export async function upgradePostgres(store, version) {
       END IF;
     END $$;`);
   await migrateLegacyVariants(store);
-  await store.exec(postgresIntegrationTablesSql);
-  // Integration tables are new in schema 18; the application role needs them too.
-  await store.exec(`DO $$ BEGIN
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'online_shopping_app') THEN
-      GRANT SELECT, INSERT, UPDATE, DELETE ON ${INTEGRATION_TABLE_NAMES.join(', ')} TO online_shopping_app;
-    END IF;
-  END $$;`);
   await store.setSchemaVersion(SCHEMA_VERSION);
 }
