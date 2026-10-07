@@ -73,10 +73,11 @@ export async function upgradePostgres(store, version) {
     END $$;`);
   await migrateListings(store);
   await store.exec('ALTER TABLE product ALTER COLUMN listing_id SET NOT NULL');
-  await migrateSharedGalleries(store);
+  // The gallery copy reads the preview columns, so they are added first.
   for (const table of ['product', 'product_gallery_image']) {
     await store.exec(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS thumb_mime TEXT CHECK (thumb_mime IS NULL OR thumb_mime IN ('image/png', 'image/jpeg', 'image/webp'));
       ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS thumb_data BYTEA`);
   }
+  await migrateSharedGalleries(store);
   await store.setSchemaVersion(SCHEMA_VERSION);
 }

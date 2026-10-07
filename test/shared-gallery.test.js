@@ -107,6 +107,8 @@ test('schema 18 upgrades to a shared gallery: copies are removed, colour photos 
     }
     await store.run('UPDATE product SET gallery_layout_json = ? WHERE id = ?', JSON.stringify(['main', 'copy-0']), white.id);
     const blackMain = await bytes(store, black.id);
+    // The real schema 18 has no preview columns; the gallery step of the upgrade must still copy photos.
+    for (const table of ['product', 'product_gallery_image']) for (const column of ['thumb_mime', 'thumb_data']) await store.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`);
     await store.setSchemaVersion(18);
     await migrateStore(store);
     assert.equal(await store.schemaVersion(), 20);

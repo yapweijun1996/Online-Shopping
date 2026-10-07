@@ -253,6 +253,8 @@ test('PostgreSQL schema 18 upgrades to one shared gallery per listing and drops 
     await store.run('INSERT INTO product_gallery_image(id, product_id, position, mime, data, created_at) VALUES (?, ?, 1, ?, ?, ?)', `copy-${index}`, product.id, 'image/png', extra, new Date().toISOString());
     await store.run('UPDATE product SET gallery_layout_json = ? WHERE id = ?', JSON.stringify(['main', `copy-${index}`]), product.id);
   }
+  // The real schema 18 has no preview columns; the gallery step of the upgrade must still copy photos.
+  await store.exec('ALTER TABLE product DROP COLUMN thumb_mime; ALTER TABLE product DROP COLUMN thumb_data; ALTER TABLE product_gallery_image DROP COLUMN thumb_mime; ALTER TABLE product_gallery_image DROP COLUMN thumb_data');
   await store.setSchemaVersion(18);
   const upgraded = await openPostgresDatabase(url, { allowUpgrade: true }); t.shoppingClosers.push(()=>upgraded.close());
   assert.equal(await upgraded.schemaVersion(), 20);
