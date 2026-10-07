@@ -1,8 +1,9 @@
 import { openNodeStore } from './store.js';
 import { migrateLegacyVariants } from './options.js';
 import { migrateListings } from './listings.js';
+import { migrateSharedGalleries } from './product-gallery.js';
 
-export const SCHEMA_VERSION = 18;
+export const SCHEMA_VERSION = 19;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -411,6 +412,14 @@ export async function migrateStore(store) {
       await store.setSchemaVersion(18);
     });
     version = 18;
+  }
+  if (version === 18) {
+    // Data only: one shared photo gallery per listing, and the per-variant copies of it are removed.
+    await store.transaction(async () => {
+      await migrateSharedGalleries(store);
+      await store.setSchemaVersion(19);
+    });
+    version = 19;
   }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }

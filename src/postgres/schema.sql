@@ -189,7 +189,7 @@ CREATE TABLE product_option (
 );
 CREATE INDEX product_option_value ON product_option(option_value_id);
 CREATE INDEX product_listing ON product(listing_id);
-INSERT INTO schema_meta VALUES (1, 18);
+INSERT INTO schema_meta VALUES (1, 19);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 INSERT INTO shop_setup(id, mode, shop_name) VALUES (1, NULL, 'Online Shopping');
