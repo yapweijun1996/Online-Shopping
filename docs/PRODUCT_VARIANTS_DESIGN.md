@@ -1,6 +1,6 @@
 # Product + variants (one listing, many variants)
 
-Status: proposal. Not implemented. Needs the updater to apply schema upgrades first (schema.sql is a protected file).
+Status: stage 1 (schema 18: `listing` table, `product.listing_id`, shared-field sync, migration) is implemented in `src/listings.js`; the gallery sharing and both UIs are not. Needs the updater to apply schema upgrades first (schema.sql is a protected file).
 
 ## Goal
 
@@ -40,8 +40,11 @@ Rules:
 - `listing.name/description/category/translations` are the source of truth. The same columns on `product` stay
   (queries and order snapshots read them) and are rewritten from the listing inside the same transaction whenever the
   listing changes. Nothing else writes them.
-- The gallery belongs to the listing. It is stored against the listing's primary product (the oldest product row), and
-  every variant of the listing reads it from there. A variant may still have its own main image (colour photo).
+- Stage 1 leaves galleries on each product row. Sharing one gallery across a listing (stored against its primary
+  product, with a variant's own main image as the colour photo) is a later stage, together with removing the copies.
+- `listing.code` holds the variant group name, so `variant_group` and `listing` agree; a product with no group has a
+  listing with a NULL code. A variant joining a group takes the listing's title, description and category, and a listing
+  left without variants is deleted.
 - `variant_group` and `variant_label` become derived and are removed in a later schema once nothing reads them.
 
 ## Migration (live shape: 35 listings, 86 product rows, 255 duplicated gallery photos)
@@ -49,7 +52,7 @@ Rules:
 1. Create `listing`; one listing per distinct `variant_group`, one per product with no group. Copy shared fields from
    the group's primary product (the row whose SKU equals the group name, else the oldest).
 2. Set `product.listing_id`.
-3. Delete the gallery rows of non-primary variants that are copies of the primary's gallery (same bytes), keep any that differ.
+3. (Later stage) remove the gallery copies of non-primary variants once the shared gallery exists.
 4. Bump the schema version; both the SQLite migration (`src/db.js`) and `schema.sql` + `upgrade.js` are updated and the
    same fixture is migrated in the schema-compatibility tests, including historical orders, snapshots and stock holds.
 

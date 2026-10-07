@@ -6,11 +6,12 @@ import { decodeProductImage } from './product-image.js';
 import { getCompanySettings, requireActiveCategory } from './settings.js';
 import { presentCatalogCopy } from './catalog-copy.js';
 import { groupUsesOptions, loadProductOptions, optionAxes, optionError, setProductOptions } from './options.js';
+import { listingFor, moveToListing, syncListing } from './listings.js';
 import { reservedQuantitySql } from './stock-reservation.js';
 import { productCover, productGallery, requireGalleryRevision, saveProductGallery } from './product-gallery.js';
 
 const columns = () => `p.id, p.sku, p.name, p.description, p.category AS category_code,
-  c.label AS category, p.price_minor, p.currency, p.active, p.image_mime, p.variant_group, p.variant_label, p.stock_quantity,
+  c.label AS category, p.price_minor, p.currency, p.active, p.image_mime, p.variant_group, p.variant_label, p.stock_quantity, p.listing_id,
   ${reservedQuantitySql('p.id')} AS reserved_quantity, p.created_at, p.updated_at`;
 const fromProduct = `FROM product p JOIN general_code c
   ON c.type = 'PRODUCT_CATEGORY' AND c.code = p.category`;
@@ -27,7 +28,7 @@ function productFromRow(row, seller = false) {
   return {
     id: row.id, sku: row.sku, name: row.name, description: row.description,
     category: row.category, priceMinor: row.price_minor, currency: row.currency,
-    variantGroup: row.variant_group, variantLabel: row.variant_label,
+    variantGroup: row.variant_group, variantLabel: row.variant_label, listingId: row.listing_id,
     ...(seller ? { categoryCode: row.category_code, active: Boolean(row.active), stockQuantity: row.stock_quantity } : { inStock: row.stock_quantity === null || row.stock_quantity - Number(row.reserved_quantity) > 0 }),
     imageUrl: row.image_mime ? imagePath : null,
     ...(seller ? { createdAt: row.created_at, updatedAt: row.updated_at } : {})
@@ -42,10 +43,11 @@ async function validateVariantGroup(database, product, excludeId = null) {
     throw new FieldError('variantLabel', 'Set both the variant group and option label.');
   }
   if (!product.variantGroup) return;
-  const related = await database.get(`SELECT category, currency FROM product WHERE variant_group = ?
+  // The category belongs to the listing, so a variant joining a group simply takes it; only the currency must match.
+  const related = await database.get(`SELECT currency FROM product WHERE variant_group = ?
     AND (? IS NULL OR id <> ?) LIMIT 1`, product.variantGroup, excludeId, excludeId);
-  if (related && (related.category !== product.category || related.currency !== product.currency)) {
-    throw new FieldError('variantGroup', 'Variants must share a category and currency.');
+  if (related && related.currency !== product.currency) {
+    throw new FieldError('variantGroup', 'Variants must share a currency.');
   }
 }
 
@@ -86,15 +88,17 @@ export async function createProduct(database, input) {
     await validateVariantGroup(database, product);
     const id = randomUUID();
     const now = new Date().toISOString();
+    // Variants share their listing's title, description and category; the first product of a group defines them.
+    const listing = await listingFor(database, product, now);
     try {
       await database.run(`INSERT INTO product
       (id, sku, name, description, category, price_minor, currency, active, image_mime, image_data,
-       variant_group, variant_label, stock_quantity, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      id, product.sku, product.name, product.description, product.category,
+       variant_group, variant_label, stock_quantity, listing_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      id, product.sku, listing.name, listing.description, listing.category,
       product.priceMinor, product.currency, Number(product.active),
       product.image?.mime || null, product.image?.data || null, product.variantGroup || null,
-      product.variantLabel || null, product.stockQuantity ?? null, now, now
+      product.variantLabel || null, product.stockQuantity ?? null, listing.id, now, now
       );
     } catch (error) {duplicateSku(error);}
     const hasOptions = Array.isArray(product.options) && product.options.length > 0;
@@ -169,6 +173,14 @@ async function patchProduct(database, id, input, { galleryChanging = false } = {
   try {
     await database.run(`UPDATE product SET ${assignments.join(', ')} WHERE id = ?`, ...values);
   } catch (error) {duplicateSku(error);}
+  // Shared fields live on the listing; a group change moves the row to the listing of its new group.
+  const now = new Date().toISOString();
+  if (Object.hasOwn(patch, 'variantGroup') && (patch.variantGroup || null) !== (existing.variantGroup || null)) {
+    const merged = { ...existing, ...patch, category: patch.category || existing.categoryCode };
+    await moveToListing(database, id, existing.listingId, merged, now);
+  } else {
+    await syncListing(database, existing.listingId, patch, now);
+  }
   await saveOptions(database, id, existing, patch);
   return await getProduct(database, id, true);
 }

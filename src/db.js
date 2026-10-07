@@ -1,7 +1,8 @@
 import { openNodeStore } from './store.js';
 import { migrateLegacyVariants } from './options.js';
+import { migrateListings } from './listings.js';
 
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 18;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -45,6 +46,18 @@ const optionTablesSql = `
     PRIMARY KEY (product_id, option_type_id)
   ) STRICT;
   CREATE INDEX IF NOT EXISTS product_option_value ON product_option(option_value_id);`;
+
+const listingTableSql = `
+  CREATE TABLE IF NOT EXISTS listing (
+    id TEXT PRIMARY KEY,
+    code TEXT UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    category TEXT NOT NULL,
+    translations_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(translations_json)),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  ) STRICT;`;
 
 async function migrate(store, version, sql) {
   await store.transaction(async () => {
@@ -387,6 +400,18 @@ export async function migrateStore(store) {
     });
     version = 17;
   }
+  if (version === 17) {
+    // One listing per product (shared title, description, category) with the old product rows as its variants.
+    await store.transaction(async () => {
+      await store.exec(listingTableSql);
+      const present = (await store.all("SELECT name FROM pragma_table_info('product')")).map(column => column.name);
+      if (!present.includes('listing_id')) await store.exec('ALTER TABLE product ADD COLUMN listing_id TEXT REFERENCES listing(id) ON DELETE RESTRICT');
+      await store.exec('CREATE INDEX IF NOT EXISTS product_listing ON product(listing_id)');
+      await migrateListings(store);
+      await store.setSchemaVersion(18);
+    });
+    version = 18;
+  }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }
 
@@ -397,6 +422,8 @@ export async function ready(store) {
       Array.isArray(await store.all('SELECT tracking_carrier, tracking_no FROM shop_order LIMIT 0')) &&
       Array.isArray(await store.all('SELECT availability_text, shipping_text, returns_text FROM company_setting LIMIT 0')) &&
       Array.isArray(await store.all('SELECT id FROM option_type LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT id FROM listing LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT listing_id FROM product LIMIT 0')) &&
       Array.isArray(await store.all('SELECT id FROM option_value LIMIT 0')) &&
       Array.isArray(await store.all('SELECT product_id FROM product_option LIMIT 0')) &&
       Boolean(await store.get('SELECT id FROM admin WHERE id = 1')) &&

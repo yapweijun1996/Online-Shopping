@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-export const importTables = ['admin', 'session', 'general_code', 'company_setting', 'shop_setup', 'option_type', 'option_value', 'product',
+export const importTables = ['admin', 'session', 'general_code', 'company_setting', 'shop_setup', 'option_type', 'option_value', 'listing', 'product',
   'product_option', 'product_gallery_image', 'order_sequence', 'shop_order', 'delivery', 'order_item', 'order_event',
   'checkout_idempotency', 'rate_limit_attempt'];
 

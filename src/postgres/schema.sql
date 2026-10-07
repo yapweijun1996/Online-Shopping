@@ -37,6 +37,16 @@ CREATE TABLE shop_setup (
         mode TEXT CHECK (mode IN ('demo', 'production')),
         shop_name TEXT NOT NULL
       );
+CREATE TABLE listing (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        category TEXT NOT NULL,
+        translations_json TEXT NOT NULL DEFAULT '{}' CHECK (translations_json::jsonb IS NOT NULL),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
 CREATE TABLE "product" (
         id TEXT PRIMARY KEY,
         sku TEXT NOT NULL UNIQUE,
@@ -51,7 +61,7 @@ CREATE TABLE "product" (
         image_mime TEXT,
         image_data BYTEA,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL, variant_group TEXT, variant_label TEXT, stock_quantity BIGINT
+        updated_at TEXT NOT NULL, variant_group TEXT, variant_label TEXT, listing_id TEXT NOT NULL REFERENCES listing(id) ON DELETE RESTRICT, stock_quantity BIGINT
         CHECK (stock_quantity IS NULL OR stock_quantity BETWEEN 0 AND 1000000),
         CHECK ((image_mime IS NULL AND image_data IS NULL) OR
                (image_mime IN ('image/png', 'image/jpeg', 'image/webp') AND image_data IS NOT NULL))
@@ -178,7 +188,8 @@ CREATE TABLE product_option (
   PRIMARY KEY (product_id, option_type_id)
 );
 CREATE INDEX product_option_value ON product_option(option_value_id);
-INSERT INTO schema_meta VALUES (1, 17);
+CREATE INDEX product_listing ON product(listing_id);
+INSERT INTO schema_meta VALUES (1, 18);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 INSERT INTO shop_setup(id, mode, shop_name) VALUES (1, NULL, 'Online Shopping');
