@@ -248,7 +248,7 @@ export async function listProducts(database, params, seller = false, mode = 'man
     // (the one that matches the search), with the group size and whether its prices differ.
     : await database.all(`SELECT * FROM (
         SELECT ${columns()}, ROW_NUMBER() OVER (PARTITION BY COALESCE('g:' || p.variant_group, 'p:' || p.id)
-          ORDER BY CASE WHEN p.stock_quantity IS NULL OR p.stock_quantity > 0 THEN 0 ELSE 1 END, p.price_minor, p.id) AS group_rank,
+          ORDER BY CASE WHEN p.stock_quantity IS NULL OR p.stock_quantity > 0 THEN 0 ELSE 1 END, p.price_minor, p.sku, p.id) AS group_rank,
           COUNT(*) OVER (PARTITION BY COALESCE('g:' || p.variant_group, 'p:' || p.id)) AS group_size,
           MAX(p.price_minor) OVER (PARTITION BY COALESCE('g:' || p.variant_group, 'p:' || p.id)) AS group_max_price
         ${fromProduct} WHERE ${activeClause} ${filters}) listed
