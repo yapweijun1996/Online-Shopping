@@ -13,7 +13,9 @@ import { createOrder } from '../src/orders.js';
 const snapshot = async store => Object.fromEntries(await Promise.all(['product', 'product_gallery_image', 'shop_order', 'delivery',
   'order_item', 'order_event', 'checkout_idempotency', 'company_setting'].map(async table => [table,
   (await store.all(`SELECT * FROM ${table} ORDER BY ${table === 'checkout_idempotency' ? 'key_hash' : 'id'}`)).map(row => {
-    const value = { ...row }; if (table === 'product') delete value.gallery_layout_json; return value;
+    const value = { ...row }; if (table === 'product') delete value.gallery_layout_json;
+    if (table === 'product_gallery_image') { delete value.thumb_mime; delete value.thumb_data; }  // previews arrived with schema 20
+    return value;
   })])));
 const hash = file => createHash('sha256').update(readFileSync(file)).digest('hex');
 
@@ -38,7 +40,7 @@ async function oldFixture(file) {
     CREATE TABLE product_gallery_image(id TEXT PRIMARY KEY, product_id TEXT NOT NULL REFERENCES product(id) ON DELETE RESTRICT,
       position INTEGER NOT NULL CHECK(position BETWEEN 1 AND 4), mime TEXT NOT NULL CHECK(mime IN ('image/png','image/jpeg','image/webp')),
       data BLOB NOT NULL, created_at TEXT NOT NULL, UNIQUE(product_id,position)) STRICT;
-    INSERT INTO product_gallery_image SELECT * FROM historical_gallery_fixture;
+    INSERT INTO product_gallery_image (id,product_id,position,mime,data,created_at) SELECT id,product_id,position,mime,data,created_at FROM historical_gallery_fixture;
     DROP TABLE historical_gallery_fixture;
     CREATE INDEX product_gallery_product ON product_gallery_image(product_id,position);
     ALTER TABLE product DROP COLUMN gallery_layout_json;`);

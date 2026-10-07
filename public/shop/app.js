@@ -2,6 +2,7 @@ import { mountAppearance } from '../shared/appearance.js';
 import { mountTabIcon } from '../shared/tab-icon.js';
 import { confirmModal } from '../shared/modal.js';
 import { revealImage } from './product-media.js';
+import { thumbUrl } from '../shared/image-thumb.js';
 import { storageKey } from './storage-scope.js';
 import { categoryIconPath, formatCatalogPrice } from './catalog-presentation.js';
 import { mountShopUpdates } from './update-view.js';
@@ -113,7 +114,7 @@ function action(label, handler, className = 'outline-button') {
 function imageFor(product, className) {
   if (!product.imageUrl) return element('div', `${className} image-placeholder`, t('imageMissing'));
   const image = element('img', className);
-  image.src = product.imageUrl;
+  image.src = thumbUrl(product.imageUrl);   // cards are small: the preview is enough
   image.alt = product.name;
   image.loading = 'lazy';
   image.decoding = 'async';

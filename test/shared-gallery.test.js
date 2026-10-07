@@ -109,7 +109,7 @@ test('schema 18 upgrades to a shared gallery: copies are removed, colour photos 
     const blackMain = await bytes(store, black.id);
     await store.setSchemaVersion(18);
     await migrateStore(store);
-    assert.equal(await store.schemaVersion(), 19);
+    assert.equal(await store.schemaVersion(), 20);
     assert.equal((await store.all('SELECT id FROM product_gallery_image WHERE product_id = ?', black.id)).length, 0, 'the copy on the other colour is gone');
     assert.equal((await store.get('SELECT gallery_layout_json AS layout FROM product WHERE id = ?', black.id)).layout, null);
     assert.deepEqual(await bytes(store, black.id), blackMain);

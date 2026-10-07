@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import manifest from './public-demo-gallery.json' with { type: 'json' };
 import { ApiError } from './http.js';
 import { FieldError } from './validation.js';
-import { decodeProductImage } from './product-image.js';
+import { decodeProductImage, decodeThumbnail } from './product-image.js';
 
 const hash = (data) => createHash('sha256').update(data).digest('hex');
 const version = (date) => Date.parse(date).toString(36);
@@ -107,7 +107,9 @@ export async function saveProductGallery(store, productId, requested, current) {
   if (original.image_data && !shared) fingerprint.set(hash(original.image_data), 'main');
   const selected = [],seen = new Set(),pending = new Map();
   for (const entry of requested) {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry) || Object.keys(entry).length !== 1) {
+    const keys = entry && typeof entry === 'object' && !Array.isArray(entry) ? Object.keys(entry) : [];
+    // An upload may carry its preview: { imageDataUrl, thumbDataUrl }.
+    if (!(keys.length === 1 || (keys.length === 2 && keys.includes('imageDataUrl') && keys.includes('thumbDataUrl')))) {
       throw new FieldError('gallery', 'Choose an existing image or upload a new image.');
     }
     let id = entry.id;
@@ -118,7 +120,8 @@ export async function saveProductGallery(store, productId, requested, current) {
       id = fingerprint.get(digest);
       if (!id) {
         id = randomUUID();fingerprint.set(digest, id);
-        pending.set(id, { id, mime: image.mime, data: image.data, created_at: new Date().toISOString() });
+        const thumb = decodeThumbnail(entry.thumbDataUrl);
+        pending.set(id, { id, mime: image.mime, data: image.data, created_at: new Date().toISOString(), thumb_mime: thumb?.mime || null, thumb_data: thumb?.data || null });
       }
     } else if (shared && id === 'main') {
       continue; // a variant's main photo is its own colour photo, not a shared one
@@ -137,8 +140,8 @@ export async function saveProductGallery(store, productId, requested, current) {
   let position = 0;
   for (const id of selected) {
     const image = pending.get(id) || uploadById.get(id);
-    if (image) await store.run('INSERT INTO product_gallery_image(id, product_id, position, mime, data, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-    id, productId, ++position, image.mime, image.data, image.created_at);
+    if (image) await store.run('INSERT INTO product_gallery_image(id, product_id, position, mime, data, created_at, thumb_mime, thumb_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    id, productId, ++position, image.mime, image.data, image.created_at, image.thumb_mime ?? null, image.thumb_data ?? null);
   }
   await store.run('UPDATE product SET gallery_layout_json = ? WHERE id = ?', JSON.stringify(selected), productId);
 }
@@ -156,7 +159,7 @@ export function requireGalleryRevision(current, expected) {
 export async function shareListingGallery(store, listingId) {
   const holderId = await listingHolder(store, listingId);
   if (!holderId) return false;
-  const holder = await store.get('SELECT id, image_mime, image_data, gallery_layout_json FROM product WHERE id = ?', holderId);
+  const holder = await store.get('SELECT id, image_mime, image_data, thumb_mime, thumb_data, gallery_layout_json FROM product WHERE id = ?', holderId);
   const uploads = await store.all('SELECT id, data FROM product_gallery_image WHERE product_id = ? ORDER BY position', holderId);
   const layout = holder.gallery_layout_json === null ? [...(holder.image_data ? ['main'] : []), ...uploads.map((row) => row.id)]
     : JSON.parse(holder.gallery_layout_json);
@@ -169,8 +172,8 @@ export async function shareListingGallery(store, listingId) {
   if (!replacement && holder.image_data && uploads.length < 10) {
     replacement = randomUUID();
     const position = Number((await store.get('SELECT COALESCE(MAX(position), 0) AS last FROM product_gallery_image WHERE product_id = ?', holderId)).last) + 1;
-    await store.run('INSERT INTO product_gallery_image(id, product_id, position, mime, data, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-      replacement, holderId, position, holder.image_mime, holder.image_data, new Date().toISOString());
+    await store.run('INSERT INTO product_gallery_image(id, product_id, position, mime, data, created_at, thumb_mime, thumb_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      replacement, holderId, position, holder.image_mime, holder.image_data, new Date().toISOString(), holder.thumb_mime ?? null, holder.thumb_data ?? null);
   }
   const next = [];
   for (const id of layout) {

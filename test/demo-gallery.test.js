@@ -26,8 +26,8 @@ test('v10 gallery migration preserves all existing image bytes, IDs, positions a
  const before=await s.all('SELECT * FROM product_gallery_image ORDER BY position'),products=await s.all('SELECT * FROM product ORDER BY id');
  await s.exec(`ALTER TABLE product_gallery_image RENAME TO gallery_fixture;
  CREATE TABLE product_gallery_image(id TEXT PRIMARY KEY,product_id TEXT NOT NULL REFERENCES product(id) ON DELETE RESTRICT,position INTEGER NOT NULL CHECK(position BETWEEN 1 AND 4),mime TEXT NOT NULL CHECK(mime IN ('image/png','image/jpeg','image/webp')),data BLOB NOT NULL,created_at TEXT NOT NULL,UNIQUE(product_id,position)) STRICT;
- INSERT INTO product_gallery_image SELECT * FROM gallery_fixture;DROP TABLE gallery_fixture;CREATE INDEX product_gallery_product ON product_gallery_image(product_id,position);`);
- await s.exec('ALTER TABLE product DROP COLUMN stock_quantity');await s.setSchemaVersion(10);await migrateStore(s);assert.equal(await s.schemaVersion(),19);assert.deepEqual(await s.all('SELECT * FROM product_gallery_image ORDER BY position'),before);assert.deepEqual(await s.all('SELECT * FROM product ORDER BY id'),products);
+ INSERT INTO product_gallery_image (id,product_id,position,mime,data,created_at) SELECT id,product_id,position,mime,data,created_at FROM gallery_fixture;DROP TABLE gallery_fixture;CREATE INDEX product_gallery_product ON product_gallery_image(product_id,position);`);
+ await s.exec('ALTER TABLE product DROP COLUMN stock_quantity');await s.setSchemaVersion(10);await migrateStore(s);assert.equal(await s.schemaVersion(),20);assert.deepEqual(await s.all('SELECT * FROM product_gallery_image ORDER BY position'),before);assert.deepEqual(await s.all('SELECT * FROM product ORDER BY id'),products);
  for(let i=4;i<9;i++)await addGalleryImage(s,p.id,data(i));assert.equal((await getProduct(s,p.id)).images.length,10);await assert.rejects(async ()=>await addGalleryImage(s,p.id,data(9)));
 });
 test('gallery variants are local, hash-verified, bounded and retain reference provenance',()=>{

@@ -3,7 +3,7 @@ import { migrateLegacyVariants } from './options.js';
 import { migrateListings } from './listings.js';
 import { migrateSharedGalleries } from './product-gallery.js';
 
-export const SCHEMA_VERSION = 19;
+export const SCHEMA_VERSION = 20;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -312,7 +312,7 @@ export async function migrateStore(store) {
         created_at TEXT NOT NULL,
         UNIQUE(product_id, position)
       ) STRICT;
-      INSERT INTO product_gallery_image_v11 SELECT * FROM product_gallery_image;
+      INSERT INTO product_gallery_image_v11 SELECT id, product_id, position, mime, data, created_at FROM product_gallery_image;
       DROP TABLE product_gallery_image;
       ALTER TABLE product_gallery_image_v11 RENAME TO product_gallery_image;
       CREATE INDEX product_gallery_product ON product_gallery_image(product_id, position);`);
@@ -374,7 +374,7 @@ export async function migrateStore(store) {
         mime TEXT NOT NULL CHECK (mime IN ('image/png', 'image/jpeg', 'image/webp')),
         data BLOB NOT NULL, created_at TEXT NOT NULL, UNIQUE(product_id, position)
       ) STRICT;
-      INSERT INTO product_gallery_image_v15 SELECT * FROM product_gallery_image;
+      INSERT INTO product_gallery_image_v15 SELECT id, product_id, position, mime, data, created_at FROM product_gallery_image;
       DROP TABLE product_gallery_image;
       ALTER TABLE product_gallery_image_v15 RENAME TO product_gallery_image;
       CREATE INDEX product_gallery_product ON product_gallery_image(product_id, position);`);
@@ -420,6 +420,18 @@ export async function migrateStore(store) {
       await store.setSchemaVersion(19);
     });
     version = 19;
+  }
+  if (version === 19) {
+    // Small previews of product and gallery images, so lists need not download full-size photos.
+    await store.transaction(async () => {
+      for (const table of ['product', 'product_gallery_image']) {
+        const present = (await store.all(`SELECT name FROM pragma_table_info('${table}')`)).map(column => column.name);
+        if (!present.includes('thumb_mime')) await store.exec(`ALTER TABLE ${table} ADD COLUMN thumb_mime TEXT CHECK (thumb_mime IS NULL OR thumb_mime IN ('image/png', 'image/jpeg', 'image/webp'))`);
+        if (!present.includes('thumb_data')) await store.exec(`ALTER TABLE ${table} ADD COLUMN thumb_data BLOB`);
+      }
+      await store.setSchemaVersion(20);
+    });
+    version = 20;
   }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }
