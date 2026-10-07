@@ -302,6 +302,8 @@ test('schema version two upgrades without losing catalog records', async () => {
   old.exec(productSchema.replace(/^CREATE TABLE ["`]?product["`]?/i, 'CREATE TABLE product_v2')
     .replace(/, variant_group TEXT, variant_label TEXT/i, '')
     .replace(/,\s*listing_id TEXT REFERENCES listing\(id\) ON DELETE RESTRICT/i, '')
+    .replace(/,\s*thumb_mime TEXT CHECK \(thumb_mime IS NULL OR thumb_mime IN \([^)]*\)\)/i, '')
+    .replace(/,\s*thumb_data BLOB/i, '')
     .replace(/, stock_quantity INTEGER\s+CHECK \([^)]*\)/i, '')
     .replace("currency IN ('MYR', 'SGD')", "currency = 'MYR'"));
   old.exec(`INSERT INTO product_v2 SELECT id, sku, name, description, category, price_minor, currency, active,
@@ -334,6 +336,8 @@ test('schema version three upgrades an existing order without changing its snaps
       old.exec(schema.replace(new RegExp(`^CREATE TABLE ["\x60]?${table}["\x60]?`, 'i'), `CREATE TABLE ${table}_v3`)
         .replace(table === 'product' ? /, variant_group TEXT, variant_label TEXT/i : /$^/, '')
         .replace(table === 'product' ? /,\s*listing_id TEXT REFERENCES listing\(id\) ON DELETE RESTRICT/i : /$^/, '')
+        .replace(table === 'product' ? /,\s*thumb_mime TEXT CHECK \(thumb_mime IS NULL OR thumb_mime IN \([^)]*\)\)/i : /$^/, '')
+        .replace(table === 'product' ? /,\s*thumb_data BLOB/i : /$^/, '')
         .replace(table === 'product' ? /, stock_quantity INTEGER\s+CHECK \([^)]*\)/i : /$^/, '')
         .replace("currency IN ('MYR', 'SGD')", "currency = 'MYR'"));
       if (table === 'product') old.exec(`INSERT INTO product_v3 SELECT id, sku, name, description, category, price_minor,

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { ApiError } from './http.js';
 import { FieldError, boundedText } from './validation.js';
 import { validateProductInput } from './product-input.js';
-import { decodeProductImage } from './product-image.js';
+import { decodeProductImage, decodeThumbnail } from './product-image.js';
 import { getCompanySettings, requireActiveCategory } from './settings.js';
 import { presentCatalogCopy } from './catalog-copy.js';
 import { groupUsesOptions, loadProductOptions, optionAxes, optionError, setProductOptions } from './options.js';
@@ -96,12 +96,13 @@ export async function createProduct(database, input) {
     try {
       await database.run(`INSERT INTO product
       (id, sku, name, description, category, price_minor, currency, active, image_mime, image_data,
-       variant_group, variant_label, stock_quantity, listing_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       variant_group, variant_label, stock_quantity, listing_id, thumb_mime, thumb_data, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       id, product.sku, listing.name, listing.description, listing.category,
       product.priceMinor, product.currency, Number(product.active),
       product.image?.mime || null, product.image?.data || null, product.variantGroup || null,
-      product.variantLabel || null, product.stockQuantity ?? null, listing.id, now, now
+      product.variantLabel || null, product.stockQuantity ?? null, listing.id,
+      product.image ? product.thumb?.mime || null : null, product.image ? product.thumb?.data || null : null, now, now
       );
     } catch (error) {duplicateSku(error);}
     const hasOptions = Array.isArray(product.options) && product.options.length > 0;
@@ -176,8 +177,9 @@ async function patchProduct(database, id, input, { galleryChanging = false } = {
     values.push(key === 'active' ? Number(patch.active) : patch[key]);
   }
   if (Object.hasOwn(patch, 'image')) {
-    assignments.push('image_mime = ?', 'image_data = ?');
-    values.push(patch.image?.mime || null, patch.image?.data || null);
+    // A new image invalidates its old preview; the seller's browser sends a fresh one with it.
+    assignments.push('image_mime = ?', 'image_data = ?', 'thumb_mime = ?', 'thumb_data = ?');
+    values.push(patch.image?.mime || null, patch.image?.data || null, patch.thumb?.mime || null, patch.thumb?.data || null);
   }
   assignments.push('updated_at = ?');
   values.push(new Date(Math.max(Date.now(), Date.parse(existing.updatedAt) + 1)).toISOString(), id);
@@ -213,23 +215,49 @@ export async function getProduct(database, id, seller = false, mode = 'manual') 
   return await detailFields(database, productFromRow(row, seller), seller, mode);
 }
 
-export async function getProductImage(database, id, seller = false) {
-  const row = await database.get(`SELECT image_mime AS mime, image_data AS data, updated_at FROM product
+/* `thumb` asks for the small preview; products without one answer with the full image. */
+export async function getProductImage(database, id, seller = false, thumb = false) {
+  const row = await database.get(`SELECT image_mime AS mime, image_data AS data, thumb_mime, thumb_data, updated_at FROM product
     WHERE id = ? ${seller ? '' : 'AND active = 1'}`, id);
-  return row && { mime: row.mime, data: row.data, version: imageVersion(row.updated_at) };
+  if (!row) return row;
+  const small = thumb && row.thumb_data;
+  return { mime: small ? row.thumb_mime : row.mime, data: small ? row.thumb_data : row.data, version: imageVersion(row.updated_at) };
 }
 
-export async function getGalleryImage(database, productId, imageId, seller = false) {
-  const row = await database.get(`SELECT i.mime, i.data, i.created_at FROM product_gallery_image i
+export async function getGalleryImage(database, productId, imageId, seller = false, thumb = false) {
+  const row = await database.get(`SELECT i.mime, i.data, i.thumb_mime, i.thumb_data, i.created_at FROM product_gallery_image i
     JOIN product p ON p.id = i.product_id WHERE i.id = ? AND i.product_id = ? ${seller ? '' : `AND (p.active = 1 OR EXISTS
       (SELECT 1 FROM product s WHERE s.listing_id = p.listing_id AND s.active = 1))`}`,
   imageId, productId);
-  return row && { mime: row.mime, data: row.data, version: imageVersion(row.created_at) };
+  if (!row) return row;
+  const small = thumb && row.thumb_data;
+  return { mime: small ? row.thumb_mime : row.mime, data: small ? row.thumb_data : row.data, version: imageVersion(row.created_at) };
+}
+
+/* Stores a preview for an image that already exists (used to back-fill photos uploaded before previews existed). */
+export async function setProductThumbnail(database, id, thumbDataUrl) {
+  const thumb = decodeThumbnail(thumbDataUrl);
+  if (!thumb) throw new FieldError('thumbDataUrl', 'Send a preview image.');
+  return await database.transaction(async () => {
+    if (!await database.get('SELECT 1 AS found FROM product WHERE id = ? AND image_data IS NOT NULL', id)) throw new ApiError(404, 'NOT_FOUND', 'Product image not found.');
+    await database.run('UPDATE product SET thumb_mime = ?, thumb_data = ? WHERE id = ?', thumb.mime, thumb.data, id);
+    return { ok: true };
+  });
+}
+
+export async function setGalleryThumbnail(database, productId, imageId, thumbDataUrl) {
+  const thumb = decodeThumbnail(thumbDataUrl);
+  if (!thumb) throw new FieldError('thumbDataUrl', 'Send a preview image.');
+  return await database.transaction(async () => {
+    if (!await database.get('SELECT 1 AS found FROM product_gallery_image WHERE id = ? AND product_id = ?', imageId, productId)) throw new ApiError(404, 'NOT_FOUND', 'Image not found.');
+    await database.run('UPDATE product_gallery_image SET thumb_mime = ?, thumb_data = ? WHERE id = ? AND product_id = ?', thumb.mime, thumb.data, imageId, productId);
+    return { ok: true };
+  });
 }
 
 const sharedGalleryError = () => new ApiError(409, 'GALLERY_SHARED', 'The photo gallery is shared by all variants; edit it on the main variant.');
 
-export async function addGalleryImage(database, productId, imageDataUrl, mode = 'manual') {
+export async function addGalleryImage(database, productId, imageDataUrl, mode = 'manual', thumbDataUrl = null) {
   const image = decodeProductImage(imageDataUrl);
   if (!image) throw new FieldError('imageDataUrl', 'Choose an image.');
   return await database.transaction(async () => {
@@ -238,7 +266,7 @@ export async function addGalleryImage(database, productId, imageDataUrl, mode = 
     if (await galleryRole(database, { id: productId, listingId: product.listing_id }) === 'variant') throw sharedGalleryError();
     if (!product.image_mime) throw new FieldError('imageDataUrl', 'Add a main image first.');
     const current = await getProduct(database, productId, true, mode);
-    await saveProductGallery(database, productId, [...current.galleryItems.map((item) => ({ id: item.id })), { imageDataUrl }], current);
+    await saveProductGallery(database, productId, [...current.galleryItems.map((item) => ({ id: item.id })), thumbDataUrl ? { imageDataUrl, thumbDataUrl } : { imageDataUrl }], current);
     await database.run('UPDATE product SET updated_at = ? WHERE id = ?', new Date(Math.max(Date.now(), Date.parse(current.updatedAt) + 1)).toISOString(), productId);
     return await getProduct(database, productId, true, mode);
   });

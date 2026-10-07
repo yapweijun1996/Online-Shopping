@@ -61,7 +61,7 @@ CREATE TABLE "product" (
         image_mime TEXT,
         image_data BYTEA,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL, variant_group TEXT, variant_label TEXT, listing_id TEXT NOT NULL REFERENCES listing(id) ON DELETE RESTRICT, stock_quantity BIGINT
+        updated_at TEXT NOT NULL, variant_group TEXT, variant_label TEXT, listing_id TEXT NOT NULL REFERENCES listing(id) ON DELETE RESTRICT, thumb_mime TEXT CHECK (thumb_mime IS NULL OR thumb_mime IN ('image/png', 'image/jpeg', 'image/webp')), thumb_data BYTEA, stock_quantity BIGINT
         CHECK (stock_quantity IS NULL OR stock_quantity BETWEEN 0 AND 1000000),
         CHECK ((image_mime IS NULL AND image_data IS NULL) OR
                (image_mime IN ('image/png', 'image/jpeg', 'image/webp') AND image_data IS NOT NULL))
@@ -73,6 +73,8 @@ CREATE TABLE "product_gallery_image" (
         mime TEXT NOT NULL CHECK (mime IN ('image/png', 'image/jpeg', 'image/webp')),
         data BYTEA NOT NULL,
         created_at TEXT NOT NULL,
+        thumb_mime TEXT CHECK (thumb_mime IS NULL OR thumb_mime IN ('image/png', 'image/jpeg', 'image/webp')),
+        thumb_data BYTEA,
         UNIQUE(product_id, position)
       );
 CREATE TABLE order_sequence (
@@ -189,7 +191,7 @@ CREATE TABLE product_option (
 );
 CREATE INDEX product_option_value ON product_option(option_value_id);
 CREATE INDEX product_listing ON product(listing_id);
-INSERT INTO schema_meta VALUES (1, 19);
+INSERT INTO schema_meta VALUES (1, 20);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 INSERT INTO shop_setup(id, mode, shop_name) VALUES (1, NULL, 'Online Shopping');

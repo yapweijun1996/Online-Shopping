@@ -5,7 +5,7 @@ import { ready } from './db.js';
 import { ApiError, errorResponse, json, readJson, requireOrigin } from './http.js';
 import { SqlLimiter } from './limiter.js';
 import { createOrder, lookupOrderStatuses } from './orders.js';
-import { addGalleryImage, createProduct, deleteGalleryImage, getGalleryImage, getProduct, getProductImage, listProducts, updateProduct } from './products.js';
+import { addGalleryImage, createProduct, deleteGalleryImage, getGalleryImage, getProduct, getProductImage, listProducts, setGalleryThumbnail, setProductThumbnail, updateProduct } from './products.js';
 import { decideSellerOrder, getSellerOrder, listSellerOrders, pendingOrderSummary, withProductLinks } from './seller-orders.js';
 import { listAuditEvents } from './audit-log.js';
 import { OPTION_LIMITS } from './option-limits.js';
@@ -19,6 +19,7 @@ import { integrationCatalog } from '../public/shared/integration-catalog.js';
 
 const productIdPath = /^\/api\/v1\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
 const sellerProductIdPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
+const thumbnailPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/gallery\/([0-9a-f-]{36}))?\/thumbnail$/;
 const optionTypePath = /^\/api\/v1\/seller\/option-types(?:\/([0-9a-f-]{36})(?:(\/values)(?:\/([0-9a-f-]{36}))?)?)?$/;
 const productGalleryPath = /^\/api\/v1\/(seller\/)?products\/([0-9a-f-]{36})\/gallery\/([0-9a-f-]{36})$/;
 const sellerOrderIdPath = /^\/api\/v1\/seller\/orders\/([0-9a-f-]{36})(?:\/(confirm|reject|ship|deliver|cancel))?$/;
@@ -117,13 +118,13 @@ export async function createApi({ store, config, serveStatic = null }) {
     if (method === 'GET' && pathname === '/api/v1/products') return json(200, await listProducts(store, url.searchParams, false, config.shopMode));
     const galleryImage = productGalleryPath.exec(pathname);
     if (method === 'GET' && galleryImage && !galleryImage[1]) {
-      const value = await getGalleryImage(store, galleryImage[2], galleryImage[3]);
+      const value = await getGalleryImage(store, galleryImage[2], galleryImage[3], false, url.searchParams.get('size') === 'thumb');
       return image(value, Boolean(value) && url.searchParams.get('v') === value.version);
     }
     const publicProduct = productIdPath.exec(pathname);
     if (method === 'GET' && publicProduct) {
       if (publicProduct[2] === 'image') {
-        const value = await getProductImage(store, publicProduct[1]);
+        const value = await getProductImage(store, publicProduct[1], false, url.searchParams.get('size') === 'thumb');
         return image(value, Boolean(value) && url.searchParams.get('v') === value.version);
       }
       const product = await getProduct(store, publicProduct[1], false, config.shopMode);
@@ -262,10 +263,10 @@ export async function createApi({ store, config, serveStatic = null }) {
       return json(200, presentCatalogCopy(product, config.shopMode));
     }
     if (method === 'GET' && sellerProduct?.[2] === 'image') {
-      return image(await getProductImage(store, sellerProduct[1], true));
+      return image(await getProductImage(store, sellerProduct[1], true, url.searchParams.get('size') === 'thumb'));
     }
     if (galleryImage?.[1]) {
-      if (method === 'GET') return image(await getGalleryImage(store, galleryImage[2], galleryImage[3], true));
+      if (method === 'GET') return image(await getGalleryImage(store, galleryImage[2], galleryImage[3], true, url.searchParams.get('size') === 'thumb'));
       if (method === 'DELETE') {
         requireOrigin(request, expectedOrigin);
         requireCsrf(request, session);
@@ -276,11 +277,20 @@ export async function createApi({ store, config, serveStatic = null }) {
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
       const id = pathname.split('/')[5];
-      const body = await readJson(request, 750_000);
-      if (!body || Object.keys(body).length !== 1 || !Object.hasOwn(body, 'imageDataUrl')) {
+      const body = await readJson(request, 900_000);
+      const keys = body && typeof body === 'object' ? Object.keys(body) : [];
+      if (!Object.hasOwn(body || {}, 'imageDataUrl') || keys.some((key) => key !== 'imageDataUrl' && key !== 'thumbDataUrl')) {
         throw new FieldError('imageDataUrl', 'Choose an image.');
       }
-      return json(201, await addGalleryImage(store, id, body.imageDataUrl, config.shopMode));
+      return json(201, await addGalleryImage(store, id, body.imageDataUrl, config.shopMode, body.thumbDataUrl ?? null));
+    }
+    const thumbnail = thumbnailPath.exec(pathname);
+    if (method === 'PUT' && thumbnail) {
+      requireOrigin(request, expectedOrigin);
+      requireCsrf(request, session);
+      const body = await readJson(request, 200_000);
+      if (!body || Object.keys(body).length !== 1 || !Object.hasOwn(body, 'thumbDataUrl')) throw new FieldError('thumbDataUrl', 'Send a preview image.');
+      return json(200, thumbnail[2] ? await setGalleryThumbnail(store, thumbnail[1], thumbnail[2], body.thumbDataUrl) : await setProductThumbnail(store, thumbnail[1], body.thumbDataUrl));
     }
     if ((method === 'POST' && pathname === '/api/v1/seller/products') ||
         (method === 'PATCH' && sellerProduct && !sellerProduct[2])) {

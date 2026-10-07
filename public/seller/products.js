@@ -1,6 +1,7 @@
 import { formatMoney, t, translate } from '../shared/i18n.js';
 import { beginMutation } from '../shared/update-guard.js';
 import { revealImage } from '../shared/image-reveal.js';
+import { makeThumbnail, thumbUrl } from '../shared/image-thumb.js';
 import { inputFailure, priceToMinor, stockFromInput } from './product-fields.js';
 
 function readImage(file) {
@@ -383,7 +384,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       if (product.imageUrl) {
         const image = document.createElement('img');
         revealImage(image);
-        image.src = product.imageUrl;
+        image.src = thumbUrl(product.imageUrl);
         image.alt = product.name;
         card.append(image);
       } else {
@@ -747,10 +748,11 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     readingGallery = true; renderGallery(); find('#product-save').disabled = true; setError('');
     try {
       const data = await Promise.all(files.map(readImage));
+      const previews = await Promise.all(files.map(file => makeThumbnail(file)));
       if (!ownsRead()) return;
-      for (const imageDataUrl of data) {
-        if (!galleryImages.some(item => item.imageDataUrl === imageDataUrl)) galleryImages.push({ imageDataUrl, src: imageDataUrl });
-      }
+      data.forEach((imageDataUrl, index) => {
+        if (!galleryImages.some(item => item.imageDataUrl === imageDataUrl)) galleryImages.push({ imageDataUrl, src: imageDataUrl, thumbDataUrl: previews[index] });
+      });
     } catch { if (ownsRead()) setError('productError'); }
     finally {
       if (ownsRead()) {
@@ -798,12 +800,16 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       // Snapshot the initiating editor before image decoding yields to navigation.
       if (productId) {
         if (galleryEditable) {
-          payload.gallery = galleryImages.map(item => item.imageDataUrl ? { imageDataUrl: item.imageDataUrl } : { id: item.id });
+          payload.gallery = galleryImages.map(item => item.imageDataUrl ? { imageDataUrl: item.imageDataUrl, ...(item.thumbDataUrl ? { thumbDataUrl: item.thumbDataUrl } : {}) } : { id: item.id });
           payload.expectedUpdatedAt = expectedUpdatedAt;
         }
       }
       const file = form.elements.image.files[0];
-      if (file) payload.imageDataUrl = await readImage(file);
+      if (file) {
+        payload.imageDataUrl = await readImage(file);
+        const preview = await makeThumbnail(file);   // the browser makes the small copy that lists download
+        if (preview) payload.thumbDataUrl = preview;
+      }
       else if (pendingRemove) payload.imageDataUrl = null;
       if (!ownsRoute()) return;
       const saved = await api(productId ? 'PATCH' : 'POST', productId ? `/api/v1/seller/products/${productId}` : '/api/v1/seller/products', payload);
