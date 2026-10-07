@@ -400,3 +400,32 @@ test('seller order detail carries the document trail: SO, then SOC after confirm
     assert.equal(docs.find((doc) => doc.type === 'SALES_ORDER').state, 'ISSUED');
   } finally { await f.close(); }
 });
+
+test('the audit log lists every order event newest first, filtered by status, actor, order and date, and requires a seller session', async () => {
+  const f = await fixture();
+  try {
+    const session = await f.login();
+    const headers = { origin: f.origin, cookie: session.cookie, 'x-csrf-token': session.csrf };
+    const one = await f.submit(); const two = await f.submit();
+    const idOf = async (no) => (await f.app.database.get('SELECT id FROM shop_order WHERE order_no = ?', no)).id;
+    const act = async (no, action, body) => f.request('POST', `/api/v1/seller/orders/${await idOf(no)}/${action}`, body, headers);
+    assert.equal((await act(one.data.orderNo, 'confirm', { expectedRevision: 1 })).response.status, 200);
+    assert.equal((await act(two.data.orderNo, 'reject', { expectedRevision: 1, reason: 'Out of stock' })).response.status, 200);
+    const log = (query = '', cookie = session.cookie) => f.request('GET', `/api/v1/seller/audit-log${query}`, null, cookie ? { cookie } : {});
+
+    assert.equal((await log('', null)).response.status, 401, 'no session, no audit log');
+    const all = (await log()).data;
+    assert.deepEqual(all.items.map((e) => `${e.orderNo}:${e.status}`), [`${two.data.orderNo}:REJECTED`, `${one.data.orderNo}:CONFIRMED`, `${two.data.orderNo}:SUBMITTED`, `${one.data.orderNo}:SUBMITTED`], 'newest first');
+    const rejected = all.items[0];
+    assert.equal(rejected.reason, 'Out of stock'); assert.equal(rejected.actorType, 'SELLER'); assert.equal(rejected.actorId, f.config.username);
+    assert.equal(rejected.previousStatus, 'SUBMITTED'); assert.equal(rejected.orderStatus, 'REJECTED');
+    assert.equal((await log('?status=CONFIRMED,REJECTED')).data.items.length, 2);
+    assert.equal((await log('?actor=GUEST')).data.items.length, 2, 'the buyer submissions');
+    assert.equal((await log('?actor=SELLER')).data.items.length, 2);
+    assert.equal((await log(`?search=${one.data.orderNo}`)).data.items.length, 2);
+    assert.equal((await log('?from=2999-01-01T00:00:00.000Z')).data.items.length, 0);
+    assert.equal((await log('?to=2000-01-01T00:00:00.000Z')).data.items.length, 0);
+    assert.equal((await log('?limit=1')).data.nextOffset, 1);
+    for (const bad of ['?status=NOPE', '?actor=ROBOT', '?from=yesterday', '?limit=0']) assert.equal((await log(bad)).response.status, 400, bad);
+  } finally { await f.close(); }
+});

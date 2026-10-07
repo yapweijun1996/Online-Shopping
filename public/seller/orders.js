@@ -2,6 +2,7 @@ import { beginMutation } from '../shared/update-guard.js';
 import { containDialogFocus } from '../shared/modal.js';
 import { createOrderDocuments } from './order-documents.js';
 import { documentTitleKey } from './order-document-model.js';
+import { statusKey } from './order-status-label.js';
 import './trail-copy.js';
 import { formatDate, formatMoney, t, translate } from '../shared/i18n.js';
 
@@ -19,10 +20,6 @@ function actionButton(label, onClick, className = 'secondary-button') {
   return button;
 }
 
-function statusKey(status) {
-  // Seller wording: a new order is Pending, a confirmed order that is called off is Void.
-  return { SUBMITTED: 'sellerStatusSubmitted', CONFIRMED: 'statusConfirmed', REJECTED: 'statusRejected', SHIPPED: 'statusShipped', DELIVERED: 'statusDelivered', CANCELLED: 'sellerStatusCancelled' }[status] || 'orderStatus';
-}
 
 /* Sales Orders hold orders waiting for a decision (and rejected ones); once confirmed an order moves to
    Sales Order Confirmation, where it is shipped, delivered or voided. */

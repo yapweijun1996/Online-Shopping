@@ -7,7 +7,7 @@ const orderColumns = `id, order_no, buyer_name, buyer_phone, buyer_email, whatsa
   whatsapp_consent_at, whatsapp_consent_version, locale, status, revision, currency,
   total_minor, submitted_at, updated_at, tracking_carrier, tracking_no`;
 const queueColumns = 'id, order_no, buyer_name, status, revision, currency, total_minor, submitted_at, updated_at, tracking_carrier, tracking_no';
-const statuses = new Set(['SUBMITTED', 'CONFIRMED', 'REJECTED', 'SHIPPED', 'DELIVERED', 'CANCELLED']);
+export const statuses = new Set(['SUBMITTED', 'CONFIRMED', 'REJECTED', 'SHIPPED', 'DELIVERED', 'CANCELLED']);
 // Each seller action moves an order from one status to the next; cancelling is possible until it ships.
 const transitions = {
   confirm: { from: 'SUBMITTED', to: 'CONFIRMED' },
@@ -17,7 +17,7 @@ const transitions = {
   cancel: { from: 'CONFIRMED', to: 'CANCELLED' },
 };
 
-function listNumber(params, key, fallback, maximum) {
+export function listNumber(params, key, fallback, maximum) {
   const value = params.get(key);
   if (value === null) return fallback;
   if (!/^(0|[1-9]\d*)$/.test(value) || Number(value) > maximum) {

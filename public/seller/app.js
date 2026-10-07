@@ -6,6 +6,7 @@ import { APP_VERSION } from './version.js';
 import { mountDemoEntry } from '../shared/demo-entry.js';
 import { createOrderAlerts } from './alerts.js';
 import { snapshotCount } from './studio-copy.js';
+import { mountAudit } from './audit.js';
 import { mountProducts } from './products.js';
 import { mountOrders } from './orders.js';
 import { mountCategories, mountCompanySettings } from './settings.js';
@@ -51,7 +52,7 @@ let updateView = null;
 let updateIdentity = '';
 const sessionHintKey = 'online-shopping-seller-session-hint';
 mountTabIcon(window.sellerPalette);
-const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'confirmations', 'categories', 'options', 'company']);
+const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'confirmations', 'audit', 'categories', 'options', 'company']);
 const PRODUCT_ROUTE = /^products\/(?:new|[0-9a-f-]{36})$/;
 const ORDER_ROUTE = /^(?:orders|confirmations)\/[0-9a-f-]{36}$/;
 
@@ -72,7 +73,7 @@ function applyRoute() {
 }
 
 function activePage() {
-  return currentView === 'products' ? productsPage : currentView === 'categories' || currentView === 'options' || currentView === 'company' ? settingsPage : currentView === 'orders' || currentView === 'confirmations' ? ordersPage : null;
+  return currentView === 'products' ? productsPage : currentView === 'categories' || currentView === 'options' || currentView === 'company' || currentView === 'audit' ? settingsPage : currentView === 'orders' || currentView === 'confirmations' ? ordersPage : null;
 }
 
 function hasUnsavedChanges() { return activePage()?.hasUnsavedChanges?.() === true; }
@@ -230,7 +231,7 @@ function renderView() {
   });
   const titleKey = currentView === 'products' && currentRoute !== 'products'
     ? currentRoute === 'products/new' ? 'addProduct' : 'editProduct'
-    : { dashboard: 'dashboard', products: 'products', orders: 'salesOrders', confirmations: 'orderReview', categories: 'categoryCodes', options: 'optionsNav', company: 'companySettings' }[currentView];
+    : { dashboard: 'dashboard', products: 'products', orders: 'salesOrders', confirmations: 'orderReview', audit: 'auditLog', categories: 'categoryCodes', options: 'optionsNav', company: 'companySettings' }[currentView];
   byId('page-title').dataset.i18n = titleKey;
   byId('page-title').textContent = t(titleKey);
   const content = byId('workspace-content');
@@ -275,6 +276,10 @@ function renderView() {
     return;
   }
   productsPage = null;
+  if (currentView === 'audit') {
+    settingsPage = mountAudit(content, { onUnauthorized: () => showLogin('authError') });
+    return;
+  }
   if (currentView === 'categories') {
     settingsPage = mountCategories(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError') });
     return;
