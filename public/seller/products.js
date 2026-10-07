@@ -304,6 +304,43 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     }
   }
 
+  const variantsPanel = find('#product-variants');
+  /* The variants of the product being edited: one line each, the one on screen marked, the others one click away. */
+  function renderVariants(detail) {
+    const variants = detail?.variants || [];
+    variantsPanel.hidden = variants.length < 2;
+    const rows = find('#product-variants-list');
+    rows.replaceChildren();
+    if (variants.length < 2) return;
+    for (const variant of variants) {
+      const row = document.createElement('li');
+      row.className = `product-variant-row${variant.id === detail.id ? ' current' : ''}`;
+      const name = document.createElement('span');
+      name.className = 'product-variant-name';
+      name.textContent = variant.label || variant.sku;
+      const code = document.createElement('span');
+      code.className = 'product-variant-sku';
+      code.textContent = variant.sku;
+      const price = document.createElement('span');
+      price.textContent = formatMoney(variant.priceMinor, variant.currency);
+      const stock = document.createElement('span');
+      stock.textContent = variant.stockQuantity === null ? t('unlimitedStock') : variant.stockQuantity === 0 ? t('outOfStock') : String(variant.stockQuantity);
+      const state = document.createElement('span');
+      state.className = `product-status-chip${variant.active ? '' : ' inactive'}`;
+      state.textContent = t(variant.active ? 'active' : 'inactive');
+      row.append(name, code, price, stock, state);
+      if (variant.id === detail.id) {
+        const here = document.createElement('span');
+        here.className = 'product-variant-here';
+        here.textContent = t('variantEditing');
+        row.append(here);
+      } else {
+        row.append(button(t('editProduct'), () => onNavigate(`products/${variant.id}`), `${t('editProduct')}: ${variant.label || variant.sku} (${variant.sku})`));
+      }
+      rows.append(row);
+    }
+  }
+
   function renderList() {
     list.replaceChildren();
     for (const product of items) {
@@ -332,19 +369,26 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       identity.className = 'product-row-identity';
       detail.textContent = product.category;
       identity.append(title, detail);
+      const grouped = product.variantCount > 1;
       const sku = document.createElement('p');
       sku.className = 'product-row-sku';
-      sku.textContent = product.sku;
+      sku.textContent = grouped ? t('variantsCountFormat').replace('{count}', product.variantCount) : product.sku;
       const price = document.createElement('p');
       price.className = 'product-card-price';
-      price.textContent = formatMoney(product.priceMinor, product.currency);
+      price.textContent = grouped && product.priceFromMinor !== product.priceToMinor
+        ? `${formatMoney(product.priceFromMinor, product.currency)} – ${formatMoney(product.priceToMinor, product.currency)}`
+        : formatMoney(grouped ? product.priceFromMinor : product.priceMinor, product.currency);
       const chip = document.createElement('span');
-      chip.className = `product-status-chip${product.active ? '' : ' inactive'}`;
-      chip.textContent = t(product.active ? 'active' : 'inactive');
+      const activeNow = grouped ? product.activeCount > 0 : product.active;
+      chip.className = `product-status-chip${activeNow ? '' : ' inactive'}`;
+      chip.textContent = grouped && product.activeCount > 0 && product.activeCount < product.variantCount
+        ? t('variantsActiveFormat').replace('{active}', product.activeCount).replace('{count}', product.variantCount)
+        : t(activeNow ? 'active' : 'inactive');
       const stock = document.createElement('p');
       stock.className = 'product-card-identity';
-      stock.textContent = product.stockQuantity === null ? `${t('stockLabel')}: ${t('unlimitedStock')}`
-        : product.stockQuantity === 0 ? t('outOfStock') : `${t('stockLabel')}: ${product.stockQuantity}`;
+      const stockNow = grouped ? product.stockTotal : product.stockQuantity;
+      stock.textContent = stockNow === null ? `${t('stockLabel')}: ${t('unlimitedStock')}`
+        : stockNow === 0 ? t('outOfStock') : `${t('stockLabel')}: ${stockNow}`;
       main.append(identity, sku, price, stock, chip);
       const actions = document.createElement('div');
       actions.className = 'product-card-actions';
@@ -353,7 +397,9 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
         `${t(product.active ? 'deactivateProduct' : 'activateProduct')}: ${product.name} (${product.sku})`);
       toggleButton.dataset.action = 'toggle';
       toggleButton.disabled = pendingChanges.has(product.id);
-      actions.append(button(t('editProduct'), () => onNavigate(`products/${product.id}`), `${t('editProduct')}: ${product.name} (${product.sku})`), toggleButton);
+      // A product with several variants is switched on or off per variant, inside the product.
+      actions.append(button(t('editProduct'), () => onNavigate(`products/${product.id}`), `${t('editProduct')}: ${product.name} (${product.sku})`));
+      if (!grouped) actions.append(toggleButton);
       card.append(main, actions);
       const undo = undoStates.get(product.id);
       if (undo && undo.appliedActive === product.active) {
@@ -478,13 +524,16 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     }
     if (detailLoaded) {
       acceptGallery(product);
+      renderVariants(product);
       return;
     }
+    renderVariants(null);
     try {
       const detail = await api('GET', `/api/v1/seller/products/${product.id}`);
       if (!isCurrent() || editingId !== product.id || sequence !== editorLoadSequence) return;
       if (detail.updatedAt !== product.updatedAt) { setError('productChangedReopen'); return; }
       acceptGallery(detail, { capture: false });
+      renderVariants(detail);
     } catch { if (isCurrent() && editingId === product.id && sequence === editorLoadSequence) setError('productError'); }
   }
 

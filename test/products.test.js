@@ -278,7 +278,7 @@ test('schema version one upgrades without losing the provisioned seller', async 
   }
 });
 
-test('the public list shows one card per variant group (cheapest in-stock variant, group size, price spread); the seller list keeps every SKU', async () => {
+test('the public list shows one card per variant group (cheapest in-stock variant, group size, price spread); the seller list has one row per listing with totals', async () => {
   const store = await openDatabase(':memory:');
   try {
     await createCategory(store, { code: 'WEAR', label: 'Wear' });
@@ -300,7 +300,13 @@ test('the public list shows one card per variant group (cheapest in-stock varian
     assert.equal(same.variantCount, 2); assert.equal(same.priceVaries, false);
     assert.equal(shop.find((p) => p.sku === 'MUG').variantCount, 1);
     assert.deepEqual((await list('search=TEE-L')).map((p) => p.sku), ['TEE-L'], 'a search finds a variant by its own SKU');
-    assert.equal((await list('', true)).length, 7, 'the seller list keeps every SKU');
+    const rows = await list('', true);
+    assert.equal(rows.length, 3, 'the seller list has one row per listing (TEE, MUG, SAME), inactive variants included in the counts');
+    const teeRow = rows.find((p) => p.variantGroup === 'TEE');
+    assert.deepEqual([teeRow.variantCount, teeRow.activeCount, teeRow.priceFromMinor, teeRow.priceToMinor, teeRow.stockTotal], [4, 3, 100, 1600, null],
+      'inactive variants count but are not active; unlimited stock on any variant makes the total unlimited');
+    assert.ok(['TEE-S', 'TEE-M', 'TEE-L', 'GONE'].includes(teeRow.sku));
+    assert.deepEqual((await list('search=TEE-L', true)).map((p) => [p.sku, p.variantCount]), [['TEE-L', 4]], 'a seller search finds the listing by any variant SKU');
     assert.equal((await list('limit=2')).length, 2);
     const page = await listProducts(store, new URLSearchParams('limit=2'), false);
     assert.notEqual(page.nextOffset, null);

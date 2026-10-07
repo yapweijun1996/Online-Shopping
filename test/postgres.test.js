@@ -209,7 +209,10 @@ test('PostgreSQL public list collapses variant groups to one card with the group
   const tee = shop.find(p => p.sku === 'TEE-M');
   assert.deepEqual([tee.variantCount, tee.priceVaries, tee.priceMinor], [3, true, 1400]);
   assert.deepEqual((await listProducts(store, new URLSearchParams('search=TEE-L'), false)).items.map(p => p.sku), ['TEE-L']);
-  assert.equal((await listProducts(store, new URLSearchParams(''), true)).items.length, 4);
+  const sellerRows = (await listProducts(store, new URLSearchParams(''), true)).items;
+  assert.equal(sellerRows.length, 2, 'the seller list has one row per listing');
+  const teeRow = sellerRows.find(p => p.variantGroup === 'TEE');
+  assert.deepEqual([teeRow.variantCount, teeRow.activeCount, teeRow.priceFromMinor, teeRow.priceToMinor, teeRow.stockTotal], [3, 3, 1200, 1600, null]);
 });
 
 test('PostgreSQL schema 17 upgrades into listings, keeping every product id and order line', {skip:!base}, async t => {
