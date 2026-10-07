@@ -1,5 +1,6 @@
 import { formatMoney, t, translate } from '../shared/i18n.js';
 import { beginMutation } from '../shared/update-guard.js';
+import { revealImage } from '../shared/image-reveal.js';
 import { inputFailure, priceToMinor, stockFromInput } from './product-fields.js';
 
 function readImage(file) {
@@ -207,7 +208,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     imagePanel.hidden = state === 'none';
     preview.hidden = !source;
     preview.alt = `${form.elements.name.value}: ${t('currentImage')}`;
-    if (source) preview.src = source;
+    if (source) { revealImage(preview); preview.src = source; }
     else preview.removeAttribute('src');
     imageStatus.dataset.i18n = { current: 'currentImage', replacement: 'newImage', removed: 'imagePendingRemoval' }[state] || '';
     imageStatus.textContent = imageStatus.dataset.i18n ? t(imageStatus.dataset.i18n) : '';
@@ -237,6 +238,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       const item = document.createElement('div');
       item.className = 'product-gallery-item'; item.dataset.imageId = entry.id || 'new';
       const photo = document.createElement('img');
+      revealImage(photo);
       photo.src = entry.src;
       photo.alt = `${form.elements.name.value}: ${t('gallery')} ${index + 1}`;
       const label = document.createElement('p'); label.textContent = `${index + 1} · ${t(index === 0 ? 'primaryPhoto' : 'gallery')}`;
@@ -380,6 +382,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       card.dataset.productId = product.id;
       if (product.imageUrl) {
         const image = document.createElement('img');
+        revealImage(image);
         image.src = product.imageUrl;
         image.alt = product.name;
         card.append(image);
