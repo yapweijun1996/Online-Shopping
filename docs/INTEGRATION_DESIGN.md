@@ -7,7 +7,7 @@ Facts below are marked **[repo]** (checked in this repository), **[docs]** (take
 ## 0. Owner decisions recorded (2026-10-07)
 
 - **Tenancy:** one stack per tenant, each tenant with its **own PostgreSQL database** (option A in section 3).
-- **Schema 19, secrets (write-only, encrypted, verified on save), Ninja Van flow, WhatsApp Cloud API with approved templates and per-order consent:** approved as written.
+- **Schema 20, secrets (write-only, encrypted, verified on save), Ninja Van flow, WhatsApp Cloud API with approved templates and per-order consent:** approved as written.
 - **Shopee Express:** not integrated; manual tracking entry now, an aggregator later if wanted.
 - **First messages:** order submitted, order confirmed or rejected, order shipped.
 - **WhatsApp QR:** approved for the sample site **and open to live clients**, provided the client is told the risk and accepts it (section 6.4 is updated accordingly).
@@ -48,7 +48,7 @@ Either way, path URLs such as `shop.gmb01.xyz/abc/` need the frontend to work un
 
 **Recommendation: A.** It keeps the data model below simple (no tenant column), matches today's code, and the sample site can remain its own stack. This design is written for A; B would add a `shop_id` to every table in section 4.
 
-## 4. Data model (schema 19; schema 18 is the product listings change)
+## 4. Data model (schema 20; schemas 18 and 19 are the product listings and shared gallery)
 
 All new tables in one migration so only one protected-file change is needed.
 
@@ -146,7 +146,7 @@ No public contract **[docs]**. Plan: do not integrate. Offer the existing manual
 
 Protected files (`compose.production.yaml`, `deploy/cloudflared.yml`, `deploy/init-postgres.sh`, `src/postgres/schema.sql`, `src/postgres-db.js`) make the updater stop at `manual_migration_required` **[repo: `deploy/auto-update.py`]**. This design needs them exactly once:
 
-- **Release P (platform, protected files):** schema 19 migration and grants, master-key secret and its compose wiring, webhook route in the Caddyfile, and (sample site only) the QR service.
+- **Release P (platform, protected files):** schema 20 migration and grants, master-key secret and its compose wiring, webhook route in the Caddyfile, and (sample site only) the QR service.
 - **Releases F1…Fn (features, no protected files):** Ninja Van, WhatsApp Cloud, templates, UI. These auto-deploy like every PR so far.
 
 How to pass the gate for Release P (decision 2):

@@ -1,6 +1,6 @@
 # Product + variants (one listing, many variants)
 
-Status: stage 1 (schema 18: `listing` table, `product.listing_id`, shared-field sync, migration) is implemented in `src/listings.js`; the gallery sharing and both UIs are not. Needs the updater to apply schema upgrades first (schema.sql is a protected file).
+Status: schema 18 (`listing` table, `product.listing_id`, shared-field sync), the buyer and seller views and the shared gallery on the server (schema 19) are implemented; the seller screens for the shared gallery and colour photos are not. Needs the updater to apply schema upgrades first (schema.sql is a protected file).
 
 ## Goal
 
@@ -40,8 +40,13 @@ Rules:
 - `listing.name/description/category/translations` are the source of truth. The same columns on `product` stay
   (queries and order snapshots read them) and are rewritten from the listing inside the same transaction whenever the
   listing changes. Nothing else writes them.
-- Stage 1 leaves galleries on each product row. Sharing one gallery across a listing (stored against its primary
-  product, with a variant's own main image as the colour photo) is a later stage, together with removing the copies.
+- The gallery is shared by the listing (schema 19). It is stored against the listing's first variant (the "holder",
+  oldest by creation time) and holds uploaded images only, never a variant's main photo, so replacing a colour's photo
+  cannot change the shared photos or another colour. A variant shows its own main photo first unless that photo is
+  already in the gallery. Only the holder edits the shared gallery; a gallery sent with a variant edit is ignored and
+  adding or deleting photos on a variant answers `GALLERY_SHARED`. Shared photos are public while any variant of the
+  listing is on sale. The schema 19 upgrade moves the holder's main photo into the gallery as an uploaded copy and
+  deletes the per-variant copies of shared photos.
 - `listing.code` holds the variant group name, so `variant_group` and `listing` agree; a product with no group has a
   listing with a NULL code. A variant joining a group takes the listing's title, description and category, and a listing
   left without variants is deleted.
@@ -52,7 +57,7 @@ Rules:
 1. Create `listing`; one listing per distinct `variant_group`, one per product with no group. Copy shared fields from
    the group's primary product (the row whose SKU equals the group name, else the oldest).
 2. Set `product.listing_id`.
-3. (Later stage) remove the gallery copies of non-primary variants once the shared gallery exists.
+3. Schema 19 (data only): shared gallery as above.
 4. Bump the schema version; both the SQLite migration (`src/db.js`) and `schema.sql` + `upgrade.js` are updated and the
    same fixture is migrated in the schema-compatibility tests, including historical orders, snapshots and stock holds.
 
@@ -71,7 +76,7 @@ Rules:
 4. Seller UI: one row per listing, variants edited inside it.
 
 PR 2 must not merge before PR 1 is deployed and verified, otherwise the updater stops at `manual_migration_required`.
-Integration tables (planned schema 18 in `INTEGRATION_DESIGN.md`) move to schema 19.
+Integration tables (planned schema 18 in `INTEGRATION_DESIGN.md`) move to schema 20.
 
 ## Not covered
 

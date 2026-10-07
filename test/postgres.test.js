@@ -104,7 +104,7 @@ test('PostgreSQL unavailable database fails readiness without leaking credential
 });
 
 // Real PostgreSQL fixtures, independent from the historical synchronous SQL mock suite.
-for (const version of [10, 11, 12, 13, 14, 15, 16]) test(`PostgreSQL physical schema${version} upgrades explicitly to18, preserves bytes and supports gallery writes`, {skip:!base}, async t => {
+for (const version of [10, 11, 12, 13, 14, 15, 16]) test(`PostgreSQL physical schema${version} upgrades explicitly to19, preserves bytes and supports gallery writes`, {skip:!base}, async t => {
   const url = await database(t), store = openPostgresStore(url);
   t.shoppingClosers.push(() => store.close());
   const {postgresSchema12Sql} = await import('../deploy/postgres/schema12.js');
@@ -125,7 +125,7 @@ for (const version of [10, 11, 12, 13, 14, 15, 16]) test(`PostgreSQL physical sc
   assert.equal(await store.schemaVersion(),version);
   assert.deepEqual(await store.get('SELECT * FROM product'),original);
   const upgraded = await openPostgresDatabase(url,{allowUpgrade:true}); t.shoppingClosers.push(()=>upgraded.close());
-  assert.equal(await upgraded.schemaVersion(),18);
+  assert.equal(await upgraded.schemaVersion(),19);
   assert.deepEqual((await upgraded.get('SELECT image_data FROM product')).image_data,bytes);
   const {getProduct,updateProduct} = await import('../src/products.js');
   const before = await getProduct(upgraded,'synthetic-preserved',true);
@@ -229,7 +229,7 @@ test('PostgreSQL schema 17 upgrades into listings, keeping every product id and 
   await store.exec('ALTER TABLE product ALTER COLUMN listing_id DROP NOT NULL; UPDATE product SET listing_id = NULL; DELETE FROM listing');
   await store.setSchemaVersion(17);
   const upgraded = await openPostgresDatabase(url, { allowUpgrade: true }); t.shoppingClosers.push(()=>upgraded.close());
-  assert.equal(await upgraded.schemaVersion(), 18);
+  assert.equal(await upgraded.schemaVersion(), 19);
   assert.deepEqual(await upgraded.all('SELECT id, sku, name, price_minor, stock_quantity FROM product ORDER BY id'), before);
   assert.equal((await upgraded.get('SELECT COUNT(*)::int AS n FROM listing')).n, 2);
   assert.equal((await getProduct(upgraded, tee.id, true)).listingId, (await getProduct(upgraded, teeM.id, true)).listingId);
@@ -237,4 +237,29 @@ test('PostgreSQL schema 17 upgrades into listings, keeping every product id and 
   await assert.rejects(upgraded.run("UPDATE product SET listing_id = NULL WHERE id = ?", mug.id), /null value|not-null/i);
   assert.ok(order);
   assert.equal((await upgraded.get('SELECT COUNT(*)::int AS n FROM order_item WHERE product_id = ?', teeM.id)).n, 1);
+});
+
+test('PostgreSQL schema 18 upgrades to one shared gallery per listing and drops the per-colour copies', {skip:!base}, async t => {
+  const url = await database(t);
+  const store = await openPostgresDatabase(url); t.shoppingClosers.push(()=>store.close());
+  await createCategory(store, { code: 'WEAR', label: 'Wear' });
+  const png = readFileSync(new URL('../public/shop/icons/icon-192.png',import.meta.url));
+  const photo = label => 'data:image/png;base64,' + Buffer.concat([png, Buffer.from(label)]).toString('base64');
+  const make = (sku, label) => createProduct(store, { sku, name: 'Tee', description: 'Soft', category: 'WEAR', priceMinor: 1200, currency: 'MYR', active: true, imageDataUrl: photo(label), variantGroup: 'TEE', variantLabel: sku });
+  const white = await make('TEE-WHITE', 'white'), black = await make('TEE-BLACK', 'black');
+  const extra = Buffer.concat([png, Buffer.from('extra')]);
+  await store.run('DELETE FROM product_gallery_image');
+  for (const [index, product] of [white, black].entries()) {
+    await store.run('INSERT INTO product_gallery_image(id, product_id, position, mime, data, created_at) VALUES (?, ?, 1, ?, ?, ?)', `copy-${index}`, product.id, 'image/png', extra, new Date().toISOString());
+    await store.run('UPDATE product SET gallery_layout_json = ? WHERE id = ?', JSON.stringify(['main', `copy-${index}`]), product.id);
+  }
+  await store.setSchemaVersion(18);
+  const upgraded = await openPostgresDatabase(url, { allowUpgrade: true }); t.shoppingClosers.push(()=>upgraded.close());
+  assert.equal(await upgraded.schemaVersion(), 19);
+  assert.equal((await upgraded.get('SELECT COUNT(*)::int AS n FROM product_gallery_image WHERE product_id = ?', black.id)).n, 0);
+  assert.equal((await upgraded.get('SELECT gallery_layout_json FROM product WHERE id = ?', black.id)).gallery_layout_json, null);
+  const shown = await getProduct(upgraded, black.id, true), holder = await getProduct(upgraded, white.id, true);
+  assert.equal(shown.galleryItems[0].id, 'main');
+  assert.deepEqual(shown.galleryItems.filter(item => item.shared).map(item => item.id), holder.galleryItems.filter(item => item.shared).map(item => item.id));
+  assert.equal(holder.galleryItems.filter(item => item.shared).length, 2);
 });

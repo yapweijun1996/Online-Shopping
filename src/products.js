@@ -8,7 +8,7 @@ import { presentCatalogCopy } from './catalog-copy.js';
 import { groupUsesOptions, loadProductOptions, optionAxes, optionError, setProductOptions } from './options.js';
 import { listingFor, moveToListing, syncListing } from './listings.js';
 import { reservedQuantitySql } from './stock-reservation.js';
-import { productCover, productGallery, requireGalleryRevision, saveProductGallery } from './product-gallery.js';
+import { galleryRole, productCover, productGallery, requireGalleryRevision, saveProductGallery, shareListingGallery } from './product-gallery.js';
 
 const columns = () => `p.id, p.sku, p.name, p.description, p.category AS category_code,
   c.label AS category, p.price_minor, p.currency, p.active, p.image_mime, p.variant_group, p.variant_label, p.stock_quantity, p.listing_id,
@@ -87,7 +87,10 @@ export async function createProduct(database, input) {
     await requireActiveCategory(database, product.category);
     await validateVariantGroup(database, product);
     const id = randomUUID();
-    const now = new Date().toISOString();
+    // Creation times in a listing strictly increase: the oldest variant holds the shared gallery and represents the listing.
+    const latest = product.variantGroup && await database.get(`SELECT MAX(p.created_at) AS last FROM product p JOIN listing l
+      ON l.id = p.listing_id WHERE l.code = ?`, product.variantGroup);
+    const now = new Date(Math.max(Date.now(), latest?.last ? Date.parse(latest.last) + 1 : 0)).toISOString();
     // Variants share their listing's title, description and category; the first product of a group defines them.
     const listing = await listingFor(database, product, now);
     try {
@@ -106,6 +109,7 @@ export async function createProduct(database, input) {
     else if (product.variantGroup && await groupUsesOptions(database, product.variantGroup, id)) {
       throw optionError('OPTIONS_REQUIRED', 'This variant group is described by option types; choose its options.');
     }
+    await shareListingGallery(database, listing.id);
     return await getProduct(database, id, true);
   });
 }
@@ -114,8 +118,15 @@ export async function updateProduct(database, id, input, mode = 'manual') {
   return await database.transaction(async () => {
     const existing = await getProduct(database, id, true, mode);
     if (!existing) return null;
-    const hasGallery = input && Object.hasOwn(input, 'gallery');
+    // A variant of a multi-product listing shows the shared gallery; only the holder edits it, so a gallery sent
+    // along with a variant edit is ignored and can never change the shared photos.
+    const role = await galleryRole(database, existing);
     let patch = input;
+    if (role === 'variant' && input && Object.hasOwn(input, 'gallery')) {
+      const { gallery, expectedUpdatedAt, ...metadata } = input;
+      patch = input = Object.keys(metadata).length ? metadata : { name: existing.name };
+    }
+    const hasGallery = input && Object.hasOwn(input, 'gallery');
     if (hasGallery) {
       requireGalleryRevision(existing, input.expectedUpdatedAt);
       const { gallery, expectedUpdatedAt, ...metadata } = input;
@@ -125,7 +136,7 @@ export async function updateProduct(database, id, input, mode = 'manual') {
     }
     await patchProduct(database, id, patch, { galleryChanging: hasGallery });
     if (hasGallery) await saveProductGallery(database, id, input.gallery, existing);else
-    if (input.imageDataUrl && !existing.galleryItems.some((item) => item.id === 'main')) {
+    if (role === 'single' && input.imageDataUrl && !existing.galleryItems.some((item) => item.id === 'main')) {
       // A legacy image-only replacement must become visible. Keep any explicitly
       // selected primary/order, append the restored main, and reject overflow
       // atomically rather than accepting an invisible replacement.
@@ -177,7 +188,8 @@ async function patchProduct(database, id, input, { galleryChanging = false } = {
   const now = new Date().toISOString();
   if (Object.hasOwn(patch, 'variantGroup') && (patch.variantGroup || null) !== (existing.variantGroup || null)) {
     const merged = { ...existing, ...patch, category: patch.category || existing.categoryCode };
-    await moveToListing(database, id, existing.listingId, merged, now);
+    const listing = await moveToListing(database, id, existing.listingId, merged, now);
+    await shareListingGallery(database, listing.id);
   } else {
     await syncListing(database, existing.listingId, patch, now);
   }
@@ -209,17 +221,21 @@ export async function getProductImage(database, id, seller = false) {
 
 export async function getGalleryImage(database, productId, imageId, seller = false) {
   const row = await database.get(`SELECT i.mime, i.data, i.created_at FROM product_gallery_image i
-    JOIN product p ON p.id = i.product_id WHERE i.id = ? AND i.product_id = ? ${seller ? '' : 'AND p.active = 1'}`,
+    JOIN product p ON p.id = i.product_id WHERE i.id = ? AND i.product_id = ? ${seller ? '' : `AND (p.active = 1 OR EXISTS
+      (SELECT 1 FROM product s WHERE s.listing_id = p.listing_id AND s.active = 1))`}`,
   imageId, productId);
   return row && { mime: row.mime, data: row.data, version: imageVersion(row.created_at) };
 }
+
+const sharedGalleryError = () => new ApiError(409, 'GALLERY_SHARED', 'The photo gallery is shared by all variants; edit it on the main variant.');
 
 export async function addGalleryImage(database, productId, imageDataUrl, mode = 'manual') {
   const image = decodeProductImage(imageDataUrl);
   if (!image) throw new FieldError('imageDataUrl', 'Choose an image.');
   return await database.transaction(async () => {
-    const product = await database.get('SELECT image_mime FROM product WHERE id = ?', productId);
+    const product = await database.get('SELECT image_mime, listing_id FROM product WHERE id = ?', productId);
     if (!product) throw new ApiError(404, 'NOT_FOUND', 'Product not found.');
+    if (await galleryRole(database, { id: productId, listingId: product.listing_id }) === 'variant') throw sharedGalleryError();
     if (!product.image_mime) throw new FieldError('imageDataUrl', 'Add a main image first.');
     const current = await getProduct(database, productId, true, mode);
     await saveProductGallery(database, productId, [...current.galleryItems.map((item) => ({ id: item.id })), { imageDataUrl }], current);

@@ -75,7 +75,7 @@ test('schema 17 upgrades into listings: one per variant group and per ungrouped 
     await store.exec('PRAGMA foreign_keys = ON');
     await store.setSchemaVersion(17);
     await migrateStore(store);
-    assert.equal(await store.schemaVersion(), 18);
+    assert.equal(await store.schemaVersion(), 19);
     assert.deepEqual(await store.all('SELECT id, sku, name, price_minor FROM product ORDER BY id'), before);
     const listings = await listingsOf(store);
     assert.equal(listings.length, 2);
