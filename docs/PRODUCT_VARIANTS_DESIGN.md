@@ -1,6 +1,8 @@
 # Product + variants (one listing, many variants)
 
-Status: schema 18 (`listing` table, `product.listing_id`, shared-field sync), the buyer and seller views and the shared gallery on the server (schema 19) are implemented; the seller screens for the shared gallery and colour photos are not. Needs the updater to apply schema upgrades first (schema.sql is a protected file).
+Status: implemented and live. Schema 18 (`listing` table, `product.listing_id`, shared-field sync), schema 19 (shared gallery, data only), the buyer view (no SKU, option price range, in-place option switching, per-colour photo first), the seller view (one row per listing, Variants panel with add and activate/deactivate, shared gallery edited on the main variant, colour photo per variant) and the schema upgrades applied by the updater (`docs/AUTO_DEPLOY.md`).
+
+Known limits: the gallery holder is the oldest variant, so moving the holder out of its group takes the shared gallery with it; a variant's own gallery uploads from before schema 19 that were not byte copies of shared photos stay in the database but are not shown; the Product options page is still where option types and values are defined; the sample colour photos are programmatic recolourings of the sample product photos, not photographs.
 
 ## Goal
 
