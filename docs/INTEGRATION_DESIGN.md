@@ -52,7 +52,7 @@ Either way, path URLs such as `shop.gmb01.xyz/abc/` need the frontend to work un
 
 ## 4. Data model (schema 21; schemas 18 to 20 are the product listings, shared gallery and image previews)
 
-All new tables in one migration so only one protected-file change is needed.
+Implemented in schema 21 for WhatsApp: `integration_connection`, `integration_audit`, `webhook_receipt`, `message_outbox`, `message_inbound` (the courier tables `shipment` and `shipment_event` follow with the Ninja Van plan). Schema upgrades no longer need a protected-file change, so the tables are added by the updater.
 
 ```
 integration_connection

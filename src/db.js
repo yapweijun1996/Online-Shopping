@@ -3,7 +3,7 @@ import { migrateLegacyVariants } from './options.js';
 import { migrateListings } from './listings.js';
 import { migrateSharedGalleries } from './product-gallery.js';
 
-export const SCHEMA_VERSION = 20;
+export const SCHEMA_VERSION = 21;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -59,6 +59,75 @@ const listingTableSql = `
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   ) STRICT;`;
+
+/* Provider connections, audit trail, webhook dedupe and WhatsApp message queues (see docs/WHATSAPP_IMPLEMENTATION_PLAN.md). */
+const integrationTablesSql = `
+CREATE TABLE IF NOT EXISTS integration_connection (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL CHECK (provider IN ('NINJAVAN', 'WHATSAPP_CLOUD', 'WHATSAPP_QR')),
+  environment TEXT NOT NULL CHECK (environment IN ('SANDBOX', 'PRODUCTION')),
+  status TEXT NOT NULL DEFAULT 'NOT_CONFIGURED' CHECK (status IN ('NOT_CONFIGURED', 'CONNECTED', 'ERROR', 'DISABLED')),
+  public_config TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(public_config)),
+  secret_ciphertext BLOB,
+  secret_key_id TEXT CHECK (secret_key_id IS NULL OR length(secret_key_id) BETWEEN 1 AND 32),
+  secret_hint TEXT CHECK (secret_hint IS NULL OR length(secret_hint) <= 12),
+  last_checked_at TEXT,
+  last_error TEXT CHECK (last_error IS NULL OR length(last_error) <= 500),
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  UNIQUE (provider, environment),
+  CHECK ((secret_ciphertext IS NULL) = (secret_key_id IS NULL))
+) STRICT;
+CREATE TABLE IF NOT EXISTS integration_audit (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL CHECK (provider IN ('NINJAVAN', 'WHATSAPP_CLOUD', 'WHATSAPP_QR')),
+  environment TEXT NOT NULL CHECK (environment IN ('SANDBOX', 'PRODUCTION')),
+  action TEXT NOT NULL CHECK (action IN ('CONNECT', 'ROTATE', 'DISCONNECT', 'CHECK_FAILED', 'RISK_ACKNOWLEDGED')),
+  actor TEXT NOT NULL CHECK (length(actor) BETWEEN 1 AND 120),
+  detail TEXT CHECK (detail IS NULL OR length(detail) <= 500),
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX IF NOT EXISTS integration_audit_time ON integration_audit(created_at);
+CREATE TABLE IF NOT EXISTS webhook_receipt (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL CHECK (provider IN ('NINJAVAN', 'WHATSAPP_CLOUD', 'WHATSAPP_QR')),
+  dedupe_key TEXT NOT NULL CHECK (length(dedupe_key) BETWEEN 1 AND 200),
+  verified INTEGER NOT NULL CHECK (verified IN (0, 1)),
+  received_at TEXT NOT NULL,
+  UNIQUE (provider, dedupe_key)
+) STRICT;
+CREATE TABLE IF NOT EXISTS message_outbox (
+  id TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL REFERENCES shop_order(id) ON DELETE RESTRICT,
+  connection_id TEXT NOT NULL REFERENCES integration_connection(id) ON DELETE RESTRICT,
+  kind TEXT NOT NULL CHECK (kind IN ('ORDER_SUBMITTED', 'ORDER_CONFIRMED', 'ORDER_REJECTED', 'ORDER_SHIPPED')),
+  recipient_hash TEXT NOT NULL CHECK (length(recipient_hash) BETWEEN 16 AND 128),
+  template TEXT NOT NULL CHECK (length(template) BETWEEN 1 AND 100),
+  locale TEXT NOT NULL CHECK (length(locale) BETWEEN 2 AND 10),
+  idempotency_key TEXT NOT NULL UNIQUE CHECK (length(idempotency_key) BETWEEN 1 AND 200),
+  status TEXT NOT NULL DEFAULT 'QUEUED' CHECK (status IN ('QUEUED', 'SENDING', 'ACCEPTED', 'DELIVERED', 'READ', 'FAILED', 'RECONCILE')),
+  provider_message_id TEXT UNIQUE CHECK (provider_message_id IS NULL OR length(provider_message_id) BETWEEN 1 AND 200),
+  attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 20),
+  next_attempt_at TEXT,
+  last_error TEXT CHECK (last_error IS NULL OR length(last_error) <= 500),
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX IF NOT EXISTS message_outbox_due ON message_outbox(status, next_attempt_at);
+CREATE INDEX IF NOT EXISTS message_outbox_order ON message_outbox(order_id);
+CREATE TABLE IF NOT EXISTS message_inbound (
+  id TEXT PRIMARY KEY,
+  connection_id TEXT NOT NULL REFERENCES integration_connection(id) ON DELETE RESTRICT,
+  order_id TEXT REFERENCES shop_order(id) ON DELETE RESTRICT,
+  from_hash TEXT NOT NULL CHECK (length(from_hash) BETWEEN 16 AND 128),
+  provider_message_id TEXT NOT NULL UNIQUE CHECK (length(provider_message_id) BETWEEN 1 AND 200),
+  kind TEXT NOT NULL CHECK (kind IN ('TEXT', 'MEDIA_UNSUPPORTED', 'OTHER')),
+  body TEXT CHECK (body IS NULL OR length(body) <= 4096),
+  received_at TEXT NOT NULL,
+  read_at TEXT,
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX IF NOT EXISTS message_inbound_order ON message_inbound(order_id);
+CREATE INDEX IF NOT EXISTS message_inbound_unread ON message_inbound(received_at) WHERE read_at IS NULL;
+`;
 
 async function migrate(store, version, sql) {
   await store.transaction(async () => {
@@ -430,6 +499,11 @@ export async function migrateStore(store) {
       await store.setSchemaVersion(20);
     });
     version = 20;
+  }
+  if (version === 20) {
+    // Additive: tables for provider connections and WhatsApp messages. Nothing reads them yet.
+    await migrate(store, 21, integrationTablesSql);
+    version = 21;
   }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }

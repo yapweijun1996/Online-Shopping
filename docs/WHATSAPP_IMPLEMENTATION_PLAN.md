@@ -1,6 +1,6 @@
 # WhatsApp Cloud integration: implementation plan
 
-Status: plan for owner review. Nothing here is implemented. Written against `main` (schema 20). It turns sections 4, 5, 6.3, 6.5 and 8 of [INTEGRATION_DESIGN.md](INTEGRATION_DESIGN.md) into pull requests; it does not change those decisions. WhatsApp QR (6.4) and Ninja Van (6.1) are separate plans.
+Status: plan for owner review. Nothing here is implemented. Written against `main` (schema 20); slice 1 moves it to schema 21. It turns sections 4, 5, 6.3, 6.5 and 8 of [INTEGRATION_DESIGN.md](INTEGRATION_DESIGN.md) into pull requests; it does not change those decisions. WhatsApp QR (6.4) and Ninja Van (6.1) are separate plans.
 
 Facts are marked **[repo]** (checked in this repository) or **[assumed]** (vendor behaviour to re-check against Meta's documentation before the slice that needs it).
 
@@ -23,8 +23,8 @@ Facts are marked **[repo]** (checked in this repository) or **[assumed]** (vendo
 
 | # | Slice | Schema | Who writes it | Verification |
 | --- | --- | --- | --- | --- |
-| 0 | Master-key secret: compose entry, loader, host key file, health check that fails closed without it | none | me | updater test, compose gate test, key-loading unit tests |
-| 1 | Tables `integration_connection`, `integration_audit`, `webhook_receipt`, `message_outbox`, `message_inbound` (schema 21) with SQLite and PostgreSQL parity, grants, upgrade test from schema 20 | 21 | me (data model and migration are the risky part) | schema compatibility tests, restore-a-real-backup upgrade rehearsal |
+| 0 | **Done (#105).** Master-key secret: compose entry, loader, host key file, health check that fails closed without it | none | me | updater test, compose gate test, key-loading unit tests |
+| 1 | **Done.** Tables `integration_connection`, `integration_audit`, `webhook_receipt`, `message_outbox`, `message_inbound` (schema 21) with SQLite and PostgreSQL parity, grants, upgrade test from schema 20 | 21 | me (data model and migration are the risky part) | schema compatibility tests, restore-a-real-backup upgrade rehearsal |
 | 2 | Connection store: save (seal with context `WHATSAPP_CLOUD:<env>`), verify against Meta with the allow-listed host, status, rotate, disconnect, audit rows; write-only responses | none | Codex, from my written spec | unit tests with a fixture transport; a test that no response or log contains the secret |
 | 3 | Seller "Connections" page for WhatsApp (connect, status, last 4 characters, rotate, disconnect); behind a flag until slice 5 | none | Codex for markup and wiring, I review the UI in a browser | browser check at desktop and 390 px; i18n keys for all seven languages |
 | 4 | Outbox sender: queue on order events with key `order id + kind`, consent check, bounded retries, `RECONCILE` for unknown outcomes, rate limits | none | Codex for the worker and tests, I review the state rules | duplicate-send test, retry and lost-response tests, no real network |
