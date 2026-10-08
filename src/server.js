@@ -9,6 +9,9 @@ import { readConfig } from './config.js';
 import { openDatabase } from './db.js';
 import { openPostgresDatabase } from './postgres-db.js';
 import { serveStatic } from './static.js';
+import { createSecretBox } from './secret-box.js';
+import { createWhatsAppTransport } from './whatsapp-transport.js';
+import { startWhatsAppWorker } from './whatsapp-outbox.js';
 
 function clientAddress(request, config) {
   const forwarded = request.headers['x-real-ip'];
@@ -68,7 +71,16 @@ export async function createApp(config) {
   });
   server.requestTimeout = 10_000;
   server.headersTimeout = 10_000;
-  return { server, database, close: () => new Promise((resolve, reject) => server.close(async (error) => {
+  // The message worker is started by the process entry point only (never by tests). It needs the master keys and must
+  // not run on a passwordless sample site, where the buyers and credentials are not real.
+  let worker = null;
+  const startWorker = () => {
+    if (worker || !config.integrationKeys || config.sellerQuickLogin || config.shopMode === 'public-demo') return false;
+    worker = startWhatsAppWorker({ store: database, secretBox: createSecretBox(config.integrationKeys), transport: createWhatsAppTransport() });
+    return true;
+  };
+  return { server, database, startWorker, close: () => new Promise((resolve, reject) => server.close(async (error) => {
+    worker?.stop();
     await database.close();
     if (error) reject(error);
     else resolve();
@@ -79,7 +91,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === fileURLToPath(new URL(
   try {
     const config = readConfig();
     const app = await createApp(config);
-    app.server.listen(config.port, () => console.log(`Online Shopping listening on port ${app.server.address().port}`));
+    app.server.listen(config.port, () => {
+      console.log(`Online Shopping listening on port ${app.server.address().port}`);
+      app.startWorker();
+    });
   } catch (error) {
     console.error('Startup failed:', error?.code || error?.name || 'ERROR');
     process.exitCode = 1;

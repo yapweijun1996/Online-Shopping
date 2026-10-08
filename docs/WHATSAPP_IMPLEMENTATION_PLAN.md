@@ -27,7 +27,7 @@ Facts are marked **[repo]** (checked in this repository) or **[assumed]** (vendo
 | 1 | **Done.** Tables `integration_connection`, `integration_audit`, `webhook_receipt`, `message_outbox`, `message_inbound` (schema 21) with SQLite and PostgreSQL parity, grants, upgrade test from schema 20 | 21 | me (data model and migration are the risky part) | schema compatibility tests, restore-a-real-backup upgrade rehearsal |
 | 2 | **Done (#107).** Connection store: save (seal with context `WHATSAPP_CLOUD:<env>`), verify against Meta with the allow-listed host, status, rotate, disconnect, audit rows; write-only responses | none | Codex, from my written spec | unit tests with a fixture transport; a test that no response or log contains the secret |
 | 3 | **Done.** Seller "Connections" page for WhatsApp (connect, status, last 4 characters, rotate, disconnect); behind a flag until slice 5 | none | Codex for markup and wiring, I review the UI in a browser | browser check at desktop and 390 px; i18n keys for all seven languages |
-| 4 | Outbox sender: queue on order events with key `order id + kind`, consent check, bounded retries, `RECONCILE` for unknown outcomes, rate limits | none | Codex for the worker and tests, I review the state rules | duplicate-send test, retry and lost-response tests, no real network |
+| 4 | **Done.** Outbox sender: queue on order events with key `order id + kind`, consent check, bounded retries, `RECONCILE` for unknown outcomes, rate limits | none | Codex for the worker and tests, I review the state rules | duplicate-send test, retry and lost-response tests, no real network |
 | 5 | **Done.** The connection also seals the Meta app secret and a reply hash key next to the access token, and keeps a verify token for the handshake. Webhook route: verify signature over the raw body, size limit, dedupe in `webhook_receipt`, apply receipts to the outbox, store replies | none | me (trust boundary) | signature, replay, oversize, unsigned and malformed-body tests; threat-model update |
 | 6 | Replies in the seller panel: unread count in the menu, list, order detail section, retention and deletion with the order | none | Codex, I review privacy rules | browser check, deletion test |
 | 7 | Live enablement with a Meta test number, then the owner's real account | none | me, with the owner for credentials | one real message to a number the owner controls, receipt seen in the panel |
@@ -49,6 +49,19 @@ Note for slice 7: the live shop currently has quick sign-in on (the passwordless
 - Slice 0: create the master key file on the MacBook Air once (32 random bytes, base64, `id=key` line) and keep a copy separate from the database backups. A lost key makes stored credentials unrecoverable.
 - Slice 7: a Meta developer app with a test phone number, the three approved templates (names and languages), and the permanent access token pasted into the seller page, never into chat or git.
 - Confirm the template wording the buyer will see, and that buyers in Singapore and Malaysia receive the same text.
+
+### Template contract (slice 4)
+
+The owner creates these four templates in Meta, in every language the shop uses (language codes `en`, `ms`, `zh_CN`, `vi`, `th`, `ja`, `ko`), with exactly these names and body variables, in this order. A mismatch is rejected by Meta and the message ends as `FAILED`.
+
+| Template name | Sent when | Body variables |
+| --- | --- | --- |
+| `order_submitted` | the buyer submits the order | `{{1}}` buyer name, `{{2}}` order number |
+| `order_confirmed` | the seller confirms | `{{1}}` buyer name, `{{2}}` order number |
+| `order_rejected` | the seller rejects | `{{1}}` buyer name, `{{2}}` order number |
+| `order_shipped` | the seller ships | `{{1}}` buyer name, `{{2}}` order number, `{{3}}` carrier, `{{4}}` tracking number (`-` when empty) |
+
+Rules the sender follows: only orders whose buyer ticked the WhatsApp consent; only events newer than the connection and at most 6 hours old (no backlog after a reconnect); never in a sample shop; the production connection wins over sandbox when both exist. Each message is claimed with one atomic update, sent outside any transaction, and recorded as `ACCEPTED`, `FAILED` (rejected by Meta) or `RECONCILE` (outcome unknown: timeout, network error, 429, 5xx, unparsable answer, or a claim that outlived its 2 minute lease). `RECONCILE` is never retried automatically; showing and resolving those rows belongs to the seller panel (slice 6). Only failures before anything left the server (connection or consent gone) are retried, with backoff, up to 5 attempts. Known limit: a status webhook that arrives before the send result is recorded finds no message id and is consumed by deduplication, so that message stays `ACCEPTED`.
 
 ## 6. Risks
 
