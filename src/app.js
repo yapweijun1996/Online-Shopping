@@ -16,6 +16,8 @@ import { presentCatalogCopy, presentShopName } from './catalog-copy.js';
 import { PRODUCT_MUTATION_BODY_LIMIT } from './request-limits.js';
 import { isCrawler, previewPage, priceText, summary } from './share.js';
 import { createSecretBox } from './secret-box.js';
+import { createWhatsAppTransport } from './whatsapp-transport.js';
+import { disconnectWhatsAppConnection, listWhatsAppConnections, saveWhatsAppConnection } from './integration-connections.js';
 import { MAX_WEBHOOK_BYTES, answerWhatsAppHandshake, receiveWhatsAppWebhook } from './whatsapp-inbound.js';
 import { integrationCatalog } from '../public/shared/integration-catalog.js';
 
@@ -25,6 +27,7 @@ const thumbnailPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/gallery
 const optionTypePath = /^\/api\/v1\/seller\/option-types(?:\/([0-9a-f-]{36})(?:(\/values)(?:\/([0-9a-f-]{36}))?)?)?$/;
 const productGalleryPath = /^\/api\/v1\/(seller\/)?products\/([0-9a-f-]{36})\/gallery\/([0-9a-f-]{36})$/;
 const sellerOrderIdPath = /^\/api\/v1\/seller\/orders\/([0-9a-f-]{36})(?:\/(confirm|reject|ship|deliver|cancel))?$/;
+const whatsappConnectionPath = /^\/api\/v1\/seller\/integrations\/whatsapp(?:\/(SANDBOX|PRODUCTION))?$/;
 const LIMIT_WINDOW_MS = 15 * 60 * 1000;
 
 function image(value, cacheable = false) {
@@ -47,7 +50,7 @@ function requireCsrf(request, session) {
  * server and the test harness share one set of routes. The runtime supplies
  * the client address it trusts and, optionally, a handler for non-API paths.
  */
-export async function createApi({ store, config, serveStatic = null }) {
+export async function createApi({ store, config, serveStatic = null, whatsappTransport = createWhatsAppTransport() }) {
   const demoEnabled = config.shopMode === 'public-demo' && (await getShopSetup(store)).mode === 'demo';
   // Explicit opt-in: passwordless seller sign-in for a sample site. Never enable it for a real tenant.
   const quickLogin = demoEnabled || config.sellerQuickLogin === true;
@@ -57,6 +60,7 @@ export async function createApi({ store, config, serveStatic = null }) {
   const demoLoginLimiter = new SqlLimiter(store, 'demo-login', { limit: 30, windowMs: LIMIT_WINDOW_MS });
   const orderStatusLimiter = new SqlLimiter(store, 'order-status', { limit: 30, windowMs: LIMIT_WINDOW_MS });
   const webhookLimiter = new SqlLimiter(store, 'whatsapp-webhook', { limit: 600, windowMs: LIMIT_WINDOW_MS });
+  const connectionLimiter = new SqlLimiter(store, 'integration-connect', { limit: 10, windowMs: LIMIT_WINDOW_MS });
   const secretBox = config.integrationKeys ? createSecretBox(config.integrationKeys) : null;
 
   async function route(request, clientAddress) {
@@ -205,6 +209,28 @@ export async function createApi({ store, config, serveStatic = null }) {
     }
     if (method === 'GET' && pathname === '/api/v1/seller/setup') return json(200, presentShopName(await getShopSetup(store)));
     if (method === 'GET' && pathname === '/api/v1/seller/integrations') return json(200, integrationCatalog());
+    // Provider connections hold the seller's own WhatsApp credentials. A passwordless (sample) site must never accept or
+    // show them, so every route answers "unavailable" while quick sign-in is on. Secrets are write-only: nothing returns them.
+    const connectionRoute = whatsappConnectionPath.exec(pathname);
+    if (connectionRoute) {
+      const environment = connectionRoute[1];
+      if (method === 'GET' && !environment) {
+        if (quickLogin || !secretBox) return json(200, { available: false, connections: [] });
+        return json(200, { available: true, webhookUrl: `${config.publicOrigin || url.origin}/api/v1/webhooks/whatsapp`, connections: await listWhatsAppConnections(store) });
+      }
+      if ((method === 'PUT' || method === 'DELETE') && environment) {
+        requireOrigin(request, expectedOrigin);
+        requireCsrf(request, session);
+        if (quickLogin) throw new ApiError(403, 'FORBIDDEN', 'Connections are not available on a sample site.');
+        if (!secretBox) throw new ApiError(503, 'INTEGRATIONS_UNAVAILABLE', 'Integrations are not configured.');
+        const actor = `seller:${config.username}`;
+        if (method === 'DELETE') return json(200, await disconnectWhatsAppConnection(store, environment, actor));
+        if (!await connectionLimiter.attempt(clientAddress)) throw new ApiError(429, 'RATE_LIMITED', 'Too many connection attempts. Try again later.');
+        const body = await readJson(request, 8 * 1024);
+        if (body.environment !== undefined && body.environment !== environment) throw new FieldError('environment', 'The environment comes from the URL.');
+        return json(200, await saveWhatsAppConnection(store, secretBox, whatsappTransport, { ...body, environment }, actor));
+      }
+    }
     if (method === 'POST' && pathname === '/api/v1/seller/setup') {
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
