@@ -125,6 +125,14 @@ The seller web app builds an official `https://wa.me/<international-digits>` cli
 
 `POST /api/v1/webhooks/whatsapp` accepts a Meta delivery (body ≤256 KiB). There is no session, origin or CSRF check: the `X-Hub-Signature-256` header must be the HMAC-SHA256 of the raw body under the app secret of a connected account, otherwise 401 and nothing is stored. A valid delivery is recorded once (a repeat of the same body is acknowledged and ignored), delivery receipts advance the matching message in the outbox (never backwards) and buyer replies are stored for the seller panel. Responses are `{ "received": true }`, `401 INVALID_SIGNATURE`, `413`, `429` or `503 INTEGRATIONS_UNAVAILABLE` when no master key is configured. Rate limit: 600 requests per 15 minutes per client address.
 
+## WhatsApp connection (seller)
+
+All routes need the seller session; `PUT` and `DELETE` also need the same origin and `X-CSRF-Token`.
+
+- `GET /api/v1/seller/integrations/whatsapp` returns `{ available, webhookUrl, connections: [{ provider, environment, status, publicConfig, secretHint, lastCheckedAt, lastError, updatedAt }] }`. `publicConfig` holds the phone number id, business account id, the display name and number returned by Meta and the `verifyToken` to paste into Meta's webhook setup. `available` is false (and `connections` empty) while quick sign-in is on or no master key is configured.
+- `PUT /api/v1/seller/integrations/whatsapp/{SANDBOX|PRODUCTION}` with `{ accessToken, appSecret, phoneNumberId, businessAccountId }` (body ≤8 KiB; the environment comes from the URL only). The provider is called first; `400 CONNECTION_REJECTED` or `502 PROVIDER_UNAVAILABLE` store nothing. On success the access token and app secret are stored sealed and the response is the status object above, never a secret. `429` after 10 attempts per 15 minutes per client address; `403` on a quick-sign-in site; `503 INTEGRATIONS_UNAVAILABLE` without a master key.
+- `DELETE /api/v1/seller/integrations/whatsapp/{SANDBOX|PRODUCTION}` clears the stored secrets and returns the status (`NOT_CONFIGURED`); `404` when no connection exists.
+
 ## Error contract
 
 ```json

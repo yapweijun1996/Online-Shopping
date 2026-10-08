@@ -86,6 +86,7 @@ All HTTP routes are in `src/app.js` (path constants at the top, handlers in `rou
 - `GET/DELETE /api/v1/seller/session`.
 - Setup: `GET/POST /api/v1/seller/setup`, `POST /api/v1/seller/demo/reset` (demo mode only; deletes orders, products, categories).
 - Catalog: `GET/POST /api/v1/seller/products`, `GET/PATCH /api/v1/seller/products/{uuid}`, `.../image`, `POST .../gallery` (JSON data URL, ≤750 KB body), `GET/DELETE .../gallery/{uuid}` (product body limit 7.5 MB via `src/request-limits.js`).
+- WhatsApp connection: `GET /api/v1/seller/integrations/whatsapp` (status, webhook URL, never a secret), `PUT` and `DELETE .../whatsapp/{SANDBOX|PRODUCTION}` (origin and CSRF, body ≤8 KiB, `integration-connect` limiter 10 per 15 min per IP; the provider is verified before anything is stored). While quick sign-in is on (a passwordless sample site) the reads return `available: false` and the writes 403, so a visitor can neither connect nor disconnect real credentials. Logic in `src/integration-connections.js`.
 - Settings: `/api/v1/seller/categories`, `/api/v1/seller/company-settings`, `GET /api/v1/seller/integrations` (static catalog, no credentials).
 - Orders: `GET /api/v1/seller/orders` (status, search ≤40 chars, `limit` ≤100, `offset` ≤10 000), `GET /api/v1/seller/orders/summary`, `GET /api/v1/seller/orders/{uuid}` (full buyer and delivery PII), `POST /api/v1/seller/orders/{uuid}/{confirm|reject|ship|deliver|cancel}` (`src/seller-orders.js`).
 
