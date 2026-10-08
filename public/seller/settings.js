@@ -3,6 +3,7 @@ import { mountAppearance } from '../shared/appearance.js';
 import { beginMutation } from '../shared/update-guard.js';
 import { confirmModal } from '../shared/modal.js';
 import { mountIntegrations } from './integrations.js';
+import { mountWhatsAppConnection } from './whatsapp-connection.js';
 
 const SHOW_INTEGRATIONS = false;
 
@@ -184,6 +185,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
   root.append(appearance); mountAppearance(appearance, 'seller');
   // Provider cards stay hidden until a provider can really be connected; an all-"Not configured" list reads as unfinished.
   const integrations = SHOW_INTEGRATIONS ? mountIntegrations(root, { csrfToken, onUnauthorized }) : { refreshLocale() {} };
+  const whatsapp = mountWhatsAppConnection(root, { csrfToken, onUnauthorized, request });
   const setupForm = setup.querySelector('form');
   const setupStatus = setup.querySelector('.setup-status');
   const setupButton = setupForm.querySelector('button');
@@ -308,6 +310,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
       translate(root);
       if (setupState?.mode) showSetup(setupState);
       integrations.refreshLocale();
+      whatsapp.refreshLocale();
       const line = root.querySelector('.settings-status');
       line.textContent = line.dataset.statusKey ? t(line.dataset.statusKey) : '';
     },
