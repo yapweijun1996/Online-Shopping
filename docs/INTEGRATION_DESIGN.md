@@ -4,6 +4,8 @@
 
 Facts below are marked **[repo]** (checked in this repository), **[docs]** (taken from the earlier vendor-contract notes dated 2026-10-02) or **[assumed]** (general knowledge, to be verified against vendor documentation before work starts).
 
+The WhatsApp part is broken into pull requests in [WHATSAPP_IMPLEMENTATION_PLAN.md](WHATSAPP_IMPLEMENTATION_PLAN.md).
+
 ## 0. Owner decisions recorded (2026-10-07)
 
 - **Tenancy:** one stack per tenant, each tenant with its **own PostgreSQL database** (option A in section 3).
