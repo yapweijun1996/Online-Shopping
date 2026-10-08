@@ -9,6 +9,7 @@ import { mountDemoEntry } from '../shared/demo-entry.js';
 import { createOrderAlerts } from './alerts.js';
 import { snapshotCount } from './studio-copy.js';
 import { mountAudit } from './audit.js';
+import { mountMessages, startMessageBadge } from './messages.js';
 import { mountProducts } from './products.js';
 import { mountOrders } from './orders.js';
 import { mountCategories, mountCompanySettings } from './settings.js';
@@ -43,6 +44,8 @@ let role = '';
 let productsPage = null;
 let ordersPage = null;
 let settingsPage = null;
+let messagesPage = null;
+let messageBadge = null;
 let loginMessageKey = '';
 let workspaceMessageKey = '';
 let dashboardRequest = 0;
@@ -54,7 +57,7 @@ let updateView = null;
 let updateIdentity = '';
 const sessionHintKey = 'online-shopping-seller-session-hint';
 mountTabIcon(window.sellerPalette);
-const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'confirmations', 'audit', 'categories', 'options', 'company']);
+const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'confirmations', 'audit', 'messages', 'categories', 'options', 'company']);
 const PRODUCT_ROUTE = /^products\/(?:new(?:\/[0-9a-f-]{36})?|[0-9a-f-]{36})$/;
 const ORDER_ROUTE = /^(?:orders|confirmations)\/[0-9a-f-]{36}$/;
 
@@ -75,7 +78,7 @@ function applyRoute() {
 }
 
 function activePage() {
-  return currentView === 'products' ? productsPage : currentView === 'categories' || currentView === 'options' || currentView === 'company' || currentView === 'audit' ? settingsPage : currentView === 'orders' || currentView === 'confirmations' ? ordersPage : null;
+  return currentView === 'messages' ? messagesPage : currentView === 'products' ? productsPage : currentView === 'categories' || currentView === 'options' || currentView === 'company' || currentView === 'audit' ? settingsPage : currentView === 'orders' || currentView === 'confirmations' ? ordersPage : null;
 }
 
 function hasUnsavedChanges() { return activePage()?.hasUnsavedChanges?.() === true; }
@@ -168,6 +171,10 @@ function showLogin(messageKey = '', clearHint = true) {
   sessionViewSequence++;
   const leavingWorkspace = !workspace.hidden;
   if (clearHint) sessionHint(false);
+  messageBadge?.dispose();
+  messageBadge = null;
+  messagesPage?.dispose();
+  messagesPage = null;
   csrfToken = null;
   username = '';
   role = '';
@@ -193,7 +200,11 @@ function showLogin(messageKey = '', clearHint = true) {
 function showWorkspace(session) {
   sessionViewSequence++;
   sessionHint(true);
+  messageBadge?.dispose();
+  messagesPage?.dispose();
+  messagesPage = null;
   csrfToken = session.csrfToken;
+  messageBadge = startMessageBadge({ badge: byId('messages-badge'), navItem: byId('messages-nav'), csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError') });
   username = session.username;
   role = session.role;
   accountButton.querySelector('.avatar').textContent = Array.from(username.trim())[0]?.toLocaleUpperCase(locale()) || '•';
@@ -220,6 +231,8 @@ function showWorkspace(session) {
 }
 
 function renderView() {
+  messagesPage?.dispose();
+  messagesPage = null;
   if (updateView !== currentView) {
     updateView = currentView;
     updateDismissed = false;
@@ -233,7 +246,7 @@ function renderView() {
   });
   const titleKey = currentView === 'products' && currentRoute !== 'products'
     ? currentRoute.startsWith('products/new') ? 'addProduct' : 'editProduct'
-    : { dashboard: 'dashboard', products: 'products', orders: 'salesOrders', confirmations: 'orderReview', audit: 'auditLog', categories: 'categoryCodes', options: 'optionsNav', company: 'companySettings' }[currentView];
+    : { dashboard: 'dashboard', products: 'products', orders: 'salesOrders', confirmations: 'orderReview', audit: 'auditLog', messages: 'msgHeading', categories: 'categoryCodes', options: 'optionsNav', company: 'companySettings' }[currentView];
   byId('page-title').dataset.i18n = titleKey;
   byId('page-title').textContent = t(titleKey);
   const content = byId('workspace-content');
@@ -278,6 +291,11 @@ function renderView() {
     return;
   }
   productsPage = null;
+  if (currentView === 'messages') {
+    settingsPage = null;
+    messagesPage = mountMessages(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError') });
+    return;
+  }
   if (currentView === 'audit') {
     settingsPage = mountAudit(content, { onUnauthorized: () => showLogin('authError') });
     return;
@@ -657,12 +675,14 @@ byId('login-form').addEventListener('submit', async (event) => {
 });
 
 document.addEventListener('localechange', () => {
-  if (currentView === 'products' && productsPage) productsPage.refreshLocale();
+  if (messagesPage) messagesPage.refreshLocale();
+  else if (currentView === 'products' && productsPage) productsPage.refreshLocale();
   else if (ordersPage) ordersPage.refreshLocale();
   else if (settingsPage) settingsPage.refreshLocale();
   else renderView();
   document.documentElement.lang = locale();
   orderAlerts.refresh();
+  messageBadge?.refreshLocale();
   setLoginMessage(loginMessageKey);
   setWorkspaceMessage(workspaceMessageKey);
   renderUpdateUI();

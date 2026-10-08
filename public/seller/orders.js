@@ -5,6 +5,7 @@ import { thumbUrl } from '../shared/image-thumb.js';
 import { createOrderDocuments } from './order-documents.js';
 import { documentTitleKey } from './order-document-model.js';
 import { statusKey } from './order-status-label.js';
+import { mountOrderMessages } from './messages.js';
 import './trail-copy.js';
 import { formatDate, formatMoney, t, translate } from '../shared/i18n.js';
 
@@ -75,6 +76,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
   const scope = SCOPES[mode];
   let appliedStatus = scope.defaultFilter;
   let detailRequest = 0;
+  let whatsappDetail = null;
   let deciding = false;
 
   function renderStatusOptions() {
@@ -98,6 +100,8 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
   function setListStatus(key) { listStatusKey = key; listStatus.textContent = key ? t(key) : ''; }
   function setDialogError(key) { dialogErrorKey = key; dialogError.textContent = key ? t(key) : ''; }
   function showDetailStatus(key) {
+    whatsappDetail?.dispose();
+    whatsappDetail = null;
     detailStatusKey = key;
     detailContent.replaceChildren();
     detailContent.textContent = t(key);
@@ -388,7 +392,9 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
       fragment.append(actions);
     }
     detailStatusKey = '';
+    whatsappDetail?.dispose();
     detailContent.replaceChildren(fragment);
+    whatsappDetail = mountOrderMessages(detailContent, { orderId: order.id, csrfToken, onUnauthorized });
   }
 
   async function openOrder(id) {
@@ -553,6 +559,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
     hasUnsavedChanges: () => dialog.open,
     draftSignature: () => JSON.stringify([dialog.open, dialogAction, selectedId]),
     dispose() {
+      whatsappDetail?.dispose();
       active = false;
       ++documentRequest; documents.dispose();
       root.classList.remove('order-show-detail');

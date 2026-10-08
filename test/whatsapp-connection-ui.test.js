@@ -33,12 +33,11 @@ test('WhatsApp uses safe DOM construction and no browser storage or secret persi
   assert.match(source, /fields\.accessToken\.value = ''; fields\.appSecret\.value = '';/);
 });
 
-test('seller precaches WhatsApp module and shares version v123', () => {
+test('seller precaches the WhatsApp module and the service worker and app share one version', () => {
   const sw = readFileSync(new URL('../public/seller/sw.js', import.meta.url), 'utf8');
   const version = readFileSync(new URL('../public/seller/version.js', import.meta.url), 'utf8');
   assert.match(sw, /'\/seller\/whatsapp-connection\.js'/);
   assert.equal(sw.match(/version: '(v\d+)'/)[1], version.match(/APP_VERSION = '(v\d+)'/)[1]);
-  assert.match(version, /'v123'/);
 });
 
 // Minimal DOM double: exercise requests and lifecycle without a browser or network.
