@@ -298,3 +298,22 @@ body{background:var(--ui-canvas)}
 .whatsapp-actions{display:flex;flex-wrap:wrap;gap:8px}
 .whatsapp-connection-card button{min-width:44px;min-height:44px;white-space:normal;overflow-wrap:anywhere}
 @media(max-width:680px){.whatsapp-environments{grid-template-columns:minmax(0,1fr)}.whatsapp-actions button{flex:1}.whatsapp-copy-row{grid-template-columns:minmax(0,1fr)}.whatsapp-copy-row button{justify-self:start}}
+
+/* Seller message lists share the order-detail layout on narrow screens. */
+#messages-nav[hidden],.msg-section[hidden]{display:none}
+.msg-page{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;align-items:start}
+.msg-section{min-width:0;overflow-wrap:anywhere}
+.msg-list{display:grid;gap:12px;list-style:none;padding:0;margin:16px 0}
+.msg-row{display:flex;flex-direction:column;align-items:flex-start;gap:8px;min-width:0;padding:14px;border:1px solid var(--ui-border);border-radius:10px;background:var(--ui-surface);color:var(--ui-text)}
+.msg-row p{margin:0;max-width:100%}
+.msg-unread{border-inline-start:4px solid var(--ui-primary)}
+.msg-unread-label{color:var(--ui-primary);font-size:13px}
+.msg-body{white-space:pre-wrap;overflow-wrap:anywhere}
+.msg-time{font-size:13px;color:var(--ui-muted)}
+.msg-order{display:inline-flex;align-items:center;min-height:44px;max-width:100%;overflow-wrap:anywhere}
+.msg-actions{display:flex;flex-wrap:wrap;gap:8px;width:100%}
+.msg-section button{min-height:44px;min-width:44px;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.msg-filter{display:flex;align-items:center;gap:8px;min-height:44px;cursor:pointer}
+.msg-filter input{width:20px;height:20px;flex-shrink:0;accent-color:var(--ui-primary)}
+@media(max-width:900px){.msg-page{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:440px){.msg-actions button{width:100%}}
