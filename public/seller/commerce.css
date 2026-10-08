@@ -279,3 +279,22 @@ body{background:var(--ui-canvas)}
 @media(min-width:1051px){
  .product-editor-actions{position:sticky;bottom:0;z-index:5;padding:12px 0 calc(12px + env(safe-area-inset-bottom));margin-top:20px;border-top:1px solid var(--ui-border);background:var(--ui-canvas)}
 }
+
+.whatsapp-connection-card[hidden]{display:none}
+.whatsapp-connection-card{min-width:0}
+.whatsapp-environments{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:20px}
+.whatsapp-environment{min-width:0;padding:16px;border:1px solid var(--ui-control-border);border-radius:12px;overflow-wrap:anywhere}
+.whatsapp-environment h3{margin:0 0 12px;color:var(--ui-text)}
+.whatsapp-details dl{margin:14px 0;font-size:13px}
+.whatsapp-details dt{color:var(--ui-muted);margin-top:10px}
+.whatsapp-details dd{margin:4px 0;color:var(--ui-text)}
+.whatsapp-details p,.whatsapp-status{font-size:13px;line-height:1.5;color:var(--ui-muted);overflow-wrap:anywhere}
+.whatsapp-status:empty{margin:0}
+.whatsapp-form{display:grid;gap:14px;margin-top:18px}
+.whatsapp-form label,.whatsapp-copy-field{display:grid;gap:6px;min-width:0;font-size:13px;font-weight:700;color:var(--ui-text)}
+.whatsapp-form input,.whatsapp-copy-field input{box-sizing:border-box;width:100%;min-width:0;min-height:44px;padding:10px 12px;border:1px solid var(--ui-control-border);border-radius:9px;background:var(--ui-surface);color:var(--ui-text);font:inherit;font-weight:400}
+.whatsapp-form input[aria-invalid="true"]{border-color:var(--ui-text)}
+.whatsapp-copy-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:8px}
+.whatsapp-actions{display:flex;flex-wrap:wrap;gap:8px}
+.whatsapp-connection-card button{min-width:44px;min-height:44px;white-space:normal;overflow-wrap:anywhere}
+@media(max-width:680px){.whatsapp-environments{grid-template-columns:minmax(0,1fr)}.whatsapp-actions button{flex:1}.whatsapp-copy-row{grid-template-columns:minmax(0,1fr)}.whatsapp-copy-row button{justify-self:start}}
