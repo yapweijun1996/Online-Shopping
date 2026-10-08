@@ -31,7 +31,8 @@ if head != args.revision or subprocess.check_output(['git', '-C', str(release), 
 values = dict(line.split('=', 1) for line in Path(args.env_file).read_text().splitlines() if line and not line.startswith('#'))
 source_directory = Path(args.env_file).resolve().parent.parent
 values.setdefault('DATABASE_OWNER_PASSWORD_FILE_HOST', './.local/postgres-owner-password')
-for name in ['ADMIN_PASSWORD_FILE_HOST', 'DATABASE_PASSWORD_FILE_HOST', 'DATABASE_OWNER_PASSWORD_FILE_HOST', 'TUNNEL_CREDENTIALS_FILE_HOST']:
+values.setdefault('INTEGRATION_KEY_FILE_HOST', './.local/integration-keys')
+for name in ['ADMIN_PASSWORD_FILE_HOST', 'DATABASE_PASSWORD_FILE_HOST', 'DATABASE_OWNER_PASSWORD_FILE_HOST', 'INTEGRATION_KEY_FILE_HOST', 'TUNNEL_CREDENTIALS_FILE_HOST']:
     path = Path(values[name])
     if not path.is_absolute(): path = source_directory / path
     path = path.resolve()
