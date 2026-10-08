@@ -133,6 +133,17 @@ All routes need the seller session; `PUT` and `DELETE` also need the same origin
 - `PUT /api/v1/seller/integrations/whatsapp/{SANDBOX|PRODUCTION}` with `{ accessToken, appSecret, phoneNumberId, businessAccountId }` (body ≤8 KiB; the environment comes from the URL only). The provider is called first; `400 CONNECTION_REJECTED` or `502 PROVIDER_UNAVAILABLE` store nothing. On success the access token and app secret are stored sealed and the response is the status object above, never a secret. `429` after 10 attempts per 15 minutes per client address; `403` on a quick-sign-in site; `503 INTEGRATIONS_UNAVAILABLE` without a master key.
 - `DELETE /api/v1/seller/integrations/whatsapp/{SANDBOX|PRODUCTION}` clears the stored secrets and returns the status (`NOT_CONFIGURED`); `404` when no connection exists.
 
+## WhatsApp messages (seller)
+
+Session required; `POST` also needs the same origin and `X-CSRF-Token`. While quick sign-in is on, every read returns empty data and every write is 403, so a passwordless visitor never sees buyer text. No phone number and no sender hash is ever returned.
+
+- `GET /api/v1/seller/messages/summary` returns `{ unreadReplies, reconcile, failed }`.
+- `GET /api/v1/seller/messages/replies?unread=1&limit=&offset=` returns `{ items: [{ id, orderId, orderNo, kind, body, receivedAt, read }], nextOffset }`, newest first (`limit` 1 to 100, default 50; `offset` up to 10 000). `kind` is `TEXT`, `MEDIA_UNSUPPORTED` or `OTHER`; `body` is plain text or null.
+- `POST /api/v1/seller/messages/replies/{uuid}/read` marks one reply read and returns it; 404 for an unknown id.
+- `GET /api/v1/seller/messages/outbox` lists messages that need attention (`RECONCILE` or `FAILED`): `{ items: [{ id, orderId, orderNo, kind, status, lastError, attempts, createdAt, updatedAt }], nextOffset }`.
+- `POST /api/v1/seller/messages/outbox/{uuid}/resolve` with `{ "resolution": "SENT" | "RESEND" }`. `SENT` (only for `RECONCILE`) records that the seller confirmed in WhatsApp Manager that Meta sent it; `RESEND` (for `RECONCILE` or `FAILED`) queues it again and accepts the risk of a duplicate. Anything else is `409 NOT_RESOLVABLE`; an accepted message can never be queued again.
+- `GET /api/v1/seller/orders/{uuid}/messages` returns `{ replies, messages }` for one order.
+
 ## Error contract
 
 ```json

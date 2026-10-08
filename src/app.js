@@ -16,6 +16,7 @@ import { presentCatalogCopy, presentShopName } from './catalog-copy.js';
 import { PRODUCT_MUTATION_BODY_LIMIT } from './request-limits.js';
 import { isCrawler, previewPage, priceText, summary } from './share.js';
 import { createSecretBox } from './secret-box.js';
+import { listAttentionMessages, listReplies, markReplyRead, messageSummary, orderMessages, resolveMessage } from './whatsapp-messages.js';
 import { createWhatsAppTransport } from './whatsapp-transport.js';
 import { disconnectWhatsAppConnection, listWhatsAppConnections, saveWhatsAppConnection } from './integration-connections.js';
 import { MAX_WEBHOOK_BYTES, answerWhatsAppHandshake, receiveWhatsAppWebhook } from './whatsapp-inbound.js';
@@ -28,6 +29,8 @@ const optionTypePath = /^\/api\/v1\/seller\/option-types(?:\/([0-9a-f-]{36})(?:(
 const productGalleryPath = /^\/api\/v1\/(seller\/)?products\/([0-9a-f-]{36})\/gallery\/([0-9a-f-]{36})$/;
 const sellerOrderIdPath = /^\/api\/v1\/seller\/orders\/([0-9a-f-]{36})(?:\/(confirm|reject|ship|deliver|cancel))?$/;
 const whatsappConnectionPath = /^\/api\/v1\/seller\/integrations\/whatsapp(?:\/(SANDBOX|PRODUCTION))?$/;
+const messagePath = /^\/api\/v1\/seller\/messages\/(summary|replies|outbox)(?:\/([0-9a-f-]{36})\/(read|resolve))?$/;
+const orderMessagesPath = /^\/api\/v1\/seller\/orders\/([0-9a-f-]{36})\/messages$/;
 const LIMIT_WINDOW_MS = 15 * 60 * 1000;
 
 function image(value, cacheable = false) {
@@ -229,6 +232,27 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
         const body = await readJson(request, 8 * 1024);
         if (body.environment !== undefined && body.environment !== environment) throw new FieldError('environment', 'The environment comes from the URL.');
         return json(200, await saveWhatsAppConnection(store, secretBox, whatsappTransport, { ...body, environment }, actor));
+      }
+    }
+    // Replies and message problems. Empty while quick sign-in is on, so a passwordless visitor never sees buyer text.
+    const messageRoute = messagePath.exec(pathname), orderMessageRoute = orderMessagesPath.exec(pathname);
+    if (messageRoute || orderMessageRoute) {
+      const [, collection, id, action] = messageRoute ?? [];
+      if (method === 'GET' && messageRoute && !id) {
+        if (quickLogin) return json(200, collection === 'summary' ? { unreadReplies: 0, reconcile: 0, failed: 0 } : { items: [], nextOffset: null });
+        if (collection === 'summary') return json(200, await messageSummary(store));
+        return json(200, collection === 'replies' ? await listReplies(store, url.searchParams) : await listAttentionMessages(store, url.searchParams));
+      }
+      if (method === 'GET' && orderMessageRoute) {
+        if (quickLogin) return json(200, { replies: [], messages: [] });
+        if (!await getSellerOrder(store, orderMessageRoute[1])) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+        return json(200, await orderMessages(store, orderMessageRoute[1]));
+      }
+      if (method === 'POST' && messageRoute && id && ((collection === 'replies' && action === 'read') || (collection === 'outbox' && action === 'resolve'))) {
+        requireOrigin(request, expectedOrigin);
+        requireCsrf(request, session);
+        if (quickLogin) throw new ApiError(403, 'FORBIDDEN', 'Messages are not available on a sample site.');
+        return json(200, action === 'read' ? await markReplyRead(store, id) : await resolveMessage(store, id, await readJson(request, 1024)));
       }
     }
     if (method === 'POST' && pathname === '/api/v1/seller/setup') {
