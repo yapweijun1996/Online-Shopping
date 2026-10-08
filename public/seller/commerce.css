@@ -68,7 +68,7 @@ body{background:var(--ui-canvas)}
 .password-toggle:hover{background:var(--ui-hover-surface);color:var(--ui-primary)}
 #login-submit{min-height:48px;font-size:14px;border-radius:7px}
 .privacy-note{font-size:11px;margin-top:20px}
-#demo-entry{width:100%;max-width:340px}
+#demo-entry{width:100%;margin-top:14px}
 #demo-entry:empty{display:none}
 #demo-entry .demo-role-entry{border:1px solid var(--shop-demo-border);border-radius:10px;padding:12px;margin:0;background:var(--shop-demo-background);display:flex;flex-wrap:wrap;gap:8px}
 #demo-entry .demo-role-entry p{margin:0;color:var(--shop-demo-text);font-size:11px;line-height:1.5;width:100%}
