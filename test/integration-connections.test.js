@@ -7,11 +7,12 @@ import { ApiError } from '../src/http.js';
 import { FieldError } from '../src/validation.js';
 import { createWhatsAppTransport } from '../src/whatsapp-transport.js';
 import { saveWhatsAppConnection, disconnectWhatsAppConnection, getWhatsAppConnection,
-  listWhatsAppConnections, openWhatsAppToken, resealWhatsAppConnections } from '../src/integration-connections.js';
+  listWhatsAppConnections, openWhatsAppToken, openWhatsAppSecrets, listConnectedWhatsApp, resealWhatsAppConnections } from '../src/integration-connections.js';
 
 const token = 'fictional-access-token-ABC123456789';
 const nextToken = 'fictional-replacement-token-XYZ987654321';
-const input = { environment: 'SANDBOX', accessToken: token, phoneNumberId: '123456789', businessAccountId: '987654321' };
+const appSecret = 'fictional-app-secret-0123456789abcdef';
+const input = { environment: 'SANDBOX', accessToken: token, appSecret, phoneNumberId: '123456789', businessAccountId: '987654321' };
 const actor = 'fictional-admin';
 const verified = { ok: true, displayPhoneNumber: '+15550000000', verifiedName: 'Fictional Shop' };
 const transport = { verify: async () => verified };
@@ -24,7 +25,7 @@ async function fixture(t) {
   return { store, secretBox: box() };
 }
 
-async function assertNoTokens(store, values = [], tokens = [token]) {
+async function assertNoTokens(store, values = [], tokens = [token, appSecret]) {
   const rows = [...await store.all('SELECT * FROM integration_connection'), ...await store.all('SELECT * FROM integration_audit')];
   const texts = [...rows.flatMap((row) => Object.values(row).map((value) =>
     value instanceof Uint8Array ? Buffer.from(value).toString('latin1') : String(value))), ...values.map((value) =>
@@ -45,7 +46,8 @@ test('save seals the secret, exposes only status, and isolates environments', as
   assert.equal(status.lastError, null);
   assert.equal(status.lastCheckedAt, status.updatedAt);
   assert.ok(Number.isFinite(Date.parse(status.updatedAt)));
-  assert.deepEqual(status.publicConfig, { phoneNumberId: input.phoneNumberId, businessAccountId: input.businessAccountId,
+  assert.match(status.publicConfig.verifyToken, /^[A-Za-z0-9_-]{32}$/, 'a random webhook verify token is generated for the seller to paste into Meta');
+  assert.deepEqual({ ...status.publicConfig, verifyToken: undefined }, { phoneNumberId: input.phoneNumberId, businessAccountId: input.businessAccountId, verifyToken: undefined,
     displayPhoneNumber: verified.displayPhoneNumber, verifiedName: verified.verifiedName });
   assert.deepEqual(await getWhatsAppConnection(store, 'SANDBOX'), status);
   assert.deepEqual(await listWhatsAppConnections(store), [status]);
@@ -304,4 +306,21 @@ test('on PostgreSQL the connection store seals, rotates, reseals and disconnects
   assert.equal(disconnected.status, 'NOT_CONFIGURED');
   await assert.rejects(openWhatsAppToken(store, rotating, 'SANDBOX'), apiError(409, 'NOT_CONNECTED'));
   await assertNoTokens(store, [], [token, nextToken]);
+});
+
+test('the verify token and the reply hash key survive a token rotation; the app secret is required', async (t) => {
+  const { store, secretBox } = await fixture(t);
+  const first = await saveWhatsAppConnection(store, secretBox, transport, input, actor);
+  const keyBefore = (await openWhatsAppSecrets(store, secretBox, 'SANDBOX')).hashKey;
+  assert.equal(keyBefore.length, 32);
+  const second = await saveWhatsAppConnection(store, secretBox, transport, { ...input, accessToken: nextToken }, actor);
+  assert.equal(second.publicConfig.verifyToken, first.publicConfig.verifyToken);
+  const after = await openWhatsAppSecrets(store, secretBox, 'SANDBOX');
+  assert.deepEqual(after.hashKey, keyBefore);
+  assert.equal(after.accessToken, nextToken);
+  assert.equal(after.appSecret, appSecret);
+  const { appSecret: _omitted, ...withoutSecret } = input;
+  await assert.rejects(saveWhatsAppConnection(store, secretBox, transport, withoutSecret, actor), (error) => error instanceof FieldError && error.field === 'appSecret');
+  assert.deepEqual((await listConnectedWhatsApp(store)).map((row) => row.environment), ['SANDBOX']);
+  await assertNoTokens(store, [first, second], [token, nextToken, appSecret, keyBefore.toString('base64')]);
 });

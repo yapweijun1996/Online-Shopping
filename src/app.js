@@ -2,7 +2,7 @@ import { createDemoSandbox } from './demo-sandbox.js';
 import { getShopSetup, resetDemo, setupShop, shopObjectName } from './shop-setup.js';
 import { authenticate, cookieFor, createSession, deleteSession, readSession, sessionCookieFrom } from './auth.js';
 import { ready } from './db.js';
-import { ApiError, errorResponse, json, readJson, requireOrigin } from './http.js';
+import { ApiError, errorResponse, json, readBody, readJson, requireOrigin } from './http.js';
 import { SqlLimiter } from './limiter.js';
 import { createOrder, lookupOrderStatuses } from './orders.js';
 import { addGalleryImage, createProduct, deleteGalleryImage, getGalleryImage, getProduct, getProductImage, listProducts, setGalleryThumbnail, setProductThumbnail, updateProduct } from './products.js';
@@ -15,6 +15,8 @@ import { FieldError } from './validation.js';
 import { presentCatalogCopy, presentShopName } from './catalog-copy.js';
 import { PRODUCT_MUTATION_BODY_LIMIT } from './request-limits.js';
 import { isCrawler, previewPage, priceText, summary } from './share.js';
+import { createSecretBox } from './secret-box.js';
+import { MAX_WEBHOOK_BYTES, answerWhatsAppHandshake, receiveWhatsAppWebhook } from './whatsapp-inbound.js';
 import { integrationCatalog } from '../public/shared/integration-catalog.js';
 
 const productIdPath = /^\/api\/v1\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
@@ -54,6 +56,8 @@ export async function createApi({ store, config, serveStatic = null }) {
   const checkoutLimiter = new SqlLimiter(store, 'checkout', { limit: 30, windowMs: LIMIT_WINDOW_MS });
   const demoLoginLimiter = new SqlLimiter(store, 'demo-login', { limit: 30, windowMs: LIMIT_WINDOW_MS });
   const orderStatusLimiter = new SqlLimiter(store, 'order-status', { limit: 30, windowMs: LIMIT_WINDOW_MS });
+  const webhookLimiter = new SqlLimiter(store, 'whatsapp-webhook', { limit: 600, windowMs: LIMIT_WINDOW_MS });
+  const secretBox = config.integrationKeys ? createSecretBox(config.integrationKeys) : null;
 
   async function route(request, clientAddress) {
     const url = new URL(request.url);
@@ -68,6 +72,18 @@ export async function createApi({ store, config, serveStatic = null }) {
     if (method === 'GET' && pathname === '/ready') {
       const healthy = await ready(store);
       return json(healthy ? 200 : 503, { status: healthy ? 'ready' : 'unavailable', ...(config.appRevision ? { revision: config.appRevision } : {}) });
+    }
+    // WhatsApp Cloud webhook: called by Meta, so no session, origin or CSRF check; the signature over the raw body is the
+    // authentication (docs/threat-model.md). Unsigned requests store nothing.
+    if (pathname === '/api/v1/webhooks/whatsapp' && (method === 'GET' || method === 'POST')) {
+      if (!await webhookLimiter.attempt(clientAddress)) throw new ApiError(429, 'RATE_LIMITED', 'Too many requests.');
+      if (method === 'GET') {
+        const challenge = await answerWhatsAppHandshake(store, url.searchParams);
+        return new Response(challenge, { status: 200, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
+      }
+      const rawBody = await readBody(request, MAX_WEBHOOK_BYTES);
+      await receiveWhatsAppWebhook(store, secretBox, { rawBody, signature: request.headers.get('x-hub-signature-256') });
+      return json(200, { received: true });
     }
     // Link previews for Facebook, WhatsApp and similar apps (see share.js).
     const sharePath = /^\/p\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(pathname);

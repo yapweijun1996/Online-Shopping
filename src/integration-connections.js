@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { ApiError } from './http.js';
 import { FieldError } from './validation.js';
 import { maskSecret } from './secret-box.js';
@@ -15,13 +15,16 @@ function validateActor(actor) {
 }
 
 function validateInput(input, actor) {
-  const keys = ['environment', 'accessToken', 'phoneNumberId', 'businessAccountId'];
+  const keys = ['environment', 'accessToken', 'appSecret', 'phoneNumberId', 'businessAccountId'];
   if (!input || typeof input !== 'object' || Array.isArray(input) ||
       Object.keys(input).some((key) => !keys.includes(key))) throw new FieldError('connection', 'Enter supported connection details.');
   validateEnvironment(input.environment);
   validateActor(actor);
   if (typeof input.accessToken !== 'string' || input.accessToken.length < 20 || input.accessToken.length > 512 ||
       /[\s\p{Cc}]/u.test(input.accessToken)) throw new FieldError('accessToken', 'Enter a valid access token.');
+  // The app secret signs every webhook delivery (X-Hub-Signature-256); it is stored sealed with the access token.
+  if (typeof input.appSecret !== 'string' || input.appSecret.length < 16 || input.appSecret.length > 128 ||
+      /[\s\p{Cc}]/u.test(input.appSecret)) throw new FieldError('appSecret', 'Enter a valid app secret.');
   for (const field of ['phoneNumberId', 'businessAccountId']) {
     if (typeof input[field] !== 'string' || !/^[0-9]{5,32}$/.test(input[field])) throw new FieldError(field, 'Enter a valid numeric id.');
   }
@@ -50,7 +53,7 @@ export async function listWhatsAppConnections(store) {
 
 export async function saveWhatsAppConnection(store, secretBox, transport, input, actor) {
   validateInput(input, actor);
-  const { environment, accessToken, phoneNumberId, businessAccountId } = input;
+  const { environment, accessToken, appSecret, phoneNumberId, businessAccountId } = input;
   let result;
   try { result = await transport.verify({ accessToken, phoneNumberId }); }
   catch { result = { ok: false, reason: 'UNAVAILABLE' }; }
@@ -62,12 +65,20 @@ export async function saveWhatsAppConnection(store, secretBox, transport, input,
       : new ApiError(502, 'PROVIDER_UNAVAILABLE', 'The provider is unavailable.');
   }
   return store.transaction(async () => {
-    const existing = await store.get('SELECT secret_ciphertext FROM integration_connection WHERE provider = ? AND environment = ?', provider, environment);
-    const { sealed, keyId } = secretBox.seal(accessToken, context(environment));
+    const existing = await store.get('SELECT secret_ciphertext, secret_key_id, public_config FROM integration_connection WHERE provider = ? AND environment = ?', provider, environment);
+    // The hash key that indexes reply senders survives a token rotation, so earlier messages still match their replies.
+    let previous = null;
+    if (existing?.secret_ciphertext != null) {
+      try { previous = JSON.parse(secretBox.open(Buffer.from(existing.secret_ciphertext), existing.secret_key_id, context(environment))); } catch { previous = null; }
+    }
+    const hashKey = typeof previous?.hashKey === 'string' ? previous.hashKey : randomBytes(32).toString('base64');
+    const { sealed, keyId } = secretBox.seal(JSON.stringify({ accessToken, appSecret, hashKey }), context(environment));
+    // Shown to the seller to paste into Meta's webhook setup; it only answers the subscribe handshake.
+    const verifyToken = JSON.parse(existing?.public_config ?? '{}').verifyToken ?? randomBytes(24).toString('base64url');
     const now = new Date().toISOString();
     // Provider text is shown in the seller panel: keep it short, printable and free of the token.
-    const publicText = (value) => typeof value === 'string' && value.length <= 100 && !/\p{Cc}/u.test(value) && !value.includes(accessToken) ? value : null;
-    const publicConfig = { phoneNumberId, businessAccountId,
+    const publicText = (value) => typeof value === 'string' && value.length <= 100 && !/\p{Cc}/u.test(value) && !value.includes(accessToken) && !value.includes(appSecret) ? value : null;
+    const publicConfig = { phoneNumberId, businessAccountId, verifyToken,
       displayPhoneNumber: publicText(result.displayPhoneNumber), verifiedName: publicText(result.verifiedName) };
     await store.run(`INSERT INTO integration_connection(id, provider, environment, status, public_config,
       secret_ciphertext, secret_key_id, secret_hint, last_checked_at, last_error, created_at, updated_at)
@@ -97,12 +108,23 @@ export async function disconnectWhatsAppConnection(store, environment, actor) {
   });
 }
 
-// Server-side only: this plaintext token must never be returned by any HTTP route.
-export async function openWhatsAppToken(store, secretBox, environment) {
+// Server-side only: the plaintext secrets must never be returned by any HTTP route.
+export async function openWhatsAppSecrets(store, secretBox, environment) {
   validateEnvironment(environment);
   const row = await store.get('SELECT status, secret_ciphertext, secret_key_id FROM integration_connection WHERE provider = ? AND environment = ?', provider, environment);
   if (row?.status !== 'CONNECTED' || row.secret_ciphertext == null) throw new ApiError(409, 'NOT_CONNECTED', 'Connection is not connected.');
-  return secretBox.open(Buffer.from(row.secret_ciphertext), row.secret_key_id, context(environment));
+  const bundle = JSON.parse(secretBox.open(Buffer.from(row.secret_ciphertext), row.secret_key_id, context(environment)));
+  return { accessToken: bundle.accessToken, appSecret: bundle.appSecret, hashKey: Buffer.from(bundle.hashKey, 'base64') };
+}
+
+export async function openWhatsAppToken(store, secretBox, environment) {
+  return (await openWhatsAppSecrets(store, secretBox, environment)).accessToken;
+}
+
+/* Connected rows with their ids, for the webhook, which must find the right app secret and connection. */
+export async function listConnectedWhatsApp(store) {
+  return (await store.all("SELECT id, environment, public_config FROM integration_connection WHERE provider = ? AND status = 'CONNECTED' AND secret_ciphertext IS NOT NULL ORDER BY environment", provider))
+    .map((row) => ({ id: row.id, environment: row.environment, publicConfig: JSON.parse(row.public_config) }));
 }
 
 export async function resealWhatsAppConnections(store, secretBox) {

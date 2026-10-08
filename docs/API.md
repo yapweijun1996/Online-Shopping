@@ -119,6 +119,12 @@ The seller web app builds an official `https://wa.me/<international-digits>` cli
 
 `general_code` currently has only `PRODUCT_CATEGORY` rows. Creating a category requires `{ "code": "HOME_GOODS", "label": "Home goods" }`; `code` is immutable and accepts uppercase letters, digits, `_` and `-`. PATCH accepts a nonempty subset of `label` and `active`. Deactivating a category prevents new assignments but does not delete or hide products already assigned to it. The public product `category` and public list `categories` contain display labels. Seller product responses add `categoryCode` so the editor can select the stable code. The optional product-list `category` query filters by current display label. Company settings change the default currency shown for new product drafts; each product's submitted currency remains authoritative. Existing products and order snapshots are never converted by this setting.
 
+## WhatsApp webhook (provider callback)
+
+`GET /api/v1/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=…&hub.challenge=…` answers Meta's subscribe handshake with the challenge as plain text when the token equals the verify token of a connected account; otherwise 403.
+
+`POST /api/v1/webhooks/whatsapp` accepts a Meta delivery (body ≤256 KiB). There is no session, origin or CSRF check: the `X-Hub-Signature-256` header must be the HMAC-SHA256 of the raw body under the app secret of a connected account, otherwise 401 and nothing is stored. A valid delivery is recorded once (a repeat of the same body is acknowledged and ignored), delivery receipts advance the matching message in the outbox (never backwards) and buyer replies are stored for the seller panel. Responses are `{ "received": true }`, `401 INVALID_SIGNATURE`, `413`, `429` or `503 INTEGRATIONS_UNAVAILABLE` when no master key is configured. Rate limit: 600 requests per 15 minutes per client address.
+
 ## Error contract
 
 ```json
