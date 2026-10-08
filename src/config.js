@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
+import { parseKeyFile } from './secret-box.js';
 
 const weakPasswords = new Set(['password', 'password123', 'changeme', 'admin123', 'testpassword', 'replace-me']);
 const placeholderWords = /password|changeme|replace[-_]?me|example|sample|default/i;
@@ -80,11 +81,19 @@ export function readConfig(env = process.env) {
     try { url = new URL(databaseUrl); } catch { throw new Error('Invalid DATABASE_URL.'); }
     if (!['postgres:', 'postgresql:'].includes(url.protocol)) throw new Error('DATABASE_URL must use PostgreSQL.');
   }
+  // Master keys for stored integration credentials. When a key file is configured it must be valid: a bad or missing
+  // file stops startup (the deploy health check then fails) instead of silently running without encryption.
+  let integrationKeys = null;
+  if (env.INTEGRATION_KEY_FILE) {
+    let text;
+    try { text = readFileSync(env.INTEGRATION_KEY_FILE, 'utf8'); } catch { throw new Error('INTEGRATION_KEY_FILE cannot be read.'); }
+    integrationKeys = parseKeyFile(text);
+  }
   const appRevision = env.APP_REVISION || null;
   if (appRevision && !/^(local|[0-9a-f]{40})$/.test(appRevision)) throw new Error('APP_REVISION must be a commit SHA or local.');
   const port = Number(env.PORT || 3000);
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('PORT must be a valid port.');
   const trustProxy = env.TRUST_PROXY === '1';
   if (env.TRUST_PROXY && !trustProxy) throw new Error('TRUST_PROXY must be 1 when set.');
-  return { production, username, password, dbPath, databaseUrl, publicOrigin, sellerOrigin, appRevision, port, trustProxy, shopMode: readShopMode(env), sellerQuickLogin: env.SELLER_QUICK_LOGIN === '1', demoRevision: readDemoRevision(env) };
+  return { production, username, password, dbPath, databaseUrl, publicOrigin, sellerOrigin, appRevision, integrationKeys, port, trustProxy, shopMode: readShopMode(env), sellerQuickLogin: env.SELLER_QUICK_LOGIN === '1', demoRevision: readDemoRevision(env) };
 }

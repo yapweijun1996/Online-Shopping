@@ -29,6 +29,7 @@ services:
       ADMIN_USERNAME: ${ADMIN_USERNAME:?Set ADMIN_USERNAME}
       ADMIN_PASSWORD_FILE: /run/secrets/admin_password
       DATABASE_PASSWORD_FILE: /run/secrets/database_password
+      INTEGRATION_KEY_FILE: /run/secrets/integration_keys
       DATABASE_HOST: postgres
       DATABASE_USER: online_shopping_app
       DATABASE_NAME: online_shopping
@@ -37,7 +38,7 @@ services:
       TRUST_PROXY: "1"
       SHOP_MODE: manual
       SELLER_QUICK_LOGIN: ${SELLER_QUICK_LOGIN:-0}
-    secrets: [admin_password, database_password]
+    secrets: [admin_password, database_password, integration_keys]
     networks: [private]
     read_only: true
     tmpfs: [/tmp]
@@ -93,6 +94,8 @@ secrets:
     file: ${ADMIN_PASSWORD_FILE_HOST:-./.local/admin-password}
   database_password:
     file: ${DATABASE_PASSWORD_FILE_HOST:-./.local/postgres-password}
+  integration_keys:
+    file: ${INTEGRATION_KEY_FILE_HOST:-./.local/integration-keys}
   database_owner_password:
     file: ${DATABASE_OWNER_PASSWORD_FILE_HOST:-./.local/postgres-owner-password}
   tunnel_credentials:
