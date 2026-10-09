@@ -50,3 +50,25 @@ test('PostgreSQL: the product CSV export matches', { skip: !base }, async (t) =>
   const csv = await exportProductsCsv(store, new URLSearchParams('search=csv'));
   assert.ok(csv.includes("PG-CSV,'+Plus,Synthetic,Synthetic,,,MYR,19.99,2,yes,"));
 });
+
+test('PostgreSQL: the product CSV import round-trips, previews, applies and rolls back like SQLite', { skip: !base }, async (t) => {
+  const { exportProductsCsv } = await import('../src/product-export.js');
+  const { importProducts, planImport } = await import('../src/product-import.js');
+  const name = `shopping_test_${randomUUID().replaceAll('-', '')}`;
+  const pool = new pg.Pool({ connectionString: base });
+  await pool.query(`CREATE DATABASE ${name}`);
+  const url = new URL(base); url.pathname = '/' + name;
+  const store = await openPostgresDatabase(url.href);
+  t.after(async () => { await store.close(); await pool.query(`DROP DATABASE ${name} WITH (FORCE)`); await pool.end(); });
+  await createCategory(store, { code: 'TEST', label: 'Synthetic' });
+  await createProduct(store, { sku: 'PG-IMP', name: '=Formula', description: 'Synthetic', category: 'TEST', priceMinor: 1999, stockQuantity: 2, active: true });
+  const csv = await exportProductsCsv(store, new URLSearchParams());
+  assert.deepEqual((await planImport(store, csv)).summary, { create: 0, update: 0, unchanged: 1, errors: 0 });
+  const edited = 'SKU,Name,Description,Category,Price,Stock,Active\nPG-IMP,,,,25.00,,\nPG-NEW,Brand new,Fresh,Synthetic,3.50,9,yes\n';
+  assert.deepEqual((await planImport(store, edited)).summary, { create: 1, update: 1, unchanged: 0, errors: 0 });
+  assert.equal(Number((await store.get('SELECT COUNT(*) AS n FROM product')).n), 1, 'a plan writes nothing');
+  await importProducts(store, edited, 'tester');
+  assert.deepEqual((await store.all('SELECT sku, price_minor, stock_quantity FROM product ORDER BY sku')).map((row) => [row.sku, Number(row.price_minor), row.stock_quantity === null ? null : Number(row.stock_quantity)]), [['PG-IMP', 2500, null], ['PG-NEW', 350, 9]]);
+  await assert.rejects(importProducts(store, 'SKU,Name,Description,Category,Price\nPG-OK,Fine,Desc,Synthetic,1.00\nPG-BAD,Bad,Desc,Nowhere,1.00\n', 'tester'), /Fix the rows/);
+  assert.equal(Number((await store.get("SELECT COUNT(*) AS n FROM product WHERE sku = 'PG-OK'")).n), 0);
+});
