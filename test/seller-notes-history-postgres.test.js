@@ -36,3 +36,17 @@ test('PostgreSQL: order notes, product history and bulk activation behave like S
   await assert.rejects(bulkSetActive(store, [one.id, '11111111-1111-4111-8111-111111111111'], true, 'tester', (id, patch) => updateProduct(store, id, patch)), /no longer exists/);
   assert.equal(Number((await store.get('SELECT COUNT(*) AS n FROM product WHERE active = 1')).n), 0);
 });
+
+test('PostgreSQL: the product CSV export matches', { skip: !base }, async (t) => {
+  const { exportProductsCsv } = await import('../src/product-export.js');
+  const name = `shopping_test_${randomUUID().replaceAll('-', '')}`;
+  const pool = new pg.Pool({ connectionString: base });
+  await pool.query(`CREATE DATABASE ${name}`);
+  const url = new URL(base); url.pathname = '/' + name;
+  const store = await openPostgresDatabase(url.href);
+  t.after(async () => { await store.close(); await pool.query(`DROP DATABASE ${name} WITH (FORCE)`); await pool.end(); });
+  await createCategory(store, { code: 'TEST', label: 'Synthetic' });
+  await createProduct(store, { sku: 'PG-CSV', name: '+Plus', description: 'Synthetic', category: 'TEST', priceMinor: 1999, stockQuantity: 2, active: true });
+  const csv = await exportProductsCsv(store, new URLSearchParams('search=csv'));
+  assert.ok(csv.includes("PG-CSV,'+Plus,Synthetic,Synthetic,,,MYR,19.99,2,yes,"));
+});

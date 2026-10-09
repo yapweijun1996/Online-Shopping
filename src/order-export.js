@@ -3,18 +3,14 @@
 // are neutralised, because buyers choose their own names and addresses.
 import { ApiError } from './http.js';
 import { orderFilter } from './seller-orders.js';
+import { csvCell, money, toCsv } from './csv.js';
+
+export { csvCell };
 
 export const EXPORT_ROW_LIMIT = 5000;
 const HEADER = ['Order number', 'Submitted (UTC)', 'Status', 'Currency', 'Total', 'Items', 'Buyer name', 'Buyer WhatsApp', 'Buyer email',
   'Destinations', 'Carrier', 'Tracking number', 'Contact erased'];
 
-export function csvCell(value) {
-  let text = value === null || value === undefined ? '' : String(value);
-  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
-  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
-}
-
-const money = (minor) => `${Math.floor(minor / 100)}.${String(minor % 100).padStart(2, '0')}`;
 
 export async function exportOrdersCsv(database, params) {
   const filter = orderFilter(params);

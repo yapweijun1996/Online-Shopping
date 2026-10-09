@@ -450,8 +450,29 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     bulkCount.textContent = selected.size ? t('bulkSelected').replace('{count}', selected.size) : '';
     for (const control of [...bulkButtons, bulkClear]) { control.textContent = t(control.dataset.labelKey); control.hidden = selected.size === 0; control.disabled = bulkBusy; }
     bulkMessage.textContent = bulkMessageKey ? t(bulkMessageKey).replace('{count}', bulkMessageCount) : '';
-    bulkMessage.classList.toggle('is-error', bulkMessageKey === 'bulkFailed');
+    bulkMessage.classList.toggle('is-error', ['bulkFailed', 'exportFailed', 'exportTooMany'].includes(bulkMessageKey));
   }
+  find('#product-export').addEventListener('click', async (event) => {
+    const control = event.currentTarget;
+    control.disabled = true;
+    try {
+      const response = await fetch(`/api/v1/seller/products/export.csv?${new URLSearchParams({ search: search.value.trim() })}`, { cache: 'no-store' });
+      if (response.status === 401) { if (isCurrent()) onUnauthorized(); return; }
+      if (!response.ok) {
+        const code = (await response.json().catch(() => ({}))).error?.code;
+        if (isCurrent()) { bulkMessageKey = code === 'TOO_MANY_ROWS' ? 'exportTooMany' : 'exportFailed'; refreshBulk(); }
+        return;
+      }
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(await response.blob());
+      link.download = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') || '')?.[1] || 'products.csv';
+      document.body.append(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      if (isCurrent()) { bulkMessageKey = 'exportDone'; refreshBulk(); }
+    } catch { if (isCurrent()) { bulkMessageKey = 'exportFailed'; refreshBulk(); } }
+    finally { if (control.isConnected) control.disabled = false; }
+  });
+
   async function runBulk(action) {
     if (!selected.size || bulkBusy) return;
     bulkBusy = true; bulkMessageKey = ''; refreshBulk();
