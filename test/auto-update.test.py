@@ -187,6 +187,17 @@ class Tests(unittest.TestCase):
             u.run = lambda command, **kw: '{"version": 17}\n'
             with self.assertRaises(RuntimeError): u.migrate({'sha': NEW, 'release': new})
 
+    def test_compose_render_format_changes_do_not_pause_a_release(self):
+        R1, R2 = '/r/old', '/r/new'
+        mount = lambda release, bind: {'type': 'bind', 'source': release + '/deploy/init.sh', 'target': '/i', 'bind': bind}
+        config = lambda release, bind: {'services': {'postgres': {'image': 'pg', 'volumes': [mount(release, bind)]}, 'tunnel': {'image': 'cf'}}}
+        # An older Compose printed the default create_host_path; a newer one does not.
+        self.assertEqual(m.compose_violations(config(R1, {'create_host_path': True}), config(R2, {}), R1, R2), [])
+        # A real change to the mount is still caught, and so is turning the default off.
+        self.assertTrue(m.compose_violations(config(R1, {'create_host_path': True}), config(R2, {'create_host_path': False}), R1, R2))
+        changed = config(R2, {}); changed['services']['postgres']['volumes'][0]['source'] = '/etc/shadow'
+        self.assertTrue(m.compose_violations(config(R1, {}), changed, R1, R2))
+
     def test_compose_policy(self):
         R1, R2 = '/r/old', '/r/new'
         base = lambda r: {'services': {
