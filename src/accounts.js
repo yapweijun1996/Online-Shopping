@@ -110,14 +110,14 @@ export async function changeOwnPassword(database, accountId, input, currentToken
 }
 
 /* Server-side recovery for the Owner (and anyone else): sets a temporary password that must be replaced at next sign-in. */
-export async function resetPasswordFromHost(database, username, password) {
+export async function resetPasswordFromHost(database, username, password, { forceChange = true } = {}) {
   checkPassword(password, 'password', username);
   return database.transaction(async () => {
     const account = await database.get('SELECT id, username FROM seller_account WHERE username_key = ?', username.toLowerCase());
     if (!account) throw new ApiError(404, 'NOT_FOUND', 'No account has this username.');
     const stamp = now();
-    await database.run('UPDATE seller_account SET password_hash = ?, must_change_password = 1, active = 1, password_changed_at = ?, updated_at = ? WHERE id = ?',
-      encodePassword(password), stamp, stamp, account.id);
+    await database.run('UPDATE seller_account SET password_hash = ?, must_change_password = ?, active = 1, password_changed_at = ?, updated_at = ? WHERE id = ?',
+      encodePassword(password), forceChange ? 1 : 0, stamp, stamp, account.id);
     await revokeSessions(database, account.id);
     await record(database, account.id, 'host-script', 'PASSWORD_RESET', 'reset on the server');
     return account.username;

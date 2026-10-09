@@ -66,7 +66,7 @@ const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'confirmations',
 const VIEW_CAPABILITY = { products: 'catalog.write', categories: 'catalog.write', options: 'catalog.write', company: 'settings.write', team: 'staff.manage' };
 let capabilities = [];
 const can = (capability) => capabilities.includes(capability);
-const allowedRoute = (route) => { const needed = VIEW_CAPABILITY[route.split('/')[0]]; return !needed || can(needed); };
+const allowedRoute = (route) => { const view = route.split('/')[0], needed = VIEW_CAPABILITY[view]; return (!needed || can(needed)) && !(view === 'team' && quickLogin); };
 const PRODUCT_ROUTE = /^products\/(?:new(?:\/[0-9a-f-]{36})?|[0-9a-f-]{36})$/;
 const ORDER_ROUTE = /^(?:orders|confirmations)\/[0-9a-f-]{36}$/;
 
@@ -221,7 +221,7 @@ function showWorkspace(session) {
   capabilities = Array.isArray(session.capabilities) ? session.capabilities : [];
   for (const button of document.querySelectorAll('.nav-item[data-view]')) {
     const needed = VIEW_CAPABILITY[button.dataset.view];
-    if (needed) button.hidden = !can(needed);
+    if (needed) button.hidden = !can(needed) || (button.dataset.view === 'team' && quickLogin);
   }
   byId('change-password').hidden = quickLogin;
   accountButton.querySelector('.avatar').textContent = Array.from(username.trim())[0]?.toLocaleUpperCase(locale()) || '•';

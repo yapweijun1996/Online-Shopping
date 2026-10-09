@@ -62,7 +62,7 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
   const demoEnabled = config.shopMode === 'public-demo' && (await getShopSetup(store)).mode === 'demo';
   // Explicit opt-in: passwordless seller sign-in for a sample site. Never enable it for a real tenant.
   const quickLogin = demoEnabled || config.sellerQuickLogin === true;
-  const sessionView = (account, csrfToken) => ({ username: account.username, role: account.role, quickLogin, mustChangePassword: account.mustChangePassword,
+  const sessionView = (account, csrfToken) => ({ username: account.username, role: account.role, quickLogin, mustChangePassword: account.mustChangePassword && !quickLogin,
     capabilities: capabilitiesOf(account.role), csrfToken });
   const demoRoute = createDemoSandbox({ enabled: demoEnabled, production: config.production });
   const loginLimiter = new SqlLimiter(store, 'login', { limit: 5, windowMs: LIMIT_WINDOW_MS });
@@ -220,7 +220,8 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
       return json(200, { signedOut: true }, { 'Set-Cookie': cookieFor('', 0, config.production) });
     }
     // A temporary password (new account or reset) must be replaced before anything else works.
-    if (account.mustChangePassword && pathname !== '/api/v1/seller/account/password') {
+    // (On a quick sign-in site passwords cannot be changed, so the flag is ignored there rather than locking everyone out.)
+    if (account.mustChangePassword && !quickLogin && pathname !== '/api/v1/seller/account/password') {
       throw new ApiError(403, 'PASSWORD_CHANGE_REQUIRED', 'Change your temporary password first.');
     }
     if (method === 'POST' && pathname === '/api/v1/seller/account/password') {
@@ -252,8 +253,9 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
     if (connectionRoute) {
       const environment = connectionRoute[1];
       if (method === 'GET' && !environment) {
-        allow('settings.write');
         if (quickLogin || !secretBox) return json(200, { available: false, connections: [] });
+        // Every role may learn that WhatsApp is on (it decides whether Messages shows); only the Owner sees the connection.
+        if (!can(account.role, 'settings.write')) return json(200, { available: true, connections: [] });
         return json(200, { available: true, webhookUrl: `${config.publicOrigin || url.origin}/api/v1/webhooks/whatsapp`, connections: await listWhatsAppConnections(store) });
       }
       if ((method === 'PUT' || method === 'DELETE') && environment) {

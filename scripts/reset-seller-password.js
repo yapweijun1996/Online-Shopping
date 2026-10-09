@@ -1,5 +1,5 @@
 // Recovery on the server: sets a temporary password for a seller account (the Owner included) and ends its sessions.
-// The person must choose a new password at the next sign-in. The password is read from the environment, never from
+// The person must choose a new password at the next sign-in (not on a quick sign-in site, where passwords cannot be changed). The password is read from the environment, never from
 // the command line, so it does not end up in the shell history or the process list.
 //
 //   docker compose exec -e NEW_SELLER_PASSWORD='a long temporary password' backend node scripts/reset-seller-password.js owner
@@ -17,7 +17,7 @@ if (!username || !password) {
 const config = readConfig(process.env);
 const store = config.databaseUrl ? await openPostgresDatabase(config.databaseUrl) : await openDatabase(config.dbPath);
 try {
-  console.log(`Temporary password set for ${await resetPasswordFromHost(store, username, password)}. They must change it at the next sign-in.`);
+  console.log(`Temporary password set for ${await resetPasswordFromHost(store, username, password, { forceChange: !config.sellerQuickLogin })}.${config.sellerQuickLogin ? '' : ' They must change it at the next sign-in.'}`);
 } catch (error) {
   console.error(`Could not reset: ${error.message}`);
   process.exitCode = 1;

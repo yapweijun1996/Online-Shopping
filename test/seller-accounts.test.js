@@ -5,6 +5,8 @@ import { openDatabase, migrateStore } from '../src/db.js';
 import { authenticate } from '../src/auth.js';
 import { resetPasswordFromHost } from '../src/accounts.js';
 import { can, ROLES } from '../src/roles.js';
+import { randomBytes } from 'node:crypto';
+import { parseKeyFile } from '../src/secret-box.js';
 
 const STRONG = 'Temporary-Pass-2026!';
 const NEXT = 'My-Own-Password-2026!';
@@ -54,7 +56,7 @@ test('roles: the matrix is enforced on the server, not only hidden in the page',
       ['POST', '/api/v1/seller/products', 'catalog.write'], ['PATCH', `/api/v1/seller/products/${ghost}`, 'catalog.write'],
       ['POST', '/api/v1/seller/categories', 'catalog.write'], ['POST', '/api/v1/seller/option-types', 'catalog.write'],
       ['PATCH', '/api/v1/seller/company-settings', 'settings.write'], ['POST', '/api/v1/seller/setup', 'settings.write'],
-      ['GET', '/api/v1/seller/integrations/whatsapp', 'settings.write'], ['PUT', '/api/v1/seller/integrations/whatsapp/SANDBOX', 'settings.write'],
+      ['PUT', '/api/v1/seller/integrations/whatsapp/SANDBOX', 'settings.write'],
       ['POST', `/api/v1/seller/messages/outbox/${ghost}/resolve`, 'messages.act'],
       ['GET', '/api/v1/seller/accounts', 'staff.manage'], ['POST', '/api/v1/seller/accounts', 'staff.manage'], ['PATCH', `/api/v1/seller/accounts/${ghost}`, 'staff.manage'],
     ];
@@ -165,5 +167,30 @@ test('a quick sign-in site cannot manage accounts or change the Owner password',
     assert.equal((await f.request('POST', '/api/v1/seller/account/password', { currentPassword: f.config.password, newPassword: NEXT }, headers)).response.status, 403);
     assert.equal((await f.app.database.get('SELECT COUNT(*) AS n FROM seller_account')).n, 1);
     assert.equal((await f.request('POST', '/api/v1/seller/session', { username: f.config.username, password: f.config.password }, { origin: f.origin })).response.status, 200);
+  } finally { await f.close(); }
+});
+
+test('Managers and Staff can learn that WhatsApp is on, but only the Owner sees the connection', async () => {
+  const f = await sellerFixture({ integrationKeys: parseKeyFile(`k1=${randomBytes(32).toString('base64')}`) });
+  try {
+    const { owner, manager, staff } = await team(f);
+    const seen = async (who) => (await f.request('GET', '/api/v1/seller/integrations/whatsapp', null, who.headers)).data;
+    assert.equal((await seen(owner)).available, true);
+    assert.ok(Object.hasOwn(await seen(owner), 'webhookUrl'));
+    for (const who of [manager, staff]) assert.deepEqual(await seen(who), { available: true, connections: [] });
+  } finally { await f.close(); }
+});
+
+test('a reset Owner on a quick sign-in site is not locked out by the temporary-password rule', async () => {
+  const f = await sellerFixture({ sellerQuickLogin: true });
+  try {
+    await resetPasswordFromHost(f.app.database, f.config.username, STRONG);
+    assert.equal((await f.app.database.get('SELECT must_change_password AS m FROM seller_account')).m, 1);
+    const quick = await f.request('POST', '/api/v1/seller/demo-session', null, { origin: f.origin });
+    const headers = { origin: f.origin, cookie: quick.response.headers.get('set-cookie').split(';')[0], 'x-csrf-token': quick.data.csrfToken };
+    assert.equal(quick.data.mustChangePassword, false);
+    assert.equal((await f.request('GET', '/api/v1/seller/orders', null, headers)).response.status, 200);
+    await resetPasswordFromHost(f.app.database, f.config.username, STRONG, { forceChange: false });
+    assert.equal((await f.app.database.get('SELECT must_change_password AS m FROM seller_account')).m, 0);
   } finally { await f.close(); }
 });
