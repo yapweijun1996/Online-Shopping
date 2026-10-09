@@ -9,6 +9,8 @@ import { mountDemoEntry } from '../shared/demo-entry.js';
 import { createOrderAlerts } from './alerts.js';
 import { snapshotCount } from './studio-copy.js';
 import { mountAudit } from './audit.js';
+import { mountTeam } from './team.js';
+import { openPasswordDialog } from './password-dialog.js';
 import { mountFigures } from './dashboard-figures.js';
 import { mountMessages, startMessageBadge } from './messages.js';
 import { mountProducts } from './products.js';
@@ -59,14 +61,19 @@ let updateView = null;
 let updateIdentity = '';
 const sessionHintKey = 'online-shopping-seller-session-hint';
 mountTabIcon(window.sellerPalette);
-const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'confirmations', 'audit', 'messages', 'categories', 'options', 'company']);
+const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'confirmations', 'audit', 'messages', 'categories', 'options', 'company', 'team']);
+// Pages a role cannot use are hidden and their addresses fall back to the dashboard. The server refuses them anyway.
+const VIEW_CAPABILITY = { products: 'catalog.write', categories: 'catalog.write', options: 'catalog.write', company: 'settings.write', team: 'staff.manage' };
+let capabilities = [];
+const can = (capability) => capabilities.includes(capability);
+const allowedRoute = (route) => { const needed = VIEW_CAPABILITY[route.split('/')[0]]; return !needed || can(needed); };
 const PRODUCT_ROUTE = /^products\/(?:new(?:\/[0-9a-f-]{36})?|[0-9a-f-]{36})$/;
 const ORDER_ROUTE = /^(?:orders|confirmations)\/[0-9a-f-]{36}$/;
 
 function routeFromHash() {
   // `review` was the old address of the queue of orders waiting for a decision, which is now Sales Orders.
   const route = location.hash.slice(1).replace(/^review(?=\/|$)/, 'orders');
-  return VALID_VIEWS.has(route) || PRODUCT_ROUTE.test(route) || ORDER_ROUTE.test(route) ? route : 'dashboard';
+  return (VALID_VIEWS.has(route) || PRODUCT_ROUTE.test(route) || ORDER_ROUTE.test(route)) && allowedRoute(route) ? route : 'dashboard';
 }
 
 function viewFromRoute(route) { return route.split('/')[0]; }
@@ -74,13 +81,13 @@ function viewFromRoute(route) { return route.split('/')[0]; }
 function applyRoute() {
   currentRoute = routeFromHash();
   currentView = viewFromRoute(currentRoute);
-  // Old `#review` links are rewritten to the Sales Orders address.
-  if (location.hash.slice(1).startsWith('review')) history.replaceState(history.state, '', `#${currentRoute}`);
+  // Old `#review` links, and pages this role cannot open, are rewritten to the address that is actually shown.
+  if (location.hash.slice(1).startsWith('review') || (location.hash.length > 1 && !allowedRoute(location.hash.slice(1)))) history.replaceState(history.state, '', `#${currentRoute}`);
   renderView();
 }
 
 function activePage() {
-  return currentView === 'messages' ? messagesPage : currentView === 'products' ? productsPage : currentView === 'categories' || currentView === 'options' || currentView === 'company' || currentView === 'audit' ? settingsPage : currentView === 'orders' || currentView === 'confirmations' ? ordersPage : null;
+  return currentView === 'messages' ? messagesPage : currentView === 'products' ? productsPage : currentView === 'categories' || currentView === 'options' || currentView === 'company' || currentView === 'audit' || currentView === 'team' ? settingsPage : currentView === 'orders' || currentView === 'confirmations' ? ordersPage : null;
 }
 
 function hasUnsavedChanges() { return activePage()?.hasUnsavedChanges?.() === true; }
@@ -180,6 +187,7 @@ function showLogin(messageKey = '', clearHint = true) {
   csrfToken = null;
   username = '';
   role = '';
+  capabilities = [];
   productsPage = null;
   settingsPage = null;
   ordersPage?.dispose();
@@ -210,6 +218,12 @@ function showWorkspace(session) {
   username = session.username;
   role = session.role;
   quickLogin = session.quickLogin === true;
+  capabilities = Array.isArray(session.capabilities) ? session.capabilities : [];
+  for (const button of document.querySelectorAll('.nav-item[data-view]')) {
+    const needed = VIEW_CAPABILITY[button.dataset.view];
+    if (needed) button.hidden = !can(needed);
+  }
+  byId('change-password').hidden = quickLogin;
   accountButton.querySelector('.avatar').textContent = Array.from(username.trim())[0]?.toLocaleUpperCase(locale()) || '•';
   setLoginMessage('');
   setWorkspaceMessage('');
@@ -231,6 +245,10 @@ function showWorkspace(session) {
   byId('password').value = '';
   syncDrawerAccess();
   applyRoute();
+  // A temporary password (new account or reset) must be replaced before anything else works.
+  if (session.mustChangePassword) {
+    openPasswordDialog({ forced: true, csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError'), onDone: () => showWorkspace({ ...session, mustChangePassword: false }) });
+  }
 }
 
 function renderView() {
@@ -249,7 +267,7 @@ function renderView() {
   });
   const titleKey = currentView === 'products' && currentRoute !== 'products'
     ? currentRoute.startsWith('products/new') ? 'addProduct' : 'editProduct'
-    : { dashboard: 'dashboard', products: 'products', orders: 'salesOrders', confirmations: 'orderReview', audit: 'auditLog', messages: 'msgHeading', categories: 'categoryCodes', options: 'optionsNav', company: 'companySettings' }[currentView];
+    : { dashboard: 'dashboard', products: 'products', orders: 'salesOrders', confirmations: 'orderReview', audit: 'auditLog', messages: 'msgHeading', team: 'teamNav', categories: 'categoryCodes', options: 'optionsNav', company: 'companySettings' }[currentView];
   byId('page-title').dataset.i18n = titleKey;
   byId('page-title').textContent = t(titleKey);
   const content = byId('workspace-content');
@@ -261,8 +279,9 @@ function renderView() {
       ordersPage?.dispose();
       ordersPage = mountOrders(content, {
         mode: currentView,
-        canErase: !quickLogin,
-        canExport: !quickLogin,
+        canErase: !quickLogin && can('data.erase'),
+        canExport: !quickLogin && can('data.export'),
+        canDecide: can('orders.decide'),
         csrfToken: () => csrfToken,
         onUnauthorized: () => showLogin('authError'),
         initialOrderId: orderId,
@@ -298,7 +317,11 @@ function renderView() {
   productsPage = null;
   if (currentView === 'messages') {
     settingsPage = null;
-    messagesPage = mountMessages(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError') });
+    messagesPage = mountMessages(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError'), canAct: can('messages.act') });
+    return;
+  }
+  if (currentView === 'team') {
+    settingsPage = mountTeam(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError') });
     return;
   }
   if (currentView === 'audit') {
@@ -380,7 +403,7 @@ async function renderDashboard(content) {
     }).catch(() => { if (isCurrent()) currency.textContent = t('networkError'); });
     const grid = node('div', 'dashboard-grid');
     shell.replaceChildren(identity, stats, node('p', 'dashboard-count-help', t('snapshotCountHelp')),
-      mountFigures({ isCurrent, onUnauthorized: () => showLogin('authError') }), grid);
+      ...(can('figures.read') ? [mountFigures({ isCurrent, onUnauthorized: () => showLogin('authError') })] : []), grid);
 
     const panels = [
       {
@@ -477,6 +500,8 @@ async function renderDashboard(content) {
     shell.replaceChildren(message, retry);
   }
 }
+
+const roleLabel = () => ({ OWNER: 'roleOwner', MANAGER: 'roleManager', STAFF: 'roleStaff' }[role] ? t({ OWNER: 'roleOwner', MANAGER: 'roleManager', STAFF: 'roleStaff' }[role]) : role);
 
 function closeDrawer(restoreFocus = true) {
   const wasOpen = sidebar.classList.contains('drawer-open');
@@ -623,8 +648,12 @@ document.addEventListener('click', (event) => {
 byId('profile-button').addEventListener('click', () => {
   closeAccount();
   byId('profile-username').textContent = username;
-  byId('profile-role').textContent = role === 'SUPER_ADMIN' ? t('superAdmin') : role;
+  byId('profile-role').textContent = roleLabel();
   byId('profile-dialog').showModal();
+});
+byId('change-password').addEventListener('click', (event) => {
+  byId('profile-dialog').close();
+  openPasswordDialog({ csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError'), onDone: () => setWorkspaceMessage('passwordChanged'), trigger: byId('profile-button') });
 });
 byId('check-updates-button').addEventListener('click', () => {
   updateDismissed = false;
@@ -692,7 +721,7 @@ document.addEventListener('localechange', () => {
   setLoginMessage(loginMessageKey);
   setWorkspaceMessage(workspaceMessageKey);
   renderUpdateUI();
-  if (byId('profile-dialog').open) byId('profile-role').textContent = role === 'SUPER_ADMIN' ? t('superAdmin') : role;
+  if (byId('profile-dialog').open) byId('profile-role').textContent = roleLabel();
 });
 
 if (sessionHint()) {

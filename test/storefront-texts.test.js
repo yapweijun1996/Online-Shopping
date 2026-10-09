@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { openDatabase } from '../src/db.js';
 import { setupShop } from '../src/shop-setup.js';
 import { createApi } from '../src/app.js';
-import { createSession } from '../src/auth.js';
+import { ownerSession } from './helpers/session.js';
 import { updateCompanySettings, getCompanySettings, storefrontTexts } from '../src/settings.js';
 
 async function fixture(t) {
   const store = await openDatabase(':memory:'); t.after(async () => await store.close());
   await setupShop(store, { mode: 'production', shopName: 'Synthetic shop' });
   const config = { shopMode: 'manual', production: false, publicOrigin: 'http://fixture.test' };
-  const api = await createApi({ store, config }), session = await createSession(store);
+  const api = await createApi({ store, config }), session = await ownerSession(store);
   const call = async (path, method = 'GET', body) => {
     const response = await api(new Request('http://fixture.test' + path, {
       method, headers: { cookie: 'seller_session=' + session.token, 'x-csrf-token': session.csrfToken,

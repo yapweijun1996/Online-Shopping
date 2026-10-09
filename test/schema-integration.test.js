@@ -13,7 +13,7 @@ test(`Node recognizes actual divergent schema12, preserves historical orders and
   assert.equal(await store.schemaVersion(),12);
   assert.equal(await isReady(store),false);
   await migrate(store);
-  assert.equal(await store.schemaVersion(),22);
+  assert.equal(await store.schemaVersion(),23);
   assert.equal(await isReady(store),true);
   const upgraded=await store.get('SELECT * FROM shop_order');
   assert.deepEqual({...upgraded},{...order,tracking_carrier:null,tracking_no:null,contact_erased_at:null,contact_erased_by:null});

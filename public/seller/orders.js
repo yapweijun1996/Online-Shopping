@@ -33,7 +33,7 @@ const SCOPES = {
   confirmations: { defaultFilter: 'CONFIRMED', filters: ['CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'CONFIRMED,SHIPPED,DELIVERED,CANCELLED'] },
 };
 
-export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = false, canExport = false, initialOrderId = null, onSelect = () => {} }) {
+export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = false, canExport = false, canDecide = false, initialOrderId = null, onSelect = () => {} }) {
   root.replaceChildren(document.getElementById('orders-template').content.cloneNode(true));
   translate(root);
   const find = (selector) => root.querySelector(selector);
@@ -396,7 +396,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
     history.append(events);
     fragment.append(history);
 
-    if (order.status === 'SUBMITTED') {
+    if (order.status === 'SUBMITTED' && canDecide) {
       const actions = node('div', 'order-review-actions');
       const confirm = actionButton(t('confirmOrder'), (event) => openDecision('confirm', event.currentTarget), 'primary-button');
       const reject = actionButton(t('rejectOrder'), (event) => openDecision('reject', event.currentTarget), 'secondary-button');
@@ -409,7 +409,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
       fragment.append(actions);
     }
     const fulfilment = { CONFIRMED: [['ship', 'shipOrder', 'primary-button'], ['cancel', 'cancelOrder', 'secondary-button']],
-      SHIPPED: [['deliver', 'deliverOrder', 'primary-button']] }[order.status];
+      SHIPPED: [['deliver', 'deliverOrder', 'primary-button']] }[order.status]?.filter(([action]) => action !== 'cancel' || canDecide);
     if (fulfilment) {
       const actions = node('div', 'order-review-actions');
       if (!navigator.onLine) actions.append(node('p', 'order-offline-hint', t('offlineMessage')));

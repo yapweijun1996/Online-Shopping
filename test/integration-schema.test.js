@@ -36,13 +36,13 @@ test('SQLite schema 21: tables are created, the upgrade from 20 is repeatable, a
   const store = await openDatabase(':memory:');
   try {
     assert.equal(await store.schemaVersion(), SCHEMA_VERSION);
-    assert.equal(SCHEMA_VERSION, 22);
+    assert.equal(SCHEMA_VERSION, 23);
     for (const table of TABLES) await store.get(`SELECT COUNT(*) AS n FROM ${table}`);
     // A schema 20 database has none of the tables; the upgrade adds them and a second run changes nothing.
     await store.exec(`DROP TABLE message_inbound; DROP TABLE message_outbox; DROP TABLE webhook_receipt; DROP TABLE integration_audit; DROP TABLE integration_connection`);
     await store.setSchemaVersion(20);
     await migrateStore(store); await migrateStore(store);
-    assert.equal(await store.schemaVersion(), 22);
+    assert.equal(await store.schemaVersion(), 23);
 
     await setupShop(store, { mode: 'demo' });
     const order = await createOrder(store, 'schema21-intent-0001', orderInput((await listProducts(store, new URLSearchParams('limit=1'))).items[0]));
@@ -92,17 +92,17 @@ test('PostgreSQL schema 20 upgrades to 21 and matches a fresh schema 21, repeata
   const fresh = await openPostgresDatabase(urlOf(names[0]));
   const old = await openPostgresDatabase(urlOf(names[1]));
   closers.push(() => fresh.close());
-  assert.equal(await fresh.schemaVersion(), 22);
+  assert.equal(await fresh.schemaVersion(), 23);
   await old.exec(`DROP TABLE message_inbound; DROP TABLE message_outbox; DROP TABLE webhook_receipt; DROP TABLE integration_audit; DROP TABLE integration_connection`);
   await old.setSchemaVersion(20);
   await old.close();
 
   const upgraded = await openPostgresDatabase(urlOf(names[1]), { allowUpgrade: true });
-  assert.equal(await upgraded.schemaVersion(), 22);
+  assert.equal(await upgraded.schemaVersion(), 23);
   assert.deepEqual(await physicalSchema(urlOf(names[1])), await physicalSchema(urlOf(names[0])), 'upgraded and fresh schemas are identical');
   await upgraded.close();
   const again = await openPostgresDatabase(urlOf(names[1]), { allowUpgrade: true });   // already 21: opens without changes
-  assert.equal(await again.schemaVersion(), 22);
+  assert.equal(await again.schemaVersion(), 23);
   await again.close();
 
   // Superuser tests cannot see missing grants, so act as the application role inside a transaction that is rolled back.

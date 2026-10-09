@@ -21,7 +21,7 @@ Stock (SEL-01), fulfilment statuses (SEL-02) and in-portal new-order alerts (SEL
 
 ## Update 2026-10-09
 
-Done since this review: stock, fulfilment and alerts (SEL-01 to SEL-03), WhatsApp order messages and the Messages page, manual erasure of an order's contact data (SEL-05, item 5 below), dashboard figures, order filters by date, currency and total, and CSV export (items 7 and 8 below, SEL-06), and the audit log page (item 11, orders only). Still open: multiple accounts (item 4, SEL-04), bulk product actions and product CSV, shipping fees and promo codes, internal order notes, product-edit history.
+Done since this review: stock, fulfilment and alerts (SEL-01 to SEL-03), WhatsApp order messages and the Messages page, manual erasure of an order's contact data (SEL-05, item 5 below), dashboard figures, order filters by date, currency and total, and CSV export (items 7 and 8 below, SEL-06), and the audit log page (item 11, orders only). Multiple accounts with roles, password change and a server-side recovery script are done too (item 4, SEL-04; no second factor and no email recovery). Still open: bulk product actions and product CSV, shipping fees and promo codes, internal order notes, product-edit history.
 
 ## Missing, by priority
 

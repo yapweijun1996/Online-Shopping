@@ -113,7 +113,7 @@ export function startMessageBadge({ badge, navItem, csrfToken, onUnauthorized })
   return { refresh, refreshLocale, dispose };
 }
 
-export function mountMessages(root, { csrfToken, onUnauthorized }) {
+export function mountMessages(root, { csrfToken, onUnauthorized, canAct = true }) {
   root.replaceChildren();
   const identity = csrfToken();
   let active = true;
@@ -143,8 +143,8 @@ export function mountMessages(root, { csrfToken, onUnauthorized }) {
           return row;
         }
         const row = sentRow(item), actions = element('div', null, 'msg-actions');
-        if (item.status === 'RECONCILE') actions.append(button('msgSentAction', event => resolve(item, 'SENT', event.currentTarget)));
-        if (['RECONCILE', 'FAILED'].includes(item.status)) actions.append(button('msgResend', event => resolve(item, 'RESEND', event.currentTarget)));
+        if (canAct && item.status === 'RECONCILE') actions.append(button('msgSentAction', event => resolve(item, 'SENT', event.currentTarget)));
+        if (canAct && ['RECONCILE', 'FAILED'].includes(item.status)) actions.append(button('msgResend', event => resolve(item, 'RESEND', event.currentTarget)));
         actions.querySelectorAll('button').forEach(control => { control.disabled = busy.has(item.id); });
         row.append(actions); return row;
       }));

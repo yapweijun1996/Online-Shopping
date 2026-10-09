@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { SCHEMA_VERSION } from '../db.js';
 import { migrateLegacyVariants } from '../options.js';
 import { migrateListings } from '../listings.js';
@@ -5,7 +6,7 @@ import { migrateSharedGalleries } from '../product-gallery.js';
 
 // Called only by an explicit operator/test opt-in, inside the store-owned transaction.
 export async function upgradePostgres(store, version) {
-  if (![10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].includes(version)) throw new Error(`Unsupported PostgreSQL schema version ${version}.`);
+  if (![10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22].includes(version)) throw new Error(`Unsupported PostgreSQL schema version ${version}.`);
   const columns = await store.all("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='product'");
   const has = name => columns.some(row => row.column_name === name);
   if (version === 13 && !has('stock_quantity') && !has('gallery_layout_json')) throw new Error('Unrecognized PostgreSQL product schema.');
@@ -152,5 +153,38 @@ CREATE INDEX IF NOT EXISTS message_inbound_unread ON message_inbound(received_at
         GRANT SELECT, INSERT, UPDATE, DELETE ON integration_connection, integration_audit, webhook_receipt, message_outbox, message_inbound TO online_shopping_app;
       END IF;
     END $$;`);
+  await store.exec(`
+CREATE TABLE IF NOT EXISTS seller_account (
+  id TEXT PRIMARY KEY,
+  username TEXT NOT NULL CHECK (length(username) BETWEEN 3 AND 64),
+  username_key TEXT NOT NULL UNIQUE CHECK (length(username_key) BETWEEN 3 AND 64),
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('OWNER', 'MANAGER', 'STAFF')),
+  active BIGINT NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  must_change_password BIGINT NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1)),
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, password_changed_at TEXT, last_login_at TEXT
+);
+CREATE TABLE IF NOT EXISTS account_event (
+  id TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL REFERENCES seller_account(id) ON DELETE RESTRICT,
+  actor TEXT NOT NULL CHECK (length(actor) BETWEEN 1 AND 64),
+  action TEXT NOT NULL CHECK (action IN ('CREATED', 'ROLE_CHANGED', 'DEACTIVATED', 'ACTIVATED', 'PASSWORD_RESET', 'PASSWORD_CHANGED')),
+  detail TEXT CHECK (detail IS NULL OR length(detail) <= 200),
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS account_event_time ON account_event(created_at);
+ALTER TABLE session ADD COLUMN IF NOT EXISTS account_id TEXT;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'online_shopping_app') THEN
+    GRANT SELECT, INSERT, UPDATE, DELETE ON seller_account, account_event TO online_shopping_app;
+  END IF;
+END $$;`);
+  if (!await store.get('SELECT 1 AS found FROM seller_account LIMIT 1')) {
+    const admin = await store.get('SELECT username, password_hash, created_at FROM admin WHERE id = 1');
+    if (admin) {
+      await store.run(`INSERT INTO seller_account(id, username, username_key, password_hash, role, active, must_change_password, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'OWNER', 1, 0, ?, ?)`, randomUUID(), admin.username, admin.username.toLowerCase(), admin.password_hash, admin.created_at, admin.created_at);
+    }
+  }
   await store.setSchemaVersion(SCHEMA_VERSION);
 }

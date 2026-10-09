@@ -5,7 +5,7 @@ import { migrateStore } from '../src/db.js';
 import { openSyncDatabase as openDatabase } from './helpers/sync-store.js';
 import { initializeShop } from '../src/shop-setup.js';
 import { createApi } from '../src/app.js';
-import { createSession } from '../src/auth.js';
+import { ownerSession } from './helpers/session.js';
 import { listProducts, getProduct, createProduct } from '../src/products.js';
 import { updateCompanySettings } from '../src/settings.js';
 import { sellerChatURL } from '../public/shop/product-detail.js';
@@ -23,7 +23,7 @@ async function fixture(t, productionContact = false) {
     store.run("UPDATE shop_setup SET mode = 'production' WHERE id = 1");
     config.shopMode = 'manual';
   }
-  const api = await createApi({ store, config }), session = await createSession(store);
+  const api = await createApi({ store, config }), session = await ownerSession(store);
   const id = (await listProducts(store, new URLSearchParams('limit=100'))).items.find(p => p.sku === 'DEMO-020').id;
   const call = (path, method = 'GET', body, auth = true) => api(new Request('http://fixture.test' + path, {
     method, headers: { ...(auth ? { cookie: 'seller_session=' + session.token, 'x-csrf-token': session.csrfToken } : {}),

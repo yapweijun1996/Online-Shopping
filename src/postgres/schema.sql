@@ -9,8 +9,27 @@ CREATE TABLE session (
         token_hash TEXT PRIMARY KEY,
         csrf_token TEXT NOT NULL,
         expires_at TEXT NOT NULL,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL, account_id TEXT
       );
+CREATE TABLE seller_account (
+  id TEXT PRIMARY KEY,
+  username TEXT NOT NULL CHECK (length(username) BETWEEN 3 AND 64),
+  username_key TEXT NOT NULL UNIQUE CHECK (length(username_key) BETWEEN 3 AND 64),
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('OWNER', 'MANAGER', 'STAFF')),
+  active BIGINT NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  must_change_password BIGINT NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1)),
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, password_changed_at TEXT, last_login_at TEXT
+);
+CREATE TABLE account_event (
+  id TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL REFERENCES seller_account(id) ON DELETE RESTRICT,
+  actor TEXT NOT NULL CHECK (length(actor) BETWEEN 1 AND 64),
+  action TEXT NOT NULL CHECK (action IN ('CREATED', 'ROLE_CHANGED', 'DEACTIVATED', 'ACTIVATED', 'PASSWORD_RESET', 'PASSWORD_CHANGED')),
+  detail TEXT CHECK (detail IS NULL OR length(detail) <= 200),
+  created_at TEXT NOT NULL
+);
+CREATE INDEX account_event_time ON account_event(created_at);
 CREATE TABLE general_code (
         type TEXT NOT NULL CHECK (type = 'PRODUCT_CATEGORY'),
         code TEXT NOT NULL,
@@ -256,7 +275,7 @@ CREATE TABLE message_inbound (
 );
 CREATE INDEX message_inbound_order ON message_inbound(order_id);
 CREATE INDEX message_inbound_unread ON message_inbound(received_at) WHERE read_at IS NULL;
-INSERT INTO schema_meta VALUES (1, 22);
+INSERT INTO schema_meta VALUES (1, 23);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 INSERT INTO shop_setup(id, mode, shop_name) VALUES (1, NULL, 'Online Shopping');

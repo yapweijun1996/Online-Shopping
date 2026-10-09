@@ -31,7 +31,8 @@ test('migrations run through the store contract and record the schema version', 
     await migrateStore(store);
     assert.equal(await store.schemaVersion(), SCHEMA_VERSION);
     await migrateStore(store);
-    await store.run(`INSERT INTO admin(id, username, password_hash, created_at) VALUES (1, 'owner', 'x:y', ?)`, new Date().toISOString());
+    const stamp = new Date().toISOString();
+    await store.run(`INSERT INTO seller_account(id, username, username_key, password_hash, role, created_at, updated_at) VALUES ('a1', 'owner', 'owner', 'x:y', 'OWNER', ?, ?)`, stamp, stamp);
     assert.equal(await ready(store), true);
     await store.setSchemaVersion(SCHEMA_VERSION + 1);
     assert.equal(await ready(store), false);

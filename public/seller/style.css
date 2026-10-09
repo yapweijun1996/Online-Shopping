@@ -294,6 +294,12 @@
 .decision-dialog label{display:grid;gap:8px;font-size:13px;font-weight:700}
 .decision-dialog input{width:100%;min-height:44px;border:1px solid var(--ui-control-border);border-radius:9px;padding:10px 12px;background:var(--ui-surface);color:var(--ui-text)}
 .erase-dialog .order-number{display:block;margin:0 0 12px}
+.team-page{display:grid;gap:16px}.team-add{display:grid;gap:10px;max-width:520px}.team-add label,.team-reset{display:grid;gap:6px;font-size:13px;font-weight:700}
+.team-add input,.team-add select,.team-reset input,.team-controls select{min-height:44px;border:1px solid var(--ui-control-border);border-radius:9px;padding:8px 12px;background:var(--ui-surface);color:var(--ui-text);font:inherit}
+.team-list,.team-events{list-style:none;margin:0;padding:0;display:grid;gap:10px}.team-row{display:grid;gap:10px;padding:12px;border:1px solid var(--ui-border);border-radius:10px;background:var(--ui-surface)}.team-row.is-inactive{opacity:.7}
+.team-who{display:grid;gap:2px}.team-meta{color:var(--ui-muted);font-size:13px}.team-controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.team-reset{grid-template-columns:minmax(0,1fr) auto;align-items:center}
+.team-events li{font-size:13px;color:var(--ui-muted)}
+@media(min-width:900px){.team-row{grid-template-columns:minmax(0,1fr) auto;align-items:center}.team-reset{grid-column:1/-1;max-width:520px}}
 .erase-confirm{background:#aa3946;border-color:#aa3946;color:#fff}.erase-confirm:disabled{opacity:.5}
 .order-erased-note{margin:0 0 8px;padding:8px 10px;border-radius:8px;background:var(--ui-hover-surface);font-size:13px}
 .decision-dialog textarea{resize:vertical;font:inherit;min-height:100px}
