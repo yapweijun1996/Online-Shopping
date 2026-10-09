@@ -1,13 +1,13 @@
 # Multi-tenant plan: SuperAdmin and one shop = one seller
 
-Status: plan for owner review. Nothing here is implemented. Written 2026-10-08 against `main` (schema 21). It refines [MULTI_TENANT_PRODUCTION_PLAN.md](MULTI_TENANT_PRODUCTION_PLAN.md) (2026-10-05) with the owner's later decisions: **own PostgreSQL database per tenant** (recorded in [INTEGRATION_DESIGN.md](INTEGRATION_DESIGN.md) section 0) and **one shop = one seller**. Where the two disagree, this plan wins; the old plan's shared-database `company_id` model is not used.
+Status: **owner decisions D1, D2, D3 and the role question recorded 2026-10-09; P1 (tenant context, PR #116) and P2 (platform database, provisioner, tenant pool, audit; `src/platform/`) are implemented; nothing is reachable from a route yet.** Written 2026-10-08 against `main` (schema 21); the shop schema is now 24 and each tenant database carries the accounts, roles, notes and history added since (`seller_account` with Owner, Manager and Staff roles, `must_change_password`, `scripts/reset-seller-password.js`). It refines [MULTI_TENANT_PRODUCTION_PLAN.md](MULTI_TENANT_PRODUCTION_PLAN.md) (2026-10-05) with the owner's later decisions: **own PostgreSQL database per tenant** (recorded in [INTEGRATION_DESIGN.md](INTEGRATION_DESIGN.md) section 0) and **one shop = one seller**. Where the two disagree, this plan wins; the old plan's shared-database `company_id` model is not used.
 
 Facts are marked **[repo]** (checked in this repository), **[owner]** (decided by the owner) or **[proposal]** (my recommendation, not decided).
 
 ## 0. Goal and hard rules
 
 - A **SuperAdmin** account sits above all tenants. It can create a tenant (a shop together with its single seller account), suspend or resume it, reset the seller's password, rename its code, and run backups.
-- **One shop = one seller [owner].** No staff accounts and no Owner/Manager/Staff roles for now. Buyers stay guests.
+- **One shop = one seller at creation [owner].** The SuperAdmin creates a shop together with its single seller, who becomes that shop's Owner. **Update 2026-10-09 [owner]:** the Owner/Manager/Staff roles already built for a single shop (SEL-04) stay, and each shop manages its own people inside its own database; the SuperAdmin never manages shop staff. Buyers stay guests.
 - **Each tenant has its own database [owner].** Tenant URLs are path style, such as `/abc/` **[owner]**.
 - **The current live site is not touched [owner].** It is a sample site with passwordless sign-in; it keeps working at today's URLs and keeps its data and its quick sign-in. It becomes the default tenant (section 4.5).
 - Every phase is its own pull request, merges and deploys through the existing gate, and can be reverted on its own.
@@ -112,8 +112,8 @@ If any step fails the tenant becomes `FAILED`; the retry cleans up the half-crea
 | Phase | Scope | Notes |
 | --- | --- | --- |
 | **P0** Decisions | Section 10 answered; Cloudflare admin hostname decided | No code |
-| **P1** Tenant context | `createApi` takes a tenant resolver; today's single store is registered as the default tenant. No behaviour change, all tests unchanged | Small, safe first step |
-| **P2** Platform database | Schema for the platform tables, provisioner module, tenant pool manager, sealed credentials, audit | PostgreSQL tests; no routes yet |
+| **P1** Tenant context | **Done (PR #116).** `createApi` takes a tenant resolver; today's single store is registered as the default tenant. No behaviour change, all tests unchanged | Small, safe first step |
+| **P2** Platform database | **Done.** `src/platform/`: schema (`platform_admin`, `platform_recovery_code`, `platform_session`, `tenant`, `tenant_code_alias`, append-only `platform_audit`), `createTenant` (role, database, schema, shop, seller with forced password change, idempotent retry), bounded tenant pool with idle eviction and schema-version check, sealed database passwords, shop-code rules. Tests in `test/platform.test.js` (PostgreSQL) | PostgreSQL tests; no routes yet. The provisioner and platform database URLs are not read from configuration yet; P3 adds that |
 | **P3** SuperAdmin sign-in | Password, mandatory TOTP, recovery codes, lockout, sessions, bootstrap from secret files, console shell at the admin host | Needs the owner's Cloudflare step and secret files |
 | **P4** Tenant provisioning | Create, list, suspend, resume, reset seller password, code rename, delete with retention; idempotent recovery; first-sign-in password change for the seller | Console UI delegated to Codex, reviewed by me |
 | **P5** Tenant routing | Path resolver for API, static, manifest, service worker, share and crawler routes; Caddy rules; per-tenant cookies and limiter buckets; legacy root mapped to the default tenant; the full cross-tenant negative suite | Largest backend step |
@@ -143,13 +143,17 @@ Staff accounts and roles, custom domains per tenant, SuperAdmin impersonation, b
 - **Provisioner credential:** can create databases and roles; kept as a separate secret, not a superuser, never exposed to routes other than the SuperAdmin provisioning call.
 - **Cloudflare tunnel changes are manual** (protected file): the admin hostname needs the owner.
 
-## 10. Decisions needed from the owner
+## 10. Decisions
+
+Recorded 2026-10-09 by the owner: **D1** one backend with its own database per tenant; **D2** `shop.gmb01.xyz/<code>/` and `seller.gmb01.xyz/<code>/`; **D3** the SuperAdmin on its own hostname `admin.gmb01.xyz` (the Cloudflare DNS record and tunnel rule are a manual step for the owner, needed before P3); **shop roles** kept and managed per shop. D4 (mandatory TOTP) was decided on 2026-10-05. D5 to D10 below are still the recommendations and are treated as approved unless the owner objects.
+
+| # | Decision | Recommendation |
 
 | # | Decision | Recommendation |
 | --- | --- | --- |
-| D1 | Architecture | B: one backend, own database per tenant |
-| D2 | URL shape | `shop.gmb01.xyz/<code>/` and `seller.gmb01.xyz/<code>/` (keeps the two hostnames) |
-| D3 | SuperAdmin location | New hostname `admin.gmb01.xyz`, optionally behind Cloudflare Access |
+| D1 | Architecture (decided) | B: one backend, own database per tenant |
+| D2 | URL shape (decided) | `shop.gmb01.xyz/<code>/` and `seller.gmb01.xyz/<code>/` (keeps the two hostnames) |
+| D3 | SuperAdmin location (decided) | New hostname `admin.gmb01.xyz`, optionally behind Cloudflare Access |
 | D4 | TOTP | Mandatory for the SuperAdmin (as decided 2026-10-05); optional for sellers later |
 | D5 | Seller first password | Generated, shown once, forced change at first sign-in |
 | D6 | Current live site | Registered as the default tenant, flagged `sample`, unchanged |
