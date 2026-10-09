@@ -94,9 +94,23 @@ def schema_version(release):
     return int(version.group(1))
 
 
+def _without_render_noise(value):
+    """Drops settings that only describe how a given Docker Compose version prints a mount.
+
+    Newer Compose versions stop printing `bind.create_host_path: true` (its default), which made an unchanged
+    database service look changed and paused every release. The setting only decides whether Docker creates a
+    missing host directory, so it cannot grant access to anything.
+    """
+    if isinstance(value, dict):
+        return {key: _without_render_noise(item) for key, item in value.items() if not (key == 'create_host_path' and item is True)}
+    if isinstance(value, list):
+        return [_without_render_noise(item) for item in value]
+    return value
+
+
 def _normalised(value, release):
     # Rendered compose files embed the release directory in bind-mount paths; ignore that part.
-    return json.dumps(value, sort_keys=True).replace(str(release), '<release>')
+    return json.dumps(_without_render_noise(value), sort_keys=True).replace(str(release), '<release>')
 
 
 def compose_violations(current, candidate, current_release, candidate_release):
