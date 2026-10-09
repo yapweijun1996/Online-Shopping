@@ -25,6 +25,7 @@ import { presentCatalogCopy, presentShopName } from './catalog-copy.js';
 import { PRODUCT_MUTATION_BODY_LIMIT } from './request-limits.js';
 import { isCrawler, previewPage, priceText, summary } from './share.js';
 import { createSecretBox } from './secret-box.js';
+import { singleTenantRegistry } from './tenants.js';
 import { listAttentionMessages, listReplies, markReplyRead, messageSummary, orderMessages, resolveMessage } from './whatsapp-messages.js';
 import { createWhatsAppTransport } from './whatsapp-transport.js';
 import { disconnectWhatsAppConnection, listWhatsAppConnections, saveWhatsAppConnection } from './integration-connections.js';
@@ -62,7 +63,8 @@ function requireCsrf(request, session) {
  * server and the test harness share one set of routes. The runtime supplies
  * the client address it trusts and, optionally, a handler for non-API paths.
  */
-export async function createApi({ store, config, serveStatic = null, whatsappTransport = createWhatsAppTransport() }) {
+/* Routes for one tenant (one shop, one store). Built once per tenant by createApi. */
+async function createTenantApi({ store, config, serveStatic = null, whatsappTransport = createWhatsAppTransport() }) {
   const demoEnabled = config.shopMode === 'public-demo' && (await getShopSetup(store)).mode === 'demo';
   // Explicit opt-in: passwordless seller sign-in for a sample site. Never enable it for a real tenant.
   const quickLogin = demoEnabled || config.sellerQuickLogin === true;
@@ -477,6 +479,33 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
   return async function handle(request, { clientAddress = 'unknown' } = {}) {
     try {
       return await route(request, clientAddress);
+    } catch (error) {
+      return errorResponse(error);
+    }
+  };
+}
+
+/*
+ * The public API. Takes either one store and config (today's single shop) or a tenant registry. Each request is
+ * resolved to a tenant first; an unknown tenant is 404 and a suspended one 503 without touching any database.
+ * Every tenant gets its own route table (limiters, secret box, quick sign-in decision), built on first use.
+ */
+export async function createApi({ store, config, registry = null, serveStatic = null, whatsappTransport = createWhatsAppTransport() }) {
+  const tenants = registry ?? singleTenantRegistry({ store, config });
+  const handlers = new Map();
+  const handlerFor = (tenant) => {
+    if (!handlers.has(tenant.id)) {
+      handlers.set(tenant.id, createTenantApi({ store: tenant.store, config: tenant.config, serveStatic, whatsappTransport })
+        .catch((error) => { handlers.delete(tenant.id); throw error; }));
+    }
+    return handlers.get(tenant.id);
+  };
+  return async function handle(request, context = {}) {
+    try {
+      const tenant = await tenants.resolve(request);
+      if (!tenant) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+      if (tenant.status !== 'ACTIVE') throw new ApiError(503, 'SHOP_UNAVAILABLE', 'This shop is not available right now.');
+      return await (await handlerFor(tenant))(request, context);
     } catch (error) {
       return errorResponse(error);
     }
