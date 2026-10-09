@@ -24,17 +24,27 @@ export async function listAuditEvents(database, params) {
   const limit = listNumber(params, 'limit', 30, 100);
   const offset = listNumber(params, 'offset', 0, 10_000);
   if (limit < 1) throw new FieldError('limit', 'Enter a valid list range.');
-  const clauses = [], values = [];
-  if (requested.length) { clauses.push(`e.status IN (${requested.map(() => '?').join(', ')})`); values.push(...requested); }
-  if (actor) { clauses.push('e.actor_type = ?'); values.push(actor); }
-  if (search) { clauses.push('instr(lower(o.order_no), lower(?)) > 0'); values.push(search); }
-  if (from) { clauses.push('e.occurred_at >= ?'); values.push(from); }
-  if (to) { clauses.push('e.occurred_at < ?'); values.push(to); }
-  const rows = await database.all(`SELECT e.id, e.order_id, o.order_no, o.status AS order_status, e.event_type, e.previous_status,
-      e.status, e.actor_type, e.actor_id, e.reason, e.occurred_at
-    FROM order_event e JOIN shop_order o ON o.id = e.order_id
-    ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''}
-    ORDER BY e.id DESC LIMIT ? OFFSET ?`, ...values, limit + 1, offset);
+  // Order events and contact erasures (kept as columns on the order) are listed together, newest first.
+  const build = (column) => {
+    const clauses = [], values = [];
+    if (requested.length) { clauses.push(`${column.status} IN (${requested.map(() => '?').join(', ')})`); values.push(...requested); }
+    if (actor) { clauses.push(column.actor); values.push(actor); }
+    if (search) { clauses.push('instr(lower(o.order_no), lower(?)) > 0'); values.push(search); }
+    if (from) { clauses.push(`${column.at} >= ?`); values.push(from); }
+    if (to) { clauses.push(`${column.at} < ?`); values.push(to); }
+    return { where: clauses.length ? `AND ${clauses.join(' AND ')}` : '', values };
+  };
+  const events = build({ status: 'e.status', actor: 'e.actor_type = ?', at: 'e.occurred_at' });
+  const erasures = build({ status: 'o.status', actor: "'SELLER' = ?", at: 'o.contact_erased_at' });
+  const rows = await database.all(`SELECT * FROM (
+      SELECT CAST(e.id AS TEXT) AS id, e.order_id, o.order_no, o.status AS order_status, e.event_type, e.previous_status,
+        e.status, e.actor_type, e.actor_id, e.reason, e.occurred_at, e.id AS seq
+      FROM order_event e JOIN shop_order o ON o.id = e.order_id WHERE 1 = 1 ${events.where}
+      UNION ALL
+      SELECT 'erase-' || o.id AS id, o.id AS order_id, o.order_no, o.status AS order_status, 'CONTACT_ERASED' AS event_type, NULL AS previous_status,
+        o.status AS status, 'SELLER' AS actor_type, o.contact_erased_by AS actor_id, NULL AS reason, o.contact_erased_at AS occurred_at, 0 AS seq
+      FROM shop_order o WHERE o.contact_erased_at IS NOT NULL ${erasures.where}
+    ) AS audit ORDER BY occurred_at DESC, seq DESC, id DESC LIMIT ? OFFSET ?`, ...events.values, ...erasures.values, limit + 1, offset);
   return {
     items: rows.slice(0, limit).map((row) => ({
       id: row.id, orderId: row.order_id, orderNo: row.order_no, orderStatus: row.order_status,

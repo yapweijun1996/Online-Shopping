@@ -6,11 +6,12 @@ import { openDatabase } from '../src/db.js';
 import { initializeShop, setupShop } from '../src/shop-setup.js';
 import { createDemoSandbox } from '../src/demo-sandbox.js';
 import { errorResponse } from '../src/http.js';
+import { ensureAdmin } from '../src/auth.js';
 
 async function fixture(t, mode = 'public-demo') {
   const store = await openDatabase(':memory:'); t.after(async () => await store.close());
   const config = { shopMode: mode, production: true, publicOrigin: 'https://demo.example.test', username: 'synthetic-owner' };
-  await initializeShop(store, config);
+  await initializeShop(store, config); await ensureAdmin(store, 'synthetic-owner', 'SyntheticTestPass123!');
   if (mode === 'manual') await setupShop(store, { mode: 'production', shopName: 'Synthetic production fixture' });
   const handle = await createApi({ store, config, serveStatic: () => new Response('fixture asset') });
   const call = async (method, path, body, session = {}, overrides = {}) => {
@@ -49,7 +50,7 @@ test('public demo login opens the normal seller session without a password, only
   assert.equal((await f.call('POST', '/api/v1/seller/demo-session', null, {}, { origin: 'https://attacker.invalid' })).status, 403);
   const result = await f.call('POST', '/api/v1/seller/demo-session');
   assert.equal(result.status, 200);
-  assert.equal(result.data.role, 'SUPER_ADMIN');
+  assert.equal(result.data.role, 'OWNER');
   const session = { cookie: result.response.headers.get('set-cookie').split(';')[0], csrfToken: result.data.csrfToken };
   assert.equal((await f.call('GET', '/api/v1/seller/products', null, session)).status, 200);
   for (const mode of ['manual', 'demo']) {
@@ -239,7 +240,7 @@ test('SELLER_QUICK_LOGIN opts a production site into passwordless seller sign-in
   const build = async quickLogin => {
     const store = await openDatabase(':memory:'); t.after(async () => await store.close());
     const config = { shopMode: 'manual', production: true, publicOrigin: 'https://demo.example.test', username: 'synthetic-owner', sellerQuickLogin: quickLogin };
-    await initializeShop(store, config);
+    await initializeShop(store, config); await ensureAdmin(store, 'synthetic-owner', 'SyntheticTestPass123!');
     await setupShop(store, { mode: 'production', shopName: 'Synthetic production fixture' });
     const handle = await createApi({ store, config, serveStatic: () => new Response('fixture asset') });
     return (method, path) => handle(new Request(`https://demo.example.test${path}`, { method, headers: { origin: config.publicOrigin } }), { clientAddress: 'synthetic-local-client' });

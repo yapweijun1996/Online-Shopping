@@ -343,14 +343,24 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       const code = document.createElement('span');
       code.className = 'product-variant-sku';
       code.textContent = variant.sku;
+      const main = document.createElement('div');
+      main.className = 'product-variant-main';
+      main.append(name, code);
       const price = document.createElement('span');
+      price.className = 'product-variant-price';
       price.textContent = formatMoney(variant.priceMinor, variant.currency);
       const stock = document.createElement('span');
+      stock.className = 'product-variant-stock';
       stock.textContent = variant.stockQuantity === null ? t('unlimitedStock') : variant.stockQuantity === 0 ? t('outOfStock') : String(variant.stockQuantity);
       const state = document.createElement('span');
       state.className = `product-status-chip${variant.active ? '' : ' inactive'}`;
       state.textContent = t(variant.active ? 'active' : 'inactive');
-      row.append(name, code, price, stock, state);
+      const figures = document.createElement('div');
+      figures.className = 'product-variant-figures';
+      figures.append(price, stock);
+      const actions = document.createElement('div');
+      actions.className = 'product-variant-actions';
+      row.append(main, figures, state, actions);
       if (variant.id !== detail.id) {
         const switchButton = button(t(variant.active ? 'deactivateProduct' : 'activateProduct'), async (event) => {
           const control = event.currentTarget;
@@ -361,15 +371,15 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
             renderVariants(await api('GET', `/api/v1/seller/products/${detail.id}`));
           } catch { control.disabled = false; if (isCurrent()) setError('productError'); }
         }, `${t(variant.active ? 'deactivateProduct' : 'activateProduct')}: ${variant.label || variant.sku} (${variant.sku})`);
-        row.append(switchButton);
+        actions.append(switchButton);
       }
       if (variant.id === detail.id) {
         const here = document.createElement('span');
         here.className = 'product-variant-here';
         here.textContent = t('variantEditing');
-        row.append(here);
+        actions.append(here);
       } else {
-        row.append(button(t('editProduct'), () => onNavigate(`products/${variant.id}`), `${t('editProduct')}: ${variant.label || variant.sku} (${variant.sku})`));
+        actions.append(button(t('editProduct'), () => onNavigate(`products/${variant.id}`), `${t('editProduct')}: ${variant.label || variant.sku} (${variant.sku})`));
       }
       rows.append(row);
     }

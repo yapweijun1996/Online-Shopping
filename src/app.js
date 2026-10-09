@@ -1,6 +1,8 @@
 import { createDemoSandbox } from './demo-sandbox.js';
 import { getShopSetup, resetDemo, setupShop, shopObjectName } from './shop-setup.js';
-import { authenticate, cookieFor, createSession, deleteSession, readSession, sessionCookieFrom } from './auth.js';
+import { authenticate, cookieFor, createSession, deleteSession, readSession, sampleAccount, sessionCookieFrom } from './auth.js';
+import { changeOwnPassword, createAccount, listAccounts, updateAccount } from './accounts.js';
+import { can, capabilitiesOf } from './roles.js';
 import { ready } from './db.js';
 import { ApiError, errorResponse, json, readBody, readJson, requireOrigin } from './http.js';
 import { SqlLimiter } from './limiter.js';
@@ -8,6 +10,9 @@ import { createOrder, lookupOrderStatuses } from './orders.js';
 import { addGalleryImage, createProduct, deleteGalleryImage, getGalleryImage, getProduct, getProductImage, listProducts, setGalleryThumbnail, setProductThumbnail, updateProduct } from './products.js';
 import { decideSellerOrder, getSellerOrder, listSellerOrders, pendingOrderSummary, withProductLinks } from './seller-orders.js';
 import { listAuditEvents } from './audit-log.js';
+import { eraseOrderContact } from './erase-contact.js';
+import { dashboardFigures } from './dashboard-figures.js';
+import { exportOrdersCsv } from './order-export.js';
 import { OPTION_LIMITS } from './option-limits.js';
 import { createOptionType, createOptionValue, listOptionTypes, updateOptionType, updateOptionValue } from './options.js';
 import { createCategory, publicBusinessContact, getCompanySettings, storefrontTexts, listCategories, updateCategory, updateCompanySettings } from './settings.js';
@@ -27,7 +32,7 @@ const sellerProductIdPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/(
 const thumbnailPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/gallery\/([0-9a-f-]{36}))?\/thumbnail$/;
 const optionTypePath = /^\/api\/v1\/seller\/option-types(?:\/([0-9a-f-]{36})(?:(\/values)(?:\/([0-9a-f-]{36}))?)?)?$/;
 const productGalleryPath = /^\/api\/v1\/(seller\/)?products\/([0-9a-f-]{36})\/gallery\/([0-9a-f-]{36})$/;
-const sellerOrderIdPath = /^\/api\/v1\/seller\/orders\/([0-9a-f-]{36})(?:\/(confirm|reject|ship|deliver|cancel))?$/;
+const sellerOrderIdPath = /^\/api\/v1\/seller\/orders\/([0-9a-f-]{36})(?:\/(confirm|reject|ship|deliver|cancel|erase-contact))?$/;
 const whatsappConnectionPath = /^\/api\/v1\/seller\/integrations\/whatsapp(?:\/(SANDBOX|PRODUCTION))?$/;
 const messagePath = /^\/api\/v1\/seller\/messages\/(summary|replies|outbox)(?:\/([0-9a-f-]{36})\/(read|resolve))?$/;
 const orderMessagesPath = /^\/api\/v1\/seller\/orders\/([0-9a-f-]{36})\/messages$/;
@@ -57,9 +62,12 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
   const demoEnabled = config.shopMode === 'public-demo' && (await getShopSetup(store)).mode === 'demo';
   // Explicit opt-in: passwordless seller sign-in for a sample site. Never enable it for a real tenant.
   const quickLogin = demoEnabled || config.sellerQuickLogin === true;
+  const sessionView = (account, csrfToken) => ({ username: account.username, role: account.role, quickLogin, mustChangePassword: account.mustChangePassword && !quickLogin,
+    capabilities: capabilitiesOf(account.role), csrfToken });
   const demoRoute = createDemoSandbox({ enabled: demoEnabled, production: config.production });
   const loginLimiter = new SqlLimiter(store, 'login', { limit: 5, windowMs: LIMIT_WINDOW_MS });
   const checkoutLimiter = new SqlLimiter(store, 'checkout', { limit: 30, windowMs: LIMIT_WINDOW_MS });
+  const passwordLimiter = new SqlLimiter(store, 'password', { limit: 10, windowMs: LIMIT_WINDOW_MS });
   const demoLoginLimiter = new SqlLimiter(store, 'demo-login', { limit: 30, windowMs: LIMIT_WINDOW_MS });
   const orderStatusLimiter = new SqlLimiter(store, 'order-status', { limit: 30, windowMs: LIMIT_WINDOW_MS });
   const webhookLimiter = new SqlLimiter(store, 'whatsapp-webhook', { limit: 600, windowMs: LIMIT_WINDOW_MS });
@@ -176,13 +184,12 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
       requireOrigin(request, expectedOrigin);
       if (!await loginLimiter.attempt(clientAddress)) throw new ApiError(429, 'RATE_LIMITED', 'Too many attempts. Try later.');
       const body = await readJson(request);
-      if (typeof body.username !== 'string' || typeof body.password !== 'string' ||
-          body.username.length > 64 || body.password.length > 256 || !await authenticate(store, body.username, body.password)) {
-        throw new ApiError(401, 'UNAUTHORIZED', 'Invalid credentials.');
-      }
+      const account = typeof body.username === 'string' && typeof body.password === 'string' && body.username.length <= 64 && body.password.length <= 256
+        ? await authenticate(store, body.username, body.password) : null;
+      if (!account) throw new ApiError(401, 'UNAUTHORIZED', 'Invalid credentials.');
       await loginLimiter.clear(clientAddress);
-      const session = await createSession(store);
-      return json(200, { username: config.username, role: 'SUPER_ADMIN', csrfToken: session.csrfToken }, {
+      const session = await createSession(store, account.id);
+      return json(200, sessionView(account, session.csrfToken), {
         'Set-Cookie': cookieFor(session.token, session.maxAge, config.production),
       });
     }
@@ -192,8 +199,10 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
       if (!quickLogin) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
       requireOrigin(request, expectedOrigin);
       if (!await demoLoginLimiter.attempt(clientAddress)) throw new ApiError(429, 'RATE_LIMITED', 'Too many attempts. Try later.');
-      const session = await createSession(store);
-      return json(200, { username: config.username, role: 'SUPER_ADMIN', csrfToken: session.csrfToken }, {
+      const account = await sampleAccount(store);
+      if (!account) throw new ApiError(503, 'UNAVAILABLE', 'No account is available.');
+      const session = await createSession(store, account.id);
+      return json(200, sessionView(account, session.csrfToken), {
         'Set-Cookie': cookieFor(session.token, session.maxAge, config.production),
       });
     }
@@ -201,14 +210,40 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
     const token = sessionCookieFrom(request.headers.get('cookie') ?? '');
     const session = await readSession(store, token);
     if (!session) throw new ApiError(401, 'UNAUTHORIZED', 'Sign in required.');
-    if (method === 'GET' && pathname === '/api/v1/seller/session') {
-      return json(200, { username: config.username, role: 'SUPER_ADMIN', csrfToken: session.csrf_token });
-    }
+    const account = session.account;
+    const allow = (capability) => { if (!can(account.role, capability)) throw new ApiError(403, 'FORBIDDEN', 'Your role cannot do this.'); };
+    if (method === 'GET' && pathname === '/api/v1/seller/session') return json(200, sessionView(account, session.csrf_token));
     if (method === 'DELETE' && pathname === '/api/v1/seller/session') {
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
       await deleteSession(store, token);
       return json(200, { signedOut: true }, { 'Set-Cookie': cookieFor('', 0, config.production) });
+    }
+    // A temporary password (new account or reset) must be replaced before anything else works.
+    // (On a quick sign-in site passwords cannot be changed, so the flag is ignored there rather than locking everyone out.)
+    if (account.mustChangePassword && !quickLogin && pathname !== '/api/v1/seller/account/password') {
+      throw new ApiError(403, 'PASSWORD_CHANGE_REQUIRED', 'Change your temporary password first.');
+    }
+    if (method === 'POST' && pathname === '/api/v1/seller/account/password') {
+      requireOrigin(request, expectedOrigin);
+      requireCsrf(request, session);
+      // A passwordless sample site signs everyone in as the Owner, so it must never change the Owner's password.
+      if (quickLogin) throw new ApiError(403, 'FORBIDDEN', 'Passwords cannot be changed on a sample site.');
+      if (!await passwordLimiter.attempt(account.id)) throw new ApiError(429, 'RATE_LIMITED', 'Too many attempts. Try later.');
+      return json(200, await changeOwnPassword(store, account.id, await readJson(request, 2048), token));
+    }
+    const accountRoute = /^\/api\/v1\/seller\/accounts(?:\/([0-9a-f-]{36}))?$/.exec(pathname);
+    if (accountRoute) {
+      allow('staff.manage');
+      if (quickLogin) throw new ApiError(403, 'FORBIDDEN', 'Accounts are not available on a sample site.');
+      if (method === 'GET' && !accountRoute[1]) return json(200, await listAccounts(store));
+      if ((method === 'POST' && !accountRoute[1]) || (method === 'PATCH' && accountRoute[1])) {
+        requireOrigin(request, expectedOrigin);
+        requireCsrf(request, session);
+        const body = await readJson(request, 4096);
+        if (method === 'POST') return json(201, await createAccount(store, body, account.username));
+        return json(200, await updateAccount(store, accountRoute[1], body, account.username, account.id));
+      }
     }
     if (method === 'GET' && pathname === '/api/v1/seller/setup') return json(200, presentShopName(await getShopSetup(store)));
     if (method === 'GET' && pathname === '/api/v1/seller/integrations') return json(200, integrationCatalog());
@@ -219,14 +254,17 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
       const environment = connectionRoute[1];
       if (method === 'GET' && !environment) {
         if (quickLogin || !secretBox) return json(200, { available: false, connections: [] });
+        // Every role may learn that WhatsApp is on (it decides whether Messages shows); only the Owner sees the connection.
+        if (!can(account.role, 'settings.write')) return json(200, { available: true, connections: [] });
         return json(200, { available: true, webhookUrl: `${config.publicOrigin || url.origin}/api/v1/webhooks/whatsapp`, connections: await listWhatsAppConnections(store) });
       }
       if ((method === 'PUT' || method === 'DELETE') && environment) {
         requireOrigin(request, expectedOrigin);
         requireCsrf(request, session);
+        allow('settings.write');
         if (quickLogin) throw new ApiError(403, 'FORBIDDEN', 'Connections are not available on a sample site.');
         if (!secretBox) throw new ApiError(503, 'INTEGRATIONS_UNAVAILABLE', 'Integrations are not configured.');
-        const actor = `seller:${config.username}`;
+        const actor = `seller:${account.username}`;
         if (method === 'DELETE') return json(200, await disconnectWhatsAppConnection(store, environment, actor));
         if (!await connectionLimiter.attempt(clientAddress)) throw new ApiError(429, 'RATE_LIMITED', 'Too many connection attempts. Try again later.');
         const body = await readJson(request, 8 * 1024);
@@ -251,6 +289,7 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
       if (method === 'POST' && messageRoute && id && ((collection === 'replies' && action === 'read') || (collection === 'outbox' && action === 'resolve'))) {
         requireOrigin(request, expectedOrigin);
         requireCsrf(request, session);
+        if (action === 'resolve') allow('messages.act');
         if (quickLogin) throw new ApiError(403, 'FORBIDDEN', 'Messages are not available on a sample site.');
         return json(200, action === 'read' ? await markReplyRead(store, id) : await resolveMessage(store, id, await readJson(request, 1024)));
       }
@@ -258,12 +297,14 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
     if (method === 'POST' && pathname === '/api/v1/seller/setup') {
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
+      allow('settings.write');
       return json(200, await setupShop(store, await readJson(request)));
     }
     if (method === 'POST' && pathname === '/api/v1/seller/demo/reset') {
       if (!demoEnabled) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
+      allow('settings.write');
       const body = await readJson(request, 1024);
       if (Object.keys(body).length !== 1 || body.confirm !== true) throw new FieldError('confirm', 'Confirm the reset.');
       return json(200, await resetDemo(store));
@@ -282,6 +323,7 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
         (method === 'PATCH' && pathname === '/api/v1/seller/company-settings')) {
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
+      allow(pathname === '/api/v1/seller/company-settings' ? 'settings.write' : 'catalog.write');
       const body = await readJson(request);
       if (pathname === '/api/v1/seller/company-settings') return json(200, await updateCompanySettings(store, body));
       if (method === 'POST') return json(201, await createCategory(store, body));
@@ -298,6 +340,7 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
       if (['POST', 'PATCH'].includes(method)) {
         requireOrigin(request, expectedOrigin);
         requireCsrf(request, session);
+        allow('catalog.write');
         const body = await readJson(request);
         if (method === 'POST' && !typeId) return json(201, await createOptionType(store, body));
         if (method === 'PATCH' && typeId && !valuesPart) return json(200, await updateOptionType(store, typeId, body));
@@ -306,6 +349,15 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
       }
     }
     if (method === 'GET' && pathname === '/api/v1/seller/orders/summary') return json(200, await pendingOrderSummary(store));
+    if (method === 'GET' && pathname === '/api/v1/seller/dashboard') { allow('figures.read'); return json(200, await dashboardFigures(store)); }
+    if (method === 'GET' && pathname === '/api/v1/seller/orders/export.csv') {
+      allow('data.export');
+      // The file holds buyer names, numbers and emails, so a passwordless sample site must not offer it.
+      if (quickLogin) throw new ApiError(403, 'FORBIDDEN', 'Export is not available on a sample site.');
+      const csv = await exportOrdersCsv(store, url.searchParams);
+      return new Response(csv, { status: 200, headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+        'Content-Disposition': `attachment; filename="orders-${new Date().toISOString().slice(0, 10)}.csv"` } });
+    }
     if (method === 'GET' && pathname === '/api/v1/seller/orders') {
       return json(200, await listSellerOrders(store, url.searchParams));
     }
@@ -319,8 +371,15 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
     if (method === 'POST' && sellerOrder?.[2]) {
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
+      allow({ 'erase-contact': 'data.erase', ship: 'orders.fulfil', deliver: 'orders.fulfil' }[sellerOrder[2]] ?? 'orders.decide');
       const body = await readJson(request);
-      return json(200, withProductLinks(await decideSellerOrder(store, sellerOrder[1], sellerOrder[2], body, config.username), config.publicOrigin || url.origin));
+      if (sellerOrder[2] === 'erase-contact') {
+        // A passwordless sample site is open to anyone, so it must never be able to erase data permanently.
+        if (quickLogin) throw new ApiError(403, 'FORBIDDEN', 'Erasing contact data is not available on a sample site.');
+        await eraseOrderContact(store, sellerOrder[1], body, account.username);
+        return json(200, withProductLinks(await getSellerOrder(store, sellerOrder[1]), config.publicOrigin || url.origin));
+      }
+      return json(200, withProductLinks(await decideSellerOrder(store, sellerOrder[1], sellerOrder[2], body, account.username), config.publicOrigin || url.origin));
     }
     const sellerProduct = sellerProductIdPath.exec(pathname);
     if (method === 'GET' && sellerProduct && !sellerProduct[2]) {
@@ -336,12 +395,14 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
       if (method === 'DELETE') {
         requireOrigin(request, expectedOrigin);
         requireCsrf(request, session);
+        allow('catalog.write');
         return json(200, await deleteGalleryImage(store, galleryImage[2], galleryImage[3], config.shopMode));
       }
     }
     if (method === 'POST' && /^\/api\/v1\/seller\/products\/[0-9a-f-]{36}\/gallery$/.test(pathname)) {
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
+      allow('catalog.write');
       const id = pathname.split('/')[5];
       const body = await readJson(request, 900_000);
       const keys = body && typeof body === 'object' ? Object.keys(body) : [];
@@ -354,6 +415,7 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
     if (method === 'PUT' && thumbnail) {
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
+      allow('catalog.write');
       const body = await readJson(request, 200_000);
       if (!body || Object.keys(body).length !== 1 || !Object.hasOwn(body, 'thumbDataUrl')) throw new FieldError('thumbDataUrl', 'Send a preview image.');
       return json(200, thumbnail[2] ? await setGalleryThumbnail(store, thumbnail[1], thumbnail[2], body.thumbDataUrl) : await setProductThumbnail(store, thumbnail[1], body.thumbDataUrl));
@@ -362,6 +424,7 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
         (method === 'PATCH' && sellerProduct && !sellerProduct[2])) {
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
+      allow('catalog.write');
       const body = await readJson(request, PRODUCT_MUTATION_BODY_LIMIT);
       if (method === 'POST') {
         const product = await createProduct(store, body);

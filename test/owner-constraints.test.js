@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { openDatabase } from '../src/db.js';
 import { createApi } from '../src/app.js';
-import { createSession, ensureAdmin } from '../src/auth.js';
+import { ensureAdmin } from '../src/auth.js';
+import { ownerSession } from './helpers/session.js';
 import { initializeShop } from '../src/shop-setup.js';
 import { createCategory, getCompanySettings, updateCompanySettings } from '../src/settings.js';
 import { createProduct, getProduct, updateProduct } from '../src/products.js';
@@ -74,7 +75,7 @@ test('Seller edit payload permits legacy metadata/deactivation while actual mone
   const start = source.indexOf('      const payload = {');
   const payloadSource = source.slice(start, source.indexOf('      const file = form.elements.image.files[0];', start));
   const payload = () => vm.runInContext(`(() => { ${payloadSource} return payload; })()`, context);
-  const session = await createSession(store), handle = await createApi({ store, config: { publicOrigin: 'https://fixture.test' } });
+  const session = await ownerSession(store), handle = await createApi({ store, config: { publicOrigin: 'https://fixture.test' } });
   const submit = async body => {
     // Each policy probe uses the current revision, like a freshly reopened editor.
     body.expectedUpdatedAt = (await getProduct(store, product.id, true)).updatedAt;
@@ -107,7 +108,7 @@ test('all 35 demo seller details expose their unchanged primary image and all si
   const store = await openDatabase(':memory:'); t.after(async () => await store.close());
   const config = { shopMode: 'public-demo', production: false, username: 'synthetic-owner' };
   await initializeShop(store, config); await ensureAdmin(store, config.username, 'SyntheticTestPass123!');
-  const session = await createSession(store), handle = await createApi({ store, config });
+  const session = await ownerSession(store), handle = await createApi({ store, config });
   const before = await store.all('SELECT * FROM product ORDER BY id');
   const request = async path => handle(new Request('http://localhost' + path, { headers: { cookie: `seller_session=${session.token}` } }));
   const list = await (await request('/api/v1/seller/products?limit=100')).json(); assert.equal(list.items.length, 35);

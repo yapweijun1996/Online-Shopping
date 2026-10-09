@@ -1,9 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import { openNodeStore } from './store.js';
 import { migrateLegacyVariants } from './options.js';
 import { migrateListings } from './listings.js';
 import { migrateSharedGalleries } from './product-gallery.js';
 
-export const SCHEMA_VERSION = 21;
+export const SCHEMA_VERSION = 23;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -128,6 +129,41 @@ CREATE TABLE IF NOT EXISTS message_inbound (
 CREATE INDEX IF NOT EXISTS message_inbound_order ON message_inbound(order_id);
 CREATE INDEX IF NOT EXISTS message_inbound_unread ON message_inbound(received_at) WHERE read_at IS NULL;
 `;
+
+// Seller accounts (SEL-04): one row per person who can sign in, replacing the single `admin` row. The old row is copied in
+// as the OWNER and stays untouched. `account_event` records changes to accounts, never passwords.
+const accountTablesSql = `
+CREATE TABLE IF NOT EXISTS seller_account (
+  id TEXT PRIMARY KEY,
+  username TEXT NOT NULL CHECK (length(username) BETWEEN 3 AND 64),
+  username_key TEXT NOT NULL UNIQUE CHECK (length(username_key) BETWEEN 3 AND 64),
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('OWNER', 'MANAGER', 'STAFF')),
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  must_change_password INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1)),
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, password_changed_at TEXT, last_login_at TEXT
+) STRICT;
+CREATE TABLE IF NOT EXISTS account_event (
+  id TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL REFERENCES seller_account(id) ON DELETE RESTRICT,
+  actor TEXT NOT NULL CHECK (length(actor) BETWEEN 1 AND 64),
+  action TEXT NOT NULL CHECK (action IN ('CREATED', 'ROLE_CHANGED', 'DEACTIVATED', 'ACTIVATED', 'PASSWORD_RESET', 'PASSWORD_CHANGED')),
+  detail TEXT CHECK (detail IS NULL OR length(detail) <= 200),
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX IF NOT EXISTS account_event_time ON account_event(created_at);
+`;
+
+async function migrateAccounts(store) {
+  await store.exec(accountTablesSql);
+  const present = (await store.all("SELECT name FROM pragma_table_info('session')")).map(column => column.name);
+  if (!present.includes('account_id')) await store.exec('ALTER TABLE session ADD COLUMN account_id TEXT');
+  const admin = await store.get('SELECT username, password_hash, created_at FROM admin WHERE id = 1');
+  if (admin && !await store.get('SELECT 1 AS found FROM seller_account LIMIT 1')) {
+    await store.run(`INSERT INTO seller_account(id, username, username_key, password_hash, role, active, must_change_password, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'OWNER', 1, 0, ?, ?)`, randomUUID(), admin.username, admin.username.toLowerCase(), admin.password_hash, admin.created_at, admin.created_at);
+  }
+}
 
 async function migrate(store, version, sql) {
   await store.transaction(async () => {
@@ -505,6 +541,25 @@ export async function migrateStore(store) {
     await migrate(store, 21, integrationTablesSql);
     version = 21;
   }
+  if (version === 21) {
+    // Additive: when and by whom an order's buyer contact and delivery data were erased (see erase-contact.js).
+    await store.transaction(async () => {
+      const present = (await store.all("SELECT name FROM pragma_table_info('shop_order')")).map(column => column.name);
+      for (const column of ['contact_erased_at', 'contact_erased_by']) {
+        if (!present.includes(column)) await store.exec(`ALTER TABLE shop_order ADD COLUMN ${column} TEXT`);
+      }
+      await store.setSchemaVersion(22);
+    });
+    version = 22;
+  }
+  if (version === 22) {
+    // Sessions now belong to an account. Existing sessions have none, so they stop working and everyone signs in again.
+    await store.transaction(async () => {
+      await migrateAccounts(store);
+      await store.setSchemaVersion(23);
+    });
+    version = 23;
+  }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }
 
@@ -520,14 +575,17 @@ export async function ready(store) {
   try {
     return await store.schemaVersion() === SCHEMA_VERSION &&
       Array.isArray(await store.all('SELECT stock_quantity, gallery_layout_json FROM product LIMIT 0')) &&
-      Array.isArray(await store.all('SELECT tracking_carrier, tracking_no FROM shop_order LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT tracking_carrier, tracking_no, contact_erased_at, contact_erased_by FROM shop_order LIMIT 0')) &&
       Array.isArray(await store.all('SELECT availability_text, shipping_text, returns_text FROM company_setting LIMIT 0')) &&
       Array.isArray(await store.all('SELECT id FROM option_type LIMIT 0')) &&
       Array.isArray(await store.all('SELECT id FROM listing LIMIT 0')) &&
       Array.isArray(await store.all('SELECT listing_id FROM product LIMIT 0')) &&
       Array.isArray(await store.all('SELECT id FROM option_value LIMIT 0')) &&
       Array.isArray(await store.all('SELECT product_id FROM product_option LIMIT 0')) &&
-      Boolean(await store.get('SELECT id FROM admin WHERE id = 1')) &&
+      Array.isArray(await store.all('SELECT id, username_key, role, active, must_change_password FROM seller_account LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT id, account_id, action FROM account_event LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT account_id FROM session LIMIT 0')) &&
+      Boolean(await store.get('SELECT id FROM seller_account WHERE role = ? AND active = 1 LIMIT 1', 'OWNER')) &&
       Boolean(await store.get('SELECT id FROM order_sequence WHERE id = 1')) &&
       Boolean(await store.get('SELECT id FROM company_setting WHERE id = 1')) &&
       Boolean(await store.get('SELECT id FROM shop_setup WHERE id = 1')) &&

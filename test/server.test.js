@@ -103,7 +103,7 @@ test('health, authorization, session, CSRF, and logout', async () => {
     assert.equal(wrong.data.error.message, 'Invalid credentials.');
     const login = await f.request('POST', '/api/v1/seller/session', { username, password });
     assert.equal(login.response.status, 200);
-    assert.equal(login.data.role, 'SUPER_ADMIN');
+    assert.equal(login.data.role, 'OWNER');
     assert.equal(login.response.headers.get('cache-control'), 'no-store');
     assert.match(login.response.headers.get('set-cookie'), /HttpOnly; SameSite=Strict/);
     const cookie = login.response.headers.get('set-cookie').split(';')[0];
@@ -118,18 +118,22 @@ test('health, authorization, session, CSRF, and logout', async () => {
   }
 });
 
-test('session persists across restart and configured identity cannot silently change', async () => {
+test('session persists across restart, and the configured password only bootstraps the first Owner', async () => {
   const f = await fixture();
   let restarted;
   try {
     const login = await f.request('POST', '/api/v1/seller/session', { username, password });
     const cookie = login.response.headers.get('set-cookie').split(';')[0];
     await f.app.close();
-    await assert.rejects(async () => await createApp({ ...f.config, password: 'DifferentPrivatePass123!' }), /do not match/);
-    restarted = await createApp(f.config);
+    // A different ADMIN_PASSWORD in the environment no longer matters once the Owner exists: the stored password stays in force.
+    restarted = await createApp({ ...f.config, password: 'DifferentPrivatePass123!' });
     await new Promise((resolve) => restarted.server.listen(0, '127.0.0.1', resolve));
     const response = await fetch(`http://127.0.0.1:${restarted.server.address().port}/api/v1/seller/session`, { headers: { cookie } });
     assert.equal(response.status, 200);
+    const base = `http://127.0.0.1:${restarted.server.address().port}`;
+    const post = (pw) => fetch(`${base}/api/v1/seller/session`, { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ username, password: pw }) });
+    assert.equal((await post('DifferentPrivatePass123!')).status, 401);
+    assert.equal((await post(password)).status, 200);
   } finally {
     if (restarted) await restarted.close();
     rmSync(path.dirname(f.config.dbPath), { recursive: true, force: true });

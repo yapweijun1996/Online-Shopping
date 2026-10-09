@@ -7,6 +7,8 @@ import { documentTitleKey } from './order-document-model.js';
 import { statusKey } from './order-status-label.js';
 import { mountOrderMessages } from './messages.js';
 import './trail-copy.js';
+import './ops-copy.js';
+import { openEraseDialog } from './erase-contact.js';
 import { formatDate, formatMoney, t, translate } from '../shared/i18n.js';
 
 function node(tag, className = '', value = '') {
@@ -31,7 +33,7 @@ const SCOPES = {
   confirmations: { defaultFilter: 'CONFIRMED', filters: ['CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'CONFIRMED,SHIPPED,DELIVERED,CANCELLED'] },
 };
 
-export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrderId = null, onSelect = () => {} }) {
+export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = false, canExport = false, canDecide = false, initialOrderId = null, onSelect = () => {} }) {
   root.replaceChildren(document.getElementById('orders-template').content.cloneNode(true));
   translate(root);
   const find = (selector) => root.querySelector(selector);
@@ -45,6 +47,10 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
   const back = find('#order-back');
   const search = find('#order-search');
   const status = find('#order-status');
+  const from = find('#order-from'), to = find('#order-to'), currency = find('#order-currency'), minTotal = find('#order-min'), maxTotal = find('#order-max');
+  const exportButton = find('#order-export');
+  exportButton.hidden = !canExport;
+  const moreFilters = find('#order-more-filters');
   const dialog = find('#decision-dialog');
   containDialogFocus(dialog);
   const reason = find('#decision-reason');
@@ -73,6 +79,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
   let dialogErrorKey = '';
   let listRequest = 0;
   let appliedSearch = '';
+  let appliedExtra = '';
   const scope = SCOPES[mode];
   let appliedStatus = scope.defaultFilter;
   let detailRequest = 0;
@@ -89,13 +96,32 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
     status.value = scope.filters.includes(chosen) ? chosen : scope.defaultFilter;
   }
   renderStatusOptions();
+  function renderCurrencyOptions() {
+    const chosen = currency.value;
+    currency.replaceChildren(...[['', t('anyCurrency')], ['MYR', 'MYR'], ['SGD', 'SGD']].map(([value, label]) => { const option = node('option', '', label); option.value = value; return option; }));
+    currency.value = chosen;
+  }
+  renderCurrencyOptions();
+  // Dates are shop days (Malaysia and Singapore, UTC+8); amounts are typed in major units and sent in minor units.
+  const dayStart = (value, plusDays = 0) => { const date = new Date(`${value}T00:00:00+08:00`); date.setUTCDate(date.getUTCDate() + plusDays); return date.toISOString(); };
+  const minor = (value) => Math.round(Number(value) * 100);
+  /* The extra filters as query parameters; empty fields are left out. */
+  function extraParams() {
+    const params = new URLSearchParams();
+    if (from.value) params.set('from', dayStart(from.value));
+    if (to.value) params.set('to', dayStart(to.value, 1));
+    if (currency.value) params.set('currency', currency.value);
+    if (minTotal.value !== '' && Number(minTotal.value) >= 0) params.set('minTotal', String(minor(minTotal.value)));
+    if (maxTotal.value !== '' && Number(maxTotal.value) >= 0) params.set('maxTotal', String(minor(maxTotal.value)));
+    return params;
+  }
   status.addEventListener('change', () => find('#order-filter').requestSubmit());
 
   function isCurrent() { return active && shell.isConnected; }
   function setMessage(key) {
     messageKey = key;
     message.textContent = key ? t(key) : '';
-    message.classList.toggle('is-error', ['documentFailed', 'copyFailure', 'orderChanged', 'decisionUnknown', 'decisionFailed', 'offlineMessage'].includes(key));
+    message.classList.toggle('is-error', ['documentFailed', 'exportFailed', 'exportTooMany', 'copyFailure', 'orderChanged', 'decisionUnknown', 'decisionFailed', 'offlineMessage'].includes(key));
   }
   function setListStatus(key) { listStatusKey = key; listStatus.textContent = key ? t(key) : ''; }
   function setDialogError(key) { dialogErrorKey = key; dialogError.textContent = key ? t(key) : ''; }
@@ -173,6 +199,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
     if (reset) {
       appliedSearch = query;
       appliedStatus = filter;
+      appliedExtra = extraParams().toString();
       // Keep the last successful queue visible until its replacement arrives.
       list.setAttribute('aria-busy', 'true');
     }
@@ -185,13 +212,14 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
         limit: '20', offset: String(offset), search: query,
       });
       if (filter) params.set('status', filter);
+      for (const [key, value] of new URLSearchParams(appliedExtra)) params.set(key, value);
       const result = await request('GET', `/api/v1/seller/orders?${params}`);
       if (!isCurrent() || requestNumber !== listRequest) return;
       succeeded = true;
       items = reset ? result.items : [...items, ...result.items];
       nextOffset = result.nextOffset;
       renderQueue();
-      const hasCriteria = Boolean(query || filter !== scope.defaultFilter);
+      const hasCriteria = Boolean(query || filter !== scope.defaultFilter || appliedExtra);
       setListStatus(items.length ? '' : hasCriteria ? 'noMatchingOrders' : mode === 'orders' ? 'noPendingOrders' : 'noOrders');
       clearFilters.hidden = Boolean(items.length) || !hasCriteria;
     } catch (error) {
@@ -293,13 +321,15 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
 
     fragment.append(documentTrailSection(order));
 
-    const buyer = detailGroup('buyerDetails', [
+    const erased = Boolean(order.contactErased);
+    const buyer = detailGroup('buyerDetails', erased ? [] : [
       detailField('fullName', order.buyer.fullName, !order.simulation),
       detailField('buyerWhatsApp', order.simulation ? t('demoContactUnavailable') : order.buyer.whatsappPhone, !order.simulation),
       detailField('emailLabel', order.buyer.email, !order.simulation),
     ]);
-    if (!order.simulation) buyer.append(node('p', 'order-consent', t(order.buyer.whatsappOrderContactOptIn ? 'contactOptedIn' : 'contactNotOptedIn')));
-    if (!order.simulation && order.buyer.whatsappOrderContactOptIn && /^\+(?:60|65)[1-9]\d{6,11}$/.test(order.buyer.whatsappPhone)) {
+    if (erased) buyer.append(node('p', 'order-erased-note', t('contactErasedNote').replace('{when}', formatDate(order.contactErasedAt)).replace('{who}', order.contactErasedBy)));
+    if (!order.simulation && !erased) buyer.append(node('p', 'order-consent', t(order.buyer.whatsappOrderContactOptIn ? 'contactOptedIn' : 'contactNotOptedIn')));
+    if (!order.simulation && !erased && order.buyer.whatsappOrderContactOptIn && /^\+(?:60|65)[1-9]\d{6,11}$/.test(order.buyer.whatsappPhone)) {
       const link = node('a', 'secondary-button whatsapp-link', t('openWhatsApp'));
       link.href = `https://wa.me/${order.buyer.whatsappPhone.slice(1)}`;
       link.target = '_blank';
@@ -312,7 +342,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
       const section = node('section', 'order-detail-group order-delivery');
       section.append(node('h3', '', `${t('destination')} ${delivery.position + 1}`));
       const fields = node('dl', 'order-fields');
-      for (const field of [
+      if (!erased) for (const field of [
         detailField('recipientName', delivery.recipient.fullName, !order.simulation),
         detailField('recipientPhone', order.simulation ? t('demoContactUnavailable') : delivery.recipient.phone, !order.simulation),
         detailField('addressLine1', delivery.address.line1, !order.simulation),
@@ -366,7 +396,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
     history.append(events);
     fragment.append(history);
 
-    if (order.status === 'SUBMITTED') {
+    if (order.status === 'SUBMITTED' && canDecide) {
       const actions = node('div', 'order-review-actions');
       const confirm = actionButton(t('confirmOrder'), (event) => openDecision('confirm', event.currentTarget), 'primary-button');
       const reject = actionButton(t('rejectOrder'), (event) => openDecision('reject', event.currentTarget), 'secondary-button');
@@ -379,7 +409,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
       fragment.append(actions);
     }
     const fulfilment = { CONFIRMED: [['ship', 'shipOrder', 'primary-button'], ['cancel', 'cancelOrder', 'secondary-button']],
-      SHIPPED: [['deliver', 'deliverOrder', 'primary-button']] }[order.status];
+      SHIPPED: [['deliver', 'deliverOrder', 'primary-button']] }[order.status]?.filter(([action]) => action !== 'cancel' || canDecide);
     if (fulfilment) {
       const actions = node('div', 'order-review-actions');
       if (!navigator.onLine) actions.append(node('p', 'order-offline-hint', t('offlineMessage')));
@@ -389,6 +419,17 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
         button.disabled = !navigator.onLine;
         actions.append(button);
       }
+      fragment.append(actions);
+    }
+    if (['REJECTED', 'DELIVERED', 'CANCELLED'].includes(order.status) && !erased && !order.simulation && canErase) {
+      const actions = node('div', 'order-review-actions');
+      const erase = actionButton(t('eraseContact'), (event) => openEraseDialog({ order, trigger: event.currentTarget,
+        send: (body) => request('POST', `/api/v1/seller/orders/${encodeURIComponent(order.id)}/erase-contact`, body),
+        onErased: async (updated) => { if (!isCurrent()) return; if (selectedId === order.id) { selectedOrder = updated; renderDetail(); } setMessage('eraseDone'); await loadQueue(); },
+        onStale: async () => { if (!isCurrent()) return; await Promise.all([loadQueue(), openOrder(order.id)]); setMessage('orderChanged'); } }), 'secondary-button');
+      erase.dataset.action = 'erase-contact';
+      erase.disabled = !navigator.onLine;
+      actions.append(erase);
       fragment.append(actions);
     }
     detailStatusKey = '';
@@ -457,10 +498,33 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
   clearFilters.addEventListener('click', () => {
     search.value = '';
     status.value = scope.defaultFilter;
+    for (const control of [from, to, currency, minTotal, maxTotal]) control.value = '';
     find('#order-filter').requestSubmit();
     search.focus();
   });
   retry.addEventListener('click', () => loadQueue());
+  exportButton.addEventListener('click', async () => {
+    exportButton.disabled = true;
+    try {
+      const params = extraParams();
+      if (search.value.trim()) params.set('search', search.value.trim());
+      if (status.value) params.set('status', status.value);
+      const response = await fetch(`/api/v1/seller/orders/export.csv?${params}`, { cache: 'no-store' });
+      if (response.status === 401) { if (isCurrent()) onUnauthorized(); return; }
+      if (!response.ok) {
+        const code = (await response.json().catch(() => ({}))).error?.code;
+        if (isCurrent()) setMessage(code === 'TOO_MANY_ROWS' ? 'exportTooMany' : 'exportFailed');
+        return;
+      }
+      const link = node('a');
+      link.href = URL.createObjectURL(await response.blob());
+      link.download = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') || '')?.[1] || 'orders.csv';
+      document.body.append(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      if (isCurrent()) setMessage('exportDone');
+    } catch { if (isCurrent()) setMessage('exportFailed'); }
+    finally { if (exportButton.isConnected) exportButton.disabled = false; }
+  });
   more.addEventListener('click', () => loadQueue(false));
   back.addEventListener('click', () => {
     onSelect(null);

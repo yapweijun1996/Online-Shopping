@@ -13,10 +13,10 @@ test(`Node recognizes actual divergent schema12, preserves historical orders and
   assert.equal(await store.schemaVersion(),12);
   assert.equal(await isReady(store),false);
   await migrate(store);
-  assert.equal(await store.schemaVersion(),21);
+  assert.equal(await store.schemaVersion(),23);
   assert.equal(await isReady(store),true);
   const upgraded=await store.get('SELECT * FROM shop_order');
-  assert.deepEqual({...upgraded},{...order,tracking_carrier:null,tracking_no:null});
+  assert.deepEqual({...upgraded},{...order,tracking_carrier:null,tracking_no:null,contact_erased_at:null,contact_erased_by:null});
   assert.deepEqual(await store.all('SELECT * FROM order_item'),snapshot);
   assert.equal((await store.get('SELECT stock_quantity FROM product')).stock_quantity,null);
   await store.run("UPDATE shop_order SET status='CANCELLED'");

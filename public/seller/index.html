@@ -55,6 +55,7 @@
       <div class="nav-group" data-i18n="configuration">Configuration</div>
       <button class="nav-item" type="button" data-view="categories" data-i18n-aria="categoryCodes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h6"/></svg><span data-i18n="categoryCodes">Category codes</span></button>
       <button class="nav-item" type="button" data-view="options" data-i18n-aria="optionsNav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span data-i18n="optionsNav">Product options</span></button>
+      <button id="team-nav" class="nav-item" type="button" data-view="team" data-i18n-aria="teamNav" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20v-1.5a6.5 6.5 0 0 1 13 0V20M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 5.5V20"/></svg><span data-i18n="teamNav">Team</span></button>
       <button class="nav-item" type="button" data-view="company" data-i18n-aria="companySettings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V7l8-4 8 4v14M2 21h20M9 21v-6h6v6"/></svg><span data-i18n="companySettings">Company settings</span></button>
     </nav>
   </aside>
@@ -109,6 +110,7 @@
   <dialog id="profile-dialog" class="profile-dialog" aria-labelledby="profile-title">
     <h2 id="profile-title" data-i18n="profile">View profile</h2>
     <dl><dt data-i18n="username">Username</dt><dd id="profile-username"></dd><dt data-i18n="role">Role</dt><dd id="profile-role"></dd></dl>
+    <button id="change-password" class="secondary-button" type="button" data-i18n="changePassword" hidden>Change password</button>
     <button id="close-profile" class="primary-button" type="button" data-i18n="close">Close</button>
   </dialog>
   <template id="products-template">
@@ -163,7 +165,18 @@
       <form id="order-filter" class="order-filter">
         <label><span data-i18n="searchOrderNo">Order number</span><input id="order-search" name="search" type="search" maxlength="40" autocomplete="off"></label>
         <label id="order-status-label"><span data-i18n="orderStatus">Status</span><select id="order-status" name="status"></select></label>
+        <details id="order-more-filters" class="order-more-filters">
+          <summary data-i18n="moreFilters">More filters</summary>
+          <div class="order-extra-grid">
+            <label><span data-i18n="auditFrom">From date</span><input id="order-from" type="date"></label>
+            <label><span data-i18n="auditTo">To date</span><input id="order-to" type="date"></label>
+            <label><span data-i18n="currency">Currency</span><select id="order-currency"></select></label>
+            <label><span data-i18n="minTotal">Minimum total</span><input id="order-min" type="number" min="0" step="0.01" inputmode="decimal"></label>
+            <label><span data-i18n="maxTotal">Maximum total</span><input id="order-max" type="number" min="0" step="0.01" inputmode="decimal"></label>
+          </div>
+        </details>
         <button type="submit" class="secondary-button" data-i18n="applySearch">Search</button>
+        <button type="button" id="order-export" class="secondary-button" data-i18n="exportCsv" hidden>Export CSV</button>
       </form>
     </div>
     <p id="order-message" class="message order-message" role="status" aria-live="polite"></p>

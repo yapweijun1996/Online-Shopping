@@ -5,7 +5,7 @@ import { getShopSetup, setupShop } from '../src/shop-setup.js';
 import { createProduct, listProducts } from '../src/products.js';
 import { createCategory, getCompanySettings, updateCompanySettings } from '../src/settings.js';
 import { createApi } from '../src/app.js';
-import { createSession } from '../src/auth.js';
+import { ownerSession } from './helpers/session.js';
 
 async function fixture(t) {
   const store = await openDatabase(':memory:');
@@ -66,7 +66,7 @@ test('demo refuses existing data and rolls back the entire seed on failure', asy
 test('Demo setup establishes MYR before seeding and rolls back settings on failure', async t => {
   const store = await fixture(t);
   const api = await createApi({ store, config: { publicOrigin: 'https://fixture.test' } });
-  const session = await createSession(store);
+  const session = await ownerSession(store);
   const call = (path, body) => api(new Request('https://fixture.test/api/v1/seller/' + path, {
     method: path === 'company-settings' ? 'PATCH' : 'POST',
     headers: { origin: 'https://fixture.test', 'content-type': 'application/json',
@@ -138,7 +138,7 @@ test('setup API enforces session, origin and CSRF; public catalog exposes demo i
   const call = (path, options = {}) => api(new Request(`http://localhost${path}`, options), { clientAddress: '127.0.0.1' });
   const body = JSON.stringify({ mode: 'demo' });
   assert.equal((await call('/api/v1/seller/setup', { method: 'POST', body })).status, 401);
-  const session = await createSession(store);
+  const session = await ownerSession(store);
   const headers = { cookie: `seller_session=${session.token}`, origin: 'http://localhost', 'content-type': 'application/json' };
   assert.equal((await call('/api/v1/seller/setup', { method: 'POST', headers, body })).status, 403);
   headers['x-csrf-token'] = session.csrfToken;
