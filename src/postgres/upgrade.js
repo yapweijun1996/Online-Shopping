@@ -6,7 +6,7 @@ import { migrateSharedGalleries } from '../product-gallery.js';
 
 // Called only by an explicit operator/test opt-in, inside the store-owned transaction.
 export async function upgradePostgres(store, version) {
-  if (![10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22].includes(version)) throw new Error(`Unsupported PostgreSQL schema version ${version}.`);
+  if (![10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23].includes(version)) throw new Error(`Unsupported PostgreSQL schema version ${version}.`);
   const columns = await store.all("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='product'");
   const has = name => columns.some(row => row.column_name === name);
   if (version === 13 && !has('stock_quantity') && !has('gallery_layout_json')) throw new Error('Unrecognized PostgreSQL product schema.');
@@ -177,6 +177,29 @@ ALTER TABLE session ADD COLUMN IF NOT EXISTS account_id TEXT;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'online_shopping_app') THEN
     GRANT SELECT, INSERT, UPDATE, DELETE ON seller_account, account_event TO online_shopping_app;
+  END IF;
+END $$;`);
+  await store.exec(`
+CREATE TABLE IF NOT EXISTS order_note (
+  id TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL REFERENCES shop_order(id) ON DELETE RESTRICT,
+  author TEXT NOT NULL CHECK (length(author) BETWEEN 1 AND 64),
+  body TEXT NOT NULL CHECK (length(body) BETWEEN 1 AND 1000),
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS order_note_order ON order_note(order_id, created_at);
+CREATE TABLE IF NOT EXISTS product_event (
+  id TEXT PRIMARY KEY,
+  product_id TEXT NOT NULL REFERENCES product(id) ON DELETE RESTRICT,
+  actor TEXT NOT NULL CHECK (length(actor) BETWEEN 1 AND 64),
+  action TEXT NOT NULL CHECK (action IN ('CREATED', 'UPDATED')),
+  changes TEXT NOT NULL CHECK (changes::jsonb IS NOT NULL AND length(changes) <= 4000),
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS product_event_product ON product_event(product_id, created_at);
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'online_shopping_app') THEN
+    GRANT SELECT, INSERT, UPDATE, DELETE ON order_note, product_event TO online_shopping_app;
   END IF;
 END $$;`);
   if (!await store.get('SELECT 1 AS found FROM seller_account LIMIT 1')) {

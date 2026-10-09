@@ -3,6 +3,7 @@ import { beginMutation } from '../shared/update-guard.js';
 import { revealImage } from '../shared/image-reveal.js';
 import { makeThumbnail, thumbUrl } from '../shared/image-thumb.js';
 import { inputFailure, priceToMinor, stockFromInput } from './product-fields.js';
+import './ops-copy.js';
 
 function readImage(file) {
   if (!file) return Promise.resolve(undefined);
@@ -326,9 +327,51 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     }
   }
 
+  // Who changed this product, when, and from what to what. Loaded when the section is opened.
+  const historyPanel = find('#product-history'), historyList = find('#product-history-list');
+  let historyFor = null, historyLoaded = false;
+  function historyValue(field, value, currency) {
+    if (field === 'stockQuantity' && value === null) return t('historyUnlimited');
+    if (value === null || value === undefined || value === '') return '–';
+    if (field === 'active') return t(value ? 'active' : 'inactive');
+    if (field === 'priceMinor') return formatMoney(value, currency || 'MYR');
+    if (field === 'stockQuantity') return String(value);
+    return String(value);
+  }
+  function setupHistory(id) {
+    if (id === historyFor) return;
+    historyFor = id; historyLoaded = false;
+    historyPanel.hidden = !id; historyPanel.open = false; historyList.replaceChildren();
+  }
+  historyPanel.addEventListener('toggle', async () => {
+    if (!historyPanel.open) { historyLoaded = false; return; }   // closing forgets the list, so reopening shows fresh entries
+    if (historyLoaded || !historyFor) return;
+    const id = historyFor;
+    try {
+      const data = await api('GET', `/api/v1/seller/products/${id}/history?limit=50`);
+      if (!isCurrent() || id !== historyFor) return;
+      historyLoaded = true;
+      historyList.replaceChildren(...(data.items.length ? data.items.map((entry) => {
+        const item = document.createElement('li');
+        const meta = document.createElement('span');
+        meta.className = 'history-meta';
+        meta.textContent = `${new Date(entry.at).toLocaleString(document.documentElement.lang || undefined)} · ${entry.actor}${entry.action === 'CREATED' ? ` · ${t('historyCreated')}` : ''}`;
+        item.append(meta);
+        for (const change of entry.changes) {
+          const line = document.createElement('div');
+          line.textContent = entry.action === 'CREATED' ? `${t(`historyField_${change.field}`)}: ${historyValue(change.field, change.to)}`
+            : `${t(`historyField_${change.field}`)}: ${historyValue(change.field, change.from)} → ${historyValue(change.field, change.to)}`;
+          item.append(line);
+        }
+        return item;
+      }) : [Object.assign(document.createElement('li'), { textContent: t('historyEmpty') })]));
+    } catch { if (isCurrent() && id === historyFor) historyList.replaceChildren(Object.assign(document.createElement('li'), { textContent: t('historyLoadError') })); }
+  });
+
   const variantsPanel = find('#product-variants');
   /* The variants of the product being edited: one line each, the one on screen marked, the others one click away. */
   function renderVariants(detail) {
+    setupHistory(detail?.id || null);
     const variants = detail?.variants || [];
     variantsPanel.hidden = variants.length < 2;
     const rows = find('#product-variants-list');
@@ -385,8 +428,49 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     }
   }
 
+  // Several products at once: tick the products, then switch them on or off together. All or nothing on the server.
+  const selected = new Set();
+  const bulkBar = document.createElement('div');
+  bulkBar.className = 'product-bulk'; bulkBar.hidden = true;
+  const bulkCount = document.createElement('strong');
+  const bulkMessage = document.createElement('p');
+  bulkMessage.className = 'message'; bulkMessage.setAttribute('role', 'status');
+  let bulkBusy = false, bulkMessageKey = '', bulkMessageCount = 0;
+  const bulkButtons = [['bulkActivate', 'activate'], ['bulkDeactivate', 'deactivate']].map(([label, action]) => {
+    const control = button(t(label), () => runBulk(action));
+    control.dataset.labelKey = label;
+    return control;
+  });
+  const bulkClear = button(t('bulkClear'), () => { selected.clear(); renderList(); });
+  bulkClear.dataset.labelKey = 'bulkClear';
+  bulkBar.append(bulkCount, ...bulkButtons, bulkClear, bulkMessage);
+  list.before(bulkBar);
+  function refreshBulk() {
+    bulkBar.hidden = selected.size === 0 && !bulkMessageKey;
+    bulkCount.textContent = selected.size ? t('bulkSelected').replace('{count}', selected.size) : '';
+    for (const control of [...bulkButtons, bulkClear]) { control.textContent = t(control.dataset.labelKey); control.hidden = selected.size === 0; control.disabled = bulkBusy; }
+    bulkMessage.textContent = bulkMessageKey ? t(bulkMessageKey).replace('{count}', bulkMessageCount) : '';
+    bulkMessage.classList.toggle('is-error', bulkMessageKey === 'bulkFailed');
+  }
+  async function runBulk(action) {
+    if (!selected.size || bulkBusy) return;
+    bulkBusy = true; bulkMessageKey = ''; refreshBulk();
+    try {
+      const result = await api('POST', '/api/v1/seller/products/bulk', { ids: [...selected], action });
+      if (!isCurrent()) return;
+      selected.clear(); bulkMessageKey = 'bulkDone'; bulkMessageCount = result.changed;
+    } catch (failure) {
+      if (!isCurrent() || failure.message === 'unauthorized') return;
+      bulkMessageKey = 'bulkFailed';
+    }
+    bulkBusy = false;
+    await load(true);
+    refreshBulk();
+  }
+
   function renderList() {
     list.replaceChildren();
+    for (const id of [...selected]) if (!items.some((product) => product.id === id && product.variantCount <= 1)) selected.delete(id);
     for (const product of items) {
       const card = document.createElement('article');
       card.className = 'product-card';
@@ -444,7 +528,17 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       toggleButton.disabled = pendingChanges.has(product.id);
       // A product with several variants is switched on or off per variant, inside the product.
       actions.append(button(t('editProduct'), () => onNavigate(`products/${product.id}`), `${t('editProduct')}: ${product.name} (${product.sku})`));
-      if (!grouped) actions.append(toggleButton);
+      if (!grouped) {
+        actions.append(toggleButton);
+        const pick = document.createElement('label');
+        pick.className = 'product-select';
+        const box = document.createElement('input');
+        box.type = 'checkbox'; box.checked = selected.has(product.id); box.dataset.action = 'select';
+        box.setAttribute('aria-label', t('bulkSelectProduct').replace('{name}', `${product.name} (${product.sku})`));
+        box.addEventListener('change', () => { if (box.checked) selected.add(product.id); else selected.delete(product.id); bulkMessageKey = ''; refreshBulk(); });
+        pick.append(box);
+        actions.prepend(pick);
+      }
       card.append(main, actions);
       const undo = undoStates.get(product.id);
       if (undo && undo.appliedActive === product.active) {
@@ -462,6 +556,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       list.append(card);
     }
     more.hidden = nextOffset === null;
+    refreshBulk();
   }
 
   async function api(method, path, body) {

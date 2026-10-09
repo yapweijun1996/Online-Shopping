@@ -275,7 +275,24 @@ CREATE TABLE message_inbound (
 );
 CREATE INDEX message_inbound_order ON message_inbound(order_id);
 CREATE INDEX message_inbound_unread ON message_inbound(received_at) WHERE read_at IS NULL;
-INSERT INTO schema_meta VALUES (1, 23);
+CREATE TABLE order_note (
+  id TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL REFERENCES shop_order(id) ON DELETE RESTRICT,
+  author TEXT NOT NULL CHECK (length(author) BETWEEN 1 AND 64),
+  body TEXT NOT NULL CHECK (length(body) BETWEEN 1 AND 1000),
+  created_at TEXT NOT NULL
+);
+CREATE INDEX order_note_order ON order_note(order_id, created_at);
+CREATE TABLE product_event (
+  id TEXT PRIMARY KEY,
+  product_id TEXT NOT NULL REFERENCES product(id) ON DELETE RESTRICT,
+  actor TEXT NOT NULL CHECK (length(actor) BETWEEN 1 AND 64),
+  action TEXT NOT NULL CHECK (action IN ('CREATED', 'UPDATED')),
+  changes TEXT NOT NULL CHECK (changes::jsonb IS NOT NULL AND length(changes) <= 4000),
+  created_at TEXT NOT NULL
+);
+CREATE INDEX product_event_product ON product_event(product_id, created_at);
+INSERT INTO schema_meta VALUES (1, 24);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 INSERT INTO shop_setup(id, mode, shop_name) VALUES (1, NULL, 'Online Shopping');
