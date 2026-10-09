@@ -12,6 +12,8 @@ import { decideSellerOrder, getSellerOrder, listSellerOrders, pendingOrderSummar
 import { listAuditEvents } from './audit-log.js';
 import { eraseOrderContact } from './erase-contact.js';
 import { dashboardFigures } from './dashboard-figures.js';
+import { addOrderNote } from './order-notes.js';
+import { bulkSetActive, listProductHistory, trackCreate, trackUpdate } from './product-history.js';
 import { exportOrdersCsv } from './order-export.js';
 import { OPTION_LIMITS } from './option-limits.js';
 import { createOptionType, createOptionValue, listOptionTypes, updateOptionType, updateOptionValue } from './options.js';
@@ -32,7 +34,7 @@ const sellerProductIdPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/(
 const thumbnailPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/gallery\/([0-9a-f-]{36}))?\/thumbnail$/;
 const optionTypePath = /^\/api\/v1\/seller\/option-types(?:\/([0-9a-f-]{36})(?:(\/values)(?:\/([0-9a-f-]{36}))?)?)?$/;
 const productGalleryPath = /^\/api\/v1\/(seller\/)?products\/([0-9a-f-]{36})\/gallery\/([0-9a-f-]{36})$/;
-const sellerOrderIdPath = /^\/api\/v1\/seller\/orders\/([0-9a-f-]{36})(?:\/(confirm|reject|ship|deliver|cancel|erase-contact))?$/;
+const sellerOrderIdPath = /^\/api\/v1\/seller\/orders\/([0-9a-f-]{36})(?:\/(confirm|reject|ship|deliver|cancel|erase-contact|notes))?$/;
 const whatsappConnectionPath = /^\/api\/v1\/seller\/integrations\/whatsapp(?:\/(SANDBOX|PRODUCTION))?$/;
 const messagePath = /^\/api\/v1\/seller\/messages\/(summary|replies|outbox)(?:\/([0-9a-f-]{36})\/(read|resolve))?$/;
 const orderMessagesPath = /^\/api\/v1\/seller\/orders\/([0-9a-f-]{36})\/messages$/;
@@ -371,8 +373,9 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
     if (method === 'POST' && sellerOrder?.[2]) {
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
-      allow({ 'erase-contact': 'data.erase', ship: 'orders.fulfil', deliver: 'orders.fulfil' }[sellerOrder[2]] ?? 'orders.decide');
-      const body = await readJson(request);
+      allow({ 'erase-contact': 'data.erase', ship: 'orders.fulfil', deliver: 'orders.fulfil', notes: 'orders.fulfil' }[sellerOrder[2]] ?? 'orders.decide');
+      const body = await readJson(request, sellerOrder[2] === 'notes' ? 4096 : undefined);
+      if (sellerOrder[2] === 'notes') return json(201, await addOrderNote(store, sellerOrder[1], body, account.username));
       if (sellerOrder[2] === 'erase-contact') {
         // A passwordless sample site is open to anyone, so it must never be able to erase data permanently.
         if (quickLogin) throw new ApiError(403, 'FORBIDDEN', 'Erasing contact data is not available on a sample site.');
@@ -380,6 +383,22 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
         return json(200, withProductLinks(await getSellerOrder(store, sellerOrder[1]), config.publicOrigin || url.origin));
       }
       return json(200, withProductLinks(await decideSellerOrder(store, sellerOrder[1], sellerOrder[2], body, account.username), config.publicOrigin || url.origin));
+    }
+    const productHistory = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})\/history$/.exec(pathname);
+    if (method === 'GET' && productHistory) {
+      allow('catalog.write');
+      if (!await getProduct(store, productHistory[1], true, config.shopMode)) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+      return json(200, await listProductHistory(store, productHistory[1], url.searchParams));
+    }
+    if (method === 'POST' && pathname === '/api/v1/seller/products/bulk') {
+      requireOrigin(request, expectedOrigin);
+      requireCsrf(request, session);
+      allow('catalog.write');
+      const body = await readJson(request, 8192);
+      if (!body || typeof body !== 'object' || Object.keys(body).some((key) => !['ids', 'action'].includes(key)) || !['activate', 'deactivate'].includes(body.action)) {
+        throw new FieldError('action', 'Choose activate or deactivate, and the products.');
+      }
+      return json(200, await bulkSetActive(store, body.ids, body.action === 'activate', account.username, (id, patch) => updateProduct(store, id, patch, config.shopMode)));
     }
     const sellerProduct = sellerProductIdPath.exec(pathname);
     if (method === 'GET' && sellerProduct && !sellerProduct[2]) {
@@ -427,10 +446,10 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
       allow('catalog.write');
       const body = await readJson(request, PRODUCT_MUTATION_BODY_LIMIT);
       if (method === 'POST') {
-        const product = await createProduct(store, body);
+        const product = await trackCreate(store, account.username, () => createProduct(store, body));
         return json(201, product, { Location: `/api/v1/seller/products/${product.id}` });
       }
-      const product = await updateProduct(store, sellerProduct[1], body, config.shopMode);
+      const product = await trackUpdate(store, sellerProduct[1], account.username, () => updateProduct(store, sellerProduct[1], body, config.shopMode));
       if (!product) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
       return json(200, presentCatalogCopy(product, config.shopMode));
     }

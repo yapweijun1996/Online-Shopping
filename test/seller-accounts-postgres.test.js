@@ -56,7 +56,7 @@ test('PostgreSQL: the schema 22 to 23 upgrade copies the administrator in as Own
   for (let pass = 0; pass < 2; pass++) {
     const upgraded = await openPostgresDatabase(url.href, { allowUpgrade: true });
     try {
-      assert.equal(await upgraded.schemaVersion(), 23);
+      assert.equal(await upgraded.schemaVersion(), 24);
       assert.deepEqual((await upgraded.all('SELECT username, username_key, password_hash, role, active FROM seller_account')).map((row) => ({ ...row, active: Number(row.active) })),
         [{ username: 'Legacy_Owner', username_key: 'legacy_owner', password_hash: 'abcd:1234', role: 'OWNER', active: 1 }]);
       await upgraded.setSchemaVersion(22);   // run the upgrade a second time over the finished schema

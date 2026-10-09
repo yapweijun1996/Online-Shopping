@@ -9,6 +9,7 @@ import { mountOrderMessages } from './messages.js';
 import './trail-copy.js';
 import './ops-copy.js';
 import { openEraseDialog } from './erase-contact.js';
+import { renderOrderNotes } from './order-notes.js';
 import { formatDate, formatMoney, t, translate } from '../shared/i18n.js';
 
 function node(tag, className = '', value = '') {
@@ -395,6 +396,9 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
     }
     history.append(events);
     fragment.append(history);
+    fragment.append(renderOrderNotes({ notes: order.notes || [], online: () => navigator.onLine,
+      send: (body) => request('POST', `/api/v1/seller/orders/${encodeURIComponent(order.id)}/notes`, body),
+      onAdded: (note) => { order.notes = [...(order.notes || []), note]; } }));
 
     if (order.status === 'SUBMITTED' && canDecide) {
       const actions = node('div', 'order-review-actions');

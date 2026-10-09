@@ -300,6 +300,11 @@
 .team-who{display:grid;gap:2px}.team-meta{color:var(--ui-muted);font-size:13px}.team-controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.team-reset{grid-template-columns:minmax(0,1fr) auto;align-items:center}
 .team-events li{font-size:13px;color:var(--ui-muted)}
 @media(min-width:900px){.team-row{grid-template-columns:minmax(0,1fr) auto;align-items:center}.team-reset{grid-column:1/-1;max-width:520px}}
+.order-note-list{list-style:none;margin:8px 0;padding:0;display:grid;gap:8px}.order-note-list li{padding:8px 10px;border-radius:8px;background:var(--ui-hover-surface)}.order-note-meta{font-size:12px;color:var(--ui-muted)}.order-note-body{margin:2px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}.order-note-empty{color:var(--ui-muted);background:none!important;padding:0!important}
+.order-note-form{display:grid;gap:8px}.order-note-form label{display:grid;gap:6px;font-size:13px;font-weight:700}.order-note-form textarea{width:100%;border:1px solid var(--ui-control-border);border-radius:9px;padding:10px 12px;background:var(--ui-surface);color:var(--ui-text);font:inherit;resize:vertical}.order-note-form button{justify-self:start}
+.product-bulk{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px;padding:10px 12px;border:1px solid var(--ui-border);border-radius:10px;background:var(--ui-surface)}.product-bulk[hidden]{display:none}.product-bulk strong{margin-right:auto}
+.product-select{display:flex;align-items:center;min-width:44px;min-height:44px;justify-content:center}.product-select input{width:20px;height:20px}
+.product-history{margin:0 0 16px}.product-history summary{cursor:pointer;font-weight:700;min-height:32px;display:flex;align-items:center}.product-history-list{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:8px}.product-history-list li{padding:8px 10px;border-radius:8px;background:var(--ui-hover-surface);font-size:13px}.product-history-list .history-meta{color:var(--ui-muted)}
 .erase-confirm{background:#aa3946;border-color:#aa3946;color:#fff}.erase-confirm:disabled{opacity:.5}
 .order-erased-note{margin:0 0 8px;padding:8px 10px;border-radius:8px;background:var(--ui-hover-surface);font-size:13px}
 .decision-dialog textarea{resize:vertical;font:inherit;min-height:100px}

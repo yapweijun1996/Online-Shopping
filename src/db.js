@@ -4,7 +4,7 @@ import { migrateLegacyVariants } from './options.js';
 import { migrateListings } from './listings.js';
 import { migrateSharedGalleries } from './product-gallery.js';
 
-export const SCHEMA_VERSION = 23;
+export const SCHEMA_VERSION = 24;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -152,6 +152,27 @@ CREATE TABLE IF NOT EXISTS account_event (
   created_at TEXT NOT NULL
 ) STRICT;
 CREATE INDEX IF NOT EXISTS account_event_time ON account_event(created_at);
+`;
+
+// Internal order notes (append-only, seller-written) and the history of product edits (who changed what, never deleted).
+const historyTablesSql = `
+CREATE TABLE IF NOT EXISTS order_note (
+  id TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL REFERENCES shop_order(id) ON DELETE RESTRICT,
+  author TEXT NOT NULL CHECK (length(author) BETWEEN 1 AND 64),
+  body TEXT NOT NULL CHECK (length(body) BETWEEN 1 AND 1000),
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX IF NOT EXISTS order_note_order ON order_note(order_id, created_at);
+CREATE TABLE IF NOT EXISTS product_event (
+  id TEXT PRIMARY KEY,
+  product_id TEXT NOT NULL REFERENCES product(id) ON DELETE RESTRICT,
+  actor TEXT NOT NULL CHECK (length(actor) BETWEEN 1 AND 64),
+  action TEXT NOT NULL CHECK (action IN ('CREATED', 'UPDATED')),
+  changes TEXT NOT NULL CHECK (json_valid(changes) AND length(changes) <= 4000),
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX IF NOT EXISTS product_event_product ON product_event(product_id, created_at);
 `;
 
 async function migrateAccounts(store) {
@@ -560,6 +581,10 @@ export async function migrateStore(store) {
     });
     version = 23;
   }
+  if (version === 23) {
+    await migrate(store, 24, historyTablesSql);
+    version = 24;
+  }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }
 
@@ -585,6 +610,8 @@ export async function ready(store) {
       Array.isArray(await store.all('SELECT id, username_key, role, active, must_change_password FROM seller_account LIMIT 0')) &&
       Array.isArray(await store.all('SELECT id, account_id, action FROM account_event LIMIT 0')) &&
       Array.isArray(await store.all('SELECT account_id FROM session LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT id, order_id, author FROM order_note LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT id, product_id, changes FROM product_event LIMIT 0')) &&
       Boolean(await store.get('SELECT id FROM seller_account WHERE role = ? AND active = 1 LIMIT 1', 'OWNER')) &&
       Boolean(await store.get('SELECT id FROM order_sequence WHERE id = 1')) &&
       Boolean(await store.get('SELECT id FROM company_setting WHERE id = 1')) &&
