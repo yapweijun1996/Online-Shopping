@@ -10,6 +10,7 @@ import { listSellerOrders, decideSellerOrder } from '../src/seller-orders.js';
 import { dashboardFigures } from '../src/dashboard-figures.js';
 import { exportOrdersCsv } from '../src/order-export.js';
 import { eraseOrderContact } from '../src/erase-contact.js';
+import { listAuditEvents } from '../src/audit-log.js';
 
 const base = process.env.SHOP_TEST_DATABASE_URL;
 if (base && (process.env.NODE_ENV !== 'test' || !/test/i.test(new URL(base).pathname))) throw new Error('PostgreSQL tests require NODE_ENV=test and a disposable test database.');
@@ -42,4 +43,7 @@ test('PostgreSQL: order filters, dashboard figures, CSV export and contact erasu
   await eraseOrderContact(store, rejected.id, { expectedRevision: rejected.revision, confirmOrderNo: a }, 'tester');
   const erased = await store.get('SELECT buyer_name, buyer_phone, buyer_email, contact_erased_by, revision FROM shop_order WHERE order_no = ?', a);
   assert.deepEqual({ ...erased }, { buyer_name: 'Erased', buyer_phone: '', buyer_email: null, contact_erased_by: 'tester', revision: Number(rejected.revision) + 1 });
+  const audit = await listAuditEvents(store, new URLSearchParams('actor=SELLER'));
+  assert.equal(audit.items[0].type, 'CONTACT_ERASED');
+  assert.equal(audit.items[0].actorId, 'tester');
 });

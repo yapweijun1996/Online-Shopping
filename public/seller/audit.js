@@ -1,6 +1,7 @@
 import { formatDate, t, translate } from '../shared/i18n.js';
 import { statusKey } from './order-status-label.js';
 import './trail-copy.js';
+import './ops-copy.js';
 
 const STATUSES = ['SUBMITTED', 'CONFIRMED', 'REJECTED', 'SHIPPED', 'DELIVERED', 'CANCELLED'];
 const node = (tag, className = '', text = '') => { const element = document.createElement(tag); if (className) element.className = className; if (text) element.textContent = text; return element; };
@@ -43,7 +44,8 @@ export function mountAudit(root, { onUnauthorized }) {
       const order = node('a', 'audit-order', event.orderNo);
       order.href = `#${['SUBMITTED', 'REJECTED'].includes(event.orderStatus) ? 'orders' : 'confirmations'}/${event.orderId}`;
       const what = node('span', 'audit-event');
-      what.append(node('span', `order-chip ${event.status.toLowerCase()}`, t(statusKey(event.status))));
+      if (event.type === 'CONTACT_ERASED') what.append(node('span', 'order-chip rejected', t('contactErasedChip')));
+      else what.append(node('span', `order-chip ${event.status.toLowerCase()}`, t(statusKey(event.status))));
       if (event.previousStatus) what.append(node('span', 'audit-from', `← ${t(statusKey(event.previousStatus))}`));
       li.append(time, order, what, node('span', 'audit-by', who(event)));
       if (event.reason) li.append(node('span', 'audit-reason', `${t('auditReason')}: ${event.reason}`));

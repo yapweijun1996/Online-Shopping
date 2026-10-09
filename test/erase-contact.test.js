@@ -98,3 +98,22 @@ test('erasing removes buyer reply text and stops queued messages for that order'
     assert.match(outbox.last_error, /erased/);
   } finally { await f.close(); }
 });
+
+test('the audit log lists an erasure with who and when, and the filters apply to it', async () => {
+  const f = await sellerFixture();
+  try {
+    const { headers } = await f.login();
+    const { id, orderNo, revision } = await rejected(f, headers);
+    assert.equal((await f.request('POST', `/api/v1/seller/orders/${id}/erase-contact`, { expectedRevision: revision, confirmOrderNo: orderNo }, headers)).response.status, 200);
+    const all = await f.request('GET', '/api/v1/seller/audit-log', null, headers);
+    assert.deepEqual(all.data.items.map((item) => item.type), ['CONTACT_ERASED', 'REJECTED', 'SUBMITTED']);
+    assert.equal(all.data.items[0].actorId, 'review_owner');
+    assert.equal(all.data.items[0].orderNo, orderNo);
+    const only = async (query) => (await f.request('GET', `/api/v1/seller/audit-log?${query}`, null, headers)).data.items.map((item) => item.type);
+    assert.deepEqual(await only('actor=GUEST'), ['SUBMITTED']);
+    assert.deepEqual(await only('actor=SELLER'), ['CONTACT_ERASED', 'REJECTED']);
+    assert.deepEqual(await only('status=SUBMITTED'), ['SUBMITTED']);
+    assert.deepEqual(await only(`search=${orderNo}&limit=1`), ['CONTACT_ERASED']);
+    assert.deepEqual(await only('from=2999-01-01T00:00:00.000Z'), []);
+  } finally { await f.close(); }
+});
