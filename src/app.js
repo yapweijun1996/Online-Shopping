@@ -14,6 +14,7 @@ import { eraseOrderContact } from './erase-contact.js';
 import { dashboardFigures } from './dashboard-figures.js';
 import { addOrderNote } from './order-notes.js';
 import { exportProductsCsv } from './product-export.js';
+import { IMPORT_MAX_CHARS, importProducts, planImport, presentPlan } from './product-import.js';
 import { bulkSetActive, listProductHistory, trackCreate, trackUpdate } from './product-history.js';
 import { exportOrdersCsv } from './order-export.js';
 import { OPTION_LIMITS } from './option-limits.js';
@@ -390,6 +391,16 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
       const csv = await exportProductsCsv(store, url.searchParams);
       return new Response(csv, { status: 200, headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
         'Content-Disposition': `attachment; filename="products-${new Date().toISOString().slice(0, 10)}.csv"` } });
+    }
+    if (method === 'POST' && pathname === '/api/v1/seller/products/import') {
+      requireOrigin(request, expectedOrigin);
+      requireCsrf(request, session);
+      allow('catalog.write');
+      const body = await readJson(request, IMPORT_MAX_CHARS * 2 + 1024);
+      if (Object.keys(body).some((key) => !['csv', 'commit'].includes(key)) || typeof body.commit !== 'boolean') throw new FieldError('import', 'Send csv and commit.');
+      if (!body.commit) return json(200, presentPlan(await planImport(store, body.csv)));
+      try { return json(200, presentPlan(await importProducts(store, body.csv, account.username, config.shopMode))); }
+      catch (error) { if (error.plan) return json(409, { error: { code: error.code, message: error.message }, ...presentPlan(error.plan) }); throw error; }
     }
     const productHistory = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})\/history$/.exec(pathname);
     if (method === 'GET' && productHistory) {

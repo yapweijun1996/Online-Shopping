@@ -4,6 +4,7 @@ import { revealImage } from '../shared/image-reveal.js';
 import { makeThumbnail, thumbUrl } from '../shared/image-thumb.js';
 import { inputFailure, priceToMinor, stockFromInput } from './product-fields.js';
 import './ops-copy.js';
+import { openImportDialog } from './product-import.js';
 
 function readImage(file) {
   if (!file) return Promise.resolve(undefined);
@@ -435,7 +436,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   const bulkCount = document.createElement('strong');
   const bulkMessage = document.createElement('p');
   bulkMessage.className = 'message'; bulkMessage.setAttribute('role', 'status');
-  let bulkBusy = false, bulkMessageKey = '', bulkMessageCount = 0;
+  let bulkBusy = false, bulkMessageKey = '', bulkMessageCount = 0, bulkMessageValues = null;
   const bulkButtons = [['bulkActivate', 'activate'], ['bulkDeactivate', 'deactivate']].map(([label, action]) => {
     const control = button(t(label), () => runBulk(action));
     control.dataset.labelKey = label;
@@ -449,9 +450,23 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     bulkBar.hidden = selected.size === 0 && !bulkMessageKey;
     bulkCount.textContent = selected.size ? t('bulkSelected').replace('{count}', selected.size) : '';
     for (const control of [...bulkButtons, bulkClear]) { control.textContent = t(control.dataset.labelKey); control.hidden = selected.size === 0; control.disabled = bulkBusy; }
-    bulkMessage.textContent = bulkMessageKey ? t(bulkMessageKey).replace('{count}', bulkMessageCount) : '';
+    bulkMessage.textContent = bulkMessageKey ? Object.entries(bulkMessageValues ?? { count: bulkMessageCount }).reduce((text, [name, value]) => text.replace(`{${name}}`, value), t(bulkMessageKey)) : '';
     bulkMessage.classList.toggle('is-error', ['bulkFailed', 'exportFailed', 'exportTooMany'].includes(bulkMessageKey));
   }
+  find('#product-import').addEventListener('click', (event) => {
+    openImportDialog({ trigger: event.currentTarget, onUnauthorized,
+      post: async (body) => {
+        const response = await fetch('/api/v1/seller/products/import', { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() }, body: JSON.stringify(body) });
+        const data = await response.json().catch(() => null);
+        if (!response.ok) throw Object.assign(new Error('import'), { status: response.status, data });
+        return data;
+      },
+      onImported: async (summary) => {
+        if (!isCurrent()) return;
+        bulkMessageKey = 'importDone'; bulkMessageValues = { created: summary.create, updated: summary.update };
+        await load(true); refreshBulk();
+      } });
+  });
   find('#product-export').addEventListener('click', async (event) => {
     const control = event.currentTarget;
     control.disabled = true;
@@ -460,7 +475,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       if (response.status === 401) { if (isCurrent()) onUnauthorized(); return; }
       if (!response.ok) {
         const code = (await response.json().catch(() => ({}))).error?.code;
-        if (isCurrent()) { bulkMessageKey = code === 'TOO_MANY_ROWS' ? 'exportTooMany' : 'exportFailed'; refreshBulk(); }
+        if (isCurrent()) { bulkMessageValues = null; bulkMessageKey = code === 'TOO_MANY_ROWS' ? 'exportTooMany' : 'exportFailed'; refreshBulk(); }
         return;
       }
       const link = document.createElement('a');
@@ -479,7 +494,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     try {
       const result = await api('POST', '/api/v1/seller/products/bulk', { ids: [...selected], action });
       if (!isCurrent()) return;
-      selected.clear(); bulkMessageKey = 'bulkDone'; bulkMessageCount = result.changed;
+      selected.clear(); bulkMessageKey = 'bulkDone'; bulkMessageCount = result.changed; bulkMessageValues = null;
     } catch (failure) {
       if (!isCurrent() || failure.message === 'unauthorized') return;
       bulkMessageKey = 'bulkFailed';
