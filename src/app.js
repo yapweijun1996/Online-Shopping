@@ -13,6 +13,7 @@ import { listAuditEvents } from './audit-log.js';
 import { eraseOrderContact } from './erase-contact.js';
 import { dashboardFigures } from './dashboard-figures.js';
 import { addOrderNote } from './order-notes.js';
+import { exportProductsCsv } from './product-export.js';
 import { bulkSetActive, listProductHistory, trackCreate, trackUpdate } from './product-history.js';
 import { exportOrdersCsv } from './order-export.js';
 import { OPTION_LIMITS } from './option-limits.js';
@@ -383,6 +384,12 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
         return json(200, withProductLinks(await getSellerOrder(store, sellerOrder[1]), config.publicOrigin || url.origin));
       }
       return json(200, withProductLinks(await decideSellerOrder(store, sellerOrder[1], sellerOrder[2], body, account.username), config.publicOrigin || url.origin));
+    }
+    if (method === 'GET' && pathname === '/api/v1/seller/products/export.csv') {
+      allow('catalog.write');
+      const csv = await exportProductsCsv(store, url.searchParams);
+      return new Response(csv, { status: 200, headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+        'Content-Disposition': `attachment; filename="products-${new Date().toISOString().slice(0, 10)}.csv"` } });
     }
     const productHistory = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})\/history$/.exec(pathname);
     if (method === 'GET' && productHistory) {
