@@ -5,7 +5,7 @@ import { migrateSharedGalleries } from '../product-gallery.js';
 
 // Called only by an explicit operator/test opt-in, inside the store-owned transaction.
 export async function upgradePostgres(store, version) {
-  if (![10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].includes(version)) throw new Error(`Unsupported PostgreSQL schema version ${version}.`);
+  if (![10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].includes(version)) throw new Error(`Unsupported PostgreSQL schema version ${version}.`);
   const columns = await store.all("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='product'");
   const has = name => columns.some(row => row.column_name === name);
   if (version === 13 && !has('stock_quantity') && !has('gallery_layout_json')) throw new Error('Unrecognized PostgreSQL product schema.');
@@ -27,6 +27,7 @@ export async function upgradePostgres(store, version) {
     await store.exec(`ALTER TABLE ${table} DROP CONSTRAINT "${constraint}"; ALTER TABLE ${table} ADD CHECK (${values})`);
   }
   await store.exec('ALTER TABLE shop_order ADD COLUMN IF NOT EXISTS tracking_carrier TEXT; ALTER TABLE shop_order ADD COLUMN IF NOT EXISTS tracking_no TEXT');
+  await store.exec('ALTER TABLE shop_order ADD COLUMN IF NOT EXISTS contact_erased_at TEXT; ALTER TABLE shop_order ADD COLUMN IF NOT EXISTS contact_erased_by TEXT');
   for (const column of ['availability_text', 'shipping_text', 'returns_text']) {
     await store.exec(`ALTER TABLE company_setting ADD COLUMN IF NOT EXISTS ${column} TEXT CHECK (${column} IS NULL OR length(${column}) BETWEEN 1 AND 1000)`);
   }

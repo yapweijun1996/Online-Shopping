@@ -290,6 +290,10 @@
 .decision-dialog h2{margin:0 0 8px;font-size:22px}
 .decision-dialog p{line-height:1.5}
 .decision-dialog label{display:grid;gap:8px;font-size:13px;font-weight:700}
+.decision-dialog input{width:100%;min-height:44px;border:1px solid var(--ui-control-border);border-radius:9px;padding:10px 12px;background:var(--ui-surface);color:var(--ui-text)}
+.erase-dialog .order-number{display:block;margin:0 0 12px}
+.erase-confirm{background:#aa3946;border-color:#aa3946;color:#fff}.erase-confirm:disabled{opacity:.5}
+.order-erased-note{margin:0 0 8px;padding:8px 10px;border-radius:8px;background:var(--ui-hover-surface);font-size:13px}
 .decision-dialog textarea{resize:vertical;font:inherit;min-height:100px}
 .decision-actions{display:flex;justify-content:flex-end;gap:9px;flex-wrap:wrap}
 @media(max-width:1080px){

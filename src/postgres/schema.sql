@@ -96,7 +96,7 @@ CREATE TABLE "shop_order" (
         currency TEXT NOT NULL CHECK (currency IN ('MYR', 'SGD')),
         total_minor BIGINT NOT NULL CHECK (total_minor >= 0),
         submitted_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL, tracking_carrier TEXT, tracking_no TEXT,
+        updated_at TEXT NOT NULL, tracking_carrier TEXT, tracking_no TEXT, contact_erased_at TEXT, contact_erased_by TEXT,
         CHECK ((whatsapp_opt_in = 0 AND whatsapp_consent_at IS NULL AND whatsapp_consent_version IS NULL) OR
                (whatsapp_opt_in = 1 AND whatsapp_consent_at IS NOT NULL AND whatsapp_consent_version IS NOT NULL))
       );
@@ -256,7 +256,7 @@ CREATE TABLE message_inbound (
 );
 CREATE INDEX message_inbound_order ON message_inbound(order_id);
 CREATE INDEX message_inbound_unread ON message_inbound(received_at) WHERE read_at IS NULL;
-INSERT INTO schema_meta VALUES (1, 21);
+INSERT INTO schema_meta VALUES (1, 22);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 INSERT INTO shop_setup(id, mode, shop_name) VALUES (1, NULL, 'Online Shopping');

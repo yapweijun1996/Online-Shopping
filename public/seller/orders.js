@@ -7,6 +7,8 @@ import { documentTitleKey } from './order-document-model.js';
 import { statusKey } from './order-status-label.js';
 import { mountOrderMessages } from './messages.js';
 import './trail-copy.js';
+import './ops-copy.js';
+import { openEraseDialog } from './erase-contact.js';
 import { formatDate, formatMoney, t, translate } from '../shared/i18n.js';
 
 function node(tag, className = '', value = '') {
@@ -31,7 +33,7 @@ const SCOPES = {
   confirmations: { defaultFilter: 'CONFIRMED', filters: ['CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'CONFIRMED,SHIPPED,DELIVERED,CANCELLED'] },
 };
 
-export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrderId = null, onSelect = () => {} }) {
+export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = false, initialOrderId = null, onSelect = () => {} }) {
   root.replaceChildren(document.getElementById('orders-template').content.cloneNode(true));
   translate(root);
   const find = (selector) => root.querySelector(selector);
@@ -293,13 +295,15 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
 
     fragment.append(documentTrailSection(order));
 
-    const buyer = detailGroup('buyerDetails', [
+    const erased = Boolean(order.contactErased);
+    const buyer = detailGroup('buyerDetails', erased ? [] : [
       detailField('fullName', order.buyer.fullName, !order.simulation),
       detailField('buyerWhatsApp', order.simulation ? t('demoContactUnavailable') : order.buyer.whatsappPhone, !order.simulation),
       detailField('emailLabel', order.buyer.email, !order.simulation),
     ]);
-    if (!order.simulation) buyer.append(node('p', 'order-consent', t(order.buyer.whatsappOrderContactOptIn ? 'contactOptedIn' : 'contactNotOptedIn')));
-    if (!order.simulation && order.buyer.whatsappOrderContactOptIn && /^\+(?:60|65)[1-9]\d{6,11}$/.test(order.buyer.whatsappPhone)) {
+    if (erased) buyer.append(node('p', 'order-erased-note', t('contactErasedNote').replace('{when}', formatDate(order.contactErasedAt)).replace('{who}', order.contactErasedBy)));
+    if (!order.simulation && !erased) buyer.append(node('p', 'order-consent', t(order.buyer.whatsappOrderContactOptIn ? 'contactOptedIn' : 'contactNotOptedIn')));
+    if (!order.simulation && !erased && order.buyer.whatsappOrderContactOptIn && /^\+(?:60|65)[1-9]\d{6,11}$/.test(order.buyer.whatsappPhone)) {
       const link = node('a', 'secondary-button whatsapp-link', t('openWhatsApp'));
       link.href = `https://wa.me/${order.buyer.whatsappPhone.slice(1)}`;
       link.target = '_blank';
@@ -312,7 +316,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
       const section = node('section', 'order-detail-group order-delivery');
       section.append(node('h3', '', `${t('destination')} ${delivery.position + 1}`));
       const fields = node('dl', 'order-fields');
-      for (const field of [
+      if (!erased) for (const field of [
         detailField('recipientName', delivery.recipient.fullName, !order.simulation),
         detailField('recipientPhone', order.simulation ? t('demoContactUnavailable') : delivery.recipient.phone, !order.simulation),
         detailField('addressLine1', delivery.address.line1, !order.simulation),
@@ -389,6 +393,17 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, initialOrde
         button.disabled = !navigator.onLine;
         actions.append(button);
       }
+      fragment.append(actions);
+    }
+    if (['REJECTED', 'DELIVERED', 'CANCELLED'].includes(order.status) && !erased && !order.simulation && canErase) {
+      const actions = node('div', 'order-review-actions');
+      const erase = actionButton(t('eraseContact'), (event) => openEraseDialog({ order, trigger: event.currentTarget,
+        send: (body) => request('POST', `/api/v1/seller/orders/${encodeURIComponent(order.id)}/erase-contact`, body),
+        onErased: async (updated) => { if (!isCurrent()) return; if (selectedId === order.id) { selectedOrder = updated; renderDetail(); } setMessage('eraseDone'); await loadQueue(); },
+        onStale: async () => { if (!isCurrent()) return; await Promise.all([loadQueue(), openOrder(order.id)]); setMessage('orderChanged'); } }), 'secondary-button');
+      erase.dataset.action = 'erase-contact';
+      erase.disabled = !navigator.onLine;
+      actions.append(erase);
       fragment.append(actions);
     }
     detailStatusKey = '';

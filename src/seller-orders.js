@@ -5,8 +5,8 @@ import { documentTrail } from './document-trail.js';
 
 const orderColumns = `id, order_no, buyer_name, buyer_phone, buyer_email, whatsapp_opt_in,
   whatsapp_consent_at, whatsapp_consent_version, locale, status, revision, currency,
-  total_minor, submitted_at, updated_at, tracking_carrier, tracking_no`;
-const queueColumns = 'id, order_no, buyer_name, status, revision, currency, total_minor, submitted_at, updated_at, tracking_carrier, tracking_no';
+  total_minor, submitted_at, updated_at, tracking_carrier, tracking_no, contact_erased_at, contact_erased_by`;
+const queueColumns = 'id, order_no, buyer_name, status, revision, currency, total_minor, submitted_at, updated_at, tracking_carrier, tracking_no, contact_erased_at';
 export const statuses = new Set(['SUBMITTED', 'CONFIRMED', 'REJECTED', 'SHIPPED', 'DELIVERED', 'CANCELLED']);
 // Each seller action moves an order from one status to the next; cancelling is possible until it ships.
 const transitions = {
@@ -33,6 +33,7 @@ function summary(row) {
     status: row.status, revision: row.revision, currency: row.currency,
     totalMinor: row.total_minor, submittedAt: row.submitted_at, updatedAt: row.updated_at,
     ...(row.tracking_carrier ? { trackingCarrier: row.tracking_carrier, trackingNo: row.tracking_no } : {}),
+    ...(row.contact_erased_at ? { contactErased: true } : {}),
   };
 }
 
@@ -109,6 +110,7 @@ async function readSellerOrder(database, id) {
     }));
   return {
     ...summary(row), locale: row.locale,
+    ...(row.contact_erased_at ? { contactErasedAt: row.contact_erased_at, contactErasedBy: row.contact_erased_by } : {}),
     buyer: {
       fullName: row.buyer_name, whatsappPhone: row.buyer_phone, email: row.buyer_email,
       whatsappOrderContactOptIn: Boolean(row.whatsapp_opt_in),

@@ -41,6 +41,7 @@ let currentView = 'dashboard';
 let currentRoute = 'dashboard';
 let username = '';
 let role = '';
+let quickLogin = false;
 let productsPage = null;
 let ordersPage = null;
 let settingsPage = null;
@@ -207,6 +208,7 @@ function showWorkspace(session) {
   messageBadge = startMessageBadge({ badge: byId('messages-badge'), navItem: byId('messages-nav'), csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError') });
   username = session.username;
   role = session.role;
+  quickLogin = session.quickLogin === true;
   accountButton.querySelector('.avatar').textContent = Array.from(username.trim())[0]?.toLocaleUpperCase(locale()) || '•';
   setLoginMessage('');
   setWorkspaceMessage('');
@@ -258,6 +260,7 @@ function renderView() {
       ordersPage?.dispose();
       ordersPage = mountOrders(content, {
         mode: currentView,
+        canErase: !quickLogin,
         csrfToken: () => csrfToken,
         onUnauthorized: () => showLogin('authError'),
         initialOrderId: orderId,

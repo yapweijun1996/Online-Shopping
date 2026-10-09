@@ -3,7 +3,7 @@ import { migrateLegacyVariants } from './options.js';
 import { migrateListings } from './listings.js';
 import { migrateSharedGalleries } from './product-gallery.js';
 
-export const SCHEMA_VERSION = 21;
+export const SCHEMA_VERSION = 22;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -505,6 +505,17 @@ export async function migrateStore(store) {
     await migrate(store, 21, integrationTablesSql);
     version = 21;
   }
+  if (version === 21) {
+    // Additive: when and by whom an order's buyer contact and delivery data were erased (see erase-contact.js).
+    await store.transaction(async () => {
+      const present = (await store.all("SELECT name FROM pragma_table_info('shop_order')")).map(column => column.name);
+      for (const column of ['contact_erased_at', 'contact_erased_by']) {
+        if (!present.includes(column)) await store.exec(`ALTER TABLE shop_order ADD COLUMN ${column} TEXT`);
+      }
+      await store.setSchemaVersion(22);
+    });
+    version = 22;
+  }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }
 
@@ -520,7 +531,7 @@ export async function ready(store) {
   try {
     return await store.schemaVersion() === SCHEMA_VERSION &&
       Array.isArray(await store.all('SELECT stock_quantity, gallery_layout_json FROM product LIMIT 0')) &&
-      Array.isArray(await store.all('SELECT tracking_carrier, tracking_no FROM shop_order LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT tracking_carrier, tracking_no, contact_erased_at, contact_erased_by FROM shop_order LIMIT 0')) &&
       Array.isArray(await store.all('SELECT availability_text, shipping_text, returns_text FROM company_setting LIMIT 0')) &&
       Array.isArray(await store.all('SELECT id FROM option_type LIMIT 0')) &&
       Array.isArray(await store.all('SELECT id FROM listing LIMIT 0')) &&

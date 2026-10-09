@@ -8,6 +8,7 @@ import { createOrder, lookupOrderStatuses } from './orders.js';
 import { addGalleryImage, createProduct, deleteGalleryImage, getGalleryImage, getProduct, getProductImage, listProducts, setGalleryThumbnail, setProductThumbnail, updateProduct } from './products.js';
 import { decideSellerOrder, getSellerOrder, listSellerOrders, pendingOrderSummary, withProductLinks } from './seller-orders.js';
 import { listAuditEvents } from './audit-log.js';
+import { eraseOrderContact } from './erase-contact.js';
 import { OPTION_LIMITS } from './option-limits.js';
 import { createOptionType, createOptionValue, listOptionTypes, updateOptionType, updateOptionValue } from './options.js';
 import { createCategory, publicBusinessContact, getCompanySettings, storefrontTexts, listCategories, updateCategory, updateCompanySettings } from './settings.js';
@@ -27,7 +28,7 @@ const sellerProductIdPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/(
 const thumbnailPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/gallery\/([0-9a-f-]{36}))?\/thumbnail$/;
 const optionTypePath = /^\/api\/v1\/seller\/option-types(?:\/([0-9a-f-]{36})(?:(\/values)(?:\/([0-9a-f-]{36}))?)?)?$/;
 const productGalleryPath = /^\/api\/v1\/(seller\/)?products\/([0-9a-f-]{36})\/gallery\/([0-9a-f-]{36})$/;
-const sellerOrderIdPath = /^\/api\/v1\/seller\/orders\/([0-9a-f-]{36})(?:\/(confirm|reject|ship|deliver|cancel))?$/;
+const sellerOrderIdPath = /^\/api\/v1\/seller\/orders\/([0-9a-f-]{36})(?:\/(confirm|reject|ship|deliver|cancel|erase-contact))?$/;
 const whatsappConnectionPath = /^\/api\/v1\/seller\/integrations\/whatsapp(?:\/(SANDBOX|PRODUCTION))?$/;
 const messagePath = /^\/api\/v1\/seller\/messages\/(summary|replies|outbox)(?:\/([0-9a-f-]{36})\/(read|resolve))?$/;
 const orderMessagesPath = /^\/api\/v1\/seller\/orders\/([0-9a-f-]{36})\/messages$/;
@@ -182,7 +183,7 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
       }
       await loginLimiter.clear(clientAddress);
       const session = await createSession(store);
-      return json(200, { username: config.username, role: 'SUPER_ADMIN', csrfToken: session.csrfToken }, {
+      return json(200, { username: config.username, role: 'SUPER_ADMIN', quickLogin, csrfToken: session.csrfToken }, {
         'Set-Cookie': cookieFor(session.token, session.maxAge, config.production),
       });
     }
@@ -193,7 +194,7 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
       requireOrigin(request, expectedOrigin);
       if (!await demoLoginLimiter.attempt(clientAddress)) throw new ApiError(429, 'RATE_LIMITED', 'Too many attempts. Try later.');
       const session = await createSession(store);
-      return json(200, { username: config.username, role: 'SUPER_ADMIN', csrfToken: session.csrfToken }, {
+      return json(200, { username: config.username, role: 'SUPER_ADMIN', quickLogin, csrfToken: session.csrfToken }, {
         'Set-Cookie': cookieFor(session.token, session.maxAge, config.production),
       });
     }
@@ -202,7 +203,7 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
     const session = await readSession(store, token);
     if (!session) throw new ApiError(401, 'UNAUTHORIZED', 'Sign in required.');
     if (method === 'GET' && pathname === '/api/v1/seller/session') {
-      return json(200, { username: config.username, role: 'SUPER_ADMIN', csrfToken: session.csrf_token });
+      return json(200, { username: config.username, role: 'SUPER_ADMIN', quickLogin, csrfToken: session.csrf_token });
     }
     if (method === 'DELETE' && pathname === '/api/v1/seller/session') {
       requireOrigin(request, expectedOrigin);
@@ -320,6 +321,12 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
       const body = await readJson(request);
+      if (sellerOrder[2] === 'erase-contact') {
+        // A passwordless sample site is open to anyone, so it must never be able to erase data permanently.
+        if (quickLogin) throw new ApiError(403, 'FORBIDDEN', 'Erasing contact data is not available on a sample site.');
+        await eraseOrderContact(store, sellerOrder[1], body, config.username);
+        return json(200, withProductLinks(await getSellerOrder(store, sellerOrder[1]), config.publicOrigin || url.origin));
+      }
       return json(200, withProductLinks(await decideSellerOrder(store, sellerOrder[1], sellerOrder[2], body, config.username), config.publicOrigin || url.origin));
     }
     const sellerProduct = sellerProductIdPath.exec(pathname);
