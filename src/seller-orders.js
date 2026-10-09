@@ -60,18 +60,54 @@ async function orderPreviews(database, orderIds) {
   return previews;
 }
 
-export async function listSellerOrders(database, params) {
+const isoInstant = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const currencies = new Set(['MYR', 'SGD']);
+
+function instantParam(params, key) {
+  const value = params.get(key);
+  if (!value) return null;
+  if (!isoInstant.test(value) || Number.isNaN(Date.parse(value))) throw new FieldError(key, 'Enter a valid date.');
+  return value;
+}
+
+function amountParam(params, key) {
+  const value = params.get(key);
+  if (!value) return null;
+  if (!/^(0|[1-9]\d{0,11})$/.test(value)) throw new FieldError(key, 'Enter a valid amount.');
+  return Number(value);
+}
+
+/* WHERE clause shared by the order list and the CSV export: status, order-number search, submitted date range
+   (exact UTC instants, `to` exclusive), currency and total range in minor units. Values are always bound parameters. */
+export function orderFilter(params, prefix = '') {
   const requested = (params.get('status') || '').split(',').filter(Boolean);
   if (requested.length > statuses.size || requested.some((value) => !statuses.has(value)) || new Set(requested).size !== requested.length) {
     throw new FieldError('status', 'Choose a valid order status.');
   }
   const search = boundedText(params.get('search'), 'search', 40, false);
+  const currency = params.get('currency') || '';
+  if (currency && !currencies.has(currency)) throw new FieldError('currency', 'Choose a valid currency.');
+  const from = instantParam(params, 'from'), to = instantParam(params, 'to');
+  const minTotal = amountParam(params, 'minTotal'), maxTotal = amountParam(params, 'maxTotal');
+  if (minTotal !== null && maxTotal !== null && minTotal > maxTotal) throw new FieldError('minTotal', 'The minimum is above the maximum.');
+  const clauses = [], values = [];
+  if (requested.length) { clauses.push(`${prefix}status IN (${requested.map(() => '?').join(', ')})`); values.push(...requested); }
+  if (search) { clauses.push(`instr(lower(${prefix}order_no), lower(?)) > 0`); values.push(search); }
+  if (currency) { clauses.push(`${prefix}currency = ?`); values.push(currency); }
+  if (from) { clauses.push(`${prefix}submitted_at >= ?`); values.push(from); }
+  if (to) { clauses.push(`${prefix}submitted_at < ?`); values.push(to); }
+  if (minTotal !== null) { clauses.push(`${prefix}total_minor >= ?`); values.push(minTotal); }
+  if (maxTotal !== null) { clauses.push(`${prefix}total_minor <= ?`); values.push(maxTotal); }
+  return { where: clauses.length ? clauses.join(' AND ') : '1 = 1', values };
+}
+
+export async function listSellerOrders(database, params) {
+  const filter = orderFilter(params);
   const limit = listNumber(params, 'limit', 20, 100);
   const offset = listNumber(params, 'offset', 0, 10_000);
   if (limit < 1) throw new FieldError('limit', 'Enter a valid list range.');
   const rows = await database.all(`SELECT ${queueColumns} FROM shop_order
-    WHERE (${requested.length ? `status IN (${requested.map(() => '?').join(', ')})` : '1 = 1'}) AND (? = '' OR instr(lower(order_no), lower(?)) > 0)
-    ORDER BY submitted_at DESC, id DESC LIMIT ? OFFSET ?`, ...requested, search, search, limit + 1, offset);
+    WHERE ${filter.where} ORDER BY submitted_at DESC, id DESC LIMIT ? OFFSET ?`, ...filter.values, limit + 1, offset);
   const page = rows.slice(0, limit);
   const previews = await orderPreviews(database, page.map((row) => row.id));
   return { items: page.map((row) => ({ ...summary(row), ...(previews.get(row.id) ? { preview: previews.get(row.id) } : {}) })), nextOffset: rows.length > limit ? offset + limit : null };

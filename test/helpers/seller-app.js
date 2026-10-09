@@ -28,12 +28,12 @@ export async function sellerFixture(extraConfig = {}) {
   }
   return {
     app, config, directory, origin, product, request,
-    async submit({ buyerName = 'Example Buyer', quantity = 2 } = {}) {
+    async submit({ buyerName = 'Example Buyer', quantity = 2, item = product } = {}) {
       return request('POST', '/api/v1/orders', {
         buyer: { fullName: buyerName, whatsappPhone: '+6581234567', email: 'example@example.invalid' }, whatsappOrderContactOptIn: true, locale: 'en',
         deliveries: [{ recipient: { fullName: 'Example Recipient', phone: '+60123456789' },
           address: { line1: 'Example Street', line2: 'Unit 1', city: 'Example City', postcode: '50000', country: 'MY' },
-          items: [{ productId: product.id, quantity, expectedPriceMinor: product.priceMinor, expectedCurrency: product.currency }] }],
+          items: [{ productId: item.id, quantity, expectedPriceMinor: item.priceMinor, expectedCurrency: item.currency }] }],
       }, { origin, 'idempotency-key': randomUUID() });
     },
     async login(username = config.username, password = config.password) {

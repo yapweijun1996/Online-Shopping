@@ -9,6 +9,8 @@ import { addGalleryImage, createProduct, deleteGalleryImage, getGalleryImage, ge
 import { decideSellerOrder, getSellerOrder, listSellerOrders, pendingOrderSummary, withProductLinks } from './seller-orders.js';
 import { listAuditEvents } from './audit-log.js';
 import { eraseOrderContact } from './erase-contact.js';
+import { dashboardFigures } from './dashboard-figures.js';
+import { exportOrdersCsv } from './order-export.js';
 import { OPTION_LIMITS } from './option-limits.js';
 import { createOptionType, createOptionValue, listOptionTypes, updateOptionType, updateOptionValue } from './options.js';
 import { createCategory, publicBusinessContact, getCompanySettings, storefrontTexts, listCategories, updateCategory, updateCompanySettings } from './settings.js';
@@ -307,6 +309,14 @@ export async function createApi({ store, config, serveStatic = null, whatsappTra
       }
     }
     if (method === 'GET' && pathname === '/api/v1/seller/orders/summary') return json(200, await pendingOrderSummary(store));
+    if (method === 'GET' && pathname === '/api/v1/seller/dashboard') return json(200, await dashboardFigures(store));
+    if (method === 'GET' && pathname === '/api/v1/seller/orders/export.csv') {
+      // The file holds buyer names, numbers and emails, so a passwordless sample site must not offer it.
+      if (quickLogin) throw new ApiError(403, 'FORBIDDEN', 'Export is not available on a sample site.');
+      const csv = await exportOrdersCsv(store, url.searchParams);
+      return new Response(csv, { status: 200, headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+        'Content-Disposition': `attachment; filename="orders-${new Date().toISOString().slice(0, 10)}.csv"` } });
+    }
     if (method === 'GET' && pathname === '/api/v1/seller/orders') {
       return json(200, await listSellerOrders(store, url.searchParams));
     }

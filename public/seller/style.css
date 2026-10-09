@@ -232,6 +232,8 @@
 .order-filter label{display:grid;gap:6px;font-size:13px;font-weight:700;min-width:min(100%,210px);flex:1}
 .order-filter input,.order-filter select,.decision-dialog textarea{width:100%;min-height:44px;border:1px solid var(--ui-control-border);border-radius:9px;padding:10px 12px;background:var(--ui-surface);color:var(--ui-text)}
 .order-filter button{flex:none}
+.order-more-filters{grid-column:1/-1;font-size:13px}.order-more-filters summary{cursor:pointer;font-weight:700;min-height:32px;display:flex;align-items:center}
+.order-extra-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:8px}
 .order-message{margin:0 0 12px;color:var(--shop-success)}
 .order-message.is-error{color:var(--shop-error)}
 .order-layout{display:grid;grid-template-columns:minmax(250px,330px) minmax(0,1fr);gap:16px;align-items:start}
@@ -399,6 +401,7 @@
 .order-filter label{min-width:0}
 .order-filter.single-field label{grid-column:1/-1}
 .order-filter button{grid-column:1/-1;justify-self:end;min-width:120px}
+.order-filter #order-export{grid-column:1/-1}
 }
 @media(max-width:355px){
 .brand>span:not(.brand-mark){display:none}

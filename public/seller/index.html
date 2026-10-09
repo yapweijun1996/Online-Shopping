@@ -163,7 +163,18 @@
       <form id="order-filter" class="order-filter">
         <label><span data-i18n="searchOrderNo">Order number</span><input id="order-search" name="search" type="search" maxlength="40" autocomplete="off"></label>
         <label id="order-status-label"><span data-i18n="orderStatus">Status</span><select id="order-status" name="status"></select></label>
+        <details id="order-more-filters" class="order-more-filters">
+          <summary data-i18n="moreFilters">More filters</summary>
+          <div class="order-extra-grid">
+            <label><span data-i18n="auditFrom">From date</span><input id="order-from" type="date"></label>
+            <label><span data-i18n="auditTo">To date</span><input id="order-to" type="date"></label>
+            <label><span data-i18n="currency">Currency</span><select id="order-currency"></select></label>
+            <label><span data-i18n="minTotal">Minimum total</span><input id="order-min" type="number" min="0" step="0.01" inputmode="decimal"></label>
+            <label><span data-i18n="maxTotal">Maximum total</span><input id="order-max" type="number" min="0" step="0.01" inputmode="decimal"></label>
+          </div>
+        </details>
         <button type="submit" class="secondary-button" data-i18n="applySearch">Search</button>
+        <button type="button" id="order-export" class="secondary-button" data-i18n="exportCsv" hidden>Export CSV</button>
       </form>
     </div>
     <p id="order-message" class="message order-message" role="status" aria-live="polite"></p>

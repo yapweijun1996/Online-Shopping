@@ -9,6 +9,7 @@ import { mountDemoEntry } from '../shared/demo-entry.js';
 import { createOrderAlerts } from './alerts.js';
 import { snapshotCount } from './studio-copy.js';
 import { mountAudit } from './audit.js';
+import { mountFigures } from './dashboard-figures.js';
 import { mountMessages, startMessageBadge } from './messages.js';
 import { mountProducts } from './products.js';
 import { mountOrders } from './orders.js';
@@ -261,6 +262,7 @@ function renderView() {
       ordersPage = mountOrders(content, {
         mode: currentView,
         canErase: !quickLogin,
+        canExport: !quickLogin,
         csrfToken: () => csrfToken,
         onUnauthorized: () => showLogin('authError'),
         initialOrderId: orderId,
@@ -377,7 +379,8 @@ async function renderDashboard(content) {
       if (isCurrent()) currency.textContent = settings.defaultCurrency;
     }).catch(() => { if (isCurrent()) currency.textContent = t('networkError'); });
     const grid = node('div', 'dashboard-grid');
-    shell.replaceChildren(identity, stats, node('p', 'dashboard-count-help', t('snapshotCountHelp')), grid);
+    shell.replaceChildren(identity, stats, node('p', 'dashboard-count-help', t('snapshotCountHelp')),
+      mountFigures({ isCurrent, onUnauthorized: () => showLogin('authError') }), grid);
 
     const panels = [
       {

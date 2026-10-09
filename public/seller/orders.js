@@ -33,7 +33,7 @@ const SCOPES = {
   confirmations: { defaultFilter: 'CONFIRMED', filters: ['CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'CONFIRMED,SHIPPED,DELIVERED,CANCELLED'] },
 };
 
-export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = false, initialOrderId = null, onSelect = () => {} }) {
+export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = false, canExport = false, initialOrderId = null, onSelect = () => {} }) {
   root.replaceChildren(document.getElementById('orders-template').content.cloneNode(true));
   translate(root);
   const find = (selector) => root.querySelector(selector);
@@ -47,6 +47,10 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
   const back = find('#order-back');
   const search = find('#order-search');
   const status = find('#order-status');
+  const from = find('#order-from'), to = find('#order-to'), currency = find('#order-currency'), minTotal = find('#order-min'), maxTotal = find('#order-max');
+  const exportButton = find('#order-export');
+  exportButton.hidden = !canExport;
+  const moreFilters = find('#order-more-filters');
   const dialog = find('#decision-dialog');
   containDialogFocus(dialog);
   const reason = find('#decision-reason');
@@ -75,6 +79,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
   let dialogErrorKey = '';
   let listRequest = 0;
   let appliedSearch = '';
+  let appliedExtra = '';
   const scope = SCOPES[mode];
   let appliedStatus = scope.defaultFilter;
   let detailRequest = 0;
@@ -91,13 +96,32 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
     status.value = scope.filters.includes(chosen) ? chosen : scope.defaultFilter;
   }
   renderStatusOptions();
+  function renderCurrencyOptions() {
+    const chosen = currency.value;
+    currency.replaceChildren(...[['', t('anyCurrency')], ['MYR', 'MYR'], ['SGD', 'SGD']].map(([value, label]) => { const option = node('option', '', label); option.value = value; return option; }));
+    currency.value = chosen;
+  }
+  renderCurrencyOptions();
+  // Dates are shop days (Malaysia and Singapore, UTC+8); amounts are typed in major units and sent in minor units.
+  const dayStart = (value, plusDays = 0) => { const date = new Date(`${value}T00:00:00+08:00`); date.setUTCDate(date.getUTCDate() + plusDays); return date.toISOString(); };
+  const minor = (value) => Math.round(Number(value) * 100);
+  /* The extra filters as query parameters; empty fields are left out. */
+  function extraParams() {
+    const params = new URLSearchParams();
+    if (from.value) params.set('from', dayStart(from.value));
+    if (to.value) params.set('to', dayStart(to.value, 1));
+    if (currency.value) params.set('currency', currency.value);
+    if (minTotal.value !== '' && Number(minTotal.value) >= 0) params.set('minTotal', String(minor(minTotal.value)));
+    if (maxTotal.value !== '' && Number(maxTotal.value) >= 0) params.set('maxTotal', String(minor(maxTotal.value)));
+    return params;
+  }
   status.addEventListener('change', () => find('#order-filter').requestSubmit());
 
   function isCurrent() { return active && shell.isConnected; }
   function setMessage(key) {
     messageKey = key;
     message.textContent = key ? t(key) : '';
-    message.classList.toggle('is-error', ['documentFailed', 'copyFailure', 'orderChanged', 'decisionUnknown', 'decisionFailed', 'offlineMessage'].includes(key));
+    message.classList.toggle('is-error', ['documentFailed', 'exportFailed', 'exportTooMany', 'copyFailure', 'orderChanged', 'decisionUnknown', 'decisionFailed', 'offlineMessage'].includes(key));
   }
   function setListStatus(key) { listStatusKey = key; listStatus.textContent = key ? t(key) : ''; }
   function setDialogError(key) { dialogErrorKey = key; dialogError.textContent = key ? t(key) : ''; }
@@ -175,6 +199,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
     if (reset) {
       appliedSearch = query;
       appliedStatus = filter;
+      appliedExtra = extraParams().toString();
       // Keep the last successful queue visible until its replacement arrives.
       list.setAttribute('aria-busy', 'true');
     }
@@ -187,13 +212,14 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
         limit: '20', offset: String(offset), search: query,
       });
       if (filter) params.set('status', filter);
+      for (const [key, value] of new URLSearchParams(appliedExtra)) params.set(key, value);
       const result = await request('GET', `/api/v1/seller/orders?${params}`);
       if (!isCurrent() || requestNumber !== listRequest) return;
       succeeded = true;
       items = reset ? result.items : [...items, ...result.items];
       nextOffset = result.nextOffset;
       renderQueue();
-      const hasCriteria = Boolean(query || filter !== scope.defaultFilter);
+      const hasCriteria = Boolean(query || filter !== scope.defaultFilter || appliedExtra);
       setListStatus(items.length ? '' : hasCriteria ? 'noMatchingOrders' : mode === 'orders' ? 'noPendingOrders' : 'noOrders');
       clearFilters.hidden = Boolean(items.length) || !hasCriteria;
     } catch (error) {
@@ -472,10 +498,33 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
   clearFilters.addEventListener('click', () => {
     search.value = '';
     status.value = scope.defaultFilter;
+    for (const control of [from, to, currency, minTotal, maxTotal]) control.value = '';
     find('#order-filter').requestSubmit();
     search.focus();
   });
   retry.addEventListener('click', () => loadQueue());
+  exportButton.addEventListener('click', async () => {
+    exportButton.disabled = true;
+    try {
+      const params = extraParams();
+      if (search.value.trim()) params.set('search', search.value.trim());
+      if (status.value) params.set('status', status.value);
+      const response = await fetch(`/api/v1/seller/orders/export.csv?${params}`, { cache: 'no-store' });
+      if (response.status === 401) { if (isCurrent()) onUnauthorized(); return; }
+      if (!response.ok) {
+        const code = (await response.json().catch(() => ({}))).error?.code;
+        if (isCurrent()) setMessage(code === 'TOO_MANY_ROWS' ? 'exportTooMany' : 'exportFailed');
+        return;
+      }
+      const link = node('a');
+      link.href = URL.createObjectURL(await response.blob());
+      link.download = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') || '')?.[1] || 'orders.csv';
+      document.body.append(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      if (isCurrent()) setMessage('exportDone');
+    } catch { if (isCurrent()) setMessage('exportFailed'); }
+    finally { if (exportButton.isConnected) exportButton.disabled = false; }
+  });
   more.addEventListener('click', () => loadQueue(false));
   back.addEventListener('click', () => {
     onSelect(null);
