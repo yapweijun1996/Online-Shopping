@@ -26,8 +26,8 @@ test('Messages uses safe text nodes, no storage and only documented mutation pay
   assert.doesNotMatch(source, /\blocalStorage\b|\bsessionStorage\b|lastError/);
   const mutations = [...source.matchAll(/request\('POST', ([^\n]+)\n/g)].map(match => match[1]);
   assert.equal(mutations.length, 2);
-  assert.match(mutations[0], /messages\/replies\/\$\{encodeURIComponent\(item.id\)\}\/read`, \{\}, csrfToken/);
-  assert.match(mutations[1], /messages\/outbox\/\$\{encodeURIComponent\(item.id\)\}\/resolve`, \{ resolution \}, csrfToken/);
+  assert.match(mutations[0], /messages\/replies\/\$\{encodeURIComponent\(item.id\)\}\/read`\), \{\}, csrfToken/);
+  assert.match(mutations[1], /messages\/outbox\/\$\{encodeURIComponent\(item.id\)\}\/resolve`\), \{ resolution \}, csrfToken/);
   assert.doesNotMatch(source, /request\('(PUT|PATCH|DELETE)'/);
   assert.match(source, /resolve\(item, 'SENT'/);
   assert.match(source, /resolve\(item, 'RESEND'/);
@@ -36,11 +36,11 @@ test('Messages uses safe text nodes, no storage and only documented mutation pay
   assert.match(source, /body.textContent = item.body/);
 });
 
-test('seller v134 precaches Messages and hides the navigation entry by default', () => {
-  assert.match(file('sw.js'), /'\/seller\/messages\.js'/);
+test('seller precaches Messages and hides the navigation entry by default', () => {
+  assert.match(file('sw.js'), /'\.\/messages\.js'/);
   const workerVersion = file('sw.js').match(/version: '(v\d+)'/)[1];
   assert.equal(workerVersion, file('version.js').match(/APP_VERSION = '(v\d+)'/)[1]);
-  assert.equal(workerVersion, 'v134');
+  assert.equal(workerVersion, 'v135');
   assert.match(file('index.html'), /<button\b[^>]*data-view="messages"[^>]*\bhidden[\s>]/);
   assert.match(file('app.js'), /messages: 'msgHeading'/);
   assert.match(file('orders.js'), /mountOrderMessages\(detailContent/);
