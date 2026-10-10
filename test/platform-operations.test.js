@@ -7,12 +7,33 @@ import { pathToFileURL } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { platformFixture, platformTestUrl } from './helpers/platform-fixture.js';
 import { upgradePlatformSchema } from '../src/platform/migrations.js';
-import { createTenant } from '../src/platform/provisioner.js';
+import { createTenant, tenantUrl } from '../src/platform/provisioner.js';
 import { createTenantPool } from '../src/platform/tenant-pool.js';
 import { createPlatformRuntime } from '../src/platform/runtime.js';
 import { openDatabase } from '../src/db.js';
+import { openPostgresDatabase } from '../src/postgres-db.js';
+import { openPostgresStore } from '../src/postgres-store.js';
+import pg from 'pg';
 
 const input = (code) => ({ code, name: 'Fictional ' + code, currency: 'MYR', sellerUsername: code + '.owner' });
+
+test('tenant upgrades under their own role never grant the legacy application role access', { skip: !platformTestUrl }, async (t) => {
+  const f = await platformFixture(t), control = new pg.Pool({ connectionString: f.baseUrl });
+  try {
+    await control.query("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='online_shopping_app') THEN CREATE ROLE online_shopping_app NOLOGIN; END IF; END $$");
+  } finally { await control.end(); }
+  const created = await createTenant(f.platform, f.deps, input('upgrade'), 'fixture');
+  const row = await f.platform.get('SELECT * FROM tenant WHERE id = ?', created.tenant.id);
+  const password = f.secretBox.open(row.database_password_sealed, row.database_key_id, `TENANT_DB:${row.id}`);
+  const url = tenantUrl(f.baseUrl, { database: row.database_name, role: row.database_role, password });
+  const previous = openPostgresStore(url);
+  try { await previous.setSchemaVersion(23); } finally { await previous.close(); }
+  const upgraded = await openPostgresDatabase(url, { allowUpgrade: true, max: 1 }); t.after(() => upgraded.close());
+  assert.equal(await upgraded.schemaVersion(), 24);
+  for (const table of ['option_type', 'listing', 'integration_connection', 'message_outbox']) {
+    assert.equal((await upgraded.get("SELECT has_table_privilege('online_shopping_app', ?, 'SELECT') AS allowed", 'public.' + table)).allowed, false);
+  }
+});
 
 test('numbered platform migrations are transactional, repeatable and reject future versions', { skip: !platformTestUrl }, async (t) => {
   const f = await platformFixture(t), folder = await mkdtemp(join(tmpdir(), 'platform-migrations-')); t.after(() => rm(folder, { recursive: true, force: true }));

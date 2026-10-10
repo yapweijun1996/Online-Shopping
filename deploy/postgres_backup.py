@@ -6,8 +6,10 @@ import os
 from pathlib import Path
 import re
 import secrets
+import select
 import subprocess
 import tempfile
+import time
 
 ROLE_IDENTIFIER = re.compile(r'(?:platform_app|online_shopping|t_[a-z0-9]{3,30}_[0-9a-f]{8})')
 IDENTIFIER = re.compile(r'(?:platform|online_shopping|t_[a-z0-9]{3,30}_[0-9a-f]{8})')
@@ -166,6 +168,7 @@ class SnapshotLease:
         try:
             sql = r"""BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
 SET LOCAL statement_timeout='120s';
+SET LOCAL idle_in_transaction_session_timeout='360s';
 SELECT json_build_object('snapshot',pg_export_snapshot());
 SELECT to_regclass('public.schema_meta') IS NOT NULL AS has_meta
 \gset
@@ -177,8 +180,19 @@ SELECT json_build_object('schemaVersion',0);
 """ + SCHEMA_SQL + "SELECT 'PROOF_READY';\n"
             self.process.stdin.write(sql); self.process.stdin.flush()
             self.evidence = {'tables': []}
+            deadline, buffer = time.monotonic() + 180, b''
             while True:
-                line = self.process.stdout.readline().strip()
+                if time.monotonic() >= deadline: raise RuntimeError('Source snapshot proof timed out.')
+                while b'\n' not in buffer:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0: raise RuntimeError('Source snapshot proof timed out.')
+                    ready, _, _ = select.select([self.process.stdout], [], [], min(1, remaining))
+                    if not ready: continue
+                    chunk = os.read(self.process.stdout.fileno(), 65536)
+                    if not chunk: raise RuntimeError('Source snapshot proof failed.')
+                    buffer += chunk
+                line, buffer = buffer.split(b'\n', 1)
+                line = line.strip().decode('utf8')
                 if line == 'PROOF_READY': break
                 if not line:
                     if self.process.poll() is not None: raise RuntimeError('Source snapshot proof failed.')

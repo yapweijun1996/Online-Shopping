@@ -39,6 +39,28 @@ class Fake(m.Updater):
         if self.fail == 'rollback': raise RuntimeError()
 
 class Tests(unittest.TestCase):
+    def test_snapshot_deadline_also_rejects_buffered_ready_marker(self):
+        spec = importlib.util.spec_from_file_location('proof', Path(__file__).resolve().parents[1] / 'deploy/postgres_backup.py')
+        proof = importlib.util.module_from_spec(spec); spec.loader.exec_module(proof)
+        read_fd, write_fd = os.pipe()
+        os.write(write_fd, b'{"snapshot":"fixture"}\n{"schemaVersion":1}\n{"schemaSha256":"fixture"}\nPROOF_READY\n'); os.close(write_fd)
+        class Process:
+            stdin = io.StringIO()
+            stdout = os.fdopen(read_fd, 'r')
+            returncode = None
+            def poll(self): return self.returncode
+            def wait(self, **kwargs): self.returncode = 0; return 0
+            def terminate(self): self.returncode = 0
+        process = Process(); clock = [0]; original_read = os.read
+        def delayed_read(fd, size):
+            result = original_read(fd, size); clock[0] = 181; return result
+        try:
+            with patch.object(proof.subprocess, 'Popen', return_value=process), patch.object(proof.time, 'monotonic', side_effect=lambda: clock[0]), patch.object(proof.os, 'read', side_effect=delayed_read):
+                with self.assertRaisesRegex(RuntimeError, 'timed out'):
+                    proof.SnapshotLease(proof.OwnerPostgres('orbstack', 'online-shopping-rehearsal-postgres-1'), 'platform')
+            self.assertEqual(process.returncode, 0)
+        finally: process.stdout.close()
+
     def test_entrypoint_preserves_terminal_deployment_failure_state(self):
         for status in ['rolled_back', 'rollback_failed', 'build_failed', 'migration_failed', 'migration_restore_failed', 'backup_failed']:
             with self.subTest(status=status), tempfile.TemporaryDirectory() as root:

@@ -4,6 +4,11 @@ import { migrateLegacyVariants } from '../options.js';
 import { migrateListings } from '../listings.js';
 import { migrateSharedGalleries } from '../product-gallery.js';
 
+// Tenant upgrades use their own roles and must never grant the legacy application's role access.
+const legacyApplicationGrant = `current_database() !~ '^t_[a-z0-9]{3,30}_[0-9a-f]{8}$'
+  AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = current_user AND rolsuper)
+  AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'online_shopping_app')`;
+
 // Called only by an explicit operator/test opt-in, inside the store-owned transaction.
 export async function upgradePostgres(store, version) {
   if (![10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23].includes(version)) throw new Error(`Unsupported PostgreSQL schema version ${version}.`);
@@ -56,8 +61,7 @@ export async function upgradePostgres(store, version) {
     CREATE INDEX IF NOT EXISTS product_option_value ON product_option(option_value_id);
     -- The application role was granted the tables that existed when it was created; give it the new ones.
     DO $$ BEGIN
-      IF current_database() = 'online_shopping' AND current_user = 'online_shopping'
-         AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'online_shopping_app') THEN
+      IF ${legacyApplicationGrant} THEN
         GRANT SELECT, INSERT, UPDATE, DELETE ON option_type, option_value, product_option TO online_shopping_app;
       END IF;
     END $$;`);
@@ -70,8 +74,7 @@ export async function upgradePostgres(store, version) {
     ALTER TABLE product ADD COLUMN IF NOT EXISTS listing_id TEXT REFERENCES listing(id) ON DELETE RESTRICT;
     CREATE INDEX IF NOT EXISTS product_listing ON product(listing_id);
     DO $$ BEGIN
-      IF current_database() = 'online_shopping' AND current_user = 'online_shopping'
-         AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'online_shopping_app') THEN
+      IF ${legacyApplicationGrant} THEN
         GRANT SELECT, INSERT, UPDATE, DELETE ON listing TO online_shopping_app;
       END IF;
     END $$;`);
@@ -151,8 +154,7 @@ CREATE INDEX IF NOT EXISTS message_inbound_order ON message_inbound(order_id);
 CREATE INDEX IF NOT EXISTS message_inbound_unread ON message_inbound(received_at) WHERE read_at IS NULL;
 
     DO $$ BEGIN
-      IF current_database() = 'online_shopping' AND current_user = 'online_shopping'
-         AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'online_shopping_app') THEN
+      IF ${legacyApplicationGrant} THEN
         GRANT SELECT, INSERT, UPDATE, DELETE ON integration_connection, integration_audit, webhook_receipt, message_outbox, message_inbound TO online_shopping_app;
       END IF;
     END $$;`);
@@ -178,8 +180,7 @@ CREATE TABLE IF NOT EXISTS account_event (
 CREATE INDEX IF NOT EXISTS account_event_time ON account_event(created_at);
 ALTER TABLE session ADD COLUMN IF NOT EXISTS account_id TEXT;
 DO $$ BEGIN
-  IF current_database() = 'online_shopping' AND current_user = 'online_shopping'
-         AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'online_shopping_app') THEN
+  IF ${legacyApplicationGrant} THEN
     GRANT SELECT, INSERT, UPDATE, DELETE ON seller_account, account_event TO online_shopping_app;
   END IF;
 END $$;`);
@@ -202,8 +203,7 @@ CREATE TABLE IF NOT EXISTS product_event (
 );
 CREATE INDEX IF NOT EXISTS product_event_product ON product_event(product_id, created_at);
 DO $$ BEGIN
-  IF current_database() = 'online_shopping' AND current_user = 'online_shopping'
-         AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'online_shopping_app') THEN
+  IF ${legacyApplicationGrant} THEN
     GRANT SELECT, INSERT, UPDATE, DELETE ON order_note, product_event TO online_shopping_app;
   END IF;
 END $$;`);
