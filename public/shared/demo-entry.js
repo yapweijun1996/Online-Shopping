@@ -1,11 +1,10 @@
-import { apiUrl } from './base-path.js';
 // Sales WhatsApp number (digits only) shown beside the sign-in button. Kept here, not in protected deploy files, so changing it auto-deploys.
 const SALES_WHATSAPP = '60182727900';
 
 // Entry is created only after the server explicitly enables passwordless sign-in for this site.
 export async function mountDemoEntry(root, { onSignedIn } = {}) {
   try {
-    const response = await fetch(apiUrl('v1/shop'), { cache: 'no-store' });
+    const response = await fetch('/api/v1/shop', { cache: 'no-store' });
     const shop = response.ok ? await response.json() : {};
     if (shop.demoRolesAvailable !== true || !root.isConnected) return;
     const section = document.createElement('section'); section.className = 'demo-role-entry';
@@ -18,10 +17,10 @@ export async function mountDemoEntry(root, { onSignedIn } = {}) {
     button.addEventListener('click', async () => {
       button.disabled = true;
       try {
-        const result = await fetch(apiUrl('v1/seller/demo-session'), { method: 'POST', cache: 'no-store' });
+        const result = await fetch('/api/v1/seller/demo-session', { method: 'POST', cache: 'no-store' });
         if (!result.ok) throw Error('unavailable');
         onSignedIn?.();
-        location.assign('../seller/');
+        location.assign('/seller/');
       } catch {
         status.textContent = 'Quick sign-in is unavailable. Try again.';
         button.disabled = false;

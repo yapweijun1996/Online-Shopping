@@ -1,4 +1,3 @@
-import { apiUrl } from '../shared/base-path.js';
 import { formatMoney, t, translate } from '../shared/i18n.js';
 import { beginMutation } from '../shared/update-guard.js';
 import { revealImage } from '../shared/image-reveal.js';
@@ -311,8 +310,8 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   async function loadSettings() {
     try {
       const [categoryResult, settings, optionResult] = await Promise.all([
-        api('GET', apiUrl('v1/seller/categories')), api('GET', apiUrl('v1/seller/company-settings')),
-        api('GET', apiUrl('v1/seller/option-types')).catch(() => ({ items: [] })),
+        api('GET', '/api/v1/seller/categories'), api('GET', '/api/v1/seller/company-settings'),
+        api('GET', '/api/v1/seller/option-types').catch(() => ({ items: [] })),
       ]);
       if (!isCurrent()) return;
       categories = categoryResult.items;
@@ -350,7 +349,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     if (historyLoaded || !historyFor) return;
     const id = historyFor;
     try {
-      const data = await api('GET', apiUrl(`v1/seller/products/${id}/history?limit=50`));
+      const data = await api('GET', `/api/v1/seller/products/${id}/history?limit=50`);
       if (!isCurrent() || id !== historyFor) return;
       historyLoaded = true;
       historyList.replaceChildren(...(data.items.length ? data.items.map((entry) => {
@@ -411,9 +410,9 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
           const control = event.currentTarget;
           control.disabled = true;
           try {
-            await api('PATCH', apiUrl(`v1/seller/products/${variant.id}`), { active: !variant.active });
+            await api('PATCH', `/api/v1/seller/products/${variant.id}`, { active: !variant.active });
             if (!isCurrent() || editingId !== detail.id) return;
-            renderVariants(await api('GET', apiUrl(`v1/seller/products/${detail.id}`)));
+            renderVariants(await api('GET', `/api/v1/seller/products/${detail.id}`));
           } catch { control.disabled = false; if (isCurrent()) setError('productError'); }
         }, `${t(variant.active ? 'deactivateProduct' : 'activateProduct')}: ${variant.label || variant.sku} (${variant.sku})`);
         actions.append(switchButton);
@@ -457,7 +456,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   find('#product-import').addEventListener('click', (event) => {
     openImportDialog({ trigger: event.currentTarget, onUnauthorized,
       post: async (body) => {
-        const response = await fetch(apiUrl('v1/seller/products/import'), { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() }, body: JSON.stringify(body) });
+        const response = await fetch('/api/v1/seller/products/import', { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() }, body: JSON.stringify(body) });
         const data = await response.json().catch(() => null);
         if (!response.ok) throw Object.assign(new Error('import'), { status: response.status, data });
         return data;
@@ -472,7 +471,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     const control = event.currentTarget;
     control.disabled = true;
     try {
-      const response = await fetch(apiUrl(`v1/seller/products/export.csv?${new URLSearchParams({ search: search.value.trim() })}`), { cache: 'no-store' });
+      const response = await fetch(`/api/v1/seller/products/export.csv?${new URLSearchParams({ search: search.value.trim() })}`, { cache: 'no-store' });
       if (response.status === 401) { if (isCurrent()) onUnauthorized(); return; }
       if (!response.ok) {
         const code = (await response.json().catch(() => ({}))).error?.code;
@@ -493,7 +492,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     if (!selected.size || bulkBusy) return;
     bulkBusy = true; bulkMessageKey = ''; refreshBulk();
     try {
-      const result = await api('POST', apiUrl('v1/seller/products/bulk'), { ids: [...selected], action });
+      const result = await api('POST', '/api/v1/seller/products/bulk', { ids: [...selected], action });
       if (!isCurrent()) return;
       selected.clear(); bulkMessageKey = 'bulkDone'; bulkMessageCount = result.changed; bulkMessageValues = null;
     } catch (failure) {
@@ -624,7 +623,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     setStatus('loading');
     try {
       const params = new URLSearchParams({ limit: '24', offset: String(offset), search: query });
-      const result = await api('GET', apiUrl(`v1/seller/products?${params}`));
+      const result = await api('GET', `/api/v1/seller/products?${params}`);
       if (sequence !== loadSequence || !isCurrent()) return false;
       items = reset ? result.items : [...items, ...result.items];
       if (reset) appliedSearch = query;
@@ -708,7 +707,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     }
     renderVariants(null);
     try {
-      const detail = await api('GET', apiUrl(`v1/seller/products/${product.id}`));
+      const detail = await api('GET', `/api/v1/seller/products/${product.id}`);
       if (!isCurrent() || editingId !== product.id || sequence !== editorLoadSequence) return;
       if (detail.updatedAt !== product.updatedAt) { setError('productChangedReopen'); return; }
       acceptGallery(detail, { capture: false });
@@ -734,7 +733,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       await settingsPromise;
       let base = null;
       if (variantOf) {
-        try { base = await api('GET', apiUrl(`v1/seller/products/${variantOf}`)); } catch { setEditorStatus('productNotFound'); return; }
+        try { base = await api('GET', `/api/v1/seller/products/${variantOf}`); } catch { setEditorStatus('productNotFound'); return; }
       }
       if (sequence !== routeSequence || !isCurrent()) return;
       form.hidden = false;
@@ -758,7 +757,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     }
     const id = route.slice('products/'.length);
     try {
-      const detail = await api('GET', apiUrl(`v1/seller/products/${id}`));
+      const detail = await api('GET', `/api/v1/seller/products/${id}`);
       await settingsPromise;
       if (sequence !== routeSequence || !isCurrent()) return;
       await edit(detail, { skipGuard: true, detailLoaded: true });
@@ -799,7 +798,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     pendingChanges.add(product.id);
     control.disabled = true;
     try {
-      const updated = await api('PATCH', apiUrl(`v1/seller/products/${product.id}`), { active: !product.active });
+      const updated = await api('PATCH', `/api/v1/seller/products/${product.id}`, { active: !product.active });
       undoStates.set(product.id, { previousActive: product.active, appliedActive: updated.active });
       pendingChanges.delete(product.id);
       replaceProduct(updated);
@@ -818,14 +817,14 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     pendingChanges.add(product.id);
     control.disabled = true;
     try {
-      const latest = await api('GET', apiUrl(`v1/seller/products/${product.id}`));
+      const latest = await api('GET', `/api/v1/seller/products/${product.id}`);
       if (latest.active !== undo.appliedActive) {
         undoStates.delete(product.id);
         pendingChanges.delete(product.id);
         replaceProduct(latest);
         setStatus('productUndoUnavailable', product.name);
       } else {
-        const restored = await api('PATCH', apiUrl(`v1/seller/products/${product.id}`), { active: undo.previousActive });
+        const restored = await api('PATCH', `/api/v1/seller/products/${product.id}`, { active: undo.previousActive });
         undoStates.delete(product.id);
         pendingChanges.delete(product.id);
         replaceProduct(restored);
@@ -954,7 +953,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       }
       else if (pendingRemove) payload.imageDataUrl = null;
       if (!ownsRoute()) return;
-      const saved = await api(productId ? 'PATCH' : 'POST', productId ? apiUrl(`v1/seller/products/${productId}`) : apiUrl('v1/seller/products'), payload);
+      const saved = await api(productId ? 'PATCH' : 'POST', productId ? `/api/v1/seller/products/${productId}` : '/api/v1/seller/products', payload);
       if (!ownsRoute()) return;
       resetForm();
       await load();

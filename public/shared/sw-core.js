@@ -27,15 +27,13 @@ self.setupOfflineWorker = ({ cachePrefix, version, assets, scopePath, offlinePag
     const request = event.request;
     if (request.method !== 'GET') return;
     const url = new URL(request.url);
-    if (url.origin !== self.location.origin || url.pathname.includes('/api/')) return;
+    if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
 
     if (request.mode === 'navigate' && url.pathname.startsWith(scopePath)) {
       event.respondWith((async () => {
         const cache = await caches.open(cacheName);
         try {
           const response = await fetch(request);
-          // An alias must move an installed app to the new scope, rather than retain its old shell.
-          if (response.redirected && new URL(response.url).origin === self.location.origin) return Response.redirect(response.url, 308);
           if (!response.ok) return response;
           return (await cache.match(scopePath)) || response;
         } catch {

@@ -1,8 +1,6 @@
-import { storageKey } from '../shared/storage-scope.js';
-import { apiUrl } from '../shared/base-path.js';
 import { t } from '../shared/i18n.js';
 
-const PREFERENCE_KEY = storageKey('online-shopping-seller-order-alerts');
+const PREFERENCE_KEY = 'online-shopping-seller-order-alerts';
 const POLL_MS = 60_000;
 
 function storedPreference() {
@@ -37,7 +35,7 @@ export function createOrderAlerts({ badge, button, baseTitle, onUnauthorized }) 
   async function poll() {
     if (!running || document.hidden) return;
     try {
-      const response = await fetch(apiUrl('v1/seller/orders/summary'), { cache: 'no-store' });
+      const response = await fetch('/api/v1/seller/orders/summary', { cache: 'no-store' });
       if (response.status === 401) { onUnauthorized(); return; }
       if (!response.ok) return;
       const summary = await response.json();

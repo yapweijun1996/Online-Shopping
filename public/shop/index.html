@@ -6,13 +6,14 @@
   <meta name="theme-color" content="#087f83">
   <title>Online Shopping</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <link rel="manifest" href="/shop/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/shop/icons/icon-192.png">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="OS Shop">
-  <link rel="stylesheet" href="./style.css">
-  <script type="module" src="./bootstrap.js"></script>
+  <script src="/shop/palette.js"></script>
+  <link rel="stylesheet" href="/shop/style.css">
+  <script type="module" src="/shop/app.js"></script>
 </head>
 <body>
   <div id="shop-boot-loader" class="shop-boot-overlay" role="status" aria-live="polite" aria-labelledby="shop-boot-title" tabindex="-1" hidden>
@@ -26,7 +27,7 @@
   </div>
   <a class="skip-link" href="#catalog-results" data-i18n="browseProducts">Browse products</a>
   <header class="topbar shop-topbar">
-    <a class="brand" href="./"><svg class="shop-brand-logo" viewBox="147 146 960 960" aria-hidden="true" width="38" height="38"><use href="/favicon.svg#mark"/></svg><span class="brand-copy"><strong id="shop-brand-name">Shop</strong><small id="shop-brand-kind" data-i18n="shop">Shop</small></span></a>
+    <a class="brand" href="/shop/"><svg class="shop-brand-logo" viewBox="147 146 960 960" aria-hidden="true" width="38" height="38"><use href="/favicon.svg#mark"/></svg><span class="brand-copy"><strong id="shop-brand-name">Shop</strong><small id="shop-brand-kind" data-i18n="shop">Shop</small></span></a>
     <form id="catalog-search-form" class="header-search" role="search">
       <button id="search-cancel" class="search-back" type="button" aria-label="Cancel" data-i18n-aria="cancel" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 5-7 7 7 7M7 12h14"/></svg></button>
       <label class="sr-only" for="catalog-search" data-i18n="searchProducts">Search products</label>

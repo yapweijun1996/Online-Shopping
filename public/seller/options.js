@@ -1,4 +1,3 @@
-import { apiUrl } from '../shared/base-path.js';
 import { languages, t, translate } from '../shared/i18n.js';
 import { request } from './settings.js';
 import { priceToMinor, stockFromInput } from './product-fields.js';
@@ -139,7 +138,7 @@ export function mountOptions(root, { csrfToken, onUnauthorized: notifyUnauthoriz
     row.append(label, useLabel, color, order, activeLabel, save, translations);
     row.addEventListener('submit', async (event) => {
       event.preventDefault(); save.disabled = true;
-      await write('PATCH', apiUrl(`v1/seller/option-types/${type.id}/values/${value.id}`), {
+      await write('PATCH', `/api/v1/seller/option-types/${type.id}/values/${value.id}`, {
         label: label.value, swatchColor: useColor.checked ? color.value : null, position: Number(order.value) || 0,
         active: active.checked, translations: readTranslations(translations),
       });
@@ -162,7 +161,7 @@ export function mountOptions(root, { csrfToken, onUnauthorized: notifyUnauthoriz
     form.append(field(t('optionTypeName'), name), field(t('optionDisplay'), select), activeLabel, save, translations);
     form.addEventListener('submit', async (event) => {
       event.preventDefault(); save.disabled = true;
-      await write('PATCH', apiUrl(`v1/seller/option-types/${type.id}`), { name: name.value, display: select.value, active: active.checked, translations: readTranslations(translations) });
+      await write('PATCH', `/api/v1/seller/option-types/${type.id}`, { name: name.value, display: select.value, active: active.checked, translations: readTranslations(translations) });
     });
     const values = el('div', 'option-values');
     values.append(el('h3', '', t('optionValuesTitle')));
@@ -177,7 +176,7 @@ export function mountOptions(root, { csrfToken, onUnauthorized: notifyUnauthoriz
     add.append(field(t('optionValueLabel'), newLabel), newUseLabel, newColor, addButton);
     add.addEventListener('submit', async (event) => {
       event.preventDefault(); addButton.disabled = true;
-      await write('POST', apiUrl(`v1/seller/option-types/${type.id}/values`), { label: newLabel.value, swatchColor: newUse.checked ? newColor.value : null, position: type.values.length + 1 });
+      await write('POST', `/api/v1/seller/option-types/${type.id}/values`, { label: newLabel.value, swatchColor: newUse.checked ? newColor.value : null, position: type.values.length + 1 });
     });
     values.append(add);
     card.append(summary, form, values);
@@ -262,7 +261,7 @@ export function mountOptions(root, { csrfToken, onUnauthorized: notifyUnauthoriz
       for (const row of included) {
         const state = rowState.get(keyOf(row));
         try {
-          await call('POST', apiUrl('v1/seller/products'), {
+          await call('POST', '/api/v1/seller/products', {
             sku: state.sku, name: generator.elements.name.value, description: generator.elements.description.value,
             category: generator.elements.category.value, priceMinor: priceToMinor(state.price), currency, active: true,
             stockQuantity: stockFromInput(state.stock), variantGroup: generator.elements.group.value,
@@ -285,14 +284,14 @@ export function mountOptions(root, { csrfToken, onUnauthorized: notifyUnauthoriz
   typeForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const button = typeForm.querySelector('button'); button.disabled = true;
-    await write('POST', apiUrl('v1/seller/option-types'), { name: typeForm.elements.name.value, display: typeForm.elements.display.value }, (created) => { openTypes.add(created.id); typeForm.reset(); });
+    await write('POST', '/api/v1/seller/option-types', { name: typeForm.elements.name.value, display: typeForm.elements.display.value }, (created) => { openTypes.add(created.id); typeForm.reset(); });
     if (isCurrent()) { button.disabled = false; renderTypes(); }
   });
 
   async function load() {
     try {
       const [typeResult, categories, company] = await Promise.all([
-        call('GET', apiUrl('v1/seller/option-types')), call('GET', apiUrl('v1/seller/categories')), call('GET', apiUrl('v1/seller/company-settings'))]);
+        call('GET', '/api/v1/seller/option-types'), call('GET', '/api/v1/seller/categories'), call('GET', '/api/v1/seller/company-settings')]);
       if (!isCurrent()) return;
       types = typeResult.items; limits = typeResult.limits || limits; currency = company.defaultCurrency;
       const select = generator.elements.category, current = select.value;

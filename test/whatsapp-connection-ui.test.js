@@ -36,7 +36,7 @@ test('WhatsApp uses safe DOM construction and no browser storage or secret persi
 test('seller precaches the WhatsApp module and the service worker and app share one version', () => {
   const sw = readFileSync(new URL('../public/seller/sw.js', import.meta.url), 'utf8');
   const version = readFileSync(new URL('../public/seller/version.js', import.meta.url), 'utf8');
-  assert.match(sw, /'\.\/whatsapp-connection\.js'/);
+  assert.match(sw, /'\/seller\/whatsapp-connection\.js'/);
   assert.equal(sw.match(/version: '(v\d+)'/)[1], version.match(/APP_VERSION = '(v\d+)'/)[1]);
 });
 

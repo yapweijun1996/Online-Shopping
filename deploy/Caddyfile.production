@@ -1,197 +1,84 @@
 {
-	auto_https off
+  auto_https off
 }
 
 (proxy) {
-	reverse_proxy backend:3000 {
-		header_up X-Real-IP {header.CF-Connecting-IP}
-	}
+  reverse_proxy backend:3000 {
+    header_up X-Real-IP {header.CF-Connecting-IP}
+  }
 }
 
 # Cloudflare Web Analytics is injected by Cloudflare at the edge; its beacon script and endpoint are the only third-party
 # origins allowed (https://developers.cloudflare.com/fundamentals/reference/policies-compliances/content-security-policies/).
 # Cloudflare injects the script as /beacon.min.js/<version>, so the path needs the trailing-slash (prefix) form as well.
 (headers) {
-	encode zstd gzip
-	header X-Content-Type-Options nosniff
-	header Referrer-Policy strict-origin-when-cross-origin
-	header Content-Security-Policy "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com/beacon.min.js https://static.cloudflareinsights.com/beacon.min.js/; style-src 'self'; img-src 'self' data:; connect-src 'self' https://cloudflareinsights.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
-	header Cache-Control "no-cache"
+  encode zstd gzip
+  header X-Content-Type-Options nosniff
+  header Referrer-Policy strict-origin-when-cross-origin
+  header Content-Security-Policy "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com/beacon.min.js https://static.cloudflareinsights.com/beacon.min.js/; style-src 'self'; img-src 'self' data:; connect-src 'self' https://cloudflareinsights.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+  header Cache-Control "no-cache"
 }
 
 http://shop.gmb01.xyz {
-	import headers
-	route {
-		@encoded expression `{http.request.orig_uri}.matches('^/[^/?]*%|^//|.*\\\\.*')`
-		handle @encoded {
-			respond 404
-		}
-		@tenant {
-			path_regexp tenant ^/([a-z0-9]{3,30})(?:/|$)
-			not path_regexp ^/(admin|api|shop|seller|demo|www|health|ready|static|assets|shared|platform|default|login|logout|public|root|support|system|test|tenant|tenants|webhook|webhooks|sw|manifest|favicon|icons|p|s)(?:/|$)
-		}
-		handle @tenant {
-			route {
-				@tenant_private {
-					path_regexp ^/[a-z0-9]{3,30}/(?:platform.*|api/v1/platform.*|demo(?:/|$)|api/v1/demo(?:/|$)|seller.*|api/v1/seller(?:/|$))
-				}
-				handle @tenant_private {
-					respond 404
-				}
-				@tenant_api path_regexp ^/[a-z0-9]{3,30}/(?:api/|shop/manifest\.webmanifest$|p/|s/)
-				handle @tenant_api {
-					import proxy
-				}
-				# The gate checks lifecycle/aliases without opening a tenant database.
-				forward_auth backend:3000 {
-					uri /{re.tenant.1}/api/v1/tenant-access
-					header_up X-Tenant-Original-Uri {http.request.orig_uri}
-					header_up X-Real-IP {header.CF-Connecting-IP}
-				}
-				@tenant_crawler {
-					path_regexp ^/[a-z0-9]{3,30}/(?:shop/?)?$
-					header_regexp ua User-Agent (?i)(facebookexternalhit|facebot|meta-externalagent|facebookcatalog|whatsapp|twitterbot|telegrambot|slackbot|discordbot|linkedinbot|pinterest|skypeuripreview|applebot|googlebot|bingbot|line-poker|viber)
-				}
-				handle @tenant_crawler {
-					rewrite * /{re.tenant.1}/s/home
-					import proxy
-				}
-				@tenant_entry path_regexp ^/[a-z0-9]{3,30}/?$
-				handle @tenant_entry {
-					redir * /{re.tenant.1}/shop/ 302
-				}
-				@tenant_static path_regexp tenant_static ^/([a-z0-9]{3,30})/(shop(?:/.*)?|shared/.*)$
-				handle @tenant_static {
-					rewrite * /{re.tenant_static.2}
-					root * /srv/public
-					file_server
-				}
-				handle {
-					respond 404
-				}
-			}
-		}
-		@private {
-			path /seller /seller/* /api/v1/seller/* /s/* /demo /demo/* /api/v1/demo/* /platform* /api/v1/platform*
-		}
-		handle @private {
-			respond 404
-		}
-		@api path /api/* /health /ready
-		handle @api {
-			import proxy
-		}
-		@share path /p/*
-		handle @share {
-			import proxy
-		}
-		@crawler_home {
-			path / /shop /shop/
-			header_regexp ua User-Agent (?i)(facebookexternalhit|facebot|meta-externalagent|facebookcatalog|whatsapp|twitterbot|telegrambot|slackbot|discordbot|linkedinbot|pinterest|skypeuripreview|applebot|googlebot|bingbot|line-poker|viber)
-		}
-		handle @crawler_home {
-			rewrite * /s/home
-			import proxy
-		}
-		redir / /shop/ 302
-		redir /shop /shop/ 302
-		@gallery path_regexp ^/demo-assets/[A-Z0-9-]+/view-\d+-[a-f0-9]{12}-\d+\.jpg$
-		handle @gallery {
-			header Cache-Control "public, max-age=31536000, immutable"
-			root * /srv/public
-			file_server
-		}
-		handle {
-			root * /srv/public
-			file_server
-		}
-	}
+  import headers
+  @private path /seller /seller/* /api/v1/seller/* /s/* /demo /demo/* /api/v1/demo/*
+  handle @private {
+    respond 404
+  }
+  @api path /api/* /health /ready
+  handle @api {
+    import proxy
+  }
+  # Share links: /p/<id> is answered by the backend (preview tags for link crawlers, a redirect into the shop
+  # for browsers), and link crawlers asking for the shop home get its preview tags instead of the app shell.
+  @share path /p/*
+  handle @share {
+    import proxy
+  }
+  @crawler_home {
+    path / /shop /shop/
+    header_regexp ua User-Agent (?i)(facebookexternalhit|facebot|meta-externalagent|facebookcatalog|whatsapp|twitterbot|telegrambot|slackbot|discordbot|linkedinbot|pinterest|skypeuripreview|applebot|googlebot|bingbot|line-poker|viber)
+  }
+  handle @crawler_home {
+    rewrite * /s/home
+    import proxy
+  }
+  redir / /shop/ 302
+  redir /shop /shop/ 302
+  # Content-hashed gallery images never change, so browsers and Cloudflare may keep them for a year.
+  @gallery path_regexp ^/demo-assets/[A-Z0-9-]+/view-\d+-[a-f0-9]{12}-\d+\.jpg$
+  handle @gallery {
+    header Cache-Control "public, max-age=31536000, immutable"
+    root * /srv/public
+    file_server
+  }
+  handle {
+    root * /srv/public
+    file_server
+  }
 }
 
 http://seller.gmb01.xyz {
-	import headers
-	route {
-		@encoded expression `{http.request.orig_uri}.matches('^/[^/?]*%|^//|.*\\\\.*')`
-		handle @encoded {
-			respond 404
-		}
-		@tenant {
-			path_regexp tenant ^/([a-z0-9]{3,30})(?:/|$)
-			not path_regexp ^/(admin|api|shop|seller|demo|www|health|ready|static|assets|shared|platform|default|login|logout|public|root|support|system|test|tenant|tenants|webhook|webhooks|sw|manifest|favicon|icons|p|s)(?:/|$)
-		}
-		handle @tenant {
-			route {
-				@tenant_private {
-					path_regexp ^/[a-z0-9]{3,30}/(?:platform.*|api/v1/platform.*|demo(?:/|$)|api/v1/demo(?:/|$)|shop.*|[ps](?:/|$)|api/v1/orders(?:/|$))
-					not path_regexp ^/[a-z0-9]{3,30}/shop/tokens\.css$
-				}
-				handle @tenant_private {
-					respond 404
-				}
-				@tenant_api path_regexp ^/[a-z0-9]{3,30}/(?:api/|seller/manifest\.webmanifest$)
-				handle @tenant_api {
-					import proxy
-				}
-				# The gate checks lifecycle/aliases without opening a tenant database.
-				forward_auth backend:3000 {
-					uri /{re.tenant.1}/api/v1/tenant-access
-					header_up X-Tenant-Original-Uri {http.request.orig_uri}
-					header_up X-Real-IP {header.CF-Connecting-IP}
-				}
-				@tenant_entry path_regexp ^/[a-z0-9]{3,30}/?$
-				handle @tenant_entry {
-					redir * /{re.tenant.1}/seller/ 302
-				}
-				@tenant_static path_regexp tenant_static ^/([a-z0-9]{3,30})/(seller(?:/.*)?|shared/.*|shop/tokens\.css)$
-				handle @tenant_static {
-					rewrite * /{re.tenant_static.2}
-					root * /srv/public
-					file_server
-				}
-				handle {
-					respond 404
-				}
-			}
-		}
-		@private {
-			path /shop /shop/* /p/* /s/* /demo /demo/* /api/v1/demo/* /api/v1/orders /api/v1/orders/* /platform* /api/v1/platform*
-			not path /shop/tokens.css
-		}
-		handle @private {
-			respond 404
-		}
-		@api path /api/* /health /ready
-		handle @api {
-			import proxy
-		}
-		redir / /seller/ 302
-		redir /seller /seller/ 302
-		handle {
-			root * /srv/public
-			file_server
-		}
-	}
-}
-
-http://admin.gmb01.xyz {
-	import headers
-	route {
-		@api path /api/v1/platform/* /health /ready
-		handle @api {
-			import proxy
-		}
-		redir / /platform/ 302
-		redir /platform /platform/ 302
-		handle /platform/* {
-			root * /srv/public
-			file_server
-		}
-		handle {
-			respond 404
-		}
-	}
+  import headers
+  @private {
+    path /shop /shop/* /p/* /s/* /demo /demo/* /api/v1/demo/* /api/v1/orders /api/v1/orders/*
+    not path /shop/tokens.css
+  }
+  handle @private {
+    respond 404
+  }
+  @api path /api/* /health /ready
+  handle @api {
+    import proxy
+  }
+  redir / /seller/ 302
+  redir /seller /seller/ 302
+  handle {
+    root * /srv/public
+    file_server
+  }
 }
 
 :80 {
-	respond 404
+  respond 404
 }

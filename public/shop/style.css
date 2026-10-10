@@ -1,6 +1,6 @@
-@import url('../shared/appearance.css');
-@import url('../shared/base.css');
-@import url('./tokens.css');
+@import url('/shared/appearance.css');
+@import url('/shared/base.css');
+@import url('/shop/tokens.css');
 .shop-topbar .language-control select,.shop-topbar .language-trigger,.modal-secondary-button,.outline-button{border-color:var(--ui-control-border)}
 .shop-topbar .language-trigger:hover,.shop-topbar .language-trigger[aria-expanded="true"]{border-color:var(--ui-primary);background:var(--ui-hover-surface)}
 .shop-topbar .language-options button:hover,.shop-topbar .language-options button[aria-current="true"]{background:var(--shop-selected-surface);color:var(--shop-selected-text)}

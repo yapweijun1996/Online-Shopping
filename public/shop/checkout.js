@@ -1,4 +1,3 @@
-import { apiUrl } from '../shared/base-path.js';
 import { checkoutPayload } from './checkout-payload.js';
 import { formatMoney, locale, t, translate } from '../shared/i18n.js';
 import { addressSummary } from './addresses.js';
@@ -150,7 +149,7 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
     const timeout = setTimeout(() => controller.abort(), 12_000);
     let serverConfirmed = false;
     try {
-      const submitIntent = (body) => fetch(apiUrl('v1/orders'), {
+      const submitIntent = (body) => fetch('/api/v1/orders', {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': intent.key },
         body, signal: controller.signal,
       });

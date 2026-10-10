@@ -1,4 +1,3 @@
-import { apiUrl } from '../shared/base-path.js';
 import './ops-copy.js';
 import { formatDate, t } from '../shared/i18n.js';
 
@@ -24,7 +23,7 @@ export function mountTeam(root, { csrfToken, onUnauthorized }) {
   }
 
   async function load() {
-    try { data = await call('GET', apiUrl('v1/seller/accounts')); loadFailed = false; }
+    try { data = await call('GET', '/api/v1/seller/accounts'); loadFailed = false; }
     catch (error) { if (error.status === 401) return; loadFailed = true; }
     if (current()) render();
   }
@@ -46,7 +45,7 @@ export function mountTeam(root, { csrfToken, onUnauthorized }) {
     form.addEventListener('submit', async (event) => {
       event.preventDefault(); submit.disabled = true; say('');
       try {
-        await call('POST', apiUrl('v1/seller/accounts'), { username: name.value.trim(), role: role.value, password: password.value });
+        await call('POST', '/api/v1/seller/accounts', { username: name.value.trim(), role: role.value, password: password.value });
         if (!current()) return;
         name.value = ''; password.value = ''; say('teamCreated');
         await load();
@@ -70,7 +69,7 @@ export function mountTeam(root, { csrfToken, onUnauthorized }) {
     role.value = account.role;
     const act = (body, doneKey, control) => async () => {
       control.disabled = true; say('');
-      try { await call('PATCH', apiUrl(`v1/seller/accounts/${account.id}`), body); if (!current()) return; say(doneKey); await load(); }
+      try { await call('PATCH', `/api/v1/seller/accounts/${account.id}`, body); if (!current()) return; say(doneKey); await load(); }
       catch (error) { if (error.status !== 401 && current()) say(error.status === 400 ? 'teamInvalid' : 'teamSaveError', true); if (control.isConnected) control.disabled = false; }
     };
     role.addEventListener('change', () => act({ role: role.value }, '', role)());
