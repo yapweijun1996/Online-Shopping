@@ -15,7 +15,7 @@ await context.exposeBinding('recordUpdateOffer', ({ page }, version) => { const 
 await context.addInitScript(() => {
   const inspect = () => {
     for (const button of document.querySelectorAll('.pwa-update button, .shop-update-settings button, .shop-update-banner button')) {
-      if (button.hidden || button.disabled || !button.getClientRects().length) continue;
+      if (button.hidden || !button.getClientRects().length) continue;
       const version = button.textContent.match(/\bv\d+\b/)?.[0];
       if (version) window.recordUpdateOffer(version);
     }
