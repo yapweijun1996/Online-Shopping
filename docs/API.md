@@ -187,7 +187,7 @@ Product creation inherits `company_setting.default_currency`; omitted currency i
 In public-demo mode, authenticated Seller GET product detail exposes primary plus immutable fictional gallery photos when the seed identity/hero hash still match. Custom Seller galleries and changed seed identity continue using stored content. The independent `/api/v1/demo/` API has no live store or credential input; its role, company/resource isolation, reset/expiry/limits and production gates are described in ADMIN_MULTI_COMPANY_DESIGN.md.
 
 
-## Platform API and tenant paths (R1)
+## Platform API and tenant paths (R1–R2)
 
 The platform is disabled unless `PLATFORM_ENABLED=1` and its validated file-based settings are present. The console is `/platform/` on the exact configured `PLATFORM_ADMIN_HOST`; these paths return 404 on other hosts. All JSON is `Cache-Control: no-store`. Every write requires the exact HTTPS admin Origin and `X-CSRF-Token`.
 
@@ -212,3 +212,8 @@ Five failed password/TOTP attempts lock the account for 15 minutes; successful p
 Non-default shops add `/<code>` to normal paths: `/<code>/shop/`, `/<code>/seller/`, `/<code>/api/v1/...`, `/<code>/p/{id}`, `/<code>/s/home`. Seller cookies use `/<code>/api/v1/seller`. `GET <base>/api/v1/shop` adds `storageScope` = `t-` plus twelve hex characters from SHA-256 of the immutable tenant id. The default shop keeps its existing response and URLs. Dynamic tenant manifests have independent id/scope/start_url; aliases redirect 308 preserving the remaining path and query. Unknown, malformed, PROVISIONING, FAILED and PURGED codes return 404; SUSPENDED and DELETING return 503 without opening a tenant database. Platform outages do not affect the default shop or readiness.
 
 The default registry row cannot be mutated through the console. The limit is twenty non-purged shops including the default. Requested deletion retains data for thirty days; the console never drops a database. Manual purge retains the registry row and aliases in terminal PURGED state, preventing code reuse.
+
+
+The edge checks `GET <base>/api/v1/tenant-access` before serving tenant static files or entry redirects. ACTIVE returns an empty 200 with no-store; unknown/PROVISIONING/FAILED/PURGED returns neutral HTML 404; SUSPENDED/DELETING returns neutral HTML 503. No tenant database is opened. Aliases return 308 to the same path/query under the new code; Caddy supplies the original URI. This endpoint grants no authentication capability. Failed metadata lookups and successful known-code refreshes do not consume the unknown-code probe quota.
+
+Frontends resolve the public shop-info storage scope before importing any state-reading module. Default keys remain unchanged; non-default localStorage/sessionStorage and IndexedDB names append the immutable scope. Network failures can use a validated cached scope; explicit 404/503 responses cannot. Shop-specific worker caches use `tenant-<code>-shop` or `tenant-<code>-seller`, while default caches keep `os-shop`/`os-seller`. Language and light/dark appearance are shared. A controlled navigation through a rename alias propagates the redirect before using a cached shell.
