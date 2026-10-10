@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { sellerFixture } from './helpers/seller-app.js';
 import { parseCsv } from '../src/product-import.js';
+import { readFileSync } from 'node:fs';
+import { createCategory } from '../src/settings.js';
 
 const HEADER = 'SKU,Name,Description,Category,Variant group,Variant label,Currency,Price,Stock (blank = unlimited),Active,Updated (UTC)';
 
@@ -10,6 +12,22 @@ const api = (f, headers) => ({
   commit: (csv) => f.request('POST', '/api/v1/seller/products/import', { csv, commit: true }, headers),
   exported: async (query = '') => (await f.request('GET', `/api/v1/seller/products/export.csv${query}`, null, headers)).data,
   state: async () => (await f.app.database.all('SELECT sku, name, price_minor, stock_quantity, active FROM product ORDER BY sku')).map((row) => ({ ...row })),
+});
+
+test('the owner sample CSV previews and imports fictional products without errors', async () => {
+  const f = await sellerFixture();
+  try {
+    await createCategory(f.app.database, { code: 'SAMPLES', label: 'Sample goods' });
+    const { headers } = await f.login(), actions = api(f, headers);
+    const csv = readFileSync(new URL('../docs/tenant-sample-products.csv', import.meta.url), 'utf8');
+    const planned = await actions.preview(csv);
+    assert.equal(planned.response.status, 200);
+    assert.deepEqual(planned.data.summary, { create: 2, update: 0, unchanged: 0, errors: 0 });
+    assert.equal((await actions.commit(csv)).response.status, 200);
+    const rows = (await actions.state()).filter((row) => row.sku.startsWith('SAMPLE-'));
+    assert.deepEqual(rows.map(({ sku, price_minor, stock_quantity, active }) => [sku, price_minor, stock_quantity, active]),
+      [['SAMPLE-NOTEBOOK', 1250, 10, 1], ['SAMPLE-TOTE', 1800, 5, 1]]);
+  } finally { await f.close(); }
 });
 
 test('the CSV reader handles quotes, commas, line breaks, CRLF and a byte-order mark', () => {
