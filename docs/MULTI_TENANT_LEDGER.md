@@ -10,7 +10,7 @@ Started 2026-10-10 (Asia/Singapore). Source of truth: [MULTI_TENANT_GOAL.md](MUL
 | R1 | DEPLOYED, VERIFIED | [PR #127](https://github.com/yapweijun1996/Online-Shopping/pull/127), merge `71f5d27b1abc1471e6b7e8da740138dd122a58b2`; branch/PR CI green. |
 | R2 | REVERTED ON MAIN; PRODUCTION ROLLBACK PENDING | 482 unit tests; 108 real Caddy checks; two installed PWAs with standalone offline launch and controlled rename; baseline pass-set retained. |
 | R3 | SOURCE PREPARED; REAL-STACK GATE BLOCKED | Operations and migration recovery; remote CI green, Docker rehearsal remains unavailable. |
-| R4 | NOT STARTED | Rehearsal, hardening and activation. |
+| R4 | PARTIALLY PREPARED; ACTIVATION NOT STARTED | Capacity harness and owner checklist prepared; real rehearsal, drills, capacity and activation remain gated. |
 
 ## Decisions and environment — 2026-10-10
 
@@ -77,7 +77,7 @@ Actual browser pass-set: `scripts/qa-draft-browser.mjs` and `scripts/qa-followup
 
 | Item | Current evidence | Status |
 | --- | --- | --- |
-| MT-01 | Current production readiness is BLOCKED by Docker/host unavailability; R2 was reverted through green CI in PR #129. Historical baseline curl: both hosts health/ready 200 with current SHA, shop/seller shells 200, public catalog 200, unauthenticated seller session 401; both manifests resolve id/scope/start_url to original `/shop/` and `/seller/`. `production-baseline.json`. | BLOCKED CURRENT READINESS |
+| MT-01 | At 02:05 both public readiness endpoints return 200 on R2, four containers running with zero restarts; backend/PostgreSQL healthy. Rollback recovery main `62159f6` remains undeployed: updater `failed_release_waiting`, no pending deployment, Docker exec and production backup exceed deadlines. Historical full baseline remains recorded. | BLOCKED ROLLBACK DEPLOYMENT |
 | MT-02 | R1 disabled-config tests, CI without platform secrets, and inert production deployment. | PASS |
 | MT-03 | Authentication/replay/lockout/recovery/CSRF/reset tests pass; real rehearsal enrolment/sign-in is unavailable. | BLOCKED REHEARSAL |
 | MT-04 | Console source prepared and independently reviewed; 360–1280 px, keyboard/a11y and CSP browser journey unverified. | BLOCKED REHEARSAL |
@@ -106,7 +106,7 @@ Actual browser pass-set: `scripts/qa-draft-browser.mjs` and `scripts/qa-followup
 
 ## Blockers
 
-Responsive OrbStack Docker is unavailable. See the production incident and checkpoint entries below. Historical baseline failures do not block unrelated work.
+Reliable Docker exec/start operations within deployment deadlines are unavailable. Read-only query APIs and public readiness recovered, but deployment/backup still fail. See the production incident and latest checkpoint below. Historical baseline failures do not block unrelated work.
 
 ## R0 release evidence — 2026-10-10
 
@@ -219,3 +219,14 @@ Responsive OrbStack Docker is unavailable. See the production incident and check
 - Independent harness review identified two P2s: lost suspend response/process interruption left a cold shop unrecoverable, and a separate production backup LaunchAgent could overlap load while updater state remained `up_to_date`. Both fixed: private intent is written before suspension and restored from the committed status/revision on the next run; both jobs are inspected. Final independent read-only review has no remaining concrete P0/P1/P2 and confirms API/cookie/CSRF contracts and fixture isolation; no Docker/browser/database operation performed by the reviewer.
 - `/opt/homebrew/opt/node@24/bin/node --test test/rehearsal-safety.test.js`: 5/5 passed, no skips (`r4-capacity-safety.log`). Covers escaped/symlinked secrets, real tunnel credentials, production volumes/networks/secrets, public listeners, pending deployment/backup and unknown suspend outcome recovery. `npm run check`, both new scripts' `node --check`, `python3 test/auto-update.test.py` (31/31) and `git diff --check` pass. Full remote CI remains required before any release; real-stack gates remain unchanged.
 - Capacity preparation source `db06afc357f51c4fb68e9e656e191ff0a3420b06`: [branch CI](https://github.com/yapweijun1996/Online-Shopping/actions/runs/38072307946) green, 497/497 Node tests, zero skips, 60.0 s; 31 updater tests, syntax and zero audit findings. Raw `r4-capacity-ci.log`; remote branch SHA verified. R3 remains draft/conflicting and unmerged, R2 restoration remains draft; no production gate reopened.
+
+## Third goal-turn runtime audit — 2026-10-11 02:05
+
+- This goal turn made concrete progress: recovered Docker query access, verified and removed only the rehearsal project's containers/volumes, diagnosed the incomplete rollback checkout, merged a green-CI recovery PR, and reconciled the R2 restore draft. The underlying prerequisite still fails: project Docker execution cannot finish reliably within controller deadlines. It has recurred on three consecutive goal turns; no required independent implementation/check remains that can unlock deployment without external runtime recovery.
+- 01:41:29: `_ping` returned `OK`, server 29.4.0 responded and both public `/ready` endpoints returned 200 on the existing R2. Read-only diagnosis found rollback release `3bddb42b8340a9a7ca951429f88f49157ee84ee2` had correct HEAD but no Git index/zero tracked entries after an interrupted checkout. Live R2 checkout remained clean. Raw `blocked-audit-3.json`.
+- D0-23: Preserve the incomplete release and advance the already merged rollback through a normal documentation-only recovery PR, obtaining a fresh release directory without editing/deleting existing release checkouts, images or backups. [PR #132](https://github.com/yapweijun1996/Online-Shopping/pull/132) merged as `62159f62a100c47091ad60b3e3897940c5431999`; branch CI `38073104108`, PR CI `38073108081`, [main CI](https://github.com/yapweijun1996/Online-Shopping/actions/runs/38073265431) green. Remote main verified; fresh release checkout clean and both images built, Caddy valid.
+- Authorized installed-controller `--retry` ended with `TimeoutExpired` during the following legacy backup (180-second controller deadline), no cutover. A subsequent scheduled updater job ended in `build_failed`, then `failed_release_waiting` for `62159f6`; its observed PID 45751 is terminal and LaunchAgent is not running. No background deployment is claimed live from a state file alone. Private raw `recovery-controller.log` and `recovery-update*.log`.
+- Latest bounded read-only probe: `docker --context orbstack exec online-shopping-production-postgres-1 psql -XqAt -U online_shopping -d postgres -c 'SELECT 1;'` exceeded eight seconds; only that diagnostic CLI was terminated by its subprocess deadline. The previous PostgreSQL diagnostic finished; its observation timeout was not treated as completion or restarted. No production write or global recovery was performed.
+- 02:05:20: both public readiness endpoints still return 200 with R2 SHA `1fef9aead7bb3a6aa8b1b4110c85e04cddfaff56`; four production containers running, restart counts zero, backend/PostgreSQL healthy. Installed state `failed_release_waiting`, failed target `62159f6`, no pending deployment. Load 8.50/7.73/8.29 on ten available cores. Raw `blocked-runtime-3-final.json`. Rollback verification, R3 real backup/restore, R4 owner/drills/capacity and section 7 A remain unavailable.
+- R2 restore draft [PR #131](https://github.com/yapweijun1996/Online-Shopping/pull/131), reconciled head `8a7a0312cdfb4a72f7dfca6f1d9594f9bc9298d1`: branch CI `38073964097` and PR CI `38073967388` success; source still equals verified R2 except ledger/observer, no R3 operations or activation wiring. It remains draft and unmerged until rollback is deployed/up_to_date and all MT-01 checks pass.
+- D0-24 / BLOCKED: Do not weaken backup proof, alter installed state/release checkouts, install the new controller before its ordered gate, or restart the global VM affecting other projects. Resume only after the host operator restores reliable Docker execution: pass the exact read-only probe above, run the authorized installed-controller `--retry`, verify target `62159f6` deployed/up_to_date and full MT-01, then continue R2/R3/R4 in order. No permission denial occurred. Private handoff records this prerequisite and exact commands.
