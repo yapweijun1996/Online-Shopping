@@ -147,7 +147,8 @@ test('the tenant pool is bounded, closes idle shops and refuses a shop with an u
   await pool.release(rows[0].id);
   assert.equal(pool.size(), 0);
   // A shop at another schema version is not served.
-  const admin = new pg.Pool({ connectionString: tenantUrl(base, { role: 'postgres', password: '', database: rows[1].database_name }).replace(':@', '@') });
+  const admin = new pg.Pool({ connectionString: tenantUrl(base, { role: rows[1].database_role,
+    password: secretBox.open(rows[1].database_password_sealed, rows[1].database_key_id, `TENANT_DB:${rows[1].id}`), database: rows[1].database_name }) });
   await admin.query('UPDATE schema_meta SET version = 1');
   await admin.end();
   await assert.rejects(pool.get(rows[1]), /Unsupported database schema version/);

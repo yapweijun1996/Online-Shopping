@@ -61,15 +61,16 @@ export function validateTenantInput(input) {
 /* Creates a shop. Returns the tenant row and, only when the password was generated here, that one-time password. */
 export async function createTenant(platform, { provisionerUrl, baseUrl, secretBox }, input, actor) {
   const wanted = validateTenantInput(input);
-  const tenantId = await platform.transaction(async () => {
+  const row = await platform.transaction(async () => {
     if (await platform.get('SELECT 1 AS found FROM tenant_code_alias WHERE code = ?', wanted.code)) throw new ApiError(409, 'CODE_TAKEN', 'This shop code is already used.');
     const existing = await platform.get('SELECT * FROM tenant WHERE code = ?', wanted.code);
-    if (existing && !['FAILED', 'PROVISIONING'].includes(existing.status)) throw new ApiError(409, 'CODE_TAKEN', 'This shop code is already used.');
+    if (existing && existing.status !== 'FAILED') throw new ApiError(409, 'CODE_TAKEN', 'This shop code is already used.');
+    if (!existing && (await platform.get("SELECT COUNT(*) AS n FROM tenant WHERE status <> 'PURGED'")).n >= 20) throw new ApiError(409, 'TENANT_LIMIT', 'This host supports at most 20 shops.');
     const id = existing?.id ?? randomUUID(), stamp = now();
     const database = `t_${wanted.code}_${id.replaceAll('-', '').slice(0, 8)}`;
     if (existing) {
       // A left-over attempt: its artifacts are removed below, then it starts again under the same id.
-      await platform.run("UPDATE tenant SET status = 'PROVISIONING', name = ?, currency = ?, seller_username = ?, last_error = NULL, updated_at = ? WHERE id = ?",
+      await platform.run("UPDATE tenant SET status = 'PROVISIONING', revision = revision + 1, name = ?, currency = ?, seller_username = ?, last_error = NULL, updated_at = ? WHERE id = ? AND status = 'FAILED'",
         wanted.name, wanted.currency, wanted.sellerUsername, stamp, id);
       await recordAudit(platform, { actor, action: 'TENANT_CLEANUP', tenantId: id, detail: 'retry of an unfinished shop' });
     } else {
@@ -78,9 +79,10 @@ export async function createTenant(platform, { provisionerUrl, baseUrl, secretBo
         VALUES (?, ?, ?, 'PROVISIONING', ?, ?, ?, ?, ?, ?, ?, ?)`, id, wanted.code, wanted.name, wanted.currency, database, database, sealed.sealed, sealed.keyId, wanted.sellerUsername, stamp, stamp);
     }
     await recordAudit(platform, { actor, action: 'TENANT_CREATE', tenantId: id, detail: wanted.code });
-    return id;
+    // Capture the reservation before commit; a failed read must roll it back, not strand PROVISIONING outside try.
+    return platform.get('SELECT * FROM tenant WHERE id = ?', id);
   });
-  const row = await platform.get('SELECT * FROM tenant WHERE id = ?', tenantId);
+  const tenantId = row.id;
   try {
     await dropArtifacts(provisionerUrl, row);
     const password = secretBox.open(row.database_password_sealed, row.database_key_id, `TENANT_DB:${tenantId}`);
@@ -100,14 +102,14 @@ export async function createTenant(platform, { provisionerUrl, baseUrl, secretBo
       await store.run('UPDATE seller_account SET must_change_password = 1');
     } finally { await store.close(); }
     await platform.transaction(async () => {
-      await platform.run("UPDATE tenant SET status = 'ACTIVE', last_error = NULL, updated_at = ? WHERE id = ?", now(), tenantId);
+      await platform.run("UPDATE tenant SET status = 'ACTIVE', revision = revision + 1, last_error = NULL, updated_at = ? WHERE id = ? AND status = 'PROVISIONING' AND revision = ?", now(), tenantId, row.revision);
       await recordAudit(platform, { actor, action: 'TENANT_ACTIVE', tenantId, detail: wanted.code });
     });
   } catch (error) {
     // Only a code is kept: no message text that could carry a connection string or a password.
     const code = String(error?.code ?? error?.name ?? 'ERROR').slice(0, 60);
     await platform.transaction(async () => {
-      await platform.run("UPDATE tenant SET status = 'FAILED', last_error = ?, updated_at = ? WHERE id = ?", code, now(), tenantId);
+      await platform.run("UPDATE tenant SET status = 'FAILED', revision = revision + 1, last_error = ?, updated_at = ? WHERE id = ? AND status = 'PROVISIONING' AND revision = ?", code, now(), tenantId, row.revision);
       await recordAudit(platform, { actor, action: 'TENANT_FAILED', tenantId, detail: code });
     });
     throw error;

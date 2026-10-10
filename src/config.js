@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { parseKeyFile } from './secret-box.js';
+import { checkPassword } from './accounts.js';
 
 const weakPasswords = new Set(['password', 'password123', 'changeme', 'admin123', 'testpassword', 'replace-me']);
 const placeholderWords = /password|changeme|replace[-_]?me|example|sample|default/i;
@@ -38,6 +39,31 @@ function validatePublicOrigin(publicOrigin, production) {
   }
   if (production && parsed.protocol !== 'https:') throw new Error('PUBLIC_ORIGIN must be an HTTPS origin in production.');
   return publicOrigin;
+}
+
+export function readPlatformConfig(env, integrationKeys) {
+  if (!env.PLATFORM_ENABLED || env.PLATFORM_ENABLED === '0') return null;
+  if (env.PLATFORM_ENABLED !== '1') throw new Error('PLATFORM_ENABLED must be 1 or 0.');
+  if (!integrationKeys) throw new Error('INTEGRATION_KEY_FILE is required for the platform.');
+  const adminHost = env.PLATFORM_ADMIN_HOST;
+  const username = env.PLATFORM_ADMIN_USERNAME;
+  if (typeof adminHost !== 'string' || !/^[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]{1,5})?$/.test(adminHost)) throw new Error('Invalid PLATFORM_ADMIN_HOST.');
+  try { if (new URL(`https://${adminHost}`).host !== adminHost) throw new Error(); } catch { throw new Error('Invalid PLATFORM_ADMIN_HOST.'); }
+  if (typeof username !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/.test(username)) throw new Error('Invalid PLATFORM_ADMIN_USERNAME.');
+  const readSecret = (key) => {
+    let value;
+    try { value = readFileSync(env[key], 'utf8').replace(/\r?\n$/, ''); } catch { throw new Error(`${key} cannot be read.`); }
+    if (!value || value.length > 1024 || /[\r\n\0]/.test(value)) throw new Error(`Invalid ${key}.`);
+    return value;
+  };
+  const password = readSecret('PLATFORM_ADMIN_PASSWORD_FILE');
+  checkPassword(password, 'PLATFORM_ADMIN_PASSWORD_FILE', username);
+  const host = env.PLATFORM_DATABASE_HOST || 'postgres', database = env.PLATFORM_DATABASE_NAME || 'platform';
+  const user = env.PLATFORM_DATABASE_USER || 'platform_app', provisioner = env.PLATFORM_PROVISIONER_USER || 'platform_provisioner';
+  if (![host, database, user, provisioner].every((value) => /^[a-zA-Z0-9_.-]+$/.test(value))) throw new Error('Invalid platform database connection setting.');
+  const connection = (role, secret, name) => `postgresql://${encodeURIComponent(role)}:${encodeURIComponent(secret)}@${host}:5432/${name}`;
+  return { adminHost, username, password, databaseUrl: connection(user, readSecret('PLATFORM_DATABASE_PASSWORD_FILE'), database),
+    provisionerUrl: connection(provisioner, readSecret('PLATFORM_PROVISIONER_PASSWORD_FILE'), 'postgres') };
 }
 
 export function readConfig(env = process.env) {
@@ -95,5 +121,5 @@ export function readConfig(env = process.env) {
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('PORT must be a valid port.');
   const trustProxy = env.TRUST_PROXY === '1';
   if (env.TRUST_PROXY && !trustProxy) throw new Error('TRUST_PROXY must be 1 when set.');
-  return { production, username, password, dbPath, databaseUrl, publicOrigin, sellerOrigin, appRevision, integrationKeys, port, trustProxy, shopMode: readShopMode(env), sellerQuickLogin: env.SELLER_QUICK_LOGIN === '1', demoRevision: readDemoRevision(env) };
+  return { production, username, password, dbPath, databaseUrl, publicOrigin, sellerOrigin, appRevision, integrationKeys, platform: readPlatformConfig(env, integrationKeys), port, trustProxy, shopMode: readShopMode(env), sellerQuickLogin: env.SELLER_QUICK_LOGIN === '1', demoRevision: readDemoRevision(env) };
 }

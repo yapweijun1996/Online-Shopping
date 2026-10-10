@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Shop platform</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header><div><p class="eyebrow">Online Shopping</p><h1>Shop platform</h1></div><nav id="navigation" aria-label="Platform" hidden></nav></header>
+  <main id="main" tabindex="-1">
+    <p id="notice" role="status" aria-live="polite"></p>
+    <p id="error" role="alert" tabindex="-1" hidden></p>
+    <section id="content" aria-label="Platform workspace"><p>Loading…</p></section>
+  </main>
+  <dialog id="secret-dialog" aria-labelledby="secret-title">
+    <h2 id="secret-title">Save these details now</h2>
+    <p>These details are shown once. Store them safely before closing.</p>
+    <pre id="secret-value"></pre>
+    <form method="dialog"><button autofocus>Close and clear</button></form>
+  </dialog>
+</body>
+</html>

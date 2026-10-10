@@ -1,0 +1,35 @@
+:root { color-scheme: light dark; --platform-accent: #236750; }
+* { box-sizing: border-box; }
+body { margin: 0; font: 16px/1.5 system-ui, sans-serif; background: Canvas; color: CanvasText; }
+header, main { max-width: 1100px; margin: auto; padding: 24px; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid GrayText; }
+h1, h2, h3, p { margin-top: 0; }
+h1 { font-size: clamp(1.5rem, 4vw, 2rem); margin-bottom: 0; }
+.eyebrow { margin: 0; font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; }
+nav, .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+button, input, select, a.button { box-sizing: border-box; min-height: 44px; font: inherit; border: 1px solid GrayText; border-radius: 8px; }
+button, a.button { padding: 9px 16px; cursor: pointer; background: Canvas; color: CanvasText; }
+button[type=submit] { background: var(--platform-accent); color: white; border-color: var(--platform-accent); }
+button:disabled { opacity: .6; cursor: wait; }
+input, select { width: 100%; padding: 10px; background: Canvas; color: CanvasText; }
+label { display: block; margin-bottom: 16px; font-weight: 600; }
+label input, label select { display: block; margin-top: 6px; font-weight: 400; }
+form { max-width: 600px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; }
+.card { border: 1px solid GrayText; border-radius: 12px; padding: 20px; overflow-wrap: anywhere; }
+.card p { margin-bottom: 8px; }
+.card button { margin-top: 8px; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; }
+dt { font-weight: 600; } dd { margin: 0; overflow-wrap: anywhere; }
+#error { border: 2px solid #b94a48; border-radius: 8px; padding: 16px; }
+#notice:empty { display: none; }
+dialog { width: min(600px, calc(100% - 32px)); max-height: 85vh; box-sizing: border-box; padding: 24px; border: 1px solid GrayText; border-radius: 12px; overflow-y: auto; background: Canvas; color: CanvasText; }
+dialog::backdrop { background: #0008; }
+pre, code { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 1rem; }
+.setup-key { font-weight: 700; letter-spacing: .05em; }
+.audit-list { padding-left: 20px; } .audit-list li { padding-bottom: 12px; overflow-wrap: anywhere; }
+.skip-link { position: absolute; left: 16px; top: -60px; padding: 10px; background: Canvas; }
+.skip-link:focus { top: 10px; }
+:focus-visible { outline: 3px solid #358ac6; outline-offset: 3px; }
+[hidden] { display: none !important; }
+@media (max-width: 620px) { header { align-items: flex-start; flex-direction: column; } header, main { padding: 16px; } nav { width: 100%; } nav button { flex: 1; } dl { grid-template-columns: 1fr; } dd { margin-bottom: 8px; } }
