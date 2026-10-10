@@ -104,6 +104,8 @@ test('the audit log lists an erasure with who and when, and the filters apply to
   try {
     const { headers } = await f.login();
     const { id, orderNo, revision } = await rejected(f, headers);
+    // Chronological assertions need distinct timestamps; equal-millisecond events use the stable id tie-breaker.
+    await new Promise((resolve) => setTimeout(resolve, 5));
     assert.equal((await f.request('POST', `/api/v1/seller/orders/${id}/erase-contact`, { expectedRevision: revision, confirmOrderNo: orderNo }, headers)).response.status, 200);
     const all = await f.request('GET', '/api/v1/seller/audit-log', null, headers);
     assert.deepEqual(all.data.items.map((item) => item.type), ['CONTACT_ERASED', 'REJECTED', 'SUBMITTED']);

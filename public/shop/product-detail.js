@@ -1,3 +1,4 @@
+import { apiUrl } from '../shared/base-path.js';
 import { productMedia, revealImage, setProductMedia } from './product-media.js';
 import { locale, t } from '../shared/i18n.js';
 import { formatCatalogPrice } from './catalog-presentation.js';
@@ -514,7 +515,7 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     }
     if (!id) return;
     try {
-      const result = await api(`/api/v1/products/${id}`);
+      const result = await api(apiUrl(`v1/products/${id}`));
       if (version !== request) return;
       product = result;
       const savedPhoto = history.state?.shopGallery;
@@ -525,7 +526,7 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
       const params = new URLSearchParams({ category: result.category, limit: '5' });
       // Recommendations are optional and must never block purchase or reset quantity/focus.
       try {
-        const response = await api(`/api/v1/products?${params}`);
+        const response = await api(apiUrl(`v1/products?${params}`));
         if (version !== request) return;
         related = response.items.filter((item) => item.id !== id && !(result.variantGroup && item.variantGroup === result.variantGroup)).slice(0, 4);
         renderRelated();
