@@ -79,34 +79,34 @@ Actual browser pass-set: `scripts/qa-draft-browser.mjs` and `scripts/qa-followup
 | --- | --- | --- |
 | MT-01 | Current production readiness is BLOCKED by Docker/host unavailability; R2 was reverted through green CI in PR #129. Historical baseline curl: both hosts health/ready 200 with current SHA, shop/seller shells 200, public catalog 200, unauthenticated seller session 401; both manifests resolve id/scope/start_url to original `/shop/` and `/seller/`. `production-baseline.json`. | BLOCKED CURRENT READINESS |
 | MT-02 | R1 disabled-config tests, CI without platform secrets, and inert production deployment. | PASS |
-| MT-03 | Pending the required release and real-stack evidence. | PENDING |
-| MT-04 | Pending the required release and real-stack evidence. | PENDING |
-| MT-05 | Pending the required release and real-stack evidence. | PENDING |
+| MT-03 | Authentication/replay/lockout/recovery/CSRF/reset tests pass; real rehearsal enrolment/sign-in is unavailable. | BLOCKED REHEARSAL |
+| MT-04 | Console source prepared and independently reviewed; 360–1280 px, keyboard/a11y and CSP browser journey unverified. | BLOCKED REHEARSAL |
+| MT-05 | Own-role creation, forced password change, no-store and one-time response API tests pass; console creation needs rehearsal. | BLOCKED REHEARSAL |
 | MT-06 | `tenant-routing.test.js`: full matrix, streamed POST, no rejected tenant store opens, cache/probe bounds and eviction identity. R1/R2 full suite. | PASS |
 | MT-07 | R1 PostgreSQL negative isolation suite, same identifiers, cookies/CSRF/access keys, default protection and quick-login denial. | PASS |
 | MT-08 | Exact-count guard and Chrome installed/offline/update/rename plus legacy pass-set. Production root Chrome update verified with controlled prior-release replay. | PASS |
 | MT-09 | Same-profile Chrome model/UI checks for two shops; default keys and independent active caches preserved. `r2-tenant-browser.json`. | PASS |
 | MT-10 | Real Caddy image/stub backend, 108 host/privacy/redirect/crawler/static/body checks. `r2-caddy-routing.json`. | PASS |
-| MT-11 | Pending the required release and real-stack evidence. | PENDING |
-| MT-12 | Pending the required release and real-stack evidence. | PENDING |
-| MT-13 | Pending the required release and real-stack evidence. | PENDING |
+| MT-11 | Serial ACTIVE worker, fresh status, paused drain, isolated synthetic provider errors and idle pool tests pass. Connection capacity proof unavailable. | PARTIAL; BLOCKED CAPACITY |
+| MT-12 | Owner-side proofs, native transactional restore and updater tests pass. Mandatory multi-database Docker backup/restore and R3 legacy production backup unverified. | BLOCKED REAL STACK |
+| MT-13 | Upgrade/recovery source and unknown-outcome/runner-stop/intent tests pass. Real second-shop failure/partial restore is prepared, unexecuted. | BLOCKED REAL STACK |
 | MT-14 | R1 platform tests 21/21 as the non-superuser CREATEDB/CREATEROLE role with self-grant; accepted X6 documented. | PASS |
-| MT-15 | Pending the required release and real-stack evidence. | PENDING |
-| MT-16 | Pending the required release and real-stack evidence. | PENDING |
-| MT-17 | Pending the required release and real-stack evidence. | PENDING |
-| MT-18 | Pending the required release and real-stack evidence. | PENDING |
-| MT-19 | Pending the required release and real-stack evidence. | PENDING |
-| MT-20 | Pending the required release and real-stack evidence. | PENDING |
-| MT-21 | Pending the required release and real-stack evidence. | PENDING |
-| MT-22 | Pending the required release and real-stack evidence. | PENDING |
-| MT-23 | Pending the required release and real-stack evidence. | PENDING |
-| MT-24 | Pending the required release and real-stack evidence. | PENDING |
+| MT-15 | Timer eviction/reopen tests pass. Twenty-shop mixed traffic and sampled <=80/100 PostgreSQL connections are unavailable. | BLOCKED REHEARSAL |
+| MT-16 | In-process outage, interruption reconciliation and concurrent-create tests pass; all five real-stack drills remain required. | BLOCKED REHEARSAL |
+| MT-17 | Independent R1/R2/R3 source reviews have zero open P0/P1/P2 after fixes. Whole R4 final-diff review and real-stack validation remain required. | PARTIAL; BLOCKED FINAL DIFF |
+| MT-18 | API, threat model, deployment/recovery, phase/onboarding and owner checklist/validated CSV updated. Final activation statuses/entry-point docs remain gated. | PARTIAL |
+| MT-19 | Section 7 A fails; no secrets/platform objects/admin tunnel/DNS/bootstrap were created in production. | BLOCKED PRECONDITIONS |
+| MT-20 | Installed controller retained unchanged; replacement waits for verified R4 deployment. | BLOCKED PRECONDITIONS |
+| MT-21 | Private BLOCKED checkpoint `~/Library/Application Support/Online-Shopping/handover/multi-tenant-20261011.md`: directory 0700, file 0600, secret-value scan zero. Activation access fields explicitly marked unavailable. | CHECKPOINT VERIFIED; FINAL PENDING |
+| MT-22 | Executor created no production QA shops/sellers/orders and performed no production platform sign-in/enrolment. Final database counts unavailable. | NO QA WRITES; COUNTS BLOCKED |
+| MT-23 | All R0/R1/R2/rollback merges had green branch/PR/main CI; R3 latest branch CI 492/492, 31 updater tests and zero audit findings. R3 remains draft/conflicting, no merge attempted. | PASS FOR MERGED RELEASES |
+| MT-24 | BLOCKED report will distinguish historical success, current outage and missing activation. | REPORT PENDING |
 
 `python3 test/auto-update.test.py`: 21/21 passed (`baseline-updater.log`). `NODE_ENV=test npm test` with scratch PostgreSQL: 453/453 passed, no skips, 42.8 s (`baseline-unit.log`).
 
 ## Blockers
 
-None recorded. Historical baseline failures above do not block unrelated work.
+Responsive OrbStack Docker is unavailable. See the production incident and checkpoint entries below. Historical baseline failures do not block unrelated work.
 
 ## R0 release evidence — 2026-10-10
 
@@ -196,3 +196,13 @@ None recorded. Historical baseline failures above do not block unrelated work.
 - 00:52: Docker socket `curl --max-time 5 --unix-socket "$HOME/.orbstack/run/docker.sock" http://localhost/_ping` still timed out (exit 28). Installed updater still `check_failed`, current SHA still R2, rollback main remains undeployed. Load fell to approximately 18; public readiness did not return 200. No denied call occurred and no host-wide recovery was attempted.
 - Independent rehearsal-script review found a P1: the legacy scratch restore smoke inherited the live maintenance flag and would reject its catalog request. A dedicated `restore-smoke.mjs` now uses a new private temporary maintenance path, disables platform bootstrap and cleans up its own server/directory. The real backend flag is never removed. Regression through the actual HTTP adapter proves scratch smoke succeeds while the original backend still answers 503 (2/2 targeted checks, `r3-restore-smoke.log`).
 - Rehearsal recovery fixes: load and restore the previous controller intent before new fixtures; use unique report/backup directories; checkpoint before mutation; stop named writers in `finally`, including timeout. The fixture's synthetic failing constraint is repeatable. These source changes still require real-stack execution.
+
+## BLOCKED checkpoint — 2026-10-11 01:04
+
+- R3 [draft PR #130](https://github.com/yapweijun1996/Online-Shopping/pull/130), head `7f369d890805ce83d4d5452693c750e166db473e`; remote branch SHA verified. [Latest branch CI](https://github.com/yapweijun1996/Online-Shopping/actions/runs/38069878464) passes 492/492 Node tests, zero skips, 51.0 s; 31 updater tests, syntax and audit (zero). Raw `r3-ci-latest.log`. GitHub reports conflicting with the emergency-reverted main; reconcile only after the separately restored R2 is deployed/verified. No R3 merge or pull-request merge CI claimed.
+- Independent latest rehearsal-source reviewer confirmed the maintenance-smoke P1 and both QA recovery P2s closed; timeout invokes runner cleanup in its independent lightweight reproduction. No open source finding, but real Docker evidence is still missing.
+- After five bounded daemon diagnostics plus a return after independent source/doc work, `_ping` still times out (exit 28), both public readiness probes remain 530, installed updater remains `check_failed` on R2 with no pending deployment. `production-incident-latest.json`; host load approximately 21, system memory free percentage 50. Missing prerequisite, not a denied call. Do not repeat unchanged retries or attempt host-wide recovery outside authority.
+- Exact blocked project command: `docker --context orbstack version --format '{{.Server.Version}}'`; after Docker recovery, the authorized resume command is `python3 "$HOME/Library/Application Support/Online-Shopping/auto-deploy/auto-update.py" --retry`. Verify the already merged rollback and MT-01 before any later release. Never edit updater state.
+- D0-19: Reserve `platformowner` as the planned bootstrap username; do not create it or its password before section 7 A passes. Handoff clearly marks the planned console and credentials unavailable.
+- Private checkpoint handoff written and read back; 0700 directory/0600 file; expected contents present and production-secret value scan zero. Existing pre-R2 legacy archive and proof exist at 0600. Section 7 B backup/snapshot has not been run.
+- Own native PostgreSQL on loopback 55432 was positively stopped via `pg_ctl -D <private-scratch>/pg -m fast -t 30 stop`; only its disposable cluster directory was deleted. Rehearsal containers/volumes could not be torn down while Docker is unresponsive; scratch bind files remain private until project-scoped teardown succeeds. Exact deferred cleanup: `cd /Users/yapweijun/Documents/GitHub/Online-Shopping-mt && python3 scripts/qa-rehearsal.py stop`. No other project was changed.
