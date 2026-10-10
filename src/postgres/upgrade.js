@@ -56,7 +56,8 @@ export async function upgradePostgres(store, version) {
     CREATE INDEX IF NOT EXISTS product_option_value ON product_option(option_value_id);
     -- The application role was granted the tables that existed when it was created; give it the new ones.
     DO $$ BEGIN
-      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'online_shopping_app') THEN
+      IF current_database() = 'online_shopping' AND current_user = 'online_shopping'
+         AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'online_shopping_app') THEN
         GRANT SELECT, INSERT, UPDATE, DELETE ON option_type, option_value, product_option TO online_shopping_app;
       END IF;
     END $$;`);
@@ -69,7 +70,8 @@ export async function upgradePostgres(store, version) {
     ALTER TABLE product ADD COLUMN IF NOT EXISTS listing_id TEXT REFERENCES listing(id) ON DELETE RESTRICT;
     CREATE INDEX IF NOT EXISTS product_listing ON product(listing_id);
     DO $$ BEGIN
-      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'online_shopping_app') THEN
+      IF current_database() = 'online_shopping' AND current_user = 'online_shopping'
+         AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'online_shopping_app') THEN
         GRANT SELECT, INSERT, UPDATE, DELETE ON listing TO online_shopping_app;
       END IF;
     END $$;`);
@@ -149,7 +151,8 @@ CREATE INDEX IF NOT EXISTS message_inbound_order ON message_inbound(order_id);
 CREATE INDEX IF NOT EXISTS message_inbound_unread ON message_inbound(received_at) WHERE read_at IS NULL;
 
     DO $$ BEGIN
-      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'online_shopping_app') THEN
+      IF current_database() = 'online_shopping' AND current_user = 'online_shopping'
+         AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'online_shopping_app') THEN
         GRANT SELECT, INSERT, UPDATE, DELETE ON integration_connection, integration_audit, webhook_receipt, message_outbox, message_inbound TO online_shopping_app;
       END IF;
     END $$;`);
@@ -175,7 +178,8 @@ CREATE TABLE IF NOT EXISTS account_event (
 CREATE INDEX IF NOT EXISTS account_event_time ON account_event(created_at);
 ALTER TABLE session ADD COLUMN IF NOT EXISTS account_id TEXT;
 DO $$ BEGIN
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'online_shopping_app') THEN
+  IF current_database() = 'online_shopping' AND current_user = 'online_shopping'
+         AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'online_shopping_app') THEN
     GRANT SELECT, INSERT, UPDATE, DELETE ON seller_account, account_event TO online_shopping_app;
   END IF;
 END $$;`);
@@ -198,7 +202,8 @@ CREATE TABLE IF NOT EXISTS product_event (
 );
 CREATE INDEX IF NOT EXISTS product_event_product ON product_event(product_id, created_at);
 DO $$ BEGIN
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'online_shopping_app') THEN
+  IF current_database() = 'online_shopping' AND current_user = 'online_shopping'
+         AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'online_shopping_app') THEN
     GRANT SELECT, INSERT, UPDATE, DELETE ON order_note, product_event TO online_shopping_app;
   END IF;
 END $$;`);

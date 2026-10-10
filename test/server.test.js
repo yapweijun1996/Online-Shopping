@@ -77,6 +77,38 @@ test('readiness fails closed when schema version changes while liveness stays up
   }
 });
 
+test('deployment maintenance rejects new work and reports existing requests until they drain', async () => {
+  const f = await fixture();
+  const flag = path.join(path.dirname(f.config.dbPath), 'maintenance.flag');
+  f.config.maintenancePath = flag;
+  const original = f.app.database.all;
+  let enter, release;
+  const entered = new Promise((resolve) => { enter = resolve; });
+  const barrier = new Promise((resolve) => { release = resolve; });
+  f.app.database.all = async (sql, ...params) => {
+    if (sql.includes('FROM product')) { enter(); await barrier; }
+    return original(sql, ...params);
+  };
+  try {
+    const existing = f.request('GET', '/api/v1/products');
+    await entered;
+    writeFileSync(flag, 'paused\n', { mode: 0o600 });
+    const busy = await f.request('GET', '/health');
+    assert.equal(busy.response.status, 200);
+    assert.deepEqual(busy.data.maintenance, { enabled: true, inFlight: 1, workerIdle: true, platformIdle: true });
+    for (const [method, route, body] of [['GET', '/api/v1/products'], ['POST', '/api/v1/seller/session', { username, password }]]) {
+      const rejected = await f.request(method, route, body);
+      assert.equal(rejected.response.status, 503);
+      assert.equal(rejected.data.error.code, 'DEPLOYMENT_MAINTENANCE');
+    }
+    assert.equal((await f.request('GET', '/ready')).response.status, 200);
+    release(); assert.equal((await existing).response.status, 200);
+    assert.equal((await f.request('GET', '/health')).data.maintenance.inFlight, 0);
+    rmSync(flag);
+    assert.equal((await f.request('GET', '/api/v1/products')).response.status, 200);
+  } finally { release(); await f.close(); }
+});
+
 test('production startup refuses missing and weak credentials', () => {
   for (const overrides of [{ ADMIN_USERNAME: '', ADMIN_PASSWORD: '' }, { ADMIN_USERNAME: username, ADMIN_PASSWORD: 'password123' }]) {
     const result = spawnSync(process.execPath, ['src/server.js'], {

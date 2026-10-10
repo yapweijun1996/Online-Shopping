@@ -39,6 +39,40 @@ class Fake(m.Updater):
         if self.fail == 'rollback': raise RuntimeError()
 
 class Tests(unittest.TestCase):
+    def test_entrypoint_preserves_terminal_deployment_failure_state(self):
+        for status in ['rolled_back', 'rollback_failed', 'build_failed', 'migration_failed', 'migration_restore_failed', 'backup_failed']:
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as root:
+                u = Fake()
+                def poll(retry):
+                    u.save(status)
+                    raise RuntimeError('fixture failure')
+                u.poll = poll
+                with patch.object(m, 'Updater', return_value=u), patch.object(m.sys, 'argv', ['auto-update.py', '--state-dir', root]), patch.object(m.sys, 'stderr', io.StringIO()):
+                    with self.assertRaises(SystemExit) as error: m.main()
+                self.assertEqual(error.exception.code, 1)
+                self.assertEqual(u.state['last_status'], status)
+                self.assertNotIn('check_failed', u.events)
+
+    def test_maintenance_uses_rendered_project_volume_name(self):
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root); (root / 'configs').mkdir()
+            path = root / 'configs' / (OLD + '.json')
+            config = {'services': {'backend': {'volumes': [{'type': 'volume', 'source': 'deployment_state', 'target': '/run/deployment'}]}},
+                      'volumes': {'deployment_state': {'name': m.PROJECT + '_deployment_state'}}}
+            path.write_text(json.dumps(config))
+            u = Fake(); u.root = root; seen = []
+            def run(command, **kwargs):
+                seen.append(command)
+                return '{"paused":true,"drained":true}\n'
+            u.run = run
+            u.maintenance(True, {'sha': NEW, 'release': '/new'})
+            self.assertIn(m.PROJECT + '_deployment_state:/run/deployment', seen[0])
+            for definition in ({'name': 'another-project_deployment_state'}, {'name': m.PROJECT + '_deployment_state', 'external': True}, {}):
+                config['volumes']['deployment_state'] = definition; path.write_text(json.dumps(config))
+                with self.assertRaisesRegex(RuntimeError, 'belong to this project'):
+                    u.maintenance(True, {'sha': NEW, 'release': '/new'})
+            self.assertEqual(len(seen), 1)
+
     def test_docker_config_is_private_and_has_no_credential_helper(self):
         with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as home:
             for name in ('contexts', 'buildx', 'cli-plugins'): (Path(home) / '.docker' / name).mkdir(parents=True)
@@ -186,6 +220,108 @@ class Tests(unittest.TestCase):
             self.assertIn(m.PROJECT + '_private', command)
             u.run = lambda command, **kw: '{"version": 17}\n'
             with self.assertRaises(RuntimeError): u.migrate({'sha': NEW, 'release': new})
+
+    def test_platform_upgrade_runs_with_unchanged_main_and_restores_before_failure(self):
+        with tempfile.TemporaryDirectory() as old, tempfile.TemporaryDirectory() as new, tempfile.TemporaryDirectory() as root:
+            for folder in (old,new):
+                (Path(folder)/'src').mkdir(); (Path(folder)/'src/db.js').write_text('export const SCHEMA_VERSION = 24;\n')
+            root=Path(root)
+            (root/'runtime.env').write_text('PLATFORM_ENABLED=1\nPLATFORM_DATABASE_PASSWORD_FILE_HOST=/secrets/platform\nINTEGRATION_KEY_FILE_HOST=/secrets/keys\n')
+            manifest=root/'backup.json'; manifest.write_text('{}')
+            u=object.__new__(m.Updater); u.root=root; u.state={'current':{'sha':OLD,'release':old}}; u.deployment_backup=manifest
+            seen=[]
+            def run(command, **kw):
+                seen.append(command)
+                if 'create' in command:
+                    report_file=next(value.split('=',1)[1] for value in command if value.startswith('UPGRADE_REPORT_FILE='))
+                    report=root/'migration-reports'/Path(report_file).name
+                    m.atomic_json(report, {'format':1,'attempted':['t_alpha_12345678','t_bravo_12345678'],'upgraded':['t_alpha_12345678'],'complete':False})
+                    raise RuntimeError('fixture upgrade failed')
+                if any(value.endswith('/restore-postgres.py') for value in command): return '{"restoreVerified":true}\n'
+                return 'fixture-container\n'
+            u.run=run; u.stop_runners=lambda:None
+            with self.assertRaisesRegex(RuntimeError,'fixture upgrade failed'): u.migrate({'sha':NEW,'release':new})
+            self.assertIn('/secrets/platform:/run/secrets/platform:ro',seen[0])
+            self.assertIn('/secrets/keys:/run/secrets/integration_keys:ro',seen[0])
+            self.assertTrue(any(value.endswith('/restore-postgres.py') for value in seen[-1]))
+            self.assertIn(str(manifest),seen[-1])
+            self.assertFalse(any(value.endswith('/upgrade-database.mjs') for command in seen for value in command))
+
+    def test_platform_migration_refuses_missing_deployment_backup(self):
+        with tempfile.TemporaryDirectory() as root:
+            root=Path(root); (root/'src').mkdir(); (root/'src/db.js').write_text('export const SCHEMA_VERSION = 24;\n')
+            (root/'runtime.env').write_text('PLATFORM_ENABLED=1\n')
+            u=object.__new__(m.Updater); u.root=root; u.state={'current':{'sha':OLD,'release':str(root)}}
+            u.run=lambda *args,**kw:self.fail('Unprotected upgrade attempted')
+            with self.assertRaisesRegex(RuntimeError,'deployment backup'): u.migrate({'sha':NEW,'release':str(root)})
+
+    def test_platform_restore_failure_is_not_hidden(self):
+        with tempfile.TemporaryDirectory() as root:
+            root=Path(root); (root/'src').mkdir(); (root/'src/db.js').write_text('export const SCHEMA_VERSION = 24;\n')
+            (root/'runtime.env').write_text('PLATFORM_ENABLED=1\nPLATFORM_DATABASE_PASSWORD_FILE_HOST=/platform\nINTEGRATION_KEY_FILE_HOST=/keys\n')
+            manifest=root/'backup.json'; manifest.write_text('{}')
+            u=object.__new__(m.Updater); u.root=root; u.state={'current':{'sha':OLD,'release':str(root)}}; u.deployment_backup=manifest
+            def run(command,**kw):
+                if 'create' in command: raise RuntimeError('upgrade failed')
+                if any(value.endswith('/restore-postgres.py') for value in command): raise RuntimeError('restore failed')
+                return 'fixture-container\n'
+            u.run=run;u.stop_runners=lambda:None
+            with self.assertRaisesRegex(RuntimeError,'restore failed'): u.migrate({'sha':NEW,'release':str(root)})
+
+    def test_backup_arguments_reject_injection_and_keep_production_defaults(self):
+        spec=importlib.util.spec_from_file_location('backup',Path(__file__).resolve().parents[1]/'deploy/backup-postgres.py')
+        import sys
+        sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'deploy'))
+        backup=importlib.util.module_from_spec(spec);spec.loader.exec_module(backup)
+        args=backup.parse_args([]);self.assertEqual(args.project,m.PROJECT);self.assertIsNone(args.tenant)
+        self.assertEqual(backup.parse_args(['--tenant','alpha','--project','online-shopping-rehearsal']).tenant,'alpha')
+        with patch('sys.stderr',io.StringIO()):
+            with self.assertRaises(SystemExit):backup.parse_args(['--tenant',"alpha';DROP"])
+
+    def test_migration_runner_is_created_before_start_and_stopped_before_restore(self):
+        u=object.__new__(m.Updater);u.state={'migration':{'runners':[]}};events=[]
+        def run(command,**kw):
+            events.append(command)
+            if 'create' in command:return 'c'*64
+            if 'start' in command:raise RuntimeError('unknown committed outcome')
+            if 'ps' in command:return u.state['migration']['runners'][0] if '-a' in command else ''
+            return ''
+        u.run=run
+        with self.assertRaisesRegex(RuntimeError,'unknown committed outcome'):
+            u.migration_runner(['docker','--context','orbstack','run','--rm','--network','private','image','node','upgrade'],{'sha':NEW},'main',300)
+        self.assertEqual(len(u.state['migration']['runners']),1)
+        self.assertIn('--name',events[0]);self.assertIn('create',events[0]);self.assertNotIn('--rm',events[0])
+        u.stop_runners()
+        self.assertTrue(any('stop' in command for command in events));self.assertIn('rm',events[-1])
+
+    def test_failure_recovery_commits_resume_before_reopening_writes(self):
+        u=Fake();u.state['migration']={'candidate':{'sha':NEW,'release':'/new'},'backup':'/verified','report':'/report','paused':True}
+        u.restore_migration=lambda candidate:u.events.append('restore')
+        def maintenance(enabled,candidate):
+            self.assertFalse(enabled);self.assertIsNone(u.state['migration']);self.assertTrue(u.state['maintenance_resume'])
+            u.events.append('resume')
+            raise RuntimeError('crash after reopening')
+        u.maintenance=maintenance
+        with self.assertRaisesRegex(RuntimeError,'crash after reopening'):u.recover()
+        self.assertEqual(u.events[:3],['restore','migration_recovered','resume'])
+        u.restore_migration=lambda candidate:self.fail('Stale snapshot restored after resume')
+        u.maintenance=lambda enabled,candidate:u.events.append('resume-again')
+        u.recover();self.assertFalse(u.state['maintenance_resume']);self.assertIsNone(u.state['migration'])
+
+    def test_unknown_main_outcome_has_intent_and_restores_before_failure(self):
+        with tempfile.TemporaryDirectory() as old,tempfile.TemporaryDirectory() as new,tempfile.TemporaryDirectory() as root:
+            for folder,version in [(old,23),(new,24)]:
+                (Path(folder)/'src').mkdir();(Path(folder)/'src/db.js').write_text(f'export const SCHEMA_VERSION = {version};\n')
+            root=Path(root);(root/'runtime.env').write_text('PLATFORM_ENABLED=1\nDATABASE_OWNER_PASSWORD_FILE_HOST=/owner\n')
+            manifest=root/'backup.json';manifest.write_text('{}')
+            u=object.__new__(m.Updater);u.root=root;u.state={'current':{'sha':OLD,'release':old}};u.deployment_backup=manifest
+            events=[]
+            def runner(command,candidate,kind,timeout):
+                report=json.loads(Path(u.state['migration']['report']).read_text());self.assertEqual(report['attempted'],['online_shopping'])
+                events.append('intent');raise RuntimeError('unknown main outcome')
+            u.migration_runner=runner;u.restore_migration=lambda candidate:events.append('restore')
+            with self.assertRaisesRegex(RuntimeError,'unknown main outcome'):u.migrate({'sha':NEW,'release':new})
+            self.assertEqual(events,['intent','restore'])
 
     def test_compose_render_format_changes_do_not_pause_a_release(self):
         R1, R2 = '/r/old', '/r/new'

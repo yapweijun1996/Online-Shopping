@@ -53,10 +53,10 @@ One code base means every shop gets every feature at the same moment. There is n
 
 ## 6. Limits to accept
 
-- **Upgrades are not atomic across databases.** The backend refuses a shop whose schema version is not the one it expects. While the updater upgrades the shops one by one, the release that is still serving traffic therefore cannot serve a shop that has already been upgraded: that shop is unavailable from its upgrade until traffic switches. If a later shop fails, those already-upgraded shops stay unavailable until they are restored from the pre-deployment backup, which P7 must do automatically (restore every upgraded database, verify, only then report the failure). Keeping the unavailable window short, or letting a release accept the next additive schema version, are P7 design choices.
+- **Upgrades are not atomic across databases.** R3 implements a maintenance window: pause business requests and worker work, drain existing work, take verified backups, then upgrade main, platform and eligible shops serially. On failure every attempted database is restored and verified while traffic stays paused. This prevents losing orders written after the backup. Ordinary releases with matching schemas use normal image cutover. Real-stack verification and installation of the new controller are required before this behavior is active; follow the ledger for the release state.
 
 - One backend process serves all shops: a crash affects all of them. Health checks and automatic restart limit the damage; each shop's errors are handled separately so one broken shop does not stop the others.
-- A schema change must be additive and must succeed in every shop's database; after a successful upgrade the previous release cannot roll back (restore the verified backup instead).
+- A schema change must be additive and must succeed in every eligible shop's database. A failed upgraded cutover restores the verified snapshots before restarting the previous release. A later voluntary application rollback still requires compatible schemas; never downgrade a live database without an operator procedure.
 - The MacBook Air is already heavily loaded. More shops mean more connections and backup time; the plan limits the host to about 20 shops.
 - No SuperAdmin impersonation in the first release: support is done by resetting the password.
 - Custom domains per shop, billing and plans, moving a shop to another server are out of scope for now.

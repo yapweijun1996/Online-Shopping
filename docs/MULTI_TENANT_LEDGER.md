@@ -8,8 +8,8 @@ Started 2026-10-10 (Asia/Singapore). Source of truth: [MULTI_TENANT_GOAL.md](MUL
 | --- | --- | --- |
 | R0 | DEPLOYED, VERIFIED | [PR #126](https://github.com/yapweijun1996/Online-Shopping/pull/126), merge `ada984ba9feab52cb7f22abf4bf2e205af238092`; deployed log followed by `up_to_date`; 10 production probes and zero restarts. |
 | R1 | DEPLOYED, VERIFIED | [PR #127](https://github.com/yapweijun1996/Online-Shopping/pull/127), merge `71f5d27b1abc1471e6b7e8da740138dd122a58b2`; branch/PR CI green. |
-| R2 | VERIFIED, CI PENDING | 482 unit tests; 108 real Caddy checks; two installed PWAs with standalone offline launch and controlled rename; baseline pass-set retained. |
-| R3 | NOT STARTED | Operations. |
+| R2 | REVERTED ON MAIN; PRODUCTION ROLLBACK PENDING | 482 unit tests; 108 real Caddy checks; two installed PWAs with standalone offline launch and controlled rename; baseline pass-set retained. |
+| R3 | IN PROGRESS | Operations and migration recovery; real-stack checks in progress. |
 | R4 | NOT STARTED | Rehearsal, hardening and activation. |
 
 ## Decisions and environment — 2026-10-10
@@ -77,14 +77,14 @@ Actual browser pass-set: `scripts/qa-draft-browser.mjs` and `scripts/qa-followup
 
 | Item | Current evidence | Status |
 | --- | --- | --- |
-| MT-01 | Baseline curl: both hosts health/ready 200 with current SHA, shop/seller shells 200, public catalog 200, unauthenticated seller session 401; both manifests resolve id/scope/start_url to original `/shop/` and `/seller/`. `production-baseline.json`. | BASELINE PASS |
+| MT-01 | Current production readiness is BLOCKED by Docker/host unavailability; R2 was reverted through green CI in PR #129. Historical baseline curl: both hosts health/ready 200 with current SHA, shop/seller shells 200, public catalog 200, unauthenticated seller session 401; both manifests resolve id/scope/start_url to original `/shop/` and `/seller/`. `production-baseline.json`. | BASELINE PASS |
 | MT-02 | R1 disabled-config tests, CI without platform secrets, and inert production deployment. | PASS |
 | MT-03 | Pending the required release and real-stack evidence. | PENDING |
 | MT-04 | Pending the required release and real-stack evidence. | PENDING |
 | MT-05 | Pending the required release and real-stack evidence. | PENDING |
 | MT-06 | `tenant-routing.test.js`: full matrix, streamed POST, no rejected tenant store opens, cache/probe bounds and eviction identity. R1/R2 full suite. | PASS |
 | MT-07 | R1 PostgreSQL negative isolation suite, same identifiers, cookies/CSRF/access keys, default protection and quick-login denial. | PASS |
-| MT-08 | Exact-count guard and Chrome installed/offline/update/rename plus legacy pass-set. Production R2 activation/update pending. | PARTIAL |
+| MT-08 | Exact-count guard and Chrome installed/offline/update/rename plus legacy pass-set. Production root Chrome update verified with controlled prior-release replay. | PASS |
 | MT-09 | Same-profile Chrome model/UI checks for two shops; default keys and independent active caches preserved. `r2-tenant-browser.json`. | PASS |
 | MT-10 | Real Caddy image/stub backend, 108 host/privacy/redirect/crawler/static/body checks. `r2-caddy-routing.json`. | PASS |
 | MT-11 | Pending the required release and real-stack evidence. | PENDING |
@@ -156,3 +156,31 @@ None recorded. Historical baseline failures above do not block unrelated work.
 - Independent reviewer final read-only R2 review: zero open P0/P1/P2, including lightweight independent reproductions of the two corrected P1 scenarios. Complete R3/R4 diff review remains required before activation.
 
 - Production read-only Chrome preparation: legacy shop v143 and seller v134 active, both PWAs installed in the separate QA profile, no page or unexpected console errors (`r2-production-browser-prepare-r2.json`). No login, order, seller or shop mutation. Post-deploy verification must show the new versions and one visible offer per app.
+
+
+## R2 production and R3 operations — 2026-10-11
+
+- MT-01 R2: merge `1fef9aead7bb3a6aa8b1b4110c85e04cddfaff56`, [main CI](https://github.com/yapweijun1996/Online-Shopping/actions/runs/38064232372) green; updater deployed then up_to_date. Ten read-only probes and unchanged manifest identities passed, all four containers zero restarts (`r2-production.json`).
+- MT-08 R2: Chrome activates shop v144 and seller v135 without page/console errors. The initial observer missed transient update UI and did not claim success. After bounded diagnostics and independent operations work, the final run replayed the exact R1 worker/assets only in the private browser profile, then fetched the live R2 update: one visible version identity per surface, both PWAs uninstalled, catalog/seller login rendered (`r2-production-browser-replay-r2.json`). No production login or business mutation.
+- D0-14: Pre-stage a secret-free, project-scoped `deployment_state` volume in R3, read-only in the backend. Platform secrets and admin tunnel still wait for R4. The host-only operator helper controls maintenance in the volume; no HTTP control endpoint. It survives backend and updater restart.
+- D0-15: Multi-database restore must not erase writes committed after a backup. Before a pending schema upgrade, refuse business routes, drain requests/provisioning and background platform work, pause the WhatsApp worker, then take snapshots. Keep maintenance through migration and candidate health validation. Atomically clear restore intent and record resume before reopening traffic, on both success and failure recovery. Ordinary schema-matched releases and legacy single-database operation keep the prior behavior.
+- D0-16: Back up/upgrade initialized non-default ACTIVE/SUSPENDED/DELETING databases. FAILED/PROVISIONING are unavailable, count toward capacity, and retry through fresh provisioning rather than unprotected migration. Unknown commit outcomes restore every attempted database from the deployment's verified backup. Restore failure retains maintenance and the distinct `migration_restore_failed` status.
+- Independent R3 review identified and drove fixes for post-backup write loss, durable main-upgrade intent, platform owner-role restore validation, stale ACTIVE worker snapshots and failure-path resume ordering. Final review is pending real-stack verification and the final diff.
+- R3 targeted tests: 21/21, no skips (`r3-targeted.log`): numbered migrations/rollback, timer eviction/reopen, interrupted provisioning reconciliation, per-shop serial worker and synthetic provider isolation. Updater tests 25/25 (`r3-updater.log`), expanded recovery fixtures in progress.
+- Rehearsal setup uses actual production compose under `online-shopping-rehearsal`, own volume/secrets and loopback TLS rules; both tunnels disabled. The setup script verified provisioner flags, database ownership and PUBLIC CONNECT denial. Fixed a QA key-file buffering error and recreated only rehearsal applications.
+- Heavy rehearsal operations paused when host load rose from approximately 6 to 86 and Docker became unresponsive. Stopped task-created operation processes and requested stop of rehearsal application containers; no production/other-project service or host VM changed. Resume serially after the host recovers. This is not an authorization denial or a fabricated BLOCKED result.
+
+## Production incident and rollback — 2026-10-11
+
+- After the previously verified R2 deployment, both public `/ready` endpoints failed twice; HTTP 530 persisted while installed state still reported R2 `up_to_date`. Applied section 8 immediately: independent executor rollback worktree `/Users/yapweijun/Documents/GitHub/Online-Shopping-mt-rollback`, branch `codex/mt-r2-rollback`, reverted merge `1fef9aead7bb3a6aa8b1b4110c85e04cddfaff56`.
+- [PR #129](https://github.com/yapweijun1996/Online-Shopping/pull/129) merged with merge commit `3bddb42b8340a9a7ca951429f88f49157ee84ee2`; branch CI `38067308433`, PR CI `38067336715`, and main CI `38067456877` all green. `git ls-remote origin refs/heads/main` verified the remote result. No CI bypass.
+- Heavy own QA was canceled. The bounded rehearsal app-stop request timed out; a stopped container state is not claimed. Other projects, VMs, LaunchAgents, existing secrets, production data and private updater state were not modified.
+- D0-17: Keep emergency rollback in a separate owned worktree so R3 cannot enter it. R3 remains uncommitted and gated on real-stack proof; R2 must be restored through a later normal verified PR before continuing releases.
+- 00:24: `docker --context orbstack version --format '{{.Server.Version}}'` exceeded an eight-second diagnostic deadline. 00:27: both public readiness checks still 530. 00:29: updater became `check_failed`; private stderr reports `Auto-update failed: TimeoutExpired`. Host load ranged approximately 77–196 during this interval. No claim that R2 caused the host failure.
+- BLOCKED prerequisite: responsive OrbStack Docker daemon and safe host load. This prevents actual rollback deployment, R3 backup/restore verification, R4 rehearsal/drills/capacity and activation. Recovering the whole OrbStack VM could affect other projects and is outside the launch authority. Continue independent source/docs work; retry project checks after new recovery evidence, never bypass a denied action.
+
+## R3 recovery hardening — 2026-10-11
+
+- `python3 test/auto-update.test.py`: 30/30 passed in 0.09 s (`r3-updater.log`). Includes named runner intent before create, lost-start handling, runner stop before restore, main unknown outcome, preserved terminal failure states, clear-intent-before-unpause crash recovery, and logical Compose volume source mapped to the project-scoped physical name.
+- Independent read-only R3 reviewer: no remaining concrete P0/P1/P2 finding in the current source. Lightweight independent simulations confirmed role validation, runner cleanup order, and no stale restore after unpause interruption. Real Docker/PostgreSQL/browser gate remains unpassed; this review does not claim MT-12/13 complete.
+- D0-18: Resolve deployment volume identity from rendered top-level `volumes[source].name`, reject external/cross-project/missing names, and mount that physical volume in the operator helper. This follows the real installed Compose layout.

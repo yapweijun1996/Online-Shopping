@@ -128,16 +128,31 @@ export async function sendDueWhatsAppMessages(store, secretBox, transport, { now
 }
 
 /* Runs enqueue and send on a timer. Ticks never overlap; errors are logged as a code only (no numbers, no bodies). */
-export function startWhatsAppWorker({ store, secretBox, transport, intervalMs = 15000, now = () => new Date() }) {
-  let running = false;
-  const tick = async () => {
-    if (running) return;
-    running = true;
-    try { await enqueueWhatsAppMessages(store, secretBox, { now }); await sendDueWhatsAppMessages(store, secretBox, transport, { now }); }
-    catch (error) { console.error('WhatsApp worker failed:', error?.code || error?.name || 'ERROR'); }
-    finally { running = false; }
+export function startWhatsAppWorker({ store, secretBox, transport, tenants, paused = () => false, intervalMs = 15000, now = () => new Date() }) {
+  let pending = null, stopped = false;
+  const processStore = async (current) => {
+    try { await enqueueWhatsAppMessages(current, secretBox, { now }); await sendDueWhatsAppMessages(current, secretBox, transport, { now }); return true; }
+    catch (error) { console.error('WhatsApp worker failed:', error?.code || error?.name || 'ERROR'); return false; }
   };
-  const timer = setInterval(tick, intervalMs);
-  timer.unref();
-  return { tick, stop: () => clearInterval(timer) };
+  const tick = () => {
+    if (stopped || paused()) return Promise.resolve();
+    if (pending) return pending;
+    pending = (async () => {
+      if (store) await processStore(store);
+      if (tenants && !stopped && !paused()) {
+        let rows;
+        try { rows = await tenants.list(); }
+        catch (error) { console.error('WhatsApp tenant list failed:', error?.code || error?.name || 'ERROR'); return; }
+        for (const row of rows) {
+          if (stopped || paused()) break;
+          if (row.is_default || row.status !== 'ACTIVE') continue;
+          try { const current = await tenants.get(row); if (current) await processStore(current); }
+          catch (error) { console.error('WhatsApp tenant worker failed:', error?.code || error?.name || 'ERROR'); }
+        }
+      }
+    })().finally(() => { pending = null; });
+    return pending;
+  };
+  const timer = setInterval(tick, intervalMs); timer.unref();
+  return { tick, isBusy: () => Boolean(pending), async stop() { stopped = true; clearInterval(timer); await pending; } };
 }

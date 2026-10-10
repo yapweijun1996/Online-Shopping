@@ -20,9 +20,8 @@ const buyerPhone = '+60123456789', buyerDigits = '60123456789', buyerName = 'Fic
 const verifier = { verify: async () => ({ ok: true, displayPhoneNumber: '+15550000000', verifiedName: 'Fictional Shop' }) };
 const accepted = (id) => ({ status: 200, body: { messaging_product: 'whatsapp', contacts: [{ input: buyerDigits, wa_id: buyerDigits }], messages: [{ id }] } });
 
-async function fixture(t, { store = null, connect = true, mode = 'production' } = {}) {
+async function fixture(t, { store = null, connect = true, mode = 'production', secretBox = createSecretBox(parseKeyFile(`k1=${randomBytes(32).toString('base64')}`)) } = {}) {
   if (!store) { store = await openDatabase(':memory:'); t.after(() => store.close()); }
-  const secretBox = createSecretBox(parseKeyFile(`k1=${randomBytes(32).toString('base64')}`));
   await setupShop(store, mode === 'demo' ? { mode: 'demo' } : { mode: 'production', shopName: 'Fictional Shop' });
   if (mode !== 'demo') {
     await createCategory(store, { code: 'WEAR', label: 'Wear' });
@@ -240,4 +239,35 @@ test('on PostgreSQL concurrent senders call the provider exactly once per messag
   assert.equal(f.calls.length, 4);
   assert.ok((await f.rows()).every((row) => row.status === 'ACCEPTED' && row.attempts === 1));
   assert.equal(await enqueueWhatsAppMessages(store, f.secretBox), 0);
+});
+
+
+test('one worker visits active shops serially, skips suspended/deleting, and isolates failures', async (t) => {
+  const first = await fixture(t), second = await fixture(t, { secretBox: first.secretBox });
+  await first.order(); await second.order();
+  const opened = [], sent = [];
+  const transport = { send: async (request) => { sent.push(request); return accepted('wamid.SERIAL' + sent.length); } };
+  const worker = startWhatsAppWorker({ store: first.store, secretBox: first.secretBox, transport, intervalMs: 3600000,
+    tenants: { list: async () => [{ id: 'bad', status: 'ACTIVE' }, { id: 'suspended', status: 'SUSPENDED' }, { id: 'deleting', status: 'DELETING' }, { id: 'second', status: 'ACTIVE' }],
+      get: async (row) => { opened.push(row.id); if (row.id === 'bad') throw new Error('fixture outage'); return second.store; } } });
+  t.after(() => worker.stop()); await Promise.all([worker.tick(),worker.tick()]);
+  assert.deepEqual(opened,['bad','second']); assert.equal(sent.length,2);
+  assert.equal((await first.rows())[0].status,'ACCEPTED'); assert.equal((await second.rows())[0].status,'ACCEPTED');
+  await worker.stop(); await worker.tick(); assert.equal(sent.length,2);
+});
+
+test('maintenance waits for an existing worker send and prevents the next shop and tick', async (t) => {
+  const f = await fixture(t); await f.order();
+  let paused = false, entered, release, listed = 0;
+  const started = new Promise((resolve) => { entered = resolve; });
+  f.setReply(() => { entered(); return new Promise((resolve) => { release = () => resolve(accepted('wamid.DRAIN')); }); });
+  const worker = startWhatsAppWorker({ store: f.store, secretBox: f.secretBox, transport: f.transport, paused: () => paused, intervalMs: 3600000,
+    tenants: { list: async () => { listed++; return []; }, get: async () => { throw new Error('Unexpected shop open'); } } });
+  t.after(() => worker.stop());
+  const active = worker.tick(); await started; assert.equal(worker.isBusy(), true);
+  paused = true; await worker.tick(); assert.equal(f.calls.length, 1);
+  release(); await active;
+  assert.equal(worker.isBusy(), false); assert.equal(listed, 0);
+  await worker.tick(); assert.equal(f.calls.length, 1);
+  paused = false; await worker.tick(); assert.equal(listed, 1);
 });

@@ -59,8 +59,9 @@ export function validateTenantInput(input) {
 }
 
 /* Creates a shop. Returns the tenant row and, only when the password was generated here, that one-time password. */
-export async function createTenant(platform, { provisionerUrl, baseUrl, secretBox }, input, actor) {
+export async function createTenant(platform, { provisionerUrl, baseUrl, secretBox, inFlight = new Set() }, input, actor) {
   const wanted = validateTenantInput(input);
+  let reservationId;
   const row = await platform.transaction(async () => {
     if (await platform.get('SELECT 1 AS found FROM tenant_code_alias WHERE code = ?', wanted.code)) throw new ApiError(409, 'CODE_TAKEN', 'This shop code is already used.');
     const existing = await platform.get('SELECT * FROM tenant WHERE code = ?', wanted.code);
@@ -80,8 +81,10 @@ export async function createTenant(platform, { provisionerUrl, baseUrl, secretBo
     }
     await recordAudit(platform, { actor, action: 'TENANT_CREATE', tenantId: id, detail: wanted.code });
     // Capture the reservation before commit; a failed read must roll it back, not strand PROVISIONING outside try.
-    return platform.get('SELECT * FROM tenant WHERE id = ?', id);
-  });
+    const reserved = await platform.get('SELECT * FROM tenant WHERE id = ?', id);
+    reservationId = id; inFlight.add(id);
+    return reserved;
+  }).catch((error) => { if (reservationId) inFlight.delete(reservationId); throw error; });
   const tenantId = row.id;
   try {
     await dropArtifacts(provisionerUrl, row);
@@ -113,7 +116,7 @@ export async function createTenant(platform, { provisionerUrl, baseUrl, secretBo
       await recordAudit(platform, { actor, action: 'TENANT_FAILED', tenantId, detail: code });
     });
     throw error;
-  }
+  } finally { inFlight.delete(tenantId); }
   const tenant = await platform.get('SELECT id, code, name, status, currency, seller_username, created_at FROM tenant WHERE id = ?', tenantId);
   return { tenant, ...(wanted.generated ? { sellerPassword: wanted.sellerPassword } : {}) };
 }

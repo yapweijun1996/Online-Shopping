@@ -36,9 +36,12 @@ services:
       PUBLIC_ORIGIN: https://shop.gmb01.xyz
       SELLER_ORIGIN: https://seller.gmb01.xyz
       TRUST_PROXY: "1"
+      DEPLOYMENT_STATE_DIR: /run/deployment
       SHOP_MODE: manual
       SELLER_QUICK_LOGIN: ${SELLER_QUICK_LOGIN:-0}
     secrets: [admin_password, database_password, integration_keys]
+    volumes:
+      - deployment_state:/run/deployment:ro
     networks: [private]
     read_only: true
     tmpfs: [/tmp]
@@ -103,6 +106,7 @@ secrets:
 
 volumes:
   pg_data:
+  deployment_state:
 
 networks:
   edge:
