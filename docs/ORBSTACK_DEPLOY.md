@@ -66,3 +66,12 @@ See [AUTO_DEPLOY.md](AUTO_DEPLOY.md) for CI-gated main polling, immutable releas
 ## Automatic deployment and the Docker credential helper
 
 The updater runs every Docker command with its own `DOCKER_CONFIG` (`<state dir>/docker-config`) that has no `credsStore`. A global `~/.docker/config.json` that names Docker Desktop's credential helper can stall: builds then hang at "load metadata" until the 15-minute timeout and the release is left as `build_failed`/`failed_release_waiting`. The private config keeps the shared contexts, builders and plugins, so public base images are pulled anonymously and nothing depends on Docker Desktop. After changing `deploy/auto-update.py`, copy it over `<state dir>/auto-update.py`; the LaunchAgent runs that installed copy.
+
+
+## Platform operators (R1; activate only after R4 rehearsal)
+
+Settings and secret names are listed in [MULTI_TENANT_GOAL.md](MULTI_TENANT_GOAL.md), section 7. Keep all existing production secrets and tunnel files unchanged. `deploy/setup-platform.py --database-password-file <new-0600-file> --provisioner-password-file <new-0600-file>` creates missing platform objects idempotently and refuses incompatible existing objects; `--check` inspects names/flags/ownership without modifying them. It sends SQL and passwords through stdin, never argv or logs.
+
+Host break-glass: `docker --context orbstack exec -e NEW_PLATFORM_ADMIN_PASSWORD=<new-private-password> online-shopping-production-backend-1 node scripts/reset-platform-admin.js`. Supply the variable privately; do not paste a real value into chat or shell history. This invalidates platform sessions/recovery codes/TOTP, requiring enrolment again.
+
+Deletion is a manual thirty-day process: suspend, request with exact code, wait until the recorded date, then `python3 deploy/purge-tenant.py --code <code> --confirm <code> --env-file <private-runtime-env>`. Requires R3 tenant backup support. It takes and verifies a final dump before drops, holds the registry writer lock, refuses live connections and keeps aliases blocked in PURGED state. Never schedule purge. Only the owner can authorize a production purge; the release executor is prohibited from deleting production data.
