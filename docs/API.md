@@ -185,3 +185,30 @@ The current customer UI submits exactly one delivery per order and only checked 
 Product creation inherits `company_setting.default_currency`; omitted currency is accepted, an explicitly different currency fails 400. Product PATCH cannot change its recorded currency. A legacy product whose currency differs from Company Settings rejects price edits, currency patches or activation with 409 `COMPANY_CURRENCY_CONFLICT`; metadata/deactivation remains possible. Changing company currency fails 409 when any active or inactive product uses another currency. No automatic conversion/relabel/snapshot rewrite exists. A historic order retains its original price/currency/events.
 
 In public-demo mode, authenticated Seller GET product detail exposes primary plus immutable fictional gallery photos when the seed identity/hero hash still match. Custom Seller galleries and changed seed identity continue using stored content. The independent `/api/v1/demo/` API has no live store or credential input; its role, company/resource isolation, reset/expiry/limits and production gates are described in ADMIN_MULTI_COMPANY_DESIGN.md.
+
+
+## Platform API and tenant paths (R1)
+
+The platform is disabled unless `PLATFORM_ENABLED=1` and its validated file-based settings are present. The console is `/platform/` on the exact configured `PLATFORM_ADMIN_HOST`; these paths return 404 on other hosts. All JSON is `Cache-Control: no-store`. Every write requires the exact HTTPS admin Origin and `X-CSRF-Token`.
+
+| Method | Path under `/api/v1/platform` | Contract |
+| --- | --- | --- |
+| GET | `/csrf` | Five-minute encrypted login challenge cookie and CSRF token; no authenticated capability. |
+| POST | `/session` | `{username,password}` plus challenge/CSRF; creates a five-minute PASSWORD session. |
+| GET | `/session` | Session stage, username, TOTP enrolment flag and CSRF token. Unauthenticated: 401. |
+| POST | `/totp/enrol` | Restricted session only; setup key, issuer, account and otpauth URI. |
+| POST | `/totp/confirm` | `{code}` or `{recoveryCode}`; rotates to FULL (30-minute idle, four-hour absolute); first enrolment returns ten recovery codes once. |
+| DELETE | `/session` | FULL only; ends the current session. |
+| GET, POST | `/shops` | FULL only; list, or create `{code,name,currency,sellerUsername}`. Generated seller password and addresses returned once; caller-supplied passwords refused. |
+| GET | `/shops/{id}` | Safe metadata and counts; no database credential. |
+| POST | `/shops/{id}/{action}` | `expectedRevision` required. Actions: `suspend`, `resume`, `rename`, `request-deletion`, `cancel-deletion`, `reset-seller-password`. Rename adds `code,name`; deletion adds the exact `code`. |
+| GET | `/audit?limit=50&cursor=...` | Append-only events; hard cap 100, cursor paging. |
+| POST | `/account/password` | `{currentPassword,newPassword}`; ends other sessions. |
+| POST | `/account/recovery-codes` | `{password}`; replaces all recovery codes, returned once. |
+| GET | `/status` | FULL only; reachability, open pool size and counts by status. |
+
+Five failed password/TOTP attempts lock the account for 15 minutes; successful password verification alone cannot clear failures. Sign-in is limited to ten attempts per IP per 15 minutes. TOTP uses RFC 6238 SHA-1, six digits, 30 seconds, a one-step window, and refuses a used step. Recovery codes are hashed and single use. `platform_session` is HttpOnly, Secure, SameSite=Strict, path `/api/v1/platform`.
+
+Non-default shops add `/<code>` to normal paths: `/<code>/shop/`, `/<code>/seller/`, `/<code>/api/v1/...`, `/<code>/p/{id}`, `/<code>/s/home`. Seller cookies use `/<code>/api/v1/seller`. `GET <base>/api/v1/shop` adds `storageScope` = `t-` plus twelve hex characters from SHA-256 of the immutable tenant id. The default shop keeps its existing response and URLs. Dynamic tenant manifests have independent id/scope/start_url; aliases redirect 308 preserving the remaining path and query. Unknown, malformed, PROVISIONING, FAILED and PURGED codes return 404; SUSPENDED and DELETING return 503 without opening a tenant database. Platform outages do not affect the default shop or readiness.
+
+The default registry row cannot be mutated through the console. The limit is twenty non-purged shops including the default. Requested deletion retains data for thirty days; the console never drops a database. Manual purge retains the registry row and aliases in terminal PURGED state, preventing code reuse.

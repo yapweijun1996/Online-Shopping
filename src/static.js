@@ -17,10 +17,10 @@ const types = {
   '.webmanifest': 'application/manifest+json',
 };
 
-export async function serveStatic(request, pathname) {
+export async function serveStatic(request, pathname, basePath = '') {
   if (request.method !== 'GET' && request.method !== 'HEAD') throw new ApiError(405, 'METHOD_NOT_ALLOWED', 'Method not allowed.');
-  if (pathname === '/') return redirect('/shop/');
-  if (pathname === '/seller' || pathname === '/shop' || pathname === '/demo') return redirect(`${pathname}/`);
+  if (pathname === '/') return redirect(`${basePath}/shop/`);
+  if (['/seller', '/shop', '/demo', '/platform'].includes(pathname)) return redirect(`${basePath}${pathname}/`);
   let decoded;
   try {
     decoded = decodeURIComponent(pathname);

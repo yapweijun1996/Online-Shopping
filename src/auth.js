@@ -88,8 +88,9 @@ export async function deleteSession(database, token) {
   });
 }
 
-export function cookieFor(token, maxAge, secure) {
-  return `seller_session=${token}; HttpOnly; SameSite=Strict; Path=/api/v1/seller; Max-Age=${maxAge}${secure ? '; Secure' : ''}`;
+export function cookieFor(token, maxAge, secure, path = '/api/v1/seller') {
+  if (!/^\/(?:[a-z0-9]{3,30}\/)?api\/v1\/seller$/.test(path)) throw new Error('Invalid seller cookie path.');
+  return `seller_session=${token}; HttpOnly; SameSite=Strict; Path=${path}; Max-Age=${maxAge}${secure ? '; Secure' : ''}`;
 }
 
 export function sessionCookieFrom(header = '') {

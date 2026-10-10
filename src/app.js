@@ -26,6 +26,7 @@ import { PRODUCT_MUTATION_BODY_LIMIT } from './request-limits.js';
 import { isCrawler, previewPage, priceText, summary } from './share.js';
 import { createSecretBox } from './secret-box.js';
 import { singleTenantRegistry } from './tenants.js';
+import { rewriteTenantRequest } from './platform/registry.js';
 import { listAttentionMessages, listReplies, markReplyRead, messageSummary, orderMessages, resolveMessage } from './whatsapp-messages.js';
 import { createWhatsAppTransport } from './whatsapp-transport.js';
 import { disconnectWhatsAppConnection, listWhatsAppConnections, saveWhatsAppConnection } from './integration-connections.js';
@@ -79,6 +80,17 @@ async function createTenantApi({ store, config, serveStatic = null, whatsappTran
   const webhookLimiter = new SqlLimiter(store, 'whatsapp-webhook', { limit: 600, windowMs: LIMIT_WINDOW_MS });
   const connectionLimiter = new SqlLimiter(store, 'integration-connect', { limit: 10, windowMs: LIMIT_WINDOW_MS });
   const secretBox = config.integrationKeys ? createSecretBox(config.integrationKeys) : null;
+  const basePath = config.basePath || '';
+  const sellerCookie = (token, maxAge) => cookieFor(token, maxAge, config.production, `${basePath}/api/v1/seller`);
+  const prefix = (value) => typeof value === 'string' && /^\/(?:api|shop|seller|shared)\//.test(value) ? basePath + value : value;
+  const urlFields = new Set(['imageUrl', 'thumbnailUrl', 'src', 'thumbnail', 'full', 'url', 'productUrl']);
+  function prefixUrls(value, field = '') {
+    if (Array.isArray(value)) return value.map((item) => prefixUrls(item, field));
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, prefixUrls(item, key)]));
+    if (urlFields.has(field) || field === 'images') return prefix(value);
+    if (field === 'srcset' && typeof value === 'string') return value.replace(/(^|,\s*)(\/(?:api|shop|seller|shared)\/)/g, `$1${basePath}$2`);
+    return value;
+  }
 
   async function route(request, clientAddress) {
     const url = new URL(request.url);
@@ -115,27 +127,35 @@ async function createTenantApi({ store, config, serveStatic = null, whatsappTran
       const headers = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300' };
       if (!sharePath) {
         const page = previewPage({ title: setup.shopName, description: `${setup.shopName} — browse products and order online.`,
-          image: `${origin}/shop/share.png`, imageAlt: setup.shopName, url: `${origin}/shop/`, siteName: setup.shopName, enter: '/shop/' });
+          image: `${origin}${basePath}/shop/share.png`, imageAlt: setup.shopName, url: `${origin}${basePath}/shop/`, siteName: setup.shopName, enter: `${basePath}/shop/` });
         return new Response(page, { status: 200, headers });
       }
       const id = sharePath[1].toLowerCase();
       const product = await getProduct(store, id, false, config.shopMode);
       if (!product) return new Response('Product not found.', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' } });
-      const enter = `/shop/#product/${id}`;
+      const enter = `${basePath}/shop/#product/${id}`;
       if (!crawler) return new Response(null, { status: 302, headers: { Location: enter, 'Cache-Control': 'no-store' } });
       const picture = product.imageMedia?.[0]?.src || product.images?.[0] || product.imageUrl;
       const page = previewPage({
         title: product.name, description: summary(`${priceText(product.priceMinor, product.currency)} · ${product.description}`),
-        image: picture ? new URL(picture, origin).href : undefined, imageAlt: product.name, url: `${origin}/p/${id}`,
+        image: picture ? new URL(picture.startsWith('/api/') ? basePath + picture : picture, origin).href : undefined, imageAlt: product.name, url: `${origin}${basePath}/p/${id}`,
         siteName: setup.shopName, type: 'product', price: { amount: (product.priceMinor / 100).toFixed(2), currency: product.currency }, enter,
       });
       return new Response(page, { status: 200, headers });
     }
+    if (basePath && /^\/(shop|seller)\/manifest\.webmanifest$/.test(pathname) && ['GET', 'HEAD'].includes(method)) {
+      const app = pathname.split('/')[1], scope = `${basePath}/${app}/`;
+      return new Response(method === 'HEAD' ? null : JSON.stringify({ name: config.tenantName, short_name: config.tenantName.slice(0, 20),
+        id: scope, scope, start_url: scope, display: 'standalone', theme_color: '#176552', background_color: '#ffffff',
+        icons: [192, 512].map((size) => ({ src: `${basePath}/${app}/icons/icon-${size}.png`, sizes: `${size}x${size}`, type: 'image/png' })) }),
+        { headers: { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' } });
+    }
     if (!pathname.startsWith('/api/')) {
+      if (basePath && pathname === '/') return new Response(null, { status: 302, headers: { Location: `${basePath}/${url.host === new URL(config.sellerOrigin).host ? 'seller' : 'shop'}/`, 'Cache-Control': 'no-store' } });
       let decoded;
       try { decoded = decodeURIComponent(pathname).replace(/\/{2,}/g, '/'); } catch { throw new ApiError(404, 'NOT_FOUND', 'Not found.'); }
       if (/^\/demo(?:\/|$)/.test(decoded) && !demoEnabled) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
-      if (serveStatic) return serveStatic(request, pathname);
+      if (serveStatic) return serveStatic(request, pathname, basePath);
       throw new ApiError(404, 'NOT_FOUND', 'Not found.');
     }
     if (method === 'GET' && pathname === '/api/v1/shop') {
@@ -143,6 +163,7 @@ async function createTenantApi({ store, config, serveStatic = null, whatsappTran
       const company = await getCompanySettings(store);
       return json(200, {
         ...presentShopName(setup),
+        ...(config.storageScope ? { storageScope: config.storageScope } : {}),
         ...(config.shopMode === 'public-demo' ? { demoNamespace: shopObjectName(config.shopMode, config.demoRevision) } : {}),
         currency: company.defaultCurrency,
         demoRolesAvailable: quickLogin,
@@ -196,7 +217,7 @@ async function createTenantApi({ store, config, serveStatic = null, whatsappTran
       await loginLimiter.clear(clientAddress);
       const session = await createSession(store, account.id);
       return json(200, sessionView(account, session.csrfToken), {
-        'Set-Cookie': cookieFor(session.token, session.maxAge, config.production),
+        'Set-Cookie': sellerCookie(session.token, session.maxAge),
       });
     }
 
@@ -209,7 +230,7 @@ async function createTenantApi({ store, config, serveStatic = null, whatsappTran
       if (!account) throw new ApiError(503, 'UNAVAILABLE', 'No account is available.');
       const session = await createSession(store, account.id);
       return json(200, sessionView(account, session.csrfToken), {
-        'Set-Cookie': cookieFor(session.token, session.maxAge, config.production),
+        'Set-Cookie': sellerCookie(session.token, session.maxAge),
       });
     }
 
@@ -223,7 +244,7 @@ async function createTenantApi({ store, config, serveStatic = null, whatsappTran
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
       await deleteSession(store, token);
-      return json(200, { signedOut: true }, { 'Set-Cookie': cookieFor('', 0, config.production) });
+      return json(200, { signedOut: true }, { 'Set-Cookie': sellerCookie('', 0) });
     }
     // A temporary password (new account or reset) must be replaced before anything else works.
     // (On a quick sign-in site passwords cannot be changed, so the flag is ignored there rather than locking everyone out.)
@@ -262,7 +283,7 @@ async function createTenantApi({ store, config, serveStatic = null, whatsappTran
         if (quickLogin || !secretBox) return json(200, { available: false, connections: [] });
         // Every role may learn that WhatsApp is on (it decides whether Messages shows); only the Owner sees the connection.
         if (!can(account.role, 'settings.write')) return json(200, { available: true, connections: [] });
-        return json(200, { available: true, webhookUrl: `${config.publicOrigin || url.origin}/api/v1/webhooks/whatsapp`, connections: await listWhatsAppConnections(store) });
+        return json(200, { available: true, webhookUrl: `${config.publicOrigin || url.origin}${basePath}/api/v1/webhooks/whatsapp`, connections: await listWhatsAppConnections(store) });
       }
       if ((method === 'PUT' || method === 'DELETE') && environment) {
         requireOrigin(request, expectedOrigin);
@@ -372,7 +393,7 @@ async function createTenantApi({ store, config, serveStatic = null, whatsappTran
     if (method === 'GET' && sellerOrder && !sellerOrder[2]) {
       const order = await getSellerOrder(store, sellerOrder[1]);
       if (!order) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
-      return json(200, withProductLinks(order, config.publicOrigin || url.origin));
+      return json(200, withProductLinks(order, `${config.publicOrigin || url.origin}${basePath}`));
     }
     if (method === 'POST' && sellerOrder?.[2]) {
       requireOrigin(request, expectedOrigin);
@@ -384,9 +405,9 @@ async function createTenantApi({ store, config, serveStatic = null, whatsappTran
         // A passwordless sample site is open to anyone, so it must never be able to erase data permanently.
         if (quickLogin) throw new ApiError(403, 'FORBIDDEN', 'Erasing contact data is not available on a sample site.');
         await eraseOrderContact(store, sellerOrder[1], body, account.username);
-        return json(200, withProductLinks(await getSellerOrder(store, sellerOrder[1]), config.publicOrigin || url.origin));
+        return json(200, withProductLinks(await getSellerOrder(store, sellerOrder[1]), `${config.publicOrigin || url.origin}${basePath}`));
       }
-      return json(200, withProductLinks(await decideSellerOrder(store, sellerOrder[1], sellerOrder[2], body, account.username), config.publicOrigin || url.origin));
+      return json(200, withProductLinks(await decideSellerOrder(store, sellerOrder[1], sellerOrder[2], body, account.username), `${config.publicOrigin || url.origin}${basePath}`));
     }
     if (method === 'GET' && pathname === '/api/v1/seller/products/export.csv') {
       allow('catalog.write');
@@ -467,7 +488,7 @@ async function createTenantApi({ store, config, serveStatic = null, whatsappTran
       const body = await readJson(request, PRODUCT_MUTATION_BODY_LIMIT);
       if (method === 'POST') {
         const product = await trackCreate(store, account.username, () => createProduct(store, body));
-        return json(201, product, { Location: `/api/v1/seller/products/${product.id}` });
+        return json(201, product, { Location: `${basePath}/api/v1/seller/products/${product.id}` });
       }
       const product = await trackUpdate(store, sellerProduct[1], account.username, () => updateProduct(store, sellerProduct[1], body, config.shopMode));
       if (!product) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
@@ -478,7 +499,9 @@ async function createTenantApi({ store, config, serveStatic = null, whatsappTran
 
   return async function handle(request, { clientAddress = 'unknown' } = {}) {
     try {
-      return await route(request, clientAddress);
+      const result = await route(request, clientAddress);
+      if (!basePath || !result.headers.get('content-type')?.startsWith('application/json')) return result;
+      return new Response(JSON.stringify(prefixUrls(await result.json())), { status: result.status, headers: result.headers });
     } catch (error) {
       return errorResponse(error);
     }
@@ -490,22 +513,33 @@ async function createTenantApi({ store, config, serveStatic = null, whatsappTran
  * resolved to a tenant first; an unknown tenant is 404 and a suspended one 503 without touching any database.
  * Every tenant gets its own route table (limiters, secret box, quick sign-in decision), built on first use.
  */
-export async function createApi({ store, config, registry = null, serveStatic = null, whatsappTransport = createWhatsAppTransport() }) {
+export async function createApi({ store, config, registry = null, platformHandler = null, serveStatic = null, whatsappTransport = createWhatsAppTransport() }) {
   const tenants = registry ?? singleTenantRegistry({ store, config });
-  const handlers = new Map();
+  const handlers = new WeakMap();
   const handlerFor = (tenant) => {
-    if (!handlers.has(tenant.id)) {
-      handlers.set(tenant.id, createTenantApi({ store: tenant.store, config: tenant.config, serveStatic, whatsappTransport })
-        .catch((error) => { handlers.delete(tenant.id); throw error; }));
+    if (!handlers.has(tenant)) {
+      handlers.set(tenant, createTenantApi({ store: tenant.store, config: tenant.config, serveStatic, whatsappTransport })
+        .catch((error) => { handlers.delete(tenant); throw error; }));
     }
-    return handlers.get(tenant.id);
+    return handlers.get(tenant);
   };
   return async function handle(request, context = {}) {
     try {
-      const tenant = await tenants.resolve(request);
+      if (config?.platform && /^\/[^/?]*%|^\/\//.test(request.shopRawTarget || new URL(request.url).pathname)) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+      const url = new URL(request.url), platformPath = /^\/(?:platform(?:\/|$)|api\/v1\/platform(?:\/|$))/.test(url.pathname);
+      if (platformPath) {
+        if (!config?.platform || url.host !== config.platform.adminHost || !platformHandler) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+        if (url.pathname.startsWith('/api/')) return await platformHandler(request, context);
+        if (serveStatic) return await serveStatic(request, url.pathname);
+        throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+      }
+      if (config?.platform && url.host === config.platform.adminHost && !['/health', '/ready'].includes(url.pathname) &&
+        url.host !== new URL(config.sellerOrigin).host) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+      const tenant = await tenants.resolve(request, context);
+      if (tenant?.response) return tenant.response;
       if (!tenant) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
       if (tenant.status !== 'ACTIVE') throw new ApiError(503, 'SHOP_UNAVAILABLE', 'This shop is not available right now.');
-      return await (await handlerFor(tenant))(request, context);
+      return await (await handlerFor(tenant))(rewriteTenantRequest(request, tenant.config.basePath), context);
     } catch (error) {
       return errorResponse(error);
     }
