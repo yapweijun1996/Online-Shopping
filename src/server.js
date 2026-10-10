@@ -12,6 +12,8 @@ import { serveStatic } from './static.js';
 import { createSecretBox } from './secret-box.js';
 import { createWhatsAppTransport } from './whatsapp-transport.js';
 import { startWhatsAppWorker } from './whatsapp-outbox.js';
+import { createPlatformRuntime } from './platform/runtime.js';
+import { ApiError, errorResponse } from './http.js';
 
 function clientAddress(request, config) {
   const forwarded = request.headers['x-real-ip'];
@@ -19,7 +21,9 @@ function clientAddress(request, config) {
   return request.socket.remoteAddress || 'unknown';
 }
 
-function toFetchRequest(request) {
+function toFetchRequest(request, config) {
+  // WHATWG URLs normalize encoded dot segments. Reject the raw code position before that normalization.
+  if (config.platform && /^\/[^/?]*%|^\/\/|\\/.test(request.url)) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
   const headers = new Headers();
   for (let index = 0; index < request.rawHeaders.length; index += 2) {
     headers.append(request.rawHeaders[index], request.rawHeaders[index + 1]);
@@ -55,12 +59,16 @@ export async function createApp(config) {
     await database.close();
     throw error;
   }
-  const handle = await createApi({ store: database, config, serveStatic });
+  const platform = config.platform ? createPlatformRuntime({ store: database, config }) : null;
+  const handle = await createApi({ store: database, config, serveStatic, registry: platform?.registry,
+    platformHandler: platform ? (request, context) => platform.handle(request, context) : null });
+  platform?.connect().catch(() => {});
   const server = createServer(async (request, response) => {
     try {
-      const result = await handle(toFetchRequest(request), { clientAddress: clientAddress(request, config) });
+      const result = await handle(toFetchRequest(request, config), { clientAddress: clientAddress(request, config) });
       await writeFetchResponse(response, result);
     } catch (error) {
+      if (error instanceof ApiError && !response.headersSent) { await writeFetchResponse(response, errorResponse(error)); return; }
       console.error('Response failed:', error?.code || error?.name || 'ERROR');
       if (response.headersSent) response.destroy();
       else {
@@ -79,8 +87,9 @@ export async function createApp(config) {
     worker = startWhatsAppWorker({ store: database, secretBox: createSecretBox(config.integrationKeys), transport: createWhatsAppTransport() });
     return true;
   };
-  return { server, database, startWorker, close: () => new Promise((resolve, reject) => server.close(async (error) => {
+  return { server, database, platform, startWorker, close: () => new Promise((resolve, reject) => server.close(async (error) => {
     worker?.stop();
+    await platform?.close();
     await database.close();
     if (error) reject(error);
     else resolve();
@@ -94,6 +103,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === fileURLToPath(new URL(
     app.server.listen(config.port, () => {
       console.log(`Online Shopping listening on port ${app.server.address().port}`);
       app.startWorker();
+    });
+    for (const signal of ['SIGTERM', 'SIGINT']) process.once(signal, () => {
+      app.close().then(() => process.exit(0), () => process.exit(1));
     });
   } catch (error) {
     console.error('Startup failed:', error?.code || error?.name || 'ERROR');
