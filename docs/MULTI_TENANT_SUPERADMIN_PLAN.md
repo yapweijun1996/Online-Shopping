@@ -57,7 +57,7 @@ The current schema (`schema.sql`, version 21 and later): `shop_setup` (the shop)
 ### 4.1 SuperAdmin account and sign-in
 
 - Created at first start from Docker secret files (`PLATFORM_ADMIN_USERNAME`, `PLATFORM_ADMIN_PASSWORD_FILE`), the same pattern as the seller admin today. No default password.
-- **Password plus mandatory TOTP [owner, 2026-10-05].** TOTP is RFC 6238 (HMAC-SHA1, 30 s, 6 digits, plus or minus one step) built on `node:crypto`, no new dependency; a used step cannot be reused. Enrolment is forced at the first sign-in and shows 10 one-time recovery codes once.
+- **Password plus mandatory TOTP [owner, 2026-10-05].** TOTP is RFC 6238 (HMAC-SHA1, 30 s, 6 digits, plus or minus one step) built on `node:crypto`, no new dependency; a used step cannot be reused. Enrolment is forced at the first sign-in through a restricted, password-only session that can only show the secret and accept one confirming code; the full session and the 10 one-time recovery codes (shown once) come only after that confirmation.
 - Throttling: login limiter per address and per account, lockout after repeated failures, every attempt audited. Separate cookie name and CSRF token from tenant sessions; origin and CSRF checks on every write.
 - **Where it lives [proposal]:** its own hostname `admin.gmb01.xyz`, so its cookie, CSP and origin checks are separate from shops. This needs one Cloudflare step by the owner (a DNS record and an ingress rule in `cloudflared.yml`, which is a protected file). Optional extra gate: Cloudflare Access (an email one-time code) in front of that hostname, free for a few users. Alternative without a new hostname: a path on the seller hostname, weaker separation.
 
@@ -70,7 +70,7 @@ List tenants with status, schema version, last activity and order counts; create
 Form: shop code (3 to 30 letters and digits, lower case, reserved words refused), shop name, currency (MYR or SGD), seller username, optional initial password (otherwise generated).
 
 1. Validate; insert `tenant` as `PROVISIONING` and audit.
-2. Create the database role (random password, sealed with the master key) and the database owned by it, through a **provisioner role** that can create databases and roles but cannot read tenant data. This is one new privileged credential, mounted as a Docker secret only into the backend.
+2. Create the database role (random password, sealed with the master key) and the database owned by it, through a **provisioner role** with `CREATEDB` and `CREATEROLE`. In PostgreSQL 16 the creator of a role receives administrative rights over it and can grant itself the right to act as that role, so this credential must be treated as able to reach every shop's data: it is one new cross-shop privileged secret, mounted as a Docker secret only where provisioning runs and used only by the create-shop flow. A narrow privileged database function that creates the role and database and leaves the caller without rights over them is the preferred longer-term design (P4 decision).
 3. Apply the latest `schema.sql` as the tenant role; run `setupShop` (production mode, shop name) and set the company currency.
 4. Create the seller (`ensureAdmin`) with a one-time password; mark the seller as "must change password at first sign-in" (small new feature).
 5. Mark `ACTIVE`, audit, show the one-time password and the two URLs once.
@@ -79,7 +79,7 @@ If any step fails the tenant becomes `FAILED`; the retry cleans up the half-crea
 
 ### 4.4 Suspend, delete, rename
 
-- **Suspend:** every tenant route answers "shop unavailable" (503) and the WhatsApp worker skips it; data is kept.
+- **Suspend:** every tenant route answers "shop unavailable" (503) and the WhatsApp worker skips it; data is kept. P4 only adds the action; the 503 depends on P5 (tenant routing) and the worker skip on P7, so suspension is not an effective control before those phases.
 - **Delete:** two-step SuperAdmin confirmation, a final dump first, database dropped only after a retention period (proposal: 30 days). Never automatic.
 - **Rename code:** SuperAdmin only [owner]; the old code stays as an alias that redirects. Browser data is keyed by an internal tenant id, not the code.
 
@@ -125,7 +125,7 @@ Rough size: P1 small, P2 medium, P3 medium, P4 medium, P5 large, P6 large, P7 me
 
 ## 7. Schema upgrades and deploys with many databases
 
-- The updater's upgrade step runs the platform upgrade and then every tenant database, in order, after a verified backup of all of them; a failure stops the deployment before traffic moves (same statuses as today).
+- The updater's upgrade step runs the platform upgrade and then every tenant database, in order, after a verified backup of all of them; a failure stops the deployment before traffic moves (same statuses as today) and the databases already upgraded are restored from that backup. This is not atomic: until traffic switches the serving release refuses an upgraded shop (the pool rejects an unexpected schema version), so an upgraded shop is unavailable for that window.
 - Upgrades stay additive and repeatable; a rehearsal against restored copies of every database is required before merge (the check that caught the schema 20 problem), and the backend refuses to serve a tenant whose schema is older than the release expects.
 - New tenants are always created from the latest `schema.sql`.
 - Known limit, same as today: after a successful upgrade the previous release cannot roll back.
@@ -139,8 +139,8 @@ Staff accounts and roles, custom domains per tenant, SuperAdmin impersonation, b
 - **Host capacity:** the MacBook Air is already heavily loaded; many tenants multiply database work, pools and backups. Mitigation: bounded pools with idle eviction, a stated maximum number of tenants for this host (proposal: 20), and a move to the planned Ubuntu server before real clients rely on it.
 - **PWA scope change:** shops at new paths are new apps for browsers; the legacy root is kept so existing installs are not broken.
 - **One process, many tenants:** a crash affects all; mitigated by health checks, restart policy and per-tenant error isolation in workers.
-- **Upgrade across N databases:** partial failure; mitigated by the all-or-stop policy and the rehearsal.
-- **Provisioner credential:** can create databases and roles; kept as a separate secret, not a superuser, never exposed to routes other than the SuperAdmin provisioning call.
+- **Upgrade across N databases:** not atomic. The serving release refuses a shop whose schema has been upgraded ahead of it, so each upgraded shop is unavailable until the switch, and a failure part-way leaves the already-upgraded shops unavailable until they are restored from the pre-deployment backup. P7 must restore every upgraded database automatically and verify it before reporting failure, and must decide between a short maintenance window and letting a release accept the next additive schema version.
+- **Provisioner credential:** has `CREATEDB` and `CREATEROLE`, which in PostgreSQL 16 gives it administrative rights over every role it creates, so it can in principle read any shop; treat it as cross-shop privileged. Kept as a separate secret, not a superuser, never exposed to routes other than the SuperAdmin provisioning call.
 - **Cloudflare tunnel changes are manual** (protected file): the admin hostname needs the owner.
 
 ## 10. Decisions

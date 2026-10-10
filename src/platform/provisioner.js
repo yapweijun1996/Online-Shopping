@@ -1,7 +1,8 @@
 // Creating a shop (docs/MULTI_TENANT_SUPERADMIN_PLAN.md, 4.3): its own PostgreSQL role and database, the latest schema,
 // the shop settings and its single seller. Every step is safe to repeat: a half-made shop is marked FAILED and the next
-// attempt removes what was left before starting again. The provisioner credential can create databases and roles but is
-// never used to read shop data; the shop itself is set up through the shop's own role.
+// attempt removes what was left before starting again. The provisioner credential has CREATEDB and CREATEROLE; in
+// PostgreSQL 16 the creator of a role gets administrative rights over it, so treat the credential as cross-shop
+// privileged. This code never uses it to read shop data: the shop itself is set up through the shop's own role.
 import pg from 'pg';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { FieldError, boundedText } from '../validation.js';
