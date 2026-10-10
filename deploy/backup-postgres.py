@@ -54,9 +54,8 @@ def legacy_backup(args, postgres, backend, directory, expected_schema):
         for field in ['schemaVersion', 'schemaSha256', 'tables']:
             if evidence[field] != restored[field]:
                 raise RuntimeError('Restore verification mismatch: ' + field)
-        smoke = "import{readConfig}from'./src/config.js';import{createApp}from'./src/server.js';const c=readConfig();const a=await createApp(c);await new Promise(r=>a.server.listen(0,'127.0.0.1',r));const b='http://127.0.0.1:'+a.server.address().port;for(const p of ['/ready','/api/v1/products']){const r=await fetch(b+p);if(!r.ok)throw Error('Restore smoke failed')}await a.close();"
         subprocess.run(['docker', '--context', args.context, 'exec', '-e', 'DATABASE_NAME=' + name, '-e', 'PLATFORM_ENABLED=0',
-            backend, 'node', '--input-type=module', '-e', smoke], check=True)
+            backend, 'node', 'scripts/restore-smoke.mjs'], check=True)
         if os.stat(temporary).st_mode & 0o777 != 0o600:
             raise RuntimeError('Unexpected archive permissions.')
         os.rename(temporary, final)

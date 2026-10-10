@@ -30,7 +30,10 @@ try {
       }
       if (mode === 'older') {
         await store.setSchemaVersion(23);
-        if (shop.code === 'bravo') await store.exec('ALTER TABLE product_gallery_image ADD CONSTRAINT fixture_upgrade_failure CHECK (position > 0)');
+        if (shop.code === 'bravo') {
+          await store.exec('ALTER TABLE product_gallery_image DROP CONSTRAINT IF EXISTS fixture_upgrade_failure');
+          await store.exec('ALTER TABLE product_gallery_image ADD CONSTRAINT fixture_upgrade_failure CHECK (position > 0)');
+        }
       } else if (mode === 'verify-failure') {
         assert.equal(await store.schemaVersion(), 23);
         if (shop.code === 'alpha') assert.equal((await store.get("SELECT has_table_privilege('online_shopping_app','public.option_type','SELECT') AS allowed")).allowed, false);

@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import { readConfig } from '../src/config.js';
 import { SCHEMA_VERSION } from '../src/db.js';
 import { createApp } from '../src/server.js';
+import { restoreSmoke } from '../scripts/restore-smoke.mjs';
 
 const username = 'local_owner';
 const password = 'PrivateExamplePass123!';
@@ -108,6 +109,20 @@ test('deployment maintenance rejects new work and reports existing requests unti
     rmSync(flag);
     assert.equal((await f.request('GET', '/api/v1/products')).response.status, 200);
   } finally { release(); }
+});
+
+test('restore smoke ignores the deployment flag without reopening the paused backend', { timeout: 5000 }, async () => {
+  const f = await fixture();
+  const flag = path.join(path.dirname(f.config.dbPath), 'maintenance.flag');
+  f.config.maintenancePath = flag;
+  writeFileSync(flag, 'paused\n', { mode: 0o600 });
+  try {
+    assert.equal((await f.request('GET', '/api/v1/products')).response.status, 503);
+    await restoreSmoke(f.config);
+    assert.equal(f.config.maintenancePath, flag);
+    assert.equal(statSync(flag).isFile(), true);
+    assert.equal((await f.request('GET', '/api/v1/products')).response.status, 503);
+  } finally { await f.close(); }
 });
 
 test('production startup refuses missing and weak credentials', () => {
