@@ -1,5 +1,6 @@
+import { storageKey as scopedKey } from '../shared/storage-scope.js';
 (() => {
-  const storageKey = 'online-shopping-shop-palette-v1';
+  const storageKey = scopedKey('online-shopping-shop-palette-v1');
   const paletteIds = new Set(['evergreen-teal', 'warm-plum', 'ocean-blue', 'navy-orange', 'high-contrast', 'graphite']);
   const defaultPalette = 'evergreen-teal';
   const validPalette = (value) => paletteIds.has(value) ? value : defaultPalette;

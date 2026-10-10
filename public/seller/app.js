@@ -1,3 +1,5 @@
+import { storageKey } from '../shared/storage-scope.js';
+import { apiUrl } from '../shared/base-path.js';
 import { formatDate, formatMoney, locale, setupLanguageMenu, t } from '../shared/i18n.js';
 import { registerWorker } from '../shared/pwa.js';
 import { revealImage } from '../shared/image-reveal.js';
@@ -59,7 +61,7 @@ let updateActions = null;
 let updateDismissed = false;
 let updateView = null;
 let updateIdentity = '';
-const sessionHintKey = 'online-shopping-seller-session-hint';
+const sessionHintKey = storageKey('online-shopping-seller-session-hint');
 mountTabIcon(window.sellerPalette);
 const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'confirmations', 'audit', 'messages', 'categories', 'options', 'company', 'team']);
 // Pages a role cannot use are hidden and their addresses fall back to the dashboard. The server refuses them anyway.
@@ -117,7 +119,7 @@ const baseTitle = () => `${t('sellerPortal')} · Online Shopping`;
 const orderAlerts = createOrderAlerts({ badge: byId('pending-badge'), button: byId('alerts-button'), baseTitle, onUnauthorized: () => showLogin('authError') });
 document.title = baseTitle();
 document.addEventListener('ordersdecided', () => orderAlerts.poll());
-registerWorker('/seller/sw.js', '/seller/', {
+registerWorker('./sw.js', './', {
   currentVersion: APP_VERSION, autoUpdate: true,
   guard: () => ({ dirty: hasUnsavedChanges(), busy: mutationsBusy() || activePage()?.isBusy?.() === true, signature: JSON.stringify([currentRoute, draftSignature(), activePage()?.draftSignature?.()]) }),
   confirmUpdate: confirmModal,
@@ -235,7 +237,7 @@ function showWorkspace(session) {
   accountWrap.hidden = false;
   document.body.classList.add('seller-signed-in');
   const sessionToken = csrfToken;
-  fetch('/api/v1/seller/setup', { cache: 'no-store' }).then(async response => {
+  fetch(apiUrl('v1/seller/setup'), { cache: 'no-store' }).then(async response => {
     if (!response.ok) return;
     const setup = await response.json();
     if (workspace.hidden || csrfToken !== sessionToken) return;
@@ -364,7 +366,7 @@ async function renderDashboard(content) {
   shell.append(loading);
   content.replaceChildren(shell);
   try {
-    const response = await fetch('/api/v1/seller/setup', { cache: 'no-store' });
+    const response = await fetch(apiUrl('v1/seller/setup'), { cache: 'no-store' });
     if (response.status === 401) { if (isCurrent()) showLogin('authError'); return; }
     if (!response.ok) throw new Error('setup failed');
     const setup = await response.json();
@@ -395,7 +397,7 @@ async function renderDashboard(content) {
     const productCount = stat('products', t('loading'));
     const currency = stat('currency', t('loading'));
     stat('shopSetup', t(setup.mode === 'demo' ? 'dashboardSimulated' : 'dashboardProduction'));
-    fetch('/api/v1/seller/company-settings', { cache: 'no-store' }).then(async response => {
+    fetch(apiUrl('v1/seller/company-settings'), { cache: 'no-store' }).then(async response => {
       if (response.status === 401) { if (isCurrent()) showLogin('authError'); return; }
       if (!response.ok) throw new Error('settings failed');
       const settings = await response.json();
@@ -408,7 +410,7 @@ async function renderDashboard(content) {
     const panels = [
       {
         title: 'dashboardSubmittedOrders', intro: 'dashboardOrdersIntro',
-        path: '/api/v1/seller/orders?status=SUBMITTED&limit=100', count: orderCount,
+        path: apiUrl('v1/seller/orders?status=SUBMITTED&limit=100'), count: orderCount,
         action: 'dashboardReviewOrders', view: 'orders', empty: 'dashboardNoSubmittedOrders',
         render(item) {
           const row = node('li', 'dashboard-order-row');
@@ -433,7 +435,7 @@ async function renderDashboard(content) {
       },
       {
         title: 'dashboardRecentProducts', intro: 'dashboardProductsIntro',
-        path: '/api/v1/seller/products?limit=100', count: productCount,
+        path: apiUrl('v1/seller/products?limit=100'), count: productCount,
         action: 'dashboardViewProducts', view: 'products', empty: 'noProducts',
         render(item) {
           const row = node('li', 'dashboard-product-row');
@@ -674,7 +676,7 @@ byId('sign-out-button').addEventListener('click', async () => {
   if (!confirmLeave()) return;
   closeAccount();
   try {
-    const response = await fetch('/api/v1/seller/session', { method: 'DELETE', headers: { 'X-CSRF-Token': csrfToken } });
+    const response = await fetch(apiUrl('v1/seller/session'), { method: 'DELETE', headers: { 'X-CSRF-Token': csrfToken } });
     if (!response.ok) throw new Error('sign out failed');
     showLogin('signedOut');
   } catch {
@@ -692,7 +694,7 @@ byId('login-form').addEventListener('submit', async (event) => {
   submit.disabled = true;
   setLoginMessage('');
   try {
-    const response = await fetch('/api/v1/seller/session', {
+    const response = await fetch(apiUrl('v1/seller/session'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: byId('username').value, password: byId('password').value }),
@@ -728,7 +730,7 @@ if (sessionHint()) {
   showLogin('loading', false);
   const restoreView = sessionViewSequence;
   const ownsRestore = () => restoreView === sessionViewSequence;
-  fetch('/api/v1/seller/session').then(async (response) => {
+  fetch(apiUrl('v1/seller/session')).then(async (response) => {
     if (!ownsRestore()) return;
     if (response.ok) {
       const session = await response.json();

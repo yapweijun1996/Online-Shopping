@@ -44,11 +44,23 @@ test('shop theme color matches its brand token and is cached offline', () => {
   assert.ok(brand, 'shop brand token is defined');
   assert.equal(html.match(/<meta name="theme-color" content="(#[0-9a-f]{6})">/i)?.[1], brand);
   assert.equal(manifest.theme_color, brand);
-  assert.match(style, /@import url\('\/shop\/tokens\.css'\)/);
-  assert.match(worker, /'\/shop\/tokens\.css'/);
+  assert.match(style, /@import url\('\.\/tokens\.css'\)/);
+  assert.match(worker, /'\.\/tokens\.css'/);
 });
 
 import vm from 'node:vm';
+
+test('a controlled renamed-shop navigation propagates the same-origin alias instead of the old shell', async () => {
+  const events = new Map(), shell = new Response('Old cached shell'); let pending;
+  const context = { URL, Response, Request, caches: { open: async () => ({ match: async () => shell }) },
+    fetch: async () => ({ ok: true, redirected: true, url: 'https://shop.example.test/newcode/shop/?q=fixture' }),
+    self: { location: { origin: 'https://shop.example.test' }, addEventListener: (name, callback) => events.set(name, callback) } };
+  vm.runInNewContext(readFileSync(new URL('../public/shared/sw-core.js', import.meta.url), 'utf8'), context);
+  context.self.setupOfflineWorker({ cachePrefix: 'tenant-oldcode-shop', version: 'fixture', assets: [], scopePath: '/oldcode/shop/', offlinePage: '/oldcode/shop/offline.html' });
+  events.get('fetch')({ request: { method: 'GET', mode: 'navigate', url: 'https://shop.example.test/oldcode/shop/?q=fixture' }, respondWith: (result) => { pending = result; } });
+  const response = await pending;
+  assert.equal(response.status, 308); assert.equal(response.headers.get('location'), 'https://shop.example.test/newcode/shop/?q=fixture'); assert.notEqual(response, shell);
+});
 
 test('Seller activation defers reload for primary-image removal and newly opened order decisions without an unload prompt', async () => {
   const seller = readFileSync(new URL('../public/seller/app.js', import.meta.url), 'utf8');
@@ -173,14 +185,35 @@ test('worker reports its own version and activates early only on explicit reques
   assert.equal(skips, 1);
 });
 
-test('every relative shop module dependency is present in the offline shell allowlist', () => {
-  const worker = readFileSync(new URL('../public/shop/sw.js', import.meta.url), 'utf8');
-  const assets = [...worker.matchAll(/'(\/[^']+)'/g)].map(match => match[1]);
-  for (const asset of assets.filter(path => path.endsWith('.js'))) {
-    const source = readFileSync(new URL(`../public${asset}`, import.meta.url), 'utf8');
-    for (const [, dependency] of source.matchAll(/(?:from\s+|import\s*)['"](\.[^'"]+)['"]/g)) {
-      const path = new URL(dependency, `https://example.test${asset}`).pathname;
-      assert.ok(assets.includes(path), `${asset} depends on uncached ${path}`);
+function shellConfig(surface, base = '') {
+  let config;
+  vm.runInNewContext(readFileSync(new URL(`../public/${surface}/sw.js`, import.meta.url), 'utf8'), {
+    URL, importScripts() {}, self: { registration: { scope: `https://example.test${base}/${surface}/` }, setupOfflineWorker(value) { config = value; } },
+  });
+  return config;
+}
+test('every relative shell module dependency is cached for default and tenant surfaces', () => {
+  for (const surface of ['shop', 'seller']) for (const base of ['', '/alpha']) {
+    const config = shellConfig(surface, base), assets = Array.from(config.assets);
+    assert.ok(assets.length > 30);
+    for (const asset of assets.filter(path => path.endsWith('.js'))) {
+      const source = readFileSync(new URL(`../public${asset.startsWith(base + '/') ? asset.slice(base.length) : asset}`, import.meta.url), 'utf8');
+      for (const [, dependency] of source.matchAll(/(?:from\s+|import\s*\(?)['"](\.[^'"]+)['"]/g)) {
+        const path = new URL(dependency, `https://example.test${asset}`).pathname;
+        assert.ok(assets.includes(path), `${asset} depends on uncached ${path}`);
+      }
+    }
+  }
+});
+test('tenant worker scopes and cache prefixes never overlap legacy or other tenants', () => {
+  for (const surface of ['shop', 'seller']) {
+    assert.equal(shellConfig(surface).cachePrefix, `os-${surface}`);
+    for (const code of ['alpha', 'bravo']) {
+      const config = shellConfig(surface, `/${code}`);
+      assert.equal(config.cachePrefix, `tenant-${code}-${surface}`);
+      assert.equal(config.scopePath, `/${code}/${surface}/`);
+      assert.equal(config.offlinePage, `/${code}/${surface}/offline.html`);
+      assert.ok(!config.cachePrefix.startsWith('os-'));
     }
   }
 });

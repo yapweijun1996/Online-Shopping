@@ -139,3 +139,10 @@ None recorded. Historical baseline failures above do not block unrelated work.
 - Host load reached approximately 100 with memory pressure; heavy task-created QA work was stopped. A bounded request to stop the rehearsal application containers timed out because the Docker daemon was unresponsive; their stopped state is not claimed. Other containers, VMs, LaunchAgents and production state were not modified.
 - This rollback removes R2 application changes only. It does not modify production data, main schema, existing secrets, the protected PostgreSQL or tunnel service definitions. Uncommitted R3 work is preserved in the separate execution worktree.
 - D0-17: Use a separate executor-owned rollback worktree and branch from the deployed R2 merge so no R3 changes can enter the emergency rollback. CI is still mandatory. Production restoration remains pending observed readiness and updater/container evidence.
+
+
+## R2 recovery preparation — 2026-10-11
+
+- D0-20: Prepare a separate owned recovery branch `codex/mt-r2-restore` from verified rollback main `3bddb42b8340a9a7ca951429f88f49157ee84ee2`, restoring only R2 source and retaining the incident ledger. The request authorizes normal PR preparation; production recovery and the previous release gate still control merge. No R3 operations enter this release.
+- Restores the R2 implementation from merge `1fef9aead7bb3a6aa8b1b4110c85e04cddfaff56`. Preserve the rollback/incident record rather than reverting its documentation away. Real-stack readiness must recover and the rollback must deploy/verify before this branch can merge. Production root/browser update must be verified again after its eventual deployment.
+- The host Docker daemon remains unavailable. This is a draft preparation, not a claim of recovery, activation or a resolved host root cause.

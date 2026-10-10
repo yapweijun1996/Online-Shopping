@@ -2,7 +2,7 @@
 
 /* The preview URL of one of our own image URLs; the server answers with the full image when no preview exists. */
 export function thumbUrl(url) {
-  if (typeof url !== 'string' || !url.startsWith('/api/')) return url;
+  if (typeof url !== 'string' || !/^\/(?:[a-z0-9]{3,30}\/)?api\//.test(url)) return url;
   return url + (url.includes('?') ? '&' : '?') + 'size=thumb';
 }
 
