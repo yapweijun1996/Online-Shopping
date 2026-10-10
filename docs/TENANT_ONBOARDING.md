@@ -7,7 +7,7 @@ Status: **R1 core built; browser/edge, operations and production activation rema
 - One repository, one image, one set of containers (`backend`, `frontend`, `postgres`, `tunnel`). Merging to `main` builds that one image and the updater deploys it once for every shop. **[built for one shop; P7 makes it cover every shop]**
 - Every shop has its own PostgreSQL database and its own database role. A shop's role cannot even connect to another shop's database. **[built, P2]**
 - A small platform database holds the SuperAdmin, the list of shops and an append-only audit trail. It holds no catalog, order or customer data, but it does hold, for every shop, the name, currency, seller username, database identifiers and the sealed database password, so the platform database and its backups are sensitive. **[built, P2]**
-- Addresses: `shop.gmb01.xyz/<code>/` for buyers and `seller.gmb01.xyz/<code>/` for the shop's seller; the SuperAdmin is at `admin.gmb01.xyz`. The current live site stays at the root as the default shop. **[built: R1–R2; production activation R4]**
+- Addresses: `shop.gmb01.xyz/<code>/` for buyers and `seller.gmb01.xyz/<code>/` for the shop's seller; the SuperAdmin is at `admin.gmb01.xyz`. The current live site stays at the root as the default shop. **[planned: P5, P6; SuperAdmin host P3]**
 
 ## 1. One-time preparation by the owner (before the first new shop)
 
@@ -30,10 +30,10 @@ Status: **R1 core built; browser/edge, operations and production activation rema
 
 ## 3. What the seller does
 
-1. Opens `seller.gmb01.xyz/<code>/`, signs in with the one-time password and must choose a new one. **[built: R1–R2; production activation R4]**
+1. Opens `seller.gmb01.xyz/<code>/`, signs in with the one-time password and must choose a new one. **[forced change built; the address needs P5, P6]**
 2. Adds categories, products (or imports a CSV), sets company settings. Adds Managers or Staff if wanted; the roles live inside the shop's own database. **[built]**
 3. Optional: connects the shop's own WhatsApp Business account (own Meta app and number, the webhook address includes the shop code) and may pick a colour palette, which is a per-browser preference (stored in that browser, not a shop setting). **[connection built; per-shop webhook address P7]**
-4. Shares `shop.gmb01.xyz/<code>/` with buyers. Buyers stay guests, order status lookups stay per shop. **[built: R1–R2; production activation R4]**
+4. Shares `shop.gmb01.xyz/<code>/` with buyers. Buyers stay guests, order status lookups stay per shop. **[planned: P5, P6]**
 
 ## 4. Everyday operation
 
@@ -63,4 +63,4 @@ One code base means every shop gets every feature at the same moment. There is n
 
 ## 7. Order of work
 
-P3 SuperAdmin sign-in, P4 create and manage shops, P5 and P6 addresses and front end under `/<code>/`, P7 updater and backups for every shop, P8 security review and drills. P3–P6 are built in R1–R2. Production activation is gated on R3 operations and the R4 rehearsal, review and host prerequisites; the legacy root remains the default shop.
+P3 SuperAdmin sign-in, P4 create and manage shops, P5 and P6 addresses and front end under `/<code>/`, P7 updater and backups for every shop, P8 security review and drills. Until P5 and P6 are merged, new shops can exist but cannot be opened in a browser; the live site is not affected by any of it.

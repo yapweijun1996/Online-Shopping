@@ -38,9 +38,7 @@ export async function registerWorker(script, scope, { returnUrl, target, onState
   let activationSignature;
   let activationDirty = false;
   let autoTimer;
-  const resolvedScript = globalThis.location?.href ? new URL(script, location.href).pathname : script;
-  // Preserve legacy keys while preventing another shop in this tab from throttling an update.
-  const AUTO_KEY = `pwa-auto-update:${resolvedScript}`;
+  const AUTO_KEY = `pwa-auto-update:${script}`;
   // Applies a ready update without a click, but only when no order submission or unsaved draft would be lost.
   function autoApply() {
     clearTimeout(autoTimer);

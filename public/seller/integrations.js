@@ -1,4 +1,3 @@
-import { apiUrl } from '../shared/base-path.js';
 import { messages, t, translate } from '../shared/i18n.js';
 
 const keys = ['integrationsHeading','integrationsIntro','integrationsUnconfigured','integrationsContract','integrationsRisk','integrationsPrepared','integrationsShipping','integrationsMessaging'];
@@ -36,7 +35,7 @@ export function mountIntegrations(root, { csrfToken, onUnauthorized }) {
   async function load() {
     const request = ++epoch; statusKey = 'loading'; retry.hidden = true; render();
     try {
-      const response = await fetch(apiUrl('v1/seller/integrations'), { cache: 'no-store' });
+      const response = await fetch('/api/v1/seller/integrations', { cache: 'no-store' });
       if (!current(request)) return;
       if (response.status === 401) { onUnauthorized(); return; }
       if (!response.ok) throw new Error('unavailable');

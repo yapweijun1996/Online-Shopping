@@ -1,4 +1,3 @@
-import { apiUrl } from '../shared/base-path.js';
 import { formatDate, t, translate } from '../shared/i18n.js';
 import { statusKey } from './order-status-label.js';
 import './trail-copy.js';
@@ -66,7 +65,7 @@ export function mountAudit(root, { onUnauthorized }) {
     if (to.value) params.set('to', startOfNextDay(to.value));
     more.disabled = true; errorKey = '';
     try {
-      const response = await fetch(apiUrl(`v1/seller/audit-log?${params}`), { cache: 'no-store' });
+      const response = await fetch(`/api/v1/seller/audit-log?${params}`, { cache: 'no-store' });
       if (response.status === 401) { if (active) onUnauthorized(); return; }
       if (!response.ok) throw new Error('audit failed');
       const page = await response.json();

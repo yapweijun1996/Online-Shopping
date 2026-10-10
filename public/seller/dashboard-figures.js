@@ -1,4 +1,3 @@
-import { apiUrl } from '../shared/base-path.js';
 import './ops-copy.js';
 import { formatMoney, t } from '../shared/i18n.js';
 
@@ -30,7 +29,7 @@ export function mountFigures({ isCurrent, onUnauthorized }) {
   async function load() {
     body.textContent = t('loading');
     try {
-      const response = await fetch(apiUrl('v1/seller/dashboard'), { cache: 'no-store' });
+      const response = await fetch('/api/v1/seller/dashboard', { cache: 'no-store' });
       if (response.status === 401) { if (isCurrent()) onUnauthorized(); return; }
       if (!response.ok) throw new Error('figures failed');
       const data = await response.json();

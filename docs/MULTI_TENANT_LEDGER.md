@@ -7,8 +7,8 @@ Started 2026-10-10 (Asia/Singapore). Source of truth: [MULTI_TENANT_GOAL.md](MUL
 | Release | State | Evidence |
 | --- | --- | --- |
 | R0 | DEPLOYED, VERIFIED | [PR #126](https://github.com/yapweijun1996/Online-Shopping/pull/126), merge `ada984ba9feab52cb7f22abf4bf2e205af238092`; deployed log followed by `up_to_date`; 10 production probes and zero restarts. |
-| R1 | DEPLOYED, VERIFIED | [PR #127](https://github.com/yapweijun1996/Online-Shopping/pull/127), merge `71f5d27b1abc1471e6b7e8da740138dd122a58b2`; branch/PR CI green. |
-| R2 | VERIFIED, CI PENDING | 482 unit tests; 108 real Caddy checks; two installed PWAs with standalone offline launch and controlled rename; baseline pass-set retained. |
+| R1 | IN PROGRESS | Platform core, no production settings. |
+| R2 | NOT STARTED | Browser and edge. |
 | R3 | NOT STARTED | Operations. |
 | R4 | NOT STARTED | Rehearsal, hardening and activation. |
 
@@ -78,19 +78,19 @@ Actual browser pass-set: `scripts/qa-draft-browser.mjs` and `scripts/qa-followup
 | Item | Current evidence | Status |
 | --- | --- | --- |
 | MT-01 | Baseline curl: both hosts health/ready 200 with current SHA, shop/seller shells 200, public catalog 200, unauthenticated seller session 401; both manifests resolve id/scope/start_url to original `/shop/` and `/seller/`. `production-baseline.json`. | BASELINE PASS |
-| MT-02 | R1 disabled-config tests, CI without platform secrets, and inert production deployment. | PASS |
+| MT-02 | Pending the required release and real-stack evidence. | PENDING |
 | MT-03 | Pending the required release and real-stack evidence. | PENDING |
 | MT-04 | Pending the required release and real-stack evidence. | PENDING |
 | MT-05 | Pending the required release and real-stack evidence. | PENDING |
-| MT-06 | `tenant-routing.test.js`: full matrix, streamed POST, no rejected tenant store opens, cache/probe bounds and eviction identity. R1/R2 full suite. | PASS |
-| MT-07 | R1 PostgreSQL negative isolation suite, same identifiers, cookies/CSRF/access keys, default protection and quick-login denial. | PASS |
-| MT-08 | Exact-count guard and Chrome installed/offline/update/rename plus legacy pass-set. Production R2 activation/update pending. | PARTIAL |
-| MT-09 | Same-profile Chrome model/UI checks for two shops; default keys and independent active caches preserved. `r2-tenant-browser.json`. | PASS |
-| MT-10 | Real Caddy image/stub backend, 108 host/privacy/redirect/crawler/static/body checks. `r2-caddy-routing.json`. | PASS |
+| MT-06 | Pending the required release and real-stack evidence. | PENDING |
+| MT-07 | Pending the required release and real-stack evidence. | PENDING |
+| MT-08 | Pending the required release and real-stack evidence. | PENDING |
+| MT-09 | Pending the required release and real-stack evidence. | PENDING |
+| MT-10 | Pending the required release and real-stack evidence. | PENDING |
 | MT-11 | Pending the required release and real-stack evidence. | PENDING |
 | MT-12 | Pending the required release and real-stack evidence. | PENDING |
 | MT-13 | Pending the required release and real-stack evidence. | PENDING |
-| MT-14 | R1 platform tests 21/21 as the non-superuser CREATEDB/CREATEROLE role with self-grant; accepted X6 documented. | PASS |
+| MT-14 | Pending the required release and real-stack evidence. | PENDING |
 | MT-15 | Pending the required release and real-stack evidence. | PENDING |
 | MT-16 | Pending the required release and real-stack evidence. | PENDING |
 | MT-17 | Pending the required release and real-stack evidence. | PENDING |
@@ -133,26 +133,9 @@ None recorded. Historical baseline failures above do not block unrelated work.
 - Independent R1 review closed three P2 findings: concurrent outage response race, loss of one-time UI credentials, and non-ASCII CSRF byte-length mismatch (now 403 rather than RangeError/500; `r1-csrf-bytes.log` 7/7). No P0/P1 found. The post-reservation provisioner read now occurs inside the transaction so a read failure rolls back the reservation. Remaining P2 decision: a platform outage that prevents the failure marker can require backend restart to reconcile PROVISIONING; close with in-process recovery and MT-16 drills before R4 activation. This staged gap is not enabled in production R1.
 - A flaky bootstrap test assumed the first of two different concurrent usernames would win the advisory lock. Corrected to concurrent identical configured bootstraps, then a different bootstrap to prove it cannot replace the existing account; production selection behavior unchanged.
 
+## R2 emergency rollback — 2026-10-11
 
-## R2 decisions — 2026-10-10
-
-- D0-11: Keep the seller's existing static `/shop/tokens.css` exception under tenant prefixes too; it is the authoritative shared palette-token file, and exposing static CSS adds no buyer API access.
-- D0-12: Caddy static files must honor unknown/suspended/deleting/alias states too. Add a public, empty `/<code>/api/v1/tenant-access` availability probe before static/entry handling; it uses registry metadata without opening a tenant store. Caddy overwrites `X-Tenant-Original-Uri`; alias redirects preserve that same-prefix path/query, while rejected entries show a neutral HTML message. No cookie or authentication capability is added.
-- R1 merge `71f5d27b1abc1471e6b7e8da740138dd122a58b2` confirmed by remote main and GitHub PR state. Initial merge guard used a mistyped SHA and made no change; corrected to the verified full head. No permission denial occurred.
-
-- MT-01 R1: ten curl probes passed; health/readiness SHA `71f5d27b1abc1471e6b7e8da740138dd122a58b2`, original manifest id/scope/start_url preserved, all four containers running and zero restarts (backend/postgres healthy; frontend/tunnel healthchecks unconfigured). Updater moved deployed to up_to_date. Raw `r1-production.json`.
-- MT-23 R1: [main CI](https://github.com/yapweijun1996/Online-Shopping/actions/runs/38061092236) success. No platform settings were added to production.
-
-
-## R2 verification — 2026-10-10
-
-- Real Caddy image: `QA_BACKEND_IMAGE=<R1 image> QA_FRONTEND_IMAGE=online-shopping-frontend:mt-r2-qa node scripts/qa-caddy-routing.mjs`: 108 checks passed (`r2-caddy-routing.json`). Found and corrected ambiguous two-argument Caddy `redir`; explicit wildcard now returns the intended tenant entry 302.
-- Chrome browser fixture uses only synthetic SQLite stores and disposable Docker containers/network. D0-13: self-signed TLS is treated as secure only for its three loopback-mapped, random-port QA origins and their disposable certificate SPKI pins through Chrome flags; no host trust-store or production TLS change. Two tenant PWAs installed and uninstalled through Chrome DevTools PWA commands. Final run: 14 checks, two installations, standalone offline application launches, protected update and controlled rename (`r2-tenant-browser.json`).
-- Independent R2 review found and fixed two P1s: positive-cache refreshes consuming the unknown-code limiter, and installed old-code workers discarding followed rename redirects. Failed platform lookups also refund temporary probe reservations. Regression tests cover sustained two-shop/shared-IP access, outage recovery and controlled alias navigation. Reviewer independently confirmed fixes.
-- Browser bootstrap tolerates unavailable localStorage; tenant offline pages without a valid cached scope fail closed before palette/state imports. Default offline startup retains its unchanged empty scope. PWA auto-update throttle keys resolve the worker pathname so two shops in one tab cannot throttle each other.
-
-- Final R2 gate: `NODE_ENV=test SHOP_TEST_DATABASE_URL=<scratch> npm test`: 482/482 pass, no skips, 30.8 s (`r2-final-unit.log`); targeted rerun after the final fixes: 31/31 (`r2-final-targeted.log`). `npm run check`, `python3 test/auto-update.test.py` (21/21), dependency audit (zero), `git diff --check` pass. Both real Caddy configurations validate.
-- All twelve initial baseline passes still pass (`r2-baseline/results.json`), including both browser scenarios. Seven exported snippets remain module-load checks.
-- Independent reviewer final read-only R2 review: zero open P0/P1/P2, including lightweight independent reproductions of the two corrected P1 scenarios. Complete R3/R4 diff review remains required before activation.
-
-- Production read-only Chrome preparation: legacy shop v143 and seller v134 active, both PWAs installed in the separate QA profile, no page or unexpected console errors (`r2-production-browser-prepare-r2.json`). No login, order, seller or shop mutation. Post-deploy verification must show the new versions and one visible offer per app.
+- Production stop condition: after previously verified R2 deployment `1fef9aead7bb3a6aa8b1b4110c85e04cddfaff56`, both public `/ready` endpoints failed on two consecutive read-only checks; the second check returned Cloudflare HTTP 530. The updater still reported `up_to_date` at that SHA and had not rolled back. Per goal section 8, revert the R2 merge through normal CI and a merge-commit PR before investigating.
+- Host load reached approximately 100 with memory pressure; heavy task-created QA work was stopped. A bounded request to stop the rehearsal application containers timed out because the Docker daemon was unresponsive; their stopped state is not claimed. Other containers, VMs, LaunchAgents and production state were not modified.
+- This rollback removes R2 application changes only. It does not modify production data, main schema, existing secrets, the protected PostgreSQL or tunnel service definitions. Uncommitted R3 work is preserved in the separate execution worktree.
+- D0-17: Use a separate executor-owned rollback worktree and branch from the deployed R2 merge so no R3 changes can enter the emergency rollback. CI is still mandatory. Production restoration remains pending observed readiness and updater/container evidence.

@@ -46,7 +46,7 @@ test('product page uses the selector when option types exist and keeps the old c
   assert.match(detail, /product\.variants\?\.length > 1 && product\.optionTypes\?\.length/);
   assert.match(detail, /else if \(product\.variants\?\.length > 1\)/);
   const worker = readFileSync(new URL('../public/shop/sw.js', import.meta.url), 'utf8');
-  assert.match(worker, /\.\/option-selector\.js/);
+  assert.match(worker, /\/shop\/option-selector\.js/);
 });
 
 test('option choices are links marked aria-current, not radios, and explain when they change other choices', () => {

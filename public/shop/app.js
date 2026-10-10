@@ -1,4 +1,3 @@
-import { apiUrl } from '../shared/base-path.js';
 import { mountAppearance } from '../shared/appearance.js';
 import { mountTabIcon } from '../shared/tab-icon.js';
 import { confirmModal } from '../shared/modal.js';
@@ -266,9 +265,9 @@ async function loadCatalog(reset = true) {
       search: byId('catalog-search').value.trim(), category: category.value,
     });
     if (reset) catalogFilters = { search: params.get('search'), category: params.get('category') };
-    const [data, shop] = await Promise.all([api(apiUrl(`v1/products?${params}`)), api(apiUrl('v1/shop'))]);
+    const [data, shop] = await Promise.all([api(`/api/v1/products?${params}`), api('/api/v1/shop')]);
     if (request !== catalogRequest) return;
-    if ((shop.storageScope || shop.demoNamespace || '') !== globalThis.shopStorageNamespace) { location.reload(); return; }
+    if ((shop.demoNamespace || '') !== globalThis.shopStorageNamespace) { location.reload(); return; }
     shopInfo = shop;
     mobileNavigation.setAutoHide(shop.mobileHideBarsOnScroll);
     profilePage?.setCountry(countryForCurrency(shop.currency));
@@ -383,7 +382,7 @@ function changeQuantity(productId, value) {
     if (!Number.isInteger(next) || next < 1 || next > 100) {
       quantityErrors.set(productId, 'quantityLimit'); setMessage('quantityLimit'); return;
     }
-    const product = await api(apiUrl(`v1/products/${encodeURIComponent(productId)}`));
+    const product = await api(`/api/v1/products/${encodeURIComponent(productId)}`);
     const previous = resolvedCart.find(line => line.productId === productId)?.product;
     if (previous && (previous.priceMinor !== product.priceMinor || previous.currency !== product.currency)) priceChangedNotice = true;
     await cartStore.set(productId, next);
@@ -581,7 +580,7 @@ async function refreshCart() {
   setCartStatus('loading');
   try {
     const results = await Promise.all(lines.map(async (line) => {
-      try { return { ...line, product: await api(apiUrl(`v1/products/${encodeURIComponent(line.productId)}`)) }; }
+      try { return { ...line, product: await api(`/api/v1/products/${encodeURIComponent(line.productId)}`) }; }
       catch (error) {
         if (error.status === 404) return { ...line, product: null };
         throw error;
@@ -787,7 +786,7 @@ function orderThumbnail(item) {
   const box = element('span', 'order-thumbnail'); box.setAttribute('aria-hidden', 'true');
   box.textContent = '▧';
   // Orders saved before images were recorded fall back to the product's public image; a missing image leaves the placeholder.
-  const source = item?.imageUrl || (/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(item?.productId || '') ? apiUrl(`v1/products/${item.productId}/image`) : null);
+  const source = item?.imageUrl || (/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(item?.productId || '') ? `/api/v1/products/${item.productId}/image` : null);
   if (source) { const img = element('img'); img.alt = ''; img.loading = 'lazy'; img.src = source; img.addEventListener('error', () => img.remove()); box.append(img); }
   return box;
 }
@@ -836,7 +835,7 @@ async function renderLocalOrders(navigating = false) {
   try {
     for (let offset = 0; offset < credentials.length; offset += 50) {
       const batch = credentials.slice(offset, offset + 50);
-      const response = await fetch(apiUrl('v1/orders/statuses'), {
+      const response = await fetch('/api/v1/orders/statuses', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orders: batch }), signal: controller.signal,
       });
@@ -925,7 +924,7 @@ function showRoute() {
     const ownsCheckoutRead = () => checkoutRequest === checkoutRouteRequest &&
       location.hash === '#checkout' && directPurchase === intent;
     if (directPurchase) {
-      api(apiUrl(`v1/products/${intent.productId}`)).then((product) => {
+      api(`/api/v1/products/${intent.productId}`).then((product) => {
         if (ownsCheckoutRead()) {
           checkoutPage.setItems([{ productId: intent.productId, quantity: intent.quantity, product }], { fromCart: false });
           const back = document.querySelector('#checkout-view .shop-actionbar a');
@@ -977,8 +976,8 @@ byId('catalog-search').placeholder = t('searchProducts');
 
 // Resolve the server's demo revision before reading any browser-local data.
 // A failed initial request stays behind the existing retryable boot overlay.
-shopInfo = globalThis.shopBootstrapInfo || await api(apiUrl('v1/shop'));
-globalThis.shopStorageNamespace = shopInfo.storageScope || shopInfo.demoNamespace || '';
+shopInfo = await api('/api/v1/shop');
+globalThis.shopStorageNamespace = shopInfo.demoNamespace || '';
 const [cartStore, openedOrderStore] = await Promise.all([createCartStore(), createLocalOrderStore()]);
 localOrderStore = openedOrderStore;
 let selectionStorage;
