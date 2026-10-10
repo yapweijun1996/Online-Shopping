@@ -86,7 +86,40 @@ test('an evicted store produces a new tenant identity and rebuilds the route han
   const result = await f.handle(request('/active/api/v1/shop')); assert.equal(result.status, 200); assert.equal((await result.json()).shopName, 'Reopened shop');
 });
 
+test('expired known shops never consume the unknown-code probe quota on a shared IP', async (t) => {
+  let clock = 0; const f = await fixture(t, { clock: () => clock });
+  for (let pass = 0; pass < 25; pass++) {
+    for (const code of ['active', '123']) assert.equal((await f.handle(request(`/${code}/api/v1/tenant-access`), { clientAddress: 'fictional-household' })).status, 200);
+    clock += 30_001;
+  }
+  for (let i = 0; i < 30; i++) await f.registry.resolve(request(`/unknown${i}/shop/`), { clientAddress: 'fictional-household' });
+  const reads = f.reads();
+  await assert.rejects(f.registry.resolve(request('/unknownlast/shop/'), { clientAddress: 'fictional-household' }), /Too many/);
+  assert.equal(f.reads(), reads); assert.equal(f.opens(), 0);
+});
+
 test('every public top-level name and served entry point is invalid as a code or reserved', async () => {
   const names = [...await readdir(new URL('../public/', import.meta.url)), 'api', 'health', 'ready', 'p', 's', 'platform'];
   for (const name of names) assert.ok(!/^[a-z0-9]{3,30}$/.test(name) || RESERVED_CODES.has(name), name);
+});
+
+test('platform lookup failures do not strand a valid cold code behind the probe limiter', async (t) => {
+  const f = await fixture(t); let offline = true;
+  const registry = createPlatformRegistry({ store: f.store, config, platform: () => {
+    if (offline) throw new Error('Synthetic platform outage');
+    return { get: async () => f.rows.get('active') };
+  }, pool: { get() { throw new Error('Metadata probe must not open a shop'); } } });
+  for (let i = 0; i < 35; i++) await assert.rejects(registry.resolve(request('/active/api/v1/tenant-access')), /Synthetic platform outage/);
+  offline = false;
+  assert.equal((await registry.resolve(request('/active/api/v1/tenant-access'))).response.status, 200);
+});
+
+test('edge availability probes enforce lifecycle and aliases without opening tenant databases', async (t) => {
+  const f = await fixture(t);
+  for (const [code, status] of [['active', 200], ['missing', 404], ['failed', 404], ['provisioning', 404], ['suspended', 503], ['deleting', 503]]) {
+    assert.equal((await f.handle(request(`/${code}/api/v1/tenant-access`))).status, status);
+  }
+  const alias = await f.handle(request('/oldcode/api/v1/tenant-access', undefined, { headers: { 'x-tenant-original-uri': '/oldcode/shop/?search=fixture&category=1' } }));
+  assert.equal(alias.status, 308); assert.equal(alias.headers.get('location'), '/active/shop/?search=fixture&category=1');
+  assert.equal(f.opens(), 0);
 });

@@ -1,3 +1,4 @@
+import { apiUrl } from '../shared/base-path.js';
 import './ops-copy.js';
 import { containDialogFocus } from '../shared/modal.js';
 import { t } from '../shared/i18n.js';
@@ -34,7 +35,7 @@ export function openPasswordDialog({ forced = false, csrfToken, onDone, onUnauth
     if (next.input.value !== repeat.input.value) { error.textContent = t('passwordsDiffer'); repeat.input.focus(); return; }
     submit.disabled = true; error.textContent = '';
     try {
-      const response = await fetch('/api/v1/seller/account/password', { method: 'POST', cache: 'no-store',
+      const response = await fetch(apiUrl('v1/seller/account/password'), { method: 'POST', cache: 'no-store',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() }, body: JSON.stringify({ currentPassword: current.input.value, newPassword: next.input.value }) });
       if (response.status === 401) { dialog.close(); onUnauthorized(); return; }
       if (response.ok) { dialog.close(); onDone(); return; }

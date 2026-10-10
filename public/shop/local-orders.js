@@ -14,7 +14,7 @@ function trackingFields(source) {
 }
 
 export function safeOrderImage(value) {
-  return typeof value === 'string' && /^\/api\/v1\/products\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/image(?:\?v=[0-9a-z]+)?$/i.test(value) ? value : null;
+  return typeof value === 'string' && /^\/(?:[a-z0-9]{3,30}\/)?api\/v1\/products\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/image(?:\?v=[0-9a-z]+)?$/i.test(value) ? value : null;
 }
 
 function normalizeOrder(receipt, items = [], accessKey = receipt?.statusAccessKey) {

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
+import { apiUrl } from '../public/shared/base-path.js';
 import { checkoutPayload } from '../public/shop/checkout-payload.js';
 import { openDatabase } from '../src/db.js';
 import { createOrder } from '../src/orders.js';
@@ -46,7 +47,7 @@ async function fixture({ loseFirstResponse = true } = {}) {
   const source = readFileSync(new URL('../public/shop/checkout.js', import.meta.url), 'utf8')
     .replace(/^import .*;\n/gm, '').replace('export function mountCheckout', 'function mountCheckout');
   const mountCheckout = runInNewContext(`${source}\nmountCheckout`, {
-    document, checkoutPayload, formatMoney: String, locale: () => language,
+    document, apiUrl, checkoutPayload, formatMoney: String, locale: () => language,
     t: (key) => key, translate() {}, addressSummary: () => 'Synthetic address',
     crypto: { randomUUID }, setTimeout, clearTimeout, AbortController, Event,
     location: { hash: '#checkout' },

@@ -42,7 +42,7 @@ test('the editor is reachable from the seller navigation and cached offline', ()
   const app = readFileSync(new URL('../public/seller/app.js', import.meta.url), 'utf8');
   assert.match(app, /VALID_VIEWS = new Set\(\[[^\]]*'options'/);
   const worker = readFileSync(new URL('../public/seller/sw.js', import.meta.url), 'utf8');
-  assert.match(worker, /\/seller\/options\.js/); assert.match(worker, /\/seller\/product-fields\.js/);
+  assert.match(worker, /\.\/options\.js/); assert.match(worker, /\.\/product-fields\.js/);
 });
 
 test('phone layout: combination cells carry captions and tap areas stay 44px', () => {
