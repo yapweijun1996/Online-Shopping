@@ -77,7 +77,7 @@ test('readiness fails closed when schema version changes while liveness stays up
   }
 });
 
-test('deployment maintenance rejects new work and reports existing requests until they drain', async () => {
+test('deployment maintenance rejects new work and reports existing requests until they drain', { timeout: 5000 }, async (t) => {
   const f = await fixture();
   const flag = path.join(path.dirname(f.config.dbPath), 'maintenance.flag');
   f.config.maintenancePath = flag;
@@ -85,8 +85,9 @@ test('deployment maintenance rejects new work and reports existing requests unti
   let enter, release;
   const entered = new Promise((resolve) => { enter = resolve; });
   const barrier = new Promise((resolve) => { release = resolve; });
+  t.after(async () => { release(); await f.close(); });
   f.app.database.all = async (sql, ...params) => {
-    if (sql.includes('FROM product')) { enter(); await barrier; }
+    if (sql.includes('FROM product p JOIN general_code')) { enter(); await barrier; }
     return original(sql, ...params);
   };
   try {
@@ -106,7 +107,7 @@ test('deployment maintenance rejects new work and reports existing requests unti
     assert.equal((await f.request('GET', '/health')).data.maintenance.inFlight, 0);
     rmSync(flag);
     assert.equal((await f.request('GET', '/api/v1/products')).response.status, 200);
-  } finally { release(); await f.close(); }
+  } finally { release(); }
 });
 
 test('production startup refuses missing and weak credentials', () => {
