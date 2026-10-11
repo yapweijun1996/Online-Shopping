@@ -38,7 +38,9 @@ SELECT json_build_object('schemaSha256', encode(sha256(convert_to(json_build_obj
  'indexes', (SELECT json_agg(r ORDER BY tablename,indexname) FROM
    (SELECT tablename,indexname,indexdef FROM pg_indexes WHERE schemaname='public') r),
  'constraints', (SELECT json_agg(r ORDER BY table_name,name) FROM
-   (SELECT c.relname AS table_name, k.conname AS name, pg_get_constraintdef(k.oid) AS definition
+   -- Pretty deparsing preserves operator precedence while removing parser-only Boolean grouping.
+   -- BETWEEN expands to nested AND; dump/restore reparses it as flat AND with identical meaning.
+   (SELECT c.relname AS table_name, k.conname AS name, pg_get_constraintdef(k.oid, true) AS definition
     FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public') r),
  'triggers', (SELECT json_agg(r ORDER BY table_name,name) FROM
    (SELECT c.relname AS table_name,t.tgname AS name,pg_get_triggerdef(t.oid) AS definition
