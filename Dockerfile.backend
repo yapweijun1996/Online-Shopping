@@ -7,6 +7,9 @@ COPY src/ ./src/
 COPY public/shared/order-status.js public/shared/integration-catalog.js ./public/shared/
 COPY scripts/import-sqlite.js scripts/database-evidence.js scripts/reset-seller-password.js scripts/reset-platform-admin.js scripts/deployment-maintenance.mjs scripts/restore-smoke.mjs ./scripts/
 
+# A private host umask must not make the root-owned code unreadable by the runtime.
+RUN chmod -R a+rX /app/src /app/scripts /app/public /app/package.json /app/package-lock.json
+
 USER node
 EXPOSE 3000
 CMD ["node", "src/server.js"]
