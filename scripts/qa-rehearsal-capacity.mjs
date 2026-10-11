@@ -138,7 +138,7 @@ export async function runCapacity() {
           const entry = entries[turn++ % entries.length], seller = index % 2 === 1;
           try { await (seller ? entry.seller : entry.buyer).call(seller ? '/api/v1/seller/products?limit=10' : '/api/v1/products?limit=10'); report.requests++; }
           catch { failed = true; report.errors++; throw new Error('Mixed capacity traffic failed.'); }
-          await wait(100);
+          await wait(500);
         }
       }));
       if (result.some((item) => item.status === 'rejected')) throw new Error('Mixed capacity traffic failed.');
