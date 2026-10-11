@@ -24,7 +24,7 @@ try {
     try {
       if (mode === 'seed' || mode === 'older') {
         if (!await store.get("SELECT id FROM product WHERE sku='FICTIONAL-1'")) {
-          if (!await store.get("SELECT code FROM category WHERE code='FIXTURE'")) await createCategory(store, { code: 'FIXTURE', label: 'Fictional goods' });
+          if (!await store.get("SELECT code FROM general_code WHERE type='PRODUCT_CATEGORY' AND code='FIXTURE'")) await createCategory(store, { code: 'FIXTURE', label: 'Fictional goods' });
           await createProduct(store, { sku: 'FICTIONAL-1', name: 'Fictional ' + shop.code + ' item', description: 'Synthetic backup verification item', category: 'FIXTURE', priceMinor: 1200, currency: 'MYR', active: true });
         }
       }
