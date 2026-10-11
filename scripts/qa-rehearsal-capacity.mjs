@@ -150,12 +150,16 @@ export async function runCapacity() {
 
     phase = 'idle eviction under remaining-shop load';
     cold = traffic.find((entry) => !entry.shop.isDefault); check(cold, 'Non-default cold shop missing.');
+    phase = 'cold catalog snapshot';
     const original = (await cold.buyer.call('/api/v1/products?limit=10')).data;
+    phase = 'cold shop revision';
     const detail = (await platform('/shops/' + cold.shop.id)).data;
     writeFileSync(recoveryFile, JSON.stringify({ project: rehearsalProject, id: cold.shop.id }), { mode: 0o600 });
+    phase = 'suspend cold shop';
     const suspended = await platform('/shops/' + cold.shop.id + '/suspend', { method: 'POST', body: { expectedRevision: detail.revision } });
     cold.revision = suspended.data.tenant.revision;
     // ACTIVE workers poll every 15 s. Suspension skips that worker, allowing the real five-minute idle timer to expire.
+    phase = 'idle eviction under remaining-shop load';
     for (let part = 0; part < 12; part++) { await load(traffic.filter((entry) => entry !== cold), 30_000); productionIdle(); progress(); }
     const status = (await platform('/status')).data;
     check(status.poolSize <= 18, 'Suspended idle shop pool did not evict.');
@@ -180,7 +184,8 @@ export async function runCapacity() {
     renameSync(join(output, '.capacity-current.json'), join(output, 'r4-capacity.json'));
     phase = 'verified'; progress(); return report;
   } catch (error) {
-    throw new Error('Capacity rehearsal failed during ' + phase + ' (' + (error?.name || 'Error') + ').');
+    const reason = /^(?:Rehearsal HTTP status \d{3}|Mixed capacity traffic failed\.|Host load is too high for capacity work\.|Production updater or backup is doing heavy work\.|PostgreSQL connection budget exceeded\.)$/.test(error?.message || '') ? error.message : (error?.name || 'Error');
+    throw new Error('Capacity rehearsal failed during ' + phase + ' (' + reason + ').');
   } finally {
     clearInterval(timer); await samplePending;
     if (cold) {

@@ -8,16 +8,18 @@ import { createCategory } from '../src/settings.js';
 import { createProduct } from '../src/products.js';
 import { createTenant, tenantUrl } from '../src/platform/provisioner.js';
 
-if (process.env.QA_REHEARSAL !== '1' || !process.env.HOSTNAME) throw new Error('Explicit isolated rehearsal required.');
-const config = readConfig(), platform = await openPlatformDatabase(config.platform.databaseUrl), secretBox = createSecretBox(config.integrationKeys);
 const mode = process.argv[2];
+if (process.env.QA_REHEARSAL !== '1' || process.env.PLATFORM_ADMIN_USERNAME !== 'fixtureadmin' ||
+    !/^admin\.gmb01\.xyz:\d{4,5}$/.test(process.env.PLATFORM_ADMIN_HOST || '') ||
+    !['seed', 'older', 'verify-failure', 'repair'].includes(mode)) throw new Error('Explicit isolated rehearsal required.');
+const config = readConfig(), platform = await openPlatformDatabase(config.platform.databaseUrl), secretBox = createSecretBox(config.integrationKeys);
 try {
   for (const code of mode === 'seed' ? ['alpha', 'bravo'] : ['alpha', 'bravo', 'charlie']) {
     if (!await platform.get('SELECT id FROM tenant WHERE code = ?', code)) await createTenant(platform,
       { secretBox, provisionerUrl: config.platform.provisionerUrl, baseUrl: config.platform.databaseUrl },
       { code, name: 'Fictional ' + code, currency: 'MYR', sellerUsername: code + '.owner' }, 'fixture');
   }
-  const shops = await platform.all("SELECT * FROM tenant WHERE is_default = 0 ORDER BY code");
+  const shops = await platform.all("SELECT * FROM tenant WHERE is_default = 0 AND code IN ('alpha','bravo','charlie') ORDER BY code");
   for (const shop of shops) {
     const password = secretBox.open(shop.database_password_sealed, shop.database_key_id, `TENANT_DB:${shop.id}`);
     const store = openPostgresStore(tenantUrl(config.platform.databaseUrl, { database: shop.database_name, role: shop.database_role, password }));

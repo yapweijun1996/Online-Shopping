@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, rmSync, symlinkSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { rehearsalProject, validateRehearsalFiles, validateRehearsalContainers, requireIdleProduction, createRehearsalClient } from '../scripts/qa-rehearsal-client.mjs';
 import { activeUpdaterHeavyWork, recoverColdShop } from '../scripts/qa-rehearsal-capacity.mjs';
 
@@ -91,6 +92,20 @@ test('recovery permits only an exited inspected rehearsal backend and preserves 
   assert.throws(() => validateRehearsalContainers(state, rows, { allowStoppedBackend: true }), /networks/);
   const stoppedPg = containers(state); stoppedPg[2].State = { Running: false, Status: 'exited' };
   assert.throws(() => validateRehearsalContainers(state, stoppedPg, { allowStoppedBackend: true }), /scope/);
+});
+
+test('in-container schema fixtures reject production settings and unknown modes before configuration or database access', () => {
+  for (const [username, host, mode] of [
+    ['platformowner', 'admin.gmb01.xyz', 'older'], ['fixtureadmin', 'admin.gmb01.xyz', 'repair'],
+    ['fixtureadmin', 'admin.gmb01.xyz:61000', 'unknown'],
+  ]) {
+    const result = spawnSync(process.execPath, ['scripts/qa-rehearsal-shops.mjs', mode], {
+      encoding: 'utf8', timeout: 5000, env: { PATH: process.env.PATH, NODE_ENV: 'test', QA_REHEARSAL: '1', HOSTNAME: 'production-container',
+        PLATFORM_ADMIN_USERNAME: username, PLATFORM_ADMIN_HOST: host },
+    });
+    assert.equal(result.status, 1); assert.match(result.stderr, /Explicit isolated rehearsal required/);
+    assert.equal(result.stdout, '');
+  }
 });
 
 test('rehearsal HTTP client cannot select a production project or an absolute external URL', async () => {
