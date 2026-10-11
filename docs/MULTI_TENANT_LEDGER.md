@@ -7,9 +7,9 @@ Started 2026-10-10 (Asia/Singapore). Source of truth: [MULTI_TENANT_GOAL.md](MUL
 | Release | State | Evidence |
 | --- | --- | --- |
 | R0 | DEPLOYED, VERIFIED | [PR #126](https://github.com/yapweijun1996/Online-Shopping/pull/126), merge `ada984ba9feab52cb7f22abf4bf2e205af238092`; deployed log followed by `up_to_date`; 10 production probes and zero restarts. |
-| R1 | IN PROGRESS | Platform core, no production settings. |
-| R2 | NOT STARTED | Browser and edge. |
-| R3 | NOT STARTED | Operations. |
+| R1 | DEPLOYED, VERIFIED | Inert platform core; rollback recovery `6429c89`, MT-01 with preserved historical PostgreSQL restart count (D0-26). |
+| R2 | RESTORATION PREPARED | Previously deployed/verified, emergency revert; PR #131 awaits fresh CI and production verification. |
+| R3 | PREPARED, GATED | Draft PR #130; real-compose backup/restore gate pending. |
 | R4 | NOT STARTED | Rehearsal, hardening and activation. |
 
 ## Decisions and environment — 2026-10-10
@@ -140,12 +140,23 @@ None recorded. Historical baseline failures above do not block unrelated work.
 - This rollback removes R2 application changes only. It does not modify production data, main schema, existing secrets, the protected PostgreSQL or tunnel service definitions. Uncommitted R3 work is preserved in the separate execution worktree.
 - D0-17: Use a separate executor-owned rollback worktree and branch from the deployed R2 merge so no R3 changes can enter the emergency rollback. CI is still mandatory. Production restoration remains pending observed readiness and updater/container evidence.
 
+
+## R2 recovery preparation — 2026-10-11
+
+- D0-20: Prepare a separate owned recovery branch `codex/mt-r2-restore` from verified rollback main `3bddb42b8340a9a7ca951429f88f49157ee84ee2`, restoring only R2 source and retaining the incident ledger. The request authorizes normal PR preparation; production recovery and the previous release gate still control merge. No R3 operations enter this release.
+- Restores the R2 implementation from merge `1fef9aead7bb3a6aa8b1b4110c85e04cddfaff56`. Preserve the rollback/incident record rather than reverting its documentation away. Real-stack readiness must recover and the rollback must deploy/verify before this branch can merge. Production root/browser update must be verified again after its eventual deployment.
+- At the 01:12 preparation checkpoint the host Docker daemon remained unavailable. That draft did not claim recovery, activation or a resolved host root cause; later recovery evidence is recorded below.
+
 ## Rollback checkout recovery — 2026-10-11
 
 - 01:41:29 SGT: Docker socket `_ping` returned `OK`, Docker server 29.4.0 responded, both public `/ready` endpoints returned 200 with the still-current R2 SHA `1fef9aead7bb3a6aa8b1b4110c85e04cddfaff56`. Four production containers were running, backend/PostgreSQL healthy. Installed updater still `check_failed`, no pending deployment. Raw private `blocked-audit-3.json` in the primary execution worktree. This changes the next action; the goal is not marked blocked merely because the earlier daemon failure repeated.
 - Read-only diagnosis: the new rollback release directory for `3bddb42b8340a9a7ca951429f88f49157ee84ee2` has the expected HEAD but no Git index and zero `git ls-files` entries; checkout did not complete during the earlier host incident. Installed controller correctly rejects its non-clean status with `RuntimeError`; the live R2 release checkout remains clean. Mirror main and GitHub main CI are correct (`38067456877`, success). No existing release checkout, controller or state was repaired by hand.
 - D0-23: Advance the already merged rollback through a normal documentation-only recovery PR on an executor-owned branch, with green branch/PR CI and a merge commit. The application source equals the rollback exactly; the new SHA gives the existing updater a fresh release path. Retain the incomplete release, all images/backups, existing secrets and production data. Verify deployed/up_to_date, actual release SHA and all MT-01 checks before making the R2 restoration draft ready.
 - Rehearsal scope was positively inspected: only its three application containers, own volume/networks/private fixture secrets, both tunnels disabled and loopback listener. The existing project-only teardown process is still being observed; a successful cleanup has not been claimed. No other project or global VM was touched.
+
+- Recovery [PR #132](https://github.com/yapweijun1996/Online-Shopping/pull/132) merged as `62159f62a100c47091ad60b3e3897940c5431999`; branch `38073104108`, PR `38073108081` and main `38073265431` CI all green; remote main SHA verified. The project-only rehearsal teardown later finished successfully and inspection confirmed no remaining rehearsal containers. Production load fell below the host's ten available cores.
+- Authorized installed-controller retry created the fresh release checkout and built both images; Caddy reported valid configuration. The following legacy production backup exceeded its 180-second controller deadline; no application cutover or backup success is claimed. Current release remains R2 and no pending deployment exists. A later scheduled updater job and the single read-only PostgreSQL diagnostic are being observed through their live handles; no global Docker/VM recovery or manual state edit was attempted.
+- R2 restoration branch reconciles this new main with its existing source and preserves both incident timelines. It remains draft until rollback deployment/up_to_date and every MT-01 check pass. Source still matches the verified R2 merge except the production browser observer and ledger; no R3 operations or activation wiring enter it.
 
 ## Recovery execution and image permissions — 2026-10-11 12:20
 
@@ -155,3 +166,9 @@ None recorded. Historical baseline failures above do not block unrelated work.
 - D0-27: Make image code readable independently of checkout umask while preserving root ownership, non-root execution and denied code writes. Add only `chmod -R a+rX` over image code/package paths before USER node; no secret path, host permission or production privilege is changed. Future controller invocations create log files separately at 0600 and use the normal subprocess umask rather than applying a private-log umask to checkout.
 - Real regression proof: build the corrected image from copied tracked source with directories 0700/files 0600, then run without network or credentials. UID=1000 imports all server modules; code/package files remain owned by root, read access succeeds, write access is refused, `/data` remains writable, server.js is 0644. `image-permissions-proof.json` and build log in this worktree's ignored output. Syntax, backend-image test (1/1), updater tests (21/21) and diff checks pass; fresh full branch/PR CI remains required before merging.
 - Independent read-only image-fix review: no concrete P0/P1/P2 finding; the change adds read/traversal permissions only, retains USER node and does not touch secret mounts or protected services. Rollback deployment and R2 restoration remain gated on observed production verification.
+
+## Rollback verified and R2 restoration resumed — 2026-10-11 12:37
+
+- Recovery [PR #133](https://github.com/yapweijun1996/Online-Shopping/pull/133) merged as `6429c89f185bd75abcde8d819c11e3de21661d69`; branch/PR/main CI `38111731667` / `38111751134` / `38111870425` successful. Remote main verified. The scheduled installed controller recorded `deployed` at 12:36:10 SGT; a subsequent authorized poll recorded `up_to_date`, no pending deployment.
+- MT-01 recovery: ten read-only probes and unchanged manifest id/scope/start_url passed on SHA `6429c89`; both applications run with zero restarts, backend/PostgreSQL healthy, frontend/tunnel healthchecks unconfigured. PostgreSQL/tunnel ID, StartedAt and RestartCount are unchanged from the predeploy baseline (PostgreSQL retains historical count 2 under D0-26). Raw primary-worktree `rollback-permissions-production.json` and `recovery-current-poll.log`; no cumulative-zero claim.
+- R2 restore reconciles this verified main, retaining the Dockerfile readability fix and both incident timelines. Its application/routing source otherwise remains the already verified R2. R3 operations and activation wiring are excluded. Fresh full branch/PR CI and production browser/update verification are required for this restoration.

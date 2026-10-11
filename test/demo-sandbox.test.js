@@ -101,7 +101,8 @@ test('production and legacy demo modes expose no bypass endpoints or demo pages,
   const proxy = readFileSync(new URL('../deploy/Caddyfile', import.meta.url), 'utf8');
   assert.match(proxy, /@demo path \/demo \/demo\/\*/);
   assert.match(proxy, /forward_auth backend:3000\s*\{\s*uri \/api\/v1\/demo\/availability/);
-  assert.ok(proxy.indexOf('handle @demo') < proxy.indexOf('file_server'));
+  const fictionalRoute = proxy.slice(proxy.indexOf('handle @demo'));
+  assert.ok(fictionalRoute.indexOf('forward_auth') < fictionalRoute.indexOf('file_server'));
   assert.doesNotMatch(readFileSync(new URL('../public/seller/index.html', import.meta.url), 'utf8'), /Login as Admin|Login as Demo Seller/);
 });
 

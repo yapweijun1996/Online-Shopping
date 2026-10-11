@@ -1,3 +1,4 @@
+import { apiUrl } from '../shared/base-path.js';
 import { t, translate } from '../shared/i18n.js';
 import { mountAppearance } from '../shared/appearance.js';
 import { beginMutation } from '../shared/update-guard.js';
@@ -51,7 +52,7 @@ export function mountCategories(root, { csrfToken, onUnauthorized: notifyUnautho
   let categories = [];
   async function load() {
     try {
-      const result = await request('GET', '/api/v1/seller/categories', null, csrfToken, onUnauthorized);
+      const result = await request('GET', apiUrl('v1/seller/categories'), null, csrfToken, onUnauthorized);
       if (!isCurrent()) return;
       categories = result.items;
       render();
@@ -82,7 +83,7 @@ export function mountCategories(root, { csrfToken, onUnauthorized: notifyUnautho
       row.addEventListener('submit', async (event) => {
         event.preventDefault(); save.disabled = true;
         try {
-          await request('PATCH', `/api/v1/seller/categories/${encodeURIComponent(category.code)}`,
+          await request('PATCH', apiUrl(`v1/seller/categories/${encodeURIComponent(category.code)}`),
             { label: label.value, active: active.checked }, csrfToken, onUnauthorized);
           if (!isCurrent()) return;
           await load(); if (isCurrent()) status(root, 'categorySaved');
@@ -96,7 +97,7 @@ export function mountCategories(root, { csrfToken, onUnauthorized: notifyUnautho
     event.preventDefault();
     const button = form.querySelector('button'); button.disabled = true;
     try {
-      await request('POST', '/api/v1/seller/categories', {
+      await request('POST', apiUrl('v1/seller/categories'), {
         code: form.elements.code.value, label: form.elements.label.value,
       }, csrfToken, onUnauthorized);
       if (!isCurrent()) return;
@@ -131,7 +132,7 @@ export function mountCategories(root, { csrfToken, onUnauthorized: notifyUnautho
 /* Offered only when the server says this is the public fictional Demo. */
 async function mountDemoReset(root, csrfToken, onUnauthorized) {
   try {
-    const shop = await (await fetch('/api/v1/shop', { cache: 'no-store' })).json();
+    const shop = await (await fetch(apiUrl('v1/shop'), { cache: 'no-store' })).json();
     if (shop.demoRolesAvailable !== true || !root.isConnected) return;
   } catch { return; }
   const card = document.createElement('section'); card.className = 'settings-card';
@@ -142,7 +143,7 @@ async function mountDemoReset(root, csrfToken, onUnauthorized) {
     if (!(await confirmModal(t('resetDemoConfirm')))) return;
     button.disabled = true; line.textContent = t('loading');
     try {
-      await request('POST', '/api/v1/seller/demo/reset', { confirm: true }, csrfToken, onUnauthorized);
+      await request('POST', apiUrl('v1/seller/demo/reset'), { confirm: true }, csrfToken, onUnauthorized);
       line.textContent = t('resetDemoDone');
       setTimeout(() => location.reload(), 1200);
     } catch { line.textContent = t('resetDemoFailed'); button.disabled = false; }
@@ -212,14 +213,14 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
     }
     setupButton.disabled = false;
   }
-  request('GET', '/api/v1/seller/setup', null, csrfToken, onUnauthorized)
+  request('GET', apiUrl('v1/seller/setup'), null, csrfToken, onUnauthorized)
     .then((value) => { if (isCurrent()) showSetup(value); })
     .catch(() => { if (isCurrent()) setupStatus.textContent = t('networkError'); });
   setupForm.addEventListener('submit', async (event) => {
     event.preventDefault(); setupButton.disabled = true;
     setupStatus.textContent = t('loading');
     try {
-      const value = await request('POST', '/api/v1/seller/setup', {
+      const value = await request('POST', apiUrl('v1/seller/setup'), {
         mode: setupForm.elements.mode.value, shopName: setupForm.elements.shopName.value,
       }, csrfToken, onUnauthorized);
       showSetup(value);
@@ -254,7 +255,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
   async function loadSettings() {
     retryButton.disabled = true;
     try {
-      const settings = await request('GET', '/api/v1/seller/company-settings', null, csrfToken, onUnauthorized);
+      const settings = await request('GET', apiUrl('v1/seller/company-settings'), null, csrfToken, onUnauthorized);
       if (!isCurrent()) return;
       if (!currencyEdited) form.elements.defaultCurrency.value = settings.defaultCurrency;
       if (!phoneEdited) form.elements.sellerWhatsAppPhone.value = settings.sellerWhatsAppPhone ? `+${settings.sellerWhatsAppPhone}` : '';
@@ -279,7 +280,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
     event.preventDefault(); saveButton.disabled = true;
     for (const input of form.querySelectorAll('input, select, textarea')) input.disabled = true;
     try {
-      const settings = await request('PATCH', '/api/v1/seller/company-settings', {
+      const settings = await request('PATCH', apiUrl('v1/seller/company-settings'), {
         defaultCurrency: form.elements.defaultCurrency.value,
         sellerWhatsAppPhone: form.elements.sellerWhatsAppPhone.value.trim(),
         mobileHideBarsOnScroll: form.elements.mobileHideBarsOnScroll.checked,

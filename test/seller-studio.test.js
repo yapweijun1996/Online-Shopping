@@ -39,6 +39,6 @@ test('warm Seller default keeps contrast and semantic price/error colors; new as
   assert.ok(contrast(tokens['--ui-focus'], '#ffffff') >= 3);
   for (const role of ['--shop-price', '--shop-order-total', '--shop-error', '--shop-success', '--shop-warning-text']) assert.equal(tokens[role], undefined);
   const sw = readFileSync(new URL('../public/seller/sw.js', import.meta.url), 'utf8');
-  for (const asset of ['/seller/commerce.css', '/seller/studio-copy.js', '/seller/assets/studio-leaf.svg']) assert.ok(sw.includes(`'${asset}'`));
+  for (const asset of ['./commerce.css', './studio-copy.js', './assets/studio-leaf.svg']) assert.ok(sw.includes(`'${asset}'`));
   assert.ok(!sw.includes('/api/'));
 });

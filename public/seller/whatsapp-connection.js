@@ -1,3 +1,4 @@
+import { apiUrl } from '../shared/base-path.js';
 import { messages, t, translate, formatDate } from '../shared/i18n.js';
 import { confirmModal } from '../shared/modal.js';
 
@@ -109,7 +110,7 @@ export function mountWhatsAppConnection(root, { csrfToken, onUnauthorized, reque
           phoneNumberId: fields.phoneNumberId.value,
           businessAccountId: fields.businessAccountId.value,
         } : {};
-        const result = await request(method, `/api/v1/seller/integrations/whatsapp/${environment}`, body, csrfToken, () => { if (current(ticket)) onUnauthorized(); });
+        const result = await request(method, apiUrl(`v1/seller/integrations/whatsapp/${environment}`), body, csrfToken, () => { if (current(ticket)) onUnauthorized(); });
         fields.accessToken.value = ''; fields.appSecret.value = '';
         if (!current(ticket)) return;
         state = result; renderDetails(true);
@@ -130,7 +131,7 @@ export function mountWhatsAppConnection(root, { csrfToken, onUnauthorized, reque
   async function load() {
     const ticket = ++epoch;
     try {
-      const response = await fetch('/api/v1/seller/integrations/whatsapp', { cache: 'no-store' });
+      const response = await fetch(apiUrl('v1/seller/integrations/whatsapp'), { cache: 'no-store' });
       if (!current(ticket)) return;
       if (response.status === 401) { onUnauthorized(); return; }
       if (!response.ok) return;

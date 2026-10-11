@@ -165,6 +165,6 @@ test('status copy covers seven locales and cached shell never embeds a connectio
   const source = readFileSync(new URL('../public/seller/integrations.js', import.meta.url), 'utf8');
   for (const locale of ['en','ms','zh-Hans','vi','th','ja','ko']) assert.match(source, new RegExp(`(?:['"]?${locale}['"]?): \\[`));
   assert.match(source, /cache: 'no-store'/); assert.match(source, /csrfToken\(\) === identity/);
-  const worker = readFileSync(new URL('../public/seller/sw.js', import.meta.url), 'utf8'); assert.match(worker, /\/seller\/integrations\.js/);
+  const worker = readFileSync(new URL('../public/seller/sw.js', import.meta.url), 'utf8'); assert.match(worker, /\.\/integrations\.js/);
   assert.doesNotMatch(source, /localStorage|indexedDB|authorization|secretReference|access_token/);
 });

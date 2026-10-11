@@ -1,3 +1,4 @@
+import { apiUrl } from '../shared/base-path.js';
 import { beginMutation } from '../shared/update-guard.js';
 import { containDialogFocus } from '../shared/modal.js';
 import { revealImage } from '../shared/image-reveal.js';
@@ -214,7 +215,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
       });
       if (filter) params.set('status', filter);
       for (const [key, value] of new URLSearchParams(appliedExtra)) params.set(key, value);
-      const result = await request('GET', `/api/v1/seller/orders?${params}`);
+      const result = await request('GET', apiUrl(`v1/seller/orders?${params}`));
       if (!isCurrent() || requestNumber !== listRequest) return;
       succeeded = true;
       items = reset ? result.items : [...items, ...result.items];
@@ -303,7 +304,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
       const button = actionButton(t(documentTitleKey(kind, order.status)), async () => {
         const requestNumber = ++documentRequest; const id = order.id; button.disabled = true;
         try {
-          const fresh = await request('GET', `/api/v1/seller/orders/${encodeURIComponent(id)}`);
+          const fresh = await request('GET', apiUrl(`v1/seller/orders/${encodeURIComponent(id)}`));
           if (!isCurrent() || requestNumber !== documentRequest || selectedId !== id) return;
           documents.open(fresh, kind, shopName, button);
         } catch (error) { if (isCurrent() && error.status !== 401) setMessage('documentFailed'); }
@@ -397,7 +398,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
     history.append(events);
     fragment.append(history);
     fragment.append(renderOrderNotes({ notes: order.notes || [], online: () => navigator.onLine,
-      send: (body) => request('POST', `/api/v1/seller/orders/${encodeURIComponent(order.id)}/notes`, body),
+      send: (body) => request('POST', apiUrl(`v1/seller/orders/${encodeURIComponent(order.id)}/notes`), body),
       onAdded: (note) => { order.notes = [...(order.notes || []), note]; } }));
 
     if (order.status === 'SUBMITTED' && canDecide) {
@@ -428,7 +429,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
     if (['REJECTED', 'DELIVERED', 'CANCELLED'].includes(order.status) && !erased && !order.simulation && canErase) {
       const actions = node('div', 'order-review-actions');
       const erase = actionButton(t('eraseContact'), (event) => openEraseDialog({ order, trigger: event.currentTarget,
-        send: (body) => request('POST', `/api/v1/seller/orders/${encodeURIComponent(order.id)}/erase-contact`, body),
+        send: (body) => request('POST', apiUrl(`v1/seller/orders/${encodeURIComponent(order.id)}/erase-contact`), body),
         onErased: async (updated) => { if (!isCurrent()) return; if (selectedId === order.id) { selectedOrder = updated; renderDetail(); } setMessage('eraseDone'); await loadQueue(); },
         onStale: async () => { if (!isCurrent()) return; await Promise.all([loadQueue(), openOrder(order.id)]); setMessage('orderChanged'); } }), 'secondary-button');
       erase.dataset.action = 'erase-contact';
@@ -452,7 +453,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
     renderQueue();
     showDetailStatus('loading');
     try {
-      const detail = await request('GET', `/api/v1/seller/orders/${encodeURIComponent(id)}`);
+      const detail = await request('GET', apiUrl(`v1/seller/orders/${encodeURIComponent(id)}`));
       if (!isCurrent() || requestNumber !== detailRequest) return;
       selectedOrder = detail;
       renderDetail();
@@ -513,7 +514,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
       const params = extraParams();
       if (search.value.trim()) params.set('search', search.value.trim());
       if (status.value) params.set('status', status.value);
-      const response = await fetch(`/api/v1/seller/orders/export.csv?${params}`, { cache: 'no-store' });
+      const response = await fetch(apiUrl(`v1/seller/orders/export.csv?${params}`), { cache: 'no-store' });
       if (response.status === 401) { if (isCurrent()) onUnauthorized(); return; }
       if (!response.ok) {
         const code = (await response.json().catch(() => ({}))).error?.code;
@@ -581,7 +582,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
     decisionSubmit.disabled = true;
     setDialogError('');
     try {
-      const updated = await request('POST', `/api/v1/seller/orders/${encodeURIComponent(id)}/${action}`, body);
+      const updated = await request('POST', apiUrl(`v1/seller/orders/${encodeURIComponent(id)}/${action}`), body);
       if (!isCurrent()) return;
       dialog.close();
       if (selectedId === id) { selectedOrder = updated; renderDetail(); }
@@ -608,7 +609,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
     }
   });
 
-  request('GET', '/api/v1/shop').then(setup => { if (isCurrent()) shopName = setup.shopName || ''; }).catch(() => {});
+  request('GET', apiUrl('v1/shop')).then(setup => { if (isCurrent()) shopName = setup.shopName || ''; }).catch(() => {});
   loadQueue();
   if (initialOrderId) openOrder(initialOrderId);
   return {

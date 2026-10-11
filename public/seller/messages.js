@@ -1,3 +1,4 @@
+import { apiUrl } from '../shared/base-path.js';
 import { messages, t, translate, formatDate } from '../shared/i18n.js';
 import { confirmModal } from '../shared/modal.js';
 import { request } from './settings.js';
@@ -66,7 +67,7 @@ function sentRow(item) {
   return row;
 }
 async function markReply(item, csrfToken, onUnauthorized) {
-  await request('POST', `/api/v1/seller/messages/replies/${encodeURIComponent(item.id)}/read`, {}, csrfToken, onUnauthorized);
+  await request('POST', apiUrl(`v1/seller/messages/replies/${encodeURIComponent(item.id)}/read`), {}, csrfToken, onUnauthorized);
 }
 
 export function startMessageBadge({ badge, navItem, csrfToken, onUnauthorized }) {
@@ -93,7 +94,7 @@ export function startMessageBadge({ badge, navItem, csrfToken, onUnauthorized })
     const ticket = ++sequence;
     if (!current(ticket) || !available || document.hidden) return;
     try {
-      const data = await read('/api/v1/seller/messages/summary', () => { if (current(ticket)) onUnauthorized(); });
+      const data = await read(apiUrl('v1/seller/messages/summary'), () => { if (current(ticket)) onUnauthorized(); });
       if (!current(ticket)) return;
       count = data.unreadReplies + data.reconcile + data.failed; refreshLocale();
     } catch { /* Keep the last count until the next refresh. */ }
@@ -106,7 +107,7 @@ export function startMessageBadge({ badge, navItem, csrfToken, onUnauthorized })
     if (csrfToken() !== identity) dispose();
     return active;
   };
-  read('/api/v1/seller/integrations/whatsapp', () => { if (ownsConnection()) onUnauthorized(); }).then(data => {
+  read(apiUrl('v1/seller/integrations/whatsapp'), () => { if (ownsConnection()) onUnauthorized(); }).then(data => {
     if (!ownsConnection() || data.available !== true) return;
     available = true; navItem.hidden = false; refresh();
   }).catch(() => {});
@@ -158,7 +159,7 @@ export function mountMessages(root, { csrfToken, onUnauthorized, canAct = true }
       const params = new URLSearchParams({ limit: '30', offset: String(reset ? 0 : nextOffset) });
       if (type === 'replies' && unread.checked) params.set('unread', '1');
       try {
-        const page = await read(`/api/v1/seller/messages/${type}?${params}`, () => { if (valid(ticket)) unauthorized(); });
+        const page = await read(apiUrl(`v1/seller/messages/${type}?${params}`), () => { if (valid(ticket)) unauthorized(); });
         if (!valid(ticket)) return;
         items = reset ? page.items : [...items, ...page.items]; nextOffset = page.nextOffset;
       } catch (failure) { if (valid(ticket) && failure.message !== 'unauthorized') error = true; }
@@ -183,7 +184,7 @@ export function mountMessages(root, { csrfToken, onUnauthorized, canAct = true }
         const accepted = await confirmModal(t(resolution === 'RESEND' ? 'msgResendConfirm' : 'msgSentConfirm'), { title: t(resolution === 'RESEND' ? 'msgResend' : 'msgSentAction'), confirmLabel: t(resolution === 'RESEND' ? 'msgResend' : 'msgSentAction') });
         if (!accepted || !valid(ticket)) return;
         setLine(actionLine, '');
-        await request('POST', `/api/v1/seller/messages/outbox/${encodeURIComponent(item.id)}/resolve`, { resolution }, csrfToken, () => { if (valid(ticket)) unauthorized(); });
+        await request('POST', apiUrl(`v1/seller/messages/outbox/${encodeURIComponent(item.id)}/resolve`), { resolution }, csrfToken, () => { if (valid(ticket)) unauthorized(); });
         if (!current()) return;
         notifyChange(); await load(true);
       } catch (failure) {
@@ -207,7 +208,7 @@ export function mountOrderMessages(root, { orderId, csrfToken, onUnauthorized })
   async function load() {
     const ticket = ++epoch;
     try {
-      const data = await read(`/api/v1/seller/orders/${encodeURIComponent(orderId)}/messages`, () => { if (current(ticket)) onUnauthorized(); });
+      const data = await read(apiUrl(`v1/seller/orders/${encodeURIComponent(orderId)}/messages`), () => { if (current(ticket)) onUnauthorized(); });
       if (!current(ticket)) return;
       section.hidden = !data.messages.length && !data.replies.length;
       section.replaceChildren();

@@ -1,6 +1,6 @@
-@import url('/shop/tokens.css');
-@import url('/shared/appearance.css');
-@import url('/shared/base.css');
+@import url('../shop/tokens.css');
+@import url('../shared/appearance.css');
+@import url('../shared/base.css');
 .topbar{padding-inline:clamp(18px,3vw,38px);transition:margin-left .18s ease}
 .seller-signed-in .topbar{margin-left:248px}
 .seller-signed-in.seller-nav-collapsed .topbar{margin-left:74px}
