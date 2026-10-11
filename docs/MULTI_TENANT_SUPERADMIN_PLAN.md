@@ -118,17 +118,17 @@ If any step fails the tenant becomes `FAILED`; the retry cleans up the half-crea
 | **P4** Tenant provisioning | **Built in R1.** Console/API lifecycle with revision checks, permanent aliases, thirty-day retention and one-time passwords | Manual purge requires the R3 verified tenant backup support; never scheduled |
 | **P5** Tenant routing | **Backend built in R1; edge built in R2.** Path resolver for API, static, manifest, service worker, share and crawler routes; Caddy rules; per-tenant cookies and limiter buckets; legacy root mapped to the default tenant; the full cross-tenant negative suite | Largest backend step |
 | **P6** Frontend base path | **Built in R2.** Relative assets and API helper, network-first scoped storage bootstrap, independent manifests/workers, offline/update/install and same-origin two-shop Chrome checks | Exact-count allow-list guard, real Caddy matrix, independent security review; legacy root pass-set retained |
-| **P7** Operations | Updater upgrades every tenant database (section 7), multi-database backup, restore rehearsal, WhatsApp worker over tenants, webhook URL per tenant, health and monitors that show tenant count | Protected-file changes avoided; installed updater copy needs one reinstall on the MacBook Air |
+| **P7** Operations | **Implemented in the R3 worktree; real-stack gate pending.** Verified snapshot sets, durable maintenance/drain, sequential platform/shop upgrades, attempted-database restore, sequential tenant WhatsApp worker and in-process recovery | Protected-file changes avoided; production deployment and installed controller replacement still pending |
 | **P8** Hardening and release | Independent security review (Codex plus my own), load test with many tenants, failure drills (provisioner crash, one tenant database down), runbooks, threat model and docs | |
 
 Rough size: P1 small, P2 medium, P3 medium, P4 medium, P5 large, P6 large, P7 medium, P8 medium. P1 to P4 can ship without changing what any shop or buyer sees; P5 and P6 are the ones that touch the shops.
 
 ## 7. Schema upgrades and deploys with many databases
 
-- The updater's upgrade step runs the platform upgrade and then every tenant database, in order, after a verified backup of all of them; a failure stops the deployment before traffic moves (same statuses as today) and the databases already upgraded are restored from that backup. This is not atomic: until traffic switches the serving release refuses an upgraded shop (the pool rejects an unexpected schema version), so an upgraded shop is unavailable for that window.
+- R3 first pauses business requests, worker work and platform bootstrap/reconciliation through a durable host-only flag, drains existing work and takes the verified backup set. Main, platform and eligible shops then upgrade in order. Every attempted database is restored and verified on failure before traffic resumes; recording intent before the writer also covers an unknown commit outcome. Named runners are stopped before restore. Ordinary schema-compatible releases do not require this maintenance window.
 - Upgrades stay additive and repeatable; a rehearsal against restored copies of every database is required before merge (the check that caught the schema 20 problem), and the backend refuses to serve a tenant whose schema is older than the release expects.
 - New tenants are always created from the latest `schema.sql`.
-- Known limit, same as today: after a successful upgrade the previous release cannot roll back.
+- A failed upgraded cutover restores this deployment's verified snapshots before starting the previous application. A voluntary rollback after successful deployment still needs compatible schemas and must not silently restore old customer data.
 
 ## 8. What is deliberately not in scope
 
@@ -139,7 +139,7 @@ Staff accounts and roles, custom domains per tenant, SuperAdmin impersonation, b
 - **Host capacity:** the MacBook Air is already heavily loaded; many tenants multiply database work, pools and backups. Mitigation: bounded pools with idle eviction, a stated maximum number of tenants for this host (proposal: 20), and a move to the planned Ubuntu server before real clients rely on it.
 - **PWA scope change:** shops at new paths are new apps for browsers; the legacy root is kept so existing installs are not broken.
 - **One process, many tenants:** a crash affects all; mitigated by health checks, restart policy and per-tenant error isolation in workers.
-- **Upgrade across N databases:** not atomic. The serving release refuses a shop whose schema has been upgraded ahead of it, so each upgraded shop is unavailable until the switch, and a failure part-way leaves the already-upgraded shops unavailable until they are restored from the pre-deployment backup. P7 must restore every upgraded database automatically and verify it before reporting failure, and must decide between a short maintenance window and letting a release accept the next additive schema version.
+- **Upgrade across N databases:** not atomic. R3 chooses a drained maintenance window to prevent writes after the backup. Every attempted database is restored and verified before a failed deployment resumes service. Restore failure keeps maintenance enabled and requires operator investigation. Real backup, partial-failure and interruption drills remain an activation prerequisite.
 - **Provisioner credential:** has `CREATEDB` and `CREATEROLE`, which in PostgreSQL 16 gives it administrative rights over every role it creates, so it can in principle read any shop; treat it as cross-shop privileged. Kept as a separate secret, not a superuser, never exposed to routes other than the SuperAdmin provisioning call.
 - **Cloudflare tunnel changes are manual** (protected file): the admin hostname needs the owner.
 

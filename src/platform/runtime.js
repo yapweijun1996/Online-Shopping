@@ -9,13 +9,28 @@ import { createPlatformRegistry } from './registry.js';
 import { createAdminAuth } from './admin-auth.js';
 import { createPlatformRoutes } from './admin-routes.js';
 
-export function createPlatformRuntime({ store, config, clock = Date.now }) {
+export function createPlatformRuntime({ store, config, clock = Date.now, paused = () => false }) {
   const secretBox = createSecretBox(config.integrationKeys);
   const pool = createTenantPool({ secretBox, baseUrl: config.platform.databaseUrl, connectionsPerTenant: 3 });
-  let connection = null, pending = null, retryAfter = 0, stopped = false, routes = null, timer, recovered = false;
-  const deps = { secretBox, baseUrl: config.platform.databaseUrl, provisionerUrl: config.platform.provisionerUrl };
+  let connection = null, pending = null, retryAfter = 0, stopped = false, routes = null, timer, background = null, maintenanceTasks = 0;
+  const inFlight = new Set();
+  const deps = { inFlight, secretBox, baseUrl: config.platform.databaseUrl, provisionerUrl: config.platform.provisionerUrl };
+  async function recoverInterrupted(platform) {
+    if (paused()) return;
+    maintenanceTasks++;
+    try {
+      await platform.transaction(async () => {
+        for (const row of await platform.all("SELECT id, revision FROM tenant WHERE status = 'PROVISIONING' AND is_default = 0")) {
+          if (inFlight.has(row.id)) continue;
+          const changed = await platform.get("UPDATE tenant SET status = 'FAILED', revision = revision + 1, last_error = 'INTERRUPTED', updated_at = ? WHERE id = ? AND status = 'PROVISIONING' AND revision = ? RETURNING id",
+            new Date(clock()).toISOString(), row.id, row.revision);
+          if (changed) await recordAudit(platform, { actor: 'host', action: 'TENANT_FAILED', tenantId: row.id, detail: 'INTERRUPTED' });
+        }
+      });
+    } finally { maintenanceTasks--; }
+  }
   async function connect() {
-    if (stopped) throw new ApiError(503, 'PLATFORM_UNAVAILABLE', 'The platform is temporarily unavailable.');
+    if (stopped || paused()) throw new ApiError(503, 'PLATFORM_UNAVAILABLE', 'The platform is temporarily unavailable.');
     if (connection) {
       const active = connection;
       try { await active.get('SELECT 1 AS alive'); return active; }
@@ -39,16 +54,8 @@ export function createPlatformRuntime({ store, config, clock = Date.now }) {
               VALUES (?, 'default', ?, 'ACTIVE', ?, 1, ?, ?, ?)`, randomUUID(), setup.shopName || 'Current shop', company.defaultCurrency,
               config.sellerQuickLogin || config.shopMode === 'public-demo' ? 1 : 0, stamp, stamp);
           }
-          if (!recovered) {
-            // One backend owns provisioning. A process restart leaves unfinished rows unavailable and retryable.
-            for (const row of await candidate.all("SELECT id, revision FROM tenant WHERE status = 'PROVISIONING' AND is_default = 0")) {
-              await candidate.run("UPDATE tenant SET status = 'FAILED', revision = revision + 1, last_error = 'INTERRUPTED', updated_at = ? WHERE id = ? AND status = 'PROVISIONING' AND revision = ?",
-                new Date(clock()).toISOString(), row.id, row.revision);
-              await recordAudit(candidate, { actor: 'host', action: 'TENANT_FAILED', tenantId: row.id, detail: 'INTERRUPTED' });
-            }
-          }
+          await recoverInterrupted(candidate);
         });
-        recovered = true;
         if (stopped) { await candidate.close(); throw new Error('Platform stopped.'); }
         connection = candidate;
         routes = createPlatformRoutes({ platform: candidate, secretBox, pool, registry, deps, defaultStore: store, config, clock });
@@ -62,10 +69,20 @@ export function createPlatformRuntime({ store, config, clock = Date.now }) {
   }
   const registry = createPlatformRegistry({ store, config, platform: connect, pool, clock });
   // Connection failures stay outside the legacy readiness path, and retries are bounded.
-  timer = setInterval(() => connect().catch(() => {}), 15_000); timer.unref();
+  timer = setInterval(() => {
+    if (paused() || background) return;
+    background = connect().then(recoverInterrupted).catch(() => {}).finally(() => { background = null; });
+  }, 15_000); timer.unref();
   return {
-    registry, pool, connect,
+    registry, pool, connect, isBusy: () => Boolean(pending || background || maintenanceTasks), reconcile: async () => recoverInterrupted(await connect()),
+    workerTenants: {
+      async list() { return (await connect()).all("SELECT * FROM tenant WHERE is_default = 0 AND status = 'ACTIVE' ORDER BY code LIMIT 20"); },
+      async get(tenant) {
+        const row = await (await connect()).get("SELECT * FROM tenant WHERE id = ? AND is_default = 0 AND status = 'ACTIVE'", tenant.id);
+        return row ? pool.get(row) : null;
+      },
+    },
     async handle(request, context) { await connect(); return routes(request, context); },
-    async close() { stopped = true; clearInterval(timer); await pending?.catch(() => {}); await pool.closeAll(); await connection?.close(); connection = null; },
+    async close() { stopped = true; clearInterval(timer); await background?.catch(() => {}); await pending?.catch(() => {}); await pool.closeAll(); await connection?.close(); connection = null; },
   };
 }

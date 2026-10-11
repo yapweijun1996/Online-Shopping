@@ -1,0 +1,3 @@
+SKU,Name,Description,Category,Currency,Price,Stock,Active
+SAMPLE-NOTEBOOK,Fictional notebook,Sample stationery item,SAMPLES,MYR,12.50,10,yes
+SAMPLE-TOTE,Fictional tote,Sample reusable bag,SAMPLES,MYR,18.00,5,yes

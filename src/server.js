@@ -13,6 +13,7 @@ import { createSecretBox } from './secret-box.js';
 import { createWhatsAppTransport } from './whatsapp-transport.js';
 import { startWhatsAppWorker } from './whatsapp-outbox.js';
 import { createPlatformRuntime } from './platform/runtime.js';
+import { deploymentPaused } from './deployment-maintenance.js';
 import { ApiError, errorResponse } from './http.js';
 
 function clientAddress(request, config) {
@@ -59,12 +60,21 @@ export async function createApp(config) {
     await database.close();
     throw error;
   }
-  const platform = config.platform ? createPlatformRuntime({ store: database, config }) : null;
+  const platform = config.platform ? createPlatformRuntime({ store: database, config, paused: () => deploymentPaused(config.maintenancePath) }) : null;
   const handle = await createApi({ store: database, config, serveStatic, registry: platform?.registry,
     platformHandler: platform ? (request, context) => platform.handle(request, context) : null });
   platform?.connect().catch(() => {});
+  let inFlight = 0, worker = null;
+  const paused = () => deploymentPaused(config.maintenancePath);
   const server = createServer(async (request, response) => {
+    const path = request.url?.split('?')[0], health = path === '/health' || path === '/ready';
+    if (!health) inFlight++;
     try {
+      if (paused() && health && path === '/health') {
+        response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+        response.end(JSON.stringify({ status: 'alive', revision: config.appRevision, maintenance: { enabled: true, inFlight, workerIdle: !worker?.isBusy(), platformIdle: !platform?.isBusy() } })); return;
+      }
+      if (paused() && !health) throw new ApiError(503, 'DEPLOYMENT_MAINTENANCE', 'The shop is temporarily unavailable during an upgrade.');
       const result = await handle(toFetchRequest(request, config), { clientAddress: clientAddress(request, config) });
       await writeFetchResponse(response, result);
     } catch (error) {
@@ -75,20 +85,20 @@ export async function createApp(config) {
         response.writeHead(500, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
         response.end(JSON.stringify({ error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred.' } }));
       }
-    }
+    } finally { if (!health) inFlight--; }
   });
   server.requestTimeout = 10_000;
   server.headersTimeout = 10_000;
   // The message worker is started by the process entry point only (never by tests). It needs the master keys and must
   // not run on a passwordless sample site, where the buyers and credentials are not real.
-  let worker = null;
   const startWorker = () => {
-    if (worker || !config.integrationKeys || config.sellerQuickLogin || config.shopMode === 'public-demo') return false;
-    worker = startWhatsAppWorker({ store: database, secretBox: createSecretBox(config.integrationKeys), transport: createWhatsAppTransport() });
+    if (worker || !config.integrationKeys || (!platform && (config.sellerQuickLogin || config.shopMode === 'public-demo'))) return false;
+    worker = startWhatsAppWorker({ store: config.sellerQuickLogin || config.shopMode === 'public-demo' ? null : database,
+      secretBox: createSecretBox(config.integrationKeys), transport: createWhatsAppTransport(), tenants: platform?.workerTenants, paused });
     return true;
   };
   return { server, database, platform, startWorker, close: () => new Promise((resolve, reject) => server.close(async (error) => {
-    worker?.stop();
+    await worker?.stop();
     await platform?.close();
     await database.close();
     if (error) reject(error);

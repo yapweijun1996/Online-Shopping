@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import subprocess
 import sys
 import tempfile
@@ -146,6 +147,10 @@ def compose_violations(current, candidate, current_release, candidate_release):
     return problems
 
 
+class MigrationRestoreError(RuntimeError):
+    pass
+
+
 class Updater:
     def __init__(self, root):
         self.root = Path(root).resolve()
@@ -214,8 +219,13 @@ class Updater:
 
     def backup(self):
         item = self.state['current']
-        self.run([sys.executable, str(Path(item['release']) / 'deploy/backup-postgres.py'),
-                  '--env-file', str(self.root / 'runtime.env')], timeout=180)
+        directory = Path.home() / 'Backups/Online-Shopping'
+        manifest = directory / ('deployment-' + datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + secrets.token_hex(4) + '.json')
+        script = Path(item['release']) / 'deploy/backup-postgres.py'
+        command = [sys.executable, str(script), '--env-file', str(self.root / 'runtime.env')]
+        if '--manifest' in script.read_text(): command += ['--manifest', str(manifest)]
+        self.run(command, timeout=900)
+        self.deployment_backup = manifest if manifest.exists() else None
 
     def build(self, item):
         self.run(self.compose(item) + ['build', 'frontend', 'backend'], timeout=900)
@@ -233,26 +243,130 @@ class Updater:
         new = json.loads((self.root / 'configs' / (candidate['sha'] + '.json')).read_text())
         return compose_violations(old, new, current['release'], candidate['release'])
 
-    def migrate(self, candidate):
-        """Upgrade the database schema as its owner before traffic moves. Returns True when it ran.
+    def runtime(self):
+        path = self.root / 'runtime.env' if hasattr(self, 'root') else None
+        return dict(line.split('=', 1) for line in path.read_text().splitlines() if '=' in line) if path and path.exists() else {}
 
-        The upgrade is one transaction and runs after a verified backup; failure leaves the schema as it was.
-        """
+    def migration_required(self, candidate):
+        if self.runtime().get('PLATFORM_ENABLED') != '1': return False
+        version = int(re.search(r'PLATFORM_SCHEMA_VERSION = (\d+)', (Path(candidate['release']) / 'src/platform/platform-db.js').read_text()).group(1))
+        postgres = self.run(self.compose(self.state['current']) + ['ps', '-q', 'postgres'], capture=True).strip()
+        output = self.run([sys.executable, str(Path(candidate['release']) / 'deploy/needs-upgrade.py'),
+                          '--container', postgres, '--shop-version', str(schema_version(candidate['release'])),
+                          '--platform-version', str(version)], capture=True)
+        return json.loads(output.strip().splitlines()[-1])['required']
+
+    def maintenance(self, enabled, candidate):
+        config = json.loads((self.root / 'configs' / (self.state['current']['sha'] + '.json')).read_text())
+        volumes = config.get('services', {}).get('backend', {}).get('volumes', [])
+        matches = [volume for volume in volumes if volume.get('target') == '/run/deployment' and volume.get('type') == 'volume']
+        if len(matches) != 1:
+            raise RuntimeError('Durable deployment maintenance volume is required.')
+        definition = config.get('volumes', {}).get(matches[0].get('source'), {})
+        name = definition.get('name', '')
+        if definition.get('external') or not re.fullmatch(PROJECT + r'_[a-z0-9_]+', name):
+            raise RuntimeError('Deployment maintenance volume must belong to this project.')
+        script = Path(candidate['release']) / 'scripts/deployment-maintenance.mjs'
+        output = self.run(['docker', '--context', 'orbstack', 'run', '--rm', '--user', '0', '--read-only',
+            '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true', '--network', PROJECT + '_private',
+            '-v', name + ':/run/deployment', '-v', str(script) + ':/app/scripts/deployment-maintenance.mjs:ro',
+            '-e', 'DEPLOYMENT_STATE_DIR=/run/deployment', '-e', 'MAINTENANCE_HEALTH_URL=http://backend:3000/health',
+            '--entrypoint', 'node', 'online-shopping-backend:' + candidate['sha'], '/app/scripts/deployment-maintenance.mjs',
+            'enter' if enabled else 'exit'], capture=True, timeout=210)
+        proof = json.loads(output.strip().splitlines()[-1])
+        if proof.get('paused') != enabled or (enabled and proof.get('drained') is not True):
+            raise RuntimeError('Deployment maintenance was not verified.')
+
+    def migration_report(self, candidate):
+        directory = self.root / 'migration-reports'; directory.mkdir(mode=0o700, exist_ok=True); directory.chmod(0o700)
+        return directory / (candidate['sha'] + '-' + secrets.token_hex(4) + '.json')
+
+    def migration_runner(self, command, candidate, kind, timeout):
+        progress = self.state['migration']
+        name = PROJECT + '-upgrade-' + candidate['sha'][:12] + '-' + secrets.token_hex(4) + '-' + kind
+        progress.setdefault('runners', []).append(name)
+        if hasattr(self, 'state_path'): self.save('migration_running')
+        create = list(command); create[create.index('run')] = 'create'; create.remove('--rm')
+        create[4:4] = ['--name', name, '--label', 'com.online-shopping.operation=database-upgrade']
+        # Create before start: a lost create response can leave an inert container, never an untracked writer.
+        identity = self.run(create, capture=True, timeout=120).strip()
+        if not re.fullmatch(r'[a-f0-9]{64}', identity): raise RuntimeError('Invalid migration container identity.')
+        return self.run(['docker', '--context', 'orbstack', 'start', '--attach', name], capture=True, timeout=timeout)
+
+    def stop_runners(self):
+        for name in self.state.get('migration', {}).get('runners', []):
+            if not re.fullmatch(PROJECT + r'-upgrade-[a-f0-9]{12}-[a-f0-9]{8}-(main|platform)', name):
+                raise RuntimeError('Unexpected migration runner scope.')
+            query = ['docker', '--context', 'orbstack', 'ps', '-a', '--filter', 'name=^/' + name + '$', '--format', '{{.Names}}']
+            found = self.run(query, capture=True).strip()
+            if not found: continue
+            if found != name: raise RuntimeError('Ambiguous migration runner identity.')
+            self.run(['docker', '--context', 'orbstack', 'stop', '--time', '30', name], timeout=60)
+            if self.run([value for value in query if value != '-a'], capture=True).strip():
+                raise RuntimeError('Migration writer is still running.')
+            self.run(['docker', '--context', 'orbstack', 'rm', name])
+
+    def restore_migration(self, candidate):
+        progress = self.state.get('migration')
+        if not progress: return
+        self.stop_runners()
+        if not progress.get('backup'): return
+        postgres = self.run(self.compose(self.state['current']) + ['ps', '-q', 'postgres'], capture=True).strip()
+        backend = self.run(self.compose(self.state['current']) + ['ps', '-q', 'backend'], capture=True).strip()
+        output = self.run([sys.executable, str(Path(candidate['release']) / 'deploy/restore-postgres.py'),
+            '--container', postgres, '--backend', backend, '--manifest', progress['backup'], '--report', progress['report']], capture=True, timeout=900)
+        if json.loads(output.strip().splitlines()[-1]).get('restoreVerified') is not True:
+            raise RuntimeError('Deployment database restore is unverified.')
+
+    def migrate(self, candidate):
+        """Main upgrade first, then platform and isolated shops; every attempted database has durable intent."""
         before, after = schema_version(self.state['current']['release']), schema_version(candidate['release'])
-        if after == before:
-            return False
-        if after < before:
-            raise RuntimeError('Schema downgrades are never automatic.')
-        runtime = dict(line.split('=', 1) for line in (self.root / 'runtime.env').read_text().splitlines() if '=' in line)
-        owner = runtime['DATABASE_OWNER_PASSWORD_FILE_HOST']
-        script = Path(candidate['release']) / 'scripts/upgrade-database.mjs'
-        output = self.run(['docker', '--context', 'orbstack', 'run', '--rm', '--network', PROJECT + '_private',
-                           '-v', owner + ':/run/secrets/owner:ro', '-v', str(script) + ':/app/scripts/upgrade-database.mjs:ro',
-                           '--entrypoint', 'node', 'online-shopping-backend:' + candidate['sha'],
-                           '/app/scripts/upgrade-database.mjs'], capture=True, timeout=300)
-        if json.loads(output.strip().splitlines()[-1]).get('version') != after:
-            raise RuntimeError('Database schema is not at the expected version after the upgrade.')
-        return True
+        if after < before: raise RuntimeError('Schema downgrades are never automatic.')
+        runtime = self.runtime(); enabled = runtime.get('PLATFORM_ENABLED') == '1'
+        if after == before and not enabled: return False
+        report = None
+        if enabled:
+            manifest = getattr(self, 'deployment_backup', None)
+            if not manifest or not manifest.exists(): raise RuntimeError('Platform upgrade requires this deployment backup.')
+            progress = self.state.get('migration') or {'candidate': candidate, 'report': str(self.migration_report(candidate)), 'paused': False}
+            progress['backup'] = str(manifest); self.state['migration'] = progress
+            report = Path(progress['report']); directory = report.parent
+        main_ran = False
+        try:
+            if after != before:
+                if report: atomic_json(report, {'format': 1, 'attempted': ['online_shopping'], 'upgraded': [], 'complete': False})
+                owner = runtime['DATABASE_OWNER_PASSWORD_FILE_HOST']
+                script = Path(candidate['release']) / 'scripts/upgrade-database.mjs'
+                command = ['docker', '--context', 'orbstack', 'run', '--rm', '--network', PROJECT + '_private',
+                    '-v', owner + ':/run/secrets/owner:ro', '-v', str(script) + ':/app/scripts/upgrade-database.mjs:ro',
+                    '--entrypoint', 'node', 'online-shopping-backend:' + candidate['sha'], '/app/scripts/upgrade-database.mjs']
+                output = self.migration_runner(command, candidate, 'main', 300) if enabled else self.run(command, capture=True, timeout=300)
+                main_ran = True
+                if json.loads(output.strip().splitlines()[-1]).get('version') != after:
+                    raise RuntimeError('Database schema is not at the expected version after the upgrade.')
+                if report:
+                    proof = json.loads(report.read_text()); proof['upgraded'].append('online_shopping'); atomic_json(report, proof)
+            if enabled:
+                script = Path(candidate['release']) / 'scripts/upgrade-platform.mjs'
+                command = ['docker', '--context', 'orbstack', 'run', '--rm', '--user', '0', '--read-only',
+                    '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true', '--network', PROJECT + '_private',
+                    '-v', runtime['PLATFORM_DATABASE_PASSWORD_FILE_HOST'] + ':/run/secrets/platform:ro',
+                    '-v', runtime['INTEGRATION_KEY_FILE_HOST'] + ':/run/secrets/integration_keys:ro',
+                    '-v', str(manifest) + ':/run/backup/manifest.json:ro', '-v', str(directory) + ':/run/upgrade',
+                    '-v', str(script) + ':/app/scripts/upgrade-platform.mjs:ro',
+                    '-e', 'UPGRADE_REPORT_FILE=/run/upgrade/' + report.name, '--entrypoint', 'node',
+                    'online-shopping-backend:' + candidate['sha'], '/app/scripts/upgrade-platform.mjs']
+                output = self.migration_runner(command, candidate, 'platform', 900)
+                result = json.loads(output.strip().splitlines()[-1]); proof = json.loads(report.read_text())
+                if result.get('version') != after or proof.get('complete') is not True:
+                    raise RuntimeError('Platform upgrade did not complete.')
+            if enabled: self.stop_runners()
+            return main_ran or enabled
+        except Exception:
+            if enabled:
+                try: self.restore_migration(candidate)
+                except Exception as error: raise MigrationRestoreError('Deployment restore failed; maintenance remains enabled.') from error
+            raise
 
     def activate(self, item):
         # Application services only: the database and the tunnel are never recreated automatically.
@@ -291,16 +405,30 @@ class Updater:
         except Exception:
             self.save('build_failed', failed_sha=candidate['sha'])
             raise
-        self.backup()
+        paused = self.migration_required(candidate)
+        if paused:
+            self.save('migration_preparing', migration={'candidate': candidate, 'report': str(self.migration_report(candidate)), 'backup': None, 'paused': True})
+            self.maintenance(True, candidate)
+        try:
+            self.backup()
+        except Exception:
+            if paused: self.resume('backup_failed', candidate, migration=None)
+            raise
+        if paused:
+            self.state['migration']['backup'] = str(self.deployment_backup)
+            self.save('migration_running')
         # A newer push during build/backup supersedes this candidate before traffic changes.
         if self.remote_head() != candidate['sha'] or not self.approved(candidate['sha']):
-            self.save('superseded', sha=candidate['sha'])
+            self.resume('superseded', candidate, paused=paused, sha=candidate['sha'], migration=None)
             return
         previous = self.state['current']
         try:
             migrated = self.migrate(candidate)
+        except MigrationRestoreError:
+            self.save('migration_restore_failed', failed_sha=candidate['sha'])
+            raise
         except Exception:
-            self.save('migration_failed', failed_sha=candidate['sha'])
+            self.resume('migration_failed', candidate, paused=paused, failed_sha=candidate['sha'], migration=None)
             raise
         self.save('deploying', pending=candidate, migrated=migrated)
         try:
@@ -308,22 +436,44 @@ class Updater:
             self.health(candidate)
         except Exception:
             try:
+                if self.state.get('migration'): self.restore_migration(candidate)
                 self.activate(previous)
                 self.health(previous)
             except Exception:
                 self.save('rollback_failed', failed_sha=candidate['sha'])
                 raise RuntimeError('Automatic rollback failed; operator intervention is required.') from None
-            self.save('rolled_back', failed_sha=candidate['sha'], pending=None)
+            self.resume('rolled_back', candidate, paused=paused, failed_sha=candidate['sha'], pending=None, migration=None)
             raise RuntimeError('Release failed validation; previous application images restored.') from None
-        self.state.update(current=candidate, previous=previous, pending=None, failed_sha=None)
-        self.save('deployed', sha=candidate['sha'])
+        self.state.update(current=candidate, previous=previous, pending=None, failed_sha=None, migration=None)
+        # Commit the validated release before allowing writes. Recovery must never restore a stale snapshot after resume.
+        self.save('deployed', sha=candidate['sha'], maintenance_resume=paused)
+        if paused:
+            self.maintenance(False, candidate)
+            self.save('deployed', sha=candidate['sha'], maintenance_resume=False)
+
+    def resume(self, status, candidate, *, paused=True, **fields):
+        # Clear restore intent durably before any route or worker can accept a new write.
+        self.save(status, maintenance_resume=bool(paused), **fields)
+        if paused:
+            self.maintenance(False, candidate)
+            self.save(status, maintenance_resume=False)
 
     def recover(self):
-        if self.state.get('pending'):
-            # Interrupted cutover has no success evidence. Restore the recorded current release.
-            self.activate(self.state['current'])
-            self.health(self.state['current'])
+        progress = self.state.get('migration')
+        if progress:
+            candidate = progress['candidate']
+            try: self.restore_migration(candidate)
+            except Exception:
+                self.save('migration_restore_failed', failed_sha=candidate['sha'])
+                raise MigrationRestoreError('Interrupted migration could not be restored.') from None
+            if self.state.get('pending'):
+                self.activate(self.state['current']); self.health(self.state['current'])
+            self.resume('migration_recovered', candidate, paused=progress.get('paused'), failed_sha=candidate['sha'], pending=None, migration=None)
+        elif self.state.get('pending'):
+            self.activate(self.state['current']); self.health(self.state['current'])
             self.save('recovered', failed_sha=self.state['pending']['sha'], pending=None)
+        if self.state.get('maintenance_resume'):
+            self.maintenance(False, self.state['current']); self.save('up_to_date', maintenance_resume=False)
 
     def poll(self, retry=False):
         self.recover()
@@ -367,7 +517,7 @@ def main():
                 updater.poll(args.retry)
         except Exception as error:
             print('Auto-update failed:', type(error).__name__, file=sys.stderr)
-            if updater.state.get('last_status') not in ['rolled_back', 'rollback_failed', 'build_failed']:
+            if updater.state.get('last_status') not in ['rolled_back', 'rollback_failed', 'build_failed', 'migration_failed', 'migration_restore_failed', 'backup_failed']:
                 updater.save('check_failed')
             raise SystemExit(1)
 

@@ -32,10 +32,11 @@ def query(args, sql, database='postgres'):
     return result.stdout.strip()
 
 
-def inspect(args):
+def inspect(args, *, allow_public_connect=False):
     roles = query(args, "SELECT rolname || '|' || rolsuper || '|' || rolcreatedb || '|' || rolcreaterole || '|' || rolcanlogin FROM pg_roles WHERE rolname IN ('platform_app','platform_provisioner') ORDER BY rolname;")
     database = query(args, "SELECT pg_get_userbyid(datdba) || '|' || NOT EXISTS (SELECT 1 FROM aclexplode(COALESCE(datacl, acldefault('d', datdba))) WHERE grantee=0 AND privilege_type='CONNECT') FROM pg_database WHERE datname='platform';")
-    if roles.splitlines() != ['platform_app|false|false|false|true', 'platform_provisioner|false|true|true|true'] or database != 'platform_app|true':
+    expected_database = ['platform_app|true', 'platform_app|false'] if allow_public_connect else ['platform_app|true']
+    if roles.splitlines() != ['platform_app|false|false|false|true', 'platform_provisioner|false|true|true|true'] or database not in expected_database:
         raise RuntimeError('Platform roles, ownership or PUBLIC privileges do not match the required boundary.')
     settings = query(args, "SELECT COALESCE(array_to_string(rolconfig, ','),'') FROM pg_roles WHERE rolname='platform_provisioner';")
     if 'createrole_self_grant=set, inherit' not in settings:
@@ -64,7 +65,10 @@ def main():
             exists = query(args, "SELECT 1 FROM pg_database WHERE datname='platform';")
             if not exists:
                 query(args, 'CREATE DATABASE platform OWNER platform_app;')
-                query(args, 'REVOKE ALL ON DATABASE platform FROM PUBLIC;')
+            # CREATE DATABASE cannot share a transaction with REVOKE. Resume an interrupted setup only after
+            # proving these are the expected platform objects; never repair unrelated ownership or roles.
+            inspect(args, allow_public_connect=True)
+            query(args, 'REVOKE ALL ON DATABASE platform FROM PUBLIC;')
         print(json.dumps(inspect(args)))
     except Exception as error:
         print('Platform setup failed: ' + type(error).__name__)

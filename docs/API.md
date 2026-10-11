@@ -213,6 +213,8 @@ Non-default shops add `/<code>` to normal paths: `/<code>/shop/`, `/<code>/selle
 
 The default registry row cannot be mutated through the console. The limit is twenty non-purged shops including the default. Requested deletion retains data for thirty days; the console never drops a database. Manual purge retains the registry row and aliases in terminal PURGED state, preventing code reuse.
 
+During a schema upgrade with the R3 controller installed, business requests return 503 `DEPLOYMENT_MAINTENANCE` while the host-only durable maintenance flag is set. `/ready` retains the default-store readiness contract. `/health` remains alive and supplies `maintenance.enabled`, `inFlight`, `workerIdle` and `platformIdle` drain diagnostics, without exposing credentials or tenant data. There is no HTTP maintenance-control endpoint. `GET /api/v1/platform/status` requires a FULL platform session and reports reachability, open tenant pool size and bounded counts by status; it grants no operator capability.
+
 
 The edge checks `GET <base>/api/v1/tenant-access` before serving tenant static files or entry redirects. ACTIVE returns an empty 200 with no-store; unknown/PROVISIONING/FAILED/PURGED returns neutral HTML 404; SUSPENDED/DELETING returns neutral HTML 503. No tenant database is opened. Aliases return 308 to the same path/query under the new code; Caddy supplies the original URI. This endpoint grants no authentication capability. Failed metadata lookups and successful known-code refreshes do not consume the unknown-code probe quota.
 
