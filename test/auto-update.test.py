@@ -41,6 +41,21 @@ class Fake(m.Updater):
         if self.fail == 'rollback': raise RuntimeError()
 
 class Tests(unittest.TestCase):
+    def test_backup_manifest_accepts_same_directory_alias_but_not_escape_or_file_symlink(self):
+        directory = Path(__file__).resolve().parents[1] / 'deploy'
+        sys.path.insert(0, str(directory))
+        spec = importlib.util.spec_from_file_location('backup', directory / 'backup-postgres.py')
+        backup = importlib.util.module_from_spec(spec); spec.loader.exec_module(backup)
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder).resolve(); private = base / 'private'; private.mkdir()
+            alias = base / 'alias'; alias.symlink_to(private, target_is_directory=True)
+            self.assertEqual(backup.manifest_path(alias / 'manifest.json', private), private / 'manifest.json')
+            with self.assertRaisesRegex(RuntimeError, 'inside'):
+                backup.manifest_path(base / 'escaped.json', private)
+            (private / 'manifest.json').symlink_to(base / 'escaped.json')
+            with self.assertRaisesRegex(RuntimeError, 'inside'):
+                backup.manifest_path(alias / 'manifest.json', private)
+
     def test_setup_recovers_interrupted_revoke_but_refuses_foreign_owner(self):
         directory = Path(__file__).resolve().parents[1] / 'deploy'
         spec = importlib.util.spec_from_file_location('setup', directory / 'setup-platform.py')

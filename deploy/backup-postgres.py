@@ -16,6 +16,14 @@ from postgres_backup import OwnerPostgres, private_json
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def manifest_path(value, directory):
+    manifest = Path(value).expanduser().absolute()
+    if manifest.parent.resolve() != directory or manifest.is_symlink():
+        raise RuntimeError('Backup manifest must be inside the private backup directory.')
+    # macOS /var and /private/var identify the same directory; compare canonical parents, retaining file checks.
+    return directory / manifest.name
+
+
 def legacy_backup(args, postgres, backend, directory, expected_schema):
     exec_pg = ['docker', '--context', args.context, 'exec', postgres]
     name = 'shopping_restore_test_' + secrets.token_hex(8)
@@ -128,8 +136,7 @@ def main(argv=None):
             entry['role'] = row['database_role']; entries.append(entry)
     elif args.tenant: raise RuntimeError('The platform database does not exist.')
     if args.manifest:
-        manifest = Path(args.manifest).expanduser().absolute()
-        if manifest.parent != directory or manifest.is_symlink(): raise RuntimeError('Backup manifest must be inside the private backup directory.')
+        manifest = manifest_path(args.manifest, directory)
         private_json(manifest, {'format': 1, 'restoreVerified': True, 'createdAt': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'databases': entries})
         print('Verified backup set:', manifest)
     elif any(entry['database'] != 'online_shopping' for entry in entries):
