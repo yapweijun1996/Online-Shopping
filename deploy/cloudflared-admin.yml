@@ -1,0 +1,6 @@
+tunnel: 1e23f5bd-7628-4fe7-9630-e8b8ffa9dae1
+credentials-file: /run/secrets/tunnel_admin_credentials
+ingress:
+  - hostname: admin.gmb01.xyz
+    service: http://frontend:80
+  - service: http_status:404
