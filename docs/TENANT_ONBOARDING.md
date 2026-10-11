@@ -1,6 +1,6 @@
 # Opening a new shop (tenant): the end-to-end flow
 
-Status: **R1–R4 are built; owner journey, fault, backup/restore and capacity rehearsals passed. Follow the ledger for production activation evidence.** See the [release ledger](MULTI_TENANT_LEDGER.md). It describes how a shop A, B, C, D, E is created and kept running from one source code, one Docker deployment and one automatic deploy, with a separate database per shop. Each step says which phase of [MULTI_TENANT_SUPERADMIN_PLAN.md](MULTI_TENANT_SUPERADMIN_PLAN.md) makes it possible and whether that phase exists today. Facts are **[built]** (merged and tested), **[planned]** (phase not built yet) or **[owner]** (a step only the owner can do).
+Status: **R1–R4 are built; owner journey, fault, backup/restore and capacity rehearsals passed. Production activated and read-only verified in R4; the executor leaves first TOTP enrolment to the owner.** See the [release ledger](MULTI_TENANT_LEDGER.md). It describes how a shop A, B, C, D, E is created and kept running from one source code, one Docker deployment and one automatic deploy, with a separate database per shop. Each step says which phase of [MULTI_TENANT_SUPERADMIN_PLAN.md](MULTI_TENANT_SUPERADMIN_PLAN.md) makes it possible and whether that phase exists today. Facts are **[built]** (merged and tested), **[planned]** (phase not built yet) or **[owner]** (a step only the owner can do).
 
 ## 0. The picture
 
@@ -62,4 +62,4 @@ One code base means every shop gets every feature at the same moment. There is n
 
 ## 7. Order of work
 
-P3 SuperAdmin sign-in, P4 create and manage shops, P5 and P6 addresses and front end under `/<code>/`, P7 updater and backups for every shop, P8 security review and drills. P3–P7 are built in R1–R3; P8 real rehearsals and independent review are complete. Production activation is gated on R3 operations and the R4 rehearsal, review and host prerequisites; the legacy root remains the default shop.
+P3 SuperAdmin sign-in, P4 create and manage shops, P5 and P6 addresses and front end under `/<code>/`, P7 updater and backups for every shop, P8 security review and drills. P3–P7 are built in R1–R3; P8 real rehearsals and independent review are complete. Ordered production activation, controller installation, read-only verification and private handoff are complete; the legacy root remains the default shop. See the release ledger for evidence and recorded deviations.
