@@ -127,6 +127,16 @@ Optional `imageDataUrl` is a PNG/JPEG/WebP base64 data URL up to 512 KB decoded;
 
 The seller web app builds an official `https://wa.me/<international-digits>` click-to-chat link from the authorized buyer phone only when that buyer opted in to order-related WhatsApp contact. It copies individual buyer and recipient contact/address fields from that authorized response, with visible clipboard success/failure feedback. The link has no prefilled message; sending remains manual. The API does not send WhatsApp messages or export courier files in the MVP. `Sales Orders` and `Sales Order Confirmation` are UI views over the same order endpoints and order state. The confirmation view reloads the queue/detail after a stale 409 and keeps mutations online only.
 
+### Product edit and stock concurrency
+
+Product PATCH accepts `expectedUpdatedAt`, the exact timestamp from the seller product detail. When supplied, the server checks it before applying metadata, stock or shared-gallery handling and returns `409 PRODUCT_CHANGED` on mismatch. The seller editor sends it for every existing product and omits unchanged stock. Clients that omit the token retain last-write behavior for metadata/stock; gallery replacement still requires the token. Confirmation and cancellation advance the affected tracked product timestamps inside the order transaction.
+
+Switching `stockQuantity` between `null` and a finite count returns `409 STOCK_TRACKING_CONFLICT` while that variant appears in any `CONFIRMED` order. Ship or cancel every such order first. Finite-count adjustments remain allowed. This preserves the tracking mode used for deduction until cancellation can no longer reverse it.
+
+### Checkout recovery
+
+Guest checkout stores its unresolved key, exact request and receipt/cart context in shop-scoped browser storage before sending. Network failures, 5xx responses and reloads replay that exact intent and display its original item snapshot without requiring current catalog reads; definitive non-conflict 4xx rejections permit correcting details under the same key. A price-change rejection releases the intent for price review. Successful receipt handling clears it, and unresolved intent defers automatic PWA updates. Blocked or corrupt intent storage prevents submission; deleting browser data or moving to another browser loses this recovery state.
+
 ## Managed categories and company settings
 
 `general_code` currently has only `PRODUCT_CATEGORY` rows. Creating a category requires `{ "code": "HOME_GOODS", "label": "Home goods" }`; `code` is immutable and accepts uppercase letters, digits, `_` and `-`. PATCH accepts a nonempty subset of `label` and `active`. Deactivating a category prevents new assignments but does not delete or hide products already assigned to it. The public product `category` and public list `categories` contain display labels. Seller product responses add `categoryCode` so the editor can select the stable code. The optional product-list `category` query filters by current display label. Company settings change the default currency shown for new product drafts; each product's submitted currency remains authoritative. Existing products and order snapshots are never converted by this setting.

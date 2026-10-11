@@ -703,7 +703,6 @@ async function completeOrder(receipt, { orderItems, submittedItems, cartBacked, 
   catch { receiptNotes.push('cartClearFailed'); }
   resolvedCart = [];
   cartReady = false;
-  checkoutPage.reset();
   setDirectPurchase(null);
   updateCount();
   updatePersistence();
@@ -711,6 +710,7 @@ async function completeOrder(receipt, { orderItems, submittedItems, cartBacked, 
   setMessage('orderSubmitted');
   location.hash = '#receipt';
   showRoute();
+  checkoutPage.reset();
 }
 
 let ordersScroll = 0;
@@ -924,7 +924,9 @@ function showRoute() {
     const intent = directPurchase;
     const ownsCheckoutRead = () => checkoutRequest === checkoutRouteRequest &&
       location.hash === '#checkout' && directPurchase === intent;
-    if (directPurchase) {
+    if (checkoutPage.isRecovering()) {
+      checkoutPage.setItems(cartStore.list());
+    } else if (directPurchase) {
       api(apiUrl(`v1/products/${intent.productId}`)).then((product) => {
         if (ownsCheckoutRead()) {
           checkoutPage.setItems([{ productId: intent.productId, quantity: intent.quantity, product }], { fromCart: false });
@@ -1245,5 +1247,5 @@ await loadCatalog();
 showRoute();
 
 
-mountShopUpdates(() => ({ dirty: profilePage.isDirty() || addressBook.isDirty(), busy: cartWrites > 0 || checkoutPage.isBusy(), signature: draftSignature() }), productUpdateBanner);
+mountShopUpdates(() => ({ dirty: profilePage.isDirty() || addressBook.isDirty() || checkoutPage.hasPendingIntent(), busy: cartWrites > 0 || checkoutPage.isBusy(), signature: draftSignature() }), productUpdateBanner);
 finishBoot();

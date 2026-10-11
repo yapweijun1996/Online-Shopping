@@ -25,6 +25,7 @@ class Fake(m.Updater):
         if self.fail == 'build': raise RuntimeError()
     def backup(self): self.events.append('backup')
     def violations(self, candidate): return self.problems if hasattr(self, 'problems') else []
+    def migration_required(self, candidate): return False
     def migrate(self, candidate):
         self.events.append('migrate')
         if self.fail == 'migrate': raise RuntimeError()
@@ -319,15 +320,23 @@ class Tests(unittest.TestCase):
                 (Path(folder) / 'src').mkdir(); (Path(folder) / 'src/db.js').write_text(f'export const SCHEMA_VERSION = {version};\n')
             (Path(root) / 'runtime.env').write_text('DATABASE_OWNER_PASSWORD_FILE_HOST=/secrets/owner\n')
             u = object.__new__(m.Updater); u.root = Path(root); u.state = {'current': {'sha': OLD, 'release': old}}
+            manifest = Path(root) / 'backup.json'; manifest.write_text('{}'); u.deployment_backup = manifest
             seen = []
-            def fake_run(command, **kw): seen.append(command); return 'noise\n{"version": 18}\n'
+            version = [18]
+            def fake_run(command, **kw):
+                seen.append(command)
+                if 'create' in command: return 'c' * 64
+                if 'start' in command: return json.dumps({'version': version[0]}) + '\n'
+                if any(value.endswith('/restore-postgres.py') for value in command): return '{"restoreVerified":true}\n'
+                return ''
             u.run = fake_run
             self.assertTrue(u.migrate({'sha': NEW, 'release': new}))
             command = seen[0]
             self.assertIn('online-shopping-backend:' + NEW, command)
             self.assertIn('/secrets/owner:/run/secrets/owner:ro', command)
             self.assertIn(m.PROJECT + '_private', command)
-            u.run = lambda command, **kw: '{"version": 17}\n'
+            self.assertEqual(json.loads(Path(u.state['migration']['report']).read_text())['upgraded'], ['online_shopping'])
+            version[0] = 17
             with self.assertRaises(RuntimeError): u.migrate({'sha': NEW, 'release': new})
 
     def test_platform_upgrade_runs_with_unchanged_main_and_restores_before_failure(self):
@@ -421,7 +430,7 @@ class Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as old,tempfile.TemporaryDirectory() as new,tempfile.TemporaryDirectory() as root:
             for folder,version in [(old,23),(new,24)]:
                 (Path(folder)/'src').mkdir();(Path(folder)/'src/db.js').write_text(f'export const SCHEMA_VERSION = {version};\n')
-            root=Path(root);(root/'runtime.env').write_text('PLATFORM_ENABLED=1\nDATABASE_OWNER_PASSWORD_FILE_HOST=/owner\n')
+            root=Path(root);(root/'runtime.env').write_text('PLATFORM_ENABLED=0\nDATABASE_OWNER_PASSWORD_FILE_HOST=/owner\n')
             manifest=root/'backup.json';manifest.write_text('{}')
             u=object.__new__(m.Updater);u.root=root;u.state={'current':{'sha':OLD,'release':old}};u.deployment_backup=manifest
             events=[]
@@ -431,6 +440,87 @@ class Tests(unittest.TestCase):
             u.migration_runner=runner;u.restore_migration=lambda candidate:events.append('restore')
             with self.assertRaisesRegex(RuntimeError,'unknown main outcome'):u.migrate({'sha':NEW,'release':new})
             self.assertEqual(events,['intent','restore'])
+
+    def test_single_shop_upgrade_restores_schema_before_old_images_and_reopens_only_after_validation(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); old = root / 'old'; new = root / 'new'
+            for release, version in [(old, 24), (new, 25)]:
+                (release / 'src').mkdir(parents=True)
+                (release / 'src/db.js').write_text(f'export const SCHEMA_VERSION = {version};\n')
+            (root / 'runtime.env').write_text('PLATFORM_ENABLED=0\nDATABASE_OWNER_PASSWORD_FILE_HOST=/fixture/owner\n')
+            u = object.__new__(m.Updater); u.root = root
+            u.state = {'current': {'sha': OLD, 'release': str(old)}}
+            candidate = {'sha': NEW, 'release': str(new)}
+            events = []; paused = [False]; schema = [24]
+            u.render = lambda item: None; u.build = lambda item: None; u.violations = lambda item: []
+            u.remote_head = lambda: NEW; u.approved = lambda sha: True
+            def save(status, **fields):
+                events.append(status); u.state.update(last_status=status, **fields)
+            u.save = save
+            def maintenance(enabled, item):
+                if not enabled:
+                    self.assertIsNone(u.state['migration']); self.assertTrue(u.state['maintenance_resume'])
+                paused[0] = enabled; events.append('pause' if enabled else 'resume')
+            u.maintenance = maintenance
+            def backup():
+                self.assertTrue(paused[0]); events.append('backup')
+                manifest = root / 'verified-backup.json'; manifest.write_text('{}'); u.deployment_backup = manifest
+            u.backup = backup
+            def runner(command, item, kind, timeout):
+                self.assertTrue(paused[0]); self.assertEqual(kind, 'main')
+                self.assertEqual(json.loads(Path(u.state['migration']['report']).read_text())['attempted'], ['online_shopping'])
+                schema[0] = 25; events.append('upgrade'); return '{"version":25}\n'
+            u.migration_runner = runner; u.stop_runners = lambda: events.append('stop')
+            def restore(item):
+                self.assertTrue(paused[0]); self.assertEqual(schema[0], 25)
+                self.assertTrue(Path(u.state['migration']['backup']).exists())
+                schema[0] = 24; events.append('restore')
+            u.restore_migration = restore
+            def activate(item):
+                self.assertEqual(schema[0], 25 if item['sha'] == NEW else 24)
+                events.append('activate:' + item['sha'])
+            u.activate = activate
+            def health(item):
+                self.assertTrue(paused[0]); events.append('health:' + item['sha'])
+                if item['sha'] == NEW: raise RuntimeError('Synthetic candidate health failure')
+            u.health = health
+            with self.assertRaisesRegex(RuntimeError, 'previous application images restored'): u.deploy(candidate)
+            self.assertEqual(u.state['last_status'], 'rolled_back')
+            self.assertEqual(schema[0], 24); self.assertFalse(paused[0]); self.assertEqual(u.state['current']['sha'], OLD)
+            self.assertLess(events.index('pause'), events.index('backup'))
+            self.assertLess(events.index('restore'), events.index('activate:' + OLD))
+            self.assertLess(events.index('health:' + OLD), events.index('resume'))
+
+    def test_single_shop_schema_preflight_and_missing_backup_fail_closed(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); old = root / 'old'; new = root / 'new'
+            for release in [old, new]:
+                (release / 'src').mkdir(parents=True); (release / 'src/db.js').write_text('export const SCHEMA_VERSION = 24;\n')
+            (root / 'runtime.env').write_text('PLATFORM_ENABLED=0\n')
+            u = object.__new__(m.Updater); u.root = root; u.state = {'current': {'sha': OLD, 'release': str(old)}}
+            candidate = {'sha': NEW, 'release': str(new)}
+            self.assertFalse(u.migration_required(candidate))
+            (new / 'src/db.js').write_text('export const SCHEMA_VERSION = 25;\n')
+            self.assertTrue(u.migration_required(candidate))
+            with self.assertRaisesRegex(RuntimeError, 'deployment backup'): u.migrate(candidate)
+            (new / 'src/db.js').write_text('export const SCHEMA_VERSION = 23;\n')
+            with self.assertRaisesRegex(RuntimeError, 'downgrades'): u.migration_required(candidate)
+
+    def test_single_shop_unverified_restore_keeps_maintenance_and_recovery_intent(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); old = root / 'old'; new = root / 'new'
+            for release, version in [(old, 24), (new, 25)]:
+                (release / 'src').mkdir(parents=True); (release / 'src/db.js').write_text(f'export const SCHEMA_VERSION = {version};\n')
+            (root / 'runtime.env').write_text('PLATFORM_ENABLED=0\nDATABASE_OWNER_PASSWORD_FILE_HOST=/fixture/owner\n')
+            manifest = root / 'backup.json'; manifest.write_text('{}')
+            u = object.__new__(m.Updater); u.root = root; u.state = {'current': {'sha': OLD, 'release': str(old)}}; u.deployment_backup = manifest
+            candidate = {'sha': NEW, 'release': str(new)}
+            u.state['migration'] = {'candidate': candidate, 'report': str(root / 'report.json'), 'paused': True}
+            def runner(*args): raise RuntimeError('Unknown upgrade outcome')
+            def restore(*args): raise RuntimeError('Unverified restore')
+            u.migration_runner = runner; u.restore_migration = restore
+            with self.assertRaises(m.MigrationRestoreError): u.migrate(candidate)
+            self.assertTrue(u.state['migration']['paused']); self.assertEqual(u.state['migration']['backup'], str(manifest))
 
     def test_compose_render_format_changes_do_not_pause_a_release(self):
         R1, R2 = '/r/old', '/r/new'

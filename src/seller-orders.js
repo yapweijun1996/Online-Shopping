@@ -185,9 +185,9 @@ function validateDecision(action, input) {
 
 /* Confirming an order takes its quantities from tracked stock; the transaction rolls back if any product is short. */
 async function deductStock(database, orderId) {
-  const lines = await database.all(`SELECT i.product_id, SUM(i.quantity) AS quantity, p.sku, p.stock_quantity
+  const lines = await database.all(`SELECT i.product_id, SUM(i.quantity) AS quantity, p.sku, p.stock_quantity, p.updated_at
     FROM order_item i JOIN delivery d ON d.id = i.delivery_id JOIN product p ON p.id = i.product_id
-    WHERE d.order_id = ? GROUP BY i.product_id, p.sku, p.stock_quantity`, orderId);
+    WHERE d.order_id = ? GROUP BY i.product_id, p.sku, p.stock_quantity, p.updated_at`, orderId);
   for (const line of lines) {
     if (line.stock_quantity === null) continue;
     if (line.stock_quantity < line.quantity) {
@@ -195,17 +195,20 @@ async function deductStock(database, orderId) {
       error.field = 'stock';
       throw error;
     }
-    await database.run('UPDATE product SET stock_quantity = stock_quantity - ? WHERE id = ?', line.quantity, line.product_id);
+    const updatedAt = new Date(Math.max(Date.now(), Date.parse(line.updated_at) + 1)).toISOString();
+    await database.run('UPDATE product SET stock_quantity = stock_quantity - ?, updated_at = ? WHERE id = ?', line.quantity, updatedAt, line.product_id);
   }
 }
 
 /* Cancelling a confirmed order returns its quantities to tracked stock. */
 async function restoreStock(database, orderId) {
-  await database.run(`UPDATE product SET stock_quantity = stock_quantity + COALESCE((
-      SELECT SUM(i.quantity) FROM order_item i JOIN delivery d ON d.id = i.delivery_id
-      WHERE d.order_id = ? AND i.product_id = product.id), 0)
-    WHERE stock_quantity IS NOT NULL AND id IN (
-      SELECT i.product_id FROM order_item i JOIN delivery d ON d.id = i.delivery_id WHERE d.order_id = ?)`, orderId, orderId);
+  const lines = await database.all(`SELECT p.id, p.updated_at, SUM(i.quantity) AS quantity
+    FROM order_item i JOIN delivery d ON d.id = i.delivery_id JOIN product p ON p.id = i.product_id
+    WHERE d.order_id = ? AND p.stock_quantity IS NOT NULL GROUP BY p.id, p.updated_at`, orderId);
+  for (const line of lines) {
+    const updatedAt = new Date(Math.max(Date.now(), Date.parse(line.updated_at) + 1)).toISOString();
+    await database.run('UPDATE product SET stock_quantity = stock_quantity + ?, updated_at = ? WHERE id = ?', line.quantity, updatedAt, line.id);
+  }
 }
 
 export async function decideSellerOrder(database, id, action, input, actorId) {

@@ -2006,3 +2006,14 @@ const referenceGalleryMessages = {
   ko: { availableReferencePhotos: '선택하지 않은 참고 이미지입니다. 기존 업로드는 유지됩니다. 참고 이미지 추가는 열 자리 중 하나를 사용합니다.', addReferencePhoto: '참고 이미지 추가' },
 };
 for (const { code } of languages) Object.assign(messages[code], referenceGalleryMessages[code]);
+
+const recoveryMessages = {
+  en: { checkoutRetryOriginal: "An earlier order may have been submitted. Retry to retrieve its result using your original order details.", stockTrackingConflict: 'Ship or cancel confirmed orders before switching between limited and unlimited stock.', checkoutIntentStorageFailed: 'Order retry details could not be saved or read. Enable browser storage and retry. Do not clear shop data while an order outcome is unknown.' },
+  ms: { checkoutRetryOriginal: "Pesanan terdahulu mungkin telah dihantar. Cuba lagi untuk mendapatkan keputusan menggunakan butiran pesanan asal.", stockTrackingConflict: 'Hantar atau batalkan pesanan yang disahkan sebelum menukar stok terhad atau tanpa had.', checkoutIntentStorageFailed: 'Butiran percubaan pesanan tidak dapat disimpan atau dibaca. Aktifkan storan pelayar dan cuba lagi. Jangan padam data kedai jika keputusan pesanan belum diketahui.' },
+  'zh-Hans': { checkoutRetryOriginal: "此前的订单可能已提交。重试将使用原订单资料获取结果。", stockTrackingConflict: '请先发货或取消已确认订单，再切换有限／无限库存。', checkoutIntentStorageFailed: '无法保存或读取订单重试资料。请启用浏览器存储后重试。订单结果未明时，请勿清除商店数据。' },
+  vi: { checkoutRetryOriginal: "Đơn hàng trước có thể đã được gửi. Thử lại để nhận kết quả bằng thông tin đơn hàng ban đầu.", stockTrackingConflict: 'Giao hoặc hủy các đơn đã xác nhận trước khi chuyển giữa tồn kho có giới hạn và không giới hạn.', checkoutIntentStorageFailed: 'Không thể lưu hoặc đọc dữ liệu thử lại đơn hàng. Bật bộ nhớ trình duyệt rồi thử lại. Không xóa dữ liệu cửa hàng khi chưa biết kết quả đơn hàng.' },
+  th: { checkoutRetryOriginal: "คำสั่งซื้อก่อนหน้าอาจส่งแล้ว ลองอีกครั้งเพื่อดูผลโดยใช้ข้อมูลคำสั่งซื้อเดิม", stockTrackingConflict: 'จัดส่งหรือยกเลิกคำสั่งซื้อที่ยืนยันแล้วก่อนสลับสต็อกแบบจำกัดและไม่จำกัด', checkoutIntentStorageFailed: 'บันทึกหรืออ่านข้อมูลลองสั่งซื้ออีกครั้งไม่ได้ เปิดพื้นที่เก็บข้อมูลเบราว์เซอร์แล้วลองใหม่ อย่าล้างข้อมูลร้านเมื่อยังไม่ทราบผลคำสั่งซื้อ' },
+  ja: { checkoutRetryOriginal: "前の注文が送信済みの可能性があります。再試行すると元の注文内容で結果を取得します。", stockTrackingConflict: '有限・無制限の在庫を切り替える前に、確定済みの注文を発送またはキャンセルしてください。', checkoutIntentStorageFailed: '注文の再試行データを保存または読めません。ブラウザーの保存を有効にして再試行してください。注文結果が不明な間は店舗データを削除しないでください。' },
+  ko: { checkoutRetryOriginal: "이전 주문이 제출되었을 수 있습니다. 원래 주문 정보로 결과를 확인하려면 다시 시도하세요.", stockTrackingConflict: '한정 재고와 무제한 재고를 전환하기 전에 확정 주문을 배송하거나 취소하세요.', checkoutIntentStorageFailed: '주문 재시도 정보를 저장하거나 읽을 수 없습니다. 브라우저 저장소를 활성화하고 다시 시도하세요. 주문 결과가 불분명할 때는 상점 데이터를 지우지 마세요.' },
+};
+for (const { code } of languages) Object.assign(messages[code], recoveryMessages[code]);

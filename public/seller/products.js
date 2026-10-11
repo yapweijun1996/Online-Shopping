@@ -938,12 +938,13 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
         if (payload.priceMinor === priceToMinor(baseline.values.price)) delete payload.priceMinor;
         if (payload.currency === baseline.values.currency) delete payload.currency;
         if (payload.active === baseline.active) delete payload.active;
+        if (payload.stockQuantity === stockFromInput(baseline.values.stockQuantity)) delete payload.stockQuantity;
       }
       // Snapshot the initiating editor before image decoding yields to navigation.
       if (productId) {
+        payload.expectedUpdatedAt = expectedUpdatedAt;
         if (galleryEditable) {
           payload.gallery = galleryImages.map(item => item.imageDataUrl ? { imageDataUrl: item.imageDataUrl, ...(item.thumbDataUrl ? { thumbDataUrl: item.thumbDataUrl } : {}) } : { id: item.id });
-          payload.expectedUpdatedAt = expectedUpdatedAt;
         }
       }
       const file = form.elements.image.files[0];
@@ -970,7 +971,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       const galleryConflict = pendingRemove && failure.field === 'imageDataUrl';
       const optionKey = failure.field === 'options' ? (optionErrorKey[failure.code] || 'productError') : null;
       if (optionKey) { optionsError.textContent = t(optionKey); optionsError.hidden = false; }
-      setError(optionKey || (failure.code === 'PRODUCT_CHANGED' ? 'productChangedReopen' : failure.field === 'gallery' ? 'galleryLimit' : galleryConflict ? 'removeGalleryFirst' : failure.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : failure.code === 'DUPLICATE_SKU' ? 'duplicateSku' : failure.code === 'DUPLICATE_VARIANT' ? 'duplicateVariant' : 'productError'));
+      setError(optionKey || (failure.code === 'PRODUCT_CHANGED' ? 'productChangedReopen' : failure.code === 'STOCK_TRACKING_CONFLICT' ? 'stockTrackingConflict' : failure.field === 'gallery' ? 'galleryLimit' : galleryConflict ? 'removeGalleryFirst' : failure.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : failure.code === 'DUPLICATE_SKU' ? 'duplicateSku' : failure.code === 'DUPLICATE_VARIANT' ? 'duplicateVariant' : 'productError'));
       if (galleryConflict && productId && editingId === productId) {
         // A rejected write owns no new baseline. Preserve all draft metadata,
         // image removals and order so retry and navigation guards remain truthful.

@@ -4,7 +4,7 @@
 import { randomUUID } from 'node:crypto';
 import { ApiError } from './http.js';
 import { FieldError } from './validation.js';
-import { encodePassword, revokeSessions, verifyPasswordAsync } from './auth.js';
+import { encodePassword, readSession, revokeSessions, verifyPasswordAsync } from './auth.js';
 
 const ASSIGNABLE = ['MANAGER', 'STAFF'];
 const USERNAME = /^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/;
@@ -96,12 +96,15 @@ export async function changeOwnPassword(database, accountId, input, currentToken
     throw new FieldError('password', 'Send currentPassword and newPassword.');
   }
   if (typeof input.currentPassword !== 'string' || input.currentPassword.length > 256) throw new FieldError('currentPassword', 'Enter your current password.');
-  const account = await database.get('SELECT username, password_hash FROM seller_account WHERE id = ?', accountId);
-  if (!account || !await verifyPasswordAsync(input.currentPassword, account.password_hash)) throw new ApiError(403, 'WRONG_PASSWORD', 'The current password is not correct.');
-  checkPassword(input.newPassword, 'newPassword', account.username);
-  if (input.newPassword === input.currentPassword) throw new FieldError('newPassword', 'Choose a different password.');
-  const hash = encodePassword(input.newPassword), stamp = now();
   await database.transaction(async () => {
+    // Recovery and deactivation must serialize with credential verification, including a request already authorized.
+    const session = await readSession(database, currentToken);
+    if (!session || session.account.id !== accountId) throw new ApiError(401, 'UNAUTHORIZED', 'Sign in required.');
+    const account = await database.get('SELECT username, password_hash FROM seller_account WHERE id = ?', accountId);
+    if (!account || !await verifyPasswordAsync(input.currentPassword, account.password_hash)) throw new ApiError(403, 'WRONG_PASSWORD', 'The current password is not correct.');
+    checkPassword(input.newPassword, 'newPassword', account.username);
+    if (input.newPassword === input.currentPassword) throw new FieldError('newPassword', 'Choose a different password.');
+    const hash = encodePassword(input.newPassword), stamp = now();
     await database.run('UPDATE seller_account SET password_hash = ?, must_change_password = 0, password_changed_at = ?, updated_at = ? WHERE id = ?', hash, stamp, stamp, accountId);
     await revokeSessions(database, accountId, currentToken);
     await record(database, accountId, account.username, 'PASSWORD_CHANGED');

@@ -148,7 +148,7 @@ export async function saveProductGallery(store, productId, requested, current) {
 
 export function requireGalleryRevision(current, expected) {
   if (typeof expected !== 'string' || expected !== current.updatedAt) {
-    throw new ApiError(409, 'PRODUCT_CHANGED', 'This product changed. Reopen it before saving gallery changes.');
+    throw new ApiError(409, 'PRODUCT_CHANGED', 'This product changed. Reopen it before saving.');
   }
 }
 

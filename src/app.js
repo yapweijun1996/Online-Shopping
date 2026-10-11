@@ -211,11 +211,15 @@ async function createTenantApi({ store, config, serveStatic = null, whatsappTran
       requireOrigin(request, expectedOrigin);
       if (!await loginLimiter.attempt(clientAddress)) throw new ApiError(429, 'RATE_LIMITED', 'Too many attempts. Try later.');
       const body = await readJson(request);
-      const account = typeof body.username === 'string' && typeof body.password === 'string' && body.username.length <= 64 && body.password.length <= 256
-        ? await authenticate(store, body.username, body.password) : null;
-      if (!account) throw new ApiError(401, 'UNAUTHORIZED', 'Invalid credentials.');
+      // Password reset cannot interleave between verification and issuing a session for the verified credential.
+      const signedIn = await store.transaction(async () => {
+        const account = typeof body.username === 'string' && typeof body.password === 'string' && body.username.length <= 64 && body.password.length <= 256
+          ? await authenticate(store, body.username, body.password) : null;
+        return account ? { account, session: await createSession(store, account.id) } : null;
+      });
+      if (!signedIn) throw new ApiError(401, 'UNAUTHORIZED', 'Invalid credentials.');
       await loginLimiter.clear(clientAddress);
-      const session = await createSession(store, account.id);
+      const { account, session } = signedIn;
       return json(200, sessionView(account, session.csrfToken), {
         'Set-Cookie': sellerCookie(session.token, session.maxAge),
       });

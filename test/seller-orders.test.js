@@ -293,7 +293,12 @@ test('tracked stock blocks oversell at checkout and is deducted only when the se
     assert.equal((await f.submit()).response.status, 201, 'a rejected order releases its hold');
     await f.app.database.run('UPDATE product SET stock_quantity = 0 WHERE id = ?', f.product.id);
     assert.equal((await f.request('GET', `/api/v1/products/${f.product.id}`)).data.inStock, false);
-    // Seller view exposes the count; clearing it returns to unlimited.
+    // A reversible confirmation must retain its tracking mode; shipping releases that restriction.
+    const conflict = await f.request('PATCH', `/api/v1/seller/products/${f.product.id}`, { stockQuantity: null },
+      { origin: f.origin, cookie: session.cookie, 'x-csrf-token': session.csrf });
+    assert.equal(conflict.response.status, 409);
+    assert.equal(conflict.data.error.code, 'STOCK_TRACKING_CONFLICT');
+    assert.equal((await decide(firstId, 'ship', { expectedRevision: 2, carrier: 'Synthetic courier' })).response.status, 200);
     assert.equal((await f.request('PATCH', `/api/v1/seller/products/${f.product.id}`, { stockQuantity: null },
       { origin: f.origin, cookie: session.cookie, 'x-csrf-token': session.csrf })).data.stockQuantity, null);
   } finally { await f.close(); }

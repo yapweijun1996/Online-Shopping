@@ -248,7 +248,9 @@ class Updater:
         return dict(line.split('=', 1) for line in path.read_text().splitlines() if '=' in line) if path and path.exists() else {}
 
     def migration_required(self, candidate):
-        if self.runtime().get('PLATFORM_ENABLED') != '1': return False
+        before, after = schema_version(self.state['current']['release']), schema_version(candidate['release'])
+        if after < before: raise RuntimeError('Schema downgrades are never automatic.')
+        if self.runtime().get('PLATFORM_ENABLED') != '1': return after > before
         version = int(re.search(r'PLATFORM_SCHEMA_VERSION = (\d+)', (Path(candidate['release']) / 'src/platform/platform-db.js').read_text()).group(1))
         postgres = self.run(self.compose(self.state['current']) + ['ps', '-q', 'postgres'], capture=True).strip()
         output = self.run([sys.executable, str(Path(candidate['release']) / 'deploy/needs-upgrade.py'),
@@ -324,28 +326,25 @@ class Updater:
         if after < before: raise RuntimeError('Schema downgrades are never automatic.')
         runtime = self.runtime(); enabled = runtime.get('PLATFORM_ENABLED') == '1'
         if after == before and not enabled: return False
-        report = None
-        if enabled:
-            manifest = getattr(self, 'deployment_backup', None)
-            if not manifest or not manifest.exists(): raise RuntimeError('Platform upgrade requires this deployment backup.')
-            progress = self.state.get('migration') or {'candidate': candidate, 'report': str(self.migration_report(candidate)), 'paused': False}
-            progress['backup'] = str(manifest); self.state['migration'] = progress
-            report = Path(progress['report']); directory = report.parent
+        manifest = getattr(self, 'deployment_backup', None)
+        if not manifest or not manifest.exists(): raise RuntimeError('Database upgrade requires this deployment backup.')
+        progress = self.state.get('migration') or {'candidate': candidate, 'report': str(self.migration_report(candidate)), 'paused': False}
+        progress['backup'] = str(manifest); self.state['migration'] = progress
+        report = Path(progress['report']); directory = report.parent
         main_ran = False
         try:
             if after != before:
-                if report: atomic_json(report, {'format': 1, 'attempted': ['online_shopping'], 'upgraded': [], 'complete': False})
+                atomic_json(report, {'format': 1, 'attempted': ['online_shopping'], 'upgraded': [], 'complete': False})
                 owner = runtime['DATABASE_OWNER_PASSWORD_FILE_HOST']
                 script = Path(candidate['release']) / 'scripts/upgrade-database.mjs'
                 command = ['docker', '--context', 'orbstack', 'run', '--rm', '--network', PROJECT + '_private',
                     '-v', owner + ':/run/secrets/owner:ro', '-v', str(script) + ':/app/scripts/upgrade-database.mjs:ro',
                     '--entrypoint', 'node', 'online-shopping-backend:' + candidate['sha'], '/app/scripts/upgrade-database.mjs']
-                output = self.migration_runner(command, candidate, 'main', 300) if enabled else self.run(command, capture=True, timeout=300)
+                output = self.migration_runner(command, candidate, 'main', 300)
                 main_ran = True
                 if json.loads(output.strip().splitlines()[-1]).get('version') != after:
                     raise RuntimeError('Database schema is not at the expected version after the upgrade.')
-                if report:
-                    proof = json.loads(report.read_text()); proof['upgraded'].append('online_shopping'); atomic_json(report, proof)
+                proof = json.loads(report.read_text()); proof['upgraded'].append('online_shopping'); atomic_json(report, proof)
             if enabled:
                 script = Path(candidate['release']) / 'scripts/upgrade-platform.mjs'
                 command = ['docker', '--context', 'orbstack', 'run', '--rm', '--user', '0', '--read-only',
@@ -360,12 +359,13 @@ class Updater:
                 result = json.loads(output.strip().splitlines()[-1]); proof = json.loads(report.read_text())
                 if result.get('version') != after or proof.get('complete') is not True:
                     raise RuntimeError('Platform upgrade did not complete.')
-            if enabled: self.stop_runners()
+            if not enabled:
+                proof = json.loads(report.read_text()); proof['complete'] = True; atomic_json(report, proof)
+            self.stop_runners()
             return main_ran or enabled
         except Exception:
-            if enabled:
-                try: self.restore_migration(candidate)
-                except Exception as error: raise MigrationRestoreError('Deployment restore failed; maintenance remains enabled.') from error
+            try: self.restore_migration(candidate)
+            except Exception as error: raise MigrationRestoreError('Deployment restore failed; maintenance remains enabled.') from error
             raise
 
     def activate(self, item):

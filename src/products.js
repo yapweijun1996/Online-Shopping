@@ -119,6 +119,12 @@ export async function updateProduct(database, id, input, mode = 'manual') {
   return await database.transaction(async () => {
     const existing = await getProduct(database, id, true, mode);
     if (!existing) return null;
+    const hasRevision = input && Object.hasOwn(input, 'expectedUpdatedAt');
+    if (hasRevision) requireGalleryRevision(existing, input.expectedUpdatedAt);
+    if (hasRevision && !Object.hasOwn(input, 'gallery')) {
+      const { expectedUpdatedAt, ...metadata } = input;
+      input = metadata;
+    }
     // A variant of a multi-product listing shows the shared gallery; only the holder edits it, so a gallery sent
     // along with a variant edit is ignored and can never change the shared photos.
     const role = await galleryRole(database, existing);
@@ -152,6 +158,13 @@ async function patchProduct(database, id, input, { galleryChanging = false } = {
   if (!existing) return null;
   const currency = (await getCompanySettings(database)).defaultCurrency;
   const patch = validateProductInput(input, [existing.currency], { partial: true });
+  if (Object.hasOwn(patch, 'stockQuantity') && (patch.stockQuantity === null) !== (existing.stockQuantity === null) &&
+      await database.get(`SELECT 1 AS found FROM order_item i JOIN delivery d ON d.id = i.delivery_id
+        JOIN shop_order o ON o.id = d.order_id WHERE i.product_id = ? AND o.status = 'CONFIRMED' LIMIT 1`, id)) {
+    const error = new ApiError(409, 'STOCK_TRACKING_CONFLICT', 'Ship or cancel confirmed orders before changing stock tracking.');
+    error.field = 'stockQuantity';
+    throw error;
+  }
   // A legacy mismatch requires explicit price review, never a currency relabel.
   if (existing.currency !== currency && (Object.hasOwn(patch, 'priceMinor') || patch.active === true || Object.hasOwn(patch, 'currency'))) {
     throw new ApiError(409, 'COMPANY_CURRENCY_CONFLICT', 'Review the existing product currency before changing its price or activating it.');

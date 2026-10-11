@@ -2,6 +2,7 @@ import { apiUrl } from '../shared/base-path.js';
 import { checkoutPayload } from './checkout-payload.js';
 import { formatMoney, locale, t, translate } from '../shared/i18n.js';
 import { addressSummary } from './addresses.js';
+import { clearCheckoutIntent, readCheckoutIntent, writeCheckoutIntent } from './checkout-intent.js';
 
 function element(tag, className, content) {
   const node = document.createElement(tag);
@@ -21,6 +22,9 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
   let itemsReady = false;
   let viewGeneration = 0;
   let pendingIntent = null;
+  let recoveryCartChanged = false;
+  let intentStorageFailed = false;
+  try { pendingIntent = readCheckoutIntent(); } catch { intentStorageFailed = true; }
   let confirmedButNotShown = false;
   let statusKey = '';
   let errorKey = '';
@@ -85,7 +89,8 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
       } else summary.append(element('p', 'shop-note', t('addressRequired')));
     } catch { summary.append(element('p', 'checkout-error', t('addressStorageFailed'))); }
     document.getElementById('change-address').textContent = t(address ? 'changeAddress' : 'addAddress');
-    document.getElementById('submit-order').disabled = submitting || confirmedButNotShown || !modeReady || !itemsReady || !address || !cartItems.length;
+    const recovering = pendingIntent && !pendingIntent.editable;
+    document.getElementById('submit-order').disabled = submitting || confirmedButNotShown || !modeReady || !itemsReady || (!recovering && (!address || !cartItems.length));
   }
 
   function renderBuyer() {
@@ -120,25 +125,46 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
     event.preventDefault();
     if (submitting) return;
     if (!modeReady || !itemsReady) { setError('networkError'); return; }
-    if (!getProfile()) { location.hash = '#profile'; return; }
     setError('');
     setStatus('');
+    try { pendingIntent = readCheckoutIntent(); intentStorageFailed = false; } catch {
+      intentStorageFailed = true;
+      setError('checkoutIntentStorageFailed');
+      document.dispatchEvent(new Event('updateguardchange'));
+      return;
+    }
+    const recovering = pendingIntent && !pendingIntent.editable;
+    if (!recovering && !getProfile()) { location.hash = '#profile'; return; }
     if (confirmedButNotShown) { setError('receiptRenderError'); return; }
-    if (!cartItems.length) { setError('emptyCart'); return; }
+    if (!recovering && !cartItems.length) { setError('emptyCart'); return; }
     let payload;
-    try { payload = checkoutPayload({ profile: getProfile(), address: addressBook.selected(), items: cartItems, locale: locale(), consent: whatsappConsent.checked, demo: demoMode }); } catch (error) { setError(error.message); refreshAddress(); return; }
+    try { payload = checkoutPayload({ profile: getProfile(), address: addressBook.selected(), items: cartItems, locale: locale(), consent: whatsappConsent.checked, demo: demoMode }); } catch (error) {
+      if (!recovering) { setError(error.message); refreshAddress(); return; }
+    }
+    const currentSerialized = payload ? JSON.stringify(payload) : null;
+    if (recovering) payload = JSON.parse(pendingIntent.serialized);
     if (payload.deliveries.some((delivery) => delivery.items.length === 0)) {
       setError('assignEveryDestination', 'deliveries.0.items');
       return;
     }
     const submittedItems = cartItems.map(({ productId, quantity }) => ({ productId, quantity }));
-    const orderItems = cartItems.map(({ productId, quantity, product }) => ({
+    const orderItems = recovering ? pendingIntent.orderItems : cartItems.map(({ productId, quantity, product }) => ({
       productId, name: product.name, quantity, unitPriceMinor: product.priceMinor, imageUrl: product.imageUrl,
     }));
     const serialized = JSON.stringify(payload);
-    // Keep the key until the server gives an outcome. A lost response may already be a committed order,
-    // even if the buyer then edits the form (language, address) before retrying.
-    if (!pendingIntent) pendingIntent = { key: crypto.randomUUID(), serialized, orderItems, submittedItems, cartBacked };
+    // Save before sending. Only a definitive rejection permits correcting the body under the same key.
+    try {
+      if (!pendingIntent || pendingIntent.editable) {
+        pendingIntent = { key: pendingIntent?.key || crypto.randomUUID(), serialized, orderItems, submittedItems, cartBacked, editable: false };
+      }
+      writeCheckoutIntent(pendingIntent);
+      intentStorageFailed = false;
+    } catch {
+      intentStorageFailed = true;
+      setError('checkoutIntentStorageFailed');
+      document.dispatchEvent(new Event('updateguardchange'));
+      return;
+    }
     const intent = pendingIntent;
     const submit = document.getElementById('submit-order');
     const submittedGeneration = viewGeneration;
@@ -154,17 +180,17 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': intent.key },
         body, signal: controller.signal,
       });
-      let response = await submitIntent(serialized);
-      let result = await response.json();
-      let originalOrder = false;
-      // The key already belongs to an earlier body: replay that exact body to receive the original order.
-      if (result.error?.code === 'IDEMPOTENCY_CONFLICT' && serialized !== intent.serialized) {
-        response = await submitIntent(intent.serialized);
-        result = await response.json();
-        originalOrder = response.ok;
-      }
+      const response = await submitIntent(intent.serialized);
+      const result = await response.json();
+      const originalOrder = recovering && (recoveryCartChanged || currentSerialized !== intent.serialized);
       if (!response.ok) {
-        if (['IDEMPOTENCY_CONFLICT', 'PRICE_CHANGED'].includes(result.error?.code)) pendingIntent = null;
+        if (result.error?.code === 'PRICE_CHANGED') {
+          clearCheckoutIntent();
+          pendingIntent = null;
+        } else if (response.status >= 400 && response.status < 500 && result.error?.code !== 'IDEMPOTENCY_CONFLICT') {
+          pendingIntent = { ...intent, editable: true };
+          writeCheckoutIntent(pendingIntent);
+        }
         if (!ownsSubmissionView()) return;
         setStatus('');
         if (result.error?.code === 'PRICE_CHANGED') {
@@ -180,9 +206,9 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
       serverConfirmed = true;
       setStatus('');
       await onSuccess(result, {
-        orderItems: originalOrder ? intent.orderItems : orderItems,
-        submittedItems: originalOrder ? intent.submittedItems : submittedItems,
-        cartBacked: originalOrder ? false : cartBacked,
+        orderItems: intent.orderItems,
+        submittedItems: intent.submittedItems,
+        cartBacked: originalOrder ? false : intent.cartBacked,
         statusAccessKey: intent.key,
       });
     } catch {
@@ -202,6 +228,8 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
   refreshAddress();
   return {
     isBusy: () => submitting,
+    hasPendingIntent: () => Boolean(pendingIntent) || intentStorageFailed,
+    isRecovering: () => Boolean(pendingIntent && !pendingIntent.editable),
     refreshAddress,
     setDemoMode(value) { demoMode = value === true; modeReady = true; applyDemo(); refreshAddress(); },
     invalidate() { viewGeneration++; itemsReady = false; document.getElementById('submit-order').disabled = true; },
@@ -210,11 +238,19 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
       itemsReady = true;
       cartBacked = fromCart;
       try { addressBook.ensureSelection(); } catch { /* The address summary reports storage errors. */ }
-      cartItems = items.map(({ productId, quantity, product }) => ({ productId, quantity, product }));
+      if (pendingIntent && !pendingIntent.editable) {
+        recoveryCartChanged = JSON.stringify(items.map(({ productId, quantity }) => ({ productId, quantity }))) !== JSON.stringify(pendingIntent.submittedItems);
+        // Show the submitted snapshot even if today's cart/catalog has changed or cannot be loaded.
+        const payload = JSON.parse(pendingIntent.serialized);
+        const currencies = new Map(payload.deliveries.flatMap(delivery => delivery.items.map(item => [item.productId, item.expectedCurrency])));
+        cartItems = pendingIntent.orderItems.map(item => ({ productId: item.productId, quantity: item.quantity,
+          product: { name: item.name, priceMinor: item.unitPriceMinor, imageUrl: item.imageUrl, currency: currencies.get(item.productId) } }));
+      } else cartItems = items.map(({ productId, quantity, product }) => ({ productId, quantity, product }));
       renderAssignments();
       renderBuyer();
       refreshAddress();
       setError('');
+      if (pendingIntent && !pendingIntent.editable) setStatus('checkoutRetryOriginal');
     },
     refreshLocale() {
       translate(form);
@@ -225,11 +261,14 @@ export function mountCheckout({ onSuccess, onPriceChanged, getProfile, addressBo
       document.getElementById('checkout-error').textContent = errorKey ? t(errorKey) : '';
     },
     reset() {
+      clearCheckoutIntent();
       form.reset();
       cartItems = [];
       cartBacked = true;
       itemsReady = false;
       pendingIntent = null;
+      recoveryCartChanged = false;
+      intentStorageFailed = false;
       confirmedButNotShown = false;
       addressBook.resetSelection();
       refreshAddress();
