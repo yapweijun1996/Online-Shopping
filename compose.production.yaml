@@ -39,7 +39,17 @@ services:
       DEPLOYMENT_STATE_DIR: /run/deployment
       SHOP_MODE: manual
       SELLER_QUICK_LOGIN: ${SELLER_QUICK_LOGIN:-0}
-    secrets: [admin_password, database_password, integration_keys]
+      PLATFORM_ENABLED: ${PLATFORM_ENABLED:?Set PLATFORM_ENABLED}
+      PLATFORM_ADMIN_HOST: ${PLATFORM_ADMIN_HOST:?Set PLATFORM_ADMIN_HOST}
+      PLATFORM_ADMIN_USERNAME: ${PLATFORM_ADMIN_USERNAME:?Set PLATFORM_ADMIN_USERNAME}
+      PLATFORM_ADMIN_PASSWORD_FILE: /run/secrets/platform_admin
+      PLATFORM_DATABASE_PASSWORD_FILE: /run/secrets/platform
+      PLATFORM_PROVISIONER_PASSWORD_FILE: /run/secrets/provisioner
+      PLATFORM_DATABASE_HOST: postgres
+      PLATFORM_DATABASE_NAME: platform
+      PLATFORM_DATABASE_USER: platform_app
+      PLATFORM_PROVISIONER_USER: platform_provisioner
+    secrets: [admin_password, database_password, integration_keys, platform, provisioner, platform_admin]
     volumes:
       - deployment_state:/run/deployment:ro
     networks: [private]
@@ -92,6 +102,20 @@ services:
     restart: unless-stopped
     security_opt: ["no-new-privileges:true"]
 
+  tunnel-admin:
+    image: cloudflare/cloudflared:latest@sha256:072c067d25ccbe61d46e18f0d0723255f2bb5304f7317caa95b27031520ff92c
+    command: ["tunnel", "--config", "/etc/cloudflared/config.yml", "--no-autoupdate", "run"]
+    volumes:
+      - ./deploy/cloudflared-admin.yml:/etc/cloudflared/config.yml:ro
+    secrets: [tunnel_admin_credentials]
+    networks: [edge]
+    depends_on:
+      frontend:
+        condition: service_started
+    read_only: true
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+
 secrets:
   admin_password:
     file: ${ADMIN_PASSWORD_FILE_HOST:-./.local/admin-password}
@@ -103,6 +127,14 @@ secrets:
     file: ${DATABASE_OWNER_PASSWORD_FILE_HOST:-./.local/postgres-owner-password}
   tunnel_credentials:
     file: ${TUNNEL_CREDENTIALS_FILE_HOST:?Set TUNNEL_CREDENTIALS_FILE_HOST}
+  platform:
+    file: ${PLATFORM_DATABASE_PASSWORD_FILE_HOST:?Set PLATFORM_DATABASE_PASSWORD_FILE_HOST}
+  provisioner:
+    file: ${PLATFORM_PROVISIONER_PASSWORD_FILE_HOST:?Set PLATFORM_PROVISIONER_PASSWORD_FILE_HOST}
+  platform_admin:
+    file: ${PLATFORM_ADMIN_PASSWORD_FILE_HOST:?Set PLATFORM_ADMIN_PASSWORD_FILE_HOST}
+  tunnel_admin_credentials:
+    file: ${TUNNEL_ADMIN_CREDENTIALS_FILE_HOST:?Set TUNNEL_ADMIN_CREDENTIALS_FILE_HOST}
 
 volumes:
   pg_data:

@@ -123,3 +123,62 @@ test('edge availability probes enforce lifecycle and aliases without opening ten
   assert.equal(alias.status, 308); assert.equal(alias.headers.get('location'), '/active/shop/?search=fixture&category=1');
   assert.equal(f.opens(), 0);
 });
+
+test('invalidation prevents in-flight tenant and alias reads from caching stale lifecycle state', { timeout: 5000 }, async (t) => {
+  const f = await fixture(t);
+  for (const action of ['suspend', 'rename', 'alias-rename']) {
+    let release, observed, reads = 0, opens = 0;
+    const gate = new Promise((done) => { release = done; });
+    const started = new Promise((done) => { observed = done; });
+    let row = { id: 'fictional', code: 'alpha', status: 'ACTIVE', name: 'Fictional', is_default: 0 };
+    const registry = createPlatformRegistry({ store: f.store, config, platform: { get: async (sql) => {
+      const alias = sql.includes('tenant_code_alias');
+      if (action === 'alias-rename' && !alias) return undefined;
+      const snapshot = { ...row }; reads++;
+      if (reads === 1) { observed(); await gate; }
+      if (action === 'rename' && row.code !== 'alpha' && !alias && reads > 1) return undefined;
+      return snapshot;
+    } }, pool: { get: async () => { opens++; return f.store; } } });
+    const pending = registry.resolve(request('/alpha/api/v1/products'));
+    await started;
+    row = action === 'suspend' ? { ...row, status: 'SUSPENDED' } : { ...row, code: 'renamed' };
+    registry.invalidate(); release();
+    for (const value of [await pending, await registry.resolve(request('/alpha/api/v1/products'))]) {
+      if (action === 'suspend') assert.equal(value.status, 'SUSPENDED');
+      else { assert.equal(value.response.status, 308); assert.equal(value.response.headers.get('location'), '/renamed/api/v1/products'); }
+    }
+    assert.equal(opens, 0); assert.ok(reads >= 2);
+  }
+});
+
+test('forty concurrent known-shop refreshes after invalidation keep the unknown-code quota intact', async (t) => {
+  const f = await fixture(t);
+  let delayed = false, release;
+  const gate = new Promise((done) => { release = done; });
+  const registry = createPlatformRegistry({ store: f.store, config, platform: { get: async (sql, code) => {
+    if (delayed) await gate;
+    return code.startsWith('known') ? { id: code, code, status: 'ACTIVE', name: code, is_default: 0 } : undefined;
+  } }, pool: { get() { throw new Error('Metadata probes must not open tenant stores'); } } });
+  for (let i = 0; i < 20; i++) await registry.resolve(request(`/known${i}/api/v1/tenant-access`));
+  registry.invalidate(); delayed = true;
+  const pending = Array.from({ length: 40 }, (_, i) => registry.resolve(request(`/known${i % 20}/api/v1/tenant-access`)));
+  release();
+  for (const result of await Promise.all(pending)) assert.equal(result.response.status, 200);
+  for (let i = 0; i < 30; i++) assert.equal(await registry.resolve(request(`/missing${i}/api/v1/products`)), null);
+  await assert.rejects(registry.resolve(request('/lastmissing/api/v1/products')), /Too many/);
+});
+
+test('cold same-code readers share lookup while every unknown attempt remains rate limited', async (t) => {
+  const f = await fixture(t); let release, reads = 0;
+  const gate = new Promise((done) => { release = done; });
+  const registry = createPlatformRegistry({ store: f.store, config, platform: { get: async (sql, code) => {
+    reads++; await gate;
+    return code.startsWith('known') ? { id: code, code, status: 'ACTIVE', name: code, is_default: 0 } : undefined;
+  } }, pool: { get() { throw new Error('Metadata probes must not open tenant stores'); } } });
+  const pending = Array.from({ length: 40 }, (_, i) => registry.resolve(request(`/known${i % 20}/api/v1/tenant-access`)));
+  release(); for (const result of await Promise.all(pending)) assert.equal(result.response.status, 200);
+  assert.equal(reads, 20);
+  const unknown = await Promise.allSettled(Array.from({ length: 40 }, () => registry.resolve(request('/unknown/api/v1/products'))));
+  assert.equal(unknown.filter((result) => result.status === 'fulfilled' && result.value === null).length, 30);
+  assert.equal(unknown.filter((result) => result.status === 'rejected' && /Too many/.test(result.reason.message)).length, 10);
+});

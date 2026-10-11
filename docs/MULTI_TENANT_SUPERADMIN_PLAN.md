@@ -1,6 +1,6 @@
 # Multi-tenant plan: SuperAdmin and one shop = one seller
 
-Status: **owner decisions D1, D2, D3 and the role question recorded 2026-10-09; P1 (tenant context, PR #116) and P2 (platform database, provisioner, tenant pool, audit; `src/platform/`) are implemented; R1 implements configuration-gated P3/P4 and backend P5; production activation remains R4. See [MULTI_TENANT_GOAL.md](MULTI_TENANT_GOAL.md) for closed decisions and [ledger](MULTI_TENANT_LEDGER.md) for evidence.** Written 2026-10-08 against `main` (schema 21); the shop schema is now 24 and each tenant database carries the accounts, roles, notes and history added since (`seller_account` with Owner, Manager and Staff roles, `must_change_password`, `scripts/reset-seller-password.js`). It refines [MULTI_TENANT_PRODUCTION_PLAN.md](MULTI_TENANT_PRODUCTION_PLAN.md) (2026-10-05) with the owner's later decisions: **own PostgreSQL database per tenant** (recorded in [INTEGRATION_DESIGN.md](INTEGRATION_DESIGN.md) section 0) and **one shop = one seller**. Where the two disagree, this plan wins; the old plan's shared-database `company_id` model is not used.
+Status: **owner decisions D1, D2, D3 and the role question recorded 2026-10-09; P1 (tenant context, PR #116) and P2 (platform database, provisioner, tenant pool, audit; `src/platform/`) are implemented; P3–P7 are built and deployed in R1–R3; P8 owner journey, fault drills, capacity and independent review are verified in R4 rehearsal. Production activation follows the ordered R4 runbook. See [MULTI_TENANT_GOAL.md](MULTI_TENANT_GOAL.md) for closed decisions and [ledger](MULTI_TENANT_LEDGER.md) for evidence.** Written 2026-10-08 against `main` (schema 21); the shop schema is now 24 and each tenant database carries the accounts, roles, notes and history added since (`seller_account` with Owner, Manager and Staff roles, `must_change_password`, `scripts/reset-seller-password.js`). It refines [MULTI_TENANT_PRODUCTION_PLAN.md](MULTI_TENANT_PRODUCTION_PLAN.md) (2026-10-05) with the owner's later decisions: **own PostgreSQL database per tenant** (recorded in [INTEGRATION_DESIGN.md](INTEGRATION_DESIGN.md) section 0) and **one shop = one seller**. Where the two disagree, this plan wins; the old plan's shared-database `company_id` model is not used.
 
 Facts are marked **[repo]** (checked in this repository), **[owner]** (decided by the owner) or **[proposal]** (my recommendation, not decided).
 
@@ -118,8 +118,8 @@ If any step fails the tenant becomes `FAILED`; the retry cleans up the half-crea
 | **P4** Tenant provisioning | **Built in R1.** Console/API lifecycle with revision checks, permanent aliases, thirty-day retention and one-time passwords | Manual purge requires the R3 verified tenant backup support; never scheduled |
 | **P5** Tenant routing | **Backend built in R1; edge built in R2.** Path resolver for API, static, manifest, service worker, share and crawler routes; Caddy rules; per-tenant cookies and limiter buckets; legacy root mapped to the default tenant; the full cross-tenant negative suite | Largest backend step |
 | **P6** Frontend base path | **Built in R2.** Relative assets and API helper, network-first scoped storage bootstrap, independent manifests/workers, offline/update/install and same-origin two-shop Chrome checks | Exact-count allow-list guard, real Caddy matrix, independent security review; legacy root pass-set retained |
-| **P7** Operations | **Implemented in the R3 worktree; real-stack gate pending.** Verified snapshot sets, durable maintenance/drain, sequential platform/shop upgrades, attempted-database restore, sequential tenant WhatsApp worker and in-process recovery | Protected-file changes avoided; production deployment and installed controller replacement still pending |
-| **P8** Hardening and release | Independent security review (Codex plus my own), load test with many tenants, failure drills (provisioner crash, one tenant database down), runbooks, threat model and docs | |
+| **P7** Operations | **Built, deployed and verified in R3.** Verified snapshot sets, durable maintenance/drain, sequential platform/shop upgrades, attempted-database restore, sequential tenant WhatsApp worker and in-process recovery | Real multi-database backup/restore and failure rollback pass; installed controller replacement follows R4 activation step H |
+| **P8** Hardening and release | **Built and verified in R4 rehearsal.** Complete Chrome owner journey, five real failure drills, interrupted purge recovery, twenty-shop mixed traffic and eviction/reopen, independent full-diff review, runbooks and threat model | Ordered production activation and private handoff; see ledger |
 
 Rough size: P1 small, P2 medium, P3 medium, P4 medium, P5 large, P6 large, P7 medium, P8 medium. P1 to P4 can ship without changing what any shop or buyer sees; P5 and P6 are the ones that touch the shops.
 
@@ -136,7 +136,7 @@ Staff accounts and roles, custom domains per tenant, SuperAdmin impersonation, b
 
 ## 9. Risks
 
-- **Host capacity:** the MacBook Air is already heavily loaded; many tenants multiply database work, pools and backups. Mitigation: bounded pools with idle eviction, a stated maximum number of tenants for this host (proposal: 20), and a move to the planned Ubuntu server before real clients rely on it.
+- **Host capacity:** the MacBook Air is already heavily loaded; many tenants multiply database work, pools and backups. Mitigation: bounded pools with idle eviction, a stated maximum number of tenants for this host (enforced: twenty including default), and a move to the planned Ubuntu server before real clients rely on it.
 - **PWA scope change:** shops at new paths are new apps for browsers; the legacy root is kept so existing installs are not broken.
 - **One process, many tenants:** a crash affects all; mitigated by health checks, restart policy and per-tenant error isolation in workers.
 - **Upgrade across N databases:** not atomic. R3 chooses a drained maintenance window to prevent writes after the backup. Every attempted database is restored and verified before a failed deployment resumes service. Restore failure keeps maintenance enabled and requires operator investigation. Real backup, partial-failure and interruption drills remain an activation prerequisite.
@@ -145,7 +145,7 @@ Staff accounts and roles, custom domains per tenant, SuperAdmin impersonation, b
 
 ## 10. Decisions
 
-Recorded 2026-10-09 by the owner: **D1** one backend with its own database per tenant; **D2** `shop.gmb01.xyz/<code>/` and `seller.gmb01.xyz/<code>/`; **D3** the SuperAdmin on its own hostname `admin.gmb01.xyz` (the Cloudflare DNS record and tunnel rule are a manual step for the owner, needed before P3); **shop roles** kept and managed per shop. D4 (mandatory TOTP) was decided on 2026-10-05. D1 to D10 and X1 to X20 are closed by [MULTI_TENANT_GOAL.md](MULTI_TENANT_GOAL.md). The executor performs the additive setup authorized in the launch message; the existing tunnel configuration remains protected.
+Recorded 2026-10-09 by the owner: **D1** one backend with its own database per tenant; **D2** `shop.gmb01.xyz/<code>/` and `seller.gmb01.xyz/<code>/`; **D3** the SuperAdmin on its own hostname `admin.gmb01.xyz` (the executor creates the dedicated tunnel and DNS during the ordered R4 activation, leaving the existing tunnel untouched); **shop roles** kept and managed per shop. D4 (mandatory TOTP) was decided on 2026-10-05. D1 to D10 and X1 to X20 are closed by [MULTI_TENANT_GOAL.md](MULTI_TENANT_GOAL.md). The executor performs the additive setup authorized in the launch message; the existing tunnel configuration remains protected.
 
 | # | Decision | Recommendation |
 
@@ -162,6 +162,6 @@ Recorded 2026-10-09 by the owner: **D1** one backend with its own database per t
 | D9 | Reserved code list | As in section 4.5; owner may add words |
 | D10 | Per-tenant WhatsApp | Each tenant its own Meta app and number; callback URL includes the code |
 
-## 11. First step if approved
+## 11. Owner handoff
 
-P1 (tenant context with no behaviour change) and P2 (platform database and provisioner) can start immediately, because they do not change anything visible; P3 waits for D3 and the owner's Cloudflare step.
+P1–P8 are built. The executor performs the authorized additive setup before deploying R4 wiring; the ledger and private host handoff record actual activation. The owner first signs in, enrols TOTP and follows MULTI_TENANT_OWNER_TEST.md.

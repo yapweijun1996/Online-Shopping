@@ -1,11 +1,11 @@
 # Multi-tenant owner test
 
-Status: prepared; activation is not complete. Check [MULTI_TENANT_LEDGER.md](MULTI_TENANT_LEDGER.md) and the private host handoff before using the console. Production contains no QA shops or orders.
+Status: built and verified in the isolated R4 owner journey; production activation evidence is in the release ledger. Check [MULTI_TENANT_LEDGER.md](MULTI_TENANT_LEDGER.md) and the private host handoff before using the console. Production contains no QA shops or orders.
 
 1. Open the console address recorded in the private handoff. Read the bootstrap password from the host-only file path there. Sign in, add the displayed grouped setup key to your authenticator, and confirm the current six-digit code. Store the ten one-time recovery codes privately, then close and clear the dialog. No capability is granted before the second factor succeeds.
 2. Create a real shop with a unique lowercase code (3–30 letters or digits), its name, MYR currency and an Owner username. Keep the one-time seller password and the two shop addresses privately before closing the dialog. The password cannot be shown again; use reset if lost.
 3. Open the seller address in another browser context, sign in with that password, and change it when prompted. Confirm that catalog/order actions remain blocked until the password change.
-4. In Settings, create active product category `SAMPLES`, label `Sample goods`. In Products, import [tenant-sample-products.csv](tenant-sample-products.csv), review the preview (two creates, zero errors), then commit. The file contains fictional products; adapt prices and stock before offering real products. Remove sample products when finished.
+4. In Categories, create active product category `SAMPLES`, label `Sample goods`. In Products, import [tenant-sample-products.csv](tenant-sample-products.csv), review the preview (two creates, zero errors), then commit. The file contains fictional products; adapt prices and stock before offering real products. Remove sample products when finished.
 5. On a phone, open the buyer address, add a product and submit a guest order with information you are authorized to use. Check its total and the private order access link. In the seller console confirm the order and check the buyer status updates and stock changes. No payment or live courier integration is implied.
 6. In the SuperAdmin shop detail, suspend the shop. Its buyer/seller routes should report unavailable and its worker should skip it. Resume and check both addresses work.
 7. Rename the code. Confirm old links redirect permanently to the new path and the existing cart/profile remain with the same shop. The old code cannot be reused.
