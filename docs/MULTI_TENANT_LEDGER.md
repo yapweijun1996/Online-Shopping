@@ -10,7 +10,7 @@ Started 2026-10-10 (Asia/Singapore). Source of truth: [MULTI_TENANT_GOAL.md](MUL
 | R1 | DEPLOYED, VERIFIED | [PR #127](https://github.com/yapweijun1996/Online-Shopping/pull/127), merge `71f5d27b1abc1471e6b7e8da740138dd122a58b2`; branch/PR CI green. |
 | R2 | RESTORED, DEPLOYED, VERIFIED | PR #131 merge `a6e9304`; branch/PR/main CI green; MT-01 and actual Chrome installed-update checks pass, D0-26 restart history retained. |
 | R3 | DEPLOYED, VERIFIED | PR #130 merge c8bb3e8; branch/PR/main CI green; real backup/upgrade rehearsal pass; production MT-01, up_to_date and legacy backup pass. |
-| R4 | PARTIALLY PREPARED; ACTIVATION NOT STARTED | Capacity harness and owner checklist prepared; real rehearsal, drills, capacity and activation remain gated. |
+| R4 | REHEARSAL VERIFIED; ACTIVATION READY | Corrected-source real Chrome journey/five faults/purge retry pass; 20 shops/40 clients, 33,217 requests, peak 53/100, eviction/reopen pass; independent whole-source review zero P0/P1/P2. Ordered production activation follows. |
 
 ## Decisions and environment — 2026-10-10
 
@@ -77,36 +77,36 @@ Actual browser pass-set: `scripts/qa-draft-browser.mjs` and `scripts/qa-followup
 
 | Item | Current evidence | Status |
 | --- | --- | --- |
-| MT-01 | Rollback recovery `6429c89` deployed then up_to_date; ten probes/manifest identities pass, applications zero restarts, protected PostgreSQL/tunnel identity/start/count unchanged. PostgreSQL historical count 2 retained under D0-26. R2 restoration `a6e9304` deployed/up_to_date; ten probes and Chrome installed-update pass. | PASS WITH D0-26 |
+| MT-01 | All released R0–R3 legacy probes/deployed→up_to_date pass, latest c8bb3e8. Applications zero restarts; protected PostgreSQL/tunnel identity/start/count unchanged. Historical PG count 2 retained under D0-26. | PASS WITH D0-26 |
 | MT-02 | R1 disabled-config tests, CI without platform secrets, and inert production deployment. | PASS |
-| MT-03 | Authentication/replay/lockout/recovery/CSRF/reset tests pass; real rehearsal enrolment/sign-in is unavailable. | BLOCKED REHEARSAL |
-| MT-04 | Console source prepared and independently reviewed; 360–1280 px, keyboard/a11y and CSP browser journey unverified. | BLOCKED REHEARSAL |
-| MT-05 | Own-role creation, forced password change, no-store and one-time response API tests pass; console creation needs rehearsal. | BLOCKED REHEARSAL |
+| MT-03 | Authentication/replay/lockout/recovery/CSRF/reset tests and real Chrome TOTP/recovery journey on 4952112 pass. r4-owner-journey.json. | PASS |
+| MT-04 | Ten actual Chrome owner journey groups, 360/390/768/1280 px, labels/landmarks/keyboard/44 px controls; zero page/console/CSP errors. r4-owner-journey-cycle2.log. | PASS |
+| MT-05 | Two real console creates produce separate databases/roles, Owner forced change and no-store one-time secrets; cleared dialogs. Actual browser and API tests. | PASS |
 | MT-06 | `tenant-routing.test.js`: full matrix, streamed POST, no rejected tenant store opens, cache/probe bounds and eviction identity. R1/R2 full suite. | PASS |
 | MT-07 | R1 PostgreSQL negative isolation suite, same identifiers, cookies/CSRF/access keys, default protection and quick-login denial. | PASS |
 | MT-08 | Exact-count guard and Chrome installed/offline/update/rename plus legacy pass-set. Production root Chrome update verified with controlled prior-release replay. | PASS |
 | MT-09 | Same-profile Chrome model/UI checks for two shops; default keys and independent active caches preserved. `r2-tenant-browser.json`. | PASS |
 | MT-10 | Real Caddy image/stub backend, 108 host/privacy/redirect/crawler/static/body checks. `r2-caddy-routing.json`. | PASS |
-| MT-11 | Serial ACTIVE worker, fresh status, paused drain, isolated synthetic provider errors and idle pool tests pass. Connection capacity proof unavailable. | PARTIAL; BLOCKED CAPACITY |
+| MT-11 | Serial ACTIVE worker, fresh status, paused drain, isolated synthetic failures and pool tests; actual twenty-shop load peak 53/100 and idle/reopen pass. | PASS |
 | MT-12 | Four/five database real Docker archives/restore proofs pass on f7237f1. Installed legacy production backup and isolated restore pass on R3 c8bb3e8. | PASS |
 | MT-13 | Real second-shop failure restores and verifies both attempted databases after stopping named runner; third shop untouched. f7237f1 real Compose proof and 36 operator tests pass. | PASS |
 | MT-14 | R1 platform tests 21/21 as the non-superuser CREATEDB/CREATEROLE role with self-grant; accepted X6 documented. | PASS |
-| MT-15 | Timer eviction/reopen tests pass. Isolated twenty-shop load/connection/eviction harness prepared with independent review and 5/5 safety tests; actual mixed traffic and sampled <=80/100 PostgreSQL connections remain unavailable. | BLOCKED REHEARSAL |
-| MT-16 | In-process outage, interruption reconciliation and concurrent-create tests pass; all five real-stack drills remain required. | BLOCKED REHEARSAL |
-| MT-17 | Independent R1/R2/R3 source reviews have zero open P0/P1/P2 after fixes. Whole R4 final-diff review and real-stack validation remain required. | PARTIAL; BLOCKED FINAL DIFF |
+| MT-15 | 43f5d1e real Compose: 20 shops, 21st refused, 40 mixed clients, 33,217 successful requests/0 errors over 425.2 s, 849 samples, peak 53/100; cold connections zero and resumed buyer/seller routes work. r4-capacity.json/cycle4.log. | PASS |
+| MT-16 | 4952112: real shop DB outage, platform outage, concurrent duplicate create, provisioner SIGKILL and backend restart during creation; all recover/retry and intents cleared. r4-failure-drills.json. | PASS |
+| MT-17 | Independent full ada984b→4952112 review and 43f5d1e pacing delta: zero open P0/P1/P2. Concurrent stale-routing and cold-probe regressions pass; final activation wiring delta will be reviewed before merge. | PASS CURRENT SOURCE; WIRING PENDING |
 | MT-18 | API, threat model, deployment/recovery, phase/onboarding and owner checklist/validated CSV updated. Final activation statuses/entry-point docs remain gated. | PARTIAL |
-| MT-19 | Section 7 A fails; no secrets/platform objects/admin tunnel/DNS/bootstrap were created in production. | BLOCKED PRECONDITIONS |
-| MT-20 | Installed controller retained unchanged; replacement waits for verified R4 deployment. | BLOCKED PRECONDITIONS |
-| MT-21 | Private BLOCKED checkpoint `~/Library/Application Support/Online-Shopping/handover/multi-tenant-20261011.md`: directory 0700, file 0600, secret-value scan zero. Activation access fields explicitly marked unavailable. | CHECKPOINT VERIFIED; FINAL PENDING |
-| MT-22 | Executor created no production QA shops/sellers/orders and performed no production platform sign-in/enrolment. Final database counts unavailable. | NO QA WRITES; COUNTS BLOCKED |
-| MT-23 | All R0/R1/R2/rollback merges had green branch/PR/main CI; R3 capacity preparation branch CI 497/497, 31 updater tests and zero audit findings. R3 actual gate passed, latest source branch/PR CI green; ledger-head CI required before merge. | PASS FOR MERGED RELEASES |
-| MT-24 | Mandarin BLOCKED checkpoint report delivered, distinguishing historical success, current outage and missing activation; final activated report remains gated. | BLOCKED REPORT DELIVERED; FINAL PENDING |
+| MT-19 | All section 7 A prerequisite rehearsal/review gates now pass; ordered production setup has not started. | PENDING ORDERED ACTIVATION |
+| MT-20 | Installed controller remains unchanged; replacement follows verified R4 deployment and up_to_date. | PENDING STEP H |
+| MT-21 | Private 0600 checkpoint retained; final console/handoff and secret scan follow activation. | FINAL PENDING |
+| MT-22 | No executor production QA/business/authentication writes; platform bootstrap/default counts follow step I. | NO QA WRITES; FINAL COUNTS PENDING |
+| MT-23 | Every R0/R1/R2/recovery/R3 merge has green branch/PR/main CI and zero high audit findings. R4 activation head requires fresh full CI before merge. | PASS FOR MERGED RELEASES |
+| MT-24 | Final Mandarin activated report follows all ordered activation/verification and private handoff. | FINAL PENDING |
 
 `python3 test/auto-update.test.py`: 21/21 passed (`baseline-updater.log`). `NODE_ENV=test npm test` with scratch PostgreSQL: 453/453 passed, no skips, 42.8 s (`baseline-unit.log`).
 
 ## Blockers
 
-Reliable Docker exec/start operations within deployment deadlines are unavailable. Read-only query APIs and public readiness recovered, but deployment/backup still fail. See the production incident and latest checkpoint below. Historical baseline failures do not block unrelated work.
+No current prerequisite blocker. The Docker incident is resolved and its historical checkpoints are retained below. R2 restoration and R3 production/backup are verified; R4 actual rehearsals and source review pass. Production activation and final handoff remain ordered work, not completed claims.
 
 ## R0 release evidence — 2026-10-10
 
@@ -315,3 +315,9 @@ Reliable Docker exec/start operations within deployment deadlines are unavailabl
 - Actual Chrome owner journey, all five real faults and partial-drop purge retry passed again on `4952112dfd9e60fd37fd7dfcc4e892c91000626e`; latest aggregate reports contain that source SHA and verified timestamps. Raw `r4-owner-journey-cycle2.log`, `r4-failure-drills-cycle2.log`, `r4-purge-recovery-cycle2.log`. Independent whole release review from ada984b to 4952112 reports zero open P0/P1/P2.
 - Second capacity run completed 22,078 requests over the first minute, peak 67/100 connections, and 33,250 requests through the first idle-load segment. The unchanged host-safety guard then stopped it when one-minute load exceeded ten; cold fixture recovery succeeded and no complete report was written. Raw `r4-capacity-cycle2.log`. MT-15 remains unpassed.
 - D0-30: Pace each of the forty concurrent capacity clients at 500 ms between requests, retaining all twenty shops, sixty seconds of mixed traffic, six minutes of remaining-shop traffic, 500 ms connection samples, idle eviction/reopen and the unchanged host/updater/database safety gates. This reduces this task's load without weakening any acceptance item or changing another project. Wait for safe host load before the next run.
+
+## R4 capacity accepted — 2026-10-11 13:44
+
+- Fresh isolated fixture avoids the genuine persisted login limiter (cycle3 refused authentication with HTTP 429 after repeated earlier journeys; limiter behavior was not changed). Only the exact rehearsal project/volumes were removed and recreated; private operations/purge archives and evidence retained.
+- `node scripts/qa-rehearsal-capacity.mjs`, source `43f5d1e117306174530b42e9d34e293825483a72`: twenty shops including default, twenty-first 409 TENANT_LIMIT, forty mixed authenticated seller/buyer clients, 33,217 successful requests, zero errors over 425,212 ms, 849 pg_stat_activity samples, peak 53 of max_connections 100. Real five-minute idle eviction leaves zero cold DB connections; resume/reopen preserves catalog and seller access. Raw `r4-capacity-cycle4.log`, immutable source/time report and `r4-capacity.json`. MT-15 passes.
+- Independent 43f5d1e pacing delta review: zero P0/P1/P2. Whole-release review on 4952112 likewise zero, with no deferred findings. Activation Compose/configuration delta will receive final independent review before its CI-gated merge.
