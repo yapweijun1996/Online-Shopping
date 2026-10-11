@@ -58,11 +58,12 @@ export function requireIdleProduction(state) {
   }
 }
 
-export function validateRehearsalContainers(state, containers) {
+export function validateRehearsalContainers(state, containers, { allowStoppedBackend = false } = {}) {
   if (containers.length !== 3) throw new Error('Capacity work requires only the three rehearsal application containers.');
   for (const service of ['backend', 'frontend', 'postgres']) {
     const row = containers.find((item) => item.Name === `/${rehearsalProject}-${service}-1`);
-    if (!row || row.Config?.Labels?.['com.docker.compose.project'] !== rehearsalProject || !row.State?.Running) {
+    if (!row || row.Config?.Labels?.['com.docker.compose.project'] !== rehearsalProject ||
+        (!row.State?.Running && !(allowStoppedBackend && service === 'backend' && row.State?.Status === 'exited'))) {
       throw new Error('Unexpected rehearsal container scope.');
     }
     if (service === 'postgres' && !row.Mounts?.some((mount) => mount.Destination === '/var/lib/postgresql/data' &&
@@ -102,11 +103,11 @@ export async function dockerRehearsal(args, options = {}) {
   } catch { throw new Error('Rehearsal Docker operation failed.'); }
 }
 
-export async function proveRehearsalScope(state) {
-  const ids = (await dockerRehearsal(['ps', '-q', '--filter', 'label=com.docker.compose.project=' + rehearsalProject])).trim().split(/\s+/).filter(Boolean);
+export async function proveRehearsalScope(state, { allowStoppedBackend = false } = {}) {
+  const ids = (await dockerRehearsal(['ps', ...(allowStoppedBackend ? ['-a'] : []), '-q', '--filter', 'label=com.docker.compose.project=' + rehearsalProject])).trim().split(/\s+/).filter(Boolean);
   if (ids.length !== 3 || ids.some((id) => !/^[0-9a-f]{12,64}$/.test(id))) throw new Error('Unexpected running rehearsal services.');
   const containers = JSON.parse(await dockerRehearsal(['inspect', ...ids]));
-  validateRehearsalContainers(state, containers);
+  validateRehearsalContainers(state, containers, { allowStoppedBackend });
 }
 
 export function createRehearsalClient(state, surface, base = '') {

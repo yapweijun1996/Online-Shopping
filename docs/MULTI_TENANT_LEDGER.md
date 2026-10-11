@@ -9,7 +9,7 @@ Started 2026-10-10 (Asia/Singapore). Source of truth: [MULTI_TENANT_GOAL.md](MUL
 | R0 | DEPLOYED, VERIFIED | [PR #126](https://github.com/yapweijun1996/Online-Shopping/pull/126), merge `ada984ba9feab52cb7f22abf4bf2e205af238092`; deployed log followed by `up_to_date`; 10 production probes and zero restarts. |
 | R1 | DEPLOYED, VERIFIED | [PR #127](https://github.com/yapweijun1996/Online-Shopping/pull/127), merge `71f5d27b1abc1471e6b7e8da740138dd122a58b2`; branch/PR CI green. |
 | R2 | RESTORED, DEPLOYED, VERIFIED | PR #131 merge `a6e9304`; branch/PR/main CI green; MT-01 and actual Chrome installed-update checks pass, D0-26 restart history retained. |
-| R3 | REAL-STACK GATE PASSED; MERGE/DEPLOY PENDING | PR #130 source f7237f1: four/five database backups, verified transactional restores, real second-shop failure and stopped-runner recovery pass. |
+| R3 | DEPLOYED, VERIFIED | PR #130 merge c8bb3e8; branch/PR/main CI green; real backup/upgrade rehearsal pass; production MT-01, up_to_date and legacy backup pass. |
 | R4 | PARTIALLY PREPARED; ACTIVATION NOT STARTED | Capacity harness and owner checklist prepared; real rehearsal, drills, capacity and activation remain gated. |
 
 ## Decisions and environment — 2026-10-10
@@ -88,7 +88,7 @@ Actual browser pass-set: `scripts/qa-draft-browser.mjs` and `scripts/qa-followup
 | MT-09 | Same-profile Chrome model/UI checks for two shops; default keys and independent active caches preserved. `r2-tenant-browser.json`. | PASS |
 | MT-10 | Real Caddy image/stub backend, 108 host/privacy/redirect/crawler/static/body checks. `r2-caddy-routing.json`. | PASS |
 | MT-11 | Serial ACTIVE worker, fresh status, paused drain, isolated synthetic provider errors and idle pool tests pass. Connection capacity proof unavailable. | PARTIAL; BLOCKED CAPACITY |
-| MT-12 | Four/five database real Docker archives/restore proofs pass on f7237f1. R3 legacy production backup remains required after deployment. | REHEARSAL PASS; PROD PENDING |
+| MT-12 | Four/five database real Docker archives/restore proofs pass on f7237f1. Installed legacy production backup and isolated restore pass on R3 c8bb3e8. | PASS |
 | MT-13 | Real second-shop failure restores and verifies both attempted databases after stopping named runner; third shop untouched. f7237f1 real Compose proof and 36 operator tests pass. | PASS |
 | MT-14 | R1 platform tests 21/21 as the non-superuser CREATEDB/CREATEROLE role with self-grant; accepted X6 documented. | PASS |
 | MT-15 | Timer eviction/reopen tests pass. Isolated twenty-shop load/connection/eviction harness prepared with independent review and 5/5 safety tests; actual mixed traffic and sampled <=80/100 PostgreSQL connections remain unavailable. | BLOCKED REHEARSAL |
@@ -294,3 +294,9 @@ Reliable Docker exec/start operations within deployment deadlines are unavailabl
 - R3 PR #130 merged normally as `c8bb3e8ec772fc8e2ab419f65fae247cd3dd93d5`, remote main verified. Final branch/PR CI `38114014630` / `38114018308` success, 36 updater/operator tests, full PostgreSQL Node suite and zero audit findings. Main CI/deployment/production backup are pending; no controller replacement.
 - R4 owner browser, five real fault drills and standalone interrupted provisioner harness moved into scripts after R3 merge. Independent read-only review cleared draft findings. The kill drill persists its operation code before launch, matches exact argv with NUL separators, and observes committed PROVISIONING plus real provisioner catalog-lock wait before SIGKILL; it never assumes a role already exists.
 - D0-29: Add actual fictional purge retry proof to the isolated rehearsal: retain a platform dependency owned by a newly created tenant role, prove database drop succeeds but role drop stops, remove only that dependency and retry from the identical verified archive/checkpoint. Restart only the inspected rehearsal backend to close tenant pools first. Production purge remains prohibited and unexecuted. Browser/drills/capacity/operator proof remain pending execution.
+
+## R3 production verified — 2026-10-11 13:17
+
+- PR #130 merge `c8bb3e8ec772fc8e2ab419f65fae247cd3dd93d5` [main CI 38114123030](https://github.com/yapweijun1996/Online-Shopping/actions/runs/38114123030) success. Installed controller recorded deployed, next authorized poll up_to_date, no pending deployment. Full MT-01 read-only probes and manifest identity checks pass, apps zero restarts, protected PostgreSQL/tunnel unchanged from D0-26 baseline. Raw `r3-production-controller.log`, `r3-production-next-poll.log`, `r3-production.json`.
+- Installed `auto-update.py --backup` succeeded: `/Users/yapweijun/Backups/Online-Shopping/online-shopping-20261011T051652Z-5cbfba.dump`, isolated restore verified; raw `r3-production-backup.log`. MT-12 and R3 post-deploy gate pass; installed controller still unchanged.
+- R4 independent review found two harness P2s, fixed before actual execution: persist code/archive directory before create and reconcile unknown outcome; inspect exact exited QA backend with every mount/network/secret boundary before recovering a durable stopped/restart intent. New safety regression rejects stopped PostgreSQL and wrong-network backend; 6/6 pass. No production platform or QA writes.

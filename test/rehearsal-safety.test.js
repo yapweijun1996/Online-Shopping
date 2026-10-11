@@ -82,6 +82,17 @@ test('capacity refuses pending or failed production deployment and detects an up
   assert.equal(activeUpdaterHeavyWork('state = not running', [], 'backup'), false);
 });
 
+test('recovery permits only an exited inspected rehearsal backend and preserves every mount and network guard', (t) => {
+  const f = fixture(t), state = validateRehearsalFiles(f.state, f.environment), rows = containers(state);
+  rows[0].State = { Running: false, Status: 'exited' };
+  assert.throws(() => validateRehearsalContainers(state, rows), /scope/);
+  validateRehearsalContainers(state, rows, { allowStoppedBackend: true });
+  rows[0].NetworkSettings.Networks = { online_shopping_production_private: {} };
+  assert.throws(() => validateRehearsalContainers(state, rows, { allowStoppedBackend: true }), /networks/);
+  const stoppedPg = containers(state); stoppedPg[2].State = { Running: false, Status: 'exited' };
+  assert.throws(() => validateRehearsalContainers(state, stoppedPg, { allowStoppedBackend: true }), /scope/);
+});
+
 test('rehearsal HTTP client cannot select a production project or an absolute external URL', async () => {
   const state = { project: rehearsalProject, port: 61000 };
   assert.throws(() => createRehearsalClient({ ...state, project: 'online-shopping-production' }, 'admin'), /origin/);

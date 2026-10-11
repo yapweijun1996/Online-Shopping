@@ -1,15 +1,19 @@
 // Exercise the actual manual purge after a database drop but a role dependency failure, on fictional fixtures only.
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync, renameSync, existsSync, rmSync, mkdtempSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, existsSync, rmSync, mkdtempSync, realpathSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { totpCode } from '../src/platform/totp.js';
 import { loadRehearsal, proveRehearsalScope, dockerRehearsal, rehearsalProject, createRehearsalClient } from './qa-rehearsal-client.mjs';
 const check = (value, message) => { if (!value) throw new Error(message); };
-const state = loadRehearsal(); await proveRehearsalScope(state);
+const state = loadRehearsal();
 const pg = rehearsalProject + '-postgres-1', backend = rehearsalProject + '-backend-1';
 const sql = (database, input) => dockerRehearsal(['exec', '-i', pg, 'psql', '-XqAt', '-v', 'ON_ERROR_STOP=1', '-U', 'online_shopping', '-d', database], { input });
 const intentFile = join(state.scratch, 'purge-recovery.json');
+let intent = existsSync(intentFile) ? JSON.parse(readFileSync(intentFile, 'utf8')) : null;
+if (intent) check(intent.project === rehearsalProject, 'Unexpected purge recovery project');
+await proveRehearsalScope(state, { allowStoppedBackend: intent?.restartPending === true });
+if (intent?.restartPending) { await dockerRehearsal(['start', backend]); await proveRehearsalScope(state); }
 const save = (value) => { writeFileSync(intentFile + '.new', JSON.stringify(value), { mode: 0o600 }); renameSync(intentFile + '.new', intentFile); };
 const rowFor = async (code) => {
   check(/^purgeqa[a-f0-9]{12}$/.test(code), 'Unexpected purge fixture');
@@ -22,32 +26,63 @@ const purge = (intent) => {
   { encoding: 'utf8', timeout: 180_000, maxBuffer: 2_000_000 });
   check(!result.error, 'Purge operator deadline or launch failed'); return result.status;
 };
+const ready = async () => {
+  const deadline = Date.now() + 45_000;
+  while (true) {
+    try { await platform('/shops'); return; }
+    catch { check(Date.now() < deadline, 'Rehearsal backend did not recover'); await new Promise((done) => setTimeout(done, 250)); }
+  }
+};
+const restartFixtureBackend = async (intent) => {
+  intent.restartPending = true; save(intent);
+  await dockerRehearsal(['restart', backend]); await ready();
+  intent.restartPending = false; save(intent);
+};
 const recover = async (intent) => {
+  check(intent.project === rehearsalProject, 'Unexpected purge project');
   check(/^purge_block_[a-f0-9]{12}$/.test(intent.table), 'Unexpected purge dependency');
-  check(intent.directory.startsWith(state.scratch + '/purge-'), 'Unexpected purge archive scope');
+  check(realpathSync(intent.directory).startsWith(state.scratch + '/purge-') && !(statSync(intent.directory).mode & 0o077), 'Unexpected purge archive scope');
+  if (intent.restartPending) { await dockerRehearsal(['start', backend]); await ready(); intent.restartPending = false; save(intent); }
   await sql('platform', `DROP TABLE IF EXISTS "${intent.table}";`);
-  const row = await rowFor(intent.code);
+  let row = await rowFor(intent.code);
+  const deadline = Date.now() + 90_000;
+  while (row?.status === 'PROVISIONING') {
+    check(Date.now() < deadline, 'Unknown fictional create still in flight');
+    await new Promise((done) => setTimeout(done, 250)); row = await rowFor(intent.code);
+  }
+  if (row?.status === 'FAILED') {
+    await platform('/shops', { method: 'POST', expected: [201], body: { code: intent.code, name: 'Fictional purge recovery', currency: 'MYR', sellerUsername: intent.code + '.owner' } });
+    row = await rowFor(intent.code);
+  }
+  if (row?.status === 'ACTIVE') {
+    await platform('/shops/' + row.id + '/suspend', { method: 'POST', body: { expectedRevision: row.revision } }); row = await rowFor(intent.code);
+  }
+  if (row?.status === 'SUSPENDED') {
+    await platform('/shops/' + row.id + '/request-deletion', { method: 'POST', body: { expectedRevision: row.revision, code: intent.code } }); row = await rowFor(intent.code);
+  }
   if (row?.status === 'DELETING') {
     await sql('platform', `UPDATE tenant SET delete_after='2000-01-01T00:00:00.000Z' WHERE id='${row.id}' AND status='DELETING';`);
+    await restartFixtureBackend(intent);
     check(purge(intent) === 0, 'Pending fictional purge recovery failed');
-  } else if (row?.status === 'SUSPENDED') await platform('/shops/' + row.id + '/resume', { method: 'POST', body: { expectedRevision: row.revision } });
+  } else check(!row || row.status === 'PURGED', 'Unexpected fictional purge recovery status');
   rmSync(intentFile, { force: true });
 };
 const admin = createRehearsalClient(state, 'admin');
 const platform = (path, options) => admin.call('/api/v1/platform' + path, options);
 const password = readFileSync(state.envValues.PLATFORM_ADMIN_PASSWORD_FILE_HOST, 'utf8').trim();
-let intent, phase = 'authentication';
+let phase = 'authentication';
 try {
+  await dockerRehearsal(['exec', backend, 'node', '-e', "const t=setInterval(async()=>{try{if((await fetch('http://127.0.0.1:3000/ready')).ok){clearInterval(t);process.exit(0)}}catch{}},200);setTimeout(()=>process.exit(1),45000)"]);
   await dockerRehearsal(['exec', '-e', 'NEW_PLATFORM_ADMIN_PASSWORD', backend, 'node', 'scripts/reset-platform-admin.js'], { env: { ...process.env, NEW_PLATFORM_ADMIN_PASSWORD: password } });
   await platform('/csrf'); await platform('/session', { method: 'POST', body: { username: state.envValues.PLATFORM_ADMIN_USERNAME, password } });
   const setup = (await platform('/totp/enrol', { method: 'POST', body: {} })).data;
   await platform('/totp/confirm', { method: 'POST', body: { code: totpCode(setup.setupKey, Math.floor(Date.now() / 30_000)) } });
-  if (existsSync(intentFile)) await recover(JSON.parse(readFileSync(intentFile, 'utf8')));
+  if (intent) { await recover(intent); intent = null; }
   const suffix = randomBytes(6).toString('hex'), code = 'purgeqa' + suffix;
   phase = 'fictional eligibility';
+  intent = { project: rehearsalProject, code, table: 'purge_block_' + suffix, directory: mkdtempSync(join(state.scratch, 'purge-')) }; save(intent);
   const created = (await platform('/shops', { method: 'POST', expected: [201], body: { code, name: 'Fictional purge recovery', currency: 'MYR', sellerUsername: code + '.owner' } })).data;
   const id = created.tenant.id;
-  intent = { code, table: 'purge_block_' + suffix, directory: mkdtempSync(join(state.scratch, 'purge-')) }; save(intent);
   let shop = (await platform('/shops/' + id)).data;
   await platform('/shops/' + id + '/suspend', { method: 'POST', body: { expectedRevision: shop.revision } });
   shop = (await platform('/shops/' + id)).data;
@@ -56,12 +91,7 @@ try {
   check(/^t_[a-z0-9]{3,30}_[a-f0-9]{8}$/.test(row.database_role), 'Unexpected fixture role');
   await sql('platform', `UPDATE tenant SET delete_after='2000-01-01T00:00:00.000Z' WHERE id='${id}' AND status='DELETING'; CREATE TABLE "${intent.table}"(id integer); ALTER TABLE "${intent.table}" OWNER TO "${row.database_role}";`);
   phase = 'close fictional tenant connections';
-  await dockerRehearsal(['restart', backend]);
-  const deadline = Date.now() + 45_000;
-  while (true) {
-    try { await platform('/shops'); break; }
-    catch { check(Date.now() < deadline, 'Rehearsal backend did not recover'); await new Promise((done) => setTimeout(done, 250)); }
-  }
+  await restartFixtureBackend(intent);
   check((await sql('postgres', `SELECT COUNT(*) FROM pg_stat_activity WHERE datname='${row.database_name}';`)).trim() === '0', 'Fictional tenant still connected');
   phase = 'partial drop'; check(purge(intent) === 1, 'Role dependency did not stop actual purge');
   check((await sql('postgres', `SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname='${row.database_name}');`)).trim() === 'f', 'First purge did not drop fixture database');
