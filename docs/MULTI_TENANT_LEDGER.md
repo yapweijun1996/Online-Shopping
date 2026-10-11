@@ -10,7 +10,7 @@ Started 2026-10-10 (Asia/Singapore). Source of truth: [MULTI_TENANT_GOAL.md](MUL
 | R1 | DEPLOYED, VERIFIED | [PR #127](https://github.com/yapweijun1996/Online-Shopping/pull/127), merge `71f5d27b1abc1471e6b7e8da740138dd122a58b2`; branch/PR CI green. |
 | R2 | RESTORED, DEPLOYED, VERIFIED | PR #131 merge `a6e9304`; branch/PR/main CI green; MT-01 and actual Chrome installed-update checks pass, D0-26 restart history retained. |
 | R3 | DEPLOYED, VERIFIED | PR #130 merge c8bb3e8; branch/PR/main CI green; real backup/upgrade rehearsal pass; production MT-01, up_to_date and legacy backup pass. |
-| R4 | REHEARSAL VERIFIED; ACTIVATION READY | Corrected-source real Chrome journey/five faults/purge retry pass; 20 shops/40 clients, 33,217 requests, peak 53/100, eviction/reopen pass; independent whole-source review zero P0/P1/P2. Ordered production activation follows. |
+| R4 | DEPLOYED, ACTIVATED, VERIFIED | [PR #134](https://github.com/yapweijun1996/Online-Shopping/pull/134), merge `017c285`; branch/PR/main CI green; A–I passed, installed controller next scheduled poll `up_to_date`; default-only bootstrap without TOTP; private handoff 0600 and QA teardown. |
 
 ## Decisions and environment — 2026-10-10
 
@@ -77,7 +77,7 @@ Actual browser pass-set: `scripts/qa-draft-browser.mjs` and `scripts/qa-followup
 
 | Item | Current evidence | Status |
 | --- | --- | --- |
-| MT-01 | All released R0–R3 legacy probes/deployed→up_to_date pass, latest c8bb3e8. Applications zero restarts; protected PostgreSQL/tunnel identity/start/count unchanged. Historical PG count 2 retained under D0-26. | PASS WITH D0-26 |
+| MT-01 | All released R0–R4 legacy probes/deployed→up_to_date pass, latest `017c285`. Ten legacy probe/manifest checks pass; applications zero restarts; protected PostgreSQL/tunnel identity/start/count unchanged. Historical PG count 2 retained under D0-26. Final documentation-only closeout smoke will be retained in private evidence. | PASS WITH D0-26 |
 | MT-02 | R1 disabled-config tests, CI without platform secrets, and inert production deployment. | PASS |
 | MT-03 | Authentication/replay/lockout/recovery/CSRF/reset tests and real Chrome TOTP/recovery journey on 4952112 pass. r4-owner-journey.json. | PASS |
 | MT-04 | Ten actual Chrome owner journey groups, 360/390/768/1280 px, labels/landmarks/keyboard/44 px controls; zero page/console/CSP errors. r4-owner-journey-cycle2.log. | PASS |
@@ -88,25 +88,25 @@ Actual browser pass-set: `scripts/qa-draft-browser.mjs` and `scripts/qa-followup
 | MT-09 | Same-profile Chrome model/UI checks for two shops; default keys and independent active caches preserved. `r2-tenant-browser.json`. | PASS |
 | MT-10 | Real Caddy image/stub backend, 108 host/privacy/redirect/crawler/static/body checks. `r2-caddy-routing.json`. | PASS |
 | MT-11 | Serial ACTIVE worker, fresh status, paused drain, isolated synthetic failures and pool tests; actual twenty-shop load peak 53/100 and idle/reopen pass. | PASS |
-| MT-12 | Four/five database real Docker archives/restore proofs pass on f7237f1. Installed legacy production backup and isolated restore pass on R3 c8bb3e8. | PASS |
+| MT-12 | Four/five database real Docker archives/restore proofs pass on `f7237f1`. Installed legacy production backup and isolated restore pass on R3 `c8bb3e8`; new installed controller also backs up and verifies actual legacy+platform restores after activation. `r4-platform-production-backup.json`. | PASS |
 | MT-13 | Real second-shop failure restores and verifies both attempted databases after stopping named runner; third shop untouched. f7237f1 real Compose proof and 36 operator tests pass. | PASS |
 | MT-14 | R1 platform tests 21/21 as the non-superuser CREATEDB/CREATEROLE role with self-grant; accepted X6 documented. | PASS |
 | MT-15 | 43f5d1e real Compose: 20 shops, 21st refused, 40 mixed clients, 33,217 successful requests/0 errors over 425.2 s, 849 samples, peak 53/100; cold connections zero and resumed buyer/seller routes work. r4-capacity.json/cycle4.log. | PASS |
 | MT-16 | 4952112: real shop DB outage, platform outage, concurrent duplicate create, provisioner SIGKILL and backend restart during creation; all recover/retry and intents cleared. r4-failure-drills.json. | PASS |
-| MT-17 | Independent full ada984b→4952112 review and 43f5d1e pacing delta: zero open P0/P1/P2. Concurrent stale-routing and cold-probe regressions pass; final activation wiring delta will be reviewed before merge. | PASS CURRENT SOURCE; WIRING PENDING |
-| MT-18 | API, threat model, deployment/recovery, phase/onboarding and owner checklist/validated CSV updated. Final activation statuses/entry-point docs remain gated. | PARTIAL |
-| MT-19 | All section 7 A prerequisite rehearsal/review gates now pass; ordered production setup has not started. | PENDING ORDERED ACTIVATION |
-| MT-20 | Installed controller remains unchanged; replacement follows verified R4 deployment and up_to_date. | PENDING STEP H |
-| MT-21 | Private 0600 checkpoint retained; final console/handoff and secret scan follow activation. | FINAL PENDING |
-| MT-22 | No executor production QA/business/authentication writes; platform bootstrap/default counts follow step I. | NO QA WRITES; FINAL COUNTS PENDING |
-| MT-23 | Every R0/R1/R2/recovery/R3 merge has green branch/PR/main CI and zero high audit findings. R4 activation head requires fresh full CI before merge. | PASS FOR MERGED RELEASES |
-| MT-24 | Final Mandarin activated report follows all ordered activation/verification and private handoff. | FINAL PENDING |
+| MT-17 | Independent full `ada984b`→`4952112` and final `4952112`→`b735214` reviews: zero open P0/P1/P2 or deferred findings. Actual real-stack gates pass; threat model reflects all boundaries. `r4-independent-final-review.json`. | PASS |
+| MT-18 | API/storageScope/prefixed contracts, threat model, phase/onboarding/owner preparation, operators/upgrader/tunnel/controller, owner checklist/validated CSV, AGENTS snapshot and dated PROGRESS updated. | PASS |
+| MT-19 | Ordered 7A–I pass on `017c285`: new private prerequisites, dedicated admin tunnel/DNS, page 200/session 401/host 404 rules, schema 1/admin 1/TOTP 0/default 1/non-default 0. `r4-activation-production.json`. | PASS |
+| MT-20 | Old controller retained as `auto-update.py.bak.20261011-140038`; released controller 0700 compiles, next scheduled poll 06:01:52Z returns `up_to_date` on `017c285`; actual production two-database `--backup` succeeds. `r4-controller-installed.json`. | PASS |
+| MT-21 | Private handoff `multi-tenant-20261011.md`: directory 0700/file 0600, URL/username/password path/enrolment/checklist/reset/rollback/backup/deviations, Needs the owner empty. Secret-value scan zero; final scan/report will be retained in private evidence. | PASS |
+| MT-22 | Read-only production counts: one unenrolled bootstrap, one default, zero non-default/session/recovery/tenant role/database. Executor performed no production sign-in, enrolment or QA/business writes. | PASS |
+| MT-23 | Every merge branch/PR/main verify green. R4 branch 38116057727/PR 38116096010/main 38116354496: 503/503 Node, 36/36 operator, syntax, audit zero. Documentation-only closeout requires fresh CI; exact results will be retained privately in `r4-closeout-ci.json` after required CI passes. | PASS FOR RELEASES; CLOSEOUT CI GATED |
+| MT-24 | Mandarin TASK/EFFECTIVITY/REFERENCES/WARNINGS/PREREQUISITES/PROCEDURE/CLOSE-UP/VERIFICATION final response with MT summary and A/B/C closes the run; final artifact referenced by private handoff. | READY FOR FINAL RESPONSE |
 
 `python3 test/auto-update.test.py`: 21/21 passed (`baseline-updater.log`). `NODE_ENV=test npm test` with scratch PostgreSQL: 453/453 passed, no skips, 42.8 s (`baseline-unit.log`).
 
 ## Blockers
 
-No current prerequisite blocker. The Docker incident is resolved and its historical checkpoints are retained below. R2 restoration and R3 production/backup are verified; R4 actual rehearsals and source review pass. Production activation and final handoff remain ordered work, not completed claims.
+No current prerequisite blocker. The Docker incident is resolved and its historical checkpoints are retained below. R0–R4 production, ordered activation A–I, real rehearsals, independent review, installed controller and backups are verified. The private handoff is complete. The final documentation-only closeout follows the same CI/deployment gates; the closing response completes MT-24. First production sign-in/TOTP remains intentionally the owner's action.
 
 ## R0 release evidence — 2026-10-10
 
@@ -333,3 +333,13 @@ No current prerequisite blocker. The Docker incident is resolved and its histori
 - 7F first backed up runtime.env to runtime.env.bak.20261011-134641 (0600), then appended exactly seven NEW literal keys with validated absolute private paths. Prior bytes and every existing configs/*.json hash remain unchanged. SuperAdmin username platformowner. Raw r4-runtime-append.json. R4 wiring/CI/deploy/controller/production counts remain pending G–I.
 
 - R4 rendered Compose comparison against the immutable installed c8bb3e8 config: compose_violations returns []; all protected files unchanged and frozen platform schema hash equal. New tunnel service has no profile. Missing PLATFORM_ADMIN_PASSWORD_FILE_HOST is rejected before start. Raw r4-compose-guard.json. npm run check and 36/36 operator tests pass.
+
+## Production activation G–J verified — 2026-10-11 14:07
+
+- 7G PR #134 normally merged as017c28501dce39012c11e1cc949de4bb4b864dbf after independent final zero-P0/P1/P2 review and green [branch38116057727](https://github.com/yapweijun1996/Online-Shopping/actions/runs/38116057727)/[PR38116096010](https://github.com/yapweijun1996/Online-Shopping/actions/runs/38116096010); [main38116354496](https://github.com/yapweijun1996/Online-Shopping/actions/runs/38116354496) success, remote verified.503/503 Node,36/36 operator tests,audit0.
+- Scheduled controller deployed017c285 at05:57Z; one manual invocation respected the active mutex and made no second deployment. Next scheduled poll05:59:51Z up_to_date. Raw r4-scheduled-deployment.log,r4-deployed-observation.json,r4-final-production.json: ten legacy probes/manifest checks pass, newapps0/protectedPG/tunnelunchanged under D0-26.
+- 7H installed released controller atomically at06:00:38Z after up_to_date, mode0700, old code retained .bak.20261011-140038 (0600), compile passed. Actual next scheduled poll06:01:52Z up_to_date; no state edit/manual substitute poll. Raw r4-controller-installed.json.
+- 7I nine read-only platform/privacy probes pass, admin200 configuredsecurityheaders/session401, admin shop/seller404, shop/sellerplatform404, unknownshop404. Explicit psql counts schema1/admin1/TOTP0/default1/nondefault0/sessions0/recovery0/tenantDBs0/tenantroles0. Adminconnector running0restart/four registered connections; five-container stats and load4.76/5.55/5.95 show no runaway. Raw r4-activation-production.json. No production sign-in/enrolment/QA/business write or purge.
+- Installed new-controller production --backup exit0 covers actual legacy+platform databases, both custom0600 archives and isolated restores verified: deployment-20261011T060408Z-e09be6c9.json; online-shopping-20261011T060409Z-fc8d1a.dump; platform-20261011T060423Z-8a1391.dump. Raw r4-platform-production-backup.log/json.
+- Rehearsal teardown completed; label-scoped inspection finds0containers/volumes/networks. Images/releases/backups/private actual evidence retained. Native scratch PostgreSQL and disposable Chrome profiles previously stopped/removed. Raw r4-rehearsal-teardown.log/cleanup.json. Other projects/LaunchAgents/user sessions unchanged.
+- 7J final private host handoff written: ~/Library/Application Support/Online-Shopping/handover/multi-tenant-20261011.md, directory0700/file0600, no value, Needs the owner empty. Owner performs first TOTP enrolment and checklist. Dedicated admin host, no X7 fallback; D0-26/04/30/31 disclosed with accepted X6 and twenty-shop/shared-host limits. Documentation-only closeout synchronizes these actual results; its fresh CI and full production smoke will be retained privately after passing, avoiding recursive evidence-only deployments.
