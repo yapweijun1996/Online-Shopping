@@ -8,8 +8,8 @@ Started 2026-10-10 (Asia/Singapore). Source of truth: [MULTI_TENANT_GOAL.md](MUL
 | --- | --- | --- |
 | R0 | DEPLOYED, VERIFIED | [PR #126](https://github.com/yapweijun1996/Online-Shopping/pull/126), merge `ada984ba9feab52cb7f22abf4bf2e205af238092`; deployed log followed by `up_to_date`; 10 production probes and zero restarts. |
 | R1 | DEPLOYED, VERIFIED | [PR #127](https://github.com/yapweijun1996/Online-Shopping/pull/127), merge `71f5d27b1abc1471e6b7e8da740138dd122a58b2`; branch/PR CI green. |
-| R2 | RESTORATION MERGED; DEPLOY VERIFICATION PENDING | PR #131 merge `a6e9304`; fresh branch/PR CI green, rollback verified; post-deploy browser/MT-01 still required. |
-| R3 | SOURCE RECONCILED; REAL-STACK GATE PENDING | Operations and migration recovery; draft PR #130 now includes restored R2 and image readability fix; wait for verified R2/up_to_date before rehearsal. |
+| R2 | RESTORED, DEPLOYED, VERIFIED | PR #131 merge `a6e9304`; branch/PR/main CI green; MT-01 and actual Chrome installed-update checks pass, D0-26 restart history retained. |
+| R3 | REAL-STACK GATE PASSED; MERGE/DEPLOY PENDING | PR #130 source f7237f1: four/five database backups, verified transactional restores, real second-shop failure and stopped-runner recovery pass. |
 | R4 | PARTIALLY PREPARED; ACTIVATION NOT STARTED | Capacity harness and owner checklist prepared; real rehearsal, drills, capacity and activation remain gated. |
 
 ## Decisions and environment — 2026-10-10
@@ -77,7 +77,7 @@ Actual browser pass-set: `scripts/qa-draft-browser.mjs` and `scripts/qa-followup
 
 | Item | Current evidence | Status |
 | --- | --- | --- |
-| MT-01 | Rollback recovery `6429c89` deployed then up_to_date; ten probes/manifest identities pass, applications zero restarts, protected PostgreSQL/tunnel identity/start/count unchanged. PostgreSQL historical count 2 retained under D0-26. R2 restoration `a6e9304` awaits deployment/verification. | RECOVERY PASS WITH D0-26; R2 PENDING |
+| MT-01 | Rollback recovery `6429c89` deployed then up_to_date; ten probes/manifest identities pass, applications zero restarts, protected PostgreSQL/tunnel identity/start/count unchanged. PostgreSQL historical count 2 retained under D0-26. R2 restoration `a6e9304` deployed/up_to_date; ten probes and Chrome installed-update pass. | PASS WITH D0-26 |
 | MT-02 | R1 disabled-config tests, CI without platform secrets, and inert production deployment. | PASS |
 | MT-03 | Authentication/replay/lockout/recovery/CSRF/reset tests pass; real rehearsal enrolment/sign-in is unavailable. | BLOCKED REHEARSAL |
 | MT-04 | Console source prepared and independently reviewed; 360–1280 px, keyboard/a11y and CSP browser journey unverified. | BLOCKED REHEARSAL |
@@ -88,8 +88,8 @@ Actual browser pass-set: `scripts/qa-draft-browser.mjs` and `scripts/qa-followup
 | MT-09 | Same-profile Chrome model/UI checks for two shops; default keys and independent active caches preserved. `r2-tenant-browser.json`. | PASS |
 | MT-10 | Real Caddy image/stub backend, 108 host/privacy/redirect/crawler/static/body checks. `r2-caddy-routing.json`. | PASS |
 | MT-11 | Serial ACTIVE worker, fresh status, paused drain, isolated synthetic provider errors and idle pool tests pass. Connection capacity proof unavailable. | PARTIAL; BLOCKED CAPACITY |
-| MT-12 | Owner-side proofs, native transactional restore and updater tests pass. Mandatory multi-database Docker backup/restore and R3 legacy production backup unverified. | BLOCKED REAL STACK |
-| MT-13 | Upgrade/recovery source and unknown-outcome/runner-stop/intent tests pass. Real second-shop failure/partial restore is prepared, unexecuted. | BLOCKED REAL STACK |
+| MT-12 | Four/five database real Docker archives/restore proofs pass on f7237f1. R3 legacy production backup remains required after deployment. | REHEARSAL PASS; PROD PENDING |
+| MT-13 | Real second-shop failure restores and verifies both attempted databases after stopping named runner; third shop untouched. f7237f1 real Compose proof and 36 operator tests pass. | PASS |
 | MT-14 | R1 platform tests 21/21 as the non-superuser CREATEDB/CREATEROLE role with self-grant; accepted X6 documented. | PASS |
 | MT-15 | Timer eviction/reopen tests pass. Isolated twenty-shop load/connection/eviction harness prepared with independent review and 5/5 safety tests; actual mixed traffic and sampled <=80/100 PostgreSQL connections remain unavailable. | BLOCKED REHEARSAL |
 | MT-16 | In-process outage, interruption reconciliation and concurrent-create tests pass; all five real-stack drills remain required. | BLOCKED REHEARSAL |
@@ -99,7 +99,7 @@ Actual browser pass-set: `scripts/qa-draft-browser.mjs` and `scripts/qa-followup
 | MT-20 | Installed controller retained unchanged; replacement waits for verified R4 deployment. | BLOCKED PRECONDITIONS |
 | MT-21 | Private BLOCKED checkpoint `~/Library/Application Support/Online-Shopping/handover/multi-tenant-20261011.md`: directory 0700, file 0600, secret-value scan zero. Activation access fields explicitly marked unavailable. | CHECKPOINT VERIFIED; FINAL PENDING |
 | MT-22 | Executor created no production QA shops/sellers/orders and performed no production platform sign-in/enrolment. Final database counts unavailable. | NO QA WRITES; COUNTS BLOCKED |
-| MT-23 | All R0/R1/R2/rollback merges had green branch/PR/main CI; R3 capacity preparation branch CI 497/497, 31 updater tests and zero audit findings. R3 remains draft/conflicting, no merge attempted. | PASS FOR MERGED RELEASES |
+| MT-23 | All R0/R1/R2/rollback merges had green branch/PR/main CI; R3 capacity preparation branch CI 497/497, 31 updater tests and zero audit findings. R3 actual gate passed, latest source branch/PR CI green; ledger-head CI required before merge. | PASS FOR MERGED RELEASES |
 | MT-24 | Mandarin BLOCKED checkpoint report delivered, distinguishing historical success, current outage and missing activation; final activated report remains gated. | BLOCKED REPORT DELIVERED; FINAL PENDING |
 
 `python3 test/auto-update.test.py`: 21/21 passed (`baseline-updater.log`). `NODE_ENV=test npm test` with scratch PostgreSQL: 453/453 passed, no skips, 42.8 s (`baseline-unit.log`).
@@ -286,3 +286,5 @@ Reliable Docker exec/start operations within deployment deadlines are unavailabl
 - `python3 scripts/qa-rehearsal-operations.py` on source `f7237f15cde61758178ec2ced197e64030cc514e`: completed successfully in the isolated real Compose stack. Four legacy/platform/alpha/bravo custom archives were restored and verified by complete schema hashes and per-table row counts; a platform table introduced after backup was removed by transactional restore. Five-database manifest after adding charlie also verified. MT-12 rehearsal gate passed.
 - MT-13: real named runner upgraded alpha 23→24, failed on bravo's fixture constraint, stopped/removed before recovery; both attempted databases restored and verified in reverse order, alpha extra DDL removed, charlie untouched at 23. All three versions and owner-role isolation verified; only fictional rehearsal fixtures were repaired to 24 and maintenance exited. Raw `r3-operations-restored-cycle4.log`, immutable `r3-operations-f7237f1-verified.json`; four-database and five-database manifest archives retained privately in rehearsal operations directory.
 - Latest source branch/PR CI [38113747858](https://github.com/yapweijun1996/Online-Shopping/actions/runs/38113747858) / [38113750163](https://github.com/yapweijun1996/Online-Shopping/actions/runs/38113750163) successful. Fresh ledger-head CI is required before merging PR #130. R2 production is verified; R3 production and installed-controller single-database backup remain pending.
+
+- Independent read-only review of f7237f1 alias handling relative to aff6926: no open P0/P1/P2; parent normalization remains confined and manifest file symlinks rejected. Reviewer did not perform production writes or substitute source review for rehearsal evidence.
