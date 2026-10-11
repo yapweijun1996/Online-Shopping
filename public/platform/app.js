@@ -62,7 +62,9 @@ async function authenticator() {
   }
   const node = form(async (data) => {
     const result = await api('/totp/confirm', { method: 'POST', body: data }); node.reset(); csrf = result.csrfToken; session = { ...result, totpEnabled: true }; nav();
-    await listShops(); if (result.recoveryCodes) showSecrets('Save your recovery codes', result.recoveryCodes.join('\n'));
+    // Recovery codes have only one response; preserve them before the next read can fail.
+    if (result.recoveryCodes) showSecrets('Save your recovery codes', result.recoveryCodes.join('\n'));
+    await listShops();
   });
   const input = field(node, 'code', 'Six-digit authenticator code', { autocomplete: 'one-time-code', maxLength: 6, required: !session.totpEnabled }); input.inputMode = 'numeric'; input.pattern = '[0-9]{6}';
   if (session.totpEnabled) field(node, 'recoveryCode', 'Or a recovery code', { required: false, maxLength: 11 });

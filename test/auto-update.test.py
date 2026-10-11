@@ -5,6 +5,8 @@ from pathlib import Path
 import tempfile
 import unittest
 import io
+import sys
+import hashlib
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('auto_update', Path(__file__).resolve().parents[1] / 'deploy/auto-update.py')
@@ -39,6 +41,76 @@ class Fake(m.Updater):
         if self.fail == 'rollback': raise RuntimeError()
 
 class Tests(unittest.TestCase):
+    def test_setup_recovers_interrupted_revoke_but_refuses_foreign_owner(self):
+        directory = Path(__file__).resolve().parents[1] / 'deploy'
+        spec = importlib.util.spec_from_file_location('setup', directory / 'setup-platform.py')
+        setup = importlib.util.module_from_spec(spec); spec.loader.exec_module(setup)
+        for database_owner in ['platform_app', 'unrelated_owner']:
+            calls = []; revoked = False
+            def query(args, sql, **kwargs):
+                nonlocal revoked
+                calls.append(sql)
+                if 'rolname ||' in sql: return 'platform_app|false|false|false|true\nplatform_provisioner|false|true|true|true'
+                if 'pg_get_userbyid' in sql: return database_owner + ('|true' if revoked else '|false')
+                if 'rolconfig' in sql: return 'createrole_self_grant=set, inherit'
+                if 'SELECT 1 FROM pg_database' in sql: return '1'
+                if sql.startswith('REVOKE'): revoked = True
+                return ''
+            with patch.object(setup, 'query', query), patch.object(setup, 'secret', return_value='fictional'*4), patch.object(sys, 'argv', ['setup']):
+                with patch('builtins.print'):
+                    result = setup.main()
+            self.assertEqual(result, 0 if database_owner == 'platform_app' else 1)
+            self.assertEqual(revoked, database_owner == 'platform_app')
+            self.assertFalse(any(sql.startswith('CREATE DATABASE') for sql in calls))
+
+    def test_purge_reuses_verified_checkpoint_after_database_drop(self):
+        self.purge_checkpoint_case('retry')
+
+    def test_purge_checkpoint_refuses_another_target(self):
+        self.purge_checkpoint_case('target')
+
+    def test_purge_checkpoint_refuses_corrupt_or_foreign_archive(self):
+        self.purge_checkpoint_case('corrupt')
+
+    def purge_checkpoint_case(self, mode):
+        directory = Path(__file__).resolve().parents[1] / 'deploy'
+        sys.path.insert(0, str(directory))
+        spec = importlib.util.spec_from_file_location('purge', directory / 'purge-tenant.py')
+        purge = importlib.util.module_from_spec(spec); spec.loader.exec_module(purge)
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder).resolve()
+            row = {'id': 'a'*8+'-'+ 'a'*4+'-'+ 'a'*4+'-'+ 'a'*4+'-'+ 'a'*12,
+                   'code': 'fictional', 'revision': 4, 'database_name': 't_fictional_aaaaaaaa',
+                   'database_role': 't_fictional_aaaaaaaa', 'delete_after': '2020-01-01T00:00:00Z'}
+            target = {'context': 'orbstack', 'container': 'a'*64, 'owner': 'fictional_owner'}
+            calls = []
+            class Owner:
+                def backup(self, database, label, directory):
+                    calls.append(database)
+                    archive = directory / 'fictional.dump'; archive.write_bytes(b'fictional verified archive'); archive.chmod(0o600)
+                    proof = directory / 'fictional.dump.json'
+                    purge.private_json(proof, {'database': database, 'restoreVerified': True,
+                                              'archiveSha256': hashlib.sha256(archive.read_bytes()).hexdigest()})
+                    return {'database': database, 'archive': str(archive), 'evidence': str(proof)}
+                def verify_archive(self, archive, evidence):
+                    if hashlib.sha256(archive.read_bytes()).hexdigest() != evidence['archiveSha256']:
+                        raise RuntimeError('Archive checksum mismatch.')
+            owner = Owner()
+            checkpoint = purge.final_backup(owner, row, base, target)
+            self.assertEqual(checkpoint.stat().st_mode & 0o777, 0o600)
+            if mode == 'retry':
+                # The database may now be absent; retry must not invoke a fresh backup.
+                owner.backup = lambda *args: self.fail('Retry tried to back up the dropped database.')
+                purge.final_backup(owner, row, base, target)
+            elif mode == 'target':
+                with self.assertRaisesRegex(RuntimeError, 'target'):
+                    purge.final_backup(owner, row, base, {**target, 'container': 'b'*64})
+            else:
+                (base / 'fictional.dump').write_bytes(b'corrupt')
+                with self.assertRaisesRegex(RuntimeError, 'checksum'):
+                    purge.final_backup(owner, row, base, target)
+            self.assertEqual(calls, [row['database_name']])
+
     def test_snapshot_deadline_also_rejects_buffered_ready_marker(self):
         spec = importlib.util.spec_from_file_location('proof', Path(__file__).resolve().parents[1] / 'deploy/postgres_backup.py')
         proof = importlib.util.module_from_spec(spec); spec.loader.exec_module(proof)

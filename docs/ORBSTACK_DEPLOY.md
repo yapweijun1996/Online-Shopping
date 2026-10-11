@@ -74,7 +74,7 @@ Settings and secret names are listed in [MULTI_TENANT_GOAL.md](MULTI_TENANT_GOAL
 
 Host break-glass: `docker --context orbstack exec -e NEW_PLATFORM_ADMIN_PASSWORD=<new-private-password> online-shopping-production-backend-1 node scripts/reset-platform-admin.js`. Supply the variable privately; do not paste a real value into chat or shell history. This invalidates platform sessions/recovery codes/TOTP, requiring enrolment again.
 
-Deletion is a manual thirty-day process: suspend, request with exact code, wait until the recorded date, then `python3 deploy/purge-tenant.py --code <code> --confirm <code> --env-file <private-runtime-env>`. Requires R3 tenant backup support. It takes and verifies a final dump before drops, holds the registry writer lock, refuses live connections and keeps aliases blocked in PURGED state. Never schedule purge. Only the owner can authorize a production purge; the release executor is prohibited from deleting production data.
+Deletion is a manual thirty-day process: suspend, request with exact code, wait until the recorded date, then `python3 deploy/purge-tenant.py --code <code> --confirm <code> --env-file <private-runtime-env>`. See RUNBOOK.md for checkpoint recovery after a partial drop. Backup, proof and drops share the same pinned container/owner, and retained private archives are verified again on retry. Never schedule purge. Only the owner can authorize a production purge; the release executor is prohibited from deleting production data.
 
 ## Isolated multi-tenant rehearsal (prepared; verification pending)
 

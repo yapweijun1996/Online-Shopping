@@ -2,11 +2,44 @@
 """Manual tenant purge after retention and a verified final backup. Never scheduled."""
 import argparse
 import datetime
+import fcntl
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+from postgres_backup import OwnerPostgres, private_json
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def final_backup(owner, row, directory, target):
+    """Persist the verified archive before either irreversible drop, and reuse it on retry."""
+    checkpoint = directory / ('purge-' + row['id'] + '.json')
+    identity = {key: row[key] for key in ('id', 'code', 'revision', 'database_name', 'database_role', 'delete_after')}
+    if checkpoint.exists():
+        if checkpoint.is_symlink() or checkpoint.stat().st_mode & 0o777 != 0o600:
+            raise RuntimeError('Purge checkpoint must remain private.')
+        saved = json.loads(checkpoint.read_text())
+        if saved.get('target') != target or saved.get('tenant') != identity:
+            raise RuntimeError('Purge checkpoint target or tenant changed.')
+        entry = saved['backup']
+    else:
+        entry = owner.backup(row['database_name'], 'tenant-' + row['code'], directory)
+    if entry.get('database') != row['database_name']:
+        raise RuntimeError('Purge archive belongs to another database.')
+    archive, proof = Path(entry['archive']), Path(entry['evidence'])
+    for path in (archive, proof):
+        if path.is_symlink() or not path.is_file() or path.resolve().parent != directory or path.stat().st_mode & 0o777 != 0o600:
+            raise RuntimeError('Purge archive/proof escaped its private directory.')
+    evidence = json.loads(proof.read_text())
+    if not evidence.get('restoreVerified') or evidence.get('database') != row['database_name']:
+        raise RuntimeError('Purge archive lacks matching restore proof.')
+    owner.verify_archive(archive, evidence)
+    if not checkpoint.exists():
+        private_json(checkpoint, {'format': 1, 'target': target, 'tenant': identity, 'backup': entry})
+    return checkpoint
 
 
 def main():
@@ -15,12 +48,14 @@ def main():
     parser.add_argument('--confirm', required=True)
     parser.add_argument('--container', default='online-shopping-production-postgres-1')
     parser.add_argument('--owner', default='online_shopping')
-    parser.add_argument('--env-file', required=True)
+    parser.add_argument('--env-file', required=True, help='Retained for compatibility; final backup uses the explicit owner/container target.')
     parser.add_argument('--directory', default=str(Path.home() / 'Backups/Online-Shopping'))
     args = parser.parse_args()
     if not re.fullmatch(r'[a-z0-9]{3,30}', args.code) or args.confirm != args.code:
         raise SystemExit('Type the exact shop code in --confirm.')
-    pg = ['docker', '--context', 'orbstack', 'exec', '-i', args.container, 'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', args.owner, '-d', 'platform', '-At']
+    container_id = subprocess.check_output(['docker', '--context', 'orbstack', 'inspect', '--format', '{{.Id}}', args.container], text=True, timeout=30).strip()
+    if not re.fullmatch(r'[0-9a-f]{64}', container_id): raise RuntimeError('Unexpected PostgreSQL container identity.')
+    pg = ['docker', '--context', 'orbstack', 'exec', '-i', container_id, 'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', args.owner, '-d', 'platform', '-At']
     def query(sql):
         result = subprocess.run(pg, input=sql, capture_output=True, text=True, timeout=60)
         if result.returncode: raise RuntimeError('Purge SQL failed.')
@@ -32,20 +67,35 @@ def main():
         raise RuntimeError('Shop is not eligible for purge.')
     if any(not re.fullmatch(r't_[a-z0-9]{3,30}_[0-9a-f]{8}', row[key]) for key in ['database_name', 'database_role']) or not re.fullmatch(r'[0-9a-f-]{36}', row['id']):
         raise RuntimeError('Unexpected shop identifiers.')
-    backup = Path(__file__).with_name('backup-postgres.py')
-    subprocess.run([sys.executable, str(backup), '--env-file', args.env_file, '--directory', args.directory, '--tenant', args.code], check=True, timeout=300)
+    directory = Path(args.directory).expanduser().resolve()
+    if directory.is_relative_to(ROOT): raise RuntimeError('Purge archives must be outside the project folder.')
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if directory.stat().st_mode & 0o077: raise RuntimeError('Purge directory must remain private.')
+    owner = OwnerPostgres('orbstack', container_id, args.owner)
+    lock_path = directory / ('purge-' + row['id'] + '.lock')
+    lock = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    try:
+        if os.fstat(lock).st_mode & 0o777 != 0o600: raise RuntimeError('Purge lock must remain private.')
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        final_backup(owner, row, directory, {'context': 'orbstack', 'container': container_id, 'owner': args.owner})
+        purge_locked(pg, args, row)
+    finally:
+        os.close(lock)
+
+
+def purge_locked(pg, args, row):
     # Hold the platform writer lock until both non-transactional drops finish. Console cancellation cannot race a purge.
     lease = subprocess.Popen(pg, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
     try:
-        lease.stdin.write("BEGIN; SELECT pg_advisory_xact_lock(73119,1); SELECT 'PURGE|' || COALESCE((SELECT revision::text FROM tenant WHERE id='" + row['id'] + "' AND status='DELETING' AND revision=" + str(row['revision']) + " AND delete_after <= '" + datetime.datetime.now(datetime.timezone.utc).isoformat() + "' AND is_default=0),'STALE');\n")
+        lease.stdin.write("SET statement_timeout='15s'; BEGIN; SELECT pg_advisory_xact_lock(73119,1); SELECT 'PURGE|' || COALESCE((SELECT revision::text FROM tenant WHERE id='" + row['id'] + "' AND status='DELETING' AND revision=" + str(row['revision']) + " AND delete_after <= '" + datetime.datetime.now(datetime.timezone.utc).isoformat() + "' AND is_default=0),'STALE');\n")
         lease.stdin.flush()
         eligible = False
-        for _ in range(4):
+        for _ in range(6):
             line = lease.stdout.readline().strip()
             if line.startswith('PURGE|'): eligible = line == 'PURGE|' + str(row['revision']); break
             if not line and lease.poll() is not None: break
         if not eligible: raise RuntimeError('Shop changed during backup; purge refused.')
-        drop = ['docker', '--context', 'orbstack', 'exec', '-i', args.container, 'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', args.owner, '-d', 'postgres', '-At']
+        drop = [*pg]; drop[drop.index('-d') + 1] = 'postgres'
         # No FORCE: a remaining tenant connection is an actionable stop, never silently terminated.
         for sql in [f'DROP DATABASE IF EXISTS "{row["database_name"]}";', f'DROP ROLE IF EXISTS "{row["database_role"]}";']:
             if subprocess.run(drop, input=sql, capture_output=True, text=True, timeout=60).returncode: raise RuntimeError('Purge drop failed; retry manually after closing tenant connections.')
