@@ -517,7 +517,7 @@ async function createTenantApi({ store, config, serveStatic = null, whatsappTran
  * resolved to a tenant first; an unknown tenant is 404 and a suspended one 503 without touching any database.
  * Every tenant gets its own route table (limiters, secret box, quick sign-in decision), built on first use.
  */
-export async function createApi({ store, config, registry = null, platformHandler = null, serveStatic = null, whatsappTransport = createWhatsAppTransport() }) {
+export async function createApi({ store, config, registry = null, platformHandler = null, setupHandler = null, serveStatic = null, whatsappTransport = createWhatsAppTransport() }) {
   const tenants = registry ?? singleTenantRegistry({ store, config });
   const handlers = new WeakMap();
   const handlerFor = (tenant) => {
@@ -536,6 +536,11 @@ export async function createApi({ store, config, registry = null, platformHandle
         if (url.pathname.startsWith('/api/')) return await platformHandler(request, context);
         if (serveStatic) return await serveStatic(request, url.pathname);
         throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+      }
+      if (/^\/api\/v1\/setup(?:\/|$)/.test(url.pathname)) {
+        const shopOrigin = config.publicOrigin || `http://localhost:${config.port ?? 3000}`;
+        if (!config?.platform?.claimEnabled || url.origin !== shopOrigin || !setupHandler) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+        return await setupHandler(request, context);
       }
       if (config?.platform && url.host === config.platform.adminHost && !['/health', '/ready'].includes(url.pathname) &&
         url.host !== new URL(config.sellerOrigin).host) throw new ApiError(404, 'NOT_FOUND', 'Not found.');

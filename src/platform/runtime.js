@@ -9,11 +9,12 @@ import { createPlatformRegistry } from './registry.js';
 import { createAdminAuth } from './admin-auth.js';
 import { createPlatformRoutes } from './admin-routes.js';
 import { issueAdminClaim } from './admin-claim.js';
+import { createSetupRoutes } from './setup-routes.js';
 
 export function createPlatformRuntime({ store, config, clock = Date.now, paused = () => false }) {
   const secretBox = createSecretBox(config.integrationKeys);
   const pool = createTenantPool({ secretBox, baseUrl: config.platform.databaseUrl, connectionsPerTenant: 3 });
-  let connection = null, pending = null, retryAfter = 0, stopped = false, routes = null, timer, background = null, maintenanceTasks = 0;
+  let connection = null, pending = null, retryAfter = 0, stopped = false, routes = null, setupRoutes = null, timer, background = null, maintenanceTasks = 0;
   const inFlight = new Set();
   const claimStartedAt = new Date(clock()).toISOString();
   let claimInitialized = false;
@@ -69,6 +70,7 @@ export function createPlatformRuntime({ store, config, clock = Date.now, paused 
         }
         connection = candidate;
         routes = createPlatformRoutes({ platform: candidate, secretBox, pool, registry, deps, defaultStore: store, config, clock });
+        setupRoutes = createSetupRoutes({ platform: candidate, secretBox, config, clock });
         return connection;
       } catch {
         await candidate?.close().catch(() => {}); retryAfter = clock() + 5000;
@@ -93,6 +95,7 @@ export function createPlatformRuntime({ store, config, clock = Date.now, paused 
       },
     },
     async handle(request, context) { await connect(); return routes(request, context); },
+    async handleSetup(request, context) { await connect(); return setupRoutes(request, context); },
     async close() { stopped = true; clearInterval(timer); await background?.catch(() => {}); await pending?.catch(() => {}); await pool.closeAll(); await connection?.close(); connection = null; },
   };
 }

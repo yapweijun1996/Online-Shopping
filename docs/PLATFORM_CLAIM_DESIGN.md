@@ -1,10 +1,10 @@
 # First SuperAdmin claim link
 
-Status: **P2 migration, P3a default-off configuration and P4 backend issuance implemented locally; public claim/API/UI phases remain design only. Not deployed.** Repository inspection: 2026-10-20. This document grants no deployment authority.
+Status: **P2 migration, P3a default-off configuration, P4 backend issuance and P5 claim API/routing implemented locally; P6 page and later operational phases remain unimplemented. Not deployed.** Repository inspection: 2026-10-20. This document grants no deployment authority.
 
-Implementation status (P2/P3a): platform schema v2 adds nullable lower-cased contact email, singleton claim state, metadata-only generation history and claim audit actions. `schema.sql` remains the v1 baseline; fresh initialization runs numbered migrations, while existing v1 databases require explicit upgrade. PostgreSQL closes the latch on any admin insertion and prohibits closure changes/removal. A future claim transaction must finalize the latch **before** inserting the admin (the admin reference is deferred), so the insert trigger cannot prematurely close an outstanding generation.
+Implementation status (P2/P3a): platform schema v2 adds nullable lower-cased contact email, singleton claim state, metadata-only generation history and claim audit actions. `schema.sql` remains the v1 baseline; fresh initialization runs numbered migrations, while existing v1 databases require explicit upgrade. PostgreSQL closes the latch on any admin insertion and prohibits closure changes/removal. The claim transaction finalizes the latch **before** inserting the admin (the admin reference is deferred), so the insert trigger cannot prematurely close an outstanding generation.
 
-`PLATFORM_ADMIN_CLAIM_ENABLED=1` excludes both legacy SuperAdmin credential inputs and skips credential bootstrap. Default/off preserves legacy credential validation. P4 now issues a backend-generated code after startup checks; no setup routes or UI exist, so enabling it is not a usable onboarding flow yet. Email remains contact-only, not an additional login identifier. No existing admin is backfilled. Generation history carries attempts, supersession, consumption and outcome; only the singleton state stores the current hash. Q1/Q2 follow the PIC decisions in the P2 job: eligible static GET, generic rate-limited POST failures, restart-only renewal.
+`PLATFORM_ADMIN_CLAIM_ENABLED=1` excludes both legacy SuperAdmin credential inputs and skips credential bootstrap. Default/off preserves legacy credential validation. P4 issues a backend-generated code after startup checks. P5 exposes shop-origin status/claim APIs, but no setup page exists yet. Email remains lower-cased unverified contact-only, not a login identifier. No existing admin is backfilled. Generation history carries attempts, supersession, consumption and outcome; only the singleton state stores the current hash.
 
 
 Goal: after one agent-operated infrastructure enablement, the owner opens `https://demoonlineshopping.xyz/setup/#<code>`, enters their own email, username and password, completes mandatory TOTP on a separate admin origin, and creates shops and seller Owners through the existing console. No email is predetermined. The application generates the claim code: no operator command, environment variable, Compose edit or secret file supplies it.
@@ -95,7 +95,18 @@ DB commit/log delivery cannot be atomic. Promise **at most one application emiss
 
 ## 3. Claim flow and HTTP contract
 
-Proposed throughout. Existing platform auth keeps endpoints and host/cookie boundaries; email extends existing identifier, not a new protocol.
+### P5 authoritative PIC contract (supersedes conflicting proposals below)
+
+- Only exact shop-origin `/api/v1/setup/status` GET and `/api/v1/setup/claim` POST are implemented. Claim mode, no admin, unclosed latch, current hash, DB-time unexpired generation and fewer than five wrong-code attempts are required. Every other setup API path/state returns the unknown-path generic 404. No page/assets or validate endpoint is added.
+- Claim JSON is exactly `{code,email,username,password}`, streamed with a 4096-byte cap. Exact shop Origin plus non-ambient bearer possession and JSON provide CSRF protection; no ambient-cookie setup challenge is required. Existing admin-origin CSRF remains mandatory for enrolment and all other platform writes.
+- Persisted claim limit: five admitted requests/client/15 minutes, before parsing/hashing. Throttles return generic 404; one rate-limit audit/client/window. Five wrong/missing code attempts permanently disable that generation until trusted restart supersedes it; state/history counters and denied audit commit together. No submitted secrets or identifiers are audited on failure.
+- Constant-time domain-separated SHA-256 comparison precedes field errors. Proven-code invalid/extra fields return 400 without consuming the generation. Contact email is lower-cased, bounded ASCII mailbox syntax matching the migration, one @, local part at most 64/total at most 254, no whitespace/controls. Existing username/password policy applies; email sign-in is not added.
+- Serialized transaction rechecks eligibility, validates/hash-encodes the password, rechecks expiry, closes the latch before admin INSERT (deferred FK), consumes history, audits ADMIN_CLAIMED, and creates the existing five-minute PASSWORD session and CSRF. Any insert/audit/session failure rolls everything back. Claim never grants FULL; unfinished MFA never reopens setup.
+- Response is 200 with login-equivalent `{csrfToken,stage:"PASSWORD",totpEnabled:false}` and the existing Secure/HttpOnly/Strict host-only platform cookie. **Browser boundary:** the cookie set on the shop host cannot be sent automatically to the separate admin host. No cookie Domain widening, cross-origin token transfer or shop-Origin exception is introduced. A browser must sign in again on the admin origin to continue enrolment; API tests explicitly carry the restricted cookie to prove existing enrolment semantics. P6 must preserve this boundary.
+- Verification: JavaScript syntax checks and scoped PostgreSQL platform/tenant tests passed (52 tests, zero failures/skips); actual Node HTTP startup → open status → PASSWORD claim → closed status smoke passed. No browser, edge, cloud-log or deployment verification.
+
+
+The remaining subsections retain historical proposals. The P5 PIC contract above governs implemented API/session/email behavior where these proposals conflict.
 
 ### 3.1 Required fragment/status decision
 
@@ -355,7 +366,7 @@ Default off all slices, affected API/onboarding/security/deploy docs updated wit
 | P2 Migration | Email/state/audit/v2/fresh init. | Empty/existing/rollback/immutability PG proof, shop unchanged. |
 | P3 Mode/email | Exclusive config/existing login UI/API/legacyNULL. | Real login/lockout/config/bootstrap smoke, no issuance. |
 | P4 Issuance — implemented locally | Startup/hash/rotation/expiry/audit/emission/reconnect-maintenance; UUID generation and P2 hash-only singleton/history layout retained. | PostgreSQL runtime tests exercise overlapping starts, restart supersession, expiry without renewal, reconnect, maintenance and log/storage isolation. No deployment or cloud-log receipt verified. |
-| P5 API | Validate/challenge/atomicclaim/status/limits/audit/dispatch. | Real race/expiry/rotation HTTP-PG, no FULL. |
+| P5 API — implemented locally | Shop-origin status/atomic claim/limits/audit/dispatch; authoritative PIC contract above replaces validate/challenge proposal. | PostgreSQL race, rollback, expiry/off/exhaustion, validation, restricted-session/MFA tests and actual Node HTTP claim smoke passed. Separate-host browser continuation requires admin-origin password login. |
 | P6 Page | Approved loader/form/assets/packaging/history/fixedhandoff. | Browser claim→restrictedMFA/resume/no storage/CSP. |
 | P7 Edge | GCP setup/admin/tenant gating, OrbStack Caddy untouched. | Real hostmatrix/usable tenant URLs. |
 | P8 GCP release gate | Platform fingerprint/root-runtime/manualbaseline, image-only updater. | Negative controller/platform-only schema gate. |
@@ -363,7 +374,7 @@ Default off all slices, affected API/onboarding/security/deploy docs updated wit
 | P10 Tooling | Setup Linux context/permissions preserving OrbStack, secrets/log/gateway/multiDB backup-restore. | Disposable complete journey/restore; harmless cloudlog authorized proof. |
 | P11 Activation | Authorized manual GCP enablement, owner claim/MFA, private evidence/auditedbaseline. | Closed setup/real tenant/default intact/recoverable backup/no owner Docker-env-file onboarding. |
 
-No phase implemented. Activation requires explicit operational authority/reachable evidence, not just this plan.
+P2, P3a, P4 and P5 are implemented locally as noted above. Activation requires explicit operational authority/reachable evidence, not just this plan.
 
 ## 9. Open questions / UNVERIFIED
 
@@ -376,4 +387,4 @@ No phase implemented. Activation requires explicit operational authority/reachab
 7. **OrbStack historical:**R4 one unenrolled admin not current assertion; preserve actual account/MFA/email. Inventory collision before opt-in, no auto rename/delete.
 8. **Assurance limits:**no email delivery/verification/recovery, no unauthenticated all-factors recovery, no multi-replica handoff/exactly-once cloud delivery.
 
-Task verification scope: requested local source/runbook inspection and document checks only; no code/package/service/network/database/deployment work. Implementation/live acceptance remain future gates.
+Initial design verification was source/runbook inspection only. P5 local API/runtime verification is recorded above; browser, edge, capacity, restore and deployment acceptance remain future gates.
