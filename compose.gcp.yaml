@@ -1,0 +1,98 @@
+name: online-shopping-gcp
+services:
+  frontend:
+    image: ${FRONTEND_IMAGE:?Immutable frontend digest required}
+    environment:
+      SHOP_HOST: ${SHOP_HOST:?Set SHOP_HOST}
+      SELLER_HOST: ${SELLER_HOST:?Set SELLER_HOST}
+    volumes:
+      - ${RELEASE_DIR:?Release required}/deploy/gcp/Caddyfile:/etc/caddy/Caddyfile:ro
+    networks:
+      edge:
+        aliases: [online-shopping-frontend]
+      private:
+    depends_on:
+      backend:
+        condition: service_healthy
+    mem_limit: 48m
+    cpus: 0.25
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    logging: &logging
+      driver: json-file
+      options: {max-size: "5m", max-file: "2"}
+  backend:
+    image: ${BACKEND_IMAGE:?Immutable backend digest required}
+    environment:
+      NODE_ENV: production
+      NODE_OPTIONS: --max-old-space-size=128
+      APP_REVISION: ${APP_REVISION:?Full revision required}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:?Set ADMIN_USERNAME}
+      ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      DATABASE_PASSWORD_FILE: /run/secrets/database_password
+      DATABASE_HOST: postgres
+      DATABASE_USER: online_shopping_app
+      DATABASE_NAME: online_shopping
+      PUBLIC_ORIGIN: https://${SHOP_HOST:?Set SHOP_HOST}
+      SELLER_ORIGIN: https://${SELLER_HOST:?Set SELLER_HOST}
+      TRUST_PROXY: "1"
+      SHOP_MODE: manual
+      SELLER_QUICK_LOGIN: "0"
+      PLATFORM_ENABLED: "0"
+    secrets: [admin_password, database_password]
+    networks: [private]
+    mem_limit: 256m
+    cpus: 0.5
+    read_only: true
+    tmpfs: [/tmp:size=16m]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    logging: *logging
+  postgres:
+    image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+    command: [postgres, -c, max_connections=20, -c, shared_buffers=32MB, -c, work_mem=2MB, -c, maintenance_work_mem=16MB, -c, effective_cache_size=96MB]
+    environment:
+      POSTGRES_USER: online_shopping
+      POSTGRES_DB: online_shopping
+      POSTGRES_PASSWORD_FILE: /run/secrets/database_owner_password
+    secrets: [database_password, database_owner_password]
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ${RELEASE_DIR:?Release required}/src/postgres/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ${RELEASE_DIR:?Release required}/deploy/init-postgres.sh:/docker-entrypoint-initdb.d/02-app-role.sh:ro
+    networks: [private]
+    mem_limit: 192m
+    cpus: 0.35
+    shm_size: 32m
+    healthcheck:
+      test: [CMD, pg_isready, -U, online_shopping, -d, online_shopping]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    logging: *logging
+secrets:
+  admin_password:
+    file: ${SECRETS_DIR:?Set SECRETS_DIR}/admin-password
+  database_password:
+    file: ${SECRETS_DIR:?Set SECRETS_DIR}/postgres-password
+  database_owner_password:
+    file: ${SECRETS_DIR:?Set SECRETS_DIR}/postgres-owner-password
+volumes:
+  pg_data:
+networks:
+  edge:
+    external: true
+    name: online-shopping-edge
+  private:
+    internal: true
