@@ -1,8 +1,8 @@
-import { readFile } from 'node:fs/promises';
+import { upgradePlatformSchema } from './migrations.js';
 import { randomUUID } from 'node:crypto';
 import { openPostgresStore } from '../postgres-store.js';
 
-export const PLATFORM_SCHEMA_VERSION = 1;
+export const PLATFORM_SCHEMA_VERSION = 2;
 
 /* Opens the platform database, creating its schema in an empty database. A database that already has another schema
    version is refused instead of being changed. */
@@ -11,8 +11,7 @@ export async function openPlatformDatabase(url, options) {
   try {
     await store.transaction(async () => {
       if (!(await store.get("SELECT to_regclass('public.schema_meta') AS name")).name) {
-        if ((await store.all("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")).length) throw new Error('The platform database must start empty.');
-        await store.exec(await readFile(new URL('./schema.sql', import.meta.url), 'utf8'));
+        await upgradePlatformSchema(store);
       }
       const version = await store.schemaVersion();
       if (version !== PLATFORM_SCHEMA_VERSION) throw new Error(`Unsupported platform schema version ${version}.`);

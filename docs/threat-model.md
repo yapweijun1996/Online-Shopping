@@ -287,6 +287,7 @@ Give these extra scrutiny.
 2. Guest order status key is client-chosen and not checked for entropy at creation.
 3. `order_event` is not append-only at the database level; app role has broad DML.
 4. Platform authentication has audit and account/IP lockout; seller authentication remains IP-limited without platform-style account lockout. Settings audit remains limited; catalog/account/order events cover their own mutations.
+   Platform claim preparation is default-off (`PLATFORM_ADMIN_CLAIM_ENABLED`). Schema v2 has lower-cased unverified contact email (not a login/recovery identifier), hash-only current claim state and metadata-only generation history. Any admin insertion closes a database-enforced permanent latch; reset cannot reopen it. Existing admins migrate closed with NULL email. Claim mode rejects legacy bootstrap credential settings and skips bootstrap; no public issuance/claim surface or secret logging exists in this phase. Database-owner DDL/backup restore remains privileged and can undo these controls.
 5. Order status single column; no payment/fulfillment/shipment machines in the production schema (integration foundation is offline).
 6. The real WhatsApp webhook deduplicates body/message identities but has no timestamp replay window or App Secret overlap policy; master-key resealing is implemented. Shared-secret routing and late-reply erasure gaps are open (review B08/B09).
 7. Auto-deploy trusts `main`; branch protection cannot be verified from the repository.

@@ -46,7 +46,7 @@ export function createPlatformRuntime({ store, config, clock = Date.now, paused 
       try {
         candidate = await openPlatformDatabase(config.platform.databaseUrl, { max: 3, connectionTimeoutMillis: 2000, query_timeout: 3000, statement_timeout: 3000 });
         const auth = createAdminAuth({ platform: candidate, secretBox, clock });
-        await auth.bootstrap(config.platform.username, config.platform.password);
+        if (!config.platform.claimEnabled) await auth.bootstrap(config.platform.username, config.platform.password);
         await candidate.transaction(async () => {
           if (!await candidate.get('SELECT 1 AS n FROM tenant WHERE is_default = 1')) {
             const setup = await getShopSetup(store), company = await getCompanySettings(store), stamp = new Date(clock()).toISOString();

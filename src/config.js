@@ -47,22 +47,25 @@ export function readPlatformConfig(env, integrationKeys) {
   if (!integrationKeys) throw new Error('INTEGRATION_KEY_FILE is required for the platform.');
   const adminHost = env.PLATFORM_ADMIN_HOST;
   const username = env.PLATFORM_ADMIN_USERNAME;
+  const claimEnabled = env.PLATFORM_ADMIN_CLAIM_ENABLED === '1';
+  if (env.PLATFORM_ADMIN_CLAIM_ENABLED !== undefined && !['0', '1'].includes(env.PLATFORM_ADMIN_CLAIM_ENABLED)) throw new Error('PLATFORM_ADMIN_CLAIM_ENABLED must be 1 or 0.');
+  if (claimEnabled && (env.PLATFORM_ADMIN_USERNAME !== undefined || env.PLATFORM_ADMIN_PASSWORD_FILE !== undefined)) throw new Error('Claim mode cannot use PLATFORM_ADMIN_USERNAME or PLATFORM_ADMIN_PASSWORD_FILE.');
   if (typeof adminHost !== 'string' || !/^[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]{1,5})?$/.test(adminHost)) throw new Error('Invalid PLATFORM_ADMIN_HOST.');
   try { if (new URL(`https://${adminHost}`).host !== adminHost) throw new Error(); } catch { throw new Error('Invalid PLATFORM_ADMIN_HOST.'); }
-  if (typeof username !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/.test(username)) throw new Error('Invalid PLATFORM_ADMIN_USERNAME.');
+  if (!claimEnabled && (typeof username !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/.test(username))) throw new Error('Invalid PLATFORM_ADMIN_USERNAME.');
   const readSecret = (key) => {
     let value;
     try { value = readFileSync(env[key], 'utf8').replace(/\r?\n$/, ''); } catch { throw new Error(`${key} cannot be read.`); }
     if (!value || value.length > 1024 || /[\r\n\0]/.test(value)) throw new Error(`Invalid ${key}.`);
     return value;
   };
-  const password = readSecret('PLATFORM_ADMIN_PASSWORD_FILE');
-  checkPassword(password, 'PLATFORM_ADMIN_PASSWORD_FILE', username);
+  const password = claimEnabled ? undefined : readSecret('PLATFORM_ADMIN_PASSWORD_FILE');
+  if (!claimEnabled) checkPassword(password, 'PLATFORM_ADMIN_PASSWORD_FILE', username);
   const host = env.PLATFORM_DATABASE_HOST || 'postgres', database = env.PLATFORM_DATABASE_NAME || 'platform';
   const user = env.PLATFORM_DATABASE_USER || 'platform_app', provisioner = env.PLATFORM_PROVISIONER_USER || 'platform_provisioner';
   if (![host, database, user, provisioner].every((value) => /^[a-zA-Z0-9_.-]+$/.test(value))) throw new Error('Invalid platform database connection setting.');
   const connection = (role, secret, name) => `postgresql://${encodeURIComponent(role)}:${encodeURIComponent(secret)}@${host}:5432/${name}`;
-  return { adminHost, username, password, databaseUrl: connection(user, readSecret('PLATFORM_DATABASE_PASSWORD_FILE'), database),
+  return { adminHost, username, password, claimEnabled, databaseUrl: connection(user, readSecret('PLATFORM_DATABASE_PASSWORD_FILE'), database),
     provisionerUrl: connection(provisioner, readSecret('PLATFORM_PROVISIONER_PASSWORD_FILE'), 'postgres') };
 }
 

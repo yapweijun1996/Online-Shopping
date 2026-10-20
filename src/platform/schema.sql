@@ -1,3 +1,4 @@
+-- Immutable v1 baseline. Fresh initialization applies numbered migrations through upgradePlatformSchema.
 -- Platform database: one per installation. Holds the SuperAdmin, the tenant registry and the platform audit trail.
 -- Shop data never lives here; every tenant has its own database (docs/MULTI_TENANT_SUPERADMIN_PLAN.md).
 CREATE TABLE schema_meta (id BIGINT PRIMARY KEY CHECK (id = 1), version BIGINT NOT NULL);

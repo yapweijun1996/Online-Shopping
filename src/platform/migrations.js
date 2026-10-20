@@ -1,4 +1,4 @@
-// Platform version 1 is the baseline. Later versions are sequential, numbered SQL migrations.
+// schema.sql is the immutable v1 baseline; fresh initialization and explicit upgrades apply numbered migrations.
 import { readFile, readdir } from 'node:fs/promises';
 import { PLATFORM_SCHEMA_VERSION } from './platform-db.js';
 

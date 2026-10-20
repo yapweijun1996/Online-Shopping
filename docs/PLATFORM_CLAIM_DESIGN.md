@@ -1,6 +1,11 @@
 # First SuperAdmin claim link
 
-Status: **design only; not implemented or deployed.** Repository inspection: 2026-10-20. **Evidence** means inspected source or dated records; **Proposed** means future work. No live infrastructure, IAM, DNS, database or cloud log was inspected. This document grants no implementation/deployment authority.
+Status: **P2 migration and P3a default-off configuration implemented locally; later phases remain design only. Not deployed.** Repository inspection: 2026-10-20. This document grants no deployment authority.
+
+Implementation status (P2/P3a): platform schema v2 adds nullable lower-cased contact email, singleton claim state, metadata-only generation history and claim audit actions. `schema.sql` remains the v1 baseline; fresh initialization runs numbered migrations, while existing v1 databases require explicit upgrade. PostgreSQL closes the latch on any admin insertion and prohibits closure changes/removal. A future claim transaction must finalize the latch **before** inserting the admin (the admin reference is deferred), so the insert trigger cannot prematurely close an outstanding generation.
+
+`PLATFORM_ADMIN_CLAIM_ENABLED=1` now excludes both legacy SuperAdmin credential inputs and skips credential bootstrap. Default/off preserves legacy credential validation. This slice issues no code and adds no setup routes, UI or logging; enabling it is not a usable onboarding flow yet. Email remains contact-only, not an additional login identifier. No existing admin is backfilled. Generation history carries attempts, supersession, consumption and outcome; only the singleton state stores the current hash. Q1/Q2 follow the PIC decisions in the P2 job: eligible static GET, generic rate-limited POST failures, restart-only renewal.
+
 
 Goal: after one agent-operated infrastructure enablement, the owner opens `https://demoonlineshopping.xyz/setup/#<code>`, enters their own email, username and password, completes mandatory TOTP on a separate admin origin, and creates shops and seller Owners through the existing console. No email is predetermined. The application generates the claim code: no operator command, environment variable, Compose edit or secret file supplies it.
 

@@ -12,9 +12,9 @@ import { openPlatformDatabase } from '../src/platform/platform-db.js';
 import { platformFixture, platformTestUrl } from './helpers/platform-fixture.js';
 
 test('platform database refuses a different version without modifying it', { skip: !platformTestUrl }, async (t) => {
-  const f = await platformFixture(t); await f.platform.setSchemaVersion(2);
+  const f = await platformFixture(t); await f.platform.setSchemaVersion(3);
   await assert.rejects(openPlatformDatabase(f.platformUrl), /Unsupported platform schema version/);
-  assert.equal(await f.platform.schemaVersion(), 2);
+  assert.equal(await f.platform.schemaVersion(), 3);
 });
 
 test('platform outage leaves legacy health, readiness and catalog up and retries with backoff', { skip: !platformTestUrl }, async (t) => {
