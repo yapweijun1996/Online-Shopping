@@ -1,0 +1,85 @@
+{
+	auto_https off
+	admin off
+}
+(proxy) {
+	reverse_proxy backend:3000 {
+		# The only edge peer is the trusted gateway; it must overwrite this header.
+		header_up X-Real-IP {header.X-Real-IP}
+	}
+}
+(headers) {
+	encode gzip
+	header X-Content-Type-Options nosniff
+	header Referrer-Policy strict-origin-when-cross-origin
+	header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+	header Cache-Control no-cache
+}
+http://{$SHOP_HOST} {
+	import headers
+	route {
+		@encoded expression `{http.request.orig_uri}.matches('^/[^/?]*%|^//|.*\\\\.*')`
+		handle @encoded {
+			respond 404
+		}
+		@private path /seller* /api/v1/seller* /demo* /api/v1/demo* /platform* /api/v1/platform* /s/*
+		handle @private {
+			respond 404
+		}
+		@api path /api/* /health /ready /p/*
+		handle @api {
+			import proxy
+		}
+		@crawler {
+			path / /shop /shop/
+			header_regexp User-Agent (?i)(facebookexternalhit|facebot|whatsapp|twitterbot|telegrambot|slackbot|discordbot|googlebot|bingbot)
+		}
+		handle @crawler {
+			rewrite * /s/home
+			import proxy
+		}
+		redir / /shop/ 302
+		redir /shop /shop/ 302
+		@static path /shop/* /shared/* /demo-assets/* /favicon.ico /robots.txt
+		handle @static {
+			root * /srv/public
+			file_server
+		}
+		handle {
+			respond 404
+		}
+	}
+}
+http://{$SELLER_HOST} {
+	import headers
+	route {
+		@encoded expression `{http.request.orig_uri}.matches('^/[^/?]*%|^//|.*\\\\.*')`
+		handle @encoded {
+			respond 404
+		}
+		@private {
+			path /shop* /p/* /s/* /api/v1/orders* /demo* /api/v1/demo* /platform* /api/v1/platform*
+			not path /shop/tokens.css
+		}
+		handle @private {
+			respond 404
+		}
+		@api path /api/* /health /ready
+		handle @api {
+			import proxy
+		}
+		redir / /seller/ 302
+		redir /seller /seller/ 302
+		@static path /seller/* /shared/* /shop/tokens.css /favicon.ico
+		handle @static {
+			root * /srv/public
+			file_server
+		}
+		handle {
+			respond 404
+		}
+	}
+}
+:80 {
+	respond 404
+}
