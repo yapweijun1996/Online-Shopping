@@ -6,6 +6,7 @@ import { ApiError } from './http.js';
 import { verifyMetaSignature } from './integration-contracts.js';
 import { listConnectedWhatsApp, openWhatsAppSecrets } from './integration-connections.js';
 import { advanceOutboxStatus, parseWhatsAppWebhook, senderHash } from './whatsapp-webhook.js';
+import { erasedSenderMarker } from './erase-contact.js';
 
 const provider = 'WHATSAPP_CLOUD';
 export const MAX_WEBHOOK_BYTES = 256 * 1024;
@@ -30,24 +31,24 @@ export async function answerWhatsAppHandshake(store, params) {
 }
 
 async function matchConnection(store, secretBox, rawBody, signature) {
+  const matches = [];
   for (const connection of await listConnectedWhatsApp(store)) {
     let secrets;
     try { secrets = await openWhatsAppSecrets(store, secretBox, connection.environment); } catch { continue; }
-    if (verifyMetaSignature(rawBody, signature, secrets.appSecret)) return { connection, secrets };
+    if (verifyMetaSignature(rawBody, signature, secrets.appSecret)) matches.push({ connection, secrets });
   }
-  return null;
+  return matches;
 }
 
 export async function receiveWhatsAppWebhook(store, secretBox, { rawBody, signature }, now = () => new Date()) {
   if (!secretBox) throw new ApiError(503, 'INTEGRATIONS_UNAVAILABLE', 'Integrations are not configured.');
   if (!(rawBody instanceof Uint8Array) || rawBody.byteLength > MAX_WEBHOOK_BYTES) throw new ApiError(413, 'INVALID_INPUT', 'Request body is too large.');
   const match = await matchConnection(store, secretBox, rawBody, signature);
-  if (!match) throw invalidSignature();   // nothing is stored for unverified requests
+  if (!match.length) throw invalidSignature();   // nothing is stored for unverified requests
   let payload;
   try { payload = JSON.parse(new TextDecoder().decode(rawBody)); } catch { throw new ApiError(400, 'INVALID_INPUT', 'Invalid JSON object.'); }
-  const { connection, secrets } = match;
   const parsed = parseWhatsAppWebhook(payload);
-  const mine = (item) => item.phoneNumberId === connection.publicConfig.phoneNumberId;
+  const select = (item) => match.find(({ connection }) => item.phoneNumberId === connection.publicConfig.phoneNumberId);
   const dedupeKey = createHash('sha256').update(rawBody).digest('hex');
 
   return store.transaction(async () => {
@@ -59,7 +60,9 @@ export async function receiveWhatsAppWebhook(store, secretBox, { rawBody, signat
 
     let statuses = 0, messages = 0, skipped = parsed.skipped;
     for (const receipt of parsed.statuses) {
-      if (!mine(receipt)) { skipped++; continue; }
+      const selected = select(receipt);
+      if (!selected) { skipped++; continue; }
+      const { connection } = selected;
       const row = await store.get('SELECT id, status FROM message_outbox WHERE provider_message_id = ? AND connection_id = ?', receipt.providerMessageId, connection.id);
       if (!row) { skipped++; continue; }
       const next = advanceOutboxStatus(row.status, receipt.status);
@@ -69,10 +72,19 @@ export async function receiveWhatsAppWebhook(store, secretBox, { rawBody, signat
       statuses++;
     }
     for (const message of parsed.messages) {
-      if (!mine(message)) { skipped++; continue; }
+      const selected = select(message);
+      if (!selected) { skipped++; continue; }
+      const { connection, secrets } = selected;
       const fromHash = senderHash(secrets.hashKey, message.from);
+      const marker = erasedSenderMarker(fromHash);
+      if (await store.get(`SELECT id FROM message_outbox WHERE connection_id = ? AND recipient_hash = ?
+        UNION ALL SELECT id FROM message_inbound WHERE connection_id = ? AND from_hash = ? LIMIT 1`,
+      connection.id, marker, connection.id, marker)) { skipped++; continue; }
       // A reply belongs to the order of the most recent message this connection sent to that buyer.
-      const order = await store.get('SELECT order_id FROM message_outbox WHERE connection_id = ? AND recipient_hash = ? ORDER BY created_at DESC LIMIT 1', connection.id, fromHash);
+      const order = await store.get(`SELECT m.order_id, o.contact_erased_at FROM message_outbox m
+        JOIN shop_order o ON o.id = m.order_id WHERE m.connection_id = ? AND m.recipient_hash = ?
+        ORDER BY m.created_at DESC LIMIT 1`, connection.id, fromHash);
+      if (order?.contact_erased_at) { skipped++; continue; }
       const id = randomUUID();
       await store.run(`INSERT INTO message_inbound(id, connection_id, order_id, from_hash, provider_message_id, kind, body, received_at, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(provider_message_id) DO NOTHING`,

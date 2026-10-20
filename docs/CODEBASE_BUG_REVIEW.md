@@ -170,7 +170,7 @@ The importer enumerates only legacy shopping tables. It omits `integration_conne
 
 ## B08 — P2: Two connections sharing an App Secret lose webhook events
 
-**Status:** Open; outside the approved P1 repair scope.
+**Status:** Fixed and locally verified on SQLite and PostgreSQL. The B08 regression failed on both stores before the fix (only Production survived), then passed with both mixed-phone replies persisted once.
 
 **Source:** [src/whatsapp-inbound.js:32](https://github.com/yapweijun1996/Online-Shopping/blob/41407a7bda20adf167e2825900a268f3949316cc/src/whatsapp-inbound.js#L32), [50](https://github.com/yapweijun1996/Online-Shopping/blob/41407a7bda20adf167e2825900a268f3949316cc/src/whatsapp-inbound.js#L50), [56](https://github.com/yapweijun1996/Online-Shopping/blob/41407a7bda20adf167e2825900a268f3949316cc/src/whatsapp-inbound.js#L56), [src/integration-connections.js:128](https://github.com/yapweijun1996/Online-Shopping/blob/41407a7bda20adf167e2825900a268f3949316cc/src/integration-connections.js#L128).
 
@@ -184,7 +184,7 @@ Signature matching returns the first connected environment with a matching App S
 
 ## B09 — P2: Erased orders can acquire personal reply text again
 
-**Status:** Open; outside the approved P1 repair scope.
+**Status:** Fixed and locally verified on SQLite and PostgreSQL. The B09 regression failed on both stores before the fix (the sender hash survived); after the fix, stored threading hashes are replaced, bodies are cleared, and late signed personal text is suppressed in storage and seller history.
 
 **Source:** [src/whatsapp-inbound.js:73](https://github.com/yapweijun1996/Online-Shopping/blob/41407a7bda20adf167e2825900a268f3949316cc/src/whatsapp-inbound.js#L73), [src/erase-contact.js:21](https://github.com/yapweijun1996/Online-Shopping/blob/41407a7bda20adf167e2825900a268f3949316cc/src/erase-contact.js#L21), [31](https://github.com/yapweijun1996/Online-Shopping/blob/41407a7bda20adf167e2825900a268f3949316cc/src/erase-contact.js#L31).
 
@@ -195,6 +195,9 @@ Erasure blanks existing reply bodies and sets `contact_erased_at`, but retains s
 **Impact:** The order remains labelled erased while carrying readable personal content that the existing erasure action cannot remove. This is a product/data-retention recovery gap; no legal conclusion is inferred.
 
 **Fix direction / regression:** Define and enforce handling of messages associated with an erased order: avoid retaining their bodies, detach them with a separately erasable retention policy, or support repeat erasure safely. Test late replies after erasure and concurrent inbound/erasure transactions.
+
+**Implemented retention boundary:** Erasure clears all inbound bodies sharing each known connection/sender, including unmatched replies, and replaces inbound/outbound threading hashes with a domain-separated SHA-256 suppression marker (`erased:` prefix). This minimal pseudonymous marker remains deliberately to reject future messages; it is not anonymous data or complete identifier deletion. No outbound message bodies are stored by the Cloud template outbox. Existing order-level erasure eligibility, revision checks and repeat-erasure refusal remain unchanged. Backups and seller-written notes retain their existing semantics.
+
 
 ## B10 — P2: A reserved cheap variant hides an available sibling
 
