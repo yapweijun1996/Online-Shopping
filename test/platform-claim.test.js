@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { platformFixture, platformTestUrl } from './helpers/platform-fixture.js';
 import { upgradePlatformSchema } from '../src/platform/migrations.js';
 import { createAdminAuth } from '../src/platform/admin-auth.js';
@@ -61,14 +61,76 @@ test('unissued claim rejects partial tokens and invalid lifetimes', { skip: !pla
   await assert.rejects(platform.exec('DELETE FROM platform_audit'), /append-only/);
 });
 
-test('claim-mode runtime connects without credentials and creates no admin or generation', { skip: !platformTestUrl }, async (t) => {
+test('claim issuance is hash-only, concurrent-safe, restart-only and maintenance-aware', { skip: !platformTestUrl }, async (t) => {
   const f = await platformFixture(t), store = await openDatabase(':memory:');
   const config = { integrationKeys: f.integrationKeys, shopMode: 'manual', publicOrigin: 'https://shop.example.test',
     platform: { claimEnabled: true, adminHost: 'admin.example.test', databaseUrl: f.platformUrl, provisionerUrl: f.baseUrl } };
-  const runtime = createPlatformRuntime({ store, config });
-  t.after(async () => { await runtime.close(); await store.close(); });
-  await runtime.connect(); await runtime.connect();
+  let now = Date.now(), paused = true;
+  const lines = [];
+  t.mock.method(console, 'log', (...args) => lines.push(args));
+  const runtimes = [];
+  const start = () => {
+    const runtime = createPlatformRuntime({ store, config, clock: () => now, paused: () => paused });
+    runtimes.push(runtime); return runtime;
+  };
+  t.after(async () => { for (const runtime of runtimes) await runtime.close(); await store.close(); });
+  const first = start(), second = start();
+  await assert.rejects(first.connect(), /unavailable/);
+  assert.equal(lines.length, 0);
+  paused = false;
+  const [connection] = await Promise.all([first.connect(), second.connect()]);
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].length, 1);
+  const event = JSON.parse(lines[0][0]), code = new URL(event.url).hash.slice(1);
+  assert.deepEqual(Object.keys(event).sort(), ['event', 'expiresAt', 'generation', 'url']);
+  assert.equal(event.event, 'platform.claim.issued');
+  assert.match(code, /^[A-Za-z0-9_-]{43}$/);
+  const state = await f.platform.get('SELECT * FROM platform_admin_claim');
+  assert.equal(state.token_hash, createHash('sha256').update('PLATFORM_ADMIN_CLAIM\0').update(code).digest('hex'));
+  assert.equal(Date.parse(state.expires_at) - Date.parse(state.issued_at), 30 * 60_000);
+  assert.equal(state.attempts, 0);
+  assert.equal((await f.platform.get("SELECT count(*) AS n FROM platform_admin_claim_generation WHERE outcome='ISSUED'")).n, 1);
+  for (const { tablename } of await f.platform.all("SELECT tablename FROM pg_tables WHERE schemaname='public'")) {
+    assert.equal(JSON.stringify(await f.platform.all(`SELECT * FROM "${tablename}"`)).includes(code), false);
+  }
+  const audit = await f.platform.all("SELECT action, detail FROM platform_audit WHERE action='ADMIN_CLAIM_ISSUED'");
+  assert.deepEqual(audit, [{ action: 'ADMIN_CLAIM_ISSUED', detail: event.generation }]);
+  await connection.close();
+  now += 5001;
+  await assert.rejects(first.connect(), /unavailable/);
+  now += 5001;
+  await first.connect();
+  assert.equal(lines.length, 1);
+  await f.platform.run("UPDATE platform_admin_claim SET issued_at='2000-01-01T00:00:00.000Z', expires_at='2000-01-01T00:30:00.000Z'");
+  await first.reconcile();
+  assert.equal(lines.length, 1);
+  const restart = start();
+  await restart.connect();
+  assert.equal(lines.length, 2);
+  assert.equal((await f.platform.get('SELECT outcome FROM platform_admin_claim_generation WHERE generation=?', event.generation)).outcome, 'SUPERSEDED');
+  const live = await f.platform.get('SELECT generation FROM platform_admin_claim');
+  now += 5001;
+  await start().connect();
+  assert.equal(lines.length, 3);
+  assert.notEqual((await f.platform.get('SELECT generation FROM platform_admin_claim')).generation, live.generation);
+  await f.platform.run("UPDATE platform_admin_claim SET closed_at=expires_at, token_hash=NULL");
+  await start().connect();
+  assert.equal(lines.length, 3);
   assert.equal((await f.platform.get('SELECT COUNT(*) AS n FROM platform_admin')).n, 0);
-  assert.deepEqual(await f.platform.get('SELECT generation, token_hash, closed_at FROM platform_admin_claim'),
-    { generation: null, token_hash: null, closed_at: null });
+});
+
+test('legacy mode and existing admin never issue claims', { skip: !platformTestUrl }, async (t) => {
+  const f = await platformFixture(t), store = await openDatabase(':memory:');
+  const lines = [];
+  t.mock.method(console, 'log', (...args) => lines.push(args));
+  const config = { integrationKeys: f.integrationKeys, publicOrigin: 'https://shop.example.test',
+    platform: { claimEnabled: false, username: 'owner', password: randomBytes(24).toString('hex'), databaseUrl: f.platformUrl, provisionerUrl: f.baseUrl } };
+  const legacy = createPlatformRuntime({ store, config });
+  const claim = createPlatformRuntime({ store, config: { ...config, platform: { ...config.platform, claimEnabled: true } } });
+  t.after(async () => { await legacy.close(); await claim.close(); await store.close(); });
+  await legacy.connect();
+  await claim.connect();
+  assert.deepEqual(lines, []);
+  assert.equal((await f.platform.get('SELECT count(*) AS n FROM platform_admin_claim_generation')).n, 0);
+  assert.equal((await f.platform.get('SELECT count(*) AS n FROM platform_admin')).n, 1);
 });

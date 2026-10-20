@@ -8,12 +8,15 @@ import { createTenantPool } from './tenant-pool.js';
 import { createPlatformRegistry } from './registry.js';
 import { createAdminAuth } from './admin-auth.js';
 import { createPlatformRoutes } from './admin-routes.js';
+import { issueAdminClaim } from './admin-claim.js';
 
 export function createPlatformRuntime({ store, config, clock = Date.now, paused = () => false }) {
   const secretBox = createSecretBox(config.integrationKeys);
   const pool = createTenantPool({ secretBox, baseUrl: config.platform.databaseUrl, connectionsPerTenant: 3 });
   let connection = null, pending = null, retryAfter = 0, stopped = false, routes = null, timer, background = null, maintenanceTasks = 0;
   const inFlight = new Set();
+  const claimStartedAt = new Date(clock()).toISOString();
+  let claimInitialized = false;
   const deps = { inFlight, secretBox, baseUrl: config.platform.databaseUrl, provisionerUrl: config.platform.provisionerUrl };
   async function recoverInterrupted(platform) {
     if (paused()) return;
@@ -57,6 +60,13 @@ export function createPlatformRuntime({ store, config, clock = Date.now, paused 
           await recoverInterrupted(candidate);
         });
         if (stopped) { await candidate.close(); throw new Error('Platform stopped.'); }
+        if (config.platform.claimEnabled && !claimInitialized) {
+          if (paused()) throw new Error('Platform paused.');
+          const issued = await issueAdminClaim(candidate, config, claimStartedAt, paused);
+          claimInitialized = true;
+          // Never replay plaintext after a failed stdout write or a reconnect.
+          if (issued) console.log(JSON.stringify(issued));
+        }
         connection = candidate;
         routes = createPlatformRoutes({ platform: candidate, secretBox, pool, registry, deps, defaultStore: store, config, clock });
         return connection;

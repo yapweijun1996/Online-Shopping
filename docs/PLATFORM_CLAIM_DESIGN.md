@@ -1,10 +1,10 @@
 # First SuperAdmin claim link
 
-Status: **P2 migration and P3a default-off configuration implemented locally; later phases remain design only. Not deployed.** Repository inspection: 2026-10-20. This document grants no deployment authority.
+Status: **P2 migration, P3a default-off configuration and P4 backend issuance implemented locally; public claim/API/UI phases remain design only. Not deployed.** Repository inspection: 2026-10-20. This document grants no deployment authority.
 
 Implementation status (P2/P3a): platform schema v2 adds nullable lower-cased contact email, singleton claim state, metadata-only generation history and claim audit actions. `schema.sql` remains the v1 baseline; fresh initialization runs numbered migrations, while existing v1 databases require explicit upgrade. PostgreSQL closes the latch on any admin insertion and prohibits closure changes/removal. A future claim transaction must finalize the latch **before** inserting the admin (the admin reference is deferred), so the insert trigger cannot prematurely close an outstanding generation.
 
-`PLATFORM_ADMIN_CLAIM_ENABLED=1` now excludes both legacy SuperAdmin credential inputs and skips credential bootstrap. Default/off preserves legacy credential validation. This slice issues no code and adds no setup routes, UI or logging; enabling it is not a usable onboarding flow yet. Email remains contact-only, not an additional login identifier. No existing admin is backfilled. Generation history carries attempts, supersession, consumption and outcome; only the singleton state stores the current hash. Q1/Q2 follow the PIC decisions in the P2 job: eligible static GET, generic rate-limited POST failures, restart-only renewal.
+`PLATFORM_ADMIN_CLAIM_ENABLED=1` excludes both legacy SuperAdmin credential inputs and skips credential bootstrap. Default/off preserves legacy credential validation. P4 now issues a backend-generated code after startup checks; no setup routes or UI exist, so enabling it is not a usable onboarding flow yet. Email remains contact-only, not an additional login identifier. No existing admin is backfilled. Generation history carries attempts, supersession, consumption and outcome; only the singleton state stores the current hash. Q1/Q2 follow the PIC decisions in the P2 job: eligible static GET, generic rate-limited POST failures, restart-only renewal.
 
 
 Goal: after one agent-operated infrastructure enablement, the owner opens `https://demoonlineshopping.xyz/setup/#<code>`, enters their own email, username and password, completes mandatory TOTP on a separate admin origin, and creates shops and seller Owners through the existing console. No email is predetermined. The application generates the claim code: no operator command, environment variable, Compose edit or secret file supplies it.
@@ -82,10 +82,10 @@ Represent mode explicitly in config.platform and branch before current auth.boot
 PIC-selected channel: one structured stdout record after each generation commit. Placeholders only:
 
 ```json
-{"event":"platform.claim.issued","generation":"<uuid>","expiresAt":"<UTC timestamp>","claimUrl":"https://demoonlineshopping.xyz/setup/#<43-character-code>"}
+{"event":"platform.claim.issued","url":"https://demoonlineshopping.xyz/setup/#<43-character-code>","expiresAt":"<UTC timestamp>","generation":"<uuid>"}
 ```
 
-URL from validated config.publicOrigin, never request Host/Forwarded. No email/password/DB URL/master key/TOTP/recovery. Audit records metadata, never code/hash/URL.
+URL from validated config.publicOrigin, never request Host/Forwarded. When absent (development only), use `http://localhost:<config.port or 3000>`; production configuration already requires PUBLIC_ORIGIN. No email/password/DB URL/master key/TOTP/recovery. Audit records metadata, never code/hash/URL.
 
 **Risk:** anyone reading live URL can claim. Retention/exports/alerts/broad viewer roles can copy it; expiry/use cannot retract copies. Restrict owner to dedicated bootstrap log view, exclude event from broad exports/notifications, document retention. Never copy live URL into chat/Git/tickets/CI/evidence. Record this narrow exception to no-secret-logging invariant in implementation threat model.
 
@@ -107,8 +107,8 @@ This does **not** meet literal fragment-dependent initial-navigation404. Alterna
 
 1. After schema/infrastructure checks, outside maintenance, transaction/advisory lock checks any admin, durable closure, setup tenant/alias collision. DB error never means empty.
 2. Only claim mode + empty/unclosed: generate code in app, replace singleton generation/hash/issued/expiry with revision increment. Authoritative DB time: accept only now < expires_at; UTC app display not authority.
-3. Append ADMIN_CLAIM_ISSUED, commit, emit one line, release plaintext references. Agent never redeems/enrols production.
-4. Track successful initialization once per process. Reconnect/reconciliation never rotates. DB-down-at-boot may issue at first successful initialization; unexpected missing/replaced state after initialization fails closed, no automatic issuance.
+3. Append ADMIN_CLAIM_ISSUED, commit, emit one line, release plaintext references. Hash is SHA-256 over `PLATFORM_ADMIN_CLAIM\0` followed by the code. TTL is the application constant `CLAIM_TTL_MS` (30 minutes; policy bound 1–30 minutes). Agent never redeems/enrols production.
+4. Track successful initialization once per runtime, before the stdout attempt. Reconnect/reconciliation never rotates, including after expiry or a stdout failure. DB-down-at-boot may issue at first successful initialization; unexpected missing/replaced state after initialization does not cause automatic issuance. Overlapping runtime starts reuse a live generation whose DB issuance timestamp is at or after that runtime's creation timestamp; later restarts supersede it under the existing advisory transaction lock. This overlap distinction assumes synchronized application/database wall clocks; it is not a distributed deployment protocol. Maintenance pauses do not issue.
 5. Restart unclaimed creates fresh generation, invalidates old code/challenges. No periodic/public renewal. Existing admin/completed claim closes across restarts.
 
 “404 forever” is permanent after claim/existing-admin and for expired/used codes. Before any claim, trusted restart intentionally opens a new generation; otherwise required recovery/rotation contradict permanent expiry closure. Older empty backup restore can undo latch; privileged disaster recovery, not ordinary reset.
@@ -354,7 +354,7 @@ Default off all slices, affected API/onboarding/security/deploy docs updated wit
 | P1 Contract | Q1/Q2/log exception/admin host/GCP bounds, no code. | No contradictory status/recovery promise. |
 | P2 Migration | Email/state/audit/v2/fresh init. | Empty/existing/rollback/immutability PG proof, shop unchanged. |
 | P3 Mode/email | Exclusive config/existing login UI/API/legacyNULL. | Real login/lockout/config/bootstrap smoke, no issuance. |
-| P4 Issuance | Startup/hash/rotation/expiry/audit/emission/reconnect-maintenance. | Actual restart/connect/commit-log faults. |
+| P4 Issuance — implemented locally | Startup/hash/rotation/expiry/audit/emission/reconnect-maintenance; UUID generation and P2 hash-only singleton/history layout retained. | PostgreSQL runtime tests exercise overlapping starts, restart supersession, expiry without renewal, reconnect, maintenance and log/storage isolation. No deployment or cloud-log receipt verified. |
 | P5 API | Validate/challenge/atomicclaim/status/limits/audit/dispatch. | Real race/expiry/rotation HTTP-PG, no FULL. |
 | P6 Page | Approved loader/form/assets/packaging/history/fixedhandoff. | Browser claim→restrictedMFA/resume/no storage/CSP. |
 | P7 Edge | GCP setup/admin/tenant gating, OrbStack Caddy untouched. | Real hostmatrix/usable tenant URLs. |
