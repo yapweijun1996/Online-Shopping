@@ -6,6 +6,7 @@ import io
 import json
 from pathlib import Path
 import tempfile
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -26,11 +27,10 @@ class Fake:
     def __call__(self, argv, sql=None):
         if sql is None:
             self.commands.append(argv)
-            if 'credential-check' in argv:
-                name, role, database = argv[-3:]
-                self.authentications.append((name, role, database))
-                if role == self.auth_failure: raise RuntimeError('sensitive-private-password')
-                return role + '|' + database
+            if argv[-3:-1] == ['node', '-e']:
+                self.authentications.append('backend')
+                if self.auth_failure: raise RuntimeError('sensitive-private-password')
+                return '{"status":"ready"}'
             if argv[-3:] != ['node', 'scripts/upgrade-platform.mjs', '--with-claim']: raise AssertionError('Unexpected process')
             return '{"platformVersion":2}'
         self.sql.append(sql)
@@ -94,7 +94,7 @@ class Tests(unittest.TestCase):
                 self.assertEqual(first, values)
                 self.assertEqual(2, sum(argv[-3:] == ['node', 'scripts/upgrade-platform.mjs', '--with-claim'] for argv in runner.commands))
                 self.assertEqual('ready', p.run(True)['status'])
-                self.assertEqual([('platform', 'platform_app', 'platform'), ('provisioner', 'platform_provisioner', 'postgres')] * 3, runner.authentications)
+                self.assertEqual(['backend'] * 3, runner.authentications)
             self.assertNotIn('sensitive', output.getvalue())
             self.assertFalse(any('online_shopping;' in sql for sql in runner.sql))
 
@@ -175,6 +175,80 @@ class Tests(unittest.TestCase):
                 rows[0]['Project'] = 'other'
                 with self.assertRaises(ValueError): p.preflight()
 
+    def test_inline_probe_password_boundary(self):
+        # Execute the actual inline program, replacing only I/O boundaries.
+        harness = r"""
+const vm = require('node:vm');
+const scenario = process.argv[1];
+const sentinel = 'sensitive-private-password';
+const attempts = [];
+let output = '';
+class Client {
+  constructor(options) { this.options = options; }
+  on() {}
+  async connect() {
+    const o = this.options;
+    if (o.host !== 'postgres' || o.port !== 5432) throw Error(sentinel);
+    attempts.push([o.user, o.database, o.password === sentinel]);
+    if (scenario === 'trust') return;
+    if (o.password !== sentinel || (scenario === 'mismatch' && o.user === 'platform_provisioner'))
+      throw Object.assign(Error(sentinel), { code: '28P01' });
+  }
+  async query() {
+    return { rows: [{ current_user: this.options.user, current_database: this.options.database }] };
+  }
+  async end() {}
+}
+const env = { PLATFORM_DATABASE_PASSWORD_FILE: '/run/secrets/platform',
+  PLATFORM_PROVISIONER_PASSWORD_FILE: '/run/secrets/provisioner' };
+vm.runInNewContext(process.argv[2], {
+  process: { env },
+  require(name) {
+    if (name === 'pg') return { Client };
+    if (name === 'node:crypto') return { randomBytes: () => Buffer.from('wrong') };
+    return { readFileSync(path) {
+      if (scenario === 'missing') throw Error(sentinel);
+      if (scenario === 'empty') return '\n';
+      return sentinel + '\n';
+    } };
+  },
+  console: { log(value) { output += value; } },
+});
+setTimeout(() => console.log(JSON.stringify({ output, attempts })), 20);
+"""
+        for scenario, status in (
+            ('success', 'ready'), ('mismatch', 'credential verification failed'),
+            ('trust', 'password authentication not enforced on this path'),
+            ('missing', 'mounted credential unavailable'), ('empty', 'mounted credential unavailable'),
+        ):
+            with self.subTest(scenario=scenario):
+                result = subprocess.run(['node', '-e', harness, scenario, e.AUTHENTICATION_PROBE],
+                                        capture_output=True, text=True, check=True)
+                self.assertNotIn('sensitive-private-password', result.stdout + result.stderr + e.AUTHENTICATION_PROBE)
+                receipt = json.loads(result.stdout)
+                self.assertEqual({'status': status}, json.loads(receipt['output']))
+                if scenario == 'success':
+                    self.assertEqual([
+                        ['platform_app', 'platform', False], ['platform_app', 'platform', True],
+                        ['platform_provisioner', 'postgres', False], ['platform_provisioner', 'postgres', True],
+                    ], receipt['attempts'])
+                if scenario in ('missing', 'empty'):
+                    self.assertEqual([], receipt['attempts'])
+
+    def test_failed_probe_receipts_are_not_ready(self):
+        for status in ('mounted credential unavailable', 'password authentication not enforced on this path',
+                       'credential verification failed'):
+            with tempfile.TemporaryDirectory() as root:
+                p, runner = self.fixture(root)
+                runner.roles = ['platform_app|false|false|false|true', 'platform_provisioner|false|true|true|true']
+                runner.database = 'platform_app|true'
+                def run(argv, sql=None):
+                    return json.dumps({'status': status}) if sql is None else runner(argv, sql)
+                p.runner = run
+                with patch.object(p, 'preflight'), patch.object(p, 'secret', return_value='private'):
+                    with self.assertRaisesRegex(ValueError, 'private reconciliation'): p.run(True)
+                self.assertTrue(all(sql.startswith('SELECT') for sql in runner.sql))
+
 
     def test_compose_policy_and_platform_migration_gate(self):
         text = (ROOT/'compose.gcp.yaml').read_text()
@@ -190,6 +264,7 @@ class Tests(unittest.TestCase):
         self.assertEqual('384m',backend['mem_limit'])
         self.assertEqual({'admin_password','database_password','integration_keys','platform','provisioner'},set(backend['secrets']))
         self.assertIn('src/platform/',e.load_updater().PROTECTED)
+        self.assertEqual(['database_password', 'database_owner_password'], compose['services']['postgres']['secrets'])
         self.assertNotIn('ports:',text)
 
 

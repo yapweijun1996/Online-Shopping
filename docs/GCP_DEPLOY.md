@@ -67,7 +67,7 @@ node scripts/qa-gcp-caddy-routing.mjs
 
 The matrix runs the unchanged `deploy/gcp/Caddyfile` with `shop.qa.test` / `seller.qa.test`, copied `public/` assets and a synthetic echo backend implemented with the same pinned Caddy image. It prints PASS/FAIL groups and exits nonzero on failure. Disposable `qa-gcp-*` containers/network and temporary files are removed on exit. It covers static assets, setup host/method isolation, seller/platform routes, unknown host, raw path guards, tenant prefix/query preservation, both webhook methods, gateway-header forwarding and all nine crawler agents on default/tenant roots. It does not prove the external gateway overwrites client headers, public TLS, real application authentication or production deployment.
 
-`provision --check` now fails readiness for missing roles/database/secrets or unusable credentials rather than reporting object counts. Both roles must authenticate with the mounted secret over TCP using the PostgreSQL container's `psql`: app against `platform`, provisioner against `postgres`. Passwords stay inside the container environment, never command arguments/output; failures require private reconciliation, never automatic password reset. PostgreSQL must have the reviewed `platform` and `provisioner` secret mounts, in addition to the existing owner/app mounts. Existing stacks must recreate PostgreSQL with the reviewed Compose policy during separately reviewed database maintenance before provisioning; do not run the activation block against an old container lacking these mounts. Check mode does not certify schema/application readiness.
+`provision --check` fails readiness for missing roles/database/secrets or unusable credentials. Inside the running backend, an inline Node probe uses `pg` and mounted secret paths to connect over the container network to `postgres`: app against `platform`, provisioner against `postgres`. Each role must reject a deliberately wrong password with PostgreSQL's password-authentication error before its real credential and identity can pass. Trust/ignored-password paths and missing, unreadable or empty mounts fail closed. Only fixed JSON statuses leave the probe; passwords and server diagnostics never enter argv or output. No password is reset. PostgreSQL retains only its existing owner/app mounts and must not be recreated. Safe order: create secret files, install reviewed Compose/Caddy, recreate only backend+frontend with flags off, provision, then flip claim environment and restart backend. Check mode does not certify schema/application readiness.
 
 
 ## Initial GCP acceptance record (2026-10-20)
@@ -113,6 +113,18 @@ install -m 0700 "$S/deploy/gcp/enable-platform.py" "$R/enable-platform.py"
 python3 "$R/enable-platform.py" --root "$R" secrets
 python3 "$R/enable-platform.py" --root "$R" secrets --check
 install -m 0600 "$S/compose.gcp.yaml" "$R/compose.yaml"
+# Install reviewed Caddy and backend mounts with platform flags still off.
+python3 - "$R" "$S" <<'PY'
+import pathlib, sys
+r, s = map(pathlib.Path, sys.argv[1:])
+images = dict(line.split('=', 1) for line in (r/'images.env').read_text().splitlines())
+target = pathlib.Path(images['RELEASE_DIR'])/'deploy/gcp/Caddyfile'
+(r/'platform-rollback/Caddyfile').write_bytes(target.read_bytes())
+target.write_bytes((s/'deploy/gcp/Caddyfile').read_bytes())
+target.chmod(0o644)
+PY
+docker compose -p online-shopping-gcp --env-file "$R/runtime.env" --env-file "$R/images.env" -f "$R/compose.yaml" stop backend frontend
+docker compose -p online-shopping-gcp --env-file "$R/runtime.env" --env-file "$R/images.env" -f "$R/compose.yaml" up -d --no-deps --no-build backend frontend
 # Missing objects cause failed readiness before first provisioning; inspect privately.
 if python3 "$R/enable-platform.py" --root "$R" provision --check; then
   printf '%s\n' 'Existing platform credentials authenticate'
@@ -124,12 +136,6 @@ python3 "$R/enable-platform.py" --root "$R" provision --check
 python3 - "$R" "$S" <<'PY'
 import pathlib, sys
 r, s = map(pathlib.Path, sys.argv[1:])
-images = dict(line.split('=', 1) for line in (r/'images.env').read_text().splitlines())
-target = pathlib.Path(images['RELEASE_DIR'])/'deploy/gcp/Caddyfile'
-backup = r/'platform-rollback/Caddyfile'
-backup.write_bytes(target.read_bytes())
-target.write_bytes((s/'deploy/gcp/Caddyfile').read_bytes())
-target.chmod(0o644)
 env = dict(line.split('=', 1) for line in (r/'runtime.env').read_text().splitlines() if line and not line.startswith('#'))
 env.update(PLATFORM_ENABLED='1', PLATFORM_ADMIN_CLAIM_ENABLED='1', INTEGRATION_KEY_FILE='/run/secrets/integration_keys')
 (r/'runtime.env').write_text(''.join(k+'='+v+'\n' for k,v in env.items()))

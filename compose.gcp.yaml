@@ -73,7 +73,7 @@ services:
       POSTGRES_USER: online_shopping
       POSTGRES_DB: online_shopping
       POSTGRES_PASSWORD_FILE: /run/secrets/database_owner_password
-    secrets: [database_password, database_owner_password, platform, provisioner]
+    secrets: [database_password, database_owner_password]
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ${RELEASE_DIR:?Release required}/src/postgres/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro

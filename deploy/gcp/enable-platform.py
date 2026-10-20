@@ -13,6 +13,49 @@ import subprocess
 import sys
 
 
+# Runs in the backend image: credentials never cross the Docker argv boundary.
+AUTHENTICATION_PROBE = r"""
+const { readFileSync } = require('node:fs');
+const { randomBytes } = require('node:crypto');
+const { Client } = require('pg');
+(async () => {
+  const roles = [
+    [process.env.PLATFORM_DATABASE_USER || 'platform_app',
+      process.env.PLATFORM_DATABASE_NAME || 'platform', 'PLATFORM_DATABASE_PASSWORD_FILE'],
+    [process.env.PLATFORM_PROVISIONER_USER || 'platform_provisioner',
+      'postgres', 'PLATFORM_PROVISIONER_PASSWORD_FILE'],
+  ];
+  const host = process.env.PLATFORM_DATABASE_HOST || 'postgres';
+  async function connect(user, database, password) {
+    const client = new Client({ host, port: 5432, user, database, password,
+      connectionTimeoutMillis: 5000, query_timeout: 5000 });
+    client.on('error', () => {});
+    try {
+      await client.connect();
+      const result = await client.query('SELECT current_user, current_database()');
+      return result.rows[0]?.current_user === user &&
+        result.rows[0]?.current_database === database ? 'authenticated' : 'failed';
+    } catch (error) {
+      return error.code === '28P01' ? 'rejected' : 'failed';
+    } finally { await client.end().catch(() => {}); }
+  }
+  for (const [user, database, key] of roles) {
+    let password;
+    try {
+      password = readFileSync(process.env[key], 'utf8').replace(/\r?\n$/, '');
+      if (!password || password.length > 1024 || /[\r\n\0]/.test(password)) throw null;
+    } catch { return { status: 'mounted credential unavailable' }; }
+    const negative = await connect(user, database, password + randomBytes(32).toString('hex'));
+    if (negative === 'authenticated') return { status: 'password authentication not enforced on this path' };
+    if (negative !== 'rejected') return { status: 'credential verification failed' };
+    if (await connect(user, database, password) !== 'authenticated')
+      return { status: 'credential verification failed' };
+  }
+  return { status: 'ready' };
+})().then(result => console.log(JSON.stringify(result)))
+  .catch(() => console.log(JSON.stringify({ status: 'credential verification failed' })));
+"""
+
 def load_updater():
     spec = importlib.util.spec_from_file_location('gcp_update', Path(__file__).with_name('update.py'))
     module = importlib.util.module_from_spec(spec)
@@ -77,15 +120,15 @@ class Provisioner:
         return roles, database
 
     def authenticate(self):
-        for role, database, name in (('platform_app', 'platform', 'platform'), ('platform_provisioner', 'postgres', 'provisioner')):
-            try:
-                result = self.runner(self.compose + ['exec', '-T', 'postgres', 'sh', '-c',
-                    'PGPASSWORD="$(cat /run/secrets/"$1")" export PGPASSWORD; exec psql -X -w -h 127.0.0.1 -v ON_ERROR_STOP=1 -U "$2" -d "$3" -At -c "SELECT current_user || \'|\' || current_database()"',
-                    'credential-check', name, role, database])
-                if result != role + '|' + database:
-                    raise ValueError('Unexpected authentication identity')
-            except Exception:
-                raise ValueError('Mounted platform credentials require private reconciliation; no passwords were changed') from None
+        try:
+            result = json.loads(self.runner(self.compose + [
+                'exec', '-T', 'backend', 'node', '-e', AUTHENTICATION_PROBE]))
+        except Exception:
+            raise ValueError('Mounted platform credentials require private reconciliation; no passwords were changed') from None
+        if result == {'status': 'password authentication not enforced on this path'}:
+            raise ValueError('password authentication not enforced on this path; private reconciliation required')
+        if result != {'status': 'ready'}:
+            raise ValueError('Mounted platform credentials require private reconciliation; no passwords were changed')
 
     def secret(self, name, check=False):
         path = Path(self.env['SECRETS_DIR']) / name
