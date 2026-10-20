@@ -1,10 +1,10 @@
 # First SuperAdmin claim link
 
-Status: **P2 migration, P3a default-off configuration, P4 backend issuance and P5 claim API/routing implemented locally; P6 page and later operational phases remain unimplemented. Not deployed.** Repository inspection: 2026-10-20. This document grants no deployment authority.
+Status: **P2 migration, P3a default-off configuration, P4 backend issuance, P5 claim API/routing and P6 Node-gated setup page implemented locally. Not deployed; browser and edge acceptance remain unverified.** Repository inspection: 2026-10-20. This document grants no deployment authority.
 
 Implementation status (P2/P3a): platform schema v2 adds nullable lower-cased contact email, singleton claim state, metadata-only generation history and claim audit actions. `schema.sql` remains the v1 baseline; fresh initialization runs numbered migrations, while existing v1 databases require explicit upgrade. PostgreSQL closes the latch on any admin insertion and prohibits closure changes/removal. The claim transaction finalizes the latch **before** inserting the admin (the admin reference is deferred), so the insert trigger cannot prematurely close an outstanding generation.
 
-`PLATFORM_ADMIN_CLAIM_ENABLED=1` excludes both legacy SuperAdmin credential inputs and skips credential bootstrap. Default/off preserves legacy credential validation. P4 issues a backend-generated code after startup checks. P5 exposes shop-origin status/claim APIs, but no setup page exists yet. Email remains lower-cased unverified contact-only, not a login identifier. No existing admin is backfilled. Generation history carries attempts, supersession, consumption and outcome; only the singleton state stores the current hash.
+`PLATFORM_ADMIN_CLAIM_ENABLED=1` excludes both legacy SuperAdmin credential inputs and skips credential bootstrap. Default/off preserves legacy credential validation. P4 issues a backend-generated code after startup checks. P5 exposes shop-origin status/claim APIs; P6 adds the eligible setup page. Email remains lower-cased unverified contact-only, not a login identifier. No existing admin is backfilled. Generation history carries attempts, supersession, consumption and outcome; only the singleton state stores the current hash.
 
 
 Goal: after one agent-operated infrastructure enablement, the owner opens `https://demoonlineshopping.xyz/setup/#<code>`, enters their own email, username and password, completes mandatory TOTP on a separate admin origin, and creates shops and seller Owners through the existing console. No email is predetermined. The application generates the claim code: no operator command, environment variable, Compose edit or secret file supplies it.
@@ -107,6 +107,16 @@ DB commit/log delivery cannot be atomic. Promise **at most one application emiss
 
 
 The remaining subsections retain historical proposals. The P5 PIC contract above governs implemented API/session/email behavior where these proposals conflict.
+### P6 authoritative page contract
+
+- Exact shop-origin GET `/setup/`, `/setup/setup.js` and `/setup/setup.css` share the status API's database eligibility predicate. Other paths, methods, queries and ineligible states return the byte-identical unknown-path JSON 404. Generic static serving refuses decoded setup paths, including prefixed rewrites; claim-off legacy setup tenants remain routable.
+- Files live in `public/setup/` and are copied into the backend image. Eligible page/assets use no-store, no-referrer, noindex, nosniff and a first-party-only CSP with no inline code/styles. Setup 404s and status also use no-store/no-referrer/noindex. No sitemap, robots or worker-cache entry is added. Existing workers intercept only scoped navigation/explicit shell assets and exclude APIs.
+- The external loader removes the fragment with replaceState before any fetch, retains the code only in memory, checks status, and submits exactly the P5 JSON fields. Failures use one generic message; pending submission is guarded, errors receive focus, and success clears the code/form before navigation.
+- The claim response additionally returns `nextUrl`, derived from configured `platform.adminHost` with `/platform/`. The host-only PASSWORD cookie remains on the shop host: separate-origin console sign-in is required, followed by existing mandatory TOTP enrolment. No session transfer, cookie widening, console hook or seller-host fallback.
+- English only: shared i18n is a storefront-wide catalog, so this isolated dependency-free page does not import it. Width-constrained layout and labelled controls target 320px; actual browser rendering is UNVERIFIED. P7 must route these exact paths to Node rather than the frontend file server.
+- This contract supersedes historical page/asset names, validate endpoint, email-sign-in and handoff proposals below. An open loader returns 200 independent of the fragment; missing/malformed fragments produce the neutral unavailable message, not a fragment-dependent HTTP status.
+- Local verification: `node scripts/check.js` passed; scoped node:test run across CSP, frontend base-path, claim API/schema/runtime, setup page, platform admin, tenant routing, tenants, PWA and shop setup passed **69/69, zero failures/skips**. A disposable real-PostgreSQL Fetch-router smoke exercised open HTML/JS/CSS → PASSWORD claim/configured nextUrl → byte-identical closed page/assets/status 404s. Deterministic VM DOM execution covered fragment removal before fetch, duplicate-submit suppression, success cleanup/navigation, closed status and generic error focus. No browser, container build, edge or deployment was exercised.
+
 
 ### 3.1 Required fragment/status decision
 
@@ -367,7 +377,7 @@ Default off all slices, affected API/onboarding/security/deploy docs updated wit
 | P3 Mode/email | Exclusive config/existing login UI/API/legacyNULL. | Real login/lockout/config/bootstrap smoke, no issuance. |
 | P4 Issuance — implemented locally | Startup/hash/rotation/expiry/audit/emission/reconnect-maintenance; UUID generation and P2 hash-only singleton/history layout retained. | PostgreSQL runtime tests exercise overlapping starts, restart supersession, expiry without renewal, reconnect, maintenance and log/storage isolation. No deployment or cloud-log receipt verified. |
 | P5 API — implemented locally | Shop-origin status/atomic claim/limits/audit/dispatch; authoritative PIC contract above replaces validate/challenge proposal. | PostgreSQL race, rollback, expiry/off/exhaustion, validation, restricted-session/MFA tests and actual Node HTTP claim smoke passed. Separate-host browser continuation requires admin-origin password login. |
-| P6 Page | Approved loader/form/assets/packaging/history/fixedhandoff. | Browser claim→restrictedMFA/resume/no storage/CSP. |
+| P6 Page — implemented locally | Node-gated exact loader/form/assets; backend packaging, immediate history clearing, generic errors and config-derived handoff; separate-host sign-in preserves P5 cookie boundary. | Scoped PostgreSQL gating and deterministic DOM execution; browser rendering, real edge and image build remain UNVERIFIED. |
 | P7 Edge | GCP setup/admin/tenant gating, OrbStack Caddy untouched. | Real hostmatrix/usable tenant URLs. |
 | P8 GCP release gate | Platform fingerprint/root-runtime/manualbaseline, image-only updater. | Negative controller/platform-only schema gate. |
 | P9 Capacity | Configurable cap legacy20/dynamicUI/GCP pools-provision. | Concurrent workload DB-memory proof. |

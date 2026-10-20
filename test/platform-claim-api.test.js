@@ -55,6 +55,7 @@ test('claim races produce one restricted session, enforce MFA and stay closed ac
   assert.deepEqual(responses.map((r) => r.status).sort(), [200, 404]);
   const winner = responses.find((r) => r.status === 200), cookie = winner.headers.get('set-cookie').split(';')[0], view = await winner.json();
   assert.equal(view.stage, 'PASSWORD'); assert.equal(view.totpEnabled, false);
+  assert.equal(view.nextUrl, 'https://admin.example.test/platform/');
   assert.match(winner.headers.get('set-cookie'), /HttpOnly; SameSite=Strict; Secure; Path=\/api\/v1\/platform/);
   assert.equal((await f.platform.get('SELECT email FROM platform_admin')).email, 'contact@example.test');
   const admin = (path, body, csrf = view.csrfToken) => f.handle(new Request(`https://admin.example.test/api/v1/platform/${path}`, { method: body ? 'POST' : 'GET', headers: { cookie, origin: 'https://admin.example.test', 'x-csrf-token': csrf, 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) }));

@@ -27,6 +27,8 @@ export async function serveStatic(request, pathname, basePath = '') {
   } catch {
     throw new ApiError(400, 'INVALID_INPUT', 'Invalid path.');
   }
+  // Setup bytes must only be served by the database-gated exact-path handler.
+  if (/^\/setup(?:\/|$)/.test(decoded)) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
   if (decoded.includes('\0') || decoded.split('/').some((part) => part.startsWith('.'))) {
     throw new ApiError(404, 'NOT_FOUND', 'Not found.');
   }

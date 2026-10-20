@@ -537,7 +537,7 @@ export async function createApi({ store, config, registry = null, platformHandle
         if (serveStatic) return await serveStatic(request, url.pathname);
         throw new ApiError(404, 'NOT_FOUND', 'Not found.');
       }
-      if (/^\/api\/v1\/setup(?:\/|$)/.test(url.pathname)) {
+      if (/^\/api\/v1\/setup(?:\/|$)/.test(url.pathname) || (config?.platform?.claimEnabled && /^\/setup(?:\/|$)/.test(url.pathname))) {
         const shopOrigin = config.publicOrigin || `http://localhost:${config.port ?? 3000}`;
         if (!config?.platform?.claimEnabled || url.origin !== shopOrigin || !setupHandler) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
         return await setupHandler(request, context);
@@ -548,9 +548,21 @@ export async function createApi({ store, config, registry = null, platformHandle
       if (tenant?.response) return tenant.response;
       if (!tenant) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
       if (tenant.status !== 'ACTIVE') throw new ApiError(503, 'SHOP_UNAVAILABLE', 'This shop is not available right now.');
-      return await (await handlerFor(tenant))(rewriteTenantRequest(request, tenant.config.basePath), context);
+      const response = await (await handlerFor(tenant))(rewriteTenantRequest(request, tenant.config.basePath), context);
+      if (/^\/setup(?:\/|$)/.test(url.pathname) && response.status === 404) {
+        response.headers.set('Cache-Control', 'no-store');
+        response.headers.set('Referrer-Policy', 'no-referrer');
+        response.headers.set('X-Robots-Tag', 'noindex');
+      }
+      return response;
     } catch (error) {
-      return errorResponse(error);
+      const response = errorResponse(error);
+      if (/^\/(?:setup(?:\/|$)|api\/v1\/setup(?:\/|$))/.test(new URL(request.url).pathname)) {
+        response.headers.set('Cache-Control', 'no-store');
+        response.headers.set('Referrer-Policy', 'no-referrer');
+        response.headers.set('X-Robots-Tag', 'noindex');
+      }
+      return response;
     }
   };
 }

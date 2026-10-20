@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { ApiError, json, readJson, requireOrigin } from '../http.js';
 import { SqlLimiter } from '../limiter.js';
@@ -7,7 +8,7 @@ import { createAdminAuth, platformCookie } from './admin-auth.js';
 import { recordAudit } from './platform-db.js';
 
 const MAX_ATTEMPTS = 5;
-const missing = () => json(404, { error: { code: 'NOT_FOUND', message: 'Not found.' } }, { 'Referrer-Policy': 'no-referrer' });
+const missing = () => json(404, { error: { code: 'NOT_FOUND', message: 'Not found.' } }, { 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex' });
 const digest = (code) => createHash('sha256').update('PLATFORM_ADMIN_CLAIM\0').update(code).digest();
 const emailPattern = /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/;
 
@@ -25,7 +26,16 @@ export function createSetupRoutes({ platform, secretBox, config, clock = Date.no
   return async (request, { clientAddress = 'unknown' } = {}) => {
     const url = new URL(request.url);
     if (!config.platform.claimEnabled || url.origin !== origin || url.search || !await eligible()) return missing();
-    if (url.pathname === '/api/v1/setup/status' && request.method === 'GET') return json(200, { open: true }, { 'Referrer-Policy': 'no-referrer' });
+    const assets = { '/setup/': ['index.html', 'text/html'], '/setup/setup.js': ['setup.js', 'text/javascript'], '/setup/setup.css': ['setup.css', 'text/css'] };
+    if (request.method === 'GET' && Object.hasOwn(assets, url.pathname)) {
+      const [file, type] = assets[url.pathname];
+      return new Response(await readFile(new URL(`../../public/setup/${file}`, import.meta.url)), { headers: {
+        'Content-Type': `${type}; charset=utf-8`, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer',
+        'X-Robots-Tag': 'noindex', 'X-Content-Type-Options': 'nosniff',
+        'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'",
+      } });
+    }
+    if (url.pathname === '/api/v1/setup/status' && request.method === 'GET') return json(200, { open: true }, { 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex' });
     if (url.pathname !== '/api/v1/setup/claim' || request.method !== 'POST') return missing();
     // The non-ambient bearer plus exact Origin and JSON are the claim CSRF proof.
     try { requireOrigin(request, origin); } catch { return missing(); }
@@ -61,7 +71,7 @@ export function createSetupRoutes({ platform, secretBox, config, clock = Date.no
       await platform.run("UPDATE platform_admin_claim_generation SET outcome = 'CLAIMED', consumed_at = ? WHERE generation = ?", state.now, state.generation);
       await recordAudit(platform, { actor: body.username, action: 'ADMIN_CLAIMED', detail: state.generation });
       const { token, maxAge, ...view } = await auth.claimedSession(id);
-      return json(200, view, { 'Set-Cookie': platformCookie(token, maxAge), 'Referrer-Policy': 'no-referrer' });
+      return json(200, { ...view, nextUrl: new URL('/platform/', `https://${config.platform.adminHost}`).href }, { 'Set-Cookie': platformCookie(token, maxAge), 'Referrer-Policy': 'no-referrer' });
     });
   };
 }
