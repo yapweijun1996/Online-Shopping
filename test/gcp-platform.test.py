@@ -20,8 +20,12 @@ class Fake:
         self.roles = []
         self.database = ''
         self.sql = []
+        self.commands = []
     def __call__(self, argv, sql=None):
-        if sql is None: raise AssertionError('Unexpected process')
+        if sql is None:
+            self.commands.append(argv)
+            if argv[-3:] != ['node', 'scripts/upgrade-platform.mjs', '--with-claim']: raise AssertionError('Unexpected process')
+            return '{"platformVersion":2}'
         self.sql.append(sql)
         if sql.startswith('SELECT rolname'): return '\n'.join(sorted(self.roles))
         if sql.startswith('SELECT COALESCE'): return 'createrole_self_grant=set, inherit'
@@ -42,6 +46,21 @@ class Tests(unittest.TestCase):
         p = e.Provisioner(root, runner)
         return p, runner
 
+    def test_fresh_secrets_need_no_stack_and_provision_requires_secrets(self):
+        with tempfile.TemporaryDirectory() as root:
+            p, runner = self.fixture(root)
+            module = e.load_updater()
+            module.trusted = lambda path, directory=False: Path(path)
+            with patch.object(e, 'load_updater', return_value=module), patch.object(p, 'preflight', side_effect=AssertionError('No stack')), patch.object(e.os, 'fchown'):
+                self.assertEqual('ready', p.run(step='secrets')['status'])
+            self.assertEqual([], runner.sql)
+            for name in ('integration-keys', 'platform-password', 'provisioner-password'):
+                self.assertEqual(0o600, (Path(root)/name).stat().st_mode & 0o777)
+            (Path(root)/'platform-password').unlink()
+            with patch.object(p, 'preflight'), patch.object(p, 'secret', return_value=None):
+                with self.assertRaises(ValueError): p.run(step='provision')
+            self.assertTrue(all(sql.startswith('SELECT') for sql in runner.sql))
+
     def test_check_is_read_only_and_reports_missing(self):
         with tempfile.TemporaryDirectory() as root:
             p, runner = self.fixture(root)
@@ -54,7 +73,7 @@ class Tests(unittest.TestCase):
     def test_apply_resume_and_second_apply_do_not_rewrite(self):
         with tempfile.TemporaryDirectory() as root:
             p, runner = self.fixture(root)
-            values = {}
+            values = {name: 'sensitive-' + name + 'x'*32 for name in ('integration-keys', 'platform-password', 'provisioner-password')}
             def secret(name, check=False):
                 if name not in values and not check: values[name] = 'sensitive-' + name + 'x'*32
                 return values.get(name)
@@ -66,6 +85,7 @@ class Tests(unittest.TestCase):
                 self.assertEqual('ready', p.run()['status'])
                 self.assertTrue(all(sql.startswith('SELECT') for sql in runner.sql))
                 self.assertEqual(first, values)
+                self.assertEqual(2, len(runner.commands))
             self.assertNotIn('sensitive', output.getvalue())
             self.assertFalse(any('online_shopping;' in sql for sql in runner.sql))
 
@@ -95,7 +115,7 @@ class Tests(unittest.TestCase):
             with self.assertRaises(ValueError): p.secret('platform-password')
 
     def test_failure_output_is_secret_safe(self):
-        with patch.object(e.sys, 'platform', 'linux'), patch.object(e.os, 'geteuid', return_value=0), patch.object(e.sys, 'argv', ['enable-platform.py']), patch.object(e, 'Provisioner', side_effect=RuntimeError('private-password')):
+        with patch.object(e.sys, 'platform', 'linux'), patch.object(e.os, 'geteuid', return_value=0), patch.object(e.sys, 'argv', ['enable-platform.py', 'provision']), patch.object(e, 'Provisioner', side_effect=RuntimeError('private-password')):
             output = io.StringIO()
             with contextlib.redirect_stderr(output): self.assertEqual(1, e.main())
             self.assertNotIn('private-password', output.getvalue())
@@ -138,6 +158,9 @@ class Tests(unittest.TestCase):
             start = block.index('@'+name)
             end = block.index('handle @'+name, start)
             return block[start:end]
+        agents = 'facebookexternalhit|facebot|whatsapp|twitterbot|telegrambot|slackbot|discordbot|googlebot|bingbot'
+        self.assertIn('header_regexp User-Agent (?i)('+agents+')', matcher(shop, 'crawler'))
+        self.assertIn('header_regexp User-Agent (?i)('+agents+')', matcher(text, 'tenant_crawler'))
         for path in ('/seller*','/api/v1/seller*','/platform*','/api/v1/platform*'):
             self.assertIn(path, matcher(shop, 'private'))
         for path in ('/shop*','/p/*','/s/*','/api/v1/orders*','/setup*','/api/v1/setup*'):

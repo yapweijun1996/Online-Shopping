@@ -539,7 +539,7 @@ export async function createApi({ store, config, registry = null, platformHandle
       }
       if (/^\/api\/v1\/setup(?:\/|$)/.test(url.pathname) || (config?.platform?.claimEnabled && /^\/setup(?:\/|$)/.test(url.pathname))) {
         const shopOrigin = config.publicOrigin || `http://localhost:${config.port ?? 3000}`;
-        if (!config?.platform?.claimEnabled || url.origin !== shopOrigin || !setupHandler) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+        if (!config?.platform?.claimEnabled || url.host !== new URL(shopOrigin).host || !setupHandler) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
         return await setupHandler(request, context);
       }
       if (config?.platform && url.host === config.platform.adminHost && !['/health', '/ready'].includes(url.pathname) &&

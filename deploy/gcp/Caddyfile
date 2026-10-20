@@ -33,7 +33,7 @@
 			}
 			@tenant_crawler {
 				path_regexp ^/[a-z0-9]{3,30}/(?:shop/?)?$
-				header_regexp User-Agent (?i)(whatsapp|facebookexternalhit|twitterbot|telegrambot|googlebot|bingbot)
+				header_regexp User-Agent (?i)(facebookexternalhit|facebot|whatsapp|twitterbot|telegrambot|slackbot|discordbot|googlebot|bingbot)
 			}
 			handle @tenant_crawler {
 				rewrite * /{re.tenant.1}/s/home
@@ -87,7 +87,7 @@ http://{$SHOP_HOST} {
 		}
 		@crawler {
 			path / /shop /shop/
-			header_regexp User-Agent (?i)(whatsapp|facebookexternalhit|twitterbot|telegrambot|googlebot|bingbot)
+			header_regexp User-Agent (?i)(facebookexternalhit|facebot|whatsapp|twitterbot|telegrambot|slackbot|discordbot|googlebot|bingbot)
 		}
 		handle @crawler {
 			rewrite * /s/home

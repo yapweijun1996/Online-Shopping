@@ -1,4 +1,4 @@
-// schema.sql is the immutable v1 baseline; fresh initialization and explicit upgrades apply numbered migrations.
+// schema.sql is the immutable v1 baseline. Claim migration 002 requires an explicit targetVersion of 2.
 import { readFile, readdir } from 'node:fs/promises';
 import { PLATFORM_SCHEMA_VERSION } from './platform-db.js';
 

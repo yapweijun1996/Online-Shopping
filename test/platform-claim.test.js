@@ -33,7 +33,7 @@ test('fresh and v1 upgrade converge; bootstrap permanently closes claim without 
   await upgraded.platform.exec(await readFile(new URL('../src/platform/schema.sql', import.meta.url), 'utf8'));
   const password = randomBytes(24).toString('hex');
   await upgraded.platform.run("INSERT INTO platform_admin(id,username,username_key,password_hash,failed_attempts,created_at,updated_at) VALUES ('legacy','owner','owner','unchanged',3,'2026-01-01T00:00:00.000Z','2026-01-01T00:00:00.000Z')");
-  await upgradePlatformSchema(upgraded.platform);
+  await upgradePlatformSchema(upgraded.platform, { targetVersion: 2 });
   assert.deepEqual(await catalog(fresh.platform), await catalog(upgraded.platform));
   assert.deepEqual(await fresh.platform.all("SELECT table_name,column_name,data_type,is_nullable,column_default FROM information_schema.columns WHERE table_schema='public' ORDER BY table_name,ordinal_position"),
     await upgraded.platform.all("SELECT table_name,column_name,data_type,is_nullable,column_default FROM information_schema.columns WHERE table_schema='public' ORDER BY table_name,ordinal_position"));

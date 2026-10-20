@@ -56,7 +56,7 @@ async function environment(t) {
 
 test('platform database: schema, constraints and an append-only audit trail', { skip: !base }, async (t) => {
   const { platform } = await environment(t);
-  assert.equal(await platform.schemaVersion(), 2);
+  assert.equal(await platform.schemaVersion(), 1);
   await recordAudit(platform, { actor: 'root', action: 'LOGIN' });
   await assert.rejects(platform.run("UPDATE platform_audit SET actor = 'x'"), /append-only/);
   await assert.rejects(platform.run('DELETE FROM platform_audit'), /append-only/);

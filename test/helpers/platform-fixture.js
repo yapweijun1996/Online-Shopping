@@ -12,7 +12,7 @@ export async function platformFixture(t, options = {}) {
   const admin = new pg.Pool({ connectionString: baseUrl, max: 2 });
   await admin.query(`CREATE DATABASE ${name}`);
   const url = new URL(baseUrl); url.pathname = `/${name}`;
-  const platform = await openPlatformDatabase(url.href, { max: 3 });
+  const platform = await openPlatformDatabase(url.href, { max: 3, claimEnabled: options.claimEnabled ?? true });
   const integrationKeys = parseKeyFile(`k1=${randomBytes(32).toString('base64')}`), secretBox = createSecretBox(integrationKeys);
   const pool = createTenantPool({ secretBox, baseUrl, connectionsPerTenant: 3 });
   t.after(async () => {

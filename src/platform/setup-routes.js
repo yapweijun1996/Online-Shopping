@@ -25,7 +25,7 @@ export function createSetupRoutes({ platform, secretBox, config, clock = Date.no
   }
   return async (request, { clientAddress = 'unknown' } = {}) => {
     const url = new URL(request.url);
-    if (!config.platform.claimEnabled || url.origin !== origin || url.search || !await eligible()) return missing();
+    if (!config.platform.claimEnabled || url.host !== new URL(origin).host || url.search || !await eligible()) return missing();
     const assets = { '/setup/': ['index.html', 'text/html'], '/setup/setup.js': ['setup.js', 'text/javascript'], '/setup/setup.css': ['setup.css', 'text/css'] };
     if (request.method === 'GET' && Object.hasOwn(assets, url.pathname)) {
       const [file, type] = assets[url.pathname];

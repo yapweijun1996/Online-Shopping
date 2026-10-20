@@ -48,7 +48,7 @@ export function createPlatformRuntime({ store, config, clock = Date.now, paused 
     pending = (async () => {
       let candidate;
       try {
-        candidate = await openPlatformDatabase(config.platform.databaseUrl, { max: 3, connectionTimeoutMillis: 2000, query_timeout: 3000, statement_timeout: 3000 });
+        candidate = await openPlatformDatabase(config.platform.databaseUrl, { claimEnabled: config.platform.claimEnabled, max: 3, connectionTimeoutMillis: 2000, query_timeout: 3000, statement_timeout: 3000 });
         const auth = createAdminAuth({ platform: candidate, secretBox, clock });
         if (!config.platform.claimEnabled) await auth.bootstrap(config.platform.username, config.platform.password);
         await candidate.transaction(async () => {

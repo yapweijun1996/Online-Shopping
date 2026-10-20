@@ -20,8 +20,9 @@ After the first publication, make both GHCR packages **public** in their package
 
 Review the exact release and verify its CI before installation. All commands below run on the existing VM as root. The installer is intentionally manual: automatic updates cannot replace the updater, Compose policy, runtime configuration or systemd units.
 
-1. Create `/opt/online-shopping-gcp` root-owned mode `0700`, with root-owned non-writable ancestors. Install the reviewed updater, Compose policy and runtime example there as `update.py`, `compose.yaml` and `runtime.env`, mode `0600`. Runtime accepts only shop/seller hosts, default seller username, secrets directory, two binary platform switches and the empty or fixed integration key mount path. Unknown/duplicate keys and interpolation are rejected. No secret values belong here. Before starting the new Compose policy even while disabled, run the provisioning procedure below to create its required mounted files.
+1. Create `/opt/online-shopping-gcp` root-owned mode `0700`, with root-owned non-writable ancestors. Install the reviewed updater, Compose policy, provisioner and runtime example there as `update.py`, `compose.yaml`, `enable-platform.py` and `runtime.env`, mode `0600` (provisioner `0700`). Runtime accepts only shop/seller hosts, default seller username, secrets directory, two binary platform switches and the empty or fixed integration key mount path. Unknown/duplicate keys and interpolation are rejected. No secret values belong here.
 2. Create `/opt/cloudops/secrets/online-shopping` root owned, mode `0700`. Generate three separate strong secrets outside Git: `admin-password` (the existing application requires at least 16 characters, letters and digits, and rejects weak passwords), `postgres-password`, and `postgres-owner-password`. Docker Compose file-backed secrets retain host file permissions: the backend's non-root `node` user must be able to read its mounted admin/app secrets. Use root-owned mode `0444` secret files inside the root-only `0700` host directory, or an explicitly reviewed UID/ACL mapping. Never print the values or use command-line password arguments. Do not reuse any existing app/database secrets.
+   Before initialization, run `python3 /opt/online-shopping-gcp/enable-platform.py --root /opt/online-shopping-gcp secrets`, then the same command with `secrets --check`. This creates only missing integration/platform/provisioner files, exclusively, mode 0600 UID/GID1000, without images, release directories, Docker or database prerequisites. Keep both platform switches off.
 3. Ensure `online-shopping-edge` exists and connect the shared gateway; configure the two gateway hosts above. Configure DNS/firewall for the shared gateway's existing 80/443 only. Do not add app/database published ports.
 4. Initialize with the exact current full main SHA (replace the placeholder):
 
@@ -31,6 +32,7 @@ Review the exact release and verify its CI before installation. All commands bel
 
    Initialization verifies main and the latest exact-SHA `verify.yml` push run, downloads only schema/init/Caddy configuration from that trusted SHA, verifies Git blob hashes, anonymously pulls both image tags, resolves immutable digests, checks labels/platform, and starts the full stack. It saves `state.json` only after backend readiness and frontend-proxied readiness return the expected revision. The schema/init files run only when PostgreSQL initializes the new empty volume. If an initial deployment fails, inspect private container health diagnostics without publishing logs; initialization can be retried after resolving the cause. Do not delete a nonempty DB volume as a retry strategy.
 5. Verify both public hosts, expected 404 cross-host routes, login, and a fictional catalog/order scenario. Confirm owner/app DB separation, startup opt-out flags, no extra ports/socket mounts, and available RAM/disk. This manual public check also establishes actual gateway TLS/header policy; local updater checks do not prove it.
+   Fresh-install platform activation is separate: after this default-off stack is healthy, restore-test its private backup, run `enable-platform.py --root /opt/online-shopping-gcp provision --check`, then `provision`, then `provision --check`. Provisioning requires the healthy stack and existing secrets; it creates missing roles/database and explicitly applies claim migration 002. Only then follow the reviewed opt-in/stop-before-start procedure below. Never run provisioning before first initialization.
 6. Copy `deploy/gcp/online-shopping-update.service` and `.timer` to `/etc/systemd/system/`, root owned. Only after successful initialization:
 
    ```sh
@@ -66,7 +68,7 @@ Independent pre-deployment checks passed 522 application tests with PostgreSQL16
 
 Run as root on Linux. No DNS change: admin host is `seller.demoonlineshopping.xyz`. This deliberately shares the seller script origin with SuperAdmin; mandatory TOTP does not eliminate that shared-origin risk. Do not use legacy `PLATFORM_ADMIN_USERNAME` or `PLATFORM_ADMIN_PASSWORD_FILE`.
 
-Prerequisite: the agent has staged the complete reviewed release at `/root/reviewed-platform`, including CI-verified immutable image references in `images.env` (BACKEND_IMAGE, FRONTEND_IMAGE, APP_REVISION and RELEASE_DIR only). RELEASE_DIR must be `/opt/online-shopping-gcp/releases/<APP_REVISION>`. Verify CI/digests through the existing controller's source/image validation before staging; no unverified tag or image build on the VM. The procedure uses the same application schema as the running default shop. If it differs, STOP: the separate restore-tested schema migration procedure is required; these commands do not migrate existing databases. Existing platform databases must already match the reviewed platform schema; this first enablement is for a missing/empty platform database only.
+Prerequisite for an **existing live stack**: stage the complete reviewed release at `/root/reviewed-platform`, including CI-verified immutable references in `images.env` (BACKEND_IMAGE, FRONTEND_IMAGE, APP_REVISION and RELEASE_DIR only). RELEASE_DIR is `/opt/online-shopping-gcp/releases/<APP_REVISION>`. Verify CI/digests before staging. The running default-shop schema must match; otherwise stop for its separate migration procedure. Before the mutation block below, take and restore-test a private cluster backup in isolated PostgreSQL16. Do not proceed without restore evidence. Explicit platform provisioning applies migration 002, never shop DDL. An older v1-only image cannot open a manually upgraded v2 platform database; do not use it for rollback after opt-in.
 
 Ordered non-interactive commands (do not enable shell tracing; stdout/logs remain private):
 
@@ -96,10 +98,12 @@ docker compose -p online-shopping-gcp --env-file "$R/runtime.env" --env-file "$R
 chmod 0600 "$R/platform-rollback/cluster.sql"
 install -m 0600 "$S/deploy/gcp/update.py" "$R/update.py"
 install -m 0700 "$S/deploy/gcp/enable-platform.py" "$R/enable-platform.py"
-python3 "$R/enable-platform.py" --root "$R" --check
-python3 "$R/enable-platform.py" --root "$R"
-python3 "$R/enable-platform.py" --root "$R" --check
+python3 "$R/enable-platform.py" --root "$R" secrets
+python3 "$R/enable-platform.py" --root "$R" secrets --check
 install -m 0600 "$S/compose.gcp.yaml" "$R/compose.yaml"
+python3 "$R/enable-platform.py" --root "$R" provision --check
+python3 "$R/enable-platform.py" --root "$R" provision
+python3 "$R/enable-platform.py" --root "$R" provision --check
 python3 - "$R" "$S" <<'PY'
 import pathlib, sys
 r, s = map(pathlib.Path, sys.argv[1:])
@@ -165,4 +169,4 @@ PY
 systemctl start online-shopping-update.timer
 ```
 
-Do not erase state or rerun initialize. Platform schema/version/migrations are protected by `src/platform/`; MOUNTS is unchanged because no additional release file is mounted. Provisioning is additive, resumes interrupted creation, validates existing boundaries and never alters existing passwords or connects to the shop database. It does not initialize platform tables; the reviewed backend initializes a fresh platform database. For rollback, retain the old controller's baseline and leave the timer stopped pending review.
+Do not erase state or rerun initialize. Platform schema/version/migrations are protected by `src/platform/`; MOUNTS is unchanged. Provisioning is additive, resumes interrupted creation, validates boundaries and never changes existing passwords or shop tables. Its explicit `scripts/upgrade-platform.mjs --with-claim` invocation initializes/migrates platform to v2. The automatic OrbStack version stays 1 and its unflagged runner never applies migration 002. Claim-off fresh databases remain v1; claim-on fresh databases initialize v2, and existing v1 requires explicit upgrade. Retain the old controller baseline and keep the timer stopped pending review.

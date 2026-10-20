@@ -105,10 +105,22 @@ class Provisioner:
             os.fsync(out.fileno())
         return value
 
-    def run(self, check=False):
+    def run(self, check=False, step='provision'):
+        names = ('integration-keys', 'platform-password', 'provisioner-password')
+        if step == 'secrets':
+            u = load_updater()
+            u.trusted(self.env['SECRETS_DIR'], directory=True)
+            if stat.S_IMODE(Path(self.env['SECRETS_DIR']).stat().st_mode) != 0o700:
+                raise ValueError('Secrets directory must have mode 0700')
+            values = {name: self.secret(name, check=True) for name in names}
+            if check:
+                return {'mode': 'check', 'secretsPresent': sum(value is not None for value in values.values())}
+            for name in names:
+                if values[name] is None: self.secret(name)
+            return {'mode': 'secrets', 'status': 'ready'}
         self.preflight()
         roles, database = self.inspect()
-        names = ('integration-keys', 'platform-password', 'provisioner-password')
+        # Provisioning never creates credentials; run the independent secrets step first.
         # Inspect all existing inputs before creating anything. Never reset a role password.
         values = {name: self.secret(name, check=True) for name in names}
         for role, name in (('platform_app', 'platform-password'), ('platform_provisioner', 'provisioner-password')):
@@ -116,8 +128,8 @@ class Provisioner:
                 raise ValueError('Existing role has no matching secret; manual reconciliation required')
         if check:
             return {'mode': 'check', 'rolesPresent': len(roles), 'databasePresent': bool(database), 'secretsPresent': sum(value is not None for value in values.values())}
-        for name in names:
-            if values[name] is None: values[name] = self.secret(name)
+        if any(value is None for value in values.values()):
+            raise ValueError('Run the secrets step before provisioning')
         for role, name, flags in (('platform_app', 'platform-password', 'NOCREATEDB NOCREATEROLE'), ('platform_provisioner', 'provisioner-password', 'CREATEDB CREATEROLE')):
             if not any(row.startswith(role + '|') for row in roles):
                 self.query(f"SET standard_conforming_strings=on; CREATE ROLE {role} LOGIN NOSUPERUSER {flags} NOREPLICATION PASSWORD '{values[name]}';" + (" ALTER ROLE platform_provisioner SET createrole_self_grant = 'set, inherit';" if role == 'platform_provisioner' else ''))
@@ -128,6 +140,7 @@ class Provisioner:
             self.query('REVOKE ALL ON DATABASE platform FROM PUBLIC;')
         _, database = self.inspect()
         if database != 'platform_app|true': raise ValueError('Platform boundary verification failed')
+        self.runner(self.compose + ['run', '--rm', '--no-deps', 'backend', 'node', 'scripts/upgrade-platform.mjs', '--with-claim'])
         return {'mode': 'apply', 'status': 'ready'}
 
 
@@ -135,11 +148,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', default='/opt/online-shopping-gcp')
     parser.add_argument('--check', action='store_true')
+    parser.add_argument('step', choices=('secrets', 'provision'))
     args = parser.parse_args()
     try:
         if sys.platform != 'linux' or os.geteuid() != 0:
             raise ValueError('Linux root required')
-        print(json.dumps(Provisioner(args.root).run(args.check)))
+        print(json.dumps(Provisioner(args.root).run(args.check, args.step)))
         return 0
     except Exception:
         print('Platform enablement failed; inspect private state, not credentials.', file=sys.stderr)
