@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Set up Shop platform</title>
+  <link rel="stylesheet" href="./setup.css">
+  <script type="module" src="./setup.js"></script>
+</head>
+<body>
+<main>
+  <h1>Set up Shop platform</h1>
+  <p id="status" role="status">Checking availability…</p>
+  <p id="error" role="alert" tabindex="-1" hidden></p>
+  <form id="claim" hidden>
+    <p>After creating your account, sign in on the platform console to set up your authenticator.</p>
+    <label for="email">Contact email (not verified)</label>
+    <input id="email" name="email" type="email" autocomplete="email" maxlength="254" required>
+    <p>This is not a sign-in or password-recovery address.</p>
+    <label for="username">SuperAdmin username</label>
+    <input id="username" name="username" autocomplete="username" minlength="3" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,63}" required>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="new-password" minlength="12" maxlength="256" required aria-describedby="password-help">
+    <p id="password-help">Use 12–256 characters, without your username or a single repeated character.</p>
+    <label for="confirm">Confirm password</label>
+    <input id="confirm" name="confirm" type="password" autocomplete="new-password" minlength="12" maxlength="256" required>
+    <button type="submit">Create account and continue</button>
+  </form>
+  <a id="continue" hidden>Continue to platform sign-in</a>
+  <noscript>JavaScript is required to use this private setup link.</noscript>
+</main>
+</body>
+</html>

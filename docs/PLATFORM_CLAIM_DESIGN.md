@@ -1,6 +1,13 @@
 # First SuperAdmin claim link
 
-Status: **design only; not implemented or deployed.** Repository inspection: 2026-10-20. **Evidence** means inspected source or dated records; **Proposed** means future work. No live infrastructure, IAM, DNS, database or cloud log was inspected. This document grants no implementation/deployment authority.
+Status: **P2 migration, P3a default-off configuration, P4 backend issuance, P5 claim API/routing and P6 Node-gated setup page implemented locally. Not deployed; browser and edge acceptance remain unverified.** Repository inspection: 2026-10-20. This document grants no deployment authority.
+
+P7/P8/P10 GCP artifacts now live in `deploy/gcp/enable-platform.py`, GCP Compose/Caddy/runtime policy and the manual runbook in `GCP_DEPLOY.md`. Owner decision supersedes the historical dedicated-admin-host proposal: `PLATFORM_ADMIN_HOST=seller.demoonlineshopping.xyz`; setup stays on the shop host. Shared seller/admin script origin is an accepted risk, not equivalent isolation. Default-off, no legacy claim credentials, additive provisioning only, existing volume preserved. Offline verification is not live deployment/Caddy/Docker/Cloud Logging acceptance.
+
+Implementation status: claim schema v2 adds nullable lower-cased contact email, singleton claim state, metadata-only generation history and audit actions. `PLATFORM_SCHEMA_VERSION` and automatic upgrades remain at v1; `PLATFORM_CLAIM_SCHEMA_VERSION` is 2. Claim-off fresh databases initialize v1; claim-on fresh databases initialize v2. Existing v1 is accepted unchanged with claim off and refused with claim on until explicit `node scripts/upgrade-platform.mjs --with-claim`. GCP provisioning invokes that opt-in command; the OrbStack updater never passes it. PostgreSQL closes the latch on any admin insertion and prohibits closure changes/removal. Claim closes the latch before admin insertion with a deferred FK.
+
+`PLATFORM_ADMIN_CLAIM_ENABLED=1` excludes both legacy SuperAdmin credential inputs and skips credential bootstrap. Default/off preserves legacy credential validation. P4 issues a backend-generated code after startup checks. P5 exposes shop-origin status/claim APIs; P6 adds the eligible setup page. Email remains lower-cased unverified contact-only, not a login identifier. No existing admin is backfilled. Generation history carries attempts, supersession, consumption and outcome; only the singleton state stores the current hash.
+
 
 Goal: after one agent-operated infrastructure enablement, the owner opens `https://demoonlineshopping.xyz/setup/#<code>`, enters their own email, username and password, completes mandatory TOTP on a separate admin origin, and creates shops and seller Owners through the existing console. No email is predetermined. The application generates the claim code: no operator command, environment variable, Compose edit or secret file supplies it.
 
@@ -56,7 +63,7 @@ Source overrides historical proposals. Recorded production counts are historical
 - Console choice: **`https://admin.demoonlineshopping.xyz/platform/`**; config adminHost exactly that hostname. One-time DNS/shared-gateway TLS prerequisite, presently UNVERIFIED. Neither customer nor seller origin: their script compromise must not gain an admin-origin foothold. No silent seller fallback.
 - Agent/operator handles one-time roles/keys/mounts/hosts/IP policy/log transport/IAM/deploy baseline; never claims/enrols production owner. This document authorizes none of those operations.
 
-Blast radius: SuperAdmin can reset sellers/change lifecycle across all tenants. Backend/master-key/provisioner already cross tenant boundaries. Default-off claim cannot replace any existing admin. OrbStack retains bootstrap credentials/accounts/MFA/hosts/Compose/tunnel; only additive platform migration reaches its DB.
+Blast radius: SuperAdmin can reset sellers/change lifecycle across all tenants. Backend/master-key/provisioner already cross tenant boundaries. Default-off claim cannot replace an existing admin. OrbStack retains bootstrap credentials/accounts/MFA/hosts/Compose/tunnel and its v1 platform schema; merging claim support does not migrate it or prevent rollback to its previous v1-only image.
 
 ### 2.2 Configuration
 
@@ -77,10 +84,10 @@ Represent mode explicitly in config.platform and branch before current auth.boot
 PIC-selected channel: one structured stdout record after each generation commit. Placeholders only:
 
 ```json
-{"event":"platform.claim.issued","generation":"<uuid>","expiresAt":"<UTC timestamp>","claimUrl":"https://demoonlineshopping.xyz/setup/#<43-character-code>"}
+{"event":"platform.claim.issued","url":"https://demoonlineshopping.xyz/setup/#<43-character-code>","expiresAt":"<UTC timestamp>","generation":"<uuid>"}
 ```
 
-URL from validated config.publicOrigin, never request Host/Forwarded. No email/password/DB URL/master key/TOTP/recovery. Audit records metadata, never code/hash/URL.
+URL from validated config.publicOrigin, never request Host/Forwarded. When absent (development only), use `http://localhost:<config.port or 3000>`; production configuration already requires PUBLIC_ORIGIN. No email/password/DB URL/master key/TOTP/recovery. Audit records metadata, never code/hash/URL.
 
 **Risk:** anyone reading live URL can claim. Retention/exports/alerts/broad viewer roles can copy it; expiry/use cannot retract copies. Restrict owner to dedicated bootstrap log view, exclude event from broad exports/notifications, document retention. Never copy live URL into chat/Git/tickets/CI/evidence. Record this narrow exception to no-secret-logging invariant in implementation threat model.
 
@@ -90,7 +97,28 @@ DB commit/log delivery cannot be atomic. Promise **at most one application emiss
 
 ## 3. Claim flow and HTTP contract
 
-Proposed throughout. Existing platform auth keeps endpoints and host/cookie boundaries; email extends existing identifier, not a new protocol.
+### P5 authoritative PIC contract (supersedes conflicting proposals below)
+
+- Only exact configured shop-host `/api/v1/setup/status` GET and `/api/v1/setup/claim` POST are implemented. Dispatch ignores the adapter's transport scheme and never trusts Forwarded headers; POST still requires the configured exact public HTTPS Origin. Claim mode, no admin, unclosed latch, current hash, DB-time unexpired generation and fewer than five wrong-code attempts are required. Every other setup API path/state returns the unknown-path generic 404.
+- Claim JSON is exactly `{code,email,username,password}`, streamed with a 4096-byte cap. Exact shop Origin plus non-ambient bearer possession and JSON provide CSRF protection; no ambient-cookie setup challenge is required. Existing admin-origin CSRF remains mandatory for enrolment and all other platform writes.
+- Persisted claim limit: five admitted requests/client/15 minutes, before parsing/hashing. Throttles return generic 404; one rate-limit audit/client/window. Five wrong/missing code attempts permanently disable that generation until trusted restart supersedes it; state/history counters and denied audit commit together. No submitted secrets or identifiers are audited on failure.
+- Constant-time domain-separated SHA-256 comparison precedes field errors. Proven-code invalid/extra fields return 400 without consuming the generation. Contact email is lower-cased, bounded ASCII mailbox syntax matching the migration, one @, local part at most 64/total at most 254, no whitespace/controls. Existing username/password policy applies; email sign-in is not added.
+- Serialized transaction rechecks eligibility, validates/hash-encodes the password, rechecks expiry, closes the latch before admin INSERT (deferred FK), consumes history, audits ADMIN_CLAIMED, and creates the existing five-minute PASSWORD session and CSRF. Any insert/audit/session failure rolls everything back. Claim never grants FULL; unfinished MFA never reopens setup.
+- Response is 200 with login-equivalent `{csrfToken,stage:"PASSWORD",totpEnabled:false}` and the existing Secure/HttpOnly/Strict host-only platform cookie. **Browser boundary:** the cookie set on the shop host cannot be sent automatically to the separate admin host. No cookie Domain widening, cross-origin token transfer or shop-Origin exception is introduced. A browser must sign in again on the admin origin to continue enrolment; API tests explicitly carry the restricted cookie to prove existing enrolment semantics. P6 must preserve this boundary.
+- Verification: JavaScript syntax checks and scoped PostgreSQL platform/tenant tests passed (52 tests, zero failures/skips); actual Node HTTP startup → open status → PASSWORD claim → closed status smoke passed. No browser, edge, cloud-log or deployment verification.
+
+
+The remaining subsections retain historical proposals. The P5 PIC contract above governs implemented API/session/email behavior where these proposals conflict.
+### P6 authoritative page contract
+
+- Exact shop-origin GET `/setup/`, `/setup/setup.js` and `/setup/setup.css` share the status API's database eligibility predicate. Other paths, methods, queries and ineligible states return the byte-identical unknown-path JSON 404. Generic static serving refuses decoded setup paths, including prefixed rewrites; claim-off legacy setup tenants remain routable.
+- Files live in `public/setup/` and are copied into the backend image. Eligible page/assets use no-store, no-referrer, noindex, nosniff and a first-party-only CSP with no inline code/styles. Setup 404s and status also use no-store/no-referrer/noindex. No sitemap, robots or worker-cache entry is added. Existing workers intercept only scoped navigation/explicit shell assets and exclude APIs.
+- The external loader removes the fragment with replaceState before any fetch, retains the code only in memory, checks status, and submits exactly the P5 JSON fields. Failures use one generic message; pending submission is guarded, errors receive focus, and success clears the code/form before navigation.
+- The claim response additionally returns `nextUrl`, derived from configured `platform.adminHost` with `/platform/`. The host-only PASSWORD cookie remains on the shop host: separate-origin console sign-in is required, followed by existing mandatory TOTP enrolment. No session transfer, cookie widening, console hook or seller-host fallback.
+- English only: shared i18n is a storefront-wide catalog, so this isolated dependency-free page does not import it. Width-constrained layout and labelled controls target 320px; actual browser rendering is UNVERIFIED. P7 must route these exact paths to Node rather than the frontend file server.
+- This contract supersedes historical page/asset names, validate endpoint, email-sign-in and handoff proposals below. An open loader returns 200 independent of the fragment; missing/malformed fragments produce the neutral unavailable message, not a fragment-dependent HTTP status.
+- Local verification: `node scripts/check.js` passed; scoped node:test run across CSP, frontend base-path, claim API/schema/runtime, setup page, platform admin, tenant routing, tenants, PWA and shop setup passed **69/69, zero failures/skips**. A disposable real-PostgreSQL Fetch-router smoke exercised open HTML/JS/CSS → PASSWORD claim/configured nextUrl → byte-identical closed page/assets/status 404s. Deterministic VM DOM execution covered fragment removal before fetch, duplicate-submit suppression, success cleanup/navigation, closed status and generic error focus. No browser, container build, edge or deployment was exercised.
+
 
 ### 3.1 Required fragment/status decision
 
@@ -102,8 +130,8 @@ This does **not** meet literal fragment-dependent initial-navigation404. Alterna
 
 1. After schema/infrastructure checks, outside maintenance, transaction/advisory lock checks any admin, durable closure, setup tenant/alias collision. DB error never means empty.
 2. Only claim mode + empty/unclosed: generate code in app, replace singleton generation/hash/issued/expiry with revision increment. Authoritative DB time: accept only now < expires_at; UTC app display not authority.
-3. Append ADMIN_CLAIM_ISSUED, commit, emit one line, release plaintext references. Agent never redeems/enrols production.
-4. Track successful initialization once per process. Reconnect/reconciliation never rotates. DB-down-at-boot may issue at first successful initialization; unexpected missing/replaced state after initialization fails closed, no automatic issuance.
+3. Append ADMIN_CLAIM_ISSUED, commit, emit one line, release plaintext references. Hash is SHA-256 over `PLATFORM_ADMIN_CLAIM\0` followed by the code. TTL is the application constant `CLAIM_TTL_MS` (30 minutes; policy bound 1–30 minutes). Agent never redeems/enrols production.
+4. Track successful initialization once per runtime, before the stdout attempt. Reconnect/reconciliation never rotates, including after expiry or a stdout failure. DB-down-at-boot may issue at first successful initialization; unexpected missing/replaced state after initialization does not cause automatic issuance. Overlapping runtime starts reuse a live generation whose DB issuance timestamp is at or after that runtime's creation timestamp; later restarts supersede it under the existing advisory transaction lock. This overlap distinction assumes synchronized application/database wall clocks; it is not a distributed deployment protocol. Maintenance pauses do not issue.
 5. Restart unclaimed creates fresh generation, invalidates old code/challenges. No periodic/public renewal. Existing admin/completed claim closes across restarts.
 
 “404 forever” is permanent after claim/existing-admin and for expired/used codes. Before any claim, trusted restart intentionally opens a new generation; otherwise required recovery/rotation contradict permanent expiry closure. Older empty backup restore can undo latch; privileged disaster recovery, not ordinary reset.
@@ -214,7 +242,7 @@ Adapt R2 tenant edge too: prefixed API/manifests/static/crawler/entry, metadata-
 
 ### 4.1 Additive platform v2
 
-Proposed `src/platform/migrations/002-admin-claim.sql`, PLATFORM_SCHEMA_VERSION2. Keep deployed schema.sql v1 immutable; no shop schema/audit-history rewrite.
+`src/platform/migrations/002-admin-claim.sql` is explicitly opt-in. Automatic `PLATFORM_SCHEMA_VERSION` stays 1; claim target is `PLATFORM_CLAIM_SCHEMA_VERSION = 2`. Keep deployed schema.sql v1 immutable; no shop schema/audit-history rewrite.
 
 | Object | Contract |
 | --- | --- |
@@ -225,7 +253,7 @@ Proposed `src/platform/migrations/002-admin-claim.sql`, PLATFORM_SCHEMA_VERSION2
 
 Migration any-admin → closed latch, unchanged credentials/MFA/sessions/lockout, NULL email. Empty → unissued/unclosed, not automatically enabled. Legacy bootstrap insertion transaction also closes latch. Reset never clears. No admin-delete/reopen API.
 
-Fresh empty DB must run baseline+numbered migrations before v2 check (constant bump alone createsv1 then fails). Reuse upgradePlatformSchema, serialize. Nonempty older DB still updater/operator migration, not request startup. Platform PG-only: no SQLite/main shop version change; legacy behavior/tests unchanged.
+Fresh initialization applies only its configured target: baseline v1 with claim off, baseline+002 with claim on. Existing v1 never migrates at runtime; explicit `--with-claim` upgrades it. Claim-off runtime also accepts explicitly upgraded v2. PostgreSQL-only; no SQLite/main shop version change.
 
 ### 4.2 Email sign-in decision
 
@@ -239,7 +267,7 @@ Known-wrong/unknown/malformed/locked identifiers same generic failure and one re
 
 ### 4.3 Updaters
 
-OrbStack claim absent/Compose/secrets/tunnel unchanged. Its installed configured R3 controller automatically detectsv2/drains/backs up and restore-tests/platform+eligible shops/upgrade-platform runner/verifies/resumes. Schema alone not protected-file manual gate. Rehearse existing-admin NULL-email/MFA preservation/rollback. Exact-version opener means additivev2 not necessarily old-v1-image-compatible: failed cutover snapshot restore before reopening, not later customer-write loss. Repo changes do not install controller.
+OrbStack claim absent/Compose/secrets/tunnel unchanged. The automatic candidate version remains 1, so a running v1 platform does not request a claim migration or claim-related maintenance. Unflagged upgrade-platform targets v1, never 002. Previous v1-only image expectations remain intact until a separately authorized opt-in. Once an operator explicitly upgrades to v2, old v1-only images are incompatible; require a restore-tested manual release/rollback plan before that mutation.
 
 GCP add platform schema/version-bearing platform-db.js/migration runner/directory to fingerprint/manual policy first. Currently outside protected tuple, so platform-only incompatible image might auto-deploy while default ready passes. Keep image-only controller; manual drained restore-tested multi-DB migration/audited baseline. No initialize rerun/state erase/imaginary force-migrate. Gate even unchanged main SCHEMA_VERSION.
 
@@ -265,6 +293,15 @@ GCP add platform schema/version-bearing platform-db.js/migration runner/director
 | Preclaim backup restore | Can undo latch/reopen; privileged restore, pause/inspect before exposure, not sign-in reset. |
 
 Normal claim/TOTP/recovery-code retention/tenant creation web-only after enablement. Expiry renewal/all-factors-lost cannot be unauthenticated app UI under startup-only issuance/post-expiry404. Disclose recovery exceptions, not universal self-service promise.
+### Accepted residual risks
+
+- Log-bearer exposure: anyone reading issuance logs/exports or browser fragments can claim until use/expiry. Restrict IAM, exports, retention and crash/heap/core dumps; deployed controls remain unverified.
+- Claim-exhaustion DoS: unauthenticated attackers can spend all five wrong attempts, including after restart. Public status reveals the open window; trusted restart is recovery, not an availability guarantee.
+- Shared seller/admin origin: seller-origin script compromise can act on platform APIs; mandatory TOTP and the shop-host restricted cookie do not restore origin isolation.
+- Clock skew: overlap detection compares application-start wall time with DB issuance time. Require synchronized clocks and single-instance stop-before-start operation.
+- Backup restore: restoring an older empty platform backup can reopen the latch. Restore-test before the runbook mutation block; privileged restore is outside normal permanent-closure guarantees.
+- PostgreSQL 20-connection cap: default/platform/tenant/provisioner pools share finite VM capacity. Connection pressure, RAM, outbound WhatsApp limitations and multi-database restore acceptance remain unverified deployment gates.
+
 
 ## 6. GCP enablement plan
 
@@ -349,16 +386,16 @@ Default off all slices, affected API/onboarding/security/deploy docs updated wit
 | P1 Contract | Q1/Q2/log exception/admin host/GCP bounds, no code. | No contradictory status/recovery promise. |
 | P2 Migration | Email/state/audit/v2/fresh init. | Empty/existing/rollback/immutability PG proof, shop unchanged. |
 | P3 Mode/email | Exclusive config/existing login UI/API/legacyNULL. | Real login/lockout/config/bootstrap smoke, no issuance. |
-| P4 Issuance | Startup/hash/rotation/expiry/audit/emission/reconnect-maintenance. | Actual restart/connect/commit-log faults. |
-| P5 API | Validate/challenge/atomicclaim/status/limits/audit/dispatch. | Real race/expiry/rotation HTTP-PG, no FULL. |
-| P6 Page | Approved loader/form/assets/packaging/history/fixedhandoff. | Browser claim→restrictedMFA/resume/no storage/CSP. |
+| P4 Issuance — implemented locally | Startup/hash/rotation/expiry/audit/emission/reconnect-maintenance; UUID generation and P2 hash-only singleton/history layout retained. | PostgreSQL runtime tests exercise overlapping starts, restart supersession, expiry without renewal, reconnect, maintenance and log/storage isolation. No deployment or cloud-log receipt verified. |
+| P5 API — implemented locally | Shop-origin status/atomic claim/limits/audit/dispatch; authoritative PIC contract above replaces validate/challenge proposal. | PostgreSQL race, rollback, expiry/off/exhaustion, validation, restricted-session/MFA tests and actual Node HTTP claim smoke passed. Separate-host browser continuation requires admin-origin password login. |
+| P6 Page — implemented locally | Node-gated exact loader/form/assets; backend packaging, immediate history clearing, generic errors and config-derived handoff; separate-host sign-in preserves P5 cookie boundary. | Scoped PostgreSQL gating and deterministic DOM execution; browser rendering, real edge and image build remain UNVERIFIED. |
 | P7 Edge | GCP setup/admin/tenant gating, OrbStack Caddy untouched. | Real hostmatrix/usable tenant URLs. |
 | P8 GCP release gate | Platform fingerprint/root-runtime/manualbaseline, image-only updater. | Negative controller/platform-only schema gate. |
 | P9 Capacity | Configurable cap legacy20/dynamicUI/GCP pools-provision. | Concurrent workload DB-memory proof. |
 | P10 Tooling | Setup Linux context/permissions preserving OrbStack, secrets/log/gateway/multiDB backup-restore. | Disposable complete journey/restore; harmless cloudlog authorized proof. |
 | P11 Activation | Authorized manual GCP enablement, owner claim/MFA, private evidence/auditedbaseline. | Closed setup/real tenant/default intact/recoverable backup/no owner Docker-env-file onboarding. |
 
-No phase implemented. Activation requires explicit operational authority/reachable evidence, not just this plan.
+P2, P3a, P4 and P5 are implemented locally as noted above. Activation requires explicit operational authority/reachable evidence, not just this plan.
 
 ## 9. Open questions / UNVERIFIED
 
@@ -371,4 +408,4 @@ No phase implemented. Activation requires explicit operational authority/reachab
 7. **OrbStack historical:**R4 one unenrolled admin not current assertion; preserve actual account/MFA/email. Inventory collision before opt-in, no auto rename/delete.
 8. **Assurance limits:**no email delivery/verification/recovery, no unauthenticated all-factors recovery, no multi-replica handoff/exactly-once cloud delivery.
 
-Task verification scope: requested local source/runbook inspection and document checks only; no code/package/service/network/database/deployment work. Implementation/live acceptance remain future gates.
+Initial design verification was source/runbook inspection only. P5 local API/runtime verification is recorded above; browser, edge, capacity, restore and deployment acceptance remain future gates.

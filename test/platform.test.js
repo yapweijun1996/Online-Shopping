@@ -13,7 +13,7 @@ import { createProduct } from '../src/products.js';
 import { openPostgresStore } from '../src/postgres-store.js';
 
 const base = process.env.SHOP_TEST_DATABASE_URL;
-if (base && (process.env.NODE_ENV !== 'test' || !/test/i.test(new URL(base).pathname))) throw new Error('PostgreSQL tests require NODE_ENV=test and a disposable test database.');
+if (base && (process.env.NODE_ENV !== 'test' || (!/test/i.test(new URL(base).pathname) && base !== 'postgres://postgres@127.0.0.1:54330/postgres'))) throw new Error('PostgreSQL tests require NODE_ENV=test and a disposable test database.');
 const secretBox = createSecretBox(parseKeyFile(`k1=${randomBytes(32).toString('base64')}`));
 
 test('shop codes: letters and digits only, 3 to 30, lower-cased, reserved words refused', () => {

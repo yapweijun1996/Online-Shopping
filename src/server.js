@@ -62,7 +62,8 @@ export async function createApp(config) {
   }
   const platform = config.platform ? createPlatformRuntime({ store: database, config, paused: () => deploymentPaused(config.maintenancePath) }) : null;
   const handle = await createApi({ store: database, config, serveStatic, registry: platform?.registry,
-    platformHandler: platform ? (request, context) => platform.handle(request, context) : null });
+    platformHandler: platform ? (request, context) => platform.handle(request, context) : null,
+    setupHandler: platform ? (request, context) => platform.handleSetup(request, context) : null });
   platform?.connect().catch(() => {});
   let inFlight = 0, worker = null;
   const paused = () => deploymentPaused(config.maintenancePath);

@@ -1,14 +1,14 @@
 # GCP deployment
 
-This deployment is separate from the existing OrbStack/Cloudflare deployment. It uses the existing GCP `e2-micro` VM (1 GiB RAM, 20 GiB disk, 2 GiB swap), shared Caddy gateway and Docker Compose. It creates a **new PostgreSQL volume**; no old data or secrets are imported. Keep the existing USD 20/month budget; no VM, paid service or load balancer is created by these files.
+This deployment is separate from OrbStack/Cloudflare. The existing VM is now e2-small (2 GiB RAM), shared with other containers. Preserve its existing PostgreSQL volume; never reinitialize it to enable platform mode.
 
 ## Trust boundary and runtime policy
 
 The public gateway terminates TLS for `demoonlineshopping.xyz` and `seller.demoonlineshopping.xyz`, preserves `Host`, and **overwrites** `X-Real-IP` with the client IP from the connection. Connect only that trusted gateway to the external `online-shopping-edge` network and proxy both hosts to `online-shopping-frontend:80`. Do not expose application or PostgreSQL ports. Anyone allowed onto this network could forge client IP headers. There are no Cloudflare headers or services in this deployment.
 
-The frontend mounts `deploy/gcp/Caddyfile` and serves the existing frontend image. Customer and seller paths are separated; unknown paths, platform/demo paths and tenant prefixes fail closed. The initial platform is disabled, so there is no tenant routing. Backend uses `TRUST_PROXY=1`, exact public/seller HTTPS origins, manual shop mode, no quick login, and no integration key file. Omitting the integration key also prevents the outbound WhatsApp worker from starting. No Docker socket is mounted in any application container.
+The frontend isolates shop and seller hosts; the SuperAdmin console shares the seller host by explicit owner decision. Claim pages/APIs are proxied only on the shop host. Tenant static paths use the backend metadata-only lifecycle/alias gate before prefix rewriting; tenant APIs retain their prefix. Both hosts accept root and tenant-prefixed WhatsApp webhooks, subject to backend verification. Unknown paths return 404. Claim mode defaults off. The integration-key path defaults empty; activation supplies it and consequently permits the existing WhatsApp worker to run (the private network still has no internet egress).
 
-The backend runs as the existing image's `node` user, read only, with a 256 MiB memory cap and 128 MiB V8 heap; frontend has 48 MiB; PostgreSQL has 192 MiB, 20 connections and 32 MiB shared buffers. The PostgreSQL owner and application role have separate passwords. The existing `deploy/init-postgres.sh` grants DML to `online_shopping_app`; the app receives only that role's secret. This does not make audit tables immutable. The internal per-project network prevents backend/DB internet egress. Resource caps are initial conservative limits, not evidence that every large catalog/workload fits; observe OOM events, latency, swap and disk after deployment.
+Backend memory is capped at 384 MiB with a 192 MiB V8 heap to leave native/TLS/database/scrypt headroom for platform work; frontend remains 48 MiB and PostgreSQL 192 MiB with 20 connections. Total shopping caps are 624 MiB on the shared 2 GiB VM, not a capacity guarantee. Observe OOM, swap, connections and latency before adding tenants. Existing shop owner/app credentials remain separate. New platform secrets are UID/GID 1000, mode 0600 inside a root-only directory: file-backed Compose secrets preserve host ownership, allowing the image's node user to read them without world-readable files.
 
 ## CI images
 
@@ -20,8 +20,9 @@ After the first publication, make both GHCR packages **public** in their package
 
 Review the exact release and verify its CI before installation. All commands below run on the existing VM as root. The installer is intentionally manual: automatic updates cannot replace the updater, Compose policy, runtime configuration or systemd units.
 
-1. Create `/opt/online-shopping-gcp` owned by root, mode `0700`; every ancestor must be root owned and not writable by group/others. Copy `deploy/gcp/update.py` to `update.py`, `compose.gcp.yaml` to `compose.yaml`, and `deploy/gcp/runtime.env.example` to `runtime.env`, each root owned, mode `0600`. Set the four explicit runtime keys only; the updater rejects duplicate/extra keys, shell interpolation, invalid hostnames and unsafe paths. No secrets belong in these files.
+1. Create `/opt/online-shopping-gcp` root-owned mode `0700`, with root-owned non-writable ancestors. Install the reviewed updater, Compose policy, provisioner and runtime example there as `update.py`, `compose.yaml`, `enable-platform.py` and `runtime.env`, mode `0600` (provisioner `0700`). Runtime accepts only shop/seller hosts, default seller username, secrets directory, two binary platform switches and the empty or fixed integration key mount path. Unknown/duplicate keys and interpolation are rejected. No secret values belong here.
 2. Create `/opt/cloudops/secrets/online-shopping` root owned, mode `0700`. Generate three separate strong secrets outside Git: `admin-password` (the existing application requires at least 16 characters, letters and digits, and rejects weak passwords), `postgres-password`, and `postgres-owner-password`. Docker Compose file-backed secrets retain host file permissions: the backend's non-root `node` user must be able to read its mounted admin/app secrets. Use root-owned mode `0444` secret files inside the root-only `0700` host directory, or an explicitly reviewed UID/ACL mapping. Never print the values or use command-line password arguments. Do not reuse any existing app/database secrets.
+   Before initialization, run `python3 /opt/online-shopping-gcp/enable-platform.py --root /opt/online-shopping-gcp secrets`, then the same command with `secrets --check`. This creates only missing integration/platform/provisioner files, exclusively, mode 0600 UID/GID1000, without images, release directories, Docker or database prerequisites. Keep both platform switches off.
 3. Ensure `online-shopping-edge` exists and connect the shared gateway; configure the two gateway hosts above. Configure DNS/firewall for the shared gateway's existing 80/443 only. Do not add app/database published ports.
 4. Initialize with the exact current full main SHA (replace the placeholder):
 
@@ -31,6 +32,7 @@ Review the exact release and verify its CI before installation. All commands bel
 
    Initialization verifies main and the latest exact-SHA `verify.yml` push run, downloads only schema/init/Caddy configuration from that trusted SHA, verifies Git blob hashes, anonymously pulls both image tags, resolves immutable digests, checks labels/platform, and starts the full stack. It saves `state.json` only after backend readiness and frontend-proxied readiness return the expected revision. The schema/init files run only when PostgreSQL initializes the new empty volume. If an initial deployment fails, inspect private container health diagnostics without publishing logs; initialization can be retried after resolving the cause. Do not delete a nonempty DB volume as a retry strategy.
 5. Verify both public hosts, expected 404 cross-host routes, login, and a fictional catalog/order scenario. Confirm owner/app DB separation, startup opt-out flags, no extra ports/socket mounts, and available RAM/disk. This manual public check also establishes actual gateway TLS/header policy; local updater checks do not prove it.
+   Fresh-install platform activation is separate: after this default-off stack is healthy, restore-test its private backup, run `enable-platform.py --root /opt/online-shopping-gcp provision --check` (expected failure before provisioning; inspect privately), then `provision`, then require `provision --check` to succeed. Provisioning requires the healthy stack and existing secrets; it creates missing roles/database and explicitly applies claim migration 002. Only then follow the reviewed opt-in/stop-before-start procedure below. Never run provisioning before first initialization.
 6. Copy `deploy/gcp/online-shopping-update.service` and `.timer` to `/etc/systemd/system/`, root owned. Only after successful initialization:
 
    ```sh
@@ -56,8 +58,138 @@ Inspect status via `systemctl status online-shopping-update.timer`, `journalctl 
 
 Offline verification: `python3 test/gcp-deploy.test.py`; the new image publication workflow runs these tests before publishing each image. Tests cover latest CI scope/reruns, idempotency, failed readiness rollback and failed rollback intent, crash recovery, protected/schema/config gates, malicious path/revision/image/config inputs, secret-safe command failures, anonymous digest resolution, and Compose isolation. Live deployment and public TLS/route checks must be recorded by the operator separately.
 
+Real local GCP edge verification (Docker context `orbstack`, no application images or production access):
+
+```sh
+docker --context orbstack pull caddy:2.10.2-alpine
+node scripts/qa-gcp-caddy-routing.mjs
+```
+
+The matrix runs the unchanged `deploy/gcp/Caddyfile` with `shop.qa.test` / `seller.qa.test`, copied `public/` assets and a synthetic echo backend implemented with the same pinned Caddy image. It prints PASS/FAIL groups and exits nonzero on failure. Disposable `qa-gcp-*` containers/network and temporary files are removed on exit. It covers static assets, setup host/method isolation, seller/platform routes, unknown host, raw path guards, tenant prefix/query preservation, both webhook methods, gateway-header forwarding and all nine crawler agents on default/tenant roots. It does not prove the external gateway overwrites client headers, public TLS, real application authentication or production deployment.
+
+`provision --check` fails readiness for missing roles/database/secrets or unusable credentials. Inside the running backend, an inline Node probe uses `pg` and mounted secret paths to connect over the container network to `postgres`: app against `platform`, provisioner against `postgres`. Each role must reject a deliberately wrong password with PostgreSQL's password-authentication error before its real credential and identity can pass. Trust/ignored-password paths and missing, unreadable or empty mounts fail closed. Only fixed JSON statuses leave the probe; passwords and server diagnostics never enter argv or output. No password is reset. PostgreSQL retains only its existing owner/app mounts and must not be recreated. Safe order: create secret files, install reviewed Compose/Caddy, recreate only backend+frontend with flags off, provision, then flip claim environment and restart backend. Check mode does not certify schema/application readiness.
+
+
 ## Initial GCP acceptance record (2026-10-20)
 
 Release `fb96872f727390c1b59e7fc130fca0c91b58a24a` passed main push verification and both GHCR image publications. The native GCP controller initialized a fresh PostgreSQL volume and accepted the immutable backend/frontend digests after direct and frontend-proxied readiness matched the revision. The host controller SHA-256 matched the reviewed repository source. This record is a documentation-only main update used for the live automatic-deployment acceptance check; final observed deployment state and gateway/DNS evidence are maintained in the CloudOps-MCP operations repository.
 
 Independent pre-deployment checks passed 522 application tests with PostgreSQL16 on Node24.20, 39 existing deployment-controller tests, 12 GCP controller tests, and production dependency audit (zero vulnerabilities). A separate fresh local Compose stack verified owner login, authenticated setup read, shop/seller pages, cross-host404 isolation and disabled demo mode. These checks do not claim public TLS availability, migration of existing shop data, or a completed shop business setup.
+
+## Platform claim manual release (P7/P8/P10 artifacts; not live acceptance)
+
+Run as root on Linux. No DNS change: admin host is `seller.demoonlineshopping.xyz`. This deliberately shares the seller script origin with SuperAdmin; mandatory TOTP does not eliminate that shared-origin risk. Do not use legacy `PLATFORM_ADMIN_USERNAME` or `PLATFORM_ADMIN_PASSWORD_FILE`.
+
+Prerequisite for an **existing live stack**: stage the complete reviewed release at `/root/reviewed-platform`, including CI-verified immutable references in `images.env` (BACKEND_IMAGE, FRONTEND_IMAGE, APP_REVISION and RELEASE_DIR only). RELEASE_DIR is `/opt/online-shopping-gcp/releases/<APP_REVISION>`. Verify CI/digests before staging. The running default-shop schema must match; otherwise stop for its separate migration procedure. Before the mutation block below, take and restore-test a private cluster backup in isolated PostgreSQL16. Do not proceed without restore evidence. Explicit platform provisioning applies migration 002, never shop DDL. An older v1-only image cannot open a manually upgraded v2 platform database; do not use it for rollback after opt-in.
+
+Ordered non-interactive commands (do not enable shell tracing; stdout/logs remain private):
+
+```sh
+set -eu
+R=/opt/online-shopping-gcp
+S=/root/reviewed-platform
+systemctl stop online-shopping-update.timer
+systemctl stop online-shopping-update.service
+install -d -m 0700 "$R/platform-rollback"
+cp -p "$R/compose.yaml" "$R/runtime.env" "$R/images.env" "$R/update.py" "$R/state.json" "$R/platform-rollback/"
+python3 - "$R" "$S" <<'PY'
+import json, pathlib, sys
+r, s = map(pathlib.Path, sys.argv[1:])
+old = dict(line.split('=', 1) for line in (r/'images.env').read_text().splitlines())
+new = dict(line.split('=', 1) for line in (s/'images.env').read_text().splitlines())
+assert set(old) == set(new) == {'BACKEND_IMAGE','FRONTEND_IMAGE','APP_REVISION','RELEASE_DIR'}
+# Configuration-only activation requires the already accepted claim-capable images.
+assert old == new, 'Install and verify the reviewed claim-capable image release first'
+assert (pathlib.Path(new['RELEASE_DIR'])/'deploy/gcp/Caddyfile').is_file()
+PY
+docker compose -p online-shopping-gcp --env-file "$R/runtime.env" --env-file "$R/images.env" -f "$R/compose.yaml" ps
+df -h "$R"
+free -m
+# Back up cluster metadata and all databases privately before any additive DDL.
+docker compose -p online-shopping-gcp --env-file "$R/runtime.env" --env-file "$R/images.env" -f "$R/compose.yaml" exec -T postgres pg_dumpall -U online_shopping > "$R/platform-rollback/cluster.sql"
+chmod 0600 "$R/platform-rollback/cluster.sql"
+install -m 0600 "$S/deploy/gcp/update.py" "$R/update.py"
+install -m 0700 "$S/deploy/gcp/enable-platform.py" "$R/enable-platform.py"
+python3 "$R/enable-platform.py" --root "$R" secrets
+python3 "$R/enable-platform.py" --root "$R" secrets --check
+install -m 0600 "$S/compose.gcp.yaml" "$R/compose.yaml"
+# Install reviewed Caddy and backend mounts with platform flags still off.
+python3 - "$R" "$S" <<'PY'
+import pathlib, sys
+r, s = map(pathlib.Path, sys.argv[1:])
+images = dict(line.split('=', 1) for line in (r/'images.env').read_text().splitlines())
+target = pathlib.Path(images['RELEASE_DIR'])/'deploy/gcp/Caddyfile'
+(r/'platform-rollback/Caddyfile').write_bytes(target.read_bytes())
+target.write_bytes((s/'deploy/gcp/Caddyfile').read_bytes())
+target.chmod(0o644)
+PY
+docker compose -p online-shopping-gcp --env-file "$R/runtime.env" --env-file "$R/images.env" -f "$R/compose.yaml" stop backend frontend
+docker compose -p online-shopping-gcp --env-file "$R/runtime.env" --env-file "$R/images.env" -f "$R/compose.yaml" up -d --no-deps --no-build backend frontend
+# Missing objects cause failed readiness before first provisioning; inspect privately.
+if python3 "$R/enable-platform.py" --root "$R" provision --check; then
+  printf '%s\n' 'Existing platform credentials authenticate'
+else
+  printf '%s\n' 'Not ready: inspect private state before additive provisioning'
+fi
+python3 "$R/enable-platform.py" --root "$R" provision
+python3 "$R/enable-platform.py" --root "$R" provision --check
+python3 - "$R" "$S" <<'PY'
+import pathlib, sys
+r, s = map(pathlib.Path, sys.argv[1:])
+env = dict(line.split('=', 1) for line in (r/'runtime.env').read_text().splitlines() if line and not line.startswith('#'))
+env.update(PLATFORM_ENABLED='1', PLATFORM_ADMIN_CLAIM_ENABLED='1', INTEGRATION_KEY_FILE='/run/secrets/integration_keys')
+(r/'runtime.env').write_text(''.join(k+'='+v+'\n' for k,v in env.items()))
+PY
+# Stop-before-start: no overlapping claim issuers; never recreate PostgreSQL.
+docker compose -p online-shopping-gcp --env-file "$R/runtime.env" --env-file "$R/images.env" -f "$R/compose.yaml" stop backend frontend
+docker compose -p online-shopping-gcp --env-file "$R/runtime.env" --env-file "$R/images.env" -f "$R/compose.yaml" up -d --no-deps --no-build backend frontend
+docker compose -p online-shopping-gcp --env-file "$R/runtime.env" --env-file "$R/images.env" -f "$R/compose.yaml" logs --since 5m --no-log-prefix backend
+```
+
+Before DDL, restore-test `cluster.sql` in an isolated PostgreSQL 16 environment using the separately reviewed backup procedure; do not restore into production or proceed without that evidence. Logs contain one `platform.claim.issued` record per generation, including the bearer URL. Read privately; never paste it into chat, tickets or CI. Docker json-file is authoritative here; Cloud Logging delivery is UNVERIFIED. Restrict log readers/exports/retention before enabling. Missing/expired delivery requires a trusted stop/start of backend to issue a fresh generation, not retrieval of an old plaintext token.
+
+The owner alone opens the shop-host claim URL, submits email/username/password, then signs in again at `https://seller.demoonlineshopping.xyz/platform/`, enrolls TOTP and stores recovery codes privately. The agent must not claim or enroll for the owner. Verify setup now returns 404, console MFA works, and a fictional tenant's shop/seller routes, lifecycle/alias gate, cross-host 404s and webhooks work before marking acceptance. Actual Caddy adaptation and gateway/TLS tests are mandatory at deployment; offline tests are not substitutes.
+
+Rollback configuration without dropping platform objects or changing any passwords:
+
+```sh
+set -eu
+R=/opt/online-shopping-gcp
+docker compose -p online-shopping-gcp --env-file "$R/runtime.env" --env-file "$R/images.env" -f "$R/compose.yaml" stop backend frontend
+python3 - "$R" <<'PY'
+import pathlib, sys
+r = pathlib.Path(sys.argv[1])
+images = dict(line.split('=', 1) for line in (r/'platform-rollback/images.env').read_text().splitlines())
+(pathlib.Path(images['RELEASE_DIR'])/'deploy/gcp/Caddyfile').write_bytes((r/'platform-rollback/Caddyfile').read_bytes())
+for name in ('compose.yaml','runtime.env','images.env','update.py'):
+    (r/name).write_bytes((r/'platform-rollback'/name).read_bytes())
+PY
+docker compose -p online-shopping-gcp --env-file "$R/runtime.env" --env-file "$R/images.env" -f "$R/compose.yaml" up -d --no-deps --no-build backend frontend
+```
+
+Keep the timer stopped after activation or rollback until acceptance and a new audited baseline. The following explicit baseline command is a privileged manual release, not an updater bypass: it requires the staged release to still be CI-approved main, compares every controller-managed mount to reviewed source, verifies readiness and saves the current protected/local fingerprints. Run only after the owner has completed MFA and the public acceptance checks above:
+
+```sh
+python3 - /opt/online-shopping-gcp <<'PY'
+import importlib.util, pathlib, sys
+r = pathlib.Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location('gcp_update', r/'update.py')
+u = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(u)
+up = u.Updater(r)
+current = up.state['current']
+assert not up.state.get('pending')
+assert up.head() == current['sha'] and up.approved(current['sha'])
+baseline, content = up.source(current['sha'])
+release = r/'releases'/current['sha']
+for name in u.MOUNTS:
+    assert (release/name).read_bytes() == content[name], 'Reviewed source/mount mismatch'
+up.runtime()
+up.health(current)
+current['baseline'] = baseline
+up.save('deployed', current=current, local=up.local_fingerprint())
+PY
+systemctl start online-shopping-update.timer
+```
+
+Do not erase state or rerun initialize. Platform schema/version/migrations are protected by `src/platform/`; MOUNTS is unchanged. Provisioning is additive, resumes interrupted creation, validates boundaries and never changes existing passwords or shop tables. Its explicit `scripts/upgrade-platform.mjs --with-claim` invocation initializes/migrates platform to v2. The automatic OrbStack version stays 1 and its unflagged runner never applies migration 002. Claim-off fresh databases remain v1; claim-on fresh databases initialize v2, and existing v1 requires explicit upgrade. Retain the old controller baseline and keep the timer stopped pending review.

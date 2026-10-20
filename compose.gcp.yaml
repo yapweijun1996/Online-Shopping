@@ -25,7 +25,7 @@ services:
     image: ${BACKEND_IMAGE:?Immutable backend digest required}
     environment:
       NODE_ENV: production
-      NODE_OPTIONS: --max-old-space-size=128
+      NODE_OPTIONS: --max-old-space-size=192
       APP_REVISION: ${APP_REVISION:?Full revision required}
       ADMIN_USERNAME: ${ADMIN_USERNAME:?Set ADMIN_USERNAME}
       ADMIN_PASSWORD_FILE: /run/secrets/admin_password
@@ -38,13 +38,22 @@ services:
       TRUST_PROXY: "1"
       SHOP_MODE: manual
       SELLER_QUICK_LOGIN: "0"
-      PLATFORM_ENABLED: "0"
-    secrets: [admin_password, database_password]
+      PLATFORM_ENABLED: ${PLATFORM_ENABLED:-0}
+      PLATFORM_ADMIN_CLAIM_ENABLED: ${PLATFORM_ADMIN_CLAIM_ENABLED:-0}
+      PLATFORM_ADMIN_HOST: ${SELLER_HOST:?Set SELLER_HOST}
+      PLATFORM_DATABASE_HOST: postgres
+      PLATFORM_DATABASE_NAME: platform
+      PLATFORM_DATABASE_USER: platform_app
+      PLATFORM_PROVISIONER_USER: platform_provisioner
+      PLATFORM_DATABASE_PASSWORD_FILE: /run/secrets/platform
+      PLATFORM_PROVISIONER_PASSWORD_FILE: /run/secrets/provisioner
+      INTEGRATION_KEY_FILE: ${INTEGRATION_KEY_FILE:-}
+    secrets: [admin_password, database_password, integration_keys, platform, provisioner]
     networks: [private]
-    mem_limit: 256m
+    mem_limit: 384m
     cpus: 0.5
     read_only: true
-    tmpfs: [/tmp:size=16m]
+    tmpfs: ["/tmp:size=16m"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -88,6 +97,12 @@ secrets:
     file: ${SECRETS_DIR:?Set SECRETS_DIR}/postgres-password
   database_owner_password:
     file: ${SECRETS_DIR:?Set SECRETS_DIR}/postgres-owner-password
+  integration_keys:
+    file: ${SECRETS_DIR:?Set SECRETS_DIR}/integration-keys
+  platform:
+    file: ${SECRETS_DIR:?Set SECRETS_DIR}/platform-password
+  provisioner:
+    file: ${SECRETS_DIR:?Set SECRETS_DIR}/provisioner-password
 volumes:
   pg_data:
 networks:

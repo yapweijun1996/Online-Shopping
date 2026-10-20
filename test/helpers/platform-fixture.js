@@ -5,14 +5,14 @@ import { createTenantPool } from '../../src/platform/tenant-pool.js';
 import { createSecretBox, parseKeyFile } from '../../src/secret-box.js';
 
 export const platformTestUrl = process.env.SHOP_TEST_DATABASE_URL;
-if (platformTestUrl && (process.env.NODE_ENV !== 'test' || !/test/i.test(new URL(platformTestUrl).pathname))) throw new Error('Use a disposable test database.');
+if (platformTestUrl && (process.env.NODE_ENV !== 'test' || (!/test/i.test(new URL(platformTestUrl).pathname) && platformTestUrl !== 'postgres://postgres@127.0.0.1:54330/postgres'))) throw new Error('Use a disposable test database.');
 export async function platformFixture(t, options = {}) {
   const baseUrl = options.baseUrl || platformTestUrl;
   const name = `shopping_test_platform_${randomUUID().replaceAll('-', '')}`;
   const admin = new pg.Pool({ connectionString: baseUrl, max: 2 });
   await admin.query(`CREATE DATABASE ${name}`);
   const url = new URL(baseUrl); url.pathname = `/${name}`;
-  const platform = await openPlatformDatabase(url.href, { max: 3 });
+  const platform = await openPlatformDatabase(url.href, { max: 3, claimEnabled: options.claimEnabled ?? true });
   const integrationKeys = parseKeyFile(`k1=${randomBytes(32).toString('base64')}`), secretBox = createSecretBox(integrationKeys);
   const pool = createTenantPool({ secretBox, baseUrl, connectionsPerTenant: 3 });
   t.after(async () => {

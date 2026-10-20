@@ -4,7 +4,6 @@
 }
 (proxy) {
 	reverse_proxy backend:3000 {
-		# The only edge peer is the trusted gateway; it must overwrite this header.
 		header_up X-Real-IP {header.X-Real-IP}
 	}
 }
@@ -15,6 +14,48 @@
 	header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
 	header Cache-Control no-cache
 }
+(tenant) {
+	# API requests retain their prefix; static requests pass the metadata-only gate.
+	@tenant {
+		path_regexp tenant ^/([a-z0-9]{3,30})(?:/|$)
+		not path_regexp ^/(setup|admin|api|shop|seller|demo|www|health|ready|static|assets|shared|platform|default|login|logout|public|root|support|system|test|tenant|tenants|webhook|webhooks|sw|manifest|favicon|icons|p|s)(?:/|$)
+	}
+	handle @tenant {
+		route {
+			@tenant_api path_regexp ^/[a-z0-9]{3,30}/(?:api/|{args[0]}/manifest\.webmanifest$|p/|s/)
+			handle @tenant_api {
+				import proxy
+			}
+			forward_auth backend:3000 {
+				uri /{re.tenant.1}/api/v1/tenant-access
+				header_up X-Tenant-Original-Uri {http.request.orig_uri}
+				header_up X-Real-IP {header.X-Real-IP}
+			}
+			@tenant_crawler {
+				host {$SHOP_HOST}
+				path_regexp ^/[a-z0-9]{3,30}/(?:shop/?)?$
+				header_regexp User-Agent (?i)(facebookexternalhit|facebot|whatsapp|twitterbot|telegrambot|slackbot|discordbot|googlebot|bingbot)
+			}
+			handle @tenant_crawler {
+				rewrite * /{re.tenant.1}/s/home
+				import proxy
+			}
+			@tenant_entry path_regexp ^/[a-z0-9]{3,30}/?$
+			handle @tenant_entry {
+				redir * /{re.tenant.1}/{args[0]}/ 302
+			}
+			@tenant_static path_regexp tenant_static ^/([a-z0-9]{3,30})/({args[0]}(?:/.*)?|shared/.*|shop/tokens\.css)$
+			handle @tenant_static {
+				rewrite * /{re.tenant_static.2}
+				root * /srv/public
+				file_server
+			}
+			handle {
+				respond 404
+			}
+		}
+	}
+}
 http://{$SHOP_HOST} {
 	import headers
 	route {
@@ -22,10 +63,25 @@ http://{$SHOP_HOST} {
 		handle @encoded {
 			respond 404
 		}
-		@private path /seller* /api/v1/seller* /demo* /api/v1/demo* /platform* /api/v1/platform* /s/*
+		# Never serve setup from the frontend image or overwrite Node privacy headers.
+		@setup path /setup/ /setup/setup.js /setup/setup.css /api/v1/setup/status /api/v1/setup/claim
+		handle @setup {
+			header Cache-Control no-store
+			header Referrer-Policy no-referrer
+			header X-Robots-Tag noindex
+			import proxy
+		}
+		@private {
+			path /setup* /api/v1/setup* /seller* /api/v1/seller* /demo /demo/* /api/v1/demo* /platform* /api/v1/platform* /s/*
+		}
 		handle @private {
 			respond 404
 		}
+		@tenant_private path_regexp ^/[a-z0-9]{3,30}/(?:setup.*|api/v1/setup.*|platform.*|api/v1/platform.*|demo(?:/|$)|api/v1/demo(?:/|$)|seller.*|api/v1/seller(?:/|$))
+		handle @tenant_private {
+			respond 404
+		}
+		import tenant shop
 		@api path /api/* /health /ready /p/*
 		handle @api {
 			import proxy
@@ -58,19 +114,28 @@ http://{$SELLER_HOST} {
 			respond 404
 		}
 		@private {
-			path /shop* /p/* /s/* /api/v1/orders* /demo* /api/v1/demo* /platform* /api/v1/platform*
+			path /setup* /api/v1/setup* /shop* /p/* /s/* /api/v1/orders* /demo /demo/* /api/v1/demo*
 			not path /shop/tokens.css
 		}
 		handle @private {
 			respond 404
 		}
+		@tenant_private {
+			path_regexp ^/[a-z0-9]{3,30}/(?:setup.*|api/v1/setup.*|platform.*|api/v1/platform.*|demo(?:/|$)|api/v1/demo(?:/|$)|shop.*|[ps](?:/|$)|api/v1/orders(?:/|$))
+			not path_regexp ^/[a-z0-9]{3,30}/shop/tokens\.css$
+		}
+		handle @tenant_private {
+			respond 404
+		}
+		import tenant seller
 		@api path /api/* /health /ready
 		handle @api {
 			import proxy
 		}
+		redir /platform /platform/ 302
 		redir / /seller/ 302
 		redir /seller /seller/ 302
-		@static path /seller/* /shared/* /shop/tokens.css /favicon.ico /favicon.svg
+		@static path /seller/* /platform/* /shared/* /shop/tokens.css /favicon.ico /favicon.svg
 		handle @static {
 			root * /srv/public
 			file_server

@@ -19,7 +19,7 @@ REPO = 'yapweijun1996/Online-Shopping'
 SHA = re.compile(r'[0-9a-f]{40}')
 DIGEST = re.compile(r'ghcr\.io/yapweijun1996/online-shopping-(backend|frontend)@sha256:[0-9a-f]{64}')
 MOUNTS = ('src/postgres/schema.sql', 'deploy/init-postgres.sh', 'deploy/gcp/Caddyfile')
-PROTECTED = ('deploy/', '.github/workflows/', 'compose', 'Dockerfile', 'src/postgres/', 'src/config.js', 'package.json', 'package-lock.json')
+PROTECTED = ('deploy/', '.github/workflows/', 'compose', 'Dockerfile', 'src/postgres/', 'src/platform/', 'src/config.js', 'package.json', 'package-lock.json')
 
 
 def revision(value):
@@ -242,10 +242,10 @@ class Updater:
             if not line or line.startswith('#'):
                 continue
             key, separator, value = line.partition('=')
-            if not separator or key in values or key not in ('SHOP_HOST', 'SELLER_HOST', 'ADMIN_USERNAME', 'SECRETS_DIR'):
+            if not separator or key in values or key not in ('SHOP_HOST', 'SELLER_HOST', 'ADMIN_USERNAME', 'SECRETS_DIR', 'PLATFORM_ENABLED', 'PLATFORM_ADMIN_CLAIM_ENABLED', 'INTEGRATION_KEY_FILE'):
                 raise ValueError('Invalid runtime configuration')
             values[key] = value
-        if set(values) != {'SHOP_HOST', 'SELLER_HOST', 'ADMIN_USERNAME', 'SECRETS_DIR'}:
+        if not {'SHOP_HOST', 'SELLER_HOST', 'ADMIN_USERNAME', 'SECRETS_DIR'} <= set(values):
             raise ValueError('Missing runtime configuration')
         for key in ('SHOP_HOST', 'SELLER_HOST'):
             if not re.fullmatch(r'(?=.{1,253}$)[a-z0-9]+(?:[.-][a-z0-9]+)*\.[a-z]{2,63}', values[key]):
@@ -255,6 +255,13 @@ class Updater:
         secret_dir = values['SECRETS_DIR']
         if not re.fullmatch(r'/[A-Za-z0-9_./-]+', secret_dir) or '..' in Path(secret_dir).parts:
             raise ValueError('Invalid secrets directory')
+        for key in ('PLATFORM_ENABLED', 'PLATFORM_ADMIN_CLAIM_ENABLED'):
+            if values.get(key, '0') not in ('0', '1'):
+                raise ValueError('Invalid platform switch')
+        if values.get('INTEGRATION_KEY_FILE', '') not in ('', '/run/secrets/integration_keys'):
+            raise ValueError('Invalid integration key path')
+        if values.get('PLATFORM_ENABLED') == '1' and (values.get('PLATFORM_ADMIN_CLAIM_ENABLED') != '1' or not values.get('INTEGRATION_KEY_FILE')):
+            raise ValueError('Platform requires claim mode and integration key')
         return values
 
     def local_fingerprint(self):

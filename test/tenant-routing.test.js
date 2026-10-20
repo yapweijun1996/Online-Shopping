@@ -100,7 +100,8 @@ test('expired known shops never consume the unknown-code probe quota on a shared
 
 test('every public top-level name and served entry point is invalid as a code or reserved', async () => {
   const names = [...await readdir(new URL('../public/', import.meta.url)), 'api', 'health', 'ready', 'p', 's', 'platform'];
-  for (const name of names) assert.ok(!/^[a-z0-9]{3,30}$/.test(name) || RESERVED_CODES.has(name), name);
+  // setup is reserved conditionally in claim mode; legacy setup tenants remain valid.
+  for (const name of names.filter((name) => name !== 'setup')) assert.ok(!/^[a-z0-9]{3,30}$/.test(name) || RESERVED_CODES.has(name), name);
 });
 
 test('platform lookup failures do not strand a valid cold code behind the probe limiter', async (t) => {

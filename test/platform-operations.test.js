@@ -38,13 +38,13 @@ test('tenant upgrades under their own role never grant the legacy application ro
 test('numbered platform migrations are transactional, repeatable and reject future versions', { skip: !platformTestUrl }, async (t) => {
   const f = await platformFixture(t), folder = await mkdtemp(join(tmpdir(), 'platform-migrations-')); t.after(() => rm(folder, { recursive: true, force: true }));
   const directory = pathToFileURL(folder + '/');
-  await writeFile(join(folder, '002-fixture.sql'), 'CREATE TABLE fixture_marker (id text PRIMARY KEY);');
-  assert.equal(await upgradePlatformSchema(f.platform, { targetVersion: 2, directory }), 2);
-  assert.equal(await upgradePlatformSchema(f.platform, { targetVersion: 2, directory }), 2);
-  await assert.rejects(upgradePlatformSchema(f.platform, { targetVersion: 1, directory }), /Unsupported/);
-  await writeFile(join(folder, '003-invalid.sql'), 'CREATE TABLE rolled_back_marker (id text); SELECT nonexistent_function();');
-  await assert.rejects(upgradePlatformSchema(f.platform, { targetVersion: 3, directory }));
-  assert.equal(await f.platform.schemaVersion(), 2);
+  await writeFile(join(folder, '003-fixture.sql'), 'CREATE TABLE fixture_marker (id text PRIMARY KEY);');
+  assert.equal(await upgradePlatformSchema(f.platform, { targetVersion: 3, directory }), 3);
+  assert.equal(await upgradePlatformSchema(f.platform, { targetVersion: 3, directory }), 3);
+  await assert.rejects(upgradePlatformSchema(f.platform, { targetVersion: 2, directory }), /Unsupported/);
+  await writeFile(join(folder, '004-invalid.sql'), 'CREATE TABLE rolled_back_marker (id text); SELECT nonexistent_function();');
+  await assert.rejects(upgradePlatformSchema(f.platform, { targetVersion: 4, directory }));
+  assert.equal(await f.platform.schemaVersion(), 3);
   assert.equal((await f.platform.get("SELECT to_regclass('public.rolled_back_marker') AS name")).name, null);
 });
 

@@ -8,12 +8,16 @@ import { createTenantPool } from './tenant-pool.js';
 import { createPlatformRegistry } from './registry.js';
 import { createAdminAuth } from './admin-auth.js';
 import { createPlatformRoutes } from './admin-routes.js';
+import { issueAdminClaim } from './admin-claim.js';
+import { createSetupRoutes } from './setup-routes.js';
 
 export function createPlatformRuntime({ store, config, clock = Date.now, paused = () => false }) {
   const secretBox = createSecretBox(config.integrationKeys);
   const pool = createTenantPool({ secretBox, baseUrl: config.platform.databaseUrl, connectionsPerTenant: 3 });
-  let connection = null, pending = null, retryAfter = 0, stopped = false, routes = null, timer, background = null, maintenanceTasks = 0;
+  let connection = null, pending = null, retryAfter = 0, stopped = false, routes = null, setupRoutes = null, timer, background = null, maintenanceTasks = 0;
   const inFlight = new Set();
+  const claimStartedAt = new Date(clock()).toISOString();
+  let claimInitialized = false;
   const deps = { inFlight, secretBox, baseUrl: config.platform.databaseUrl, provisionerUrl: config.platform.provisionerUrl };
   async function recoverInterrupted(platform) {
     if (paused()) return;
@@ -44,9 +48,9 @@ export function createPlatformRuntime({ store, config, clock = Date.now, paused 
     pending = (async () => {
       let candidate;
       try {
-        candidate = await openPlatformDatabase(config.platform.databaseUrl, { max: 3, connectionTimeoutMillis: 2000, query_timeout: 3000, statement_timeout: 3000 });
+        candidate = await openPlatformDatabase(config.platform.databaseUrl, { claimEnabled: config.platform.claimEnabled, max: 3, connectionTimeoutMillis: 2000, query_timeout: 3000, statement_timeout: 3000 });
         const auth = createAdminAuth({ platform: candidate, secretBox, clock });
-        await auth.bootstrap(config.platform.username, config.platform.password);
+        if (!config.platform.claimEnabled) await auth.bootstrap(config.platform.username, config.platform.password);
         await candidate.transaction(async () => {
           if (!await candidate.get('SELECT 1 AS n FROM tenant WHERE is_default = 1')) {
             const setup = await getShopSetup(store), company = await getCompanySettings(store), stamp = new Date(clock()).toISOString();
@@ -57,8 +61,16 @@ export function createPlatformRuntime({ store, config, clock = Date.now, paused 
           await recoverInterrupted(candidate);
         });
         if (stopped) { await candidate.close(); throw new Error('Platform stopped.'); }
+        if (config.platform.claimEnabled && !claimInitialized) {
+          if (paused()) throw new Error('Platform paused.');
+          const issued = await issueAdminClaim(candidate, config, claimStartedAt, paused);
+          claimInitialized = true;
+          // Never replay plaintext after a failed stdout write or a reconnect.
+          if (issued) console.log(JSON.stringify(issued));
+        }
         connection = candidate;
         routes = createPlatformRoutes({ platform: candidate, secretBox, pool, registry, deps, defaultStore: store, config, clock });
+        setupRoutes = createSetupRoutes({ platform: candidate, secretBox, config, clock });
         return connection;
       } catch {
         await candidate?.close().catch(() => {}); retryAfter = clock() + 5000;
@@ -83,6 +95,7 @@ export function createPlatformRuntime({ store, config, clock = Date.now, paused 
       },
     },
     async handle(request, context) { await connect(); return routes(request, context); },
+    async handleSetup(request, context) { await connect(); return setupRoutes(request, context); },
     async close() { stopped = true; clearInterval(timer); await background?.catch(() => {}); await pending?.catch(() => {}); await pool.closeAll(); await connection?.close(); connection = null; },
   };
 }
