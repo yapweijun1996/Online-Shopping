@@ -54,6 +54,14 @@ test('strict CSV syntax, bounds, BOM, CRLF, quoted cells and unsafe identities',
   for (const dangerous of [' =SUM(1)', '\n=SUM(1)', '\tfoo', '@cmd', '+cmd', '-cmd']) assert.equal(parseCsv(toCsv([[dangerous]]))[0][0], `'${dangerous}`);
 });
 
+test('replacement-decoded invalid UTF-8 tracking bytes receive a field error', async () => {
+  const bytes = new Uint8Array([...new TextEncoder().encode(header + 'OS-1,Courier,ABC'), 0xff, 44]);
+  const csv = await new Blob([bytes]).text();
+  const row = trackingRows(csv)[0];
+  assert.deepEqual(row.errors, [{ field: 'trackingNo', code: 'INVALID', message: 'Use valid UTF-8 text without replacement characters.' }]);
+  assert.equal(row.trackingNo, '');
+});
+
 for (const backend of ['SQLite', 'PostgreSQL']) {
   test(`${backend}: 100 and 500 row atomic shipping, replay and unchanged audit`, { skip: backend === 'PostgreSQL' && !base }, async (t) => {
     const { store, make } = await fixture(t, backend);

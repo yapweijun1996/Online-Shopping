@@ -25,7 +25,7 @@ async function fixture(t) {
   const dialog = openTrackingImport({ csrfToken: () => 'csrf', onUnauthorized() {}, onImported() {} });
   const find = (key) => dialog.descendants().find((node) => node.tagName === 'button' && node.textContent === messages.en[key]);
   const file = dialog.descendants().find((node) => node.tagName === 'input');
-  const choose = async (text = 'fictional csv') => { file.files = [{ size: text.length, text: async () => text }]; file.dispatchEvent(new Event('change')); await flush(); };
+  const choose = async (text = 'fictional csv') => { file.files = [new Blob([text])]; file.dispatchEvent(new Event('change')); await flush(); };
   return { dialog, file, find, choose };
 }
 
@@ -68,6 +68,22 @@ test('file errors, conflicts, offline, changed file and expiry cannot commit a s
   status = 409; ui.find('importConfirm').dispatchEvent(new Event('click')); await flush(); assert.equal(ui.find('importConfirm').hidden, true);
   ui.file.files = [{ size: 1_500_001 }]; ui.file.dispatchEvent(new Event('change')); await flush(); assert.equal(ui.find('importConfirm').hidden, true); assert.equal(count, 2);
   status = 401; await ui.choose('new csv'); assert.equal(ui.dialog.open, false); assert.equal(mutationsBusy(), false);
+});
+
+test('invalid UTF-8 tracking bytes clear the plan and cannot preview or commit', async (t) => {
+  const ui = await fixture(t);
+  const sent = [];
+  globalThis.fetch = async (_path, options) => { sent.push(JSON.parse(options.body)); return { ok: true, status: 200, json: async () => answer() }; };
+  await ui.choose();
+  const bytes = new Uint8Array([...new TextEncoder().encode('Order number,Carrier,Tracking number\nOS-1,Courier,ABC'), 0xff]);
+  await ui.choose(bytes);
+  assert.equal(ui.dialog.descendants().find((node) => node.attributes.role === 'status').textContent, messages.en.importBadFile);
+  assert.equal(ui.find('trackingPreview').disabled, true);
+  assert.equal(ui.find('importConfirm').hidden, true);
+  ui.find('trackingPreview').dispatchEvent(new Event('click'));
+  ui.find('importConfirm').dispatchEvent(new Event('click'));
+  await flush();
+  assert.equal(sent.length, 1);
 });
 
 test('tracking copy is present in all seven locales', () => {

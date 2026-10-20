@@ -33,6 +33,7 @@ export function trackingRows(csv) {
       if (/^'(?=\s*[=+\-@]|[\t\r\n])/.test(value)) value = value.slice(1);
       try {
         row[field] = boundedText(value, field, maximum, field !== 'shippedDate');
+        if (row[field].includes('\uFFFD')) throw new FieldError(field, 'Use valid UTF-8 text without replacement characters.');
         if (['orderNo', 'trackingNo'].includes(field) && (/^[=+\-@]/.test(row[field]) || (field === 'trackingNo' && (/\s/u.test(row[field]) || /^[+-]?\d+(?:\.\d+)?e[+-]?\d+$/i.test(row[field]))))) throw new FieldError(field, 'Use a text identifier, not a formula or scientific notation.');
       } catch (error) { row[field] = ''; fail(row, field, 'INVALID', error.message); }
     }

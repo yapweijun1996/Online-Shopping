@@ -109,7 +109,7 @@ export function openTrackingImport({ trigger, csrfToken, onUnauthorized, onImpor
     const chosen = file.files?.[0]; if (!chosen) return;
     if (chosen.size > 1_500_000) { status.textContent = t('importBadFile'); return; }
     busy = true; controls(); notify();
-    try { const text = await chosen.text(); if (current !== generation || !dialog.open) return; csv = text; }
+    try { const text = new TextDecoder('utf-8', { fatal: true }).decode(await chosen.arrayBuffer()); if (current !== generation || !dialog.open) return; csv = text; }
     catch { status.textContent = t('importBadFile'); }
     finally { busy = false; controls(); notify(); }
     if (csv) await run(false);
