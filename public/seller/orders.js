@@ -12,6 +12,7 @@ import './ops-copy.js';
 import { openEraseDialog } from './erase-contact.js';
 import { renderOrderNotes } from './order-notes.js';
 import { formatDate, formatMoney, t, translate } from '../shared/i18n.js';
+import { openTrackingImport, downloadTrackingCsv, trackingTemplate } from './tracking-import.js';
 
 function node(tag, className = '', value = '') {
   const element = document.createElement(tag);
@@ -35,7 +36,7 @@ const SCOPES = {
   confirmations: { defaultFilter: 'CONFIRMED', filters: ['CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'CONFIRMED,SHIPPED,DELIVERED,CANCELLED'] },
 };
 
-export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = false, canExport = false, canDecide = false, initialOrderId = null, onSelect = () => {} }) {
+export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = false, canExport = false, canDecide = false, canFulfil = false, initialOrderId = null, onSelect = () => {} }) {
   root.replaceChildren(document.getElementById('orders-template').content.cloneNode(true));
   translate(root);
   const find = (selector) => root.querySelector(selector);
@@ -87,6 +88,16 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
   let detailRequest = 0;
   let whatsappDetail = null;
   let deciding = false;
+  let trackingDialog = null;
+  if (mode === 'confirmations' && canFulfil) {
+    const template = actionButton(t('trackingTemplate'), () => downloadTrackingCsv(trackingTemplate, 'tracking-template.csv'));
+    const importButton = actionButton(t('trackingImport'), () => {
+      trackingDialog = openTrackingImport({ trigger: importButton, csrfToken, onUnauthorized,
+        onForbidden: () => { importButton.hidden = template.hidden = true; },
+        onImported: () => { loadQueue(); if (selectedId) openOrder(selectedId); } });
+    });
+    exportButton.after(template, importButton);
+  }
 
   function renderStatusOptions() {
     const chosen = status.value || scope.defaultFilter;
@@ -624,10 +635,11 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
       showDetailStatus('selectOrder');
       renderQueue();
     },
-    isBusy: () => deciding,
-    hasUnsavedChanges: () => dialog.open,
-    draftSignature: () => JSON.stringify([dialog.open, dialogAction, selectedId]),
+    isBusy: () => deciding || trackingDialog?.isBusy() === true,
+    hasUnsavedChanges: () => dialog.open || trackingDialog?.open === true,
+    draftSignature: () => JSON.stringify([dialog.open, dialogAction, selectedId, trackingDialog?.open]),
     dispose() {
+      trackingDialog?.dispose();
       whatsappDetail?.dispose();
       active = false;
       ++documentRequest; documents.dispose();

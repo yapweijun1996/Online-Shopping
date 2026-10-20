@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { sellerFixture } from './helpers/seller-app.js';
-import { parseCsv } from '../src/product-import.js';
+import { parseCsv } from '../src/csv.js';
 import { readFileSync } from 'node:fs';
 import { createCategory } from '../src/settings.js';
 
