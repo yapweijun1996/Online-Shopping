@@ -216,9 +216,8 @@ class Tests(unittest.TestCase):
         self.assertNotIn('ports:', compose)
         self.assertNotIn('docker.sock', compose)
         self.assertNotIn('build:', compose)
-        self.assertNotIn('INTEGRATION_KEY', compose)
         self.assertIn('internal: true', compose)
-        self.assertIn('PLATFORM_ENABLED: "0"', compose)
+        self.assertIn('PLATFORM_ENABLED: ${PLATFORM_ENABLED:-0}', compose)
         self.assertIn('online_shopping_app', compose)
 
 
