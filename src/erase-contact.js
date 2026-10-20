@@ -2,6 +2,10 @@
 // amounts, status and event history stay; only personal fields change. The moment and the account are kept on the order.
 import { ApiError } from './http.js';
 import { FieldError } from './validation.js';
+import { createHash } from 'node:crypto';
+
+// One-way, domain-separated suppression marker, not a reusable threading hash.
+export const erasedSenderMarker = (hash) => `erased:${createHash('sha256').update(`whatsapp-erasure:${hash}`).digest('hex')}`;
 
 // Orders still in progress need their contact data to be fulfilled, so only finished orders can be erased.
 export const ERASABLE_STATUSES = ['REJECTED', 'DELIVERED', 'CANCELLED'];
@@ -27,7 +31,17 @@ export async function eraseOrderContact(database, id, input, actorId) {
     if (!changed) throw new ApiError(409, 'STALE_REVISION', 'The order changed. Reload and try again.');
     await database.run(`UPDATE delivery SET recipient_name = ?, recipient_phone = '', address_line1 = ?, address_line2 = NULL,
       address_city = NULL, address_region = NULL, address_postcode = '' WHERE order_id = ?`, ERASED, ERASED, id);
-    // Buyer replies are personal text; the keyed sender hash cannot be reversed to a number and stays for threading.
+    const contacts = await database.all(`SELECT connection_id, recipient_hash AS hash FROM message_outbox WHERE order_id = ?
+      UNION SELECT connection_id, from_hash AS hash FROM message_inbound WHERE order_id = ?`, id, id);
+    for (const contact of contacts) {
+      if (contact.hash.startsWith('erased:')) continue;
+      const marker = erasedSenderMarker(contact.hash);
+      // Include unmatched replies and other message copies for this same connection/sender.
+      await database.run('UPDATE message_inbound SET body = NULL, from_hash = ? WHERE connection_id = ? AND from_hash = ?',
+        marker, contact.connection_id, contact.hash);
+      await database.run('UPDATE message_outbox SET recipient_hash = ? WHERE connection_id = ? AND recipient_hash = ?',
+        marker, contact.connection_id, contact.hash);
+    }
     await database.run('UPDATE message_inbound SET body = NULL WHERE order_id = ?', id);
     await database.run(`UPDATE message_outbox SET status = 'FAILED', next_attempt_at = NULL, last_error = 'Not sent: contact data erased', updated_at = ?
       WHERE order_id = ? AND status IN ('QUEUED', 'SENDING')`, now, id);

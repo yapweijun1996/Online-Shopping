@@ -2,7 +2,7 @@
 
 Evidence base: R1–R4 release source and actual verification dated 2026-10-11; exact SHAs, CI and production state are recorded in MULTI_TENANT_LEDGER.md. Statements describe what the code does today; anything else is labelled **Planned**, **Partial** or **Missing**. Update this file when a trust boundary, entry point or control changes.
 
-Source review at `41407a7bda20adf167e2825900a268f3949316cc`: [CODEBASE_BUG_REVIEW.md](CODEBASE_BUG_REVIEW.md) preserves 15 confirmed findings. B01–B07 are fixed and locally verified; B08–B15 remain open. These checks do not establish production deployment or activation. Invariants below remain required properties.
+Source review at `41407a7bda20adf167e2825900a268f3949316cc`: [CODEBASE_BUG_REVIEW.md](CODEBASE_BUG_REVIEW.md) preserves 15 confirmed findings. B01–B09 are fixed and locally verified; B10–B15 remain open. These checks do not establish production deployment or activation. Invariants below remain required properties.
 
 ## 1. Scope
 
@@ -71,7 +71,7 @@ Meta ──signed HTTPS webhook──► shop host / tenant prefix ──► bac
 5. **Demo sandbox → rest of the system.** `createDemoSandbox` receives no store, session or credential; state is bounded in memory.
 6. **CI/CD → production.** `auto-update.py` trusts `yapweijun1996/Online-Shopping` `main` plus a successful `verify.yml` run on the same SHA, and refuses releases that change the protected files listed in `PROTECTED`.
 7. **Application → external providers.** `src/whatsapp-transport.js` verifies connections and sends templates to a fixed Meta Graph API host with a timeout. The worker sends outside database transactions through this boundary; order routes never call providers. Payments/couriers and the separate synthetic ledger have no live transport.
-8. **External provider → webhook endpoint.** `/api/v1/webhooks/whatsapp` and its tenant-prefixed route authenticate raw bytes using a connected account's App Secret, then deduplicate/process receipts and replies. There is no seller session/Origin/CSRF requirement on provider callbacks. Shared-secret connection selection has an open defect (review B08).
+8. **External provider → webhook endpoint.** `/api/v1/webhooks/whatsapp` and its tenant-prefixed route authenticate raw bytes against every connected account's App Secret, then route individual items by phone-number ID among authenticated connections. Mixed-phone/shared-secret batches retain one transactional body receipt; an unrelated connection's signature does not authorize another phone.
 
 ## 4. Entry Points
 
@@ -111,7 +111,7 @@ Each item states the current behavior. "Status" follows the vocabulary in sectio
 - **Seller reads or modifies another seller's products/orders.** Each resolved shop has its own role/store, seller cookie path and handler identity. A seller sees only that database and its account capabilities; negative PostgreSQL and same-profile browser tests prove cross-shop denial. Status: Implemented.
 - **Privilege escalation to admin.** All `/api/v1/seller/*` routes except `session` (POST) and the configuration-gated `demo-session` require `readSession`. Roles come from the signed-in account (`OWNER`, `MANAGER` or `STAFF`). `SHOP_MODE: manual` alone does not disable passwordless sample entry if `SELLER_QUICK_LOGIN` explicitly enables it; that setting grants visitors the default shop's Owner workspace and must be restricted to intentional sample installations. Non-default platform shops force it off. The Demo sandbox keeps separate in-memory role/company checks.
 
-- **Permanent erasure of buyer data by a visitor.** `POST /api/v1/seller/orders/{id}/erase-contact` destroys personal data irreversibly. It needs the Owner capability, a session, same origin, CSRF, the current revision and the typed order number, only works on finished orders, and answers 403 while quick sign-in is on. Existing contact fields/reply bodies are blanked in place; prior backups retain old values until expiry. `checkout_idempotency` keeps only hashes. Late inbound replies can repopulate an erased order and repeat erasure is refused (review B09). Status: Partial for continuing reply retention; visitor authorization is implemented.
+- **Permanent erasure of buyer data by a visitor.** `POST /api/v1/seller/orders/{id}/erase-contact` needs Owner capability, session, same origin, CSRF, current revision and typed order number, only works on finished orders, and refuses quick sign-in. Contact fields and known sender reply bodies (including unmatched copies) are cleared transactionally. Inbound/outbound threading hashes become domain-separated one-way suppression markers, retained to reject late replies before text storage. These markers remain pseudonymous personal identifiers, not anonymity; backups retain old values until expiry. Seller-written notes retain their documented semantics. Existing repeat-erasure refusal remains.
 
 - **Bulk export of buyer data.** `GET /api/v1/seller/orders/export.csv` returns names, numbers and emails for up to 5000 orders. It needs a session (a GET, so no CSRF token, and `SameSite=Strict` cookies keep other sites from triggering it), is refused with 403 on a quick sign-in site, is `no-store`, and neutralises spreadsheet formulas in buyer-controlled cells. Residual risk: the file leaves the system once downloaded; there is no per-download audit record yet. Status: Partial.
 
@@ -149,7 +149,7 @@ Payment is not implemented, so there is no payment attack surface today. The fol
 Status: Missing (by design).
 
 ### Webhooks
-One endpoint exists: `/api/v1/webhooks/whatsapp` (section 4). HMAC-SHA256 over raw bytes precedes JSON parsing; body receipts and effects share a transaction. Body hashes deduplicate deliveries, and unique provider-message IDs deduplicate inbound messages. Receipt state changes are monotonic and never write order state. Replies retain keyed sender hashes and plain-text bodies. The route has a per-IP limiter and 256 KiB body bound. Shared-secret routing and post-erasure reply retention remain open defects (review B08/B09).
+One endpoint exists: `/api/v1/webhooks/whatsapp` (section 4). HMAC-SHA256 over raw bytes precedes JSON parsing; all signature-matching connections participate in phone-ID dispatch. Body receipts and effects share a transaction. Body hashes deduplicate deliveries, and unique provider-message IDs deduplicate inbound messages. Receipt state changes are monotonic and never write order state. Replies retain keyed sender hashes and plain-text bodies until erasure; erasure replaces threading hashes with suppression markers and late matching replies store no text. The route has a per-IP limiter and 256 KiB body bound. B08/B09 regressions exercise SQLite and PostgreSQL.
 
 `src/integration-ingress.js` is a separate offline model with bounded synthetic events, quarantine and operation correlation; its status must not be confused with the running webhook. Remaining gaps include an App Secret overlap/rotation policy and provider IP allow-listing. No timestamp replay window is imposed; replay safety relies on persisted identities/receipts. Master-key resealing exists in `src/secret-box.js` and `src/integration-connections.js`, but does not provide an App Secret overlap window. Ninja inbound ingress has no live endpoint.
 
@@ -229,8 +229,8 @@ Hold these true; a change that weakens one is at least P1.
 | Least-privilege DB role (no DDL) | Partial | `online_shopping_app` has DML on all tables including `order_event` and `admin` |
 | Append-only audit log | Partial | `order_event` is written on each transition but the app role can `UPDATE`/`DELETE` it; Demo reset deletes it |
 | Audit of login, session, settings and catalog changes | Partial | Account/product/integration events and platform audit exist; seller login/session/settings audit remains limited. |
-| Webhook signature verification | Implemented, routing gap | Real WhatsApp raw-body HMAC; shared-secret selection loses events (review B08). Ninja helpers are offline. |
-| Webhook inbox and deduplication | Partial | Real WhatsApp body/message dedupe; late replies undermine erasure (review B09). Synthetic ingress separately models quarantine. |
+| Webhook signature verification | Implemented | Real WhatsApp raw-body HMAC and per-item authenticated phone dispatch, including shared-secret batches (B08 regression). Ninja helpers are offline. |
+| Webhook inbox and deduplication | Implemented for current Cloud flow | Transactional body/message dedupe; erasure suppression prevents late reply resurrection (B09 regression). Minimal pseudonymous suppression markers remain. Synthetic ingress separately models quarantine. |
 | Outbox with leases, retry and reconcile states | Implemented | `src/whatsapp-outbox.js`; preparation retry is bounded, uncertain send outcomes require reconciliation. |
 | Replay window / App Secret rotation overlap | Missing | Receipt/identity dedupe exists; master-key resealing is separate from App Secret rotation. |
 | Provider contract/registry and deterministic simulation providers | Partial | Real WhatsApp transport exists; payment/courier foundation remains synthetic. |

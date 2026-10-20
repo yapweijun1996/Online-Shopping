@@ -156,3 +156,58 @@ test('on PostgreSQL receipts, replies, dedupe and order matching work the same',
   assert.equal((await store.get('SELECT order_id FROM message_inbound')).order_id, f.orderId);
   assert.equal((await f.post(same, { secret: 'x'.repeat(20) })).status, 401);
 });
+
+for (const backend of ['SQLite', 'PostgreSQL']) {
+  test(`B08 shared-secret mixed-phone routing on ${backend}`, { skip: backend === 'PostgreSQL' && !pgBase }, async (t) => {
+    const f = await regressionFixture(t, backend);
+    const box = createSecretBox(keys);
+    await saveWhatsAppConnection(f.store, box, transport, { environment: 'PRODUCTION', accessToken, appSecret,
+      phoneNumberId: '222222', businessAccountId: '987654321' }, 'owner');
+    const payload = wrap({ messages: [reply('wamid.SANDBOX', 'Sandbox reply')] });
+    const production = wrap({ messages: [reply('wamid.PRODUCTION', 'Production reply')] }).entry[0];
+    production.changes[0].value.metadata.phone_number_id = '222222';
+    payload.entry.push(production);
+    assert.equal((await f.post(payload)).status, 200);
+    assert.deepEqual((await f.store.all(`SELECT c.environment, i.body FROM message_inbound i
+      JOIN integration_connection c ON c.id = i.connection_id ORDER BY c.environment`)).map(r => [r.environment, r.body]),
+    [['PRODUCTION', 'Production reply'], ['SANDBOX', 'Sandbox reply']]);
+    await f.post(payload);
+    assert.deepEqual(await f.counts(), { receipts: 1, inbound: 2 });
+  });
+
+  test(`B09 erasure clears threading and suppresses late personal text on ${backend}`, { skip: backend === 'PostgreSQL' && !pgBase }, async (t) => {
+    const f = await regressionFixture(t, backend);
+    const { eraseOrderContact } = await import('../src/erase-contact.js');
+    const { listReplies, orderMessages } = await import('../src/whatsapp-messages.js');
+    await f.post(wrap({ messages: [reply('wamid.UNMATCHED', 'Private unmatched reply')] }));
+    await f.queue('erase-out', 'wamid.ERASEOUT');
+    await f.post(wrap({ messages: [reply('wamid.BEFORE', 'Private address before erasure')] }));
+    await f.store.run("UPDATE shop_order SET status = 'REJECTED' WHERE id = ?", f.orderId);
+    const order = await f.store.get('SELECT order_no, revision FROM shop_order WHERE id = ?', f.orderId);
+    await Promise.all([
+      eraseOrderContact(f.store, f.orderId, { expectedRevision: order.revision, confirmOrderNo: order.order_no }, 'owner'),
+      f.post(wrap({ messages: [reply('wamid.CONCURRENT', 'Private concurrent reply')] })),
+    ]);
+    const originalHash = senderHash(f.hashKey, buyer);
+    assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM message_inbound WHERE from_hash = ? OR body IS NOT NULL', originalHash)).n, 0);
+    assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM message_outbox WHERE recipient_hash = ?', originalHash)).n, 0);
+    await f.post(wrap({ messages: [reply('wamid.LATE', 'Private address after erasure')] }));
+    assert.equal((await f.store.get("SELECT COUNT(*) AS n FROM message_inbound WHERE body IS NOT NULL")).n, 0);
+    assert.ok((await listReplies(f.store, new URLSearchParams())).items.every(r => r.body === null));
+    assert.ok((await orderMessages(f.store, f.orderId)).replies.every(r => r.body === null));
+  });
+}
+
+async function regressionFixture(t, backend) {
+  if (backend === 'SQLite') return fixture(t);
+  const { default: pg } = await import('pg');
+  const { randomUUID } = await import('node:crypto');
+  const { openPostgresDatabase } = await import('../src/postgres-db.js');
+  const name = `shopping_test_${randomUUID().replaceAll('-', '')}`;
+  const admin = new pg.Pool({ connectionString: pgBase });
+  await admin.query(`CREATE DATABASE ${name}`);
+  const target = new URL(pgBase); target.pathname = '/' + name;
+  const store = await openPostgresDatabase(target.href);
+  t.after(async () => { await store.close(); await admin.query(`DROP DATABASE ${name} WITH (FORCE)`); await admin.end(); });
+  return fixture(t, { store });
+}
