@@ -76,6 +76,17 @@ class Provisioner:
             raise ValueError('Incompatible database owner')
         return roles, database
 
+    def authenticate(self):
+        for role, database, name in (('platform_app', 'platform', 'platform'), ('platform_provisioner', 'postgres', 'provisioner')):
+            try:
+                result = self.runner(self.compose + ['exec', '-T', 'postgres', 'sh', '-c',
+                    'PGPASSWORD="$(cat /run/secrets/"$1")" export PGPASSWORD; exec psql -X -w -h 127.0.0.1 -v ON_ERROR_STOP=1 -U "$2" -d "$3" -At -c "SELECT current_user || \'|\' || current_database()"',
+                    'credential-check', name, role, database])
+                if result != role + '|' + database:
+                    raise ValueError('Unexpected authentication identity')
+            except Exception:
+                raise ValueError('Mounted platform credentials require private reconciliation; no passwords were changed') from None
+
     def secret(self, name, check=False):
         path = Path(self.env['SECRETS_DIR']) / name
         if path.exists() or path.is_symlink():
@@ -127,7 +138,10 @@ class Provisioner:
             if any(row.startswith(role + '|') for row in roles) and values[name] is None:
                 raise ValueError('Existing role has no matching secret; manual reconciliation required')
         if check:
-            return {'mode': 'check', 'rolesPresent': len(roles), 'databasePresent': bool(database), 'secretsPresent': sum(value is not None for value in values.values())}
+            if len(roles) != 2 or database != 'platform_app|true' or any(value is None for value in values.values()):
+                raise ValueError('Platform readiness failed; private reconciliation or provisioning required')
+            self.authenticate()
+            return {'mode': 'check', 'status': 'ready'}
         if any(value is None for value in values.values()):
             raise ValueError('Run the secrets step before provisioning')
         for role, name, flags in (('platform_app', 'platform-password', 'NOCREATEDB NOCREATEROLE'), ('platform_provisioner', 'provisioner-password', 'CREATEDB CREATEROLE')):
@@ -140,6 +154,7 @@ class Provisioner:
             self.query('REVOKE ALL ON DATABASE platform FROM PUBLIC;')
         _, database = self.inspect()
         if database != 'platform_app|true': raise ValueError('Platform boundary verification failed')
+        self.authenticate()
         self.runner(self.compose + ['run', '--rm', '--no-deps', 'backend', 'node', 'scripts/upgrade-platform.mjs', '--with-claim'])
         return {'mode': 'apply', 'status': 'ready'}
 
@@ -156,7 +171,7 @@ def main():
         print(json.dumps(Provisioner(args.root).run(args.check, args.step)))
         return 0
     except Exception:
-        print('Platform enablement failed; inspect private state, not credentials.', file=sys.stderr)
+        print('Platform enablement failed; private reconciliation required; inspect private state, not credentials.', file=sys.stderr)
         return 1
 
 

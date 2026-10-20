@@ -21,9 +21,16 @@ class Fake:
         self.database = ''
         self.sql = []
         self.commands = []
+        self.auth_failure = None
+        self.authentications = []
     def __call__(self, argv, sql=None):
         if sql is None:
             self.commands.append(argv)
+            if 'credential-check' in argv:
+                name, role, database = argv[-3:]
+                self.authentications.append((name, role, database))
+                if role == self.auth_failure: raise RuntimeError('sensitive-private-password')
+                return role + '|' + database
             if argv[-3:] != ['node', 'scripts/upgrade-platform.mjs', '--with-claim']: raise AssertionError('Unexpected process')
             return '{"platformVersion":2}'
         self.sql.append(sql)
@@ -66,7 +73,7 @@ class Tests(unittest.TestCase):
             p, runner = self.fixture(root)
             before = set(Path(root).iterdir())
             with patch.object(p, 'preflight'):
-                self.assertEqual({'mode':'check','rolesPresent':0,'databasePresent':False,'secretsPresent':0}, p.run(True))
+                with self.assertRaisesRegex(ValueError, 'readiness failed'): p.run(True)
             self.assertEqual(before, set(Path(root).iterdir()))
             self.assertTrue(all(sql.startswith('SELECT') for sql in runner.sql))
 
@@ -85,9 +92,27 @@ class Tests(unittest.TestCase):
                 self.assertEqual('ready', p.run()['status'])
                 self.assertTrue(all(sql.startswith('SELECT') for sql in runner.sql))
                 self.assertEqual(first, values)
-                self.assertEqual(2, len(runner.commands))
+                self.assertEqual(2, sum(argv[-3:] == ['node', 'scripts/upgrade-platform.mjs', '--with-claim'] for argv in runner.commands))
+                self.assertEqual('ready', p.run(True)['status'])
+                self.assertEqual([('platform', 'platform_app', 'platform'), ('provisioner', 'platform_provisioner', 'postgres')] * 3, runner.authentications)
             self.assertNotIn('sensitive', output.getvalue())
             self.assertFalse(any('online_shopping;' in sql for sql in runner.sql))
+
+    def test_credential_mismatch_is_private_and_never_resets_passwords(self):
+        for role in ('platform_app', 'platform_provisioner'):
+            for check in (False, True):
+                with self.subTest(role=role, check=check), tempfile.TemporaryDirectory() as root:
+                    p, runner = self.fixture(root)
+                    runner.roles = ['platform_app|false|false|false|true', 'platform_provisioner|false|true|true|true']
+                    runner.database = 'platform_app|true'
+                    runner.auth_failure = role
+                    output, errors = io.StringIO(), io.StringIO()
+                    with patch.object(p, 'preflight'), patch.object(p, 'secret', return_value='sensitive-private-password'), contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+                        with self.assertRaisesRegex(ValueError, 'private reconciliation') as failure:
+                            p.run(check)
+                    self.assertNotIn('sensitive', str(failure.exception) + output.getvalue() + errors.getvalue() + repr(runner.commands))
+                    self.assertTrue(all(sql.startswith('SELECT') for sql in runner.sql))
+                    self.assertFalse(any('--with-claim' in argv for argv in runner.commands))
 
     def test_incompatible_objects_and_missing_password_refused(self):
         with tempfile.TemporaryDirectory() as root:
@@ -150,37 +175,6 @@ class Tests(unittest.TestCase):
                 rows[0]['Project'] = 'other'
                 with self.assertRaises(ValueError): p.preflight()
 
-    def test_structured_route_policy(self):
-        text = (ROOT/'deploy/gcp/Caddyfile').read_text()
-        shop, seller = text.split('http://{$SHOP_HOST} {',1)[1].split('http://{$SELLER_HOST} {',1)
-        # Extract named matcher bodies rather than assert unrelated occurrences.
-        def matcher(block, name):
-            start = block.index('@'+name)
-            end = block.index('handle @'+name, start)
-            return block[start:end]
-        agents = 'facebookexternalhit|facebot|whatsapp|twitterbot|telegrambot|slackbot|discordbot|googlebot|bingbot'
-        self.assertIn('header_regexp User-Agent (?i)('+agents+')', matcher(shop, 'crawler'))
-        self.assertIn('header_regexp User-Agent (?i)('+agents+')', matcher(text, 'tenant_crawler'))
-        for path in ('/seller*','/api/v1/seller*','/platform*','/api/v1/platform*'):
-            self.assertIn(path, matcher(shop, 'private'))
-        for path in ('/shop*','/p/*','/s/*','/api/v1/orders*','/setup*','/api/v1/setup*'):
-            self.assertIn(path, matcher(seller, 'private'))
-        self.assertIn('not path /shop/tokens.css', matcher(seller,'private'))
-        self.assertIn('/demo-assets/*', matcher(shop,'static'))
-        self.assertIn('/platform/*', matcher(seller,'static'))
-        for path in ('/setup/','/setup/setup.js','/setup/setup.css','/api/v1/setup/status','/api/v1/setup/claim'):
-            self.assertIn(path, matcher(shop,'setup'))
-        self.assertLess(shop.index('handle @setup'), shop.index('import tenant shop'))
-        for block, surface in ((shop,'shop'),(seller,'seller')):
-            self.assertIn('import tenant '+surface, block)
-            self.assertLess(block.index('handle @tenant_private'), block.index('import tenant '+surface))
-            self.assertIn('api/v1/setup', matcher(block,'tenant_private'))
-            self.assertIn('respond 404', block)
-        self.assertIn('forward_auth backend:3000', text)
-        self.assertIn('X-Tenant-Original-Uri', text)
-        self.assertIn('api/|{args[0]}/manifest', text)  # Includes root/tenant webhook APIs.
-        self.assertNotIn('CF-Connecting-IP', text)
-        self.assertEqual(text.count('{'), text.count('}'))
 
     def test_compose_policy_and_platform_migration_gate(self):
         text = (ROOT/'compose.gcp.yaml').read_text()

@@ -32,7 +32,7 @@ Review the exact release and verify its CI before installation. All commands bel
 
    Initialization verifies main and the latest exact-SHA `verify.yml` push run, downloads only schema/init/Caddy configuration from that trusted SHA, verifies Git blob hashes, anonymously pulls both image tags, resolves immutable digests, checks labels/platform, and starts the full stack. It saves `state.json` only after backend readiness and frontend-proxied readiness return the expected revision. The schema/init files run only when PostgreSQL initializes the new empty volume. If an initial deployment fails, inspect private container health diagnostics without publishing logs; initialization can be retried after resolving the cause. Do not delete a nonempty DB volume as a retry strategy.
 5. Verify both public hosts, expected 404 cross-host routes, login, and a fictional catalog/order scenario. Confirm owner/app DB separation, startup opt-out flags, no extra ports/socket mounts, and available RAM/disk. This manual public check also establishes actual gateway TLS/header policy; local updater checks do not prove it.
-   Fresh-install platform activation is separate: after this default-off stack is healthy, restore-test its private backup, run `enable-platform.py --root /opt/online-shopping-gcp provision --check`, then `provision`, then `provision --check`. Provisioning requires the healthy stack and existing secrets; it creates missing roles/database and explicitly applies claim migration 002. Only then follow the reviewed opt-in/stop-before-start procedure below. Never run provisioning before first initialization.
+   Fresh-install platform activation is separate: after this default-off stack is healthy, restore-test its private backup, run `enable-platform.py --root /opt/online-shopping-gcp provision --check` (expected failure before provisioning; inspect privately), then `provision`, then require `provision --check` to succeed. Provisioning requires the healthy stack and existing secrets; it creates missing roles/database and explicitly applies claim migration 002. Only then follow the reviewed opt-in/stop-before-start procedure below. Never run provisioning before first initialization.
 6. Copy `deploy/gcp/online-shopping-update.service` and `.timer` to `/etc/systemd/system/`, root owned. Only after successful initialization:
 
    ```sh
@@ -57,6 +57,18 @@ For a manual protected/schema/config/controller release: stop the timer, review 
 Inspect status via `systemctl status online-shopping-update.timer`, `journalctl -u online-shopping-update.service`, and private `state.json`. Never publish `docker inspect`, rendered Compose config, runtime logs, DB dumps or secret contents. State records image digests and release metadata, not passwords. Application JSON logs are rotated at 2 × 5 MiB per service. Before every application image pull the updater requires at least 3 GiB free on the deployment filesystem; low space aborts before activation and leaves the current release running. This is a reserve guard, not a bound on image growth or protection from other writers. Check disk use frequently: this version deliberately performs **no image/release cleanup**, so a 20 GiB disk has a finite release capacity. Operators may remove only reviewed unused app images/releases while retaining current/previous/pending images; never prune DB volumes. Budget checks, encrypted off-host backups, alerts and disk cleanup are operational responsibilities and are not implemented by this image updater.
 
 Offline verification: `python3 test/gcp-deploy.test.py`; the new image publication workflow runs these tests before publishing each image. Tests cover latest CI scope/reruns, idempotency, failed readiness rollback and failed rollback intent, crash recovery, protected/schema/config gates, malicious path/revision/image/config inputs, secret-safe command failures, anonymous digest resolution, and Compose isolation. Live deployment and public TLS/route checks must be recorded by the operator separately.
+
+Real local GCP edge verification (Docker context `orbstack`, no application images or production access):
+
+```sh
+docker --context orbstack pull caddy:2.10.2-alpine
+node scripts/qa-gcp-caddy-routing.mjs
+```
+
+The matrix runs the unchanged `deploy/gcp/Caddyfile` with `shop.qa.test` / `seller.qa.test`, copied `public/` assets and a synthetic echo backend implemented with the same pinned Caddy image. It prints PASS/FAIL groups and exits nonzero on failure. Disposable `qa-gcp-*` containers/network and temporary files are removed on exit. It covers static assets, setup host/method isolation, seller/platform routes, unknown host, raw path guards, tenant prefix/query preservation, both webhook methods, gateway-header forwarding and all nine crawler agents on default/tenant roots. It does not prove the external gateway overwrites client headers, public TLS, real application authentication or production deployment.
+
+`provision --check` now fails readiness for missing roles/database/secrets or unusable credentials rather than reporting object counts. Both roles must authenticate with the mounted secret over TCP using the PostgreSQL container's `psql`: app against `platform`, provisioner against `postgres`. Passwords stay inside the container environment, never command arguments/output; failures require private reconciliation, never automatic password reset. PostgreSQL must have the reviewed `platform` and `provisioner` secret mounts, in addition to the existing owner/app mounts. Existing stacks must recreate PostgreSQL with the reviewed Compose policy during separately reviewed database maintenance before provisioning; do not run the activation block against an old container lacking these mounts. Check mode does not certify schema/application readiness.
+
 
 ## Initial GCP acceptance record (2026-10-20)
 
@@ -101,7 +113,12 @@ install -m 0700 "$S/deploy/gcp/enable-platform.py" "$R/enable-platform.py"
 python3 "$R/enable-platform.py" --root "$R" secrets
 python3 "$R/enable-platform.py" --root "$R" secrets --check
 install -m 0600 "$S/compose.gcp.yaml" "$R/compose.yaml"
-python3 "$R/enable-platform.py" --root "$R" provision --check
+# Missing objects cause failed readiness before first provisioning; inspect privately.
+if python3 "$R/enable-platform.py" --root "$R" provision --check; then
+  printf '%s\n' 'Existing platform credentials authenticate'
+else
+  printf '%s\n' 'Not ready: inspect private state before additive provisioning'
+fi
 python3 "$R/enable-platform.py" --root "$R" provision
 python3 "$R/enable-platform.py" --root "$R" provision --check
 python3 - "$R" "$S" <<'PY'

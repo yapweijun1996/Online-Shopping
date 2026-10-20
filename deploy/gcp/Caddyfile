@@ -32,6 +32,7 @@
 				header_up X-Real-IP {header.X-Real-IP}
 			}
 			@tenant_crawler {
+				host {$SHOP_HOST}
 				path_regexp ^/[a-z0-9]{3,30}/(?:shop/?)?$
 				header_regexp User-Agent (?i)(facebookexternalhit|facebot|whatsapp|twitterbot|telegrambot|slackbot|discordbot|googlebot|bingbot)
 			}
