@@ -930,6 +930,7 @@ h1,h2{letter-spacing:-.01em}
 /* Image reveal: shimmer placeholder, then blurred -> sharp fade-in. */
 .img-reveal{background:linear-gradient(100deg,#e6eff1 30%,#f5f9f9 50%,#e6eff1 70%);background-size:220% 100%;animation:skeleton-shimmer 1.4s linear infinite;filter:blur(14px);transform:scale(1.02);transition:filter .6s ease,transform .6s ease}
 .img-reveal.is-loaded{filter:none;transform:none;animation:none;background:transparent}
+.img-reveal.is-broken{content:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48' fill='none' stroke='%239aa9ad' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='8' y='10' width='32' height='28' rx='4'/%3E%3Ccircle cx='18' cy='20' r='3'/%3E%3Cpath d='m10 34 10-9 7 6 5-4 6 6'/%3E%3C/svg%3E");object-fit:none;filter:none;transform:none;animation:none;background:#eef3f4}
 @media (prefers-reduced-motion:reduce){.img-reveal{transition:none;animation:none;filter:none;transform:none}}
 
 /* Quantity stepper: draw the minus/plus as centred bars instead of font glyphs, which sit off-centre in many fonts. */

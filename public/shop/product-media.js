@@ -40,14 +40,16 @@ const wired = new WeakSet();
  */
 export function revealImage(image, preview = '') {
   image.classList.add('img-reveal');
-  image.classList.remove('is-loaded');
+  image.classList.remove('is-loaded', 'is-broken');
   image.classList.toggle('has-lqip', safePreview(preview));
   if (safePreview(preview)) image.style.setProperty('--lqip', `url("${preview}")`);
   else image.style.removeProperty('--lqip');
   if (!wired.has(image)) {
     wired.add(image);
     const done = () => image.classList.add('is-loaded');
-    image.addEventListener('load', done); image.addEventListener('error', done);
+    image.addEventListener('load', done);
+    // A file that cannot load gets a quiet placeholder (see .is-broken) instead of the browser's broken-image box with alt text.
+    image.addEventListener('error', () => { done(); image.classList.add('is-broken'); });
   }
   if (image.complete && image.naturalWidth) image.classList.add('is-loaded');
   return image;
