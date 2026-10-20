@@ -48,3 +48,22 @@ test('an image that fails to load shows the quiet placeholder, and a new source 
   image.listeners.find(([name]) => name === 'load')[1]();
   assert.ok(image.classes.has('is-loaded') && !image.classes.has('is-broken'));
 });
+
+test('the GCP Caddyfile does not hide gallery assets behind the /demo* private path', () => {
+  const caddy = readFileSync(new URL('../deploy/gcp/Caddyfile', import.meta.url), 'utf8');
+  const shopPrivate = caddy.match(/^\s*@private path[^\n]*$/m);
+  const sellerPrivate = caddy.match(/@private \{\s*\n\s*(path \/shop\*[^\n]*)/);
+  assert.ok(shopPrivate, 'shop private path matcher exists');
+  assert.ok(sellerPrivate, 'seller private path matcher exists');
+  for (const line of [shopPrivate[0], sellerPrivate[1]]) {
+    const tokens = line.trim().split(/\s+/);
+    assert.ok(tokens.includes('/demo'));
+    assert.ok(tokens.includes('/demo/*'));
+    assert.ok(tokens.includes('/api/v1/demo*'));
+    assert.ok(!tokens.includes('/demo*'));
+  }
+  const staticLines = [...caddy.matchAll(/^\s*@static path[^\n]*$/gm)];
+  assert.equal(staticLines.length, 2, 'shop and seller static path matchers exist');
+  assert.ok(staticLines[0][0].trim().split(/\s+/).includes('/demo-assets/*'));
+  assert.ok(!staticLines[1][0].trim().split(/\s+/).includes('/demo-assets/*'));
+});

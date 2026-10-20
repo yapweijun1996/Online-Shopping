@@ -22,7 +22,7 @@ http://{$SHOP_HOST} {
 		handle @encoded {
 			respond 404
 		}
-		@private path /seller* /api/v1/seller* /demo* /api/v1/demo* /platform* /api/v1/platform* /s/*
+		@private path /seller* /api/v1/seller* /demo /demo/* /api/v1/demo* /platform* /api/v1/platform* /s/*
 		handle @private {
 			respond 404
 		}
@@ -58,7 +58,7 @@ http://{$SELLER_HOST} {
 			respond 404
 		}
 		@private {
-			path /shop* /p/* /s/* /api/v1/orders* /demo* /api/v1/demo* /platform* /api/v1/platform*
+			path /shop* /p/* /s/* /api/v1/orders* /demo /demo/* /api/v1/demo* /platform* /api/v1/platform*
 			not path /shop/tokens.css
 		}
 		handle @private {
