@@ -40,7 +40,7 @@ http://{$SHOP_HOST} {
 		}
 		redir / /shop/ 302
 		redir /shop /shop/ 302
-		@static path /shop/* /shared/* /demo-assets/* /favicon.ico /robots.txt
+		@static path /shop/* /shared/* /demo-assets/* /favicon.ico /favicon.svg /robots.txt
 		handle @static {
 			root * /srv/public
 			file_server
@@ -70,7 +70,7 @@ http://{$SELLER_HOST} {
 		}
 		redir / /seller/ 302
 		redir /seller /seller/ 302
-		@static path /seller/* /shared/* /shop/tokens.css /favicon.ico
+		@static path /seller/* /shared/* /shop/tokens.css /favicon.ico /favicon.svg
 		handle @static {
 			root * /srv/public
 			file_server
