@@ -2,6 +2,8 @@
 """Offline acceptance tests: no Docker, GitHub, DB or provider calls."""
 import importlib.util
 import json
+import shutil
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -151,6 +153,27 @@ class Tests(unittest.TestCase):
                 info['Config']['Labels']['org.opencontainers.image.revision'] = label
                 with patch.object(f, 'docker', side_effect=['', json.dumps(info)]):
                     with self.assertRaises(ValueError): f.image('backend', A)
+
+    @unittest.skipUnless(shutil.which('node'), 'Node is required for the HTTP virtual-host fixture')
+    def test_frontend_probe_preserves_host_and_rejects_failure(self):
+        # Rewire only the fixed network destination to a local ephemeral fixture;
+        # keep the production request's Host/path and actual node:http behavior.
+        for status, oversized in ((200, False), (404, False), (200, True)):
+            body = json.dumps({'status': 'ready', 'revision': A})
+            fixture = (
+                "const fixtureHttp=require('node:http');const original=fixtureHttp.get;"
+                "const server=fixtureHttp.createServer((req,res)=>{"
+                "if(req.headers.host!=='demoonlineshopping.xyz'||req.url!=='/ready')process.exit(9);"
+                "res.writeHead(" + str(status) + ");res.end(" + json.dumps('x' * 16385 if oversized else body) + ");"
+                "server.close();});server.listen(0,'127.0.0.1',()=>{"
+                "fixtureHttp.get=(options,callback)=>original({...options,hostname:'127.0.0.1',port:server.address().port},callback);"
+                + u.frontend_probe('demoonlineshopping.xyz') + "});")
+            result = subprocess.run(['node', '-e', fixture], capture_output=True, text=True, timeout=8)
+            self.assertEqual(0 if status == 200 and not oversized else 1, result.returncode)
+            if result.returncode == 0:
+                self.assertEqual({'status': 'ready', 'revision': A}, json.loads(result.stdout))
+            else:
+                self.assertEqual('', result.stdout)
 
     def test_disk_low_water_blocks_pull(self):
         with tempfile.TemporaryDirectory() as root:

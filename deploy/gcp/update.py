@@ -81,6 +81,20 @@ def api(suffix):
     return json.loads(request('https://api.github.com/repos/' + REPO + suffix))
 
 
+def frontend_probe(host):
+    # Node fetch can replace Host with the URL hostname; node:http preserves the
+    # explicit virtual host required by Caddy. Bound the entire response lifetime.
+    return ("const http=require('node:http');"
+            "const deadline=setTimeout(()=>process.exit(1),4000);"
+            "const req=http.get({hostname:'frontend',path:'/ready',agent:false,headers:{Host:" + json.dumps(host) + "}},res=>{"
+            "if(res.statusCode!==200)process.exit(1);"
+            "let body='';res.setEncoding('utf8');"
+            "res.on('data',chunk=>{body+=chunk;if(body.length>16384)process.exit(1)});"
+            "res.on('error',()=>process.exit(1));res.on('aborted',()=>process.exit(1));"
+            "res.on('end',()=>{clearTimeout(deadline);process.stdout.write(body)});"
+            "});req.on('error',()=>process.exit(1));")
+
+
 def ci_passed(payload, sha):
     runs = payload.get('workflow_runs', [])
     if payload.get('total_count', 0) > 100 or not runs:
@@ -213,7 +227,7 @@ class Updater:
                 if body.get('status') != 'ready' or body.get('revision') != release['sha']:
                     raise ValueError('Revision mismatch')
                 host = self.runtime()['SHOP_HOST']
-                probe = "fetch('http://frontend/ready',{headers:{Host:" + json.dumps(host) + "},signal:AbortSignal.timeout(4000)}).then(async r=>{if(!r.ok)process.exit(1);console.log(await r.text())}).catch(()=>process.exit(1))"
+                probe = frontend_probe(host)
                 proxied = json.loads(self.docker('exec', 'online-shopping-gcp-backend-1', 'node', '-e', probe, timeout=10))
                 if proxied.get('status') == 'ready' and proxied.get('revision') == release['sha']:
                     return
