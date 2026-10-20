@@ -284,6 +284,7 @@ function renderView() {
         canErase: !quickLogin && can('data.erase'),
         canExport: !quickLogin && can('data.export'),
         canDecide: can('orders.decide'),
+        canFulfil: !quickLogin && can('orders.fulfil'),
         csrfToken: () => csrfToken,
         onUnauthorized: () => showLogin('authError'),
         initialOrderId: orderId,

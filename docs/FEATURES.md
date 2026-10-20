@@ -63,4 +63,15 @@ After confirmation an order moves **Confirmed → Shipped → Delivered**; a con
 
 Buyers see the new status, the courier and the tracking number in My orders through the existing status credential; nothing else about the order is exposed. There is no automatic courier booking, label or tracking sync yet (see [INTEGRATIONS.md](INTEGRATIONS.md)).
 
+### Bulk tracking CSV import (Seller v138)
+
+Sales Order Confirmation offers **Download tracking template** and **Import tracking CSV** to Owner, Manager and Staff, except on passwordless sample sites. Book parcels externally and import only after dispatch, not merely booking/AWB allocation. This is the shop's format, not a verified EasyParcel template; provider results may require manual spreadsheet conversion.
+
+Upload UTF-8 CSV with `Order number,Carrier,Tracking number` and optional `Shipped date`, up to 500 records. Keep spreadsheet identifiers as text. Preview shows counts, changes, first errors and every record in 50-row pages; download the complete validation report. Correct errors and preview again; any error blocks the entire commit. Commit rechecks the exact file hash and revisions, then uses the manual shipping transition/audit path atomically. Same tracking reimports are no-ops, including delivered orders. Conflicting/reused tracking, repeated/unknown/non-confirmed orders, simulation/erased-contact orders and multiple destinations are rejected. Declared dates are UTC+8 audit remarks, not backdated event timestamps.
+
+Malformed UTF-8 uploads are rejected before preview. The server also rejects U+FFFD replacement characters with a field error rather than accepting a repaired tracking identifier.
+
+Network actions are disabled offline. Pending/unknown commits block PWA updates; an unknown outcome retains the exact file and disables close/file replacement until **Preview again** recovers. Close/sign-out clears in-memory file/plan. No courier calls or new notification paths are added; existing opt-in event processing is unchanged. Manual shipping still lacks global tracking uniqueness, so concurrent manual reuse on another order remains possible.
+
+
 While the seller portal is open it checks every minute for orders waiting for a decision. The Sales Order Confirmation menu item shows a count badge and the page title shows the count. The account menu has **Turn on new order alerts**, which asks for browser notification permission and then shows a notification when a newer order arrives. This works only while the portal is open in a tab or installed app; it is not a background push service.

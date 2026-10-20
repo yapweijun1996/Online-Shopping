@@ -17,6 +17,7 @@ import { exportProductsCsv } from './product-export.js';
 import { IMPORT_MAX_CHARS, importProducts, planImport, presentPlan } from './product-import.js';
 import { bulkSetActive, listProductHistory, trackCreate, trackUpdate } from './product-history.js';
 import { exportOrdersCsv } from './order-export.js';
+import { trackingImport } from './tracking-import.js';
 import { OPTION_LIMITS } from './option-limits.js';
 import { createOptionType, createOptionValue, listOptionTypes, updateOptionType, updateOptionValue } from './options.js';
 import { createCategory, publicBusinessContact, getCompanySettings, storefrontTexts, listCategories, updateCategory, updateCompanySettings } from './settings.js';
@@ -393,6 +394,18 @@ async function createTenantApi({ store, config, serveStatic = null, whatsappTran
       return json(200, await listSellerOrders(store, url.searchParams));
     }
     if (method === 'GET' && pathname === '/api/v1/seller/audit-log') return json(200, await listAuditEvents(store, url.searchParams));
+    if (method === 'POST' && pathname === '/api/v1/seller/orders/tracking-import') {
+      requireOrigin(request, expectedOrigin);
+      requireCsrf(request, session);
+      allow('orders.fulfil');
+      if (quickLogin) throw new ApiError(403, 'FORBIDDEN', 'Tracking import is not available on a sample site.');
+      const body = await readJson(request, 6_100_000);
+      try { return json(200, await trackingImport(store, body, account.username)); }
+      catch (error) {
+        if (error.plan) return json(409, { error: { code: error.code, message: error.message }, ...error.plan });
+        throw error;
+      }
+    }
     const sellerOrder = sellerOrderIdPath.exec(pathname);
     if (method === 'GET' && sellerOrder && !sellerOrder[2]) {
       const order = await getSellerOrder(store, sellerOrder[1]);

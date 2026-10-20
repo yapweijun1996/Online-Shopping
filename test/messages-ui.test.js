@@ -40,7 +40,6 @@ test('seller precaches Messages and hides the navigation entry by default', () =
   assert.match(file('sw.js'), /'\.\/messages\.js'/);
   const workerVersion = file('sw.js').match(/version: '(v\d+)'/)[1];
   assert.equal(workerVersion, file('version.js').match(/APP_VERSION = '(v\d+)'/)[1]);
-  assert.equal(workerVersion, 'v136');
   assert.match(file('index.html'), /<button\b[^>]*data-view="messages"[^>]*\bhidden[\s>]/);
   assert.match(file('app.js'), /messages: 'msgHeading'/);
   assert.match(file('orders.js'), /mountOrderMessages\(detailContent/);

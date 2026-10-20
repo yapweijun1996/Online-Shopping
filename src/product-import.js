@@ -8,41 +8,16 @@ import { validateProductInput } from './product-input.js';
 import { createProduct, updateProduct } from './products.js';
 import { trackCreate, trackUpdate } from './product-history.js';
 import { getCompanySettings } from './settings.js';
+import { parseCsv } from './csv.js';
 
 export const IMPORT_MAX_ROWS = 2000;
 export const IMPORT_MAX_CHARS = 1_000_000;
-const CELL_MAX = 4000;
 const COLUMNS = { sku: 'sku', name: 'name', description: 'description', category: 'category', 'variant group': 'variantGroup', 'variant label': 'variantLabel',
   currency: 'currency', price: 'price', stock: 'stock', 'stock (blank = unlimited)': 'stock', active: 'active', 'updated (utc)': 'updated' };
 
-/* RFC 4180 reader: quoted cells may hold commas, quotes ("") and line breaks; a leading byte-order mark is dropped. */
-export function parseCsv(text) {
-  const rows = [];
-  let row = [], cell = '', quoted = false, index = text.charCodeAt(0) === 0xFEFF ? 1 : 0;
-  for (; index < text.length; index++) {
-    const char = text[index];
-    if (quoted) {
-      if (char === '"') { if (text[index + 1] === '"') { cell += '"'; index++; } else quoted = false; }
-      else cell += char;
-    } else if (char === '"' && cell === '') quoted = true;
-    else if (char === ',') { row.push(cell); cell = ''; }
-    else if (char === '\n' || char === '\r') {
-      if (char === '\r' && text[index + 1] === '\n') index++;
-      row.push(cell); cell = '';
-      if (row.some((value) => value !== '') || row.length > 1) rows.push(row);
-      row = [];
-    } else cell += char;
-    if (cell.length > CELL_MAX) throw new FieldError('csv', 'A cell is longer than allowed.');
-    if (rows.length > IMPORT_MAX_ROWS + 1) throw new FieldError('csv', `The file has more than ${IMPORT_MAX_ROWS} rows.`);
-  }
-  if (quoted) throw new FieldError('csv', 'The file has an unclosed quote.');
-  row.push(cell);
-  if (row.some((value) => value !== '') || row.length > 1) rows.push(row);
-  return rows;
-}
 
 // The exporter puts an apostrophe in front of cells a spreadsheet could read as a formula; take it off again.
-const unprotect = (value) => /^'[=+\-@\t\r]/.test(value) ? value.slice(1) : value;
+const unprotect = (value) => /^'(?=\s*[=+\-@]|[\t\r\n])/.test(value) ? value.slice(1) : value;
 
 const err = (field, code, message) => ({ field, code, message });
 

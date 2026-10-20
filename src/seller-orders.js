@@ -211,7 +211,8 @@ async function restoreStock(database, orderId) {
   }
 }
 
-export async function decideSellerOrder(database, id, action, input, actorId) {
+// Mutation-only helper joins an outer import transaction without loading order detail.
+export async function applySellerDecision(database, id, action, input, actorId, auditReason = null) {
   if (!Object.hasOwn(transitions, action)) throw new TypeError('Invalid order action.');
   const decision = validateDecision(action, input);
   const now = new Date().toISOString();
@@ -234,8 +235,12 @@ export async function decideSellerOrder(database, id, action, input, actorId) {
     if (decision.status === 'CANCELLED') await restoreStock(database, id);
     await database.run(`INSERT INTO order_event
       (order_id, event_type, actor_type, actor_id, previous_status, status, reason, occurred_at)
-      VALUES (?, ?, 'SELLER', ?, ?, ?, ?, ?)`, id, decision.status, actorId, from, decision.status, decision.reason, now);
+      VALUES (?, ?, 'SELLER', ?, ?, ?, ?, ?)`, id, decision.status, actorId, from, decision.status, auditReason ?? decision.reason, now);
   });
+}
+
+export async function decideSellerOrder(database, id, action, input, actorId) {
+  await applySellerDecision(database, id, action, input, actorId);
   return await getSellerOrder(database, id);
 }
 
