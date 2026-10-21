@@ -5,7 +5,7 @@ const asset = (path) => new URL(path, self.registration.scope).pathname;
 
 self.setupOfflineWorker({
   cachePrefix: code ? `tenant-${code}-seller` : 'os-seller',
-  version: 'v141',
+  version: 'v142',
   scopePath,
   offlinePage: asset('./offline.html'),
   assets: [

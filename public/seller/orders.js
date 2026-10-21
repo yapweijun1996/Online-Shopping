@@ -89,14 +89,21 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
   let whatsappDetail = null;
   let deciding = false;
   let trackingDialog = null;
+  let shippingButton;
   if (mode === 'confirmations' && canFulfil) {
+    shippingButton = actionButton(t('shippingExport'), () => downloadOrders(shippingButton, true));
+    shippingButton.dataset.i18n = 'shippingExport';
+    const shippingHelp = node('p', 'muted', t('shippingHelp'));
+    shippingHelp.dataset.i18n = 'shippingHelp';
+    shippingHelp.id = 'shipping-export-help';
+    shippingButton.setAttribute('aria-describedby', shippingHelp.id);
     const template = actionButton(t('trackingTemplate'), () => downloadTrackingCsv(trackingTemplate, 'tracking-template.csv'));
     const importButton = actionButton(t('trackingImport'), () => {
       trackingDialog = openTrackingImport({ trigger: importButton, csrfToken, onUnauthorized,
         onForbidden: () => { importButton.hidden = template.hidden = true; },
         onImported: () => { loadQueue(); if (selectedId) openOrder(selectedId); } });
     });
-    exportButton.after(template, importButton);
+    exportButton.after(shippingButton, template, importButton, shippingHelp);
   }
 
   function renderStatusOptions() {
@@ -134,7 +141,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
   function setMessage(key) {
     messageKey = key;
     message.textContent = key ? t(key) : '';
-    message.classList.toggle('is-error', ['documentFailed', 'exportFailed', 'exportTooMany', 'copyFailure', 'orderChanged', 'decisionUnknown', 'decisionFailed', 'offlineMessage'].includes(key));
+    message.classList.toggle('is-error', ['shippingTooMany', 'shippingForbidden', 'documentFailed', 'exportFailed', 'exportTooMany', 'copyFailure', 'orderChanged', 'decisionUnknown', 'decisionFailed', 'offlineMessage'].includes(key));
   }
   function setListStatus(key) { listStatusKey = key; listStatus.textContent = key ? t(key) : ''; }
   function setDialogError(key) { dialogErrorKey = key; dialogError.textContent = key ? t(key) : ''; }
@@ -519,17 +526,17 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
     search.focus();
   });
   retry.addEventListener('click', () => loadQueue());
-  exportButton.addEventListener('click', async () => {
-    exportButton.disabled = true;
+  async function downloadOrders(button, shipping = false) {
+    button.disabled = true;
     try {
       const params = extraParams();
       if (search.value.trim()) params.set('search', search.value.trim());
       if (status.value) params.set('status', status.value);
-      const response = await fetch(apiUrl(`v1/seller/orders/export.csv?${params}`), { cache: 'no-store' });
+      const response = await fetch(apiUrl(`v1/seller/orders/${shipping ? 'shipping-list.csv' : 'export.csv'}?${params}`), { cache: 'no-store' });
       if (response.status === 401) { if (isCurrent()) onUnauthorized(); return; }
       if (!response.ok) {
         const code = (await response.json().catch(() => ({}))).error?.code;
-        if (isCurrent()) setMessage(code === 'TOO_MANY_ROWS' ? 'exportTooMany' : 'exportFailed');
+        if (isCurrent()) setMessage(shipping && response.status === 403 ? 'shippingForbidden' : code === 'TOO_MANY_ROWS' ? (shipping ? 'shippingTooMany' : 'exportTooMany') : 'exportFailed');
         return;
       }
       const link = node('a');
@@ -539,8 +546,9 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
       setTimeout(() => URL.revokeObjectURL(link.href), 1000);
       if (isCurrent()) setMessage('exportDone');
     } catch { if (isCurrent()) setMessage('exportFailed'); }
-    finally { if (exportButton.isConnected) exportButton.disabled = false; }
-  });
+    finally { if (button.isConnected) button.disabled = false; }
+  }
+  exportButton.addEventListener('click', () => downloadOrders(exportButton));
   more.addEventListener('click', () => loadQueue(false));
   back.addEventListener('click', () => {
     onSelect(null);
