@@ -58,6 +58,18 @@ export async function receiveWhatsAppWebhook(store, secretBox, { rawBody, signat
       ON CONFLICT(provider, dedupe_key) DO NOTHING`, receiptId, provider, dedupeKey, stamp);
     if (!await store.get('SELECT id FROM webhook_receipt WHERE id = ?', receiptId)) return { outcome: 'duplicate', statuses: 0, messages: 0, skipped: 0 };
 
+    // Bind proof to the current sealed credential generation, not the provider-wide body receipt.
+    // Connecting/rotating replaces public_config and clears this marker; resealing does not.
+    const phoneIds = new Set([...parsed.statuses, ...parsed.messages].map(item => item.phoneNumberId));
+    for (const { connection, secrets } of match) {
+      if (!phoneIds.has(connection.publicConfig.phoneNumberId)) continue;
+      const currentSecrets = await openWhatsAppSecrets(store, secretBox, connection.environment);
+      if (currentSecrets.appSecret !== secrets.appSecret || currentSecrets.accessToken !== secrets.accessToken) continue;
+      const row = await store.get('SELECT public_config FROM integration_connection WHERE id = ?', connection.id);
+      const config = JSON.parse(row.public_config);
+      config.signedWebhookAt = stamp;
+      await store.run('UPDATE integration_connection SET public_config = ? WHERE id = ?', JSON.stringify(config), connection.id);
+    }
     let statuses = 0, messages = 0, skipped = parsed.skipped;
     for (const receipt of parsed.statuses) {
       const selected = select(receipt);

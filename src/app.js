@@ -31,7 +31,7 @@ import { singleTenantRegistry } from './tenants.js';
 import { rewriteTenantRequest } from './platform/registry.js';
 import { listAttentionMessages, listReplies, markReplyRead, messageSummary, orderMessages, resolveMessage } from './whatsapp-messages.js';
 import { createWhatsAppTransport } from './whatsapp-transport.js';
-import { disconnectWhatsAppConnection, listWhatsAppConnections, saveWhatsAppConnection } from './integration-connections.js';
+import { checkWhatsAppReadiness, disconnectWhatsAppConnection, listWhatsAppConnections, saveWhatsAppConnection } from './integration-connections.js';
 import { MAX_WEBHOOK_BYTES, answerWhatsAppHandshake, receiveWhatsAppWebhook } from './whatsapp-inbound.js';
 import { integrationCatalog } from '../public/shared/integration-catalog.js';
 import { createConnector } from './mcp/routes.js';
@@ -290,6 +290,14 @@ async function createTenantApi({ store, config, tenantId, serveStatic = null, wh
     // Provider connections hold the seller's own WhatsApp credentials. A passwordless (sample) site must never accept or
     // show them, so every route answers "unavailable" while quick sign-in is on. Secrets are write-only: nothing returns them.
     const connectionRoute = whatsappConnectionPath.exec(pathname);
+    const readinessRoute = /^\/api\/v1\/seller\/integrations\/whatsapp\/(SANDBOX|PRODUCTION)\/readiness$/.exec(pathname);
+    if (method === 'GET' && readinessRoute) {
+      allow('settings.write');
+      if (quickLogin) throw new ApiError(403, 'FORBIDDEN', 'Connections are not available on a sample site.');
+      if (!secretBox) throw new ApiError(503, 'INTEGRATIONS_UNAVAILABLE', 'Integrations are not configured.');
+      if (!await connectionLimiter.attempt(clientAddress)) throw new ApiError(429, 'RATE_LIMITED', 'Too many connection attempts. Try again later.');
+      return json(200, await checkWhatsAppReadiness(store, secretBox, whatsappTransport, readinessRoute[1]));
+    }
     if (connectionRoute) {
       const environment = connectionRoute[1];
       if (method === 'GET' && !environment) {

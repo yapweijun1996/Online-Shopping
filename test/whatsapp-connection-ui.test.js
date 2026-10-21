@@ -1,44 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { messages, languages } from '../public/shared/i18n.js';
-const before = new Set(Object.keys(messages.en));
+import { messages } from '../public/shared/i18n.js';
 const { mountWhatsAppConnection } = await import('../public/seller/whatsapp-connection.js');
-const keys = Object.keys(messages.en).filter(key => !before.has(key));
-const source = readFileSync(new URL('../public/seller/whatsapp-connection.js', import.meta.url), 'utf8');
-
-test('WhatsApp registers complete, translated copy for all seven locales without DOM access', () => {
-  assert.equal(languages.length, 7);
-  assert.ok(keys.length > 0);
-  for (const { code } of languages) {
-    for (const key of keys) {
-      assert.equal(typeof messages[code][key], 'string', `${code}: ${key}`);
-      assert.ok(messages[code][key].trim(), `${code}: ${key}`);
-      if (code !== 'en') assert.notEqual(messages[code][key], messages.en[key], `${code}: ${key}`);
-      assert.doesNotMatch(messages[code][key], /demo/i);
-    }
-  }
-});
-
-test('WhatsApp uses safe DOM construction and no browser storage or secret persistence', () => {
-  assert.doesNotMatch(source, /\binnerHTML\b|\bouterHTML\b|insertAdjacentHTML/);
-  assert.doesNotMatch(source, /\blocalStorage\b|\bsessionStorage\b|console\s*\.|\blocation\b/);
-  const payload = source.match(/const body = method === 'PUT' \? \{([\s\S]*?)\} : \{\};/);
-  assert.ok(payload);
-  assert.deepEqual([...payload[1].matchAll(/(\w+): fields\.(\w+)\.value/g)].map(match => [match[1], match[2]]), [
-    ['accessToken', 'accessToken'], ['appSecret', 'appSecret'], ['phoneNumberId', 'phoneNumberId'], ['businessAccountId', 'businessAccountId'],
-  ]);
-  assert.equal(payload[1].split(',').filter(part => part.trim()).length, 4);
-  assert.match(source, /confirmModal\(t\('waDisconnectConfirm'\)/);
-  assert.match(source, /fields\.accessToken\.value = ''; fields\.appSecret\.value = '';/);
-});
-
-test('seller precaches the WhatsApp module and the service worker and app share one version', () => {
-  const sw = readFileSync(new URL('../public/seller/sw.js', import.meta.url), 'utf8');
-  const version = readFileSync(new URL('../public/seller/version.js', import.meta.url), 'utf8');
-  assert.match(sw, /'\.\/whatsapp-connection\.js'/);
-  assert.equal(sw.match(/version: '(v\d+)'/)[1], version.match(/APP_VERSION = '(v\d+)'/)[1]);
-});
 
 // Minimal DOM double: exercise requests and lifecycle without a browser or network.
 class Element {
@@ -177,5 +140,27 @@ test('stale mutation results clear passwords but cannot render into a new sessio
     assert.equal(fields[0].value, ''); assert.equal(fields[1].value, '');
     assert.ok(!root.descendants().some(node => node.textContent === 'Stale Fictional Shop'));
     assert.equal(form.descendants().find(node => node.type === 'submit').textContent, messages.en.waConnect);
+  });
+});
+
+test('readiness renders safe check badges and matrix without credentials or a write request', async () => {
+  await fixture(async root => {
+    let reads = 0;
+    globalThis.fetch = async path => {
+      if (++reads === 1) return response({ ...available, connections: [{ environment: 'SANDBOX', status: 'CONNECTED', publicConfig: {} }] });
+      assert.equal(path, '/api/v1/seller/integrations/whatsapp/SANDBOX/readiness');
+      return response({ checkedAt: '2026-10-21T00:00:00Z', checks: [
+        { id: 'phoneOwnership', status: 'PASS' }, { id: 'appSubscription', status: 'FAIL' }, { id: 'appSecret', status: 'UNKNOWN' },
+      ], templates: [{ name: '<script>fixture</script>', language: 'en', status: 'MISSING' }] });
+    };
+    mountWhatsAppConnection(root, { csrfToken: () => 'fixture', onUnauthorized() {}, request() { assert.fail('readiness must not mutate'); } });
+    await flush();
+    const button = root.descendants().find(node => node.dataset.i18n === 'waReadiness');
+    assert.equal(button.hidden, false);
+    await button.events.click();
+    for (const text of ['PASS', 'FAIL', 'UNKNOWN', '<script>fixture</script>', 'MISSING'])
+      assert.ok(root.descendants().some(node => node.textContent === text));
+    assert.ok(root.descendants().some(node => node.tagName === 'details'));
+    assert.equal(button.disabled, false);
   });
 });

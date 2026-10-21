@@ -121,6 +121,25 @@ export async function openWhatsAppToken(store, secretBox, environment) {
   return (await openWhatsAppSecrets(store, secretBox, environment)).accessToken;
 }
 
+export async function checkWhatsAppReadiness(store, secretBox, transport, environment) {
+  const secrets = await openWhatsAppSecrets(store, secretBox, environment);
+  const connection = await getWhatsAppConnection(store, environment);
+  let result;
+  try { result = await transport.readiness({ ...secrets, ...connection.publicConfig }); }
+  catch {
+    result = {
+      checks: ['phoneOwnership', 'appSubscription', 'templates'].map(id => ({ id, status: 'UNKNOWN', detail: 'Provider evidence is unavailable. Try again later.' })),
+      templates: ['order_submitted', 'order_confirmed', 'order_rejected', 'order_shipped'].flatMap(name =>
+        ['en', 'ms', 'zh_CN', 'vi', 'th', 'ja', 'ko'].map(language => ({ name, language, status: 'UNKNOWN' }))),
+    };
+  }
+  const proof = connection.publicConfig.signedWebhookAt;
+  return { checkedAt: new Date().toISOString(), ...result, checks: [...result.checks, {
+    id: 'appSecret', status: proof ? 'PASS' : 'UNKNOWN',
+    detail: 'App Secret is proven by the first signed webhook.',
+  }] };
+}
+
 /* Connected rows with their ids, for the webhook, which must find the right app secret and connection. */
 export async function listConnectedWhatsApp(store) {
   return (await store.all("SELECT id, environment, public_config FROM integration_connection WHERE provider = ? AND status = 'CONNECTED' AND secret_ciphertext IS NOT NULL ORDER BY environment", provider))
