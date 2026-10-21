@@ -343,6 +343,24 @@ Release requirements, not executed production evidence. GCP pauses protected cha
 10. Enabling: `compose.gcp.yaml` forwards `MCP_ENABLED` (default 0) and `MCP_REDIRECT_URIS` (default empty) to the backend; `deploy/gcp/update.py` accepts both runtime keys, requires 0/1, exact comma-separated `https://` callbacks without ports, userinfo, queries or IPs, and refuses `MCP_ENABLED=1` without callbacks. The seller host proxies `/mcp`, `/oauth/{register,authorize,token,revoke,consent.js,consent.css}` and `/.well-known/oauth-{protected-resource,authorization-server}[/...]` with `Cache-Control: no-store`; tenant variants `/<code>/mcp`, `/<code>/oauth/*`, `/<code>/.well-known/oauth-*` go through the tenant API route; `mcp` and `oauth` are reserved tenant codes at the edge. The shop host serves none of them (`scripts/qa-gcp-caddy-routing.mjs`, group "Seller MCP connector routes"). Vendor callbacks from official docs (2026-10-21): Claude `https://claude.ai/api/mcp/auth_callback` (claude.com/docs/connectors/building/authentication), ChatGPT `https://chatgpt.com/connector_platform_oauth_redirect` (developers.openai.com/apps-sdk/build/auth). Both vendors call server-to-server, so `MCP_BROWSER_ORIGINS` is not forwarded.
 11. After accepted manual release, use the Updater-class baseline procedure above to verify CI-approved main, source mounts, runtime, health and protected/local fingerprints, then save the new baseline and restart the timer. Keep schema24 previous images ineligible for image-only recovery. Schedule per-shop lifecycle cleanup, dormant audit retention and resource monitoring. Installed-controller identity, production migration/restore and vendor acceptance remain unverified here.
 
+## GCP release record (2026-10-21, schema 25 → 27)
+
+Three manual (protected-path) releases, each after a coordinated `pg_dumpall` backup that was restored into an isolated
+PostgreSQL 16 container on a disk volume and compared by row counts and schema version (default shop, `pgfreelancer`
+tenant, platform); the only restore errors were two role-membership `GRANT … GRANTED BY` statements, which do not touch
+data. The updater timer was stopped for each release and restarted afterwards. Schema-24/25/26 images are not kept as
+image-only rollback targets once the next schema is committed.
+
+| Revision | Change | Evidence |
+| --- | --- | --- |
+| `0ea024a` | Seller MCP connector, schema 25, `MCP_ENABLED=1` with the Claude and ChatGPT callbacks | all shop DBs 25; `/.well-known/oauth-*` 200 no-store; DCR 201 for the Claude callback, `invalid_redirect_uri` for others; authorize page 200; `/mcp` without token 401 with `resource_metadata`; tenant discovery 200 / tenant `/mcp` 401; shop host `/mcp` 404 |
+| `8c16951` | WhatsApp Cloud setup guide and readiness checks (auto-deployed) | readiness route 401 without session |
+| `edc3ca4` | Confirmed-order shipping list as `.xlsx`, sender/pickup address, schema 26 | all shop DBs 26; `.xlsx` route 401 without session, 404 on the shop host |
+| `624d5b0` | WhatsApp QR linked-device module, schema 27, worker enabled (`WHATSAPP_QR_ENABLED=1`) | all shop DBs 27; worker container running the release digest (read-only, cap_drop ALL, user `node`, private+egress), holding its lease with desired OFF / state IDLE; `/internal/*` 404 on both public hosts; backend :3001 answers 401 without the token; host ~1.2 GB available |
+
+Not verified on GCP: a real phone scan and real WhatsApp delivery (owner device step), Meta Cloud credentials, real
+Claude/ChatGPT connector consent (owner sign-in).
+
 ## Getting a SuperAdmin claim link yourself
 
 While no SuperAdmin exists and `PLATFORM_ADMIN_CLAIM_ENABLED=1`, run on your own computer (logged-in `gcloud` with IAP SSH access to the VM):
