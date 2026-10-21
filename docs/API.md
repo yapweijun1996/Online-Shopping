@@ -117,12 +117,14 @@ Headers may appear in any order. Matching trims spaces/BOM, folds case and remov
 
 | Field | Accepted aliases |
 | --- | --- |
-| Order number | Order number, Order No, Order #, Order Ref, Reference, Your Reference |
-| Tracking number | Tracking Number, Tracking No, Tracking, AWB, AWB No, Consignment No, Consignment Note, Waybill |
-| Carrier | Carrier, Courier, Courier Name, Service Provider |
-| Shipped date (optional) | Shipped Date, Ship Date, Dispatch Date, Date Shipped |
+| Order number | Order number, Order No (including Order No.), Order #, Order Ref, Reference, Your Reference, Order Reference, Order ID, Merchant Reference, Customer Reference, Ref No, Ref, Your Order, Seller Order |
+| Tracking number | Tracking Number, Tracking No, Tracking, AWB, AWB No, Consignment No, Consignment Note, Waybill, Tracking ID, Tracking Code, Tracking Ref, Waybill No, Consignment Number, Parcel No, Airway Bill |
+| Carrier | Carrier, Courier, Courier Name, Service Provider, Courier Company, Courier Service, Shipping Provider, Logistics, Delivery Company |
+| Shipped date (optional) | Shipped Date, Ship Date, Shipping Date, Dispatch Date, Date Shipped (not Delivered On) |
 
 Unknown columns are ignored. Preview and commit responses additionally include `sourceHeaders` (field keys `orderNo`, `carrier`, `trackingNo`, optional `shippedDate` mapped to trimmed source headers) and `ignoredColumns` (trimmed names in file order), displayed in the preview. Ignored cell contents are not returned. Missing required fields, multiple columns mapping to the same field (including optional dates), missing headers, wrong widths and malformed quoting return 400. Carrier remains required; no default-carrier request option is supported.
+
+The seller client offers column mapping for missing, ambiguous or extra headers, with distinct required selections and an optional shipped date. When there is no recognised carrier header, the client can fill each row with bounded default-carrier text. It submits canonical CSV, not new API fields; extra columns are dropped before transmission. Header selections are remembered by exact header signature in memory only.
 
 UTF-8, optional BOM, CRLF/LF, quoted commas/newlines and doubled quotes are supported. Limits remain 500 records, 1,000,000 characters, 4,000 per cell and 6,100,000 JSON bytes; size/count overflows return 413 (oversized cells return 400). Identifiers remain trimmed/NFC text, preserve zeros/case and reject formulas, controls, internal tracking whitespace and scientific notation. Carrier is bounded to 40 characters, tracking to 60. Case-insensitive canonical carrier names: Ninja Van, J&T Express (also J&T), Pos Laju, DHL eCommerce, Flash Express, SPX Express, EasyParcel, Lalamove, GDex, Skynet, Best Express, Citylink Express, Pos Malaysia. Other bounded carrier text passes through. Provider-native round trips remain unverified.
 

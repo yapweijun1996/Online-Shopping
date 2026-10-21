@@ -4,10 +4,10 @@ import { parseCsv, toCsv } from './csv.js';
 import { applySellerDecision } from './seller-orders.js';
 
 export const TRACKING_HEADER_ALIASES = Object.freeze({
-  orderNo: Object.freeze(['Order number', 'Order No', 'Order #', 'Order Ref', 'Reference', 'Your Reference']),
-  trackingNo: Object.freeze(['Tracking Number', 'Tracking No', 'Tracking', 'AWB', 'AWB No', 'Consignment No', 'Consignment Note', 'Waybill']),
-  carrier: Object.freeze(['Carrier', 'Courier', 'Courier Name', 'Service Provider']),
-  shippedDate: Object.freeze(['Shipped Date', 'Ship Date', 'Dispatch Date', 'Date Shipped']),
+  orderNo: Object.freeze(['Order number', 'Order No', 'Order #', 'Order Ref', 'Reference', 'Your Reference', 'Order Reference', 'Order ID', 'Merchant Reference', 'Customer Reference', 'Ref No', 'Ref', 'Your Order', 'Seller Order']),
+  trackingNo: Object.freeze(['Tracking Number', 'Tracking No', 'Tracking', 'AWB', 'AWB No', 'Consignment No', 'Consignment Note', 'Waybill', 'Tracking ID', 'Tracking Code', 'Tracking Ref', 'Waybill No', 'Consignment Number', 'Parcel No', 'Airway Bill']),
+  carrier: Object.freeze(['Carrier', 'Courier', 'Courier Name', 'Service Provider', 'Courier Company', 'Courier Service', 'Shipping Provider', 'Logistics', 'Delivery Company']),
+  shippedDate: Object.freeze(['Shipped Date', 'Ship Date', 'Shipping Date', 'Dispatch Date', 'Date Shipped']),
 });
 const normalizeHeader = (value) => value.trim().toLowerCase().replace(/[\p{P}\p{S}\s_]+/gu, '');
 const columns = new Map(Object.entries(TRACKING_HEADER_ALIASES).flatMap(([field, aliases]) => aliases.map((alias) => [normalizeHeader(alias), field])));

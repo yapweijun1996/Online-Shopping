@@ -61,6 +61,8 @@ test('header aliases normalize punctuation, case and spaces without ambiguous ma
     const headers = fields.map((key) => key === field ? ` \uFEFF${alias.toUpperCase().replaceAll(' ', '_')} ` : TRACKING_HEADER_ALIASES[key][0]);
     assert.equal(trackingRows(toCsv([headers, fields.map((key) => values[key])]))[0][field], values[field]);
   }
+  assert.equal(trackingRows('Order Reference,Courier Name,AWB No,Delivered On\nOS-1,Courier,00123,2026-01-01')[0].shippedDate, '');
+  assert.equal(trackingRows('Order No.,Courier Company,Airway Bill,Shipping Date\nOS-1,Courier,00123,2026-01-01')[0].shippedDate, '2026-01-01');
   for (const csv of ['Order No,Reference,Carrier,AWB\na,a,b,c', 'Order No,Courier,AWB,Tracking\na,b,c,c', 'Order No,AWB\na,c', 'a,b,c']) assert.throws(() => trackingRows(csv));
   for (const carrier of ['Ninja Van', 'J&T Express', 'Pos Laju', 'DHL eCommerce', 'Flash Express', 'SPX Express', 'EasyParcel', 'Lalamove', 'GDex', 'Skynet', 'Best Express', 'Citylink Express', 'Pos Malaysia', 'Unlisted courier']) {
     assert.equal(trackingRows(`Order No,Courier,AWB\nOS-1,${carrier.toLowerCase()},001`)[0].carrier, carrier === 'Unlisted courier' ? carrier.toLowerCase() : carrier);
