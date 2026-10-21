@@ -325,3 +325,13 @@ Evidence from the live deployment at https://demoonlineshopping.xyz (shop) and h
 - **Content:** shop name `Demo Mart Malaysia`, currency MYR; 14 AI-generated demonstration products (computers/IT and home & living, 3 photos each) were added with `scripts/seed-demo-shop.mjs` to the existing 35 sample products (49 total); a dry run preceded the real run and a second run created 0.
 - **Not accepted / UNVERIFIED:** physical-device PWA install, Safari/iOS behaviour, real WhatsApp Cloud API traffic (Meta credentials not yet entered), scheduled backups (none installed by owner decision; only the one-off pre-release backup exists), Cloud Logging delivery of the claim log line, behaviour under load on the 2 GB VM.
 
+## Getting a SuperAdmin claim link yourself
+
+While no SuperAdmin exists and `PLATFORM_ADMIN_CLAIM_ENABLED=1`, run on your own computer (logged-in `gcloud` with IAP SSH access to the VM):
+
+```sh
+scripts/gcp-claim-link.sh
+```
+
+It restarts only the backend container (stop-before-start, so every older link is invalidated), waits for health and prints the single `platform.claim.issued` log line. Open the printed `https://<shop host>/setup/#<code>` yourself within 30 minutes and register (email, username, password), then sign in at `https://<seller host>/platform/` and enrol TOTP. The code is a bearer secret: do not paste it anywhere. If a SuperAdmin already exists the script reports that no claim line exists. Override the target with `GCP_PROJECT`, `GCP_ZONE`, `GCP_INSTANCE`.
+
