@@ -16,6 +16,28 @@ Backend memory is capped at 384 MiB with a 192 MiB V8 heap to leave native/TLS/d
 
 After the first publication, make both GHCR packages **public** in their package settings. The host uses anonymous public GitHub and GHCR, with its own empty Docker credential configuration and no PAT. Do not make the repository public merely to enable this method: anonymous source access is a prerequisite, and private repositories need a separately reviewed authentication design.
 
+## One-off demo catalog seeding
+
+Use a reviewed backend image containing `scripts/seed-demo-shop.mjs`. Restore-test a backup first. Run a disposable container on the backend's existing **private** Docker network, without published ports, using the same backend environment and read-only secret-file mounts (including `ADMIN_PASSWORD_FILE` and `DATABASE_PASSWORD_FILE`). Mount the operator-prepared product JSON and image directory read-only at `/seed`. Do not put credentials in arguments or print the container environment.
+
+Pattern (replace image/network/env/mount placeholders with the installed backend settings):
+
+```sh
+docker run --rm --network PRIVATE_NETWORK --env-file BACKEND_ENV_FILE \
+  --mount type=bind,src=HOST_SECRETS,dst=/run/secrets,readonly \
+  --mount type=bind,src=HOST_SEED_DIRECTORY,dst=/seed,readonly \
+  --entrypoint node BACKEND_IMAGE \
+  scripts/seed-demo-shop.mjs --data /seed/products.json --images /seed/images \
+  --shop-name 'Demo Mart Malaysia' --dry-run
+```
+
+Review the plan, then repeat without `--dry-run`. This targets the default shop database selected by `readConfig`, not the platform registry or another tenant. All three `SKU/view-N.jpg` files are required; `view-N.thumb.jpg` previews are optional. Category slugs are uppercase hyphen-separated codes to satisfy the existing category API. Existing SKU rows are skipped without edits. The JSON's `shopName` is informational: only `--shop-name` changes the stored name, never setup mode. Dry-run summary counts describe planned writes. Each product, its missing category, gallery and creation history commit atomically; a database failure preserves earlier completed products and rerunning resumes by SKU. Complete input validation precedes catalog/name writes; opening the store still performs the standard schema initialization/migrations, so use an already initialized database for a strictly no-write dry run.
+
+Seed inputs (`--data` and `--images`) are operator-trusted: preserve the bundle and do not modify it during import. JSON must be a regular file of at most 1 MiB. Images must resolve inside the real image root; non-regular files and final-component symlinks are rejected. Reads are capped before base64 conversion (512 KiB photos, 80 KiB previews). JPEG structure must contain a valid 8-bit frame and scan, end exactly at EOI, and remain within 4096 pixels per dimension and 16 million pixels. This is structural validation, not full entropy decoding. Three views must have distinct bytes. Successful write summaries count persisted gallery images.
+
+An unambiguous active category label is reused case-insensitively with its stored code and spelling; only unmatched labels receive generated codes. `Home & Living` does not match `Home`. Conflicting labels/codes fail before writes. The shop-name update is deliberately a separate final, name-column-only step after product transactions; a failure can leave committed products with the old name. Rerun with the same bundle and name to finish. An unchanged name issues no update. Serialize this maintenance operation with seller edits.
+
+
 ## Initial operator installation
 
 Review the exact release and verify its CI before installation. All commands below run on the existing VM as root. The installer is intentionally manual: automatic updates cannot replace the updater, Compose policy, runtime configuration or systemd units.

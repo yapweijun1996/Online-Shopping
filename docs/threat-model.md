@@ -100,6 +100,7 @@ All HTTP routes are in `src/app.js` (path constants at the top, handlers in `rou
 - Environment/config: `src/config.js` (`ADMIN_*`, `DATABASE_*`, `PUBLIC_ORIGIN`, `SELLER_ORIGIN`, `TRUST_PROXY`, `SHOP_MODE`).
 - Host automation: `deploy/auto-update.py` (polls GitHub API), `deploy/backup-postgres.py`.
 - Offline-only (no entry point): `createOfflineMetaIngress` raw-body ingress, `verifyNinjaSignature`, `verifyMetaSignature`.
+- Operator-only catalog seed (`scripts/seed-demo-shop.mjs`): trusted, immutable local input bundle; regular-file and bounded reads, image realpath confinement, JPEG structure/dimension checks and distinct views before catalog writes. Uses the configured database directly, not HTTP authentication. See the one-off seeding section in `GCP_DEPLOY.md`; no production authorization is implied by dry-run.
 
 ## 5. Threat Scenarios
 
