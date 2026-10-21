@@ -1,6 +1,6 @@
 import { tableRows, safeLink } from './table.js';
 import { mountAppearance, paletteChoices } from './shared/appearance.js';
-import { containDialogFocus } from './shared/modal.js';
+import { containDialogFocus, confirmModal } from './shared/modal.js';
 const paletteListeners = new Set();
 window.sellerPalette = {
   choose(id) { if (!paletteChoices.some(([key]) => key === id)) return false; document.documentElement.dataset.sellerPalette = id; for (const listener of paletteListeners) listener(id); return false; },
@@ -331,7 +331,30 @@ async function detail(id) {
     const dd = element('dd'); dd.append(title === 'Code' && shop.shopUrl ? externalLink(shop.shopUrl, String(value)) : document.createTextNode(String(value))); data.append(element('dt', title), dd);
   }
   for (const [label, value] of [['Buyer URL', shop.shopUrl], ['Seller URL', shop.sellerUrl]]) if (value) { const dd = element('dd'); dd.append(externalLink(value), button(`Copy ${label}`, () => copy(value))); data.append(element('dt', label), dd); }
-  content.append(data); if (shop.isDefault) return;
+  content.append(data);
+  const qrPanel = element('section', undefined, 'panel'); qrPanel.setAttribute('aria-label', 'WhatsApp QR policy'); content.append(qrPanel);
+  try {
+    const policy = await api(`/shops/${id}/qr`);
+    qrPanel.append(element('h3', 'WhatsApp QR'));
+    if (!policy) qrPanel.append(element('p', 'Unavailable: ask the host operator to upgrade the platform QR schema.'));
+    else {
+      const binding = policy.binding, enabled = Boolean(binding?.enabled);
+      const status = element('p', `${shop.isDefault ? 'Default slot 0 (host managed)' : policy.provisioned ? 'Worker provisioned' : 'Worker not provisioned'} · ${enabled ? 'Enabled' : 'Disabled'} · Tenant slots reserved: ${policy.occupiedTenantSlots} / ${policy.tenantSlots} · Slot: ${binding?.slot_id ?? 'None'} · Cleanup: ${binding?.cleanup_pending ? 'Pending' : 'None'}`);
+      status.setAttribute('role', 'status'); qrPanel.append(status);
+      const telemetry = shop.qrStatus;
+      qrPanel.append(element('p', `Worker state (last reported): ${telemetry?.state ?? 'Unavailable'} · Heartbeat: ${telemetry?.heartbeatAt ?? 'Unavailable'} · Worker error: ${telemetry ? telemetry.hasError ? 'Reported' : 'None' : 'Unavailable'}`));
+      qrPanel.append(element('p', 'No QR codes, credentials, phone numbers or chats are accessible here.'));
+      qrPanel.append(element('p', 'Disabling fences new work; an already claimed send may complete. Unlink the device in official WhatsApp. A host operator must restart a revoked worker before reactivation.'));
+      const control = button(enabled ? 'Disable QR' : 'Enable QR', async () => {
+        if (!await confirmModal('This changes the shop’s linked-device policy. The Owner must acknowledge the risks and pair in the seller console.', { title: enabled ? 'Disable WhatsApp QR?' : 'Enable WhatsApp QR?', confirmLabel: enabled ? 'Disable QR' : 'Enable QR' })) return;
+        await mutateShop(shop, `qr/${enabled ? 'disable' : 'enable'}`);
+        await detail(id);
+      });
+      control.dataset.unavailable = String(!enabled && (shop.status !== 'ACTIVE' || Boolean(binding?.cleanup_pending) || !shop.isDefault && !policy.provisioned));
+      control.disabled = control.dataset.unavailable === 'true'; qrPanel.append(control);
+    }
+  } catch (error) { qrPanel.append(element('p', error.message)); }
+  if (shop.isDefault) return;
   const action = async (name, body = {}) => {
     const result = await mutateShop(shop, name, body);
     await detail(id); return result;

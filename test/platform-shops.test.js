@@ -17,6 +17,10 @@ test('shop create concurrency, CAS actions, aliases, deletion and one-time selle
   assert.equal(account.role, 'OWNER'); assert.equal(account.mustChangePassword, true);
   const sellerSession = await createSession(store, account.id);
   assert.ok(!JSON.stringify(await shops.list()).includes(made.sellerPassword)); assert.ok(!JSON.stringify(await shops.detail(tenant.id)).includes('sealed'));
+  await store.run("UPDATE whatsapp_qr_session SET state = 'ERROR', heartbeat_at = ?, last_error = ?, qr_text = ? WHERE id = 1", '2026-10-21T00:00:00.000Z', 'private-error-detail', 'private-qr');
+  const detail = await shops.detail(tenant.id);
+  assert.deepEqual(detail.qrStatus, { state: 'ERROR', heartbeatAt: '2026-10-21T00:00:00.000Z', hasError: true });
+  assert.equal(JSON.stringify(detail).includes('private-'), false);
   const races = await Promise.allSettled([shops.mutate(tenant.id, 'suspend', { expectedRevision: tenant.revision }, 'owner'), shops.mutate(tenant.id, 'suspend', { expectedRevision: tenant.revision }, 'owner')]);
   assert.equal(races.filter((x) => x.status === 'fulfilled').length, 1); tenant = races.find((x) => x.status === 'fulfilled').value.tenant;
   await assert.rejects(shops.mutate(tenant.id, 'request-deletion', { expectedRevision: tenant.revision, code: 'wrong' }, 'owner'), /exactly/);

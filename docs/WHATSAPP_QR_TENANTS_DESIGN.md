@@ -1,6 +1,6 @@
 # WhatsApp QR for platform shops
 
-Status: design with job 2 platform policy and job 3 static broker implemented locally; 2026-10-21. No deployment authorization. Requirements outside the implementation contracts below remain design decisions, not existing behavior. Historical evidence references are working-copy file:line ranges. Host figures supplied by the task are not independently measured here.
+Status: design with job 2 platform policy, job 3 static broker and job 4 seller/SuperAdmin UI implemented locally; 2026-10-21. No deployment authorization. Requirements outside the implementation contracts below remain design decisions, not existing behavior. Historical evidence references are working-copy file:line ranges. Host figures supplied by the task are not independently measured here.
 
 ## Decision
 
@@ -150,10 +150,36 @@ with that acknowledgement or host confirmation. An unavailable shop or worker
 leaves the reservation pending. A revoked worker requires an operator restart
 before later activation; it never resumes its old session automatically.
 
-Jobs 4–5 still own safe policy/revocation presentation, actual read-only manifest
+Job 4 supplies safe policy/revocation presentation below. Job 5 still owns read-only manifest
 mounts, separate worker credentials, explicit host stop/restart, restore-disabled
 recovery, deployment health checks and measured resource/release gates. No
 production provisioning or real WhatsApp pairing is implied by synthetic tests.
+
+### Job 4 UI behavior
+
+Shop detail includes a separate QR policy panel, also for the default shop.
+Enable/Disable uses the existing full-session API client, CSRF header and tenant
+revision, with a keyboard-accessible confirmation dialog. Reserved tenant capacity
+excludes slot 0 and includes disabled reservations awaiting cleanup. The console
+does not fetch seller QR or chat APIs. Shop detail returns only the last reported
+worker state, heartbeat timestamp and an error-present boolean, never error text,
+phone numbers, keys or QR material. Last reported state is not a live health check.
+
+Seller settings show localized platform revocation, missing provisioning,
+capacity and temporary-unavailability messages. A failed policy response clears
+the rendered QR; chats clear drafts and disable sending on policy/access failure.
+Unknown reply outcomes retain their idempotency intent for safe manual retry.
+URLs continue through the existing tenant-aware relative API helper. QR data is
+never persisted. Revocation is observed on the next response, not instant remote
+cancellation; unlink the device in official WhatsApp and have the host restart
+the revoked worker before reactivation.
+
+Local UI verification uses synthetic API responses, never provider traffic.
+Browser smoke at 390 and 1280 pixels covered default/Alpha/Bravo QR revocation,
+draft clearing, disabled composers, tenant API paths and horizontal overflow.
+The opt-in platform asset browser test exercises confirmation, revision/CSRF
+payloads, MFA/CSRF/revision errors, default controls and pending/unprovisioned
+disablement. This is not handset pairing, remote logout or delivery evidence.
 
 
 
@@ -170,4 +196,4 @@ production provisioning or real WhatsApp pairing is implied by synthetic tests.
 
 ## Verification limits
 
-The original investigation was source-based. Job 2 now has local PostgreSQL migration/admission/lifecycle tests and admin-route/purge smoke evidence; this does not establish deployed tenant worker support. No host inspection, phone scan, live send, deployment or resource measurement was performed. Task-provided RSS/RAM figures and recorded GCP acceptance remain distinct from locally exercised behavior. Jobs 3–5 must supply their own acceptance evidence, not convert estimates into readiness claims.
+The original investigation was source-based. Job 2 has local PostgreSQL migration/admission/lifecycle tests and admin-route/purge smoke evidence; job 4 has the synthetic browser verification recorded above. Neither establishes deployed tenant worker support. No host inspection, phone scan, live send, deployment or resource measurement was performed. Task-provided RSS/RAM figures and recorded GCP acceptance remain distinct from locally exercised behavior. Release acceptance must supply its own evidence, not convert estimates into readiness claims.

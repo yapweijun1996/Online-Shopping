@@ -56,6 +56,7 @@ test('QR reservations serialize capacity, revocation, lifecycle and retirement',
   const winner = outcomes[0].status === 'fulfilled' ? a : b, loser = winner === a ? b : a;
   await policy.mutate(defaultId, true, { expectedRevision: 0 }, 'admin');
   assert.equal((await policy.view(defaultId)).binding.slot_id, 0);
+  assert.equal((await policy.view(defaultId)).occupiedTenantSlots, 1, 'default reservation does not consume tenant capacity');
   const binding = (await policy.view(winner)).binding;
   let release, entered;
   const gate = new Promise((resolve) => { release = resolve; });
@@ -70,6 +71,7 @@ test('QR reservations serialize capacity, revocation, lifecycle and retirement',
   const revoked = (await policy.view(winner)).binding;
   assert.equal(revoked.enabled, false);
   assert.equal(revoked.cleanup_pending, true);
+  assert.equal((await policy.view(winner)).occupiedTenantSlots, 1, 'pending cleanup retains capacity');
   assert.equal(revoked.epoch, binding.epoch + 1);
   await assert.rejects(policy.withAuthorizedBinding(winner, binding.slot_id, binding.epoch, () => assert.fail()), { code: 'QR_REVOKED' });
   await shops.mutate(winner, 'resume', { expectedRevision: 2 }, 'admin');

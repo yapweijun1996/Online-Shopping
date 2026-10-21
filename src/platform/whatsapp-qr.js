@@ -25,7 +25,8 @@ export function createQrPolicy({ platform, tenantSlots = 1, provisionedTenantIds
   return {
     async view(id) {
       if (await platform.schemaVersion() < 3) return null;
-      return { binding: await platform.get('SELECT * FROM tenant_qr_binding WHERE tenant_id = ?', id) || null, provisioned: provisioned.has(id), tenantSlots };
+      const occupied = await platform.get('SELECT COUNT(*) AS count FROM tenant_qr_binding WHERE slot_id > 0');
+      return { binding: await platform.get('SELECT * FROM tenant_qr_binding WHERE tenant_id = ?', id) || null, provisioned: provisioned.has(id), tenantSlots, occupiedTenantSlots: Number(occupied.count) };
     },
     async mutate(id, enabled, input, actor) {
       if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0 || Object.keys(input).some((key) => key !== 'expectedRevision')) throw new FieldError('expectedRevision', 'Send only the current shop revision.');

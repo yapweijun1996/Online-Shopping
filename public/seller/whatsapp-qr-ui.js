@@ -24,7 +24,8 @@ export function client({ csrfToken, onUnauthorized }) {
     } finally { finish(); }
   };
 }
-export const failureText = error => error.status === 429 ? text('retry', error.retryAfter) : text('failed');
+export const policyFailure = error => error.code === 'QR_REVOKED' ? 'revoked' : error.code === 'QR_CAPACITY' ? 'capacity' : error.code === 'QR_WORKER_NOT_PROVISIONED' || error.status === 404 ? 'notProvisioned' : error.status === 503 ? 'unavailable' : null;
+export const failureText = error => policyFailure(error) ? text(policyFailure(error)) : error.status === 429 ? text('retry', error.retryAfter) : text('failed');
 // One bounded timer per surface; no requests after detach, logout or hidden pages.
 export function watch(root, identity, csrfToken, tick) {
   let active = true;

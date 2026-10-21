@@ -247,18 +247,20 @@ The platform is disabled unless `PLATFORM_ENABLED=1` and its validated file-base
 | POST | `/totp/confirm` | `{code}` or `{recoveryCode}`; rotates to FULL (30-minute idle, four-hour absolute); first enrolment returns ten recovery codes once. |
 | DELETE | `/session` | FULL only; ends the current session. |
 | GET, POST | `/shops` | FULL only; list, or create `{code,name,currency,sellerUsername}`. Generated seller password and addresses returned once; caller-supplied passwords refused. |
-| GET | `/shops/{id}` | Safe metadata and counts; no database credential. |
+| GET | `/shops/{id}` | Safe metadata and counts; `qrStatus` contains only last reported `state`, `heartbeatAt` and `hasError` boolean (or null), never QR material, worker error text, phones or credentials. |
 | POST | `/shops/{id}/{action}` | `expectedRevision` required. Actions: `suspend`, `resume`, `rename`, `request-deletion`, `cancel-deletion`, `reset-seller-password`. Rename adds `code,name`; deletion adds the exact `code`. |
 | GET | `/audit?limit=50&cursor=...` | Append-only events; hard cap 100, cursor paging. |
 | POST | `/account/password` | `{currentPassword,newPassword}`; ends other sessions. |
 | POST | `/account/recovery-codes` | `{password}`; replaces all recovery codes, returned once. |
 | GET | `/status` | FULL only; reachability, open pool size and counts by status. |
+| GET | `/shops/{id}/qr` | FULL only; binding policy, host provisioning, `tenantSlots` and `occupiedTenantSlots` (slot 0 excluded; cleanup-pending reservations included). Null before explicit QR schema upgrade. |
+| POST | `/shops/{id}/qr/enable`, `/shops/{id}/qr/disable` | FULL MFA, exact Origin and CSRF; body only `{expectedRevision}` using the tenant revision. Separate from lifecycle actions; supports the default slot. |
 
 Five failed password/TOTP attempts lock the account for 15 minutes; successful password verification alone cannot clear failures. Sign-in is limited to ten attempts per IP per 15 minutes. TOTP uses RFC 6238 SHA-1, six digits, 30 seconds, a one-step window, and refuses a used step. Recovery codes are hashed and single use. `platform_session` is HttpOnly, Secure, SameSite=Strict, path `/api/v1/platform`.
 
 Non-default shops add `/<code>` to normal paths: `/<code>/shop/`, `/<code>/seller/`, `/<code>/api/v1/...`, `/<code>/p/{id}`, `/<code>/s/home`. Seller cookies use `/<code>/api/v1/seller`. `GET <base>/api/v1/shop` adds `storageScope` = `t-` plus twelve hex characters from SHA-256 of the immutable tenant id. The default shop keeps its existing response and URLs. Dynamic tenant manifests have independent id/scope/start_url; aliases redirect 308 preserving the remaining path and query. Unknown, malformed, PROVISIONING, FAILED and PURGED codes return 404; SUSPENDED and DELETING return 503 without opening a tenant database. Platform outages do not affect the default shop or readiness.
 
-The default registry row cannot be mutated through the console. The limit is twenty non-purged shops including the default. Requested deletion retains data for thirty days; the console never drops a database. Manual purge retains the registry row and aliases in terminal PURGED state, preventing code reuse.
+The default registry row rejects generic lifecycle mutations; the separate QR policy endpoints may enable/disable its fixed slot 0. The limit is twenty non-purged shops including the default. Requested deletion retains data for thirty days; the console never drops a database. Manual purge retains the registry row and aliases in terminal PURGED state, preventing code reuse.
 
 During a schema upgrade with the R3 controller installed, business requests return 503 `DEPLOYMENT_MAINTENANCE` while the host-only durable maintenance flag is set. `/ready` retains the default-store readiness contract. `/health` remains alive and supplies `maintenance.enabled`, `inFlight`, `workerIdle` and `platformIdle` drain diagnostics, without exposing credentials or tenant data. There is no HTTP maintenance-control endpoint. `GET /api/v1/platform/status` requires a FULL platform session and reports reachability, open tenant pool size and bounded counts by status; it grants no operator capability.
 
