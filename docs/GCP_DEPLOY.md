@@ -312,3 +312,16 @@ systemctl disable --now online-shopping-egress-guard.service
 ```
 
 Service stop intentionally retains rules. Removal deletes only exact tagged guard rules, never flushes shared chains. Offline test: `python3 test/gcp-egress-guard.test.py`. Live packet denial, public/provider HTTPS, reboot ordering and host firewall compatibility remain operator acceptance requirements.
+
+## GCP acceptance record (2026-10-21)
+
+Evidence from the live deployment at https://demoonlineshopping.xyz (shop) and https://seller.demoonlineshopping.xyz (seller / SuperAdmin console host). Statements below were observed on the live host unless marked UNVERIFIED.
+
+- **Host:** `cloudops-host` (asia-southeast1-b) resized from e2-micro to e2-small (2 vCPU, ~1.9 GB RAM); reserved IP unchanged; all containers restarted automatically; guest orders written before the stop were read back after the restart.
+- **Releases:** two manual (protected-path) releases were performed with the updater's own `Updater` methods (`release`, `activate`, `health`, `save`) after a cluster backup that was restored into a throw-away container and compared by row counts (orders/products/accounts/events, platform tenants/admins; 0 non-benign errors). The updater timer was restarted afterwards and has since deployed `fd28dfd` automatically.
+- **Platform mode:** roles `platform_app` / `platform_provisioner` and database `platform` exist; schema v2 was initialised by the backend in claim mode; one default tenant registered; no SuperAdmin yet (claim links are issued at backend start-up and expire after 30 minutes; none is outstanding).
+- **Edge:** `/demo-assets/*` served on the shop host (gallery images), `/setup/` only on the shop host and only while claiming is open, HSTS (`max-age=31536000`) on both hosts, host isolation (shop host never serves seller/platform; seller host never serves shop) confirmed with a real Caddy matrix (`scripts/qa-gcp-caddy-routing.mjs`, 102 assertions) and live requests.
+- **Egress:** the backend joins the non-internal `egress` network (192.168.247.0/24); the host-enforced guard (`egress-guard.sh`) blocks 169.254.169.254 and RFC1918 from that subnet. Verified from a one-off container on that network: metadata endpoint and the VM's private address time out, `graph.facebook.com` is reachable. PostgreSQL stayed on the private network only and was not restarted (uptime > 12 h at the time).
+- **Content:** shop name `Demo Mart Malaysia`, currency MYR; 14 AI-generated demonstration products (computers/IT and home & living, 3 photos each) were added with `scripts/seed-demo-shop.mjs` to the existing 35 sample products (49 total); a dry run preceded the real run and a second run created 0.
+- **Not accepted / UNVERIFIED:** physical-device PWA install, Safari/iOS behaviour, real WhatsApp Cloud API traffic (Meta credentials not yet entered), scheduled backups (none installed by owner decision; only the one-off pre-release backup exists), Cloud Logging delivery of the claim log line, behaviour under load on the 2 GB VM.
+

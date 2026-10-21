@@ -377,3 +377,8 @@ R1 adds configuration-gated platform authentication and console, shop lifecycle,
 ## 2026-10-11 multi-tenant R0–R4 release
 
 R0–R3 are CI-gated and deployed; R2 recovery restored legacy PWAs after the Docker incident. R4 owner Chrome/TOTP/CSV/order/lifecycle journey, five real faults, actual partial-purge retry and twenty-shop capacity/idle recovery passed in the isolated Compose stack. Independent whole-diff review corrected stale-cache/probe races and QA recovery boundaries. Additive production platform setup, dedicated admin tunnel, bootstrap without TOTP enrolment, installed controller next poll and private handoff are verified. Exact SHAs, measured connections and final production/handoff state are in MULTI_TENANT_LEDGER.md. Protected schema 24, old secrets and PostgreSQL/tunnel identities remain unchanged; historical PostgreSQL restart count two is disclosed under D0-26.
+
+## 2026-10-21: GCP release 2, demonstration shop and new seller tools
+
+Live on GCP: bulk tracking-number CSV import with column mapping (seller v141), mode-aware shop wording, WhatsApp Cloud API routing/erasure fixes (B08/B09), backend outbound internet with a host-enforced metadata block, HSTS, a 14-product demonstration catalogue with generated photos, SuperAdmin claim flow (`/setup/`, default closed until a claim code is issued at start-up). A real-server rehearsal (`scripts/qa-platform-e2e.mjs`, 36 checks) covers claim, TOTP, tenant creation, isolation, suspend/resume and password reset. Seller MCP connector P1 and the WhatsApp QR module are in progress (default off). Evidence and limits: see [GCP_DEPLOY.md](GCP_DEPLOY.md#gcp-acceptance-record-2026-10-21).
+
