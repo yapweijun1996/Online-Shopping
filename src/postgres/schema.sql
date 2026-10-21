@@ -351,6 +351,7 @@ CREATE TABLE oauth_token (
  UNIQUE (grant_id, kind, generation)
 );
 CREATE INDEX oauth_token_grant_expiry ON oauth_token(grant_id, expires_at);
+CREATE INDEX oauth_token_predecessor ON oauth_token(predecessor_hash);
 CREATE TABLE mcp_audit (
  id TEXT PRIMARY KEY, at TEXT NOT NULL, tenant_id TEXT NOT NULL, account_id TEXT, client_id TEXT, grant_id TEXT,
  correlation_id TEXT NOT NULL,

@@ -71,9 +71,9 @@ export function createOAuth({ store, config, tenantId, limit }) {
       if (count >= 100) {
         const unused = await store.get(`SELECT c.id FROM oauth_client c WHERE c.last_used_at IS NULL
           AND NOT EXISTS (SELECT 1 FROM oauth_grant g WHERE g.client_id = c.id)
+          AND NOT EXISTS (SELECT 1 FROM oauth_authorization_request r WHERE r.client_id = c.id)
           ORDER BY c.created_at, c.id LIMIT 1`);
         if (!unused) fail('temporarily_unavailable', 429, { 'Retry-After': '900' });
-        await store.run('DELETE FROM oauth_authorization_request WHERE client_id = ?', unused.id);
         await store.run('DELETE FROM oauth_client WHERE id = ?', unused.id);
         if (count > 100) return json(429, { error: 'temporarily_unavailable' }, { 'Retry-After': '900' });
       }
@@ -94,8 +94,8 @@ export function createOAuth({ store, config, tenantId, limit }) {
     if (params.resource !== resource) fail('invalid_target');
     if (!/^[A-Za-z0-9_-]{16,512}$/.test(params.state) || !/^[A-Za-z0-9_-]{43}$/.test(params.code_challenge) || params.code_challenge_method !== 'S256') fail();
     const requested = scopes(params.scope).join(' '), id = randomUUID(), nonce = secret();
+    await cleanupOAuth(store);
     await store.transaction(async () => {
-      await cleanupOAuth(store);
       const { count } = await store.get('SELECT COUNT(*) AS count FROM oauth_authorization_request WHERE consumed_at IS NULL AND expires_at > ?', stamp());
       if (count >= 100) fail('temporarily_unavailable', 429, { 'Retry-After': '900' });
       await store.run(`INSERT INTO oauth_authorization_request(id, browser_nonce_hash, client_id, tenant_id, resource, redirect_uri, state,

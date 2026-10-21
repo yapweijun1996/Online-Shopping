@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS oauth_token (
  UNIQUE (grant_id, kind, generation)
 )${strict};
 CREATE INDEX IF NOT EXISTS oauth_token_grant_expiry ON oauth_token(grant_id, expires_at);
+CREATE INDEX IF NOT EXISTS oauth_token_predecessor ON oauth_token(predecessor_hash);
 CREATE TABLE IF NOT EXISTS mcp_audit (
  id TEXT PRIMARY KEY, at TEXT NOT NULL, tenant_id TEXT NOT NULL, account_id TEXT, client_id TEXT, grant_id TEXT,
  correlation_id TEXT NOT NULL,

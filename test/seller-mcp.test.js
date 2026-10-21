@@ -16,6 +16,10 @@ import { readConfig } from '../src/config.js';
 import { readBody } from '../src/http.js';
 import { platformFixture } from './helpers/platform-fixture.js';
 import { createShopManagement } from '../src/platform/shops.js';
+import { readFile, mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { cleanupOAuth } from '../src/mcp/cleanup.js';
 
 import { createPlatformRegistry } from '../src/platform/registry.js';
 import { upgradePostgres } from '../src/postgres/upgrade.js';
@@ -442,4 +446,93 @@ test('enabled reservations do not prevent updating an existing collision shop', 
   assert.equal(changed.tenant.code, 'mcp');
   assert.equal(changed.tenant.name, 'Retained shop');
   await assert.rejects(management.mutate(created.tenant.id, 'rename', { expectedRevision: changed.tenant.revision, code: 'oauth' }, 'fixture'), /reserved/);
+});
+
+for (const engine of ['sqlite', 'postgres']) test(`${engine}: DCR replacement preserves staged and password-bound consent and refuses a protected pool`, { skip: engine === 'postgres' && !base }, async (t) => {
+  const f = await fixture(t, engine), victim = await f.register(), staged = await f.stage(victim);
+  const signed = await f.login(staged);
+  await f.store.run("UPDATE oauth_client SET created_at = '2000-01-01' WHERE id = ?", victim);
+  for (let i = 0; i < 99; i++) await f.store.run(`INSERT INTO oauth_client
+    (id, tenant_id, issuer, client_name, redirect_uris_json, auth_method, created_at, expires_at)
+    SELECT ?, tenant_id, issuer, client_name, redirect_uris_json, auth_method, created_at, expires_at FROM oauth_client WHERE id = ?`, `filler-${i}`, victim);
+  await f.register();
+  assert.ok(await f.store.get('SELECT id FROM oauth_client WHERE id = ?', victim));
+  const consent = await f.approve(staged, signed);
+  assert.equal(consent.response.status, 200);
+  const code = new URL(consent.data.redirectTo).searchParams.get('code');
+  await f.store.run("UPDATE oauth_client SET last_used_at = '2026-01-01'");
+  const before = await f.store.all('SELECT id FROM oauth_client ORDER BY id');
+  assert.equal((await f.call('/oauth/register', 'POST', metadata)).response.status, 429);
+  assert.deepEqual(await f.store.all('SELECT id FROM oauth_client ORDER BY id'), before);
+  const issued = await f.exchange(victim, code, staged.verifier);
+  assert.equal(issued.response.status, 200);
+  assert.equal((await f.rpc(issued.data.access_token, 'ping')).response.status, 200);
+});
+
+test('4000 expired generations keep each cleanup writer batch short and allow competing writers', async (t) => {
+  const f = await fixture(t, 'sqlite'), g = await f.grant();
+  const token = await f.store.get("SELECT * FROM oauth_token WHERE kind = 'refresh'");
+  await f.store.transaction(async () => {
+    let predecessor = token.token_hash;
+    for (let generation = 1; generation <= 4000; generation++) {
+      const digest = hash(`expired-${generation}`);
+      await f.store.run(`INSERT INTO oauth_token(token_hash, kind, grant_id, resource, scopes, issued_at, expires_at, generation, predecessor_hash)
+        VALUES (?, 'refresh', ?, ?, ?, ?, ?, ?, ?)`, digest, token.grant_id, token.resource, token.scopes, token.issued_at, token.expires_at, generation, predecessor);
+      predecessor = digest;
+    }
+    await f.store.run("UPDATE oauth_grant SET absolute_expires_at = '2000-01-01' WHERE id = ?", token.grant_id);
+  });
+  const durations = [];
+  const measured = { ...f.store, transaction: (fn) => f.store.transaction(async () => {
+    const start = performance.now();
+    try { return await fn(); } finally { durations.push(performance.now() - start); }
+  }) };
+  let interleaved = false;
+  const pending = cleanupOAuth(measured);
+  await f.store.transaction(async () => {
+    await f.store.run('UPDATE seller_account SET active = active');
+    interleaved = durations.length < 5;
+  });
+  await pending;
+  assert.equal(interleaved, true);
+  assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM oauth_token WHERE grant_id = ?', token.grant_id)).n, 4000);
+  // A generous scheduling allowance above the ~25ms target, still rejects the
+  // measured multi-second quadratic scan without the predecessor index.
+  assert.ok(Math.max(...durations) < 150, JSON.stringify(durations));
+  t.diagnostic(`cleanup writer batch milliseconds: ${JSON.stringify(durations)}`);
+  assert.equal((await f.rpc(g.access_token, 'ping')).response.status, 401);
+});
+
+test('real Compose backend environments parse with MCP absent, off and on', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'mcp-config-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const secretPath = join(dir, 'secret'), keyPath = join(dir, 'keys');
+  await writeFile(secretPath, 'Synthetic-Only-Q7r8s9t0!');
+  await writeFile(keyPath, `test=${Buffer.alloc(32, 7).toString('base64')}\n`);
+  const substitutions = { APP_REVISION: 'a'.repeat(40), ADMIN_USERNAME: 'fixture_owner',
+    SHOP_HOST: 'shop.example.com', SELLER_HOST: 'seller.example.com', PLATFORM_ENABLED: '0',
+    PLATFORM_ADMIN_HOST: 'admin.example.com', PLATFORM_ADMIN_USERNAME: 'fixture_admin' };
+  for (const file of ['compose.gcp.yaml', 'compose.production.yaml']) {
+    const text = await readFile(new URL('../' + file, import.meta.url), 'utf8');
+    const backend = text.split(/^  backend:\s*$/m)[1]?.split(/^  [a-z][\w-]*:\s*$/m)[0];
+    assert.ok(backend, file);
+    const block = backend.match(/^    environment:\n((?:^      .*\n)+)/m)?.[1];
+    assert.ok(block, file);
+    const env = {};
+    for (const line of block.trimEnd().split('\n')) {
+      const [, key, raw] = /^      ([A-Z_]+):\s*(.*)$/.exec(line);
+      let value = raw.replace(/^"(.*)"$/, '$1').replace(/\$\{([A-Z_]+)(?::([-?])(.*?))?\}/g,
+        (_, name, operator, fallback) => substitutions[name] ?? (operator === '-' ? fallback : 'fixture'));
+      if (key.endsWith('_PASSWORD_FILE')) value = secretPath;
+      if (key === 'INTEGRATION_KEY_FILE' && value) value = keyPath;
+      env[key] = value;
+    }
+    assert.equal(readConfig(env).mcpEnabled, false, file);
+    for (const enabled of ['0', '1']) {
+      const config = readConfig({ ...env, MCP_ENABLED: enabled, MCP_REDIRECT_URIS: redirect });
+      assert.equal(config.mcpEnabled, enabled === '1', file);
+      assert.equal(config.trustProxy, true);
+      assert.equal(config.production, true);
+    }
+  }
 });

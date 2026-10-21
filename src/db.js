@@ -588,6 +588,7 @@ export async function migrateStore(store) {
   }
   if (version === 24) {
     await store.transaction(async () => {
+      // Unreleased schema25 includes the token predecessor lookup index.
       await migrateOAuth(store);
       await store.setSchemaVersion(25);
     });
