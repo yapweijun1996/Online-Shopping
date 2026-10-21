@@ -4,6 +4,11 @@ import { parseKeyFile } from './secret-box.js';
 import { checkPassword } from './accounts.js';
 
 const weakPasswords = new Set(['password', 'password123', 'changeme', 'admin123', 'testpassword', 'replace-me']);
+
+function databasePort(value = '5432') {
+  if (!/^[0-9]+$/.test(value) || Number(value) < 1 || Number(value) > 65535) throw new Error('Invalid database port.');
+  return Number(value);
+}
 const placeholderWords = /password|changeme|replace[-_]?me|example|sample|default/i;
 
 export function readShopMode(env) {
@@ -64,7 +69,8 @@ export function readPlatformConfig(env, integrationKeys) {
   const host = env.PLATFORM_DATABASE_HOST || 'postgres', database = env.PLATFORM_DATABASE_NAME || 'platform';
   const user = env.PLATFORM_DATABASE_USER || 'platform_app', provisioner = env.PLATFORM_PROVISIONER_USER || 'platform_provisioner';
   if (![host, database, user, provisioner].every((value) => /^[a-zA-Z0-9_.-]+$/.test(value))) throw new Error('Invalid platform database connection setting.');
-  const connection = (role, secret, name) => `postgresql://${encodeURIComponent(role)}:${encodeURIComponent(secret)}@${host}:5432/${name}`;
+  const port = databasePort(env.PLATFORM_DATABASE_PORT);
+  const connection = (role, secret, name) => `postgresql://${encodeURIComponent(role)}:${encodeURIComponent(secret)}@${host}:${port}/${name}`;
   return { adminHost, username, password, claimEnabled, databaseUrl: connection(user, readSecret('PLATFORM_DATABASE_PASSWORD_FILE'), database),
     provisionerUrl: connection(provisioner, readSecret('PLATFORM_PROVISIONER_PASSWORD_FILE'), 'postgres') };
 }
@@ -103,7 +109,7 @@ export function readConfig(env = process.env) {
     const user = env.DATABASE_USER || 'online_shopping';
     const name = env.DATABASE_NAME || 'online_shopping';
     if (![host, user, name].every(value => /^[a-zA-Z0-9_.-]+$/.test(value))) throw new Error('Invalid database connection setting.');
-    databaseUrl = `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(dbPassword)}@${host}:5432/${name}`;
+    databaseUrl = `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(dbPassword)}@${host}:${databasePort(env.DATABASE_PORT)}/${name}`;
   }
   if (databaseUrl) {
     let url;

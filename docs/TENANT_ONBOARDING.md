@@ -63,3 +63,17 @@ One code base means every shop gets every feature at the same moment. There is n
 ## 7. Order of work
 
 P3 SuperAdmin sign-in, P4 create and manage shops, P5 and P6 addresses and front end under `/<code>/`, P7 updater and backups for every shop, P8 security review and drills. P3–P7 are built in R1–R3; P8 real rehearsals and independent review are complete. Ordered production activation, controller installation, read-only verification and private handoff are complete; the legacy root remains the default shop. See the release ledger for evidence and recorded deviations.
+
+## Local real-server claim rehearsal
+
+Run against a disposable local PostgreSQL 16+ cluster using a superuser:
+
+```sh
+SHOP_TEST_DATABASE_URL=postgres://postgres@127.0.0.1:54329/online_shopping_test node scripts/qa-platform-e2e.mjs
+```
+
+The dependency-free rehearsal uses the installed `pg` dependency, random database/role names, private temporary secret files, and a child `node src/server.js` process. It exercises claim closure, separate console login, restricted-session denial, TOTP and recovery-code delivery, tenant provisioning, forced seller password changes, catalog and guest orders in both databases, bidirectional isolation, suspend/resume and seller reset. It prints status-only PASS/FAIL evidence and removes its child, databases, roles and secrets in `finally`; interruption with SIGKILL cannot guarantee cleanup. No real providers are configured or called.
+
+File-based database connections accept `DATABASE_PORT` and `PLATFORM_DATABASE_PORT` (1–65535, default 5432); the platform port also applies to its provisioner connection. Deployment defaults remain unchanged.
+
+This is an HTTP API rehearsal, not browser/TLS/edge verification. It uses `NODE_ENV=development` because production requires an HTTPS public origin. Shop requests use `http://127.0.0.1:<port>`; admin requests connect to loopback with `Host: localhost:<port>` and the required `Origin: https://localhost:<port>`. The explicit host/path-scoped cookie jars transport Secure cookies over HTTP only for this local rehearsal, without transferring the shop claim cookie to the admin host. Recovery codes are validated in memory, never printed. Browser cookie enforcement, console rendering, authenticator scanning, cloud log delivery and production deployment remain unverified.
