@@ -1,6 +1,10 @@
 import { messages } from '../shared/i18n.js';
 const locales = ['en', 'ms', 'zh-Hans', 'vi', 'th', 'ja', 'ko'];
 const rows = [
+  ['shippingExport', 'Export shipping list', 'Eksport senarai penghantaran', '导出发货清单', 'Xuất danh sách giao hàng', 'ส่งออกรายการจัดส่ง', '発送リストを出力', '배송 목록 내보내기'],
+  ['shippingHelp', "Fill weight, then copy columns into your courier's bulk upload template; import the tracking CSV back afterwards.", 'Isi berat, kemudian salin lajur ke templat muat naik pukal kurier; import CSV penjejakan selepas itu.', '填写重量，然后将列复制到快递批量上传模板；之后导入物流 CSV。', 'Điền trọng lượng, sao chép cột vào mẫu tải lên hàng loạt của hãng vận chuyển; sau đó nhập lại CSV vận đơn.', 'กรอกน้ำหนัก แล้วคัดลอกคอลัมน์ลงแม่แบบอัปโหลดของผู้ขนส่ง จากนั้นนำเข้า CSV ติดตามกลับมา', '重量を入力し、配送業者の一括登録テンプレートに列をコピーしてください。その後、追跡CSVを取り込んでください。', '무게를 입력하고 택배사의 대량 업로드 양식에 열을 복사한 다음 배송 추적 CSV를 가져오세요.'],
+  ['shippingTooMany', 'More than 500 parcels match. Narrow the filters.', 'Lebih 500 bungkusan sepadan. Kecilkan penapis.', '超过500个包裹，请缩小筛选范围。', 'Có hơn 500 kiện. Thu hẹp bộ lọc.', 'มีมากกว่า 500 พัสดุ โปรดจำกัดตัวกรอง', '500個を超えています。絞り込んでください。', '500개를 초과합니다. 필터를 좁히세요.'],
+  ['shippingForbidden', 'Shipping export is not available for this session.', 'Eksport penghantaran tidak tersedia untuk sesi ini.', '当前会话无法导出发货清单。', 'Phiên này không được xuất giao hàng.', 'เซสชันนี้ไม่สามารถส่งออกรายการจัดส่งได้', 'このセッションでは発送リストを出力できません。', '이 세션에서는 배송 목록을 내보낼 수 없습니다.'],
   ['trackingMappingIntro', 'Choose the columns to import. Other columns are ignored.', 'Pilih lajur untuk diimport. Lajur lain diabaikan.', '选择要导入的列，其他列将被忽略。', 'Chọn cột để nhập. Bỏ qua các cột khác.', 'เลือกคอลัมน์ที่จะนำเข้า คอลัมน์อื่นจะถูกละเว้น', '取り込む列を選択してください。他の列は無視されます。', '가져올 열을 선택하세요. 다른 열은 무시됩니다.'],
   ['trackingMappingNone', 'No column', 'Tiada lajur', '不选择列', 'Không chọn cột', 'ไม่มีคอลัมน์', '列なし', '열 없음'],
   ['trackingDefaultCarrier', 'Default carrier (no carrier column)', 'Kurier lalai (tiada lajur kurier)', '默认承运商（无承运商列）', 'Hãng vận chuyển mặc định (không có cột)', 'ผู้ขนส่งเริ่มต้น (ไม่มีคอลัมน์ผู้ขนส่ง)', '既定の配送業者（配送業者列なし）', '기본 배송업체 (배송업체 열 없음)'],

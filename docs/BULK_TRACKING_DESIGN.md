@@ -2,6 +2,8 @@
 
 Research/design date: 2026-10-20. Status: proposed, not implemented. Repository: `/Users/yapweijun/Documents/GitHub/Online-Shopping`. Only this document was written; repository files were read only. All public sources below were retrieved on 2026-10-20. Source modification dates are publisher claims, not evidence of a tested portal contract.
 
+Implementation note (2026-10-21, Seller v142): the generic shipping-list contract in [API.md](API.md) supersedes section 4 for the implemented outbound action: read-only GET, current filters, one row per delivery, blank weight, all `orders.fulfil` roles, and erased rows skipped with a response count. It is not a provider-native profile or proof of EasyParcel compatibility. The provider-specific proposal below remains research, not the shipped API contract.
+
 ## 1. Decision and scope
 
 Build two separate operations: export selected confirmed orders for external booking, then preview and atomically import tracking assignments. Neither export nor booking-file creation changes order status. Import is an authenticated seller declaration that parcels have actually shipped, not a provider webhook or proof of collection. No courier API, polling, credential storage, payment, live shipment creation, automatic email, or courier webhook in this phase.
