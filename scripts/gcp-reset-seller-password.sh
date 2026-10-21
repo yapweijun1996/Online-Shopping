@@ -2,7 +2,7 @@
 # Sets a new temporary password for a seller account of the GCP default shop. Run it on YOUR computer (needs a logged-in
 # gcloud with IAP SSH access).
 #
-#   scripts/gcp-reset-seller-password.sh            # resets the default shop Owner "owner"
+#   scripts/gcp-reset-seller-password.sh            # resets the default shop Owner "seller"
 #   scripts/gcp-reset-seller-password.sh someuser   # resets another seller account of the default shop
 #
 # You type the password here; it is not echoed, never placed on a command line (local or remote) and only travels through
@@ -12,7 +12,7 @@ set -euo pipefail
 PROJECT="${GCP_PROJECT:-cloudops-mcp-175269}"
 ZONE="${GCP_ZONE:-asia-southeast1-b}"
 INSTANCE="${GCP_INSTANCE:-cloudops-host}"
-USERNAME="${1:-owner}"
+USERNAME="${1:-seller}"
 [[ "$USERNAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$ ]] || { echo "Invalid username." >&2; exit 2; }
 
 read -rsp "New temporary password for $USERNAME (12-256 characters, not containing the username): " PASSWORD; echo
