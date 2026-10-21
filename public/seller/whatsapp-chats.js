@@ -17,7 +17,7 @@ export function mountWhatsAppChats(root, cloud, { csrfToken, onUnauthorized }) {
     try { return await request(...args); }
     catch (error) {
       if (lifecycle.current() && (policyFailure(error) || error.status === 401 || error.status === 403)) {
-        connection = null; intent = null; textarea.value = ''; eligibility();
+        connection = null; textarea.value = ''; eligibility();
         alert.textContent = failureText(error);
       }
       throw error;
@@ -131,10 +131,10 @@ export function mountWhatsAppChats(root, cloud, { csrfToken, onUnauthorized }) {
     if (!lifecycle.current() || !selected) return;
     eligibility(); if (send.disabled || !thread) return;
     const body = textarea.value.trim(), ticket = epoch;
-    if (!intent || intent.text !== body) intent = { text: body, key: crypto.randomUUID() };
+    if (!intent || intent.text !== body || intent.threadId !== thread.id) intent = { text: body, threadId: thread.id, key: crypto.randomUUID() };
     const pending = intent; sending = true; eligibility(); alert.textContent = '';
     try {
-      const result = await api(`chats/${encodeURIComponent(thread.id)}/replies`, { text: body }, pending.key);
+      const result = await api(`chats/${encodeURIComponent(pending.threadId)}/replies`, { text: body }, pending.key);
       if (!lifecycle.current() || ticket !== epoch) return;
       history = [...history.filter(row => row.id !== result.id), result]; intent = null; textarea.value = ''; renderMessages(); messages.scrollTop = messages.scrollHeight;
     } catch (error) {
