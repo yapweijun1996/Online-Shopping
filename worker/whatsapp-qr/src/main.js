@@ -1,8 +1,9 @@
-import makeWASocket from '@whiskeysockets/baileys';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { readConfig } from './config.js';
 import { Client } from './client.js';
-import { Session } from './session.js';
+// Dependencies must not expose Signal keys through their own console calls.
+for (const method of ['log', 'info', 'warn', 'error', 'debug', 'trace']) console[method] = () => {};
+const log = line => process.stdout.write(`${line}\n`);
 let session;
 let stopping = false;
 const abort = new AbortController();
@@ -11,11 +12,14 @@ process.once('SIGTERM', () => { void stop(); });
 process.once('SIGINT', () => { void stop(); });
 process.on('unhandledRejection', () => { session?.end(); process.exit(1); });
 try {
-  session = new Session({ client: new Client(readConfig()), makeSocket: makeWASocket });
+  const [{ default: makeWASocket }, { Session }] = await Promise.all([
+    import('@whiskeysockets/baileys'), import('./session.js')
+  ]);
+  session = new Session({ client: new Client(readConfig()), makeSocket: makeWASocket, log });
   while (!stopping) {
     let delay = 10000;
     try { delay = await session.tick(); }
     catch { session.end(); }
     try { await sleep(delay, undefined, { signal: abort.signal }); } catch { if (!stopping) throw new Error('SLEEP_FAILED'); }
   }
-} catch { console.error(JSON.stringify({ state: 'ERROR', code: 'WORKER_FAILED' })); process.exitCode = 1; }
+} catch { log(JSON.stringify({ state: 'ERROR', code: 'WORKER_FAILED' })); process.exitCode = 1; }

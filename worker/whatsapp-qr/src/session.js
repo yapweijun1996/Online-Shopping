@@ -4,7 +4,7 @@ import { filterMessages } from './filters.js';
 export const backoff = attempt => [1000, 2000, 4000, 8000, 16000, 30000][Math.min(attempt, 5)];
 export const silentLogger = { level: 'silent', trace() {}, debug() {}, info() {}, warn() {}, error() {}, fatal() {}, child() { return this; } };
 export class Session {
-  constructor({ client, makeSocket, log = line => console.log(line), now = Date.now }) {
+  constructor({ client, makeSocket, log = line => process.stdout.write(`${line}\n`), now = Date.now }) {
     Object.assign(this, { client, makeSocket, log, now });
     this.generation = null; this.desired = 'OFF'; this.state = 'IDLE'; this.attempt = 0; this.nextConnect = 0; this.failureSince = null; this.lastClaim = -Infinity; this.epoch = 0; this.events = Promise.resolve(); this.halted = false;
   }
@@ -71,8 +71,21 @@ export class Session {
         if (epoch !== this.epoch) return;
         if (events['messages.upsert']) {
           const messages = filterMessages(events['messages.upsert']);
-          for (let i = 0; i < messages.length && epoch === this.epoch; i += 50) {
-            await this.client.request('/v1/inbound', { generation, messages: messages.slice(i, i + 50) });
+          const envelopeBytes = Buffer.byteLength(JSON.stringify({ generation, messages: [] }));
+          let batch = []; let bytes = envelopeBytes;
+          for (const message of messages) {
+            if (epoch !== this.epoch) break;
+            const messageBytes = Buffer.byteLength(JSON.stringify(message));
+            if (batch.length && (batch.length === 50 || bytes + 1 + messageBytes > 60 * 1024)) {
+              await this.client.request('/v1/inbound', { generation, messages: batch });
+              batch = []; bytes = envelopeBytes;
+              if (epoch !== this.epoch) break;
+            }
+            bytes += messageBytes + (batch.length ? 1 : 0);
+            batch.push(message);
+          }
+          if (batch.length && epoch === this.epoch) {
+            await this.client.request('/v1/inbound', { generation, messages: batch });
           }
         }
       }).catch(error => { if (epoch === this.epoch) this.fail(error); });

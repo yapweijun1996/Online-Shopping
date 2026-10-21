@@ -115,3 +115,17 @@ test('filter keeps direct text only', () => {
   for (const body of [{ imageMessage: { caption: 'caption' } }, { reactionMessage: {} }, { protocolMessage: {} }]) assert.deepEqual(run({ ...message, message: body }), []);
   assert.deepEqual(filterMessages({ type: 'append', messages: [message] }), []);
 });
+for (const [label, text] of [['ASCII', 'a'.repeat(4096)], ['multibyte', '界'.repeat(4096)], ['escaped', '\u0001'.repeat(4096)]]) {
+  test(`inbound ${label} batches preserve every message without halting`, async t => {
+    const { db, session, sockets } = await setup(t);
+    const messages = Array.from({ length: 101 }, (_, i) => ({
+      key: { id: `long-${i}`, remoteJid: '60123456789@s.whatsapp.net' },
+      messageTimestamp: 1, message: { conversation: text }
+    }));
+    await emit(session, { 'messages.upsert': { type: 'notify', messages } });
+    assert.equal(session.halted, false);
+    assert.equal(sockets[0].ended, 0);
+    assert.deepEqual(db.inbound.map(message => [message.id, message.text]), messages.map(message => [message.key.id, text]));
+    assert.ok(db.inboundRequests.every(request => request.bytes <= 60 * 1024 && request.count <= 50));
+  });
+}
