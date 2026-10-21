@@ -5,11 +5,11 @@ const asset = (path) => new URL(path, self.registration.scope).pathname;
 
 self.setupOfflineWorker({
   cachePrefix: code ? `tenant-${code}-seller` : 'os-seller',
-  version: 'v143',
+  version: 'v144',
   scopePath,
   offlinePage: asset('./offline.html'),
   assets: [
-    './', './index.html', './offline.html', './style.css', './palette.js', '../shop/tokens.css', './bootstrap.js', './app.js', './alerts.js', './version.js', './products.js', './orders.js', './order-documents.js', './order-document-model.js', './order-print.css', './vendor/printform.js', './settings.js', './options.js', './product-fields.js', './assets/login-workspace.webp',
+    './', './index.html', './offline.html', './style.css', './palette.js', '../shop/tokens.css', './bootstrap.js', './app.js', './alerts.js', './version.js', './products.js', './orders.js', './order-documents.js', './order-document-model.js', './order-print.css', './vendor/printform.js', './settings.js', './sender-copy.js', './options.js', './product-fields.js', './assets/login-workspace.webp',
     './integrations.js', './whatsapp-connection.js', '../shared/integration-catalog.js',
     './commerce.css', './studio-copy.js', './trail-copy.js', './audit.js', './messages.js', './ops-copy.js', './erase-contact.js', './dashboard-figures.js', './team.js', './order-notes.js', './product-import.js', './password-dialog.js', './order-status-label.js', './assets/studio-leaf.svg',
     './tracking-import.js', './tracking-copy.js', './tracking-mapping.js',

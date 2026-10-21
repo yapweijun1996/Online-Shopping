@@ -1,3 +1,4 @@
+import { senderFields } from './sender-settings.js';
 import catalog from './public-demo-catalog.json' with { type: 'json' };
 import { ApiError } from './http.js';
 import { createProduct } from './products.js';
@@ -14,7 +15,8 @@ export async function getShopSetup(store) {
 // Writes the fictional starting catalog; callers run it inside a transaction.
 async function seedDemo(store) {
   await store.run(`UPDATE company_setting SET default_currency = 'MYR', seller_whatsapp_phone = NULL,
-    mobile_hide_bars_on_scroll = 0, availability_text = NULL, shipping_text = NULL, returns_text = NULL, updated_at = ? WHERE id = 1`, new Date().toISOString());
+    mobile_hide_bars_on_scroll = 0, availability_text = NULL, shipping_text = NULL, returns_text = NULL,
+    ${Object.values(senderFields).map(([column]) => `${column} = NULL`).join(', ')}, updated_at = ? WHERE id = 1`, new Date().toISOString());
   for (const [code, label] of Object.entries(categories)) await createCategory(store, { code, label });
   for (const product of catalog) await createProduct(store, product);
 }

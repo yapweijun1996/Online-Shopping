@@ -1,4 +1,4 @@
--- PostgreSQL baseline matching SQLite schema 25. Timestamps stay ISO text to preserve API snapshots.
+-- PostgreSQL baseline matching SQLite schema 26. Timestamps stay ISO text to preserve API snapshots.
 CREATE TABLE admin (
         id BIGINT PRIMARY KEY CHECK (id = 1),
         username TEXT NOT NULL UNIQUE,
@@ -47,6 +47,14 @@ CREATE TABLE company_setting (
   seller_whatsapp_phone TEXT CHECK (seller_whatsapp_phone IS NULL OR
     (length(seller_whatsapp_phone) BETWEEN 8 AND 15 AND seller_whatsapp_phone ~ '^[0-9]+$')),
   mobile_hide_bars_on_scroll BIGINT NOT NULL DEFAULT 0 CHECK (mobile_hide_bars_on_scroll IN (0, 1)),
+  sender_name TEXT CHECK (sender_name IS NULL OR length(sender_name) BETWEEN 1 AND 120),
+  sender_phone TEXT CHECK (sender_phone IS NULL OR (length(sender_phone) BETWEEN 8 AND 15 AND sender_phone ~ '^[0-9]+$')),
+  sender_address_line1 TEXT CHECK (sender_address_line1 IS NULL OR length(sender_address_line1) BETWEEN 1 AND 240),
+  sender_address_line2 TEXT CHECK (sender_address_line2 IS NULL OR length(sender_address_line2) BETWEEN 1 AND 240),
+  sender_city TEXT CHECK (sender_city IS NULL OR length(sender_city) BETWEEN 1 AND 120),
+  sender_state TEXT CHECK (sender_state IS NULL OR length(sender_state) BETWEEN 1 AND 120),
+  sender_postcode TEXT CHECK (sender_postcode IS NULL OR length(sender_postcode) BETWEEN 1 AND 20),
+  sender_country TEXT CHECK (sender_country IS NULL OR (length(sender_country) BETWEEN 2 AND 2 AND sender_country ~ '^[A-Z]{2}$')),
   availability_text TEXT CHECK (availability_text IS NULL OR length(availability_text) BETWEEN 1 AND 1000),
   shipping_text TEXT CHECK (shipping_text IS NULL OR length(shipping_text) BETWEEN 1 AND 1000),
   returns_text TEXT CHECK (returns_text IS NULL OR length(returns_text) BETWEEN 1 AND 1000)
@@ -292,7 +300,7 @@ CREATE TABLE product_event (
   created_at TEXT NOT NULL
 );
 CREATE INDEX product_event_product ON product_event(product_id, created_at);
-INSERT INTO schema_meta VALUES (1, 25);
+INSERT INTO schema_meta VALUES (1, 26);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 INSERT INTO shop_setup(id, mode, shop_name) VALUES (1, NULL, 'Online Shopping');

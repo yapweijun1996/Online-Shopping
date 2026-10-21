@@ -4,6 +4,9 @@ Research/design date: 2026-10-20. Status: proposed, not implemented. Repository:
 
 Implementation note (2026-10-21, Seller v142): the generic shipping-list contract in [API.md](API.md) supersedes section 4 for the implemented outbound action: read-only GET, current filters, one row per delivery, blank weight, all `orders.fulfil` roles, and erased rows skipped with a response count. It is not a provider-native profile or proof of EasyParcel compatibility. The provider-specific proposal below remains research, not the shipped API contract.
 
+Schema 26 adds private Owner-managed sender/pickup settings and a primary Excel download (`shipping-list.xlsx`) alongside CSV. Both formats use the same rows and begin with `Sender name, Sender phone, Sender address line 1, Sender address line 2, Sender city, Sender state, Sender postcode, Sender country`, then `Order number, Parcel, Recipient name, Recipient phone, Address line 1, Address line 2, City, State, Postcode, Country, Items, Item count, Order total, Currency, Buyer email, Weight (kg), Parcel content, Submitted (UTC)`. Missing sender values remain empty. Order number is the document number. XLSX stores every cell as literal text to preserve `+` and leading zeros; CSV still needs text-column import in Excel. Courier-specific template mapping can be added later when the actual template is supplied; this generic list does not establish provider compatibility.
+
+
 ## 1. Decision and scope
 
 Build two separate operations: export selected confirmed orders for external booking, then preview and atomically import tracking assignments. Neither export nor booking-file creation changes order status. Import is an authenticated seller declaration that parcels have actually shipped, not a provider webhook or proof of collection. No courier API, polling, credential storage, payment, live shipment creation, automatic email, or courier webhook in this phase.

@@ -1,3 +1,4 @@
+import { senderFields } from './sender-settings.js';
 import { ApiError } from './http.js';
 import { FieldError, boundedText } from './validation.js';
 import { normalizeContactPhone } from './phone.js';
@@ -76,10 +77,11 @@ const storefrontTextFields = { availabilityText: 'availability_text', shippingTe
 
 export async function getCompanySettings(database) {
   const row = await database.get(`SELECT default_currency, seller_whatsapp_phone, mobile_hide_bars_on_scroll,
-    availability_text, shipping_text, returns_text FROM company_setting WHERE id = 1`);
+    availability_text, shipping_text, returns_text, ${Object.values(senderFields).map(([column]) => column).join(', ')} FROM company_setting WHERE id = 1`);
   return { defaultCurrency: row.default_currency, sellerWhatsAppPhone: row.seller_whatsapp_phone,
     mobileHideBarsOnScroll: Boolean(row.mobile_hide_bars_on_scroll),
-    availabilityText: row.availability_text, shippingText: row.shipping_text, returnsText: row.returns_text };
+    availabilityText: row.availability_text, shippingText: row.shipping_text, returnsText: row.returns_text,
+    ...Object.fromEntries(Object.entries(senderFields).map(([field, [column]]) => [field, row[column]])) };
 }
 
 // Seller-written product page texts; null means the shop shows its built-in wording.
@@ -97,7 +99,7 @@ export async function updateCompanySettings(database, input) {
   return database.transaction(async () => {
   if (!input || typeof input !== 'object' || Array.isArray(input) ||
       !Object.keys(input).length ||
-      Object.keys(input).some((key) => !['defaultCurrency', 'sellerWhatsAppPhone', 'mobileHideBarsOnScroll', ...Object.keys(storefrontTextFields)].includes(key))) {
+      Object.keys(input).some((key) => !['defaultCurrency', 'sellerWhatsAppPhone', 'mobileHideBarsOnScroll', ...Object.keys(storefrontTextFields), ...Object.keys(senderFields)].includes(key))) {
     throw new FieldError('companySettings', 'Enter supported company settings.');
   }
   const current = await getCompanySettings(database);
@@ -126,9 +128,22 @@ export async function updateCompanySettings(database, input) {
     else { value = value.replace(/\r\n/g, '\n').trim(); if (value.length > 1000) throw new FieldError(field, 'Use at most 1000 characters.'); if (!value) value = null; }
     texts[column] = value;
   }
+  const sender = [];
+  for (const [field, [, max]] of Object.entries(senderFields)) {
+    let value = Object.hasOwn(input, field) ? input[field] : current[field];
+    if (value != null && typeof value !== 'string') throw new FieldError(field, 'Enter text.');
+    value = value?.trim() || null;
+    if (field === 'senderPhone' && value) {
+      try { value = normalizeContactPhone(/^\d+$/.test(value) ? `+${value}` : value).slice(1); }
+      catch { throw new FieldError(field, 'Enter a valid +60 or +65 mobile number.'); }
+    }
+    if (value && value.length > max) throw new FieldError(field, `Use at most ${max} characters.`);
+    if (field === 'senderCountry' && value && !/^[A-Z]{2}$/.test(value)) throw new FieldError(field, 'Enter an uppercase ISO country code.');
+    sender.push(value);
+  }
   await database.run(`UPDATE company_setting SET default_currency = ?, seller_whatsapp_phone = ?, mobile_hide_bars_on_scroll = ?,
-    availability_text = ?, shipping_text = ?, returns_text = ?, updated_at = ? WHERE id = 1`,
-    currency, phone, Number(hideBars), texts.availability_text, texts.shipping_text, texts.returns_text, new Date().toISOString());
+    availability_text = ?, shipping_text = ?, returns_text = ?, ${Object.values(senderFields).map(([column]) => `${column} = ?`).join(', ')}, updated_at = ? WHERE id = 1`,
+    currency, phone, Number(hideBars), texts.availability_text, texts.shipping_text, texts.returns_text, ...sender, new Date().toISOString());
   return await getCompanySettings(database);
   });
 }
