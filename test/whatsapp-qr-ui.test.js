@@ -121,6 +121,28 @@ test('Composer reuses an unknown-outcome key, generates a new intent after succe
   input.value = 'Fictional reply'; input.events.input(); setMode('429'); input.events.keydown({ key: 'Enter', ctrlKey: true, preventDefault() {} }); await flush();
   assert.notEqual(attempts[2].headers['Idempotency-Key'], first); assert.ok(root.descendants().some(n => n.textContent === 'Too many replies, try again in 7 s')); assert.equal(key(root, 'send').disabled, true);
 }));
+test('Composer retains the reply key and thread after a lost response and background policy outage', async () => chatsFixture(async ({ root, attempts, listeners, setMode }) => {
+  const input = root.descendants().find(n => n.tagName === 'textarea'), form = root.descendants().find(n => n.tagName === 'form');
+  const workingFetch = globalThis.fetch, paths = [];
+  globalThis.fetch = (path, init) => { if (path.includes('/replies')) paths.push(path); return workingFetch(path, init); };
+  const recoveredFetch = globalThis.fetch;
+  input.value = 'Fictional reply'; input.events.input(); form.events.submit({ preventDefault() {} }); await flush();
+  assert.equal(attempts.length, 1);
+  const originalKey = attempts[0].headers['Idempotency-Key'];
+  globalThis.fetch = async () => response({ error: { code: 'UNAVAILABLE' } }, 503);
+  listeners.get('visibilitychange')(); await flush();
+  assert.equal(input.value, ''); assert.equal(input.disabled, true);
+  form.events.submit({ preventDefault() {} }); await flush(); assert.equal(attempts.length, 1);
+  globalThis.fetch = recoveredFetch; setMode('success');
+  listeners.get('visibilitychange')(); await flush();
+  assert.equal(input.disabled, false); assert.equal(attempts.length, 1);
+  input.value = 'Fictional reply'; input.events.input(); form.events.submit({ preventDefault() {} }); await flush();
+  assert.equal(attempts.length, 2);
+  assert.equal(attempts[1].headers['Idempotency-Key'], originalKey);
+  assert.equal(paths[1], paths[0]); assert.ok(paths[0].endsWith('/chats/thread-1/replies'));
+  assert.deepEqual(JSON.parse(attempts[1].body), { text: 'Fictional reply' });
+  assert.equal(input.value, '');
+}));
 test('Composer closes when disconnected or window expires; hidden pages do not poll', async () => chatsFixture(async ({ root, setState, setRows, listeners, timers }) => {
   setState({ ...initial }); listeners.get('visibilitychange')(); await flush();
   assert.ok(root.descendants().some(n => n.textContent === 'WhatsApp is not linked')); assert.equal(key(root, 'send').disabled, true);
