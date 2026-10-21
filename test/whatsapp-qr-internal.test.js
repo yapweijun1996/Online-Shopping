@@ -174,6 +174,38 @@ for (const engine of ['sqlite','postgres']) {
     assert.deepEqual((await f.call('auth?generation=1')).data, { version: 2, creds: null, keys: [] });
     assert.equal((await f.call('auth', { generation: 1, version: 1, creds: 'late stale credentials' }, { method: 'PUT' })).data.error, 'AUTH_VERSION');
   });
+  for (const late of [
+    { state: 'CONNECTED' },
+    { state: 'PAIRING', qr: 'late-fictional-qr' },
+    { state: 'RECONNECTING', reason: 'RECONNECT_LIMIT' },
+  ]) {
+    test(`${engine}: pairing timeout survives late ${late.state} then IDLE`, options, async t => {
+      const f = await fixture(t, engine);
+      await f.store.run("UPDATE whatsapp_qr_session SET desired = 'PAIR', pair_started_at = ?", new Date(f.now()).toISOString());
+      await f.call('control');
+      await f.call('state', { generation: 1, state: 'PAIRING', qr: 'original-fictional-qr' });
+      f.advance(120001);
+      assert.equal((await f.call('control')).data.desired, 'OFF');
+      for (const report of [late, { state: 'IDLE' }]) {
+        assert.equal((await f.call('state', { generation: 1, ...report })).status, 204);
+        assert.deepEqual({ ...await f.store.get('SELECT desired,state,last_error,qr_text,qr_expires_at FROM whatsapp_qr_session') },
+          { desired: 'OFF', state: report.state, last_error: 'PAIRING_TIMEOUT', qr_text: null, qr_expires_at: null });
+      }
+    });
+  }
+  test(`${engine}: CONNECTED before timeout control remains running through IDLE`, options, async t => {
+    const f = await fixture(t, engine);
+    await f.store.run("UPDATE whatsapp_qr_session SET desired = 'PAIR', pair_started_at = ?", new Date(f.now()).toISOString());
+    await f.call('control');
+    f.advance(120001);
+    // Renew the lease without triggering timeout before the serialized CONNECTED report.
+    await f.store.run('UPDATE whatsapp_qr_session SET lease_expires_at = ?', new Date(f.now() + 60000).toISOString());
+    assert.equal((await f.call('state', { generation: 1, state: 'CONNECTED' })).status, 204);
+    assert.equal((await f.call('control')).data.desired, 'RUN');
+    assert.equal((await f.call('state', { generation: 1, state: 'IDLE' })).status, 204);
+    assert.deepEqual({ ...await f.store.get('SELECT desired,state,last_error FROM whatsapp_qr_session') },
+      { desired: 'RUN', state: 'IDLE', last_error: null });
+  });
   test(`${engine}: concurrent auth writes fence one snapshot and retention is bounded`, options, async t => {
     const f = await fixture(t, engine); await f.call('control');
     const writes = await Promise.all(['first', 'second'].map(creds => f.call('auth', { generation: 1, version: 0, creds }, { method: 'PUT' })));

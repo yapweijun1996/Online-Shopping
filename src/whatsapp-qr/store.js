@@ -95,7 +95,9 @@ export function createWhatsAppQrStore({ store, secretBox, now = () => Date.now()
         masked = `+${body.phone.slice(0, 2)}${'•'.repeat(body.phone.length - 6)}${body.phone.slice(-4)}`;
         phoneHash = hash(await peerKey(session, at), body.phone);
       }
-      await store.run(`UPDATE whatsapp_qr_session SET state = ?, desired = ?, qr_text = ?, qr_expires_at = ?, phone_masked = ?, phone_hash = ?, last_error = ?, auth_version = ? WHERE id = 1`, body.state, body.state === 'LOGGED_OUT' ? 'OFF' : body.state === 'CONNECTED' && session.desired === 'PAIR' ? 'RUN' : session.desired, body.qr ?? null, body.qr ? new Date(time + 60000).toISOString() : null, masked, phoneHash, body.reason ?? (body.state === 'IDLE' && session.last_error === 'PAIRING_TIMEOUT' ? session.last_error : null), body.state === 'LOGGED_OUT' ? session.auth_version + 1 : session.auth_version);
+      const timedOut = session.desired === 'OFF' && session.last_error === 'PAIRING_TIMEOUT';
+      const qr = timedOut ? null : body.qr ?? null;
+      await store.run(`UPDATE whatsapp_qr_session SET state = ?, desired = ?, qr_text = ?, qr_expires_at = ?, phone_masked = ?, phone_hash = ?, last_error = ?, auth_version = ? WHERE id = 1`, body.state, body.state === 'LOGGED_OUT' ? 'OFF' : body.state === 'CONNECTED' && session.desired === 'PAIR' ? 'RUN' : session.desired, qr, qr ? new Date(time + 60000).toISOString() : null, masked, phoneHash, timedOut ? session.last_error : body.reason ?? (body.state === 'IDLE' && session.last_error === 'PAIRING_TIMEOUT' ? session.last_error : null), body.state === 'LOGGED_OUT' ? session.auth_version + 1 : session.auth_version);
       if (body.state === 'LOGGED_OUT') await store.run('DELETE FROM whatsapp_qr_auth');
     }),
     getAuth: (worker, generation) => transact(worker, generation, async session => {

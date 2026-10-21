@@ -120,6 +120,7 @@ Worker side:
 
 Backend side:
 
+- While `desired = OFF` and `last_error = PAIRING_TIMEOUT`, worker state reports may record state but cannot clear/replace the timeout reason or store QR text/expiry; only a new seller POST pair clears the timeout.
 - This protocol takes precedence over the older design C2 proposal for schema
   names and secret contexts. Schema 27 contains session, auth, thread, message and
   peer-suppression tables; no integration-channel or order-link tables are added here.
