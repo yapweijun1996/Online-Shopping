@@ -8,6 +8,8 @@ The public gateway terminates TLS for `demoonlineshopping.xyz` and `seller.demoo
 
 The frontend isolates shop and seller hosts; the SuperAdmin console shares the seller host by explicit owner decision. Claim pages/APIs are proxied only on the shop host. Tenant static paths use the backend metadata-only lifecycle/alias gate before prefix rewriting; tenant APIs retain their prefix. Both hosts accept root and tenant-prefixed WhatsApp webhooks, subject to backend verification. Unknown paths return 404. Claim mode defaults off. The integration-key path defaults empty; activation supplies it and consequently permits the existing WhatsApp worker to run. Backend alone joins non-internal `egress` for HTTPS to `graph.facebook.com` and future outbound integrations. PostgreSQL stays on internal `private` only; frontend networking and inbound ports are unchanged.
 
+Both hosts emit `Strict-Transport-Security: max-age=31536000`, without `includeSubDomains` or `preload`. The TLS gateway must preserve it.
+
 Backend memory is capped at 384 MiB with a 192 MiB V8 heap to leave native/TLS/database/scrypt headroom for platform work; frontend remains 48 MiB and PostgreSQL 192 MiB with 20 connections. Total shopping caps are 624 MiB on the shared 2 GiB VM, not a capacity guarantee. Observe OOM, swap, connections and latency before adding tenants. Existing shop owner/app credentials remain separate. New platform secrets are UID/GID 1000, mode 0600 inside a root-only directory: file-backed Compose secrets preserve host ownership, allowing the image's node user to read them without world-readable files.
 
 ## CI images
@@ -24,6 +26,7 @@ Review the exact release and verify its CI before installation. All commands bel
 2. Create `/opt/cloudops/secrets/online-shopping` root owned, mode `0700`. Generate three separate strong secrets outside Git: `admin-password` (the existing application requires at least 16 characters, letters and digits, and rejects weak passwords), `postgres-password`, and `postgres-owner-password`. Docker Compose file-backed secrets retain host file permissions: the backend's non-root `node` user must be able to read its mounted admin/app secrets. Use root-owned mode `0444` secret files inside the root-only `0700` host directory, or an explicitly reviewed UID/ACL mapping. Never print the values or use command-line password arguments. Do not reuse any existing app/database secrets.
    Before initialization, run `python3 /opt/online-shopping-gcp/enable-platform.py --root /opt/online-shopping-gcp secrets`, then the same command with `secrets --check`. This creates only missing integration/platform/provisioner files, exclusively, mode 0600 UID/GID1000, without images, release directories, Docker or database prerequisites. Keep both platform switches off.
 3. Ensure `online-shopping-edge` exists and connect the shared gateway; configure the two gateway hosts above. Configure DNS/firewall for the shared gateway's existing 80/443 only. Do not add app/database published ports.
+   Install and verify the required host egress guard below before starting backend on egress.
 4. Initialize with the exact current full main SHA (replace the placeholder):
 
    ```sh
@@ -123,6 +126,7 @@ target = pathlib.Path(images['RELEASE_DIR'])/'deploy/gcp/Caddyfile'
 target.write_bytes((s/'deploy/gcp/Caddyfile').read_bytes())
 target.chmod(0o644)
 PY
+# Existing platform v1: take the manual v1 detour below BEFORE this startup.
 docker compose -p online-shopping-gcp --env-file "$R/runtime.env" --env-file "$R/images.env" -f "$R/compose.yaml" stop backend frontend
 docker compose -p online-shopping-gcp --env-file "$R/runtime.env" --env-file "$R/images.env" -f "$R/compose.yaml" up -d --no-deps --no-build backend frontend
 # Missing objects cause failed readiness before first provisioning; inspect privately.
@@ -207,4 +211,82 @@ docker compose -p online-shopping-gcp --env-file "$R/runtime.env" --env-file "$R
   backend node /app/scripts/upgrade-platform.mjs --with-claim
 ```
 
-Set `R` and `RELEASE_DIR` to the verified host root and exact release directory first. This standalone claim-only branch does not consume a backup manifest or write an upgrade report: the operator must enforce the restore-tested backup gate and retain private command output. It changes only platform schema, not tenant schemas. Do not use it for a combined shop-schema upgrade; that requires the full verified-manifest/report workflow in `scripts/upgrade-platform.mjs`. Verify platform version 2, then rerun provision/check and restart only a compatible claim-enabled backend. On failure keep traffic stopped and privately reconcile or restore the platform backup before restarting; image rollback alone cannot undo DDL.
+Set `R` and `RELEASE_DIR` to the verified host root and exact release directory first. This standalone claim-only branch does not consume a backup manifest or write an upgrade report: enforce the restore-tested backup gate and retain private output. It changes only platform schema, not tenant schemas. Combined shop-schema upgrades require the verified-manifest/report workflow in `scripts/upgrade-platform.mjs`.
+
+This detour precedes the earlier activation block's provision calls. After migration verify version 2, start only a compatible backend with claim **disabled**, wait healthy, then provision/check: the provisioner requires a running healthy backend for preflight and credential authentication.
+
+```sh
+set -eu
+docker compose -p online-shopping-gcp --env-file "$R/runtime.env" --env-file "$R/images.env" -f "$R/compose.yaml" exec -T postgres \
+  psql -X -v ON_ERROR_STOP=1 -U online_shopping -d platform -Atc 'SELECT version FROM public.schema_meta WHERE id = 1' | \
+  python3 -c 'import sys; assert sys.stdin.read().strip() == "2"'
+python3 - "$R/runtime.env" <<'PY'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+env = dict(line.split('=', 1) for line in p.read_text().splitlines() if line and not line.startswith('#'))
+env.update(PLATFORM_ENABLED='1', PLATFORM_ADMIN_CLAIM_ENABLED='0')
+p.write_text(''.join(k+'='+v+'\n' for k,v in env.items()))
+PY
+docker compose -p online-shopping-gcp --env-file "$R/runtime.env" --env-file "$R/images.env" -f "$R/compose.yaml" up -d --no-deps --no-build --wait --wait-timeout 120 backend frontend
+python3 "$R/enable-platform.py" --root "$R" provision --check
+python3 "$R/enable-platform.py" --root "$R" provision
+python3 "$R/enable-platform.py" --root "$R" provision --check
+```
+
+Resume the earlier activation block at its runtime flag update and stop-before-start claim activation, not its earlier startup. On failure keep claim disabled and privately reconcile or restore the backup before restart; image rollback alone cannot undo DDL.
+
+### Required host egress guard
+
+The project egress bridge reserves `192.168.247.0/24`. Check host routes and Docker subnets for collisions before installation; a collision blocks release. Any reviewed subnet change must update Compose and the guard together. PostgreSQL uses the separate internal private bridge.
+
+Install as root from the reviewed release **before** starting backend on egress, including the activation/v1 procedures. Docker must use its iptables forwarding backend and provide `DOCKER-USER`; native nftables-only Docker is unsupported. The guard refuses absent iptables/chains. Tagged IPv4 DROPs at the top of `DOCKER-USER`, before established-traffic accepts, block metadata `169.254.169.254/32` and all RFC1918 destinations from the egress subnet. Public traffic, including established/related connections, continues through existing Docker policy; no broad ACCEPT is installed.
+
+```sh
+set -eu
+R=/opt/online-shopping-gcp
+S=/root/reviewed-platform
+install -m 0700 "$S/deploy/gcp/egress-guard.sh" "$R/egress-guard.sh"
+install -m 0644 "$S/deploy/gcp/online-shopping-egress-guard.service" /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now online-shopping-egress-guard.service
+"$R/egress-guard.sh" --check
+```
+
+The oneshot starts after and restarts with Docker. After Docker/firewall changes run `--check`; repair ordering with `systemctl reload online-shopping-egress-guard.service`. Keep backend and updater stopped during policy/network replacement. Existing egress bridges need removal/recreation after stopping attached backend to adopt IPAM; never remove private networking or PostgreSQL volumes. Verify the recreated bridge before backend activation:
+
+```sh
+docker network inspect online-shopping-gcp_egress --format '{{range .IPAM.Config}}{{println .Subnet}}{{end}}' | \
+  python3 -c 'import sys; assert sys.stdin.read().strip() == "192.168.247.0/24"'
+```
+
+Required non-interactive live acceptance with a reviewed, locally available curl image. First verify the image exists; Docker launch failure is not proof of metadata denial. Require curl timeout/connection failure (not merely an HTTP rejection), followed by public HTTPS success:
+
+```sh
+set -eu
+docker image inspect curlimages/curl:8.10.1 --format '{{.Id}}'
+/opt/online-shopping-gcp/egress-guard.sh --check
+if docker run --rm --pull=never --network online-shopping-gcp_egress curlimages/curl:8.10.1 \
+  --noproxy '*' --silent --show-error --connect-timeout 3 --max-time 5 \
+  -H 'Metadata-Flavor: Google' -o /dev/null http://169.254.169.254/computeMetadata/v1/; then
+  echo 'FAIL: metadata reachable' >&2; exit 1
+else
+  code=$?
+  case "$code" in 7|28) ;; *) echo 'FAIL: inconclusive metadata probe' >&2; exit 1;; esac
+fi
+docker run --rm --pull=never --network online-shopping-gcp_egress curlimages/curl:8.10.1 \
+  --noproxy '*' --fail --silent --show-error --connect-timeout 5 --max-time 15 -o /dev/null https://example.com/
+docker compose -p online-shopping-gcp --env-file /opt/online-shopping-gcp/runtime.env --env-file /opt/online-shopping-gcp/images.env \
+  -f /opt/online-shopping-gcp/compose.yaml exec -T backend node -e \
+  "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+```
+
+Readiness verifies PostgreSQL connectivity. Verify provider HTTPS separately through existing integration acceptance without real test sends. Use a minimally privileged VM service account as defense in depth. Additional metadata addresses or IPv6 routing require separate blocks/tests before release; this IPv4 bridge policy does not cover them or host-local INPUT traffic.
+
+Rollback only after stopping backend and reverting to a reviewed policy without unrestricted egress:
+
+```sh
+systemctl disable --now online-shopping-egress-guard.service
+/opt/online-shopping-gcp/egress-guard.sh --remove
+```
+
+Service stop intentionally retains rules. Removal deletes only exact tagged guard rules, never flushes shared chains. Offline test: `python3 test/gcp-egress-guard.test.py`. Live packet denial, public/provider HTTPS, reboot ordering and host firewall compatibility remain operator acceptance requirements.

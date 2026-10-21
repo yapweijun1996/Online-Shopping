@@ -113,3 +113,6 @@ networks:
     internal: true
   egress:
     internal: false
+    ipam:
+      config:
+        - subnet: 192.168.247.0/24

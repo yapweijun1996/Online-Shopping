@@ -133,6 +133,8 @@ class Provisioner:
     def claim_schema(self):
         exists = self.query("SELECT to_regclass('public.schema_meta');", 'platform')
         if not exists:
+            if self.query("SELECT tablename FROM pg_tables WHERE schemaname = 'public';", 'platform'):
+                raise ValueError('Unsupported platform schema; private reconciliation required')
             return 'empty; claim schema initializes on claim-enabled backend startup'
         version = self.query('SELECT version FROM public.schema_meta WHERE id = 1;', 'platform')
         if version == '2':
