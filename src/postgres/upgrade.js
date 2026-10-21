@@ -254,6 +254,6 @@ async function migrateQr(store) {
   await migrateWhatsAppQr(store);
   await store.exec(`DO $$ BEGIN IF ${legacyApplicationGrant} THEN
     GRANT SELECT, INSERT, UPDATE, DELETE ON whatsapp_qr_session, whatsapp_qr_auth,
-      message_thread, message_thread_message TO online_shopping_app;
+      message_peer_suppression, message_thread, message_thread_message TO online_shopping_app;
     END IF; END $$;`);
 }

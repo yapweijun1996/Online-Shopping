@@ -7,7 +7,7 @@ export const importTables = ['admin', 'seller_account', 'account_event', 'sessio
 
 // QR device identity, sealed peers and reply intents must not reactivate after a restore.
 // Keep the fresh OFF/IDLE session; do not import auth, QR material or dependent history.
-export const excludedImportTables = ['whatsapp_qr_session', 'whatsapp_qr_auth', 'message_thread', 'message_thread_message'];
+export const excludedImportTables = ['whatsapp_qr_session', 'whatsapp_qr_auth', 'message_peer_suppression', 'message_thread', 'message_thread_message'];
 
 export function rowsDigest(rows) {
   const normalized = rows.map(row => Object.fromEntries(Object.keys(row).sort().map(key =>

@@ -18,7 +18,7 @@ const base = process.env.SHOP_TEST_DATABASE_URL;
 if (base && (process.env.NODE_ENV !== 'test' || !/test/i.test(new URL(base).pathname))) throw new Error('Disposable test database required.');
 const token = 'synthetic-worker-token-'.repeat(3);
 const integrationKeys = { activeId: 'test', keys: new Map([['test', randomBytes(32)]]) };
-const tables = ['message_thread_message','message_thread','whatsapp_qr_auth','whatsapp_qr_session'];
+const tables = ['message_thread_message','message_thread','message_peer_suppression','whatsapp_qr_auth','whatsapp_qr_session'];
 async function fixture(t, engine) {
   let store;
   if (engine === 'postgres') {
@@ -203,6 +203,10 @@ for (const engine of ['sqlite','postgres']) {
     }
     await assert.rejects(f.store.run("UPDATE message_thread SET provider = 'WHATSAPP_CLOUD'"));
     assert.equal((await f.store.get('SELECT body FROM message_thread_message WHERE id = ?', first)).body, 'Fictional human reply');
+    await f.store.run("INSERT INTO message_peer_suppression (phone_hash,reason,created_at) VALUES ('synthetic-hash','ERASED',?)", new Date(f.now()).toISOString());
+    await assert.rejects(f.store.run("INSERT INTO message_peer_suppression (phone_hash,reason,created_at) VALUES ('synthetic-hash','ERASED',?)", new Date(f.now()).toISOString()));
+    await assert.rejects(f.store.run("UPDATE message_peer_suppression SET reason = 'INVALID'"));
+    await assert.rejects(f.store.run("UPDATE message_peer_suppression SET created_at = NULL"));
   });
   test(`${engine}: 26 to 27 migration installs constrained fresh session`, options, async t => {
     const f = await fixture(t, engine);

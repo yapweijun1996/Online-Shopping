@@ -19,6 +19,9 @@ CREATE TABLE IF NOT EXISTS whatsapp_qr_auth (
  ciphertext ${blob} NOT NULL, key_id TEXT NOT NULL, digest TEXT NOT NULL, updated_at TEXT NOT NULL,
  PRIMARY KEY (generation,record_type,record_id,chunk_index)
 );
+CREATE TABLE IF NOT EXISTS message_peer_suppression (
+ phone_hash TEXT PRIMARY KEY, reason TEXT NOT NULL CHECK (reason IN ('ERASED')), created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS message_thread (
  id TEXT PRIMARY KEY, provider TEXT NOT NULL CHECK (provider = 'WHATSAPP_QR'), peer_hash TEXT NOT NULL UNIQUE,
  peer_sealed ${blob}, peer_key_id TEXT NOT NULL, display_name TEXT,

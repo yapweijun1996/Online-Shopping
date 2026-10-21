@@ -58,9 +58,9 @@ export function createWhatsAppQrStore({ store, secretBox, now = () => Date.now()
       await store.run('UPDATE whatsapp_qr_session SET revision = revision + 1, updated_at = ? WHERE id = 1 AND revision = ?', at, session.revision);
       return fn(session, time, at);
     }),
-    phoneHash: async (phone, session = null) => {
+    phoneHash: async (phone, session = null, initialize = false) => {
       session ??= await store.get('SELECT * FROM whatsapp_qr_session WHERE id = 1');
-      if (!session.peer_key_sealed) return null;
+      if (!session.peer_key_sealed && !initialize) return null;
       return hash(await peerKey(session, new Date(now()).toISOString()), phone.replace(/\D/g, ''));
     },
     maskPeer: thread => {
@@ -134,10 +134,17 @@ export function createWhatsAppQrStore({ store, secretBox, now = () => Date.now()
       for (const row of body.messages) {
         if (await store.get("SELECT id FROM message_thread_message WHERE direction = 'IN' AND provider_message_id = ?", row.id)) { duplicates++; continue; }
         const peerHash = hash(key, row.peer), receivedAt = new Date(row.at).toISOString();
+        const phoneHash = row.peer.endsWith('@s.whatsapp.net') ? hash(key, row.peer.split('@')[0]) : null;
+        const suppression = phoneHash ? await store.get('SELECT created_at FROM message_peer_suppression WHERE phone_hash = ?', phoneHash) : null;
         let thread = await store.get('SELECT id,suppressed_at FROM message_thread WHERE peer_hash = ?', peerHash);
         if (!thread) {
-          thread = { id: randomUUID() }; const sealed = secretBox.seal(row.peer, threadContext(thread.id));
-          await store.run(`INSERT INTO message_thread (id,provider,peer_hash,peer_sealed,peer_key_id,display_name,phone_hash,created_at,updated_at) VALUES (?,'WHATSAPP_QR',?,?,?,?,?,?,?)`, thread.id, peerHash, sealed.sealed, sealed.keyId, row.name, row.peer.endsWith('@s.whatsapp.net') ? hash(key, row.peer.split('@')[0]) : null, at, at);
+          thread = { id: randomUUID(), suppressed_at: suppression?.created_at ?? null };
+          const sealed = thread.suppressed_at ? null : secretBox.seal(row.peer, threadContext(thread.id));
+          await store.run(`INSERT INTO message_thread (id,provider,peer_hash,peer_sealed,peer_key_id,display_name,phone_hash,suppressed_at,created_at,updated_at) VALUES (?,'WHATSAPP_QR',?,?,?,?,?,?,?,?)`, thread.id, peerHash, sealed?.sealed ?? null, sealed?.keyId ?? session.peer_key_id, thread.suppressed_at ? null : row.name, phoneHash, thread.suppressed_at, at, at);
+        } else if (suppression && !thread.suppressed_at) {
+          thread.suppressed_at = suppression.created_at;
+          await store.run('UPDATE message_thread SET suppressed_at = ?, display_name = NULL, peer_sealed = NULL WHERE id = ?', thread.suppressed_at, thread.id);
+          await store.run('UPDATE message_thread_message SET body = NULL WHERE thread_id = ?', thread.id);
         }
         await store.run(`INSERT INTO message_thread_message (id,thread_id,direction,provider_message_id,body,status,generation,created_at,updated_at) VALUES (?,?,'IN',?,?,'RECEIVED',?,?,?)`, randomUUID(), thread.id, row.id, thread.suppressed_at ? null : row.text, body.generation, receivedAt, at);
         await store.run(`UPDATE message_thread SET display_name = ?, last_inbound_at = CASE WHEN last_inbound_at IS NULL OR last_inbound_at < ? THEN ? ELSE last_inbound_at END, last_message_at = CASE WHEN last_message_at IS NULL OR last_message_at < ? THEN ? ELSE last_message_at END, unread_count = unread_count + 1, updated_at = ? WHERE id = ?`, thread.suppressed_at ? null : row.name, receivedAt, receivedAt, receivedAt, receivedAt, at, thread.id);

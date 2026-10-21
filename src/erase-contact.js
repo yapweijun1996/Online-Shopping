@@ -29,12 +29,12 @@ export async function eraseOrderContact(database, id, input, actorId, qr = null)
     }
     if (qr) {
       // Take the same session lock as ingress before reading or suppressing peers.
-      await qr.sellerTransaction(async () => {
+      await qr.sellerTransaction(async (session) => {
         const buyer = await database.get('SELECT buyer_phone FROM shop_order WHERE id = ?', id);
         const deliveries = await database.all('SELECT recipient_phone FROM delivery WHERE order_id = ?', id);
         for (const phone of [buyer.buyer_phone, ...deliveries.map(row => row.recipient_phone)].filter(Boolean)) {
-          const hash = await qr.phoneHash(phone);
-          if (!hash) continue;
+          const hash = await qr.phoneHash(phone, session, true);
+          await database.run("INSERT INTO message_peer_suppression (phone_hash, reason, created_at) VALUES (?, 'ERASED', ?) ON CONFLICT (phone_hash) DO NOTHING", hash, now);
           await database.run('UPDATE message_thread SET suppressed_at = ?, display_name = NULL, peer_sealed = NULL, updated_at = ? WHERE phone_hash = ?', now, now, hash);
           await database.run('UPDATE message_thread_message SET body = NULL WHERE thread_id IN (SELECT id FROM message_thread WHERE phone_hash = ?)', hash);
         }

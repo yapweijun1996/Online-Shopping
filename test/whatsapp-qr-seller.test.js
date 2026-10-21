@@ -89,6 +89,40 @@ for (const engine of ['sqlite', 'postgres']) {
     assert.equal((await f.direct(`${path}?limit=101`)).status, 400);
     assert.equal((await f.direct(`${root}/chats?limit=51`)).status, 400);
   });
+  for (const initialized of [false, true]) test(`${engine}: erasure before first QR thread (peer key initialized: ${initialized})`, options, async t => {
+    const f = await fixture(t, engine);
+    await f.workerCall('control');
+    if (initialized) await f.workerCall('state', { generation: 1, state: 'CONNECTED', phone: '6581234567' });
+    await createCategory(f.store, { code: 'EXAMPLE', label: 'Example' });
+    const product = await createProduct(f.store, { sku: 'QR-EXAMPLE', name: 'Example', description: 'Fictional', category: 'EXAMPLE', priceMinor: 100, currency: 'MYR', active: true });
+    const created = await createOrder(f.store, randomUUID(), {
+      buyer: { fullName: 'Fictional buyer', whatsappPhone: '+6581234567', email: 'example@example.invalid' }, whatsappOrderContactOptIn: true, locale: 'en',
+      deliveries: [{ recipient: { fullName: 'Fictional recipient', phone: '+60123456789' }, address: { line1: 'Example Street', city: 'Example City', postcode: '50000', country: 'MY' }, items: [{ productId: product.id, quantity: 1, expectedPriceMinor: 100, expectedCurrency: 'MYR' }] }],
+    });
+    const order = await f.store.get('SELECT * FROM shop_order WHERE order_no = ?', created.receipt.orderNo);
+    assert.equal((await f.call(`${root}/orders/${order.id}/reject`, { expectedRevision: 1, reason: 'Fictional rejection' })).status, 200);
+    assert.equal((await f.call(`${root}/orders/${order.id}/erase-contact`, { expectedRevision: 2, confirmOrderNo: order.order_no })).status, 200);
+    assert.equal((await f.store.all('SELECT id FROM message_thread')).length, 0);
+    await f.direct(`${connection}/acknowledge`, { noticeVersion: 1 });
+    await f.direct(`${connection}/pair`, {});
+    const generation = (await f.workerCall('control')).data.generation;
+    await f.workerCall('state', { generation, state: 'CONNECTED' });
+    for (const [index, peer] of ['60123456789@s.whatsapp.net', '6581234567@s.whatsapp.net', '60123456789@lid'].entries()) {
+      for (const suffix of ['first', 'again']) assert.equal((await f.workerCall('inbound', { generation, messages: [{ id: `${index}-${suffix}`, peer, name: 'Erased recipient', text: 'Retained after erasure', at: new Date(f.now()).toISOString() }] })).status, 200);
+    }
+    for (const thread of await f.store.all('SELECT * FROM message_thread')) {
+      const messages = await f.store.all('SELECT body FROM message_thread_message WHERE thread_id = ?', thread.id);
+      if (thread.phone_hash) {
+        assert.ok(thread.suppressed_at, JSON.stringify({ suppressed_at: thread.suppressed_at, display_name: thread.display_name, body: messages[0].body }));
+        assert.equal(thread.display_name, null); assert.equal(thread.peer_sealed, null);
+        assert.deepEqual(messages.map(row => row.body), [null, null]);
+        assert.equal((await f.direct(`${root}/chats/${thread.id}/replies`, { text: 'Forbidden' })).data.reason, 'SUPPRESSED');
+      } else {
+        assert.equal(thread.suppressed_at, null); assert.equal(thread.display_name, 'Erased recipient');
+        assert.deepEqual(messages.map(row => row.body), ['Retained after erasure', 'Retained after erasure']);
+      }
+    }
+  });
   test(`${engine}: erasure clears matching peers and rejects late text resurrection`, options, async t => {
     const f = await fixture(t, engine), { thread, generation } = await f.connect();
     await createCategory(f.store, { code: 'EXAMPLE', label: 'Example' });

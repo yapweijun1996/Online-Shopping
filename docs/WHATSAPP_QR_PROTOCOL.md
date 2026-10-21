@@ -106,8 +106,8 @@ stored as `RECONCILE`, never retried automatically). Only from `SENDING`. Respon
 ## Clarifications
 
 - This protocol takes precedence over the older design C2 proposal for schema
-  names and secret contexts. Schema 27 contains the four tables specified by the
-  backend job; no integration-channel or order-link tables are added here.
+  names and secret contexts. Schema 27 contains session, auth, thread, message and
+  peer-suppression tables; no integration-channel or order-link tables are added here.
 - Encoded auth `creds` and key `value` fields are opaque JSON **text strings**:
   the worker serializes with BufferJSON before sending, then parses after GET.
   Missing creds leaves the stored record unchanged; deleting Signal keys uses
@@ -125,11 +125,16 @@ stored as `RECONCILE`, never retried automatically). Only from `SENDING`. Respon
   LIDs never imply a phone match. Names are bounded to 200 characters. Inbound
   timestamps must be parseable UTC ISO timestamps ending in Z, not in the future;
   server receipt time never renews a historical message's 24-hour reply window.
+- Contact erasure persists an `ERASED` phone-HMAC marker in `message_peer_suppression`
+  under the shared session transaction, initializing the stable peer key if needed.
+  This applies even before the first thread exists. Later phone ingress retains only
+  suppressed tombstones: no display name, sealed peer or message body, and no replies.
+  LID identities do not imply a phone and are unaffected.
 - Result reports after the reply's 60-second dispatch lease expires are rejected.
   Control polling moves such rows to RECONCILE; a late SENT report cannot turn
   that uncertain outcome into a retry or overwrite the reconciled state.
-- SQLite import deliberately excludes session, auth, threads and messages,
-  retaining a fresh OFF/IDLE session. Restoring history without its sealed peer
+- SQLite import deliberately excludes session, auth, threads, messages and phone
+  suppression markers, retaining a fresh OFF/IDLE session. Restoring history without its sealed peer
   identity/key would not produce a usable thread; restoring dispatch intents
   or device state could reactivate an old session. Backups still contain these
   sensitive records and require the existing operational custody controls.
