@@ -36,6 +36,26 @@ const options = { csrfToken: () => 'fictional-token', onUnauthorized() { assert.
 test('QR copy exists in all seller languages', () => {
   for (const { code } of languages) for (const name of Object.keys(messages.en).filter(k => k.startsWith('qr_'))) assert.equal(typeof messages[code][name], 'string', `${code}/${name}`);
 });
+for (const phase of ['PAIRING', 'CONNECTING', 'RECONNECTING']) test(`Owner cancels ${phase} and restarts timed-out pairing`, async () => fixture(async root => {
+  let state = { ...initial, acknowledged: true, desired: 'PAIR', state: phase };
+  const actions = [];
+  globalThis.fetch = async (path, init) => {
+    if (init.method === 'POST') { actions.push(path.split('/').at(-1)); state = { ...state, desired: 'OFF', state: 'IDLE' }; return response({ ok: true }); }
+    return response({ ...state });
+  };
+  const card = mountWhatsAppQr(root, options); await flush();
+  assert.equal(key(root, 'cancel').textContent, 'Cancel');
+  await key(root, 'cancel').events.click(); await flush();
+  assert.deepEqual(actions, ['disconnect']);
+  card.dispose();
+  state.lastError = 'PAIRING_TIMEOUT';
+  const expired = mountWhatsAppQr(root, options); await flush();
+  assert.equal(key(root, 'pairingTimeout').textContent, 'The code expired because it was not scanned in 2 minutes.');
+  assert.equal(key(root, 'expired').textContent, 'Get a new code');
+  await key(root, 'expired').events.click(); await flush();
+  assert.deepEqual(actions, ['disconnect', 'pair']);
+  expired.dispose();
+}));
 test('QR card is absent on 404; staff can see risk and status but cannot acknowledge or pair', async () => fixture(async root => {
   globalThis.fetch = async () => response({}, 404);
   const hidden = mountWhatsAppQr(root, options); await flush(); assert.equal(root.children[0].hidden, true); assert.equal(root.children[0].children.length, 0); hidden.dispose();

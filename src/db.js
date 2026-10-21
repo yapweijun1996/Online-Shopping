@@ -605,6 +605,7 @@ export async function migrateStore(store) {
   }
   if (version === 26) {
     await store.transaction(async () => {
+      // Shared schema 27 includes the seller pairing-attempt deadline timestamp.
       await migrateWhatsAppQr(store);
       await store.setSchemaVersion(27);
     });

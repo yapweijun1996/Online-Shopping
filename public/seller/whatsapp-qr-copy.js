@@ -12,3 +12,13 @@ const copy = {
 for (const [locale, values] of Object.entries(copy)) Object.assign(messages[locale], Object.fromEntries(keys.map((key, i) => [`qr_${key}`, values[i]])));
 const reconnect = { en: 'Reconnection timed out. Link again.', ms: 'Sambungan semula tamat masa. Pautkan semula.', 'zh-Hans': '重新连接超时，请重新关联。', vi: 'Kết nối lại đã hết thời gian. Hãy liên kết lại.', th: 'เชื่อมต่อใหม่หมดเวลา โปรดเชื่อมใหม่', ja: '再接続がタイムアウトしました。再連携してください。', ko: '재연결 시간이 초과되었습니다. 다시 연결하세요.' };
 for (const [locale, value] of Object.entries(reconnect)) messages[locale].qr_reconnectError = value;
+const pairing = {
+ en: ['Cancel', 'The code expired because it was not scanned in 2 minutes.'],
+ ms: ['Batal', 'Kod tamat tempoh kerana tidak diimbas dalam masa 2 minit.'],
+ 'zh-Hans': ['取消', '二维码已过期，因为未在 2 分钟内扫描。'],
+ vi: ['Hủy', 'Mã đã hết hạn vì không được quét trong vòng 2 phút.'],
+ th: ['ยกเลิก', 'รหัสหมดอายุเนื่องจากไม่ได้สแกนภายใน 2 นาที'],
+ ja: ['キャンセル', '2分以内にスキャンされなかったため、コードの有効期限が切れました。'],
+ ko: ['취소', '2분 이내에 스캔하지 않아 코드가 만료되었습니다.']
+};
+for (const [locale, [cancel, timeout]] of Object.entries(pairing)) Object.assign(messages[locale], { qr_cancel: cancel, qr_pairingTimeout: timeout });

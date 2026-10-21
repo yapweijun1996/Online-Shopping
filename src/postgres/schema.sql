@@ -375,7 +375,7 @@ CREATE TABLE whatsapp_qr_session (
  desired TEXT NOT NULL CHECK (desired IN ('OFF','PAIR','RUN')),
  state TEXT NOT NULL CHECK (state IN ('IDLE','PAIRING','CONNECTING','CONNECTED','RECONNECTING','LOGGED_OUT','ERROR')),
  generation INTEGER NOT NULL CHECK (generation > 0), auth_version INTEGER NOT NULL DEFAULT 0 CHECK (auth_version >= 0),
- qr_text TEXT, qr_expires_at TEXT, phone_masked TEXT, phone_hash TEXT, last_error TEXT,
+ qr_text TEXT, qr_expires_at TEXT, pair_started_at TEXT, phone_masked TEXT, phone_hash TEXT, last_error TEXT,
  lease_owner TEXT, lease_expires_at TEXT, heartbeat_at TEXT, last_claim_at TEXT,
  acknowledged_at TEXT, acknowledged_by TEXT, ack_notice_version TEXT,
  peer_key_sealed BYTEA, peer_key_id TEXT, revision INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL

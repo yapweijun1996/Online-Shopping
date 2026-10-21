@@ -68,6 +68,41 @@ async function fixture(t, engine) {
 }
 for (const engine of ['sqlite', 'postgres']) {
   const options = { skip: engine === 'postgres' && !base };
+  test(`${engine}: pairing deadline stops control and survives IDLE until explicit pair`, options, async t => {
+    const f = await fixture(t, engine);
+    await f.direct(`${connection}/acknowledge`, { noticeVersion: 1 });
+    await f.direct(`${connection}/pair`, {});
+    const { generation } = (await f.workerCall('control')).data;
+    await f.workerCall('state', { generation, state: 'PAIRING', qr: 'synthetic-qr' });
+    f.advance(120000);
+    assert.equal((await f.workerCall('control')).data.desired, 'PAIR');
+    f.advance(1000);
+    assert.equal((await f.workerCall('control')).data.desired, 'OFF');
+    let row = await f.store.get('SELECT * FROM whatsapp_qr_session');
+    assert.equal(row.last_error, 'PAIRING_TIMEOUT');
+    assert.equal(row.qr_text, null);
+    assert.equal(row.qr_expires_at, null);
+    await f.workerCall('state', { generation, state: 'IDLE' });
+    assert.equal((await f.direct(connection)).data.lastError, 'PAIRING_TIMEOUT');
+    await f.direct(`${connection}/pair`, {});
+    assert.equal((await f.direct(connection)).data.lastError, null);
+    const next = (await f.workerCall('control')).data.generation;
+    f.advance(119000);
+    await f.workerCall('control');
+    await f.workerCall('state', { generation: next, state: 'CONNECTED' });
+    f.advance(2000);
+    assert.equal((await f.workerCall('control')).data.desired, 'RUN');
+    assert.equal((await f.direct(connection)).data.state, 'CONNECTED');
+  });
+  test(`${engine}: seller status expires pairing without a control poll`, options, async t => {
+    const f = await fixture(t, engine);
+    await f.direct(`${connection}/acknowledge`, { noticeVersion: 1 });
+    await f.direct(`${connection}/pair`, {});
+    f.advance(121000);
+    const status = (await f.direct(connection)).data;
+    assert.equal(status.desired, 'OFF');
+    assert.equal(status.lastError, 'PAIRING_TIMEOUT');
+  });
   test(`${engine}: concurrent intent replay, validation and stable history cursor`, options, async t => {
     const f = await fixture(t, engine), { thread, reply } = await f.connect();
     f.advance(1);

@@ -40,7 +40,7 @@ export function mountWhatsAppQr(root, { csrfToken, onUnauthorized, role = 'OWNER
     const linked = !pairWaitingUntil && state.desired !== 'OFF' && state.state === 'CONNECTED';
     const pending = pairWaitingUntil > Date.now() || state.desired !== 'OFF' && ['CONNECTING','RECONNECTING'].includes(state.state) || state.desired === 'PAIR' && state.state === 'IDLE';
     const errorKey = { LOGGED_OUT: 'loggedOut', RECONNECT_LIMIT: 'reconnectError' }[state.lastError] || 'error';
-    const key = linked ? 'connected' : pending ? 'connecting' : state.state === 'PAIRING' && state.desired !== 'OFF' ? 'pairing' : state.state === 'LOGGED_OUT' ? 'loggedOut' : state.state === 'ERROR' ? errorKey : 'idle';
+    const key = state.lastError === 'PAIRING_TIMEOUT' ? 'pairingTimeout' : linked ? 'connected' : pending ? 'connecting' : state.state === 'PAIRING' && state.desired !== 'OFF' ? 'pairing' : state.state === 'LOGGED_OUT' ? 'loggedOut' : state.state === 'ERROR' ? errorKey : 'idle';
     const status = node('p', key, linked ? 'qr-connected' : pending ? 'qr-connecting' : ''); status.setAttribute('aria-live', 'polite'); section.append(status);
     if (linked) { const phone = node('p'); phone.textContent = state.phoneMasked || ''; section.append(phone); }
     if (owner && state.desired !== 'OFF' && state.state === 'PAIRING') {
@@ -59,7 +59,8 @@ export function mountWhatsAppQr(root, { csrfToken, onUnauthorized, role = 'OWNER
     }
     if (owner && state.acknowledged) {
       if (linked) section.append(button('disconnect', async () => { if (await confirm(text('confirm'), { title: text('disconnect'), confirmLabel: text('disconnect') }) && lifecycle.current()) mutate('disconnect'); }));
-      else if (!pending && state.state !== 'PAIRING' || state.desired === 'OFF') section.append(button(['ERROR','LOGGED_OUT'].includes(state.state) ? 'again' : 'pair', () => mutate('pair')));
+      else if (!pending && state.state !== 'PAIRING' || state.desired === 'OFF') section.append(button(state.lastError === 'PAIRING_TIMEOUT' ? 'expired' : ['ERROR','LOGGED_OUT'].includes(state.state) ? 'again' : 'pair', () => mutate('pair')));
+      if (!linked && state.desired !== 'OFF' && (pending || state.state === 'PAIRING')) section.append(button('cancel', () => mutate('disconnect')));
     }
     section.append(line);
     section.querySelectorAll('button').forEach(el => { el.disabled = busy; });

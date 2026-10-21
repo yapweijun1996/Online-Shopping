@@ -229,6 +229,9 @@ for (const engine of ['sqlite','postgres']) {
     assert.deepEqual(await catalog(), baseline);
     const session = await f.store.get('SELECT * FROM whatsapp_qr_session');
     assert.deepEqual([session.id,session.desired,session.state,session.generation,session.auth_version], [1,'OFF','IDLE',1,0]);
+    assert.equal(session.pair_started_at, null);
+    await f.store.run('UPDATE whatsapp_qr_session SET pair_started_at = ?', '2026-10-21T00:00:00.000Z');
+    assert.equal((await f.store.get('SELECT pair_started_at FROM whatsapp_qr_session')).pair_started_at, '2026-10-21T00:00:00.000Z');
     await assert.rejects(f.store.run("UPDATE whatsapp_qr_session SET state = 'INVALID'"));
     await assert.rejects(f.store.run("UPDATE whatsapp_qr_session SET desired = 'INVALID'"));
     assert.equal((await f.call('control')).status, 200);

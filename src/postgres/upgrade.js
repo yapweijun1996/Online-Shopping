@@ -251,6 +251,7 @@ async function grantOAuth(store) {
 }
 
 async function migrateQr(store) {
+  // Shared schema 27 includes pair_started_at, matching fresh PostgreSQL installs.
   await migrateWhatsAppQr(store);
   await store.exec(`DO $$ BEGIN IF ${legacyApplicationGrant} THEN
     GRANT SELECT, INSERT, UPDATE, DELETE ON whatsapp_qr_session, whatsapp_qr_auth,

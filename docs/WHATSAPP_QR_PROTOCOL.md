@@ -30,17 +30,21 @@ worker ----------WSS------> WhatsApp (Baileys 6.7.24, egress network)
 
 ## Session states
 
-`desired` is set only by the seller API: `OFF` | `PAIR` | `RUN`. `state` is reported only by the worker:
+`desired` is set by the seller API and pairing-timeout housekeeping: `OFF` | `PAIR` | `RUN`. `state` is reported only by the worker:
 `IDLE` | `PAIRING` | `CONNECTING` | `CONNECTED` | `RECONNECTING` | `LOGGED_OUT` | `ERROR`.
 
 - Seller "Pair" (Owner only, after risk acknowledgement): if `desired` is `OFF` or state is `LOGGED_OUT`/`ERROR`/`IDLE`,
-  increment `generation`, delete all auth records of older generations, set `desired = PAIR`, clear QR.
+  increment `generation`, delete all auth records of older generations, set `desired = PAIR`, record `pair_started_at`, clear QR and last error.
 - Seller "Disconnect": increment `generation`, set `desired = OFF`, delete all auth records, clear QR, cancel every
   QUEUED reply (status `CANCELLED`), keep thread history. The worker sees a new generation with `desired = OFF`, logs the
   socket out if it can (`sock.logout()`), closes it and reports `IDLE`.
 - Worker reports `CONNECTED` → backend sets `desired = RUN` if it was `PAIR`.
 - Worker reports `LOGGED_OUT` (WhatsApp unlinked the device or rejected it) → backend sets `desired = OFF`, deletes auth
   records, clears QR. The seller must pair again.
+- Control polling and seller status transactions stop an unconnected PAIR attempt after more than 120 seconds:
+  revision CAS sets desired OFF, clears QR and records PAIRING_TIMEOUT. Plain worker IDLE preserves that reason;
+  a new explicit Pair clears it. Connected sessions are not expired. Owners can Cancel pending pairing through
+  Disconnect; timeout shows “The code expired because it was not scanned in 2 minutes.” and “Get a new code”.
 
 ## Routes (all under `http://backend:3001/internal/whatsapp-qr`)
 

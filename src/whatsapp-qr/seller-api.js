@@ -39,7 +39,7 @@ export function createQrSellerApi({ store, secretBox, now = Date.now }) {
           if (session.ack_notice_version !== '1') throw new ApiError(409, 'ACKNOWLEDGEMENT_REQUIRED', 'Acknowledge the risk first.');
           if (!await shopPair.attempt('default') || !await addressPair.attempt(clientAddress)) return limited(900);
           if (session.desired === 'OFF' || ['LOGGED_OUT','ERROR','IDLE'].includes(session.state)) {
-            await store.run("UPDATE whatsapp_qr_session SET generation = generation + 1, auth_version = 0, desired = 'PAIR', qr_text = NULL, qr_expires_at = NULL WHERE id = 1");
+            await store.run("UPDATE whatsapp_qr_session SET generation = generation + 1, auth_version = 0, desired = 'PAIR', pair_started_at = ?, last_error = NULL, qr_text = NULL, qr_expires_at = NULL WHERE id = 1", at);
             await store.run('DELETE FROM whatsapp_qr_auth');
           }
         } else {

@@ -16,6 +16,12 @@ const recordIdentity = row => row && typeof row.type === 'string' && /^[a-z-]{2,
 const invalid = () => fail('INVALID_BODY', 400);
 
 export function createWhatsAppQrStore({ store, secretBox, now = () => Date.now() }) {
+  async function expirePair(session, time, at) {
+    if (session.desired !== 'PAIR' || session.state === 'CONNECTED' || !(time - Date.parse(session.pair_started_at) > 120000)) return;
+    const changed = await store.get("UPDATE whatsapp_qr_session SET desired = 'OFF', qr_text = NULL, qr_expires_at = NULL, last_error = 'PAIRING_TIMEOUT', revision = revision + 1, updated_at = ? WHERE id = 1 AND revision = ? RETURNING revision", at, session.revision);
+    if (!changed) fail('REVISION');
+    Object.assign(session, { desired: 'OFF', qr_text: null, qr_expires_at: null, last_error: 'PAIRING_TIMEOUT', revision: changed.revision });
+  }
   const transact = (worker, generation, fn, control = false) => store.transaction(async () => {
     const session = await store.get(`SELECT * FROM whatsapp_qr_session WHERE id = 1${store.dialect === 'postgres' ? ' FOR UPDATE' : ''}`);
     const time = now(), at = new Date(time).toISOString();
@@ -26,6 +32,7 @@ export function createWhatsAppQrStore({ store, secretBox, now = () => Date.now()
     // The row lock serializes every operation; revision CAS also fences future callers using this row.
     const changed = await store.get(`UPDATE whatsapp_qr_session SET revision = revision + 1, updated_at = ? WHERE id = 1 AND revision = ? RETURNING id`, at, session.revision);
     if (!changed) fail('REVISION');
+    session.revision++;
     return fn(session, time, at);
   });
   async function peerKey(session, at) {
@@ -55,7 +62,10 @@ export function createWhatsAppQrStore({ store, secretBox, now = () => Date.now()
     sellerTransaction: fn => store.transaction(async () => {
       const session = await store.get(`SELECT * FROM whatsapp_qr_session WHERE id = 1${store.dialect === 'postgres' ? ' FOR UPDATE' : ''}`);
       const time = now(), at = new Date(time).toISOString();
-      await store.run('UPDATE whatsapp_qr_session SET revision = revision + 1, updated_at = ? WHERE id = 1 AND revision = ?', at, session.revision);
+      const changed = await store.get('UPDATE whatsapp_qr_session SET revision = revision + 1, updated_at = ? WHERE id = 1 AND revision = ? RETURNING id', at, session.revision);
+      if (!changed) fail('REVISION');
+      session.revision++;
+      await expirePair(session, time, at);
       return fn(session, time, at);
     }),
     phoneHash: async (phone, session = null, initialize = false) => {
@@ -69,6 +79,7 @@ export function createWhatsAppQrStore({ store, secretBox, now = () => Date.now()
       return peer.endsWith('@lid') ? 'Hidden' : `+••••${peer.split('@')[0].slice(-4)}`;
     },
     control: worker => transact(worker, null, async (session, time, at) => {
+      await expirePair(session, time, at);
       await store.run('UPDATE whatsapp_qr_session SET lease_owner = ?, lease_expires_at = ?, heartbeat_at = ?, qr_text = CASE WHEN qr_expires_at <= ? THEN NULL ELSE qr_text END, qr_expires_at = CASE WHEN qr_expires_at <= ? THEN NULL ELSE qr_expires_at END WHERE id = 1', worker, new Date(time + 60000).toISOString(), at, at, at);
       await store.run(`UPDATE message_thread_message SET body = NULL WHERE id IN (SELECT id FROM message_thread_message WHERE body IS NOT NULL AND created_at < ? ORDER BY created_at,id LIMIT 200)`, new Date(time - 30 * 86400000).toISOString());
       await store.run(`UPDATE message_thread_message SET status = 'RECONCILE', updated_at = ? WHERE status = 'SENDING' AND id IN (SELECT id FROM message_thread_message WHERE status = 'SENDING' AND lease_expires_at <= ? ORDER BY created_at,id LIMIT 200)`, at, at);
@@ -84,7 +95,7 @@ export function createWhatsAppQrStore({ store, secretBox, now = () => Date.now()
         masked = `+${body.phone.slice(0, 2)}${'•'.repeat(body.phone.length - 6)}${body.phone.slice(-4)}`;
         phoneHash = hash(await peerKey(session, at), body.phone);
       }
-      await store.run(`UPDATE whatsapp_qr_session SET state = ?, desired = ?, qr_text = ?, qr_expires_at = ?, phone_masked = ?, phone_hash = ?, last_error = ?, auth_version = ? WHERE id = 1`, body.state, body.state === 'LOGGED_OUT' ? 'OFF' : body.state === 'CONNECTED' && session.desired === 'PAIR' ? 'RUN' : session.desired, body.qr ?? null, body.qr ? new Date(time + 60000).toISOString() : null, masked, phoneHash, body.reason ?? null, body.state === 'LOGGED_OUT' ? session.auth_version + 1 : session.auth_version);
+      await store.run(`UPDATE whatsapp_qr_session SET state = ?, desired = ?, qr_text = ?, qr_expires_at = ?, phone_masked = ?, phone_hash = ?, last_error = ?, auth_version = ? WHERE id = 1`, body.state, body.state === 'LOGGED_OUT' ? 'OFF' : body.state === 'CONNECTED' && session.desired === 'PAIR' ? 'RUN' : session.desired, body.qr ?? null, body.qr ? new Date(time + 60000).toISOString() : null, masked, phoneHash, body.reason ?? (body.state === 'IDLE' && session.last_error === 'PAIRING_TIMEOUT' ? session.last_error : null), body.state === 'LOGGED_OUT' ? session.auth_version + 1 : session.auth_version);
       if (body.state === 'LOGGED_OUT') await store.run('DELETE FROM whatsapp_qr_auth');
     }),
     getAuth: (worker, generation) => transact(worker, generation, async session => {
