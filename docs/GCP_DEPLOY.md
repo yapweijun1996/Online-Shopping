@@ -408,6 +408,12 @@ The backend alone mounts both tokens and the read-only bindings manifest.
    1000, mode 0600, under a protected host directory. Create
    `SECRETS_DIR/whatsapp-qr-token-slot1` on the host before installing this Compose
    file, even when its worker is disabled: backend mounts both files.
+   Manifest mode requires **exactly 43 characters** (32 random bytes, base64url, no
+   padding) for every token, including the pre-existing slot-0 token: legacy
+   single-token mode accepted any >=32 URL-safe characters, so rotate a longer slot-0
+   token when switching to the manifest. Docker file-backed secrets are bind mounts of
+   the file's inode: after replacing a token file, `--force-recreate` backend and the
+   workers, or they keep reading the old content.
 4. Install `SECRETS_DIR/whatsapp-qr-bindings.json` from
    `deploy/gcp/whatsapp-qr-bindings.example.json`, replacing the fictional UUID
    with the immutable tenant UUID. For slot-0-only provisioning omit entry 1.
@@ -447,6 +453,24 @@ another tenant. Rollback stops both first, retains platform 3 and only uses
 schema-compatible images/config; a DB restore needs the recovery-disabled gate.
 The historical release record above proves only the old slot-0 idle deployment,
 not tenant admission, two-worker capacity, pairing or delivery.
+
+### Tenant QR release record (2026-10-21, `330d523`)
+
+Backup restore-tested (row counts and versions equal, 0 non-benign errors), timer stopped, reviewed
+compose/update.py installed, slot-1 token and bindings manifest created (slot 0 `default`, slot 1 tenant
+`pgfreelancer`), `WHATSAPP_QR_BINDINGS_FILE=/run/secrets/whatsapp_qr_bindings`, `WHATSAPP_QR_SLOT1_ENABLED=1`,
+platform migrated to 3 with `upgrade-platform.mjs --with-qr` (shops stay 27).
+
+**Incident (~10 min seller/shop outage):** the first activation failed because the tokens were 48 characters
+(the existing slot-0 token was valid only in legacy mode) and the manifest validator requires 43; the backend
+restarted with `Invalid WHATSAPP_QR_BINDINGS_FILE or credential file.` Both tokens were regenerated as 32-byte
+base64url values, the running containers were force-recreated (they still held the old file inodes), and the
+release was completed with the Updater `activate`/`health`/`save` path: state `deployed`, current `330d523`,
+workers `whatsapp-qr` and `whatsapp-qr-slot1`, timer active. The token rule and the inode note were added above.
+
+After release: both workers idle (~40 MiB each), slot 1 reports `QR_REVOKED` until SuperAdmin enables policy for
+the shop, host MemAvailable ~1.1 GB, `/internal/*` 404 publicly. The slot-1 capacity drill under real pairing and
+handset acceptance remain owner-device gates.
 
 Set `WHATSAPP_QR_BINDINGS_FILE=/run/secrets/whatsapp_qr_bindings` in runtime.env
 for manifest mode (mandatory for slot 1). Empty preserves legacy slot-0-only
