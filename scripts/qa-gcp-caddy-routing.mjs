@@ -36,6 +36,8 @@ let count = 0;
 async function check(host, path, status, options = {}, validate = () => {}) {
   const result = await request(host, path, options);
   assert.equal(result.status, status, `${host} ${path}: ${result.text.slice(0, 100)}`);
+  if (host === 'shop' || host === 'seller')
+    assert.equal(result.headers['strict-transport-security'], 'max-age=31536000', `${host} ${path}: HSTS`);
   validate(result); count++;
 }
 const redirect = location => r => assert.equal(r.headers.location, location);

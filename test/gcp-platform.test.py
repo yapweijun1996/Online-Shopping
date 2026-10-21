@@ -24,16 +24,22 @@ class Fake:
         self.commands = []
         self.auth_failure = None
         self.authentications = []
+        self.schema = ''
+        self.tables = ''
     def __call__(self, argv, sql=None):
+        self.commands.append(argv)
         if sql is None:
-            self.commands.append(argv)
             if argv[-3:-1] == ['node', '-e']:
                 self.authentications.append('backend')
                 if self.auth_failure: raise RuntimeError('sensitive-private-password')
                 return '{"status":"ready"}'
-            if argv[-3:] != ['node', 'scripts/upgrade-platform.mjs', '--with-claim']: raise AssertionError('Unexpected process')
-            return '{"platformVersion":2}'
+            raise AssertionError('Unexpected process: migration must not run from the image')
         self.sql.append(sql)
+        if sql.startswith("SELECT to_regclass"): return 'schema_meta' if self.schema else ''
+        if sql.startswith('SELECT version'): return self.schema
+        if sql.startswith('SELECT tablename'):
+            assert argv[argv.index('-d') + 1] == 'platform'
+            return self.tables
         if sql.startswith('SELECT rolname'): return '\n'.join(sorted(self.roles))
         if sql.startswith('SELECT COALESCE'): return 'createrole_self_grant=set, inherit'
         if sql.startswith('SELECT pg_get'): return self.database
@@ -92,11 +98,47 @@ class Tests(unittest.TestCase):
                 self.assertEqual('ready', p.run()['status'])
                 self.assertTrue(all(sql.startswith('SELECT') for sql in runner.sql))
                 self.assertEqual(first, values)
-                self.assertEqual(2, sum(argv[-3:] == ['node', 'scripts/upgrade-platform.mjs', '--with-claim'] for argv in runner.commands))
+                self.assertFalse(any('scripts/upgrade-platform.mjs' in argv for argv in runner.commands))
                 self.assertEqual('ready', p.run(True)['status'])
                 self.assertEqual(['backend'] * 3, runner.authentications)
             self.assertNotIn('sensitive', output.getvalue())
             self.assertFalse(any('online_shopping;' in sql for sql in runner.sql))
+
+    def test_claim_schema_provisioning_gate(self):
+        for version in ('', '1', '2', '3'):
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as root:
+                p, runner = self.fixture(root)
+                runner.schema = version
+                with patch.object(p, 'preflight'), patch.object(p, 'secret', return_value='private'):
+                    if version in ('1', '3'):
+                        with self.assertRaisesRegex(ValueError, 'private'):
+                            p.run()
+                        with self.assertRaisesRegex(ValueError, 'private'):
+                            p.run(True)
+                    else:
+                        result = p.run()
+                        self.assertEqual('ready', result['status'])
+                        self.assertIn('empty' if not version else 'v2', result['claimSchema'])
+                        self.assertEqual('ready', p.run(True)['status'])
+                self.assertFalse(any('--with-claim' in argv for argv in runner.commands))
+                self.assertTrue(any(argv[argv.index('-d') + 1] == 'platform'
+                                    for argv in runner.commands if '-d' in argv))
+
+    def test_missing_metadata_requires_zero_public_tables(self):
+        for check in (False, True):
+            for tables in ('', 'private_existing_table'):
+                with self.subTest(check=check, tables=tables), tempfile.TemporaryDirectory() as root:
+                    p, runner = self.fixture(root)
+                    runner.roles = ['platform_app|false|false|false|true', 'platform_provisioner|false|true|true|true']
+                    runner.database = 'platform_app|true'
+                    runner.tables = tables
+                    with patch.object(p, 'preflight'), patch.object(p, 'secret', return_value='private'):
+                        if tables:
+                            with self.assertRaisesRegex(ValueError, '^Unsupported platform schema; private reconciliation required$'):
+                                p.run(check)
+                        else:
+                            self.assertEqual('ready', p.run(check)['status'])
+                    self.assertTrue(all(sql.startswith('SELECT') for sql in runner.sql))
 
     def test_credential_mismatch_is_private_and_never_resets_passwords(self):
         for role in ('platform_app', 'platform_provisioner'):
@@ -265,6 +307,13 @@ setTimeout(() => console.log(JSON.stringify({ output, attempts })), 20);
         self.assertEqual({'admin_password','database_password','integration_keys','platform','provisioner'},set(backend['secrets']))
         self.assertIn('src/platform/',e.load_updater().PROTECTED)
         self.assertEqual(['database_password', 'database_owner_password'], compose['services']['postgres']['secrets'])
+        self.assertEqual(['private', 'egress'], backend['networks'])
+        self.assertEqual(['private'], compose['services']['postgres']['networks'])
+        self.assertEqual({'edge': {'aliases': ['online-shopping-frontend']}, 'private': None},
+                         compose['services']['frontend']['networks'])
+        self.assertEqual({'internal': True}, compose['networks']['private'])
+        self.assertEqual({'internal': False, 'ipam': {'config': [{'subnet': '192.168.247.0/24'}]}},
+                         compose['networks']['egress'])
         self.assertNotIn('ports:',text)
 
 

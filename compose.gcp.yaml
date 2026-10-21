@@ -49,7 +49,7 @@ services:
       PLATFORM_PROVISIONER_PASSWORD_FILE: /run/secrets/provisioner
       INTEGRATION_KEY_FILE: ${INTEGRATION_KEY_FILE:-}
     secrets: [admin_password, database_password, integration_keys, platform, provisioner]
-    networks: [private]
+    networks: [private, egress]
     mem_limit: 384m
     cpus: 0.5
     read_only: true
@@ -111,3 +111,8 @@ networks:
     name: online-shopping-edge
   private:
     internal: true
+  egress:
+    internal: false
+    ipam:
+      config:
+        - subnet: 192.168.247.0/24
