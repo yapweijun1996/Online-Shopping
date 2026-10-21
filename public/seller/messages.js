@@ -2,6 +2,7 @@ import { apiUrl } from '../shared/base-path.js';
 import { messages, t, translate, formatDate } from '../shared/i18n.js';
 import { confirmModal } from '../shared/modal.js';
 import { request } from './settings.js';
+import { mountWhatsAppChats } from './whatsapp-chats.js';
 
 const keys = ['msgHeading', 'msgReplies', 'msgAttention', 'msgEmptyReplies', 'msgEmptyAttention', 'msgLoading', 'msgError', 'msgMore', 'msgUnreadOnly', 'msgNoOrder', 'msgOpenWhatsApp', 'msgUnread', 'msgRead', 'msgReconcile', 'msgFailed', 'msgSentAction', 'msgResend', 'msgSentConfirm', 'msgResendConfirm', 'msgChanged', 'msgSubmitted', 'msgConfirmed', 'msgRejected', 'msgShipped', 'msgPending', 'msgLeased', 'msgRetry', 'msgAccepted', 'msgDelivered', 'msgSeen', 'msgSent', 'msgUnknown', 'msgBadge', 'msgOrderHeading', 'msgReload'];
 const copy = {
@@ -108,7 +109,13 @@ export function startMessageBadge({ badge, navItem, csrfToken, onUnauthorized })
     return active;
   };
   read(apiUrl('v1/seller/integrations/whatsapp'), () => { if (ownsConnection()) onUnauthorized(); }).then(data => {
-    if (!ownsConnection() || data.available !== true) return;
+    if (!ownsConnection()) return;
+    if (data.available !== true) {
+      read(apiUrl('v1/seller/integrations/whatsapp-qr'), () => { if (ownsConnection()) onUnauthorized(); }).then(qr => {
+        if (ownsConnection() && qr.available === true) navItem.hidden = false;
+      }).catch(() => {});
+      return;
+    }
     available = true; navItem.hidden = false; refresh();
   }).catch(() => {});
   return { refresh, refreshLocale, dispose };
@@ -197,7 +204,14 @@ export function mountMessages(root, { csrfToken, onUnauthorized, canAct = true }
     return { refreshLocale() { translate(section); render(); }, dispose() { ++epoch; } };
   }
   const lists = [mountList('replies', 'msgReplies', 'msgEmptyReplies'), mountList('outbox', 'msgAttention', 'msgEmptyAttention')];
-  return { refreshLocale() { lists.forEach(list => list.refreshLocale()); }, dispose() { active = false; lists.forEach(list => list.dispose()); } };
+  const chats = mountWhatsAppChats(root, container, { csrfToken, onUnauthorized });
+  return {
+    refreshLocale() { lists.forEach(list => list.refreshLocale()); chats.refreshLocale(); },
+    hasUnsavedChanges: () => chats.hasUnsavedChanges(),
+    draftSignature: () => chats.draftSignature(),
+    isBusy: () => chats.isBusy(),
+    dispose() { active = false; chats.dispose(); lists.forEach(list => list.dispose()); },
+  };
 }
 
 export function mountOrderMessages(root, { orderId, csrfToken, onUnauthorized }) {

@@ -107,7 +107,7 @@ test('unavailable connections never read summaries; current 401 signs out; dispo
       globalThis.fetch = async path => { calls.push(path); return response({ available: false }, status); };
       const navItem = new Element('button'), badge = new Element('span'); root.append(navItem, badge);
       const handle = startMessageBadge({ badge, navItem, csrfToken: () => 'fictional-csrf', onUnauthorized: () => unauthorized++ });
-      await flush(); assert.equal(navItem.hidden, true); assert.equal(calls.length, 1); assert.equal(unauthorized, status === 401 ? 1 : 0); handle.dispose();
+      await flush(); assert.equal(navItem.hidden, true); assert.equal(calls.some(path => path.includes('/messages/summary')), false); assert.equal(unauthorized, status === 401 ? 1 : 0); handle.dispose();
     }
     let complete;
     globalThis.fetch = () => new Promise(resolve => { complete = resolve; });
@@ -148,7 +148,7 @@ test('Replies paginate, preserve plain text, mark read with CSRF and refresh the
 test('each list handles errors separately and stale filters, sessions and disposal cannot render', async () => {
   await fixture(async root => {
     const pending = [];
-    globalThis.fetch = path => path.includes('outbox') ? Promise.resolve(response({}, 500)) : new Promise(resolve => pending.push(resolve));
+    globalThis.fetch = path => path.includes('whatsapp-qr') ? Promise.resolve(response({}, 404)) : path.includes('outbox') ? Promise.resolve(response({}, 500)) : new Promise(resolve => pending.push(resolve));
     let token = 'first';
     const page = mountMessages(root, { csrfToken: () => token, onUnauthorized() { assert.fail('stale 401'); } });
     await flush(); assert.ok(findKey(root, 'msgError'));

@@ -104,6 +104,11 @@ All HTTP routes are in `src/app.js` (path constants at the top, handlers in `rou
   QR pairing credentials are no-store and Owner-only until expiry. Reply intents
   have actor, persistent idempotency, shop/thread quotas and a bounded queue;
   enqueue and worker claim share the session lock and generation fencing.
+  Seller UI generates QR pixels locally with the vendored MIT encoder, keeps QR
+  and retry intents in memory only, and renders chat names/previews/bodies as
+  text nodes. The seller service worker excludes every `/api/` request. Chat
+  list previews expose only the latest retained body to the same authenticated
+  roles that may read the conversation; erased bodies remain null.
   Suggested orders use keyed phone matching over at most 500 non-erased orders,
   never identity guesses for LIDs or automatic links. Order erasure suppresses
   matching threads and removes names, sealed peers and bodies transactionally;

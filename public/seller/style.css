@@ -601,3 +601,41 @@
 .img-reveal.is-loaded{filter:none;animation:none;background:transparent}
 @keyframes img-shimmer{to{background-position:-220% 0}}
 @media (prefers-reduced-motion:reduce){.img-reveal{transition:none;animation:none;filter:none}}
+
+/* Linked-device inbox: bounded panes, plain-text bubbles and touch-sized controls. */
+.whatsapp-qr-card h2{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.whatsapp-qr-card .status-badge,.qr-inbox .status-badge{display:inline-flex;align-items:center;min-height:22px;border-radius:20px;padding:2px 8px;background:var(--ui-hover-surface);border:1px solid var(--ui-border);font-size:11px;font-weight:700;line-height:1.4;margin:4px 0}
+.whatsapp-qr-card h2 .status-badge{color:var(--ui-secondary-text);font-size:12px}
+.qr-risk{padding:12px 16px;border:1px solid var(--ui-border);border-radius:10px;background:var(--ui-hover-surface);margin-bottom:16px}
+.qr-risk summary{cursor:pointer;font-weight:700;min-height:32px}
+.qr-risk p{margin:8px 0;max-width:75ch}
+.whatsapp-qr-card canvas{display:block;max-width:100%;height:auto;width:280px;image-rendering:pixelated;margin:16px 0}
+.qr-connected{display:inline-flex;border-radius:20px;padding:6px 12px;background:#e4f5eb;color:#187342;font-weight:700}
+.qr-connecting::before{content:"";display:inline-block;width:14px;height:14px;border:2px solid var(--ui-border);border-top-color:var(--ui-primary);border-radius:50%;margin-right:8px;animation:qr-spin 1s linear infinite}
+@keyframes qr-spin{to{transform:rotate(360deg)}}
+.qr-tabs{display:flex;gap:8px;margin-bottom:16px}
+.qr-tabs [aria-pressed=true]{background:var(--ui-primary);color:var(--ui-surface)}
+.qr-inbox{display:grid;grid-template-columns:320px minmax(0,1fr);border:1px solid var(--ui-border);border-radius:14px;background:var(--ui-surface);overflow:hidden}
+.qr-inbox[hidden],.qr-tabs[hidden],.qr-inbox [hidden],.whatsapp-qr-card[hidden],.msg-page[hidden]{display:none}
+.qr-thread-pane{padding:12px;border-right:1px solid var(--ui-border);min-width:0}
+.qr-thread-list{max-height:65vh;overflow:auto}
+.qr-thread{display:block;width:100%;min-height:76px;text-align:left;border:0;border-bottom:1px solid var(--ui-border);padding:14px 10px;background:transparent;color:inherit;overflow-wrap:anywhere}
+.qr-thread[aria-current=true]{background:var(--ui-hover-surface)}
+.qr-thread time{display:block;font-size:12px;color:var(--ui-muted)}
+.qr-thread p{margin:6px 0;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+.qr-thread small{display:block;color:var(--ui-muted)}
+.qr-conversation{padding:16px;min-width:0}
+.qr-conversation h3{overflow-wrap:anywhere;margin:12px 0}
+.qr-order-chips{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.qr-order-chips a{padding:6px 10px;border:1px solid var(--ui-border);border-radius:20px;color:var(--ui-primary)}
+.qr-bubbles{height:45vh;min-height:200px;overflow:auto;display:flex;flex-direction:column;gap:12px;padding:16px 0;overscroll-behavior:contain}
+.qr-bubble{max-width:85%;padding:10px 14px;border-radius:14px;background:var(--ui-hover-surface);align-self:flex-start;flex-shrink:0}
+.qr-bubble p{white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 6px}
+.qr-bubble time{display:block;font-size:11px;color:var(--ui-muted)}
+.qr-out{align-self:flex-end;background:color-mix(in srgb,var(--ui-primary) 12%,var(--ui-surface))}
+.qr-composer label{display:grid;gap:6px}
+.qr-composer textarea{width:100%;box-sizing:border-box;resize:vertical;min-height:80px;border:1px solid var(--ui-control-border);border-radius:10px;padding:12px;background:var(--ui-surface);color:inherit;font:inherit}
+.qr-composer>span,.qr-composer>p{font-size:12px;color:var(--ui-muted)}
+.qr-inbox>p{grid-column:1/-1;padding:0 16px;overflow-wrap:anywhere}
+@media(max-width:720px){.qr-inbox{grid-template-columns:minmax(0,1fr)}.qr-thread-pane{border-right:0}.qr-inbox:not(.qr-thread-open) .qr-conversation{display:none}.qr-thread-open .qr-thread-pane{display:none}.qr-conversation{padding:12px}.qr-bubble{max-width:92%}.qr-tabs button{flex:1;white-space:normal}.qr-bubbles{height:40vh}}
+@media(prefers-reduced-motion:reduce){.qr-connecting::before{animation:none}}

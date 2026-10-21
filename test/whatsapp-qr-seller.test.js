@@ -80,6 +80,7 @@ for (const engine of ['sqlite', 'postgres']) {
     f.advance(1);
     const newer = await f.direct(reply, { text: 'Next\n\tline' });
     assert.equal(newer.status, 201);
+    assert.equal((await f.direct(`${root}/chats`)).data[0].lastMessageText, 'Next\n\tline');
     const path = `${root}/chats/${thread.id}/messages`;
     assert.equal((await f.direct(`${path}?limit=1`)).data[0].id, newer.data.id);
     const older = (await f.direct(`${path}?before=${newer.data.id}&limit=1`)).data;
@@ -105,6 +106,7 @@ for (const engine of ['sqlite', 'postgres']) {
     const row = await f.store.get('SELECT * FROM message_thread WHERE id = ?', thread.id);
     assert.ok(row.suppressed_at); assert.equal(row.peer_sealed, null); assert.equal(row.display_name, null);
     assert.equal((await f.store.all('SELECT body FROM message_thread_message WHERE thread_id = ?', thread.id)).every(m => m.body === null), true);
+    assert.equal((await f.direct(`${root}/chats`)).data[0].lastMessageText, null);
     assert.deepEqual((await f.direct(path)).data.suggested, []);
   });
   test(`${engine}: seller permissions, feature isolation and mutation authenticity`, options, async t => {

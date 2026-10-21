@@ -343,13 +343,15 @@ prefixed tenant routes). Integration keys are required. Every response is
 `Cache-Control: no-store`. Reads require a seller session; every mutation additionally
 requires exact seller Origin and `X-CSRF-Token`. No route calls WhatsApp.
 
+Seller workflow: [Using WhatsApp QR chats](WHATSAPP_QR_GUIDE.md).
+
 | Method | Path | Contract |
 | --- | --- | --- |
 | GET | `/api/v1/seller/integrations/whatsapp-qr` | All roles: `{available:true,desired,state,generation,phoneMasked,lastError,acknowledged,qr,qrExpiresAt}`. QR text is non-null only for Owner during unexpired PAIRING. |
 | POST | `.../whatsapp-qr/acknowledge` | Owner; `{noticeVersion:1}`. Persists acknowledgement actor/time/version and `RISK_ACKNOWLEDGED` audit. |
 | POST | `.../whatsapp-qr/pair` | Owner; `{}`; requires acknowledgement (`409 ACKNOWLEDGEMENT_REQUIRED`). Limits 3/15 minutes/shop and 5/15 minutes/client address, using persistent SqlLimiter. Allowed new pair advances generation, deletes auth and clears QR; active pair/run remains unchanged. Writes CONNECT audit. |
 | POST | `.../whatsapp-qr/disconnect` | Owner; `{}`. Advances generation, sets OFF, clears auth/QR, cancels QUEUED replies; history retained. Writes DISCONNECT audit. Remote unlink is not guaranteed; unlink in the official app if necessary. |
-| GET | `/api/v1/seller/chats?limit=&offset=` | `orders.fulfil` (all roles); JSON array newest activity first. Default/max limit 50, offset max 10000. Each `{id,displayName,peerMasked,lastMessageAt,lastInboundAt,unreadCount,canReply,replyWindowEndsAt}`. LIDs have no phone association. |
+| GET | `/api/v1/seller/chats?limit=&offset=` | `orders.fulfil` (all roles); JSON array newest activity first. Default/max limit 50, offset max 10000. Each `{id,displayName,peerMasked,lastMessageText,lastMessageAt,lastInboundAt,unreadCount,canReply,replyWindowEndsAt}`. `lastMessageText` is the latest plain-text body, or null for removed/absent bodies. LIDs have no phone association. |
 | GET | `/api/v1/seller/chats/{id}/messages?before=&limit=` | `orders.fulfil`; JSON array `{id,direction,text,status,errorCode,createdAt,actor}`. Default/max limit 100. `before` is a message ID in this thread; newest page returned oldest-first, stable timestamp/ID ordering. Retained tombstones have null text. |
 | POST | `/api/v1/seller/chats/{id}/read` | `orders.fulfil`; `{}`; returns `{unreadCount:0}`. |
 | POST | `/api/v1/seller/chats/{id}/replies` | `chats.reply` (Owner/Manager/Staff); `{text}` and `Idempotency-Key` matching `[A-Za-z0-9_-]{16,100}`. Trimmed 1–4096 characters, no control characters except LF/TAB. Returns 201 message; same thread/text/key returns 200 existing message, changed content/thread gives 409 IDEMPOTENCY_CONFLICT. |
