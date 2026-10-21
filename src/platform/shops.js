@@ -24,7 +24,7 @@ export function createShopManagement({ platform, pool, deps, registry, defaultSt
     return row;
   }
   return {
-    async list() { return { items: (await platform.all(`SELECT ${fields} FROM tenant WHERE status <> 'PURGED' ORDER BY created_at, id LIMIT 20`)).map(withUrls) }; },
+    async list() { return { items: (await platform.all(`SELECT ${fields} FROM tenant WHERE status <> 'PURGED' ORDER BY created_at, id LIMIT 1000`)).map(withUrls) }; },
     async detail(id) {
       const row = await rowFor(id);
       const result = withUrls(row);

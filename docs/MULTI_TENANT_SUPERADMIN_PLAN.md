@@ -65,6 +65,31 @@ The current schema (`schema.sql`, version 21 and later): `shop_setup` (the shop)
 
 List tenants with status, schema version, last activity and order counts; create a tenant; suspend and resume; reset the seller password (one-time password shown once); rename a code (alias redirect); view the audit trail; trigger a backup of one tenant. No in-shop impersonation in the first release; support is done by resetting the password.
 
+The console reuses the seller's shell, commerce stylesheet, appearance picker and
+modal focus helper through platform-scoped symlinks. Seller source files remain
+unchanged. Shops use a semantic desktop table and compact mobile rows, with
+debounced search, status filtering, stable three-state sorting and in-memory
+10/25/50/100-row pagination. Created descending is the initial order.
+The list endpoint remains parameter-free and bounded at 1,000 registry rows;
+processing is client-side, intended for a few hundred tenants. This does not
+raise the provisioning limit of 20 shops per host. Activity uses the existing
+50-event cursor batches, paginated locally at 25 rows; Older events loads the
+next batch, so search and action filtering apply to the current batch only.
+
+One-time credentials use selectable definition-list fields with individual copy
+actions, Copy all details and Close and clear. Buyer/seller links open a new tab
+with `noopener noreferrer`; the console accepts only HTTP(S) links in the
+configured admin/shop/seller hostname family (loopback aliases in the local rig).
+Rows-per-page and appearance choices live in memory only. No credentials are
+written to browser storage.
+
+Local visual QA accepts `node scripts/qa-platform-e2e.mjs --serve --seed-shops 60`.
+The count is bounded to 1–100 and provisions real, isolated fixture databases,
+with varied names, currencies, statuses and creation dates. The rig temporarily
+excludes its own fixture rows from the production provisioning count while
+seeding, restores them afterwards, and removes only its own databases and roles
+on shutdown. It prints the throwaway default seller credentials for comparison.
+
 ### 4.3 Create a tenant (single transaction of work, safe to retry)
 
 Form: shop code (3 to 30 letters and digits, lower case, reserved words refused), shop name, currency (MYR or SGD), seller username, optional initial password (otherwise generated).
@@ -165,3 +190,15 @@ Recorded 2026-10-09 by the owner: **D1** one backend with its own database per t
 ## 11. Owner handoff
 
 P1–P8 are built and the authorized additive setup, R4 wiring deployment, controller installation and production verification are complete. The ledger and private host handoff record actual activation. The owner first signs in, enrols TOTP and follows MULTI_TENANT_OWNER_TEST.md.
+
+### Local console visual verification
+
+The console reuses seller styles through relative symlinks. Shops are processed in memory (appropriate for the current 20-shop host cap and a few hundred registry rows); no server pagination contract changes. Activity retains its existing 50-event cursor batches, with 25-row client pages inside each batch. Rows-per-page is not persisted.
+
+The consolidated browser audit is `scripts/qa-platform-ui.mjs --out /tmp/platform-ui-shots`. It uses `QA_PLAYWRIGHT_MODULE`, `QA_PLATFORM_STATE` (authenticated local browser state), and `QA_SELLER_PASSWORD_FILE`. Browser request interception supplies the three-row, loading and error cases without changing server data.
+
+Iteration 2 reuses the seller's sidebar brand/collapse, navigation group, context header and account menu classes. At 1024px and above the sidebar is persistent and collapsible; smaller screens use the drawer. Tables flow with the document rather than imposing a bounded inner scrolling region. Seller styles themselves remain unchanged.
+
+The `public/platform/seller`, `shared`, and `shop` directories contain relative symlinks only: they preserve relative imports from the seller stylesheet and appearance modules. `test/platform-assets.test.js` recursively checks that console symlinks stay within `public/` and local CSS/HTML/module references exist. This is static asset validation, not a production Caddy smoke test.
+
+Iteration 4 replaces the anonymous split layout with a centred, single-column card (maximum 540px) for sign-in, authenticator enrolment and recovery codes. The public claim page shares the console's seller-derived cream/dark surfaces, brand, field spacing and primary action. Claim branding uses static SVG markup because its unchanged CSP does not allow image loads. Password visibility remains a quiet text action. Recovery codes suppress the entire signed-in shell until the acknowledgement checkbox and Continue action; sign-out and expired sessions return to anonymous sign-in. Mobile tables put search above a two-column grid of status, page size, sort field and direction controls, preserving their accessible names and existing shared sort state.
