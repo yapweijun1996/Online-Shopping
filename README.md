@@ -34,7 +34,7 @@ Make it easy for a seller to set up products, for a customer to shop without reg
 - No online payment or payment verification workflow.
 - No GST calculation in the MVP.
 - No customer account, password, OTP, or cross-device order recovery.
-- No automatic WhatsApp messages or unofficial WhatsApp Web automation.
+- WhatsApp Cloud API is recommended. The isolated linked-device QR module is optional/default-off, requires explicit risk acknowledgement, and can cause temporary restrictions or permanent number bans even for human replies.
 - No courier, AWB, tracking, CSV/Excel batch export, or logistics-platform integration. Seller order details support manual copy and paste for now.
 - No real customer data, credentials, or database files in the public repository.
 

@@ -1,16 +1,1 @@
-{
-  "name": "whatsapp-qr-offline-spike",
-  "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "engines": { "node": ">=24.15.0 <25" },
-  "scripts": { "test": "node --test", "measure": "node --max-old-space-size=192 measure.mjs" },
-  "dependencies": {
-    "@whiskeysockets/baileys": "6.7.24",
-    "qrcode": "1.5.4",
-    "sharp": "0.35.5"
-  },
-  "overrides": {
-    "libsignal": "git+https://github.com/whiskeysockets/libsignal-node.git#bcea72df9ec34d9d9140ab30619cf479c7c144c7"
-  }
-}
+{"name":"online-shopping-whatsapp-qr","version":"1.0.0","private":true,"type":"module","engines":{"node":">=24.15.0 <25"},"scripts":{"test":"node --test test/*.test.mjs"},"dependencies":{"@whiskeysockets/baileys":"6.7.24","sharp":"0.35.5"},"overrides":{"libsignal":"git+https://github.com/whiskeysockets/libsignal-node.git#bcea72df9ec34d9d9140ab30619cf479c7c144c7"}}
