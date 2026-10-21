@@ -11,8 +11,8 @@ const integer = (value, fallback, max) => {
   if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) > max) throw new ApiError(400, 'INVALID_QUERY', 'Invalid pagination.');
   return Number(value);
 };
-export function createQrSellerApi({ store, secretBox, now = Date.now }) {
-  const qr = createWhatsAppQrStore({ store, secretBox, now });
+export function createQrSellerApi({ store, secretBox, shopId = 'default', now = Date.now }) {
+  const qr = createWhatsAppQrStore({ store, secretBox, shopId, now });
   const limiter = (bucket, limit, windowMs) => new SqlLimiter(store, bucket, { limit, windowMs, now });
   const shopPair = limiter('qr-pair-shop', 3, 900000), addressPair = limiter('qr-pair-address', 5, 900000);
   const shopReply = limiter('qr-reply-shop', 20, 3600000), threadReply = limiter('qr-reply-thread', 5, 60000);

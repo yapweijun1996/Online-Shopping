@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -13,6 +13,7 @@ import { readWhatsAppQrConfig } from '../src/config.js';
 import { createWhatsAppQrInternalApi } from '../src/whatsapp-qr/internal-api.js';
 import { createWhatsAppQrServer } from '../src/server.js';
 import { importSqlite } from '../src/sqlite-import.js';
+import { createWhatsAppQrStore } from '../src/whatsapp-qr/store.js';
 
 const base = process.env.SHOP_TEST_DATABASE_URL;
 if (base && (process.env.NODE_ENV !== 'test' || !/test/i.test(new URL(base).pathname))) throw new Error('Disposable test database required.');
@@ -295,3 +296,59 @@ test('SQLite import excludes QR device state and reply intents and refuses activ
   await target.call('control');
   await assert.rejects(importSqlite(source.store, target.store), /fresh QR session/);
 });
+
+for (const engine of ['sqlite', 'postgres']) {
+  test(`${engine}: immutable shop contexts reject transplanted material and preserve default ciphertext`, { skip: engine === 'postgres' && !base }, async t => {
+    const a = await fixture(t, engine), b = await fixture(t, engine);
+    const secretBox = createSecretBox(integrationKeys);
+    const qa = createWhatsAppQrStore({ store: a.store, secretBox, shopId: randomUUID(), now: a.now });
+    const qb = createWhatsAppQrStore({ store: b.store, secretBox, shopId: randomUUID(), now: b.now });
+    await qa.control(a.worker); await qb.control(b.worker);
+    await qa.putAuth(a.worker, { generation: 1, version: 0, creds: 'shop A' });
+    await qb.putAuth(b.worker, { generation: 1, version: 0, creds: 'shop B' });
+    assert.equal((await qa.getAuth(a.worker, 1)).creds, 'shop A');
+    assert.equal((await qb.getAuth(b.worker, 1)).creds, 'shop B');
+    const auth = await a.store.get('SELECT * FROM whatsapp_qr_auth LIMIT 1');
+    await b.store.run('UPDATE whatsapp_qr_auth SET ciphertext = ?, key_id = ?, digest = ?', auth.ciphertext, auth.key_id, auth.digest);
+    assert.equal((await qb.getAuth(b.worker, 1)).creds, null);
+    for (const [f, qr] of [[a, qa], [b, qb]]) {
+      await qr.state(f.worker, { generation: 1, state: 'CONNECTED' });
+      assert.deepEqual(await qr.inbound(f.worker, f.inbound('identical-message')), { accepted: 1, duplicates: 0 });
+    }
+    const ta = await a.store.get('SELECT * FROM message_thread LIMIT 1');
+    const tb = await b.store.get('SELECT * FROM message_thread LIMIT 1');
+    assert.notEqual(ta.peer_hash, tb.peer_hash);
+    assert.equal(qa.maskPeer(ta), '+••••6789');
+    assert.equal(qb.maskPeer(tb), '+••••6789');
+    assert.throws(() => qb.maskPeer(ta));
+    const sessionA = await a.store.get('SELECT * FROM whatsapp_qr_session WHERE id = 1');
+    const sessionB = await b.store.get('SELECT * FROM whatsapp_qr_session WHERE id = 1');
+    await b.store.run('UPDATE whatsapp_qr_session SET peer_key_sealed = ?, peer_key_id = ? WHERE id = 1', sessionA.peer_key_sealed, sessionA.peer_key_id);
+    await assert.rejects(qb.phoneHash('60123456789'));
+    await b.store.run('UPDATE whatsapp_qr_session SET peer_key_sealed = ?, peer_key_id = ? WHERE id = 1', sessionB.peer_key_sealed, sessionB.peer_key_id);
+    // Exercise ingress -> durable reply claim -> erasure suppression in both stores.
+    for (const [f, qr, thread] of [[a, qa, ta], [b, qb, tb]]) {
+      const id = await f.queue();
+      assert.equal((await qr.claim(f.worker, { generation: 1 })).reply.id, id);
+      await qr.sellerTransaction(async session => {
+        const hash = await qr.phoneHash('60123456789', session, true);
+        await f.store.run("INSERT INTO message_peer_suppression (phone_hash,reason,created_at) VALUES (?,'ERASED',?)", hash, new Date(f.now()).toISOString());
+        await f.store.run('UPDATE message_thread SET suppressed_at = ?, peer_sealed = NULL, display_name = NULL WHERE id = ?', new Date(f.now()).toISOString(), thread.id);
+        await f.store.run('UPDATE message_thread_message SET body = NULL WHERE thread_id = ?', thread.id);
+      });
+      await qr.inbound(f.worker, f.inbound('after-erasure'));
+      assert.deepEqual((await f.store.all('SELECT body FROM message_thread_message')).map(row => row.body), [null, null, null]);
+    }
+    const legacy = await fixture(t, engine);
+    const old = secretBox.seal('legacy creds', 'WHATSAPP_QR:default:1:creds:creds:0');
+    await legacy.store.run('INSERT INTO whatsapp_qr_auth (generation,record_type,record_id,chunk_index,chunk_count,ciphertext,key_id,digest,updated_at) VALUES (1,?,?,0,1,?,?,?,?)', 'creds', 'creds', old.sealed, old.keyId, createHash('sha256').update('legacy creds').digest('hex'), new Date(legacy.now()).toISOString());
+    const oldKey = secretBox.seal(Buffer.alloc(32, 7).toString('base64'), 'WHATSAPP_QR:default:peer-key');
+    await legacy.store.run('UPDATE whatsapp_qr_session SET peer_key_sealed = ?, peer_key_id = ? WHERE id = 1', oldKey.sealed, oldKey.keyId);
+    const defaults = createWhatsAppQrStore({ store: legacy.store, secretBox, shopId: 'default', now: legacy.now });
+    await defaults.control(legacy.worker);
+    assert.equal((await defaults.getAuth(legacy.worker, 1)).creds, 'legacy creds');
+    assert.equal(await defaults.phoneHash('60123456789'), createHmac('sha256', Buffer.alloc(32, 7)).update('60123456789').digest('hex'));
+    const oldPeer = secretBox.seal('60123456789@s.whatsapp.net', `WHATSAPP_QR:default:peer:${ta.id}`);
+    assert.equal(defaults.maskPeer({ id: ta.id, peer_sealed: oldPeer.sealed, peer_key_id: oldPeer.keyId }), '+••••6789');
+  });
+}

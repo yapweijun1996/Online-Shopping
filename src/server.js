@@ -54,7 +54,7 @@ async function writeFetchResponse(response, result) {
 
 // Factory deliberately does not listen: tests can bind an ephemeral port.
 export function createWhatsAppQrServer({ store, config, now }) {
-  const handle = createWhatsAppQrInternalApi({ store, secretBox: createSecretBox(config.integrationKeys), token: config.whatsappQr.token, now });
+  const handle = createWhatsAppQrInternalApi({ store, secretBox: createSecretBox(config.integrationKeys), token: config.whatsappQr.token, shopId: 'default', now });
   const server = createServer(async (request, response) => {
     try { await writeFetchResponse(response, await handle(toFetchRequest(request, {}))); }
     catch { response.writeHead(500, { 'cache-control': 'no-store' }); response.end(); }
