@@ -80,6 +80,7 @@ async function main() {
     console.log(`Claim URL: ${env.PUBLIC_ORIGIN}/setup/#${claim}`);
     console.log(`Console URL: http://${env.PLATFORM_ADMIN_HOST}/platform/`);
     console.log(`Fixture shop code prefix: qa${suffix}`);
+    console.log(`Throwaway default seller: ${env.ADMIN_USERNAME} / ${ownerPassword}`);
     console.log('Loopback development edge: HTTP only; production Origin checks and cookie settings unchanged.');
     if (process.argv.includes('--seed-shops')) {
       const { createTenant } = await import('../src/platform/provisioner.js');
@@ -91,12 +92,20 @@ async function main() {
       const box = createSecretBox(parseKeyFile(await readFile(env.INTEGRATION_KEY_FILE, 'utf8')));
       const provisionerUrl = new URL(base); provisionerUrl.username = env.PLATFORM_PROVISIONER_USER; provisionerUrl.password = (await readFile(env.PLATFORM_PROVISIONER_PASSWORD_FILE, 'utf8')).trim();
       try {
-        for (const [index, name] of ['Evergreen Goods', 'North Studio', 'Little Market'].entries()) {
+        const argument = process.argv[process.argv.indexOf('--seed-shops') + 1];
+        const count = argument && !argument.startsWith('--') ? Number(argument) : 3;
+        if (!Number.isInteger(count) || count < 1 || count > 100) throw Error('Seed count must be 1–100');
+        for (let index = 0; index < count; index++) {
+          // Isolated QA databases only: temporarily exclude earlier fixtures from
+          // the production 20-shop provisioning gate, then restore their states.
+          await platform.run("UPDATE tenant SET status = 'PURGED' WHERE code LIKE ?", `qa${suffix}%`);
           await createTenant(platform, { secretBox: box, provisionerUrl: provisionerUrl.href, baseUrl: base.href },
-            { code: `qa${suffix}${index}`, name, currency: 'MYR', sellerUsername: 'shopowner' }, 'qa');
+            { code: `qa${suffix}${index}`, name: `${['Evergreen Goods', 'North Studio', 'Little Market'][index % 3]} ${String(index + 1).padStart(2, '0')}`, currency: index % 2 ? 'SGD' : 'MYR', sellerUsername: 'shopowner' }, 'qa');
         }
+        const fixtures = await platform.all('SELECT id FROM tenant WHERE code LIKE ? ORDER BY code', `qa${suffix}%`);
+        for (const [index, row] of fixtures.entries()) await platform.run('UPDATE tenant SET status = ?, created_at = ? WHERE id = ?', index % 5 === 0 ? 'SUSPENDED' : 'ACTIVE', new Date(Date.now() - index * 86400000).toISOString(), row.id);
       } finally { await platform.close(); }
-      console.log('Seeded three fictional shops.');
+      console.log('Seeded fictional shops.');
     }
     await new Promise(resolve => { process.once('SIGINT', resolve); process.once('SIGTERM', resolve); });
     return;
