@@ -2,6 +2,7 @@ import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { parseKeyFile } from './secret-box.js';
 import { checkPassword } from './accounts.js';
+import { safeRedirect } from './mcp/oauth.js';
 
 const weakPasswords = new Set(['password', 'password123', 'changeme', 'admin123', 'testpassword', 'replace-me']);
 
@@ -130,5 +131,14 @@ export function readConfig(env = process.env) {
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('PORT must be a valid port.');
   const trustProxy = env.TRUST_PROXY === '1';
   if (env.TRUST_PROXY && !trustProxy) throw new Error('TRUST_PROXY must be 1 when set.');
-  return { production, username, password, dbPath, databaseUrl, publicOrigin, sellerOrigin, appRevision, integrationKeys, platform: readPlatformConfig(env, integrationKeys), port, trustProxy, shopMode: readShopMode(env), sellerQuickLogin: env.SELLER_QUICK_LOGIN === '1', demoRevision: readDemoRevision(env) };
+  if (env.MCP_ENABLED !== undefined && !['0', '1'].includes(env.MCP_ENABLED)) throw new Error('MCP_ENABLED must be 0 or 1.');
+  const mcpEnabled = env.MCP_ENABLED === '1';
+  const mcpRedirectUris = (env.MCP_REDIRECT_URIS || '').split(',').filter(Boolean);
+  const mcpBrowserOrigins = (env.MCP_BROWSER_ORIGINS || '').split(',').filter(Boolean);
+  if (mcpRedirectUris.some((uri) => !safeRedirect(uri, mcpRedirectUris))) throw new Error('Invalid MCP_REDIRECT_URIS.');
+  if (mcpBrowserOrigins.some((value) => {
+    try { const url = new URL(value); return url.protocol !== 'https:' || url.origin !== value; } catch { return true; }
+  })) throw new Error('Invalid MCP_BROWSER_ORIGINS.');
+  if (mcpEnabled && (!sellerOrigin || new URL(sellerOrigin).protocol !== 'https:')) throw new Error('MCP_ENABLED requires an HTTPS SELLER_ORIGIN.');
+  return { production, username, password, dbPath, databaseUrl, publicOrigin, sellerOrigin, appRevision, integrationKeys, mcpEnabled, mcpRedirectUris, mcpBrowserOrigins, platform: readPlatformConfig(env, integrationKeys), port, trustProxy, shopMode: readShopMode(env), sellerQuickLogin: env.SELLER_QUICK_LOGIN === '1', demoRevision: readDemoRevision(env) };
 }

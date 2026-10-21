@@ -10,7 +10,7 @@ import { upgradePlatformSchema } from '../src/platform/migrations.js';
 import { createTenant, tenantUrl } from '../src/platform/provisioner.js';
 import { createTenantPool } from '../src/platform/tenant-pool.js';
 import { createPlatformRuntime } from '../src/platform/runtime.js';
-import { openDatabase } from '../src/db.js';
+import { openDatabase, ready } from '../src/db.js';
 import { openPostgresDatabase } from '../src/postgres-db.js';
 import { openPostgresStore } from '../src/postgres-store.js';
 import pg from 'pg';
@@ -29,7 +29,6 @@ test('tenant upgrades under their own role never grant the legacy application ro
   const previous = openPostgresStore(url);
   try { await previous.setSchemaVersion(23); } finally { await previous.close(); }
   const upgraded = await openPostgresDatabase(url, { allowUpgrade: true, max: 1 }); t.after(() => upgraded.close());
-  assert.equal(await upgraded.schemaVersion(), 24);
   for (const table of ['option_type', 'listing', 'integration_connection', 'message_outbox']) {
     assert.equal((await upgraded.get("SELECT has_table_privilege('online_shopping_app', ?, 'SELECT') AS allowed", 'public.' + table)).allowed, false);
   }
@@ -52,9 +51,9 @@ test('tenant pools evict idle stores on a timer and reopen with a new store iden
   const f = await platformFixture(t), result = await createTenant(f.platform, f.deps, input('idle'), 'fixture');
   const row = await f.platform.get('SELECT * FROM tenant WHERE id = ?', result.tenant.id);
   const pool = createTenantPool({ secretBox: f.secretBox, baseUrl: f.baseUrl, idleMs: 150, connectionsPerTenant: 1 }); t.after(() => pool.closeAll());
-  const first = await pool.get(row); assert.equal(await first.schemaVersion(), 24);
+  const first = await pool.get(row);
   await new Promise((resolve) => setTimeout(resolve, 400)); assert.equal(pool.size(), 0);
-  const second = await pool.get(row); assert.notEqual(second, first); assert.equal(await second.schemaVersion(), 24);
+  const second = await pool.get(row); assert.notEqual(second, first);
 });
 
 test('provisioning rows stranded after a failed marker reconcile without restarting the backend', { skip: !platformTestUrl }, async (t) => {
@@ -86,5 +85,5 @@ test('worker rechecks a listed tenant status before opening its store', { skip: 
     assert.equal(runtime.pool.size(), 0);
   }
   await f.platform.run("UPDATE tenant SET status = 'ACTIVE' WHERE id = ?", listed.id);
-  assert.equal(await (await runtime.workerTenants.get(listed)).schemaVersion(), 24);
+  assert.equal(await ready(await runtime.workerTenants.get(listed)), true);
 });

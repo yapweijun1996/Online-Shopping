@@ -3,8 +3,9 @@ import { openNodeStore } from './store.js';
 import { migrateLegacyVariants } from './options.js';
 import { migrateListings } from './listings.js';
 import { migrateSharedGalleries } from './product-gallery.js';
+import { migrateOAuth } from './mcp/schema.js';
 
-export const SCHEMA_VERSION = 24;
+export const SCHEMA_VERSION = 25;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -585,6 +586,14 @@ export async function migrateStore(store) {
     await migrate(store, 24, historyTablesSql);
     version = 24;
   }
+  if (version === 24) {
+    await store.transaction(async () => {
+      // Unreleased schema25 includes the token predecessor lookup index.
+      await migrateOAuth(store);
+      await store.setSchemaVersion(25);
+    });
+    version = 25;
+  }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }
 
@@ -607,7 +616,7 @@ export async function ready(store) {
       Array.isArray(await store.all('SELECT listing_id FROM product LIMIT 0')) &&
       Array.isArray(await store.all('SELECT id FROM option_value LIMIT 0')) &&
       Array.isArray(await store.all('SELECT product_id FROM product_option LIMIT 0')) &&
-      Array.isArray(await store.all('SELECT id, username_key, role, active, must_change_password FROM seller_account LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT id, username_key, role, active, must_change_password, oauth_auth_version FROM seller_account LIMIT 0')) &&
       Array.isArray(await store.all('SELECT id, account_id, action FROM account_event LIMIT 0')) &&
       Array.isArray(await store.all('SELECT account_id FROM session LIMIT 0')) &&
       Array.isArray(await store.all('SELECT id, order_id, author FROM order_note LIMIT 0')) &&
@@ -617,7 +626,8 @@ export async function ready(store) {
       Boolean(await store.get('SELECT id FROM company_setting WHERE id = 1')) &&
       Boolean(await store.get('SELECT id FROM shop_setup WHERE id = 1')) &&
       (await Promise.all(['session', 'product', 'general_code', 'shop_order', 'delivery', 'order_item', 'order_event', 'checkout_idempotency',
-        'rate_limit_attempt', 'shop_setup', 'product_gallery_image']
+        'rate_limit_attempt', 'shop_setup', 'product_gallery_image', 'oauth_client', 'oauth_authorization_request',
+        'oauth_grant', 'oauth_authorization_code', 'oauth_token', 'mcp_audit']
         .map(async (table) => Array.isArray(await store.all(`SELECT * FROM ${table} LIMIT 0`))))).every(Boolean);
   } catch {
     return false;

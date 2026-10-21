@@ -48,6 +48,8 @@ services:
       PLATFORM_DATABASE_PASSWORD_FILE: /run/secrets/platform
       PLATFORM_PROVISIONER_PASSWORD_FILE: /run/secrets/provisioner
       INTEGRATION_KEY_FILE: ${INTEGRATION_KEY_FILE:-}
+      MCP_ENABLED: ${MCP_ENABLED:-0}
+      MCP_REDIRECT_URIS: ${MCP_REDIRECT_URIS:-}
     secrets: [admin_password, database_password, integration_keys, platform, provisioner]
     networks: [private, egress]
     mem_limit: 384m

@@ -223,8 +223,18 @@ async function saveOptions(database, id, existing, patch) {
   }
 }
 
-export async function getProduct(database, id, seller = false, mode = 'manual') {
+export async function getProduct(database, id, seller = false, mode = 'manual', variantPage = null) {
   const row = await database.get(`SELECT ${columns()} ${fromProduct} WHERE p.id = ? ${seller ? '' : 'AND p.active = 1'}`, id);
+  if (variantPage && seller) {
+    if (!row) return null;
+    const count = await database.get('SELECT COUNT(*) AS count FROM product WHERE listing_id = ?', row.listing_id);
+    const variants = await database.all(`SELECT id, sku, variant_label, price_minor, currency, active, stock_quantity FROM product
+      WHERE listing_id = ? ORDER BY variant_label, id LIMIT ? OFFSET ?`, row.listing_id, variantPage.limit + 1, variantPage.offset);
+    return { ...productFromRow(row, true), variantCount: Number(count.count),
+      variants: variants.slice(0, variantPage.limit).map((v) => ({ id: v.id, sku: v.sku, label: v.variant_label,
+        priceMinor: v.price_minor, currency: v.currency, active: Boolean(v.active), stockQuantity: v.stock_quantity })),
+      nextVariantOffset: variants.length > variantPage.limit ? variantPage.offset + variantPage.limit : null };
+  }
   return await detailFields(database, productFromRow(row, seller), seller, mode);
 }
 
@@ -342,4 +352,12 @@ export async function listProducts(database, params, seller = false, mode = 'man
   if (!seller) result.categories = (await database.all(`SELECT DISTINCT c.label AS category ${fromProduct}
     WHERE p.active = 1 ORDER BY c.label`)).map((row) => row.category);
   return result;
+}
+
+// Variant-level inventory page; unlike listing cards this includes every matching SKU.
+export async function lowStockProducts(database, { limit = 20, offset = 0, threshold = 5 } = {}) {
+  const rows = await database.all(`SELECT ${columns()}, (SELECT COUNT(*) FROM product x WHERE x.listing_id = p.listing_id) AS variant_count
+    ${fromProduct} WHERE p.stock_quantity IS NOT NULL AND p.stock_quantity <= ?
+    ORDER BY p.stock_quantity, p.id LIMIT ? OFFSET ?`, threshold, limit + 1, offset);
+  return { items: rows.slice(0, limit).map((row) => ({ ...productFromRow(row, true), variantCount: Number(row.variant_count) })), nextOffset: rows.length > limit ? offset + limit : null };
 }

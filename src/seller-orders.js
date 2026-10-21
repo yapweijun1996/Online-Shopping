@@ -163,6 +163,38 @@ export async function getSellerOrder(database, id) {
   return await database.transaction(async () => await readSellerOrder(database, id));
 }
 
+// Closed read-only projection: never materialize contacts, history, documents or covers.
+const readOrderColumns = 'id, order_no, status, currency, total_minor, submitted_at, updated_at';
+const readOrderSummary = (row) => ({
+  id: row.id, orderNo: row.order_no, status: row.status, currency: row.currency,
+  totalMinor: row.total_minor, submittedAt: row.submitted_at, updatedAt: row.updated_at,
+});
+export async function listOrderReadProjection(database, params) {
+  const filter = orderFilter(params), limit = listNumber(params, 'limit', 20, 50), offset = listNumber(params, 'offset', 0, 10000);
+  if (limit < 1) throw new FieldError('limit', 'Enter a valid list range.');
+  const rows = await database.all(`SELECT ${readOrderColumns} FROM shop_order WHERE ${filter.where}
+    ORDER BY submitted_at DESC, id DESC LIMIT ? OFFSET ?`, ...filter.values, limit + 1, offset);
+  return { items: rows.slice(0, limit).map(readOrderSummary), nextOffset: rows.length > limit ? offset + limit : null };
+}
+export async function getOrderReadProjection(database, id) {
+  const row = await database.get(`SELECT ${readOrderColumns} FROM shop_order WHERE id = ?`, id);
+  if (!row) return null;
+  const deliveries = await database.all(`SELECT id, address_city, address_region, address_country
+    FROM delivery WHERE order_id = ? ORDER BY position LIMIT 11`, id);
+  if (deliveries.length > 10) return { tooLarge: true };
+  const items = await database.all(`SELECT i.delivery_id, i.product_id, i.sku_snapshot, i.name_snapshot,
+    i.price_minor, i.quantity, i.line_total_minor, i.currency FROM order_item i
+    JOIN delivery d ON d.id = i.delivery_id WHERE d.order_id = ? ORDER BY d.position, i.position LIMIT 101`, id);
+  if (items.length > 100) return { tooLarge: true };
+  return { order: readOrderSummary(row), deliveries: deliveries.map((d) => ({
+    city: d.address_city || '', region: d.address_region || '', country: d.address_country || '',
+    items: items.filter((i) => i.delivery_id === d.id).map((i) => ({
+      productId: i.product_id, sku: i.sku_snapshot, name: i.name_snapshot, priceMinor: i.price_minor,
+      quantity: i.quantity, lineTotalMinor: i.line_total_minor, currency: i.currency,
+    })),
+  })) };
+}
+
 function validateDecision(action, input) {
   if (!input || typeof input !== 'object' || Array.isArray(input) ||
       !Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 1) {

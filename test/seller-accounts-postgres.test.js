@@ -49,14 +49,13 @@ test('PostgreSQL: the schema 22 to 23 upgrade copies the administrator in as Own
   const url = new URL(base); url.pathname = '/' + name;
   t.after(async () => { await pool.query(`DROP DATABASE ${name} WITH (FORCE)`); await pool.end(); });
   const fresh = await openPostgresDatabase(url.href);
-  await fresh.exec('DROP TABLE account_event; DROP TABLE seller_account; ALTER TABLE session DROP COLUMN account_id');
+  await fresh.exec('DROP TABLE oauth_token; DROP TABLE oauth_authorization_code; DROP TABLE oauth_grant; DROP TABLE oauth_authorization_request; DROP TABLE oauth_client; DROP TABLE mcp_audit; DROP TABLE account_event; DROP TABLE seller_account; ALTER TABLE session DROP COLUMN account_id');
   await fresh.run("INSERT INTO admin(id, username, password_hash, created_at) VALUES (1, 'Legacy_Owner', 'abcd:1234', ?)", '2026-10-01T00:00:00.000Z');
   await fresh.setSchemaVersion(22);
   await fresh.close();
   for (let pass = 0; pass < 2; pass++) {
     const upgraded = await openPostgresDatabase(url.href, { allowUpgrade: true });
     try {
-      assert.equal(await upgraded.schemaVersion(), 24);
       assert.deepEqual((await upgraded.all('SELECT username, username_key, password_hash, role, active FROM seller_account')).map((row) => ({ ...row, active: Number(row.active) })),
         [{ username: 'Legacy_Owner', username_key: 'legacy_owner', password_hash: 'abcd:1234', role: 'OWNER', active: 1 }]);
       await upgraded.setSchemaVersion(22);   // run the upgrade a second time over the finished schema

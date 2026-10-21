@@ -34,6 +34,7 @@ import { createWhatsAppTransport } from './whatsapp-transport.js';
 import { disconnectWhatsAppConnection, listWhatsAppConnections, saveWhatsAppConnection } from './integration-connections.js';
 import { MAX_WEBHOOK_BYTES, answerWhatsAppHandshake, receiveWhatsAppWebhook } from './whatsapp-inbound.js';
 import { integrationCatalog } from '../public/shared/integration-catalog.js';
+import { createConnector } from './mcp/routes.js';
 
 const productIdPath = /^\/api\/v1\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
 const sellerProductIdPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
@@ -67,7 +68,7 @@ function requireCsrf(request, session) {
  * the client address it trusts and, optionally, a handler for non-API paths.
  */
 /* Routes for one tenant (one shop, one store). Built once per tenant by createApi. */
-async function createTenantApi({ store, config, serveStatic = null, whatsappTransport = createWhatsAppTransport() }) {
+async function createTenantApi({ store, config, tenantId, serveStatic = null, whatsappTransport = createWhatsAppTransport() }) {
   const demoEnabled = config.shopMode === 'public-demo' && (await getShopSetup(store)).mode === 'demo';
   // Explicit opt-in: passwordless seller sign-in for a sample site. Never enable it for a real tenant.
   const quickLogin = demoEnabled || config.sellerQuickLogin === true;
@@ -83,6 +84,7 @@ async function createTenantApi({ store, config, serveStatic = null, whatsappTran
   const connectionLimiter = new SqlLimiter(store, 'integration-connect', { limit: 10, windowMs: LIMIT_WINDOW_MS });
   const secretBox = config.integrationKeys ? createSecretBox(config.integrationKeys) : null;
   const basePath = config.basePath || '';
+  const connector = createConnector({ store, config, tenantId, quickLogin });
   const sellerCookie = (token, maxAge) => cookieFor(token, maxAge, config.production, `${basePath}/api/v1/seller`);
   const prefix = (value) => typeof value === 'string' && /^\/(?:api|shop|seller|shared)\//.test(value) ? basePath + value : value;
   const urlFields = new Set(['imageUrl', 'thumbnailUrl', 'src', 'thumbnail', 'full', 'url', 'productUrl']);
@@ -101,6 +103,8 @@ async function createTenantApi({ store, config, serveStatic = null, whatsappTran
     const expectedOrigin = pathname.startsWith('/api/v1/seller/')
       ? config.sellerOrigin || config.publicOrigin || url.origin
       : config.publicOrigin || url.origin;
+    const connectorResponse = await connector.handle(request, clientAddress);
+    if (connectorResponse) return connectorResponse;
     const demoResponse = await demoRoute(request, expectedOrigin, clientAddress);
     if (demoResponse) return demoResponse;
     if (method === 'GET' && pathname === '/health') return json(200, { status: 'alive', ...(config.appRevision ? { revision: config.appRevision } : {}) });
@@ -217,7 +221,10 @@ async function createTenantApi({ store, config, serveStatic = null, whatsappTran
       const signedIn = await store.transaction(async () => {
         const account = typeof body.username === 'string' && typeof body.password === 'string' && body.username.length <= 64 && body.password.length <= 256
           ? await authenticate(store, body.username, body.password) : null;
-        return account ? { account, session: await createSession(store, account.id) } : null;
+        if (!account) return null;
+        const session = await createSession(store, account.id);
+        await connector.bindLogin(body, account, session);
+        return { account, session };
       });
       if (!signedIn) throw new ApiError(401, 'UNAUTHORIZED', 'Invalid credentials.');
       await loginLimiter.clear(clientAddress);
@@ -544,7 +551,7 @@ export async function createApi({ store, config, registry = null, platformHandle
   const handlers = new WeakMap();
   const handlerFor = (tenant) => {
     if (!handlers.has(tenant)) {
-      handlers.set(tenant, createTenantApi({ store: tenant.store, config: tenant.config, serveStatic, whatsappTransport })
+      handlers.set(tenant, createTenantApi({ store: tenant.store, config: tenant.config, tenantId: tenant.id, serveStatic, whatsappTransport })
         .catch((error) => { handlers.delete(tenant); throw error; }));
     }
     return handlers.get(tenant);
@@ -566,6 +573,12 @@ export async function createApi({ store, config, registry = null, platformHandle
       }
       if (config?.platform && url.host === config.platform.adminHost && !['/health', '/ready'].includes(url.pathname) &&
         url.host !== new URL(config.sellerOrigin).host) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+      const discovery = /^\/\.well-known\/oauth-(protected-resource|authorization-server)\/([a-z0-9]{3,30})(\/mcp)?$/.exec(url.pathname);
+      if (config?.mcpEnabled && discovery && !(discovery[1] === 'protected-resource' && discovery[2] === 'mcp' && !discovery[3])) {
+        if ((discovery[1] === 'protected-resource') !== Boolean(discovery[3])) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+        const translated = new URL(url); translated.pathname = `/${discovery[2]}/.well-known/oauth-${discovery[1]}`;
+        request = new Request(translated, request);
+      }
       const tenant = await tenants.resolve(request, context);
       if (tenant?.response) return tenant.response;
       if (!tenant) throw new ApiError(404, 'NOT_FOUND', 'Not found.');

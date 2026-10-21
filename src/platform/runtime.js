@@ -18,7 +18,7 @@ export function createPlatformRuntime({ store, config, clock = Date.now, paused 
   const inFlight = new Set();
   const claimStartedAt = new Date(clock()).toISOString();
   let claimInitialized = false;
-  const deps = { inFlight, secretBox, baseUrl: config.platform.databaseUrl, provisionerUrl: config.platform.provisionerUrl };
+  const deps = { inFlight, secretBox, mcpEnabled: config.mcpEnabled === true, baseUrl: config.platform.databaseUrl, provisionerUrl: config.platform.provisionerUrl };
   async function recoverInterrupted(platform) {
     if (paused()) return;
     maintenanceTasks++;

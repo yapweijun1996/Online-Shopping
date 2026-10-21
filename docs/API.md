@@ -259,3 +259,47 @@ During a schema upgrade with the R3 controller installed, business requests retu
 The edge checks `GET <base>/api/v1/tenant-access` before serving tenant static files or entry redirects. ACTIVE returns an empty 200 with no-store; unknown/PROVISIONING/FAILED/PURGED returns neutral HTML 404; SUSPENDED/DELETING returns neutral HTML 503. No tenant database is opened. Aliases return 308 to the same path/query under the new code; Caddy supplies the original URI. This endpoint grants no authentication capability. Failed metadata lookups and successful known-code refreshes do not consume the unknown-code probe quota.
 
 Frontends resolve the public shop-info storage scope before importing any state-reading module. Default keys remain unchanged; non-default localStorage/sessionStorage and IndexedDB names append the immutable scope. Network failures can use a validated cached scope; explicit 404/503 responses cannot. Shop-specific worker caches use `tenant-<code>-shop` or `tenant-<code>-seller`, while default caches keep `os-shop`/`os-seller`. Language and light/dark appearance are shared. A controlled navigation through a rename alias propagates the redirect before using a cached shell.
+
+## Seller MCP connector (P1; default OFF)
+
+Enable explicitly with `MCP_ENABLED=1` and configured HTTPS `SELLER_ORIGIN`. Disabled/new paths return the same generic 404; public-demo/quick-login and non-seller hosts cannot use the connector. No new dependency, provider call, write tool or connected-app management API is included. **Claude.ai/ChatGPT callbacks, current protocol/spec support, CORS requirements and plan availability are UNVERIFIED.**
+
+Operator configuration:
+
+- `MCP_REDIRECT_URIS`: comma-separated **exact** registered HTTPS callback URLs; empty disables DCR. No wildcards, userinfo, fragments, IP/loopback/private-name targets, alternate ports or reserved OAuth response query keys. URLs are never fetched.
+- `MCP_BROWSER_ORIGINS`: optional comma-separated exact HTTPS browser origins, distinct from redirect policy. Server clients may omit Origin; unapproved/null Origin is rejected.
+- Canonical issuer is configured seller origin + canonical tenant prefix; resource is issuer + `/mcp`. Bearers cannot select a tenant or authenticate an existing seller API.
+
+| Method | Path | Contract |
+| --- | --- | --- |
+| GET | `/.well-known/oauth-protected-resource` (also `/mcp` suffix) | Resource metadata, supported scopes and authorization server. |
+| GET | `/.well-known/oauth-authorization-server` | Code/refresh, S256 and public-client DCR metadata. |
+| POST | `/oauth/register` | JSON ≤16 KiB; `client_name`, 1–5 `redirect_uris`, `grant_types:["authorization_code","refresh_token"]`, `response_types:["code"]`, `token_endpoint_auth_method:"none"`; 201 metadata/client_id, no client secret. Client names are unverified text. |
+| GET | `/oauth/authorize` | Code request with exact redirect, unique known scopes, 16–512-character URL-safe state, 43-character S256 challenge and exact resource. Stages an immutable ten-minute request; returns strict-CSP consent HTML with external `/oauth/consent.js` and `.css`. POST is 405. |
+| POST | `/api/v1/seller/session` | Existing password login optionally takes `mcpAuthorization:{authorizationRequestId,proof}` from the shell; binds one-use fresh proof to this session/account version transactionally. |
+| POST | `/api/v1/seller/mcp/consent` | JSON ≤4 KiB `{authorizationRequestId,decision:"approve"|"deny",scopes:[...]}`; exact seller Origin, session CSRF and fresh bound login proof. Returns `{redirectTo}` with code or access_denied, original state and canonical issuer. Requested scopes may be narrowed, never widened. |
+| POST | `/oauth/token` | Form ≤8 KiB; authorization_code with client_id/code/redirect_uri/code_verifier/resource, or refresh_token with client_id/refresh_token/resource and optional narrower scope. 200 opaque bearer/access+refresh pair, scope/resource and expires_in. |
+| POST | `/oauth/revoke` | Form ≤8 KiB client_id/token/optional token_type_hint; owned access/refresh revokes entire grant. Unknown/wrong-client tokens return identical empty 200. |
+| POST | `/mcp` | Bearer-only stateless JSON-RPC, JSON ≤64 KiB, Accept must include application/json and text/event-stream; JSON responses ≤256 KiB. GET/DELETE 405, no SSE/session. |
+
+Tenant equivalents are `/<code>/oauth/*`, `/<code>/mcp`, `/<code>/api/v1/seller/mcp/consent`, prefixed discovery aliases, and canonical path-aware discovery `/.well-known/oauth-protected-resource/<code>/mcp` and `/.well-known/oauth-authorization-server/<code>`. No alias redirect transfers credentials. Root prefix collisions with existing `mcp`/`oauth` shops/aliases fail closed pending operator reconciliation.
+
+Only active OWNER/MANAGER without temporary-password restrictions may delegate. Effective scopes are live role capability intersected with granted scope: catalog.read/catalog.write capability, orders.read/orders.fulfil, analytics.read/figures.read. All actual role changes, deactivation and password changes/resets revoke existing grants; reactivation never restores them. Access TTL 15 minutes; rotating refresh idle TTL seven days; absolute grant lifetime 30 days. Reusing a spent refresh revokes its descendants; reconnect after a lost refresh response.
+
+Protocol revision `2025-06-18`: initialize returns that negotiated revision; other messages require the matching MCP-Protocol-Version header. Methods: initialize, ping, tools/list, tools/call; notifications return empty 202 without execution. Batch/invalid envelope -32600; parse -32700; method -32601; params/tool -32602; unexpected tool failure -32603. Invalid bearer is HTTP401 with exact resource_metadata challenge; insufficient scope HTTP403. OAuth errors use the standard top-level `{error:string}` shape, not seller API errors. Size/type/method/rate failures use HTTP413/415/405/429; 429 includes Retry-After:900. No credential values are echoed.
+
+Eight public read tools:
+
+- `catalog.list`: listing representatives (including inactive); limit default20/max50, offset max10000, optional search/category label.
+- `catalog.get`: `{id,variantLimit?,variantOffset?}`, bounded product/variant detail, no media URLs.
+- `catalog.history`: `{id,limit?,offset?}`, history action/time/field names only, no actors or from/to text.
+- `catalog.categories`: paged category code/label/active.
+- `catalog.low_stock`: paging plus threshold default5/max1000000; every tracked variant at/below threshold, including inactive; excludes untracked/null stock.
+- `orders.list`: paging plus existing status/order-number/date/currency/min/max filters; closed order summaries.
+- `orders.get`: `{id}`; closed order/items and city/region/country per delivery.
+- `analytics.summary`: `{}`; existing UTC+8/30-day/per-currency figures, not payment/profit analytics.
+
+Every input/output object is closed; listing/variant pages stop at the offset ceiling with paginationCapped. Tool results carry identical redacted JSON in text content and structuredContent, plus isError. Business errors use safe fixed codes/messages. Buyer/recipient contact names, phones, email, street/postcode, notes/reasons/actors, tracking, documents and WhatsApp fields never enter projections. Product/item text remains untrusted data and can contain seller-entered PII; no anonymity claim.
+
+Schema25 permits automatic OrbStack production database migration after merging to main, even with MCP off; its backup/maintenance safeguards are not a manual approval gate. GCP pauses for protected manual release and never migrates. Image-only rollback cannot reverse schema25. Required owner decision: **"merging = auto-migrate OrbStack production DB to schema 25; backups/rollback procedure"**. See [SELLER_MCP_DESIGN.md](SELLER_MCP_DESIGN.md#p1-implementation-record) and the [ordered GCP procedure](GCP_DEPLOY.md#seller-mcp-schema25-manual-release). Deployment files were not changed.
+

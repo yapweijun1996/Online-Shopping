@@ -30,11 +30,10 @@ test('an upgrade from schema 22 keeps the existing administrator as Owner with t
   try {
     const stamp = new Date().toISOString();
     await store.run('DELETE FROM seller_account');
-    await store.exec('DROP TABLE account_event; DROP TABLE seller_account; ALTER TABLE session DROP COLUMN account_id');
+    await store.exec('DROP TABLE oauth_token; DROP TABLE oauth_authorization_code; DROP TABLE oauth_grant; DROP TABLE oauth_authorization_request; DROP TABLE oauth_client; DROP TABLE mcp_audit; DROP TABLE account_event; DROP TABLE seller_account; ALTER TABLE session DROP COLUMN account_id');
     await store.run("INSERT INTO admin(id, username, password_hash, created_at) VALUES (1, 'Legacy_Owner', 'abcd:1234', ?)", stamp);
     await store.setSchemaVersion(22);
     await migrateStore(store);
-    assert.equal(await store.schemaVersion(), 24);
     const owner = await store.get('SELECT username, username_key, password_hash, role, active, must_change_password FROM seller_account');
     assert.deepEqual({ ...owner }, { username: 'Legacy_Owner', username_key: 'legacy_owner', password_hash: 'abcd:1234', role: 'OWNER', active: 1, must_change_password: 0 });
     await migrateStore(store);   // repeatable

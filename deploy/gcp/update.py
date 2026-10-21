@@ -242,7 +242,7 @@ class Updater:
             if not line or line.startswith('#'):
                 continue
             key, separator, value = line.partition('=')
-            if not separator or key in values or key not in ('SHOP_HOST', 'SELLER_HOST', 'ADMIN_USERNAME', 'SECRETS_DIR', 'PLATFORM_ENABLED', 'PLATFORM_ADMIN_CLAIM_ENABLED', 'INTEGRATION_KEY_FILE'):
+            if not separator or key in values or key not in ('SHOP_HOST', 'SELLER_HOST', 'ADMIN_USERNAME', 'SECRETS_DIR', 'PLATFORM_ENABLED', 'PLATFORM_ADMIN_CLAIM_ENABLED', 'INTEGRATION_KEY_FILE', 'MCP_ENABLED', 'MCP_REDIRECT_URIS'):
                 raise ValueError('Invalid runtime configuration')
             values[key] = value
         if not {'SHOP_HOST', 'SELLER_HOST', 'ADMIN_USERNAME', 'SECRETS_DIR'} <= set(values):
@@ -262,6 +262,13 @@ class Updater:
             raise ValueError('Invalid integration key path')
         if values.get('PLATFORM_ENABLED') == '1' and (values.get('PLATFORM_ADMIN_CLAIM_ENABLED') != '1' or not values.get('INTEGRATION_KEY_FILE')):
             raise ValueError('Platform requires claim mode and integration key')
+        if values.get('MCP_ENABLED', '0') not in ('0', '1'):
+            raise ValueError('Invalid MCP switch')
+        redirects = values.get('MCP_REDIRECT_URIS', '')
+        if redirects and not all(re.fullmatch(r'https://[a-z0-9]+(?:[.-][a-z0-9]+)*\.[a-z]{2,63}(?:/[A-Za-z0-9._~/-]*)?', uri) for uri in redirects.split(',')):
+            raise ValueError('Invalid MCP redirect URIs')
+        if values.get('MCP_ENABLED') == '1' and not redirects:
+            raise ValueError('MCP requires redirect URIs')
         return values
 
     def local_fingerprint(self):
