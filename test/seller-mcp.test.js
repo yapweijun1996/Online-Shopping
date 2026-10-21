@@ -317,6 +317,8 @@ for (const engine of ['sqlite', 'postgres']) {
     for (const code of ['alpha', 'beta']) {
       for (const path of [`/.well-known/oauth-protected-resource/${code}/mcp`, `/${code}/.well-known/oauth-protected-resource`]) assert.equal((await call(path)).data.resource, `${origin}/${code}/mcp`);
       assert.equal((await call(`/.well-known/oauth-authorization-server/${code}`)).data.issuer, `${origin}/${code}`);
+  // RFC 9207: every authorization response carries iss; ChatGPT only uses its fixed callback when this is advertised.
+  assert.equal((await call(`/.well-known/oauth-authorization-server/${code}`)).data.authorization_response_iss_parameter_supported, true);
     }
     const client = await call('/alpha/oauth/register', 'POST', metadata); assert.equal(client.response.status, 201);
     const verifier = secret(), challenge = createHash('sha256').update(verifier).digest('base64url');
