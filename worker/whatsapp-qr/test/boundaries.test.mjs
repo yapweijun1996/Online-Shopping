@@ -39,8 +39,10 @@ test('client echoes broker epoch and preserves explicit revocation without sensi
     if (request.url === '/control') {
       response.writeHead(200, { 'x-binding-epoch': '19', 'content-type': 'application/json' });
       response.end('{"generation":2,"desired":"OFF"}');
+    } else if (request.url === '/v1/stopped') {
+      response.end('{"stopped":true}');
     } else {
-      response.writeHead(403, { 'content-type': 'application/json' });
+      response.writeHead(403, { 'x-binding-epoch': request.url === '/later' ? '21' : '20', 'content-type': 'application/json' });
       response.end('{"error":"QR_REVOKED","private":"fictional-private"}');
     }
   });
@@ -49,5 +51,25 @@ test('client echoes broker epoch and preserves explicit revocation without sensi
   const client = new Client({ url: `http://127.0.0.1:${server.address().port}`, token });
   await client.request('/control');
   await assert.rejects(client.request('/state', { generation: 2 }), error => error.code === 'QR_REVOKED' && error.message === 'QR_REVOKED');
-  assert.deepEqual(epochs, [undefined, '19']);
+  await assert.rejects(client.request('/later'), { code: 'QR_REVOKED' });
+  await client.request('/v1/stopped', {});
+  assert.deepEqual(epochs, [undefined, '19', '19', '20']);
+});
+
+test('stop acknowledgement never substitutes the last authorized epoch when revocation has no epoch', async t => {
+  const epochs = [];
+  const server = http.createServer((request, response) => {
+    epochs.push(request.headers['x-binding-epoch']);
+    if (request.url === '/control') {
+      response.writeHead(200, { 'x-binding-epoch': '19' }); response.end('{}');
+    } else if (request.url === '/v1/stopped') response.end('{}');
+    else { response.writeHead(403); response.end('{"error":"QR_REVOKED"}'); }
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const client = new Client({ url: `http://127.0.0.1:${server.address().port}`, token });
+  await client.request('/control');
+  await assert.rejects(client.request('/state', {}), { code: 'QR_REVOKED' });
+  await client.request('/v1/stopped', {});
+  assert.deepEqual(epochs, [undefined, '19', undefined]);
 });

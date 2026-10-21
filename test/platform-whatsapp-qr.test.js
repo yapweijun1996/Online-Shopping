@@ -12,6 +12,16 @@ import { createApi } from '../src/app.js';
 import { createWhatsAppQrServer } from '../src/server.js';
 import { ensureAdmin, createSession } from '../src/auth.js';
 
+import { createPlatformRegistry } from '../src/platform/registry.js';
+
+for (const epoch of [3, undefined]) test(`stop acknowledgement refuses ${epoch ?? 'missing'} epoch for newer revoked reservation`, async () => {
+  const stopped = new Map();
+  const registry = createPlatformRegistry({ store: {}, config: {}, platform: {
+    get: async () => ({ epoch: 9 }),
+  }, qrStopped: stopped });
+  await assert.rejects(registry.acknowledgeQrStop('fictional-shop', 1, epoch), { code: 'QR_REVOKED' });
+  assert.equal(stopped.has('fictional-shop'), false);
+});
 async function tenant(f, code, isDefault = false) {
   const id = randomUUID(), now = new Date().toISOString();
   const db = `t_${code}_${id.replaceAll('-', '').slice(0, 8)}`;
@@ -73,7 +83,9 @@ test('QR reservations serialize capacity, revocation, lifecycle and retirement',
   assert.equal((await restarted.view(loser)).binding.slot_id, 1);
   const race = await Promise.allSettled([restarted.mutate(loser, false, { expectedRevision: 1 }, 'admin'), restarted.mutate(loser, true, { expectedRevision: 1 }, 'admin')]);
   assert.equal(race.filter((item) => item.status === 'fulfilled').length, 1);
-  assert.equal((await restarted.view(loser)).binding.enabled, false);
+  const racedBinding = (await restarted.view(loser)).binding;
+  assert.equal(racedBinding.enabled, race[1].status === 'fulfilled');
+  if (racedBinding.enabled) await restarted.mutate(loser, false, { expectedRevision: 2 }, 'admin');
   const disabledLoser = (await restarted.view(loser)).binding;
   await restarted.reconcile(loser, disabledLoser.epoch, async () => true);
   await restarted.mutate(winner, true, { expectedRevision: 3 }, 'admin');
@@ -196,6 +208,17 @@ test('static tenant HTTP broker and prefixed seller complete synthetic dispatch 
   assert.equal((await tenantWorker('control')).data.error, 'QR_REVOKED');
   await shops.mutate(id, 'request-deletion', { expectedRevision: suspended.tenant.revision, code: 'renamedbroker' }, 'admin');
   assert.equal((await tenantWorker('control')).data.error, 'QR_REVOKED');
+  const revokedEpoch = (await policy.view(id)).binding.epoch;
+  const stopWithEpoch = epoch => fetch(`http://127.0.0.1:${server.address().port}/internal/whatsapp-qr/v1/stopped`, {
+    method: 'POST', headers: { authorization: `Bearer ${bindings[1].token}`, 'x-worker-id': workerId,
+      ...(epoch === undefined ? {} : { 'x-binding-epoch': String(epoch) }) },
+  });
+  assert.equal((await stopWithEpoch()).status, 403);
+  assert.equal((await stopWithEpoch(before.binding.epoch)).status, 403);
+  await runtime.reconcile();
+  assert.equal((await policy.view(id)).binding.epoch, revokedEpoch);
+  await assert.rejects(runtime.registry.acknowledgeQrStop(id, 1, before.binding.epoch), { code: 'QR_REVOKED' });
+  await assert.rejects(runtime.registry.acknowledgeQrStop(id, 1), { code: 'QR_REVOKED' });
   assert.equal((await tenantWorker('stopped', {})).status, 200);
   await runtime.reconcile();
   assert.equal((await policy.view(id)).binding, null);

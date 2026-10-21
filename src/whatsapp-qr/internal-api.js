@@ -20,9 +20,9 @@ export function createWhatsAppQrInternalApi({ store, secretBox, token, shopId = 
       if (path === `${prefix}/stopped` && request.method === 'POST') {
         try {
           if (!registry) return json(503, { error: 'PLATFORM_UNAVAILABLE' });
-          await registry.acknowledgeQrStop(selected.binding.shopId, selected.binding.slot);
+          await registry.acknowledgeQrStop(selected.binding.shopId, selected.binding.slot, Number(request.headers.get('x-binding-epoch')));
           return json(200, { stopped: true });
-        } catch { return json(503, { error: 'PLATFORM_UNAVAILABLE' }); }
+        } catch (error) { return json(error instanceof ApiError ? error.status : 503, { error: error instanceof ApiError ? error.code : 'PLATFORM_UNAVAILABLE' }); }
       }
       const allowed = request.method === 'GET' ? /^\/internal\/whatsapp-qr\/v1\/(?:control|auth)$/.test(path)
         : request.method === 'PUT' ? path === `${prefix}/auth`
@@ -39,7 +39,9 @@ export function createWhatsAppQrInternalApi({ store, secretBox, token, shopId = 
           return response;
         });
       } catch (error) {
-        return json(error instanceof ApiError ? error.status : 503, { error: error instanceof ApiError ? error.code : 'PLATFORM_UNAVAILABLE' });
+        const response = json(error instanceof ApiError ? error.status : 503, { error: error instanceof ApiError ? error.code : 'PLATFORM_UNAVAILABLE' });
+        if (error instanceof ApiError && error.code === 'QR_REVOKED' && error.bindingEpoch) response.headers.set('X-Binding-Epoch', String(error.bindingEpoch));
+        return response;
       }
     };
   }

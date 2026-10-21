@@ -42,10 +42,12 @@ export function createPlatformRegistry({ store, config, platform, pool, clock = 
       for (const entry of cache.values()) entry.expires = -Infinity;
     },
     cacheSize: () => cache.size,
-    async acknowledgeQrStop(id, slot) {
+    async acknowledgeQrStop(id, slot, epoch) {
+      if (!Number.isSafeInteger(epoch) || epoch < 1) throw new ApiError(403, 'QR_REVOKED', 'QR access has been revoked.');
       const database = await db();
       const binding = await database.get('SELECT epoch FROM tenant_qr_binding WHERE tenant_id = ? AND slot_id = ? AND enabled = false AND cleanup_pending = true', id, slot);
-      if (binding) qrStopped.set(id, binding.epoch);
+      if (!binding || binding.epoch !== epoch) throw new ApiError(403, 'QR_REVOKED', 'QR access has been revoked.');
+      qrStopped.set(id, epoch);
     },
     // Keep the platform policy lock held through the bounded caller shop transaction.
     async resolveWorkerTenant(id, slot, epoch, work) {

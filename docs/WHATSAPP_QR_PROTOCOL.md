@@ -115,6 +115,7 @@ Worker side:
 - An AUTH_VERSION conflict immediately ends the old socket, reports a safe error code and reloads a fresh snapshot before reconnecting. Other persistence failures halt that generation until operator intervention; no unsaved keys are reused.
 - A claimed reply is never retried by the worker. A ten-second local send deadline or any exception from `sendMessage` is UNKNOWN, even a synchronous exception: without a library dispatch receipt, non-dispatch is not proven. Only an absent/not-connected socket before invoking send proves SOCKET_CLOSED.
 - Control/backend failures close the socket before another control poll. A failed result POST is not repeated; the backend lease must reconcile it. No automatic send retry or success inference is permitted.
+- Tenant `QR_REVOKED` responses carry the disabled cleanup-pending reservation's `X-Binding-Epoch`; the worker retains its first revoked epoch for `/stopped`, never replacing it with a later reservation's epoch or its last authorized epoch. Stop acknowledgements require that exact epoch; missing/mismatched epochs are refused.
 - Generation replacement attempts remote logout of the old socket; graceful process shutdown only ends it. Remote logout is best effort and cannot prove device removal.
 - Worker configuration accepts only credential-free HTTP(S) URLs without query/fragment and a URL-safe token first line of at least 32 characters. The container has no listener or filesystem session state.
 
