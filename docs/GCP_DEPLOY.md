@@ -405,21 +405,30 @@ The backend alone mounts both tokens and the read-only bindings manifest.
    an independent 32-byte base64url token, e.g. Node
    `require('node:crypto').randomBytes(32).toString('base64url')`, through private
    file output, never logs/argv. Install tokens owner-readable by container UID
-   1000, mode 0600, under a protected host directory. Prepare the slot-1 token
-   even when its worker is disabled: backend mounts both files.
+   1000, mode 0600, under a protected host directory. Create
+   `SECRETS_DIR/whatsapp-qr-token-slot1` on the host before installing this Compose
+   file, even when its worker is disabled: backend mounts both files.
 4. Install `SECRETS_DIR/whatsapp-qr-bindings.json` from
    `deploy/gcp/whatsapp-qr-bindings.example.json`, replacing the fictional UUID
    with the immutable tenant UUID. For slot-0-only provisioning omit entry 1.
    Keep slot 0 `default`, exact `/run/secrets/` token paths, independent values
    and unique labels. Never put tokens in the manifest or platform DB.
+   Both new host files (slot-1 token and manifest) must exist as regular non-empty
+   files before installing this Compose file, including unchanged legacy slot-0
+   deployments. With `WHATSAPP_QR_BINDINGS_FILE` empty, `[]` is a valid placeholder
+   manifest with no tenant bindings: the backend does not read it. Replace it with
+   valid bindings before enabling manifest mode.
 5. Install reviewed Compose/controller. Runtime defaults are both off:
    `WHATSAPP_QR_ENABLED=0`, `WHATSAPP_QR_SLOT1_ENABLED=0`. Slot 1 requires slot 0,
    `PLATFORM_ENABLED=1` and `INTEGRATION_KEY_FILE=/run/secrets/integration_keys`.
    These switches start containers, not platform policy. Keep tenant policy disabled.
 6. Use the protected Updater-class release procedure above, not initialize/poll:
    exact main/CI, source, release, activate, health. Enabled workers share one
-   pulled digest. Activation and rollback remove both workers before backend/
-   frontend updates, then start only the release's recorded workers. PostgreSQL
+   pulled digest. Activation and rollback first check every required file-backed
+   secret under `SECRETS_DIR` is a regular non-empty file; missing/invalid files
+   raise `ValueError` before any Docker call, leaving the running release intact.
+   Only after this check do they remove both workers before backend/frontend
+   updates, then start only the release's recorded workers. PostgreSQL
    is not recreated. Never manually run a second worker for the same binding.
 7. Before admitting slot 1, drill simultaneous pairing/reconnect/bursts on the
    target host. Record cgroup peaks/RSS, host MemAvailable, swap-in/out and OOM:
