@@ -1,6 +1,6 @@
 # Seller MCP Connector design
 
-Status: design only; no implementation or activation. v1 is read-only. P1–P4 below are implementation/release phases, not severity levels. All proposed contracts are decisions, not claims of existing behavior. Vendor interoperability is UNVERIFIED offline. No network calls or runtime changes were made for this document.
+Status: P1 implemented locally with F1–F6 independent-review repairs, default OFF (`MCP_ENABLED=0`); not deployed or activated. P2 writes and P3 connected-app management are not implemented. The P1 implementation record below supersedes proposed wording where noted. Vendor interoperability and production release gates remain **UNVERIFIED**.
 
 ## 1. Evidence: reuse points and gaps
 
@@ -50,7 +50,7 @@ Let `S` be configured seller HTTPS origin, `B` be empty for default shop or `/<c
 
 Path-aware well-known requests require a small outer routing translation to the ordinary tenant resolver; otherwise `/.well-known/...` resolves to default shop. Only validated canonical shop codes may be translated; preserve method/body and never infer a shop from a bearer. Default AS discovery is the unsuffixed well-known URL. Resource 401 challenge advertises the exact discovery URI, removing guessing. Precise path conventions and vendor support are UNVERIFIED against current specifications/vendor docs and must be checked before P1 freezes these URLs.
 
-Only seller host serves these endpoints; buyer/admin/unknown hosts return 404. Feature off returns 404 everywhere including discovery and DCR. No wildcard path proxying. TLS required outside isolated local tests.
+Only seller host serves enabled connector endpoints; buyer/admin/unknown hosts return 404. Feature off performs no connector dispatch and preserves legacy tenant, static-method and seller-authentication handling. No wildcard path proxying. TLS required outside isolated local tests.
 
 ### HTTP contracts
 
@@ -68,7 +68,7 @@ All JSON and OAuth responses are `Cache-Control: no-store`, `X-Content-Type-Opti
 
 Browser consent/login/connected-app mutations require exact S and session CSRF; no CORS credentials. Top-level authorize GET may have no Origin; any supplied Origin must be approved. MCP/DCR/token/revoke server-to-server calls may omit Origin, but a present Origin must exactly match S or an explicitly configured connector browser-origin allowlist; reject `null`, malformed/multiple and all others with 403. CORS only for approved origins, `Vary: Origin`, no wildcard, no cookies; preflight supports required methods and Authorization, Content-Type, MCP-Protocol-Version. CORS does not authenticate clients. DCR redirect allowlist and CORS origin allowlist are distinct. Vendor browser-CORS needs are UNVERIFIED.
 
-Use tenant-local `SqlLimiter` buckets, before parsing/expensive work. Proposed 15-minute windows: `mcp-discovery` 120/IP, `oauth-register` 5/IP plus 100/shop, `oauth-authorize` 30/IP, existing `login` 5/IP before scrypt, `oauth-consent` 20/account, `oauth-token` 60/IP plus 60/client, `oauth-revoke` 60/IP, `mcp-http` 300/IP before token lookup, `mcp-call` 120/account+client and 600/shop after authentication, `mcp-analytics` 20/account. P2 preview 20/account and commit 10/account. Use separate buckets for dimensions; untrusted client ids do not evade IP/shop caps. Limit DCR active records to 100/shop; expire unused registrations after 30 days, never remove clients with active grants. Limit staging requests to 100/shop. Default list sizes 20, max 50; offset ≤10,000, no auto-walking pages. Reject requests beyond last allowed offset; return nextOffset null and `paginationCapped:true` when more exists beyond cap.
+Use tenant-local `SqlLimiter` buckets, before parsing/expensive work. Fifteen-minute windows: `mcp-discovery` 120/IP, `oauth-register` 5/IP plus 100/shop, `oauth-authorize` 30/IP, existing `login` 5/IP before scrypt, `oauth-consent` 20/account, `oauth-token` 60/IP plus 60/client, `oauth-revoke` 60/IP, `mcp-http` 300/IP before token lookup, `mcp-call` 120/account+client and 600/shop after authentication, `mcp-analytics` 20/account. P2 preview 20/account and commit 10/account. Separate dimensions; untrusted client ids do not evade IP/shop caps. Authenticated reservations commit outside failing authorization transactions. DCR stores at most 100 clients/shop, expires unused registrations after one hour and evicts the oldest never-authorized client when full, never a client with a grant. Staging is capped at 100 active requests. Default list sizes 20, max 50; offset ≤10,000, no auto-walking pages. Reject requests beyond last allowed offset; return nextOffset null and `paginationCapped:true` when more exists beyond cap.
 
 ### Streamable HTTP JSON-RPC
 
@@ -177,7 +177,7 @@ New invariants: no OAuth bearer accepted by existing seller API; no sample sessi
 
 ## 7. Release and operations
 
-Feature flag proposed `SELLER_MCP_ENABLED=0`, parsed through existing config convention, off by default and unavailable in public-demo/quick-login or incomplete setup. Separate `SELLER_MCP_CATALOG_WRITE_ENABLED=0`; read enablement never implies writes. Configure exact redirect-origin/path and optional browser-origin allowlists manually, from verified vendor docs. No PAT fallback if a vendor cannot negotiate OAuth.
+Feature flag `MCP_ENABLED=0`, parsed through `src/config.js`, off by default and unavailable in public-demo/quick-login. Enablement requires a configured HTTPS seller origin. No write flag or write tool is implemented in P1. Configure comma-separated exact callback URLs in `MCP_REDIRECT_URIS`; the empty default disables DCR. Configure optional exact HTTPS browser origins in `MCP_BROWSER_ORIGINS` separately. Neither setting supplies verified vendor values; all vendor requirements remain UNVERIFIED. No PAT fallback.
 
 Caddy seller host must proxy exact `/mcp`, `/oauth/{register,authorize,token,revoke}` and chosen well-known routes to backend, before static fallback/tenant prefix handlers. New seller API consent/connected-app paths already match `/api/*`. Production prefixed routes must preserve prefix and request body for backend registry; do not strip to static surface. Well-known canonical paths require dedicated dispatch, not the ordinary first-segment matcher. Add `mcp`/`oauth` reservations consistently only after collision audit. Buyer host explicitly denies all new root/prefixed endpoints/discovery; admin host remains platform-only. Node independently enforces host/prefix, because proxy isolation is defense in depth.
 
@@ -199,7 +199,7 @@ Rollback: disable flags first to stop all connector use; revoke grants before re
 
 ## 8. Test and acceptance plan
 
-This document-only task does not run application tests or claim implementation verification. Future tests use isolated stores, fictional data, deterministic clocks/keys where appropriate and no real vendor/network effects. Follow repository behavior-test conventions; tests must assert consumer-visible outcomes rather than module wiring or source strings.
+P1 local behavior tests use isolated stores, fictional data and no vendor effects. The acceptance list remains the release checklist, not a claim that deployed gateways or real vendors have passed.
 
 ### P1 — OAuth, endpoint and read tools
 
@@ -240,4 +240,79 @@ This document-only task does not run application tests or claim implementation v
 
 ### Document validation record
 
-Reviewed the listed source contracts, schema/migration tail, tenant reserved names, both Caddy files and deployment/threat-model guidance offline. This deliverable creates only this design document. No code, configuration, threat-model file, database, dependency or deployment change is part of this task. No runtime smoke or vendor interoperability result is claimed for unimplemented behavior.
+The original design was reviewed offline. P1 implementation and local verification are recorded below; deployment, production collision inventory, vendor interoperability and manual schema release remain separate operator gates.
+
+## P1 implementation record
+
+### Implemented boundary
+
+`src/mcp/` owns OAuth storage/revocation, strict schemas, closed DTOs, stateless JSON-RPC and the external-script consent page. `MCP_ENABLED` is the sole connector flag, default false. Tenant resolution wins: existing `mcp`/`oauth` shops retain their roots and subpaths. While off, connector dispatch is a no-op, discovery is not translated and login ignores the formerly unknown `mcpAuthorization` field. Legacy static method handling (GET 404, unsupported POST 405) and seller session gating (unauthenticated seller path 401) remain in force, not a new universal 404 interceptor. Enabled seller-host matching uses configured host; canonical HTTPS issuer/resource come only from configuration.
+
+Schema **25** adds the six section-4 tables and `seller_account.oauth_auth_version`. SQLite migration, PostgreSQL baseline and explicit PostgreSQL upgrade are implemented; readiness and SQLite import inventory include these tables. **This shop schema version bump is a protected/manual release for BOTH GCP and OrbStack updaters.** No `deploy/`, Compose or CI policy was changed. An image update alone cannot upgrade existing PostgreSQL shops. Use a separately reviewed, restore-tested operator migration with issuance/business traffic drained; old schema24 builds are not a safe image-only rollback. Restored token state must be revoked with the connector off.
+
+Fresh password login accepts an optional `mcpAuthorization:{authorizationRequestId,proof}`. A 32-byte shell-held random challenge is stored only as a hash and is bound once to the freshly created seller session and account auth version inside the existing login writer transaction. The separate Secure/HttpOnly `/oauth` nonce cookie does not widen the seller cookie; consent requires the bound seller session plus exact Origin/CSRF, not the public request UUID or a pre-existing session. The shell retains proof/CSRF only in memory/DOM and clears password/proof after login. The challenge is the cross-path browser proof; the OAuth cookie is not used as an ambient credential on the API path. Security review of this plumbing remains a release gate.
+
+All token issuance/rotation, consent and credential invalidation use the shared store writer serialization (SQLite queue/BEGIN IMMEDIATE; PostgreSQL advisory transaction lock). Calls hold that serialization through live account/grant checks, domain reads, projection and audit. Password changes, host/API resets, deactivation and actual role changes increment the account auth version and permanently revoke grants. Refresh rotates both credentials; spent-refresh replay commits family revocation before returning invalid_grant. Sign-out does not revoke an intentional grant.
+
+MCP buffers at most 64 KiB with a ten-second total body deadline and parses/validates the envelope before its credential/read writer transaction. Short limiter transactions never await the upload. Authenticated account/client, shop and analytics reservations commit separately; credentials are revalidated authoritatively under the shared writer lock before tool execution. Consent similarly reserves its account budget outside the transaction and rechecks the session/CSRF inside it. Denials cannot roll back attempt budgets. Orders use domain-owned SQL projections selecting only returned fields, at most 11 deliveries/101 items as overflow sentinels; no contact columns, notes, events, documents or covers are loaded by order tools. Catalog history extracts field names in SQL without returning actors or old/new values to the adapter. Response byte enforcement serializes once before creating a Response, without reading/cloning response streams under the lock.
+
+The protocol pins `2025-06-18`. Initialize negotiates that revision even if the requested revision differs; clients must abort if incompatible. All other messages require the matching MCP-Protocol-Version header. Batch and invalid envelopes return -32600; notifications return 202 without tool execution. Access requires bearer independently on every POST, including initialize/ping. GET/DELETE return 405. The response is JSON only, no SSE/session support. Vendor/spec compatibility is UNVERIFIED.
+
+### Catalogue clarification
+
+The owner requested eight read tools; the original section-5 catalogue specified only five. Public names retain that catalogue's dotted convention:
+
+| Owner request | Public tool | Additional P1 contract |
+| --- | --- | --- |
+| list_products | `catalog.list` | Existing listing representatives, seller visibility, limit/offset/search/category. |
+| get_product | `catalog.get` | Existing product domain now supports bounded variant retrieval without gallery/option loading. Standalone products include their one variant in this bounded view. |
+| product_history | `catalog.history` | `{id,limit?,offset?}` → page of `{id,action,at,fields}`. **No actor or historical from/to text**: field names only, preserving the design's exclusion of history free text and seller identities. |
+| list_categories | `catalog.categories` | PageInput → page of `{code,label,active}`. Domain category reader supports SQL pagination. |
+| list_orders | `orders.list` | Closed summaries and existing server filters. |
+| get_order | `orders.get` | Closed nested delivery/item projection; city/region/country only. |
+| sales_summary | `analytics.summary` | Existing UTC+8, 30-day, per-currency figures. |
+| low_stock | `catalog.low_stock` | PageInput plus `threshold?:integer[0,1000000]` (default 5); page of ProductSummary. Variant-level tracked stock ≤ threshold, including inactive variants; untracked/null stock excluded. Product domain owns the query; no page-walking. |
+
+Every advertised input/output object is closed; schemas and DTO validation share the same definitions. No write, accounts, settings, export, erasure, messages, password or generic API/SQL tool exists. Product/item free text is retained as inert data and can contain seller-entered PII; this is not complete anonymization.
+
+### Routing and retention
+
+Path-aware discovery is translated only while enabled. Unknown/suspended tenants fail before token lookup; enabled alias connector requests return 404 rather than forwarding a bearer. While enabled, creation and actual code changes reserve `mcp`/`oauth`; existing canonical shops and aliases still resolve before the root connector, even while enabled. Renaming only an existing collision shop's display name/code spelling remains legal. This intentionally makes conflicting default-shop connector URLs unavailable rather than stealing a shop. Inventory and audited operator reconciliation remain activation prerequisites; no automatic rename is performed.
+
+DCR reserves five attempts/address and 100/shop per fifteen minutes before parsing; invalid requests consume both budgets. Unused registrations expire in one hour. Explicit successful consent extends client retention to thirty days; live grants keep clients usable. Registration counts all stored clients, caps at 100, and evicts the oldest never-authorized client (including its staged requests) when full, never a client with a grant. If all slots have grants, registration returns 429. Staging remains capped at 100 active requests; codes expire in 60 seconds, access in fifteen minutes and refresh in seven days clipped to the thirty-day family.
+
+`src/mcp/cleanup.js` performs bounded FK-safe cleanup opportunistically during registration/authorization and after successful endpoint use. Each pass removes at most 100 expired staging rows, 100 expired codes, 100 leaf token generations, 100 unreferenced expired grants and 100 unreferenced expired clients. Token generations survive until absolute family expiry **plus one day**, even if individually expired/revoked; replay evidence for a live successor is never deleted. Leaf-first passes respect predecessor RESTRICT foreign keys; long families can require multiple passes. Audit retains its independent ninety-day/100-per-write policy.
+
+Periodic path: schedule `node scripts/cleanup-seller-mcp.js 100` daily using the existing private application environment for **each shop database**, including dormant/disabled shops. The command accepts 1–1000 bounded passes (default 100), closes the store and prints only the pass count; rerun for a backlog/long rotation chain. For tenant databases supply that tenant's authorized database connection via the existing secret-backed configuration, never enumerate or copy credentials into arguments/logs. Use only schema25-compatible databases after the protected migration gate; this command is not a migration/backup substitute. No timer or deployment configuration is installed by P1.
+
+### Complete MCP-off delta accounting
+
+1. **App/import graph/login:** connector closures/modules still load, with no provider calls. Early prefix rejection is removed; disabled dispatch is a no-op, tenant routing wins, discovery translation is off, aliases retain legacy redirects, and login ignores `mcpAuthorization`. Tests cover occupied roots, tenant API and connector-shaped subpaths, legacy GET 404/POST 405/static and seller-session handling, alias OAuth suffix and successful off-mode login with the extra field.
+2. **Configuration:** explicitly invalid `MCP_ENABLED`, callback or browser-origin settings still fail startup even while off. This is intentional operator fail-closed validation, not silent activation; defaults remain disabled/empty. Tests exercise all three invalid settings and the disabled default. It is a startup compatibility delta, not byte-identical configuration behavior.
+3. **Accounts:** credential/role/deactivation changes still increment auth version and revoke stored OAuth state while off. Required to prevent a grant becoming valid again after reenable; this extra SQL/audit shares the existing transaction. Off-reset/reenable regression proves old access/refresh stay denied. No seller response or privilege change is intended.
+4. **Schema/readiness:** unconditional schema25, six tables and auth-version column remain. SQLite upgrades automatically; existing PostgreSQL requires explicit upgrade. Fresh/upgrade/rollback/constraint tests cover both engines. **Not a no-op or automatic-main release approval:** old schema24 images reject 25. The protected, traffic-drained, restore-tested manual migration/rollback gate above is mandatory even with MCP off.
+5. **Products:** optional bounded detail branch and low-stock helper remain unused by ordinary callers; omitted page retains the existing branch. Product/listing/options suites verify existing behavior. No stock/price mutation semantics change.
+6. **Categories:** optional paging remains unused by ordinary calls; omitted page retains the existing unpaged shape. Existing settings/catalog tests cover that path.
+7. **Platform:** enabled status propagation and enabled-only creation/actual rename reservations remain; off allows both codes. Registry alias denial is now enabled-only; existing canonical/alias ownership wins. Tests cover provisioning validation, root resolution and alias behavior.
+8. **Import inventory:** six OAuth/audit tables remain unconditional and require a schema25 source/target. Real-engine import tests verify complete inventory/digests; mismatched versions are refused. This is part of the protected schema release, not an independent flag-off no-op.
+
+### Local verification
+
+`test/seller-mcp.test.js` exercises real Fetch routing and SQLite/PostgreSQL stores, including PKCE/code/refresh races, fresh consent and narrowed scopes, nested contact redaction, all eight adapters, protocol errors/byte limits, persisted rate limits, account invalidation, canonical tenant discovery/isolation, aliases/suspension/collision denial, and transactional schema24 upgrade/constraint checks.
+
+A disposable in-memory HTTPS smoke exercised register → fresh password → consent → PKCE exchange → initialize → catalog.list → revoke → denied. Chrome smoke on the real external-script consent page verified labelled login controls, fresh password success, scope narrowing, password/proof clearing and a server-issued exact callback with code/issuer. Consent POST was exercised without navigating to the external fictional callback; no vendor call was made. The local self-signed certificate required an isolated-browser exception; public TLS/gateway behavior is UNVERIFIED.
+
+Verification commands used Node's single-worker test runner with `NODE_ENV=test` and `SHOP_TEST_DATABASE_URL=postgres://postgres@127.0.0.1:54331/online_shopping_test`. The requested schema/OAuth/MCP/limiter/router-related selection covered 53 files: **351 passed, 0 failed, 0 skipped** (282681.838375 ms). After JSON duplicate-key/Origin/audit hardening, the focused eight-file run passed **67/67**, zero failed/skipped (77003.508417 ms). After conditional platform name-reservation propagation, the final eight-file run passed **59/59**, zero failed/skipped (32814.410459 ms), including **19 connector tests** on both engines. These are separate overlapping runs, not additive unique-test counts. `node scripts/check.js` passed on the final source. The full suite was not run, per job scope. Disposable smoke script, TLS material, server and isolated browser tab were removed/stopped.
+
+Real Claude.ai and ChatGPT connections, current official spec review, deployed route collisions, proxy headers, production migration/restore/rollback and external callback navigation are **UNVERIFIED**. P1 does not claim release approval.
+
+
+### Independent review repair evidence (2026-10-21)
+
+Regression tests were added before source repairs. On both engines, F2 returned 404 instead of the tenant-root 302; F3 returned 429 instead of replacing an unused registration; F4 retained an expired client row; F5 returned 403 rather than exhausting the authenticated budget; F6 failed when seller-only note/event tables were unavailable. The corrected F1 streaming probe failed on both engines because the competing writer had not completed before body close (`false !== true`; two tests, zero passed). An initial probe SQL typo was corrected before capturing that F1 evidence.
+
+A disposable smoke used the actual Node HTTP server on loopback with a valid fictional catalog-only bearer and an incomplete chunked upload. A competing account writer completed before upload completion; completing the body returned ping 200. The actual periodic cleanup CLI then removed an expired registration and preserved the live client. Observed receipt: `{"socketPing":200,"writerCompletedDuringUpload":true,"periodicCleanupRemovedExpiredAndKeptLive":true}`. Temporary smoke script/database were removed. No external requests or deployment changes.
+
+Repair verification: the twelve-file affected contract run passed **96 tests, 0 failed, 0 skipped** (61996.364875 ms), including tenant routing/isolation, seller accounts, real PostgreSQL import/migrations, schema compatibility and seller history. The four-file connector/history run passed **40/40**, zero failed/skipped (82012.997333 ms). A broader `node --test --test-concurrency=1` auto-discovery run passed **598/599**, zero skipped (446198.235625 ms); the sole failure was the unchanged `test/browser/worker-harness.mjs` importing absent `src/worker.js`. That run is not a green full-suite claim. The available `node` reported **v23.10.0**; required Node24 verification remains outstanding. No dependency installation or unrelated Worker repair was performed.
+
+Final requested command on the repaired source: `node scripts/check.js` passed; `SHOP_TEST_DATABASE_URL=postgres://postgres@127.0.0.1:54331/online_shopping_test NODE_ENV=test node --test --test-concurrency=1 test/seller-mcp.test.js` passed **30 tests, 0 failed, 0 skipped** (32075.010333 ms), covering both engines and the final off-mode fallthrough, legacy-cap reclamation and live-grant eviction protection.

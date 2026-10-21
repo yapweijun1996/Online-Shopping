@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { ApiError } from './http.js';
 import { FieldError } from './validation.js';
 import { encodePassword, readSession, revokeSessions, verifyPasswordAsync } from './auth.js';
+import { invalidateOAuth } from './mcp/credentials.js';
 
 const ASSIGNABLE = ['MANAGER', 'STAFF'];
 const USERNAME = /^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/;
@@ -67,6 +68,7 @@ export async function updateAccount(database, id, input, actor, actorId) {
       if (!ASSIGNABLE.includes(input.role)) throw new FieldError('role', 'Choose Manager or Staff.');
       if (input.role !== account.role) {
         await database.run('UPDATE seller_account SET role = ?, updated_at = ? WHERE id = ?', input.role, stamp, id);
+        await invalidateOAuth(database, id);
         await record(database, id, actor, 'ROLE_CHANGED', `${account.role} to ${input.role}`);
       }
     }
@@ -74,7 +76,10 @@ export async function updateAccount(database, id, input, actor, actorId) {
       if (typeof input.active !== 'boolean') throw new FieldError('active', 'Send true or false.');
       if (input.active !== (account.active === 1)) {
         await database.run('UPDATE seller_account SET active = ?, updated_at = ? WHERE id = ?', input.active ? 1 : 0, stamp, id);
-        if (!input.active) await revokeSessions(database, id);
+        if (!input.active) {
+          await revokeSessions(database, id);
+          await invalidateOAuth(database, id);
+        }
         await record(database, id, actor, input.active ? 'ACTIVATED' : 'DEACTIVATED');
       }
     }
@@ -83,6 +88,7 @@ export async function updateAccount(database, id, input, actor, actorId) {
       await database.run('UPDATE seller_account SET password_hash = ?, must_change_password = 1, password_changed_at = ?, updated_at = ? WHERE id = ?',
         encodePassword(input.resetPassword), stamp, stamp, id);
       await revokeSessions(database, id);
+      await invalidateOAuth(database, id);
       await record(database, id, actor, 'PASSWORD_RESET');
     }
     return view(await database.get('SELECT * FROM seller_account WHERE id = ?', id));
@@ -107,6 +113,7 @@ export async function changeOwnPassword(database, accountId, input, currentToken
     const hash = encodePassword(input.newPassword), stamp = now();
     await database.run('UPDATE seller_account SET password_hash = ?, must_change_password = 0, password_changed_at = ?, updated_at = ? WHERE id = ?', hash, stamp, stamp, accountId);
     await revokeSessions(database, accountId, currentToken);
+    await invalidateOAuth(database, accountId);
     await record(database, accountId, account.username, 'PASSWORD_CHANGED');
   });
   return { changed: true };
@@ -122,6 +129,7 @@ export async function resetPasswordFromHost(database, username, password, { forc
     await database.run('UPDATE seller_account SET password_hash = ?, must_change_password = ?, active = 1, password_changed_at = ?, updated_at = ? WHERE id = ?',
       encodePassword(password), forceChange ? 1 : 0, stamp, stamp, account.id);
     await revokeSessions(database, account.id);
+    await invalidateOAuth(database, account.id);
     await record(database, account.id, 'host-script', 'PASSWORD_RESET', 'reset on the server');
     return account.username;
   });

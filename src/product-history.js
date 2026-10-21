@@ -50,11 +50,17 @@ export async function trackCreate(database, actor, work) {
   });
 }
 
-export async function listProductHistory(database, productId, params) {
+export async function listProductHistory(database, productId, params, fieldsOnly = false) {
   const limit = Number(params.get('limit') ?? 50), offset = Number(params.get('offset') ?? 0);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0 || offset > 10_000) throw new FieldError('limit', 'Enter a valid list range.');
-  const rows = await database.all('SELECT id, actor, action, changes, created_at FROM product_event WHERE product_id = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?', productId, limit + 1, offset);
-  return { items: rows.slice(0, limit).map((row) => ({ id: row.id, actor: row.actor, action: row.action, changes: JSON.parse(row.changes), at: row.created_at })),
+  const fieldNames = database.dialect === 'postgres'
+    ? "(SELECT COALESCE(jsonb_agg(entry->'field'), '[]'::jsonb)::text FROM jsonb_array_elements(changes::jsonb) entry)"
+    : "(SELECT json_group_array(json_extract(value, '$.field')) FROM json_each(changes))";
+  const columns = fieldsOnly ? `id, action, created_at, ${fieldNames} AS fields` : 'id, actor, action, changes, created_at';
+  const rows = await database.all(`SELECT ${columns} FROM product_event WHERE product_id = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`, productId, limit + 1, offset);
+  return { items: rows.slice(0, limit).map((row) => fieldsOnly
+    ? { id: row.id, action: row.action, at: row.created_at, fields: JSON.parse(row.fields) }
+    : { id: row.id, actor: row.actor, action: row.action, changes: JSON.parse(row.changes), at: row.created_at }),
     nextOffset: rows.length > limit ? offset + limit : null };
 }
 

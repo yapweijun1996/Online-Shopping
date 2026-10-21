@@ -53,7 +53,7 @@ export function createShopManagement({ platform, pool, deps, registry, defaultSt
         if (action === 'resume') { if (status !== 'SUSPENDED') throw conflict(); status = 'ACTIVE'; event = 'TENANT_RESUME'; }
         if (action === 'rename') {
           if (!['ACTIVE', 'SUSPENDED'].includes(status)) throw conflict();
-          code = input.code === undefined ? code : normalizeTenantCode(input.code);
+          code = input.code === undefined ? code : normalizeTenantCode(input.code, 'code', deps.mcpEnabled && (typeof input.code !== 'string' || input.code.trim().toLowerCase() !== row.code));
           name = input.name === undefined ? name : boundedText(input.name, 'name', 80);
           if (code !== row.code) {
             if (await platform.get('SELECT 1 AS n FROM tenant WHERE code = ?', code) || await platform.get('SELECT 1 AS n FROM tenant_code_alias WHERE code = ?', code)) throw new ApiError(409, 'CODE_TAKEN', 'This shop code is already used.');

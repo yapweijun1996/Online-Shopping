@@ -3,6 +3,7 @@ import { SCHEMA_VERSION } from '../db.js';
 import { migrateLegacyVariants } from '../options.js';
 import { migrateListings } from '../listings.js';
 import { migrateSharedGalleries } from '../product-gallery.js';
+import { migrateOAuth } from '../mcp/schema.js';
 
 // Tenant upgrades use their own roles and must never grant the legacy application's role access.
 const legacyApplicationGrant = `current_database() !~ '^t_[a-z0-9]{3,30}_[0-9a-f]{8}$'
@@ -11,6 +12,12 @@ const legacyApplicationGrant = `current_database() !~ '^t_[a-z0-9]{3,30}_[0-9a-f
 
 // Called only by an explicit operator/test opt-in, inside the store-owned transaction.
 export async function upgradePostgres(store, version) {
+  if (version === 24) {
+    await migrateOAuth(store);
+    await grantOAuth(store);
+    await store.setSchemaVersion(SCHEMA_VERSION);
+    return;
+  }
   if (![10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23].includes(version)) throw new Error(`Unsupported PostgreSQL schema version ${version}.`);
   const columns = await store.all("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='product'");
   const has = name => columns.some(row => row.column_name === name);
@@ -214,5 +221,14 @@ END $$;`);
         VALUES (?, ?, ?, ?, 'OWNER', 1, 0, ?, ?)`, randomUUID(), admin.username, admin.username.toLowerCase(), admin.password_hash, admin.created_at, admin.created_at);
     }
   }
+  await migrateOAuth(store);
+  await grantOAuth(store);
   await store.setSchemaVersion(SCHEMA_VERSION);
+}
+
+async function grantOAuth(store) {
+  await store.exec(`DO $$ BEGIN IF ${legacyApplicationGrant} THEN
+    GRANT SELECT, INSERT, UPDATE, DELETE ON oauth_client, oauth_authorization_request, oauth_grant,
+      oauth_authorization_code, oauth_token, mcp_audit TO online_shopping_app;
+    END IF; END $$;`);
 }

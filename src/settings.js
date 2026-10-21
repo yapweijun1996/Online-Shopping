@@ -4,9 +4,10 @@ import { normalizeContactPhone } from './phone.js';
 
 const categoryType = 'PRODUCT_CATEGORY';
 
-export async function listCategories(database) {
+export async function listCategories(database, page = null) {
   return (await database.all(`SELECT code, label, active FROM general_code
-    WHERE type = ? ORDER BY label COLLATE NOCASE, code`, categoryType))
+    WHERE type = ? ORDER BY label COLLATE NOCASE, code${page ? ' LIMIT ? OFFSET ?' : ''}`, categoryType,
+    ...(page ? [page.limit + 1, page.offset] : [])))
     .map((row) => ({ ...row, active: Boolean(row.active) }));
 }
 

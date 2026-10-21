@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { ApiError } from '../http.js';
 import { singleTenantRegistry } from '../tenants.js';
 import { RESERVED_CODES } from './tenant-code.js';
+import { connectorPath } from '../mcp/routes.js';
 
 const codePattern = /^[a-z0-9]{3,30}$/;
 export function rewriteTenantRequest(request, basePath) {
@@ -76,8 +77,15 @@ export function createPlatformRegistry({ store, config, platform, pool, clock = 
       if (shared && !ownsLookup && !row) chargeProbe();
       // Refreshing a known shop is ordinary traffic, including the first successful lookup.
       if (row) refundProbe();
-      if (!row) return edgeProbe ? unavailable(404) : null;
+      if (!row) {
+        if (config.mcpEnabled && connectorPath(url.pathname)) {
+          refundProbe();
+          return fallback.resolve(request);
+        }
+        return edgeProbe ? unavailable(404) : null;
+      }
       if (row.alias) {
+        if (config.mcpEnabled && connectorPath(url.pathname.slice(segment.length + 1))) return null;
         const original = request.headers.get('x-tenant-original-uri');
         if (edgeProbe && original?.startsWith(`/${segment}/`) && !/[\\\r\n]/.test(original)) {
           return { response: new Response(null, { status: 308, headers: { Location: `/${row.code}${original.slice(segment.length + 1)}`, 'Cache-Control': 'no-store' } }) };

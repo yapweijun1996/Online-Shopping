@@ -45,11 +45,11 @@ async function dropArtifacts(provisionerUrl, tenant) {
   });
 }
 
-export function validateTenantInput(input) {
+export function validateTenantInput(input, mcpEnabled = false) {
   if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some((key) => !['code', 'name', 'currency', 'sellerUsername', 'sellerPassword'].includes(key))) {
     throw new FieldError('tenant', 'Send code, name, currency, sellerUsername and optionally sellerPassword.');
   }
-  const code = normalizeTenantCode(input.code);
+  const code = normalizeTenantCode(input.code, 'code', mcpEnabled);
   const name = boundedText(input.name, 'name', 80);
   if (!['MYR', 'SGD'].includes(input.currency)) throw new FieldError('currency', 'Choose MYR or SGD.');
   if (typeof input.sellerUsername !== 'string' || !USERNAME.test(input.sellerUsername)) throw new FieldError('sellerUsername', 'Use 3 to 64 letters, digits, dots, dashes or underscores.');
@@ -59,8 +59,8 @@ export function validateTenantInput(input) {
 }
 
 /* Creates a shop. Returns the tenant row and, only when the password was generated here, that one-time password. */
-export async function createTenant(platform, { provisionerUrl, baseUrl, secretBox, inFlight = new Set() }, input, actor) {
-  const wanted = validateTenantInput(input);
+export async function createTenant(platform, { provisionerUrl, baseUrl, secretBox, inFlight = new Set(), mcpEnabled = false }, input, actor) {
+  const wanted = validateTenantInput(input, mcpEnabled);
   let reservationId;
   const row = await platform.transaction(async () => {
     if (await platform.get('SELECT 1 AS found FROM tenant_code_alias WHERE code = ?', wanted.code)) throw new ApiError(409, 'CODE_TAKEN', 'This shop code is already used.');
