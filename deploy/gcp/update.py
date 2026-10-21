@@ -17,7 +17,7 @@ import urllib.request
 
 REPO = 'yapweijun1996/Online-Shopping'
 SHA = re.compile(r'[0-9a-f]{40}')
-DIGEST = re.compile(r'ghcr\.io/yapweijun1996/online-shopping-(backend|frontend)@sha256:[0-9a-f]{64}')
+DIGEST = re.compile(r'ghcr\.io/yapweijun1996/online-shopping-(backend|frontend|whatsapp-qr)@sha256:[0-9a-f]{64}')
 MOUNTS = ('src/postgres/schema.sql', 'deploy/init-postgres.sh', 'deploy/gcp/Caddyfile')
 PROTECTED = ('deploy/', '.github/workflows/', 'compose', 'Dockerfile', 'src/postgres/', 'src/platform/', 'src/config.js', 'package.json', 'package-lock.json')
 
@@ -192,22 +192,33 @@ class Updater:
             atomic(destination, content[path])
             # Init script must be executable; configuration and schema readable by containers.
             destination.chmod(0o755 if path.endswith('.sh') else 0o644)
-        return {'sha': sha, 'baseline': baseline, 'backend': self.image('backend', sha), 'frontend': self.image('frontend', sha)}
+        release = {'sha': sha, 'baseline': baseline, 'backend': self.image('backend', sha), 'frontend': self.image('frontend', sha)}
+        if self.runtime().get('WHATSAPP_QR_ENABLED') == '1':
+            release['whatsapp-qr'] = self.image('whatsapp-qr', sha)
+        return release
 
     def activate(self, release, initial=False):
         self.validate_release(release)
+        worker = release.get('whatsapp-qr')
         env = ('BACKEND_IMAGE=' + release['backend'] + '\nFRONTEND_IMAGE=' + release['frontend']
+               + ('\nWHATSAPP_QR_IMAGE=' + worker if worker else '')
                + '\nAPP_REVISION=' + release['sha'] + '\nRELEASE_DIR=' + str(self.root / 'releases' / release['sha']) + '\n')
         atomic(self.root / 'images.env', env.encode())
-        args = ['compose', '--project-name', 'online-shopping-gcp', '--env-file', str(self.root / 'runtime.env'),
-                '--env-file', str(self.root / 'images.env'), '-f', str(self.root / 'compose.yaml'), 'up', '-d', '--no-build']
+        compose = ['compose', '--project-name', 'online-shopping-gcp', '--env-file', str(self.root / 'runtime.env'),
+                   '--env-file', str(self.root / 'images.env'), '-f', str(self.root / 'compose.yaml'), '--profile', 'whatsapp-qr']
+        if not worker:
+            # A release without the worker image stops a worker left over from an earlier enabled release.
+            self.docker(*compose, 'rm', '--stop', '--force', 'whatsapp-qr')
+        args = compose + ['up', '-d', '--no-build']
         if not initial:
-            args += ['--no-deps', 'backend', 'frontend']
+            args += ['--no-deps', 'backend', 'frontend'] + (['whatsapp-qr'] if worker else [])
+        elif not worker:
+            args += ['backend', 'frontend', 'postgres']
         self.docker(*args)
 
     def validate_release(self, release):
         revision(release['sha'])
-        for component in ('backend', 'frontend'):
+        for component in ('backend', 'frontend') + (('whatsapp-qr',) if 'whatsapp-qr' in release else ()):
             image = release[component]
             if not DIGEST.fullmatch(image) or '/online-shopping-' + component + '@' not in image:
                 raise ValueError('Invalid state image')
@@ -216,7 +227,7 @@ class Updater:
         # Backend readiness includes its DB schema check; also prove the running frontend revision.
         for _ in range(18):
             try:
-                for component in ('backend', 'frontend'):
+                for component in ('backend', 'frontend') + (('whatsapp-qr',) if 'whatsapp-qr' in release else ()):
                     name = 'online-shopping-gcp-' + component + '-1'
                     running = json.loads(self.docker('inspect', '--format', '{{json .State}}', name))
                     image = self.docker('inspect', '--format', '{{.Config.Image}}', name).strip()
@@ -242,7 +253,7 @@ class Updater:
             if not line or line.startswith('#'):
                 continue
             key, separator, value = line.partition('=')
-            if not separator or key in values or key not in ('SHOP_HOST', 'SELLER_HOST', 'ADMIN_USERNAME', 'SECRETS_DIR', 'PLATFORM_ENABLED', 'PLATFORM_ADMIN_CLAIM_ENABLED', 'INTEGRATION_KEY_FILE', 'MCP_ENABLED', 'MCP_REDIRECT_URIS'):
+            if not separator or key in values or key not in ('SHOP_HOST', 'SELLER_HOST', 'ADMIN_USERNAME', 'SECRETS_DIR', 'PLATFORM_ENABLED', 'PLATFORM_ADMIN_CLAIM_ENABLED', 'INTEGRATION_KEY_FILE', 'MCP_ENABLED', 'MCP_REDIRECT_URIS', 'WHATSAPP_QR_ENABLED'):
                 raise ValueError('Invalid runtime configuration')
             values[key] = value
         if not {'SHOP_HOST', 'SELLER_HOST', 'ADMIN_USERNAME', 'SECRETS_DIR'} <= set(values):
@@ -269,6 +280,10 @@ class Updater:
             raise ValueError('Invalid MCP redirect URIs')
         if values.get('MCP_ENABLED') == '1' and not redirects:
             raise ValueError('MCP requires redirect URIs')
+        if values.get('WHATSAPP_QR_ENABLED', '0') not in ('0', '1'):
+            raise ValueError('Invalid WhatsApp QR switch')
+        if values.get('WHATSAPP_QR_ENABLED') == '1' and not values.get('INTEGRATION_KEY_FILE'):
+            raise ValueError('WhatsApp QR requires the integration key')
         return values
 
     def local_fingerprint(self):

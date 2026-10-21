@@ -364,3 +364,16 @@ scripts/gcp-reset-seller-password.sh someuser   # another seller account
 
 You type the password twice (12-256 characters, not containing the username); it is not echoed, never placed on a local or remote command line, and only travels over the IAP SSH session's standard input into the backend container's environment, where `scripts/reset-seller-password.js` applies it. The account's sessions are ended and it must choose a new password at the next sign-in on `https://<seller host>/`. The script prints the result line and exits non-zero on failure (verified 2026-10-21 against live with a nonexistent username: `Could not reset: No account has this username.`, no account changed).
 
+
+## WhatsApp linked-device (QR) worker
+
+Optional and default off (`WHATSAPP_QR_ENABLED=0`). `compose.gcp.yaml` defines a `whatsapp-qr` service behind the
+`whatsapp-qr` profile (CI image `ghcr.io/yapweijun1996/online-shopping-whatsapp-qr:<sha>` from `Dockerfile.whatsapp-qr`;
+384 MiB, 0.5 vCPU, read-only, all capabilities dropped, private + egress networks, no ports, no database credentials or
+master key). The backend always mounts `SECRETS_DIR/whatsapp-qr-token` (a host-generated single line of at least 32
+URL-safe characters, shared with the worker only) and opens its private internal listener on port 3001 only when
+`WHATSAPP_QR_ENABLED=1`. With the switch on (it also requires `INTEGRATION_KEY_FILE`), `deploy/gcp/update.py` pulls the
+worker image for every release, writes `WHATSAPP_QR_IMAGE` into `images.env`, starts/updates the worker with the backend
+and frontend and checks it is running the release digest; a release without the switch stops and removes a leftover
+worker. The egress guard applies to the worker like the backend (no metadata or RFC1918). Protocol:
+`docs/WHATSAPP_QR_PROTOCOL.md`; seller guide and risks: `docs/WHATSAPP_QR_DESIGN.md`.
