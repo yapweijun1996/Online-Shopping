@@ -17,6 +17,7 @@ export function createPlatformRuntime({ store, config, clock = Date.now, paused 
   const pool = createTenantPool({ secretBox, baseUrl: config.platform.databaseUrl, connectionsPerTenant: 3 });
   let connection = null, pending = null, retryAfter = 0, stopped = false, routes = null, setupRoutes = null, timer, background = null, maintenanceTasks = 0;
   const inFlight = new Set();
+  const qrStopped = new Map();
   const claimStartedAt = new Date(clock()).toISOString();
   let claimInitialized = false;
   const deps = { inFlight, secretBox, mcpEnabled: config.mcpEnabled === true, baseUrl: config.platform.databaseUrl, provisionerUrl: config.platform.provisionerUrl };
@@ -32,10 +33,27 @@ export function createPlatformRuntime({ store, config, clock = Date.now, paused 
           if (changed) await recordAudit(platform, { actor: 'host', action: 'TENANT_FAILED', tenantId: row.id, detail: 'INTERRUPTED' });
         }
       });
-      if (qrCleanupAndStop && await platform.schemaVersion() >= 3) {
+      if (await platform.schemaVersion() >= 3) {
         const policy = createQrPolicy({ platform, tenantSlots: config.platform.qrTenantSlots, provisionedTenantIds: config.platform.qrProvisionedTenantIds, clock });
         for (const binding of await platform.all('SELECT tenant_id, epoch FROM tenant_qr_binding WHERE cleanup_pending = true ORDER BY tenant_id LIMIT 20')) {
-          await policy.reconcile(binding.tenant_id, binding.epoch, qrCleanupAndStop).catch(() => {});
+          await policy.reconcile(binding.tenant_id, binding.epoch, async reservation => {
+            const row = await platform.get('SELECT * FROM tenant WHERE id = ?', reservation.tenant_id);
+            if (!row) return false;
+            const shop = row.is_default === 1 ? store : await pool.get(row);
+            await shop.transaction(async () => {
+              const session = await shop.get(`SELECT * FROM whatsapp_qr_session WHERE id = 1${shop.dialect === 'postgres' ? ' FOR UPDATE' : ''}`);
+              const at = new Date(clock()).toISOString();
+              await shop.run("UPDATE whatsapp_qr_session SET generation = generation + 1, auth_version = 0, desired = 'OFF', state = 'IDLE', lease_owner = NULL, lease_expires_at = NULL, qr_text = NULL, qr_expires_at = NULL, revision = revision + 1, updated_at = ? WHERE id = 1 AND revision = ?", at, session.revision);
+              await shop.run('DELETE FROM whatsapp_qr_auth');
+              await shop.run("UPDATE message_thread_message SET status = 'CANCELLED', updated_at = ? WHERE direction = 'OUT' AND status = 'QUEUED'", at);
+              await shop.run("UPDATE message_thread_message SET status = 'RECONCILE', updated_at = ? WHERE direction = 'OUT' AND status = 'SENDING'", at);
+            });
+            // Durable cleanup is independent of stop confirmation. Never infer stop from silence.
+            const stopped = qrStopped.get(reservation.tenant_id) === reservation.epoch ||
+              (qrCleanupAndStop ? await qrCleanupAndStop(reservation) === true : false);
+            if (stopped) qrStopped.delete(reservation.tenant_id);
+            return stopped;
+          }).catch(() => {});
         }
       }
     } finally { maintenanceTasks--; }
@@ -86,7 +104,7 @@ export function createPlatformRuntime({ store, config, clock = Date.now, paused 
     })();
     return pending;
   }
-  const registry = createPlatformRegistry({ store, config, platform: connect, pool, clock });
+  const registry = createPlatformRegistry({ store, config, platform: connect, pool, clock, qrStopped });
   // Connection failures stay outside the legacy readiness path, and retries are bounded.
   timer = setInterval(() => {
     if (paused() || background) return;

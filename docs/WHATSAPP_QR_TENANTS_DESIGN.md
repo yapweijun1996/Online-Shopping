@@ -1,6 +1,6 @@
 # WhatsApp QR for platform shops
 
-Status: design with job 2 platform policy implemented locally; 2026-10-21. No deployment authorization. Requirements outside the job 2 implementation contract below remain design decisions, not existing behavior. Historical evidence references are working-copy file:line ranges. Host figures supplied by the task are not independently measured here.
+Status: design with job 2 platform policy and job 3 static broker implemented locally; 2026-10-21. No deployment authorization. Requirements outside the implementation contracts below remain design decisions, not existing behavior. Historical evidence references are working-copy file:line ranges. Host figures supplied by the task are not independently measured here.
 
 ## Decision
 
@@ -124,6 +124,37 @@ restore-disabled recovery and release tooling. A restore must disable bindings,
 mark cleanup pending and advance epochs before workers are started; do not
 automatically run restored enabled reservations. This remains a manual recovery
 gate, not an automatic startup transformation.
+
+### Job 3 broker contract
+
+`WHATSAPP_QR_BINDINGS_FILE` names a backend-only JSON array. Each entry has
+`slot` (0 or 1), `shopId` (`default` for 0, lowercase tenant UUID for 1),
+`tokenFile` (absolute backend path), and `workerLabel` (bounded safe label).
+Slot 0 is required. Each credential file contains an independent 32-byte
+base64url token (43 characters). Duplicate slots, identities or token values
+fail startup without disclosing file contents. Without this variable the
+existing `WHATSAPP_QR_TOKEN_FILE` configuration remains unchanged.
+
+The manifest supplies platform provisioning/capacity inputs; it does not enable
+policy. Tenant control returns `X-Binding-Epoch`; the worker echoes it on later
+operations. Fresh control discovery may omit it, but mutations cannot. Policy
+authorization holds the existing capacity lock through each shop operation.
+Disabled/revoked tenants return 403 `QR_REVOKED`; missing static provisioning
+keeps seller routes at 404. Tenant platform failure is unavailable, not default.
+
+On revocation the worker ends the socket, drains pending session events and
+acknowledges `POST /internal/whatsapp-qr/v1/stopped` using its existing credential.
+The backend records stop only for a currently disabled cleanup-pending binding,
+scoped to its epoch. Maintenance performs durable shop cleanup and retires only
+with that acknowledgement or host confirmation. An unavailable shop or worker
+leaves the reservation pending. A revoked worker requires an operator restart
+before later activation; it never resumes its old session automatically.
+
+Jobs 4–5 still own safe policy/revocation presentation, actual read-only manifest
+mounts, separate worker credentials, explicit host stop/restart, restore-disabled
+recovery, deployment health checks and measured resource/release gates. No
+production provisioning or real WhatsApp pairing is implied by synthetic tests.
+
 
 
 ## GCP release sequence

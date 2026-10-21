@@ -19,7 +19,14 @@ try {
   while (!stopping) {
     let delay = 10000;
     try { delay = await session.tick(); }
-    catch { session.end(); }
+    catch (error) {
+      session.end();
+      if (error?.code === 'QR_REVOKED') {
+        await session.stop().catch(() => {});
+        log(JSON.stringify({ state: 'OFF', code: 'QR_REVOKED' }));
+        await session.client.request('/v1/stopped', {}).catch(() => {});
+      }
+    }
     try { await sleep(delay, undefined, { signal: abort.signal }); } catch { if (!stopping) throw new Error('SLEEP_FAILED'); }
   }
 } catch { log(JSON.stringify({ state: 'ERROR', code: 'WORKER_FAILED' })); process.exitCode = 1; }

@@ -63,6 +63,50 @@ test('QR configuration defaults, strict flag/port/token and activation gates', t
   for (const value of ['x'.repeat(31), 'x'.repeat(32) + '!', '']) { writeFileSync(file, value); assert.throws(() => readWhatsAppQrConfig(enabled, integrationKeys), /TOKEN_FILE/); }
 });
 
+test('static binding manifest rejects duplicate credentials and inconsistent identities', t => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'shopping-qr-bindings-'));
+  t.after(() => rmSync(dir, { recursive: true }));
+  const manifest = path.join(dir, 'bindings.json'), first = path.join(dir, 'first'), second = path.join(dir, 'second');
+  writeFileSync(first, randomBytes(32).toString('base64url'));
+  writeFileSync(second, randomBytes(32).toString('base64url'));
+  const rows = [{ slot: 0, shopId: 'default', tokenFile: first, workerLabel: 'default' },
+    { slot: 1, shopId: randomUUID(), tokenFile: second, workerLabel: 'tenant' }];
+  const env = { WHATSAPP_QR_ENABLED: '1', PLATFORM_ENABLED: '1', WHATSAPP_QR_BINDINGS_FILE: manifest };
+  const read = value => { writeFileSync(manifest, JSON.stringify(value)); return readWhatsAppQrConfig(env, integrationKeys); };
+  assert.equal(read(rows).bindings[1].shopId, rows[1].shopId);
+  for (const change of [{ slot: 0 }, { slot: 2 }, { shopId: 'default' }, { tokenFile: first }, { shopId: 'mutable-code' }]) {
+    assert.throws(() => read([rows[0], { ...rows[1], ...change }]), /Invalid WHATSAPP_QR_BINDINGS_FILE/);
+  }
+});
+
+for (const engine of ['sqlite', 'postgres']) {
+  test(`${engine}: HTTP broker binds credentials, ignores selectors and isolates platform outage`, { skip: engine === 'postgres' && !base }, async t => {
+    const a = await fixture(t, engine), b = await fixture(t, engine), tenantId = randomUUID(), tenantToken = randomBytes(32).toString('base64url');
+    let lookups = 0, down = false;
+    const registry = { async resolveWorkerTenant(id, slot, epoch, work) {
+      lookups++;
+      assert.equal(id, tenantId); assert.equal(slot, 1);
+      if (down) throw new Error('unavailable');
+      return work({ store: b.store, epoch: 7 });
+    } };
+    const server = createWhatsAppQrServer({ store: a.store, config: { integrationKeys, whatsappQr: {
+      bindings: [{ slot: 0, shopId: 'default', token }, { slot: 1, shopId: tenantId, token: tenantToken }],
+    } }, registry });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    t.after(() => new Promise(resolve => server.close(resolve)));
+    const call = credential => fetch(`http://127.0.0.1:${server.address().port}/internal/whatsapp-qr/v1/control?tenant=default`, {
+      headers: { authorization: `Bearer ${credential}`, 'x-worker-id': a.worker, 'x-tenant-id': 'default' },
+    });
+    assert.equal((await call('wrong')).status, 401); assert.equal(lookups, 0);
+    assert.equal((await call(tenantToken)).status, 200);
+    assert.equal((await b.store.get('SELECT lease_owner FROM whatsapp_qr_session WHERE id = 1')).lease_owner, a.worker);
+    assert.equal((await a.store.get('SELECT lease_owner FROM whatsapp_qr_session WHERE id = 1')).lease_owner, null);
+    down = true;
+    assert.equal((await call(tenantToken)).status, 503);
+    assert.equal((await call(token)).status, 200);
+  });
+}
+
 for (const engine of ['sqlite','postgres']) {
   const options = { skip: engine === 'postgres' && !base };
   test(`${engine}: authentication, route isolation, lease ownership and generation fencing`, options, async t => {

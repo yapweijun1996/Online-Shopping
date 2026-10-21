@@ -74,7 +74,7 @@ export function createQrPolicy({ platform, tenantSlots = 1, provisionedTenantIds
     async withAuthorizedBinding(id, slot, epoch, work) {
       return platform.transaction(async () => {
         await required();
-        const row = await platform.get("SELECT t.* FROM tenant t JOIN tenant_qr_binding b ON b.tenant_id = t.id WHERE t.id = ? AND t.status = 'ACTIVE' AND b.enabled = true AND b.cleanup_pending = false AND b.slot_id = ? AND b.epoch = ? FOR UPDATE OF b", id, slot, epoch);
+        const row = await platform.get("SELECT t.*, b.epoch AS qr_epoch FROM tenant t JOIN tenant_qr_binding b ON b.tenant_id = t.id WHERE t.id = ? AND t.status = 'ACTIVE' AND b.enabled = true AND b.cleanup_pending = false AND b.slot_id = ? AND b.epoch = COALESCE(?, b.epoch) FOR UPDATE OF b", id, slot, epoch);
         if (!row || (row.is_default !== 1 && (!provisioned.has(id) || slot < 1 || slot > tenantSlots))) throw new ApiError(403, 'QR_REVOKED', 'QR access has been revoked.');
         return work(row);
       });
