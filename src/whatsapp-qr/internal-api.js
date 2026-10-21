@@ -4,9 +4,9 @@ import { createWhatsAppQrStore, QrError } from './store.js';
 
 const prefix = '/internal/whatsapp-qr/v1';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-export function createWhatsAppQrInternalApi({ store, secretBox, token, now }) {
+export function createWhatsAppQrInternalApi({ store, secretBox, token, shopId = 'default', now }) {
   if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{32,}$/.test(token)) throw new Error('Invalid WhatsApp QR worker token.');
-  const expected = Buffer.from(`Bearer ${token}`), data = createWhatsAppQrStore({ store, secretBox, now });
+  const expected = Buffer.from(`Bearer ${token}`), data = createWhatsAppQrStore({ store, secretBox, shopId, now });
   return async request => {
     const supplied = Buffer.from(request.headers.get('authorization') ?? '');
     if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return new Response(null, { status: 401, headers: { 'Cache-Control': 'no-store' } });

@@ -5,9 +5,6 @@ export class QrError extends Error {
 }
 const fail = (code, status = 409) => { throw new QrError(status, code); };
 const digest = value => createHash('sha256').update(value).digest('hex');
-const context = (generation, type, id, chunk) => `WHATSAPP_QR:default:${generation}:${type}:${id}:${chunk}`;
-const peerContext = 'WHATSAPP_QR:default:peer-key';
-const threadContext = id => `WHATSAPP_QR:default:peer:${id}`;
 export const validPeer = value => typeof value === 'string' && /^[0-9]{1,30}@(s\.whatsapp\.net|lid)$/.test(value);
 export const validCode = value => typeof value === 'string' && /^[A-Z_]{2,40}$/.test(value);
 const string = (value, min, max) => typeof value === 'string' && value.length >= min && value.length <= max && value.isWellFormed() && !value.includes('\0');
@@ -15,7 +12,11 @@ const printable = (value, max) => string(value, 1, max) && /^[\x20-\x7e]+$/.test
 const recordIdentity = row => row && typeof row.type === 'string' && /^[a-z-]{2,40}$/.test(row.type) && printable(row.id, 200) && row.type !== 'creds';
 const invalid = () => fail('INVALID_BODY', 400);
 
-export function createWhatsAppQrStore({ store, secretBox, now = () => Date.now() }) {
+export function createWhatsAppQrStore({ store, secretBox, shopId = 'default', now = () => Date.now() }) {
+  if (shopId !== 'default' && (typeof shopId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(shopId))) throw new Error('Invalid WhatsApp QR shop identity.');
+  const context = (generation, type, id, chunk) => `WHATSAPP_QR:${shopId}:${generation}:${type}:${id}:${chunk}`;
+  const peerContext = `WHATSAPP_QR:${shopId}:peer-key`;
+  const threadContext = id => `WHATSAPP_QR:${shopId}:peer:${id}`;
   async function expirePair(session, time, at) {
     if (session.desired !== 'PAIR' || session.state === 'CONNECTED' || !(time - Date.parse(session.pair_started_at) > 120000)) return;
     const changed = await store.get("UPDATE whatsapp_qr_session SET desired = 'OFF', qr_text = NULL, qr_expires_at = NULL, last_error = 'PAIRING_TIMEOUT', revision = revision + 1, updated_at = ? WHERE id = 1 AND revision = ? RETURNING revision", at, session.revision);

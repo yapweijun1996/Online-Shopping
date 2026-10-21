@@ -402,8 +402,11 @@ or stale workers. The token is not a substitute for private-network isolation.
 Responses are no-store without CORS; payloads are bounded JSON and the HTTP
 adapter enforces ten-second timeouts.
 
-Auth records are integration-key sealed with per-generation/type/id/chunk
+Auth records are integration-key sealed with immutable-shop/generation/type/id/chunk
 contexts and SHA-256 integrity checks; incomplete/corrupt records are withheld.
+Peer-key and thread-peer contexts also bind the immutable shop identity. The default
+identity remains literal `default`; tenant UUIDs have no default-context fallback.
+These store-level controls do not enable tenant routes or worker admission.
 Auth mutations compare-and-set the snapshot version in one transaction.
 A sealed random HMAC key supplies stable peer/phone hashes; direct peer JIDs
 are sealed, and only masked paired phones are stored for display. Text history

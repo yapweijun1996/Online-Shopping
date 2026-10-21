@@ -22,7 +22,7 @@ const base = process.env.SHOP_TEST_DATABASE_URL;
 if (base && (process.env.NODE_ENV !== 'test' || !/test/i.test(new URL(base).pathname))) throw new Error('Disposable test database required.');
 const integrationKeys = { activeId: 'test', keys: new Map([['test', randomBytes(32)]]) };
 const root = '/api/v1/seller', connection = `${root}/integrations/whatsapp-qr`;
-async function fixture(t, engine) {
+async function fixture(t, engine, shopId = 'default') {
   let store;
   if (engine === 'postgres') {
     const pool = new pg.Pool({ connectionString: base }), name = `shopping_test_${randomUUID().replaceAll('-', '')}`;
@@ -35,11 +35,12 @@ async function fixture(t, engine) {
   const account = await store.get('SELECT * FROM seller_account LIMIT 1');
   const session = await createSession(store, account.id);
   const config = { publicOrigin: 'https://shop.invalid', sellerOrigin: 'https://seller.invalid', integrationKeys, whatsappQr: { enabled: true } };
-  const api = await createApi({ store, config });
+  const registry = shopId === 'default' ? null : { resolve: async () => ({ id: shopId, config, store, status: 'ACTIVE' }) };
+  const api = await createApi({ store, config, registry });
   let time = Date.now();
   const secretBox = createSecretBox(integrationKeys), token = 'test-worker-token-'.repeat(4), worker = randomUUID();
-  const internal = createWhatsAppQrInternalApi({ store, secretBox, token, now: () => time });
-  const seller = createQrSellerApi({ store, secretBox, now: () => time });
+  const internal = createWhatsAppQrInternalApi({ store, secretBox, token, shopId, now: () => time });
+  const seller = createQrSellerApi({ store, secretBox, shopId, now: () => time });
   async function call(path, body, options = {}) {
     const method = options.method ?? (body === undefined ? 'GET' : 'POST');
     const request = new Request(`https://seller.invalid${path}`, { method, headers: { cookie: `seller_session=${session.token}`, origin: config.sellerOrigin, 'x-csrf-token': session.csrfToken, 'content-type': 'application/json', ...options.headers }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
@@ -124,8 +125,8 @@ for (const engine of ['sqlite', 'postgres']) {
     assert.equal((await f.direct(`${path}?limit=101`)).status, 400);
     assert.equal((await f.direct(`${root}/chats?limit=51`)).status, 400);
   });
-  for (const initialized of [false, true]) test(`${engine}: erasure before first QR thread (peer key initialized: ${initialized})`, options, async t => {
-    const f = await fixture(t, engine);
+  for (const shopId of ['default', '12345678-1234-4234-8234-123456789abc']) for (const initialized of [false, true]) test(`${engine}: ${shopId}: erasure before first QR thread (peer key initialized: ${initialized})`, options, async t => {
+    const f = await fixture(t, engine, shopId);
     await f.workerCall('control');
     if (initialized) await f.workerCall('state', { generation: 1, state: 'CONNECTED', phone: '6581234567' });
     await createCategory(f.store, { code: 'EXAMPLE', label: 'Example' });

@@ -87,7 +87,7 @@ async function createTenantApi({ store, config, tenantId, serveStatic = null, wh
   const secretBox = config.integrationKeys ? createSecretBox(config.integrationKeys) : null;
   const basePath = config.basePath || '';
   const qrAvailable = config.whatsappQr?.enabled && !quickLogin && config.shopMode !== 'public-demo' && tenantId === 'default' && !basePath && secretBox;
-  const qrSeller = qrAvailable ? createQrSellerApi({ store, secretBox }) : null;
+  const qrSeller = qrAvailable ? createQrSellerApi({ store, secretBox, shopId: tenantId }) : null;
   const connector = createConnector({ store, config, tenantId, quickLogin });
   const sellerCookie = (token, maxAge) => cookieFor(token, maxAge, config.production, `${basePath}/api/v1/seller`);
   const prefix = (value) => typeof value === 'string' && /^\/(?:api|shop|seller|shared)\//.test(value) ? basePath + value : value;
@@ -462,7 +462,7 @@ async function createTenantApi({ store, config, tenantId, serveStatic = null, wh
       if (sellerOrder[2] === 'erase-contact') {
         // A passwordless sample site is open to anyone, so it must never be able to erase data permanently.
         if (quickLogin) throw new ApiError(403, 'FORBIDDEN', 'Erasing contact data is not available on a sample site.');
-        await eraseOrderContact(store, sellerOrder[1], body, account.username, secretBox ? createWhatsAppQrStore({ store, secretBox }) : null);
+        await eraseOrderContact(store, sellerOrder[1], body, account.username, secretBox ? createWhatsAppQrStore({ store, secretBox, shopId: tenantId }) : null);
         return json(200, withProductLinks(await getSellerOrder(store, sellerOrder[1]), `${config.publicOrigin || url.origin}${basePath}`));
       }
       return json(200, withProductLinks(await decideSellerOrder(store, sellerOrder[1], sellerOrder[2], body, account.username), `${config.publicOrigin || url.origin}${basePath}`));

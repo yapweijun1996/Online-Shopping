@@ -131,9 +131,14 @@ Backend side:
   Set and delete together are capped at 500 items; deletes apply first, then
   sets (a set wins for the same identity). UTF-16 surrogate pairs are kept
   intact across 4096-character chunks; malformed Unicode is rejected.
-- Peer HMAC key context is `WHATSAPP_QR:default:peer-key`; sealed thread JID
-  context is `WHATSAPP_QR:default:peer:<threadId>`. Auth uses the context in
-  the route contract, with reserved creds identity `creds:creds`.
+- Store factories accept a trusted immutable `shopId`: literal `default` for the default
+  shop, canonical tenant UUID otherwise. Auth, peer-key and thread contexts all bind
+  this identity; tenant contexts never retry with `default`. The default strings
+  remain byte-for-byte compatible with existing ciphertext.
+- Peer HMAC key context is `WHATSAPP_QR:<shopId>:peer-key`; sealed thread JID
+  context is `WHATSAPP_QR:<shopId>:peer:<threadId>`. Auth uses the context in
+  the route contract, with reserved creds identity `creds:creds`. This crypto
+  preparation does not enable tenant seller routes or tenant worker bindings.
 - A valid worker lease is required for auth GET as well as mutations. Generation
   fencing is checked before lease ownership for non-control routes. Error JSON
   is `{ \"error\": \"CODE\" }`; authentication failure has an empty body.
