@@ -111,6 +111,19 @@ try {
       }
     }
   }));
+  await group('Seller MCP connector routes', () => measured(async () => {
+    const noStore = r => assert.equal(r.headers['cache-control'], 'no-store');
+    for (const [path, method] of [['/mcp', 'POST'], ['/mcp', 'GET'], ['/oauth/register', 'POST'], ['/oauth/authorize?client_id=x', 'GET'],
+      ['/oauth/token', 'POST'], ['/oauth/revoke', 'POST'], ['/oauth/consent.js', 'GET'], ['/oauth/consent.css', 'GET'],
+      ['/.well-known/oauth-protected-resource', 'GET'], ['/.well-known/oauth-protected-resource/mcp', 'GET'],
+      ['/.well-known/oauth-authorization-server', 'GET'], ['/.well-known/oauth-protected-resource/alpha/mcp', 'GET'],
+      ['/.well-known/oauth-authorization-server/alpha', 'GET'], ['/alpha/mcp', 'POST'], ['/alpha/oauth/token', 'POST'],
+      ['/alpha/.well-known/oauth-authorization-server', 'GET']]) {
+      await check('seller', path, 200, { method }, r => { echo('seller', path, method)(r); if (!path.startsWith('/alpha/')) noStore(r); });
+    }
+    for (const path of ['/mcp', '/oauth/token', '/.well-known/oauth-authorization-server']) await check('shop', path, 404, { method: path === '/oauth/token' ? 'POST' : 'GET' });
+    for (const path of ['/oauth/other', '/mcp/x', '/.well-known/other']) await check('seller', path, 404);
+  }));
   await group('All crawler host boundaries', () => measured(async () => {
     for (const agent of ['facebookexternalhit', 'facebot', 'whatsapp', 'twitterbot', 'telegrambot', 'slackbot', 'discordbot', 'googlebot', 'bingbot']) {
       const options = { headers: { 'User-Agent': agent } };

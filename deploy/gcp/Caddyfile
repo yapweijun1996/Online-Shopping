@@ -19,11 +19,11 @@
 	# API requests retain their prefix; static requests pass the metadata-only gate.
 	@tenant {
 		path_regexp tenant ^/([a-z0-9]{3,30})(?:/|$)
-		not path_regexp ^/(setup|admin|api|shop|seller|demo|www|health|ready|static|assets|shared|platform|default|login|logout|public|root|support|system|test|tenant|tenants|webhook|webhooks|sw|manifest|favicon|icons|p|s)(?:/|$)
+		not path_regexp ^/(setup|admin|api|mcp|oauth|shop|seller|demo|www|health|ready|static|assets|shared|platform|default|login|logout|public|root|support|system|test|tenant|tenants|webhook|webhooks|sw|manifest|favicon|icons|p|s)(?:/|$)
 	}
 	handle @tenant {
 		route {
-			@tenant_api path_regexp ^/[a-z0-9]{3,30}/(?:api/|{args[0]}/manifest\.webmanifest$|p/|s/)
+			@tenant_api path_regexp ^/[a-z0-9]{3,30}/(?:api/|{args[0]}/manifest\.webmanifest$|p/|s/|mcp$|oauth/|\.well-known/oauth-)
 			handle @tenant_api {
 				import proxy
 			}
@@ -127,6 +127,12 @@ http://{$SELLER_HOST} {
 		}
 		handle @tenant_private {
 			respond 404
+		}
+		# Seller MCP connector: the backend answers 404 unless MCP_ENABLED=1, and OAuth responses stay no-store.
+		@connector path /mcp /oauth/register /oauth/authorize /oauth/token /oauth/revoke /oauth/consent.js /oauth/consent.css /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/* /.well-known/oauth-authorization-server /.well-known/oauth-authorization-server/*
+		handle @connector {
+			header Cache-Control no-store
+			import proxy
 		}
 		import tenant seller
 		@api path /api/* /health /ready

@@ -192,6 +192,23 @@ class Tests(unittest.TestCase):
             self.assertNotIn('private-value', str(error.exception))
             self.assertNotIn('shell=True', (ROOT / 'deploy/gcp/update.py').read_text())
 
+    def test_runtime_config_mcp_switch_and_redirects(self):
+        with tempfile.TemporaryDirectory() as root:
+            f = u.Updater(root)
+            path = Path(root, 'runtime.env')
+            good = 'SHOP_HOST=demoonlineshopping.xyz\nSELLER_HOST=seller.demoonlineshopping.xyz\nADMIN_USERNAME=owner\nSECRETS_DIR=/opt/cloudops/secrets/online-shopping\n'
+            vendors = 'https://claude.ai/api/mcp/auth_callback,https://chatgpt.com/connector_platform_oauth_redirect'
+            path.write_text(good + 'MCP_ENABLED=1\nMCP_REDIRECT_URIS=' + vendors + '\n')
+            self.assertEqual(vendors, f.runtime()['MCP_REDIRECT_URIS'])
+            path.write_text(good + 'MCP_ENABLED=0\n')
+            self.assertEqual('0', f.runtime()['MCP_ENABLED'])
+            for bad in ['MCP_ENABLED=yes\n', 'MCP_ENABLED=1\n', 'MCP_ENABLED=1\nMCP_REDIRECT_URIS=\n',
+                        'MCP_REDIRECT_URIS=http://claude.ai/cb\n', 'MCP_REDIRECT_URIS=https://claude.ai/cb, https://x.example/cb\n',
+                        'MCP_REDIRECT_URIS=https://claude.ai/cb?$(touch /tmp/pwn)\n', 'MCP_REDIRECT_URIS=https://user@claude.ai/cb\n',
+                        'MCP_REDIRECT_URIS=https://claude.ai:8443/cb\n', 'MCP_REDIRECT_URIS=https://127.0.0.1/cb\n']:
+                path.write_text(good + bad)
+                with self.assertRaises(ValueError, msg=bad): f.runtime()
+
     def test_runtime_config_rejects_injection_and_unknown_keys(self):
         with tempfile.TemporaryDirectory() as root:
             f = u.Updater(root)
