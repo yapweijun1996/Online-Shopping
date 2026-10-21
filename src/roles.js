@@ -4,6 +4,7 @@ export const ROLES = ['OWNER', 'MANAGER', 'STAFF'];
 
 const CAPABILITIES = {
   'orders.fulfil': ['OWNER', 'MANAGER', 'STAFF'],   // view orders, export shipping lists, ship/deliver, print documents
+  'chats.reply': ['OWNER', 'MANAGER', 'STAFF'],
   'orders.decide': ['OWNER', 'MANAGER'],            // confirm, reject, cancel
   'catalog.write': ['OWNER', 'MANAGER'],            // products, prices, stock, categories, options
   'messages.act': ['OWNER', 'MANAGER'],             // resolve WhatsApp messages that need attention

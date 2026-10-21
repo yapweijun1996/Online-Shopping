@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS whatsapp_qr_auth (
 );
 CREATE TABLE IF NOT EXISTS message_thread (
  id TEXT PRIMARY KEY, provider TEXT NOT NULL CHECK (provider = 'WHATSAPP_QR'), peer_hash TEXT NOT NULL UNIQUE,
- peer_sealed ${blob} NOT NULL, peer_key_id TEXT NOT NULL, display_name TEXT NOT NULL,
+ peer_sealed ${blob}, peer_key_id TEXT NOT NULL, display_name TEXT,
  phone_hash TEXT, last_inbound_at TEXT, last_message_at TEXT, unread_count INTEGER NOT NULL DEFAULT 0 CHECK (unread_count >= 0),
  suppressed_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
