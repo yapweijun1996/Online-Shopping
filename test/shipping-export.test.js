@@ -1,15 +1,22 @@
+import { unzip, assertBalanced } from './helpers/xlsx.js';
+import { migrateStore } from '../src/db.js';
+import { upgradePostgres } from '../src/postgres/upgrade.js';
+import { toXlsx } from '../src/xlsx.js';
+import '../public/seller/sender-copy.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
 import { randomUUID } from 'node:crypto';
 import { openDatabase } from '../src/db.js';
 import { openPostgresDatabase } from '../src/postgres-db.js';
-import { createCategory } from '../src/settings.js';
+import { createCategory, updateCompanySettings } from '../src/settings.js';
 import { createProduct } from '../src/products.js';
 import { createOrder } from '../src/orders.js';
 import { applySellerDecision } from '../src/seller-orders.js';
 import { exportShippingList } from '../src/order-shipping-export.js';
-import { parseCsv } from '../src/csv.js';
+import { parseCsv as parseFullCsv } from '../src/csv.js';
+// Existing receiver assertions deliberately address the receiver block.
+const parseCsv = csv => parseFullCsv(csv).map(row => row.slice(8));
 import { sellerFixture } from './helpers/seller-app.js';
 import { messages, languages } from '../public/shared/i18n.js';
 import '../public/seller/tracking-copy.js';
@@ -25,6 +32,11 @@ for (const backend of ['SQLite', 'PostgreSQL']) test(`${backend}: shipping parce
     db = await openPostgresDatabase(url.href);
     t.after(async () => { await db.close(); await pool.query(`DROP DATABASE ${name} WITH (FORCE)`); await pool.end(); });
   } else { db = await openDatabase(':memory:'); t.after(() => db.close()); }
+  for (const column of ['sender_name', 'sender_phone', 'sender_address_line1', 'sender_address_line2', 'sender_city', 'sender_state', 'sender_postcode', 'sender_country']) await db.exec(`ALTER TABLE company_setting DROP COLUMN ${column}`);
+  await db.setSchemaVersion(25);
+  if (backend === 'SQLite') await migrateStore(db);
+  else await db.transaction(() => upgradePostgres(db, 25));
+  assert.equal(await db.schemaVersion(), 26);
   await createCategory(db, { code: 'TEST', label: 'Fictional' });
   const product = await createProduct(db, { sku: 'PARCEL', name: 'Fictional item', description: 'Fictional', category: 'TEST', priceMinor: 1250, active: true });
   async function make(count, confirmed = true) {
@@ -35,6 +47,23 @@ for (const backend of ['SQLite', 'PostgreSQL']) test(`${backend}: shipping parce
     return row;
   }
   const first = await make(2), second = await make(1), pending = await make(1, false);
+  await updateCompanySettings(db, { senderName: 'Fictional Sender', senderPhone: '+60123456789', senderPostcode: '01000', senderCountry: 'MY' });
+  const full = parseFullCsv((await exportShippingList(db, new URLSearchParams())).csv);
+  assert.deepEqual(full[1].slice(0, 8), ['Fictional Sender', "'+60123456789", '', '', '', '', '01000', 'MY']);
+  for (const patch of [{ senderPhone: 'bad' }, { senderName: 'x'.repeat(121) }, { senderCountry: 'Malaysia' }]) {
+    await assert.rejects(updateCompanySettings(db, patch), error => error.field === Object.keys(patch)[0]);
+  }
+  assert.equal((await updateCompanySettings(db, { senderAddressLine2: '' })).senderAddressLine2, null);
+  await db.run('UPDATE order_item SET name_snapshot = ?', '=1+1');
+  const book = unzip((await exportShippingList(db, new URLSearchParams(), 'xlsx')).xlsx);
+  for (const part of ['[Content_Types].xml', '_rels/.rels', 'xl/workbook.xml', 'xl/_rels/workbook.xml.rels', 'xl/styles.xml', 'xl/worksheets/sheet1.xml']) { assert.ok(book[part]); assertBalanced(book[part]); }
+  const sheet = book['xl/worksheets/sheet1.xml'];
+  for (const cell of sheet.matchAll(/<c\b[^>]*>/g)) assert.match(cell[0], /t="inlineStr"/);
+  for (const value of ['+60123456789', '01000', '1 x =1+1', 'Fictional Sender']) assert.ok(sheet.includes(value));
+  assert.match(sheet, /<c r="A1" t="inlineStr" s="1">/);
+  assert.match(book['xl/styles.xml'], /<font><b\/>/);
+  assert.ok(sheet.indexOf('<sheetViews>') < sheet.indexOf('<cols>'));
+  await db.run('UPDATE order_item SET name_snapshot = ?', 'Fictional item');
   const before = await db.all('SELECT * FROM order_event ORDER BY id');
   let result = await exportShippingList(db, new URLSearchParams());
   const rows = parseCsv(result.csv);
@@ -73,6 +102,7 @@ for (const backend of ['SQLite', 'PostgreSQL']) test(`${backend}: shipping parce
   assert.equal(parseCsv((await exportShippingList(db, new URLSearchParams())).csv).length, 501);
   await db.run(`INSERT INTO delivery (id, order_id, position, recipient_name, recipient_phone, address_line1, address_postcode, address_country) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, randomUUID(), second.id, 500, 'Fictional', '+60123456789', 'Street', '01234', 'MY');
   await assert.rejects(exportShippingList(db, new URLSearchParams()), (error) => error.status === 413 && error.code === 'TOO_MANY_ROWS');
+  await assert.rejects(exportShippingList(db, new URLSearchParams(), 'xlsx'), error => error.status === 413);
 });
 
 test('HTTP shipping download requires a session, permits fulfilment roles and refuses sample sites', async (t) => {
@@ -99,5 +129,34 @@ test('HTTP shipping download requires a session, permits fulfilment roles and re
 });
 
 test('shipping export copy has seven-locale parity', () => {
-  for (const locale of languages) for (const key of ['shippingExport', 'shippingHelp', 'shippingTooMany', 'shippingForbidden']) assert.equal(typeof messages[locale.code || locale][key], 'string');
+  for (const locale of languages) for (const key of ['shippingExport', 'shippingExcel', 'shippingCsv', 'senderHint', 'senderTitle', 'senderName', 'senderPhone', 'senderAddressLine1', 'senderAddressLine2', 'senderCity', 'senderState', 'senderPostcode', 'senderCountry', 'shippingHelp', 'shippingTooMany', 'shippingForbidden']) assert.equal(typeof messages[locale.code || locale][key], 'string');
+});
+
+test('XLSX HTTP authorization and attachment parity', async t => {
+  const f = await sellerFixture(); t.after(() => f.close());
+  const path = '/api/v1/seller/orders/shipping-list.xlsx';
+  assert.equal((await f.request('GET', path)).response.status, 401);
+  const login = await f.login();
+  for (const role of ['OWNER', 'MANAGER', 'STAFF']) {
+    await f.app.database.run('UPDATE seller_account SET role = ? WHERE username = ?', role, f.config.username);
+    const { response } = await f.request('GET', path, undefined, { cookie: login.cookie });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type'), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+    assert.match(response.headers.get('content-disposition'), /\.xlsx"/);
+  }
+  const sample = await sellerFixture({ sellerQuickLogin: true }); t.after(() => sample.close());
+  const session = await sample.login();
+  assert.equal((await sample.request('GET', path, undefined, { cookie: session.cookie })).response.status, 403);
+});
+
+test('workbook XML escapes user text and removes illegal controls without changing literals', () => {
+  const sheet = unzip(toXlsx([['Header'], ['<x>&"' + String.fromCharCode(1, 0xD800, 9, 10) + '😀'], ['=HYPERLINK("test")'], ['0123456789']]))['xl/worksheets/sheet1.xml'];
+  assertBalanced(sheet);
+  assert.ok(sheet.includes('&lt;x&gt;&amp;&quot;' + String.fromCharCode(9, 10) + '😀'));
+  assert.ok(!sheet.includes('\u0001'));
+  assert.ok(sheet.includes('=HYPERLINK(&quot;test&quot;)'));
+  assert.ok(sheet.includes('0123456789'));
+  assert.ok(!sheet.includes('<f>'));
 });

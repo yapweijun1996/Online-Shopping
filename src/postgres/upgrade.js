@@ -1,3 +1,4 @@
+import { migrateSenderSettings } from '../sender-settings.js';
 import { randomUUID } from 'node:crypto';
 import { SCHEMA_VERSION } from '../db.js';
 import { migrateLegacyVariants } from '../options.js';
@@ -12,9 +13,15 @@ const legacyApplicationGrant = `current_database() !~ '^t_[a-z0-9]{3,30}_[0-9a-f
 
 // Called only by an explicit operator/test opt-in, inside the store-owned transaction.
 export async function upgradePostgres(store, version) {
+  if (version === 25) {
+    await migrateSenderSettings(store);
+    await store.setSchemaVersion(SCHEMA_VERSION);
+    return;
+  }
   if (version === 24) {
     await migrateOAuth(store);
     await grantOAuth(store);
+    await migrateSenderSettings(store);
     await store.setSchemaVersion(SCHEMA_VERSION);
     return;
   }
@@ -223,6 +230,7 @@ END $$;`);
   }
   await migrateOAuth(store);
   await grantOAuth(store);
+  await migrateSenderSettings(store);
   await store.setSchemaVersion(SCHEMA_VERSION);
 }
 

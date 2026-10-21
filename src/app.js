@@ -398,13 +398,15 @@ async function createTenantApi({ store, config, tenantId, serveStatic = null, wh
     }
     if (method === 'GET' && pathname === '/api/v1/seller/orders/summary') return json(200, await pendingOrderSummary(store));
     if (method === 'GET' && pathname === '/api/v1/seller/dashboard') { allow('figures.read'); return json(200, await dashboardFigures(store)); }
-    if (method === 'GET' && pathname === '/api/v1/seller/orders/shipping-list.csv') {
+    if (method === 'GET' && ['/api/v1/seller/orders/shipping-list.csv', '/api/v1/seller/orders/shipping-list.xlsx'].includes(pathname)) {
       allow('orders.fulfil');
       if (quickLogin) throw new ApiError(403, 'FORBIDDEN', 'Export is not available on a sample site.');
-      const { csv, skipped } = await exportShippingList(store, url.searchParams);
-      return new Response(csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Cache-Control': 'no-store',
+      const format = pathname.endsWith('.xlsx') ? 'xlsx' : 'csv';
+      const result = await exportShippingList(store, url.searchParams, format);
+      const skipped = result.skipped;
+      return new Response(result[format], { headers: { 'Content-Type': format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv; charset=utf-8', 'Cache-Control': 'no-store',
         'X-Content-Type-Options': 'nosniff', 'X-Skipped-Erased': String(skipped),
-        'Content-Disposition': `attachment; filename="shipping-list-${new Date().toISOString().slice(0, 10)}.csv"` } });
+        'Content-Disposition': `attachment; filename="shipping-list-${new Date().toISOString().slice(0, 10)}.${format}"` } });
     }
     if (method === 'GET' && pathname === '/api/v1/seller/orders/export.csv') {
       allow('data.export');

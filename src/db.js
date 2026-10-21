@@ -1,3 +1,4 @@
+import { migrateSenderSettings } from './sender-settings.js';
 import { randomUUID } from 'node:crypto';
 import { openNodeStore } from './store.js';
 import { migrateLegacyVariants } from './options.js';
@@ -5,7 +6,7 @@ import { migrateListings } from './listings.js';
 import { migrateSharedGalleries } from './product-gallery.js';
 import { migrateOAuth } from './mcp/schema.js';
 
-export const SCHEMA_VERSION = 25;
+export const SCHEMA_VERSION = 26;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -594,6 +595,13 @@ export async function migrateStore(store) {
     });
     version = 25;
   }
+  if (version === 25) {
+    await store.transaction(async () => {
+      await migrateSenderSettings(store);
+      await store.setSchemaVersion(26);
+    });
+    version = 26;
+  }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }
 
@@ -610,7 +618,7 @@ export async function ready(store) {
     return await store.schemaVersion() === SCHEMA_VERSION &&
       Array.isArray(await store.all('SELECT stock_quantity, gallery_layout_json FROM product LIMIT 0')) &&
       Array.isArray(await store.all('SELECT tracking_carrier, tracking_no, contact_erased_at, contact_erased_by FROM shop_order LIMIT 0')) &&
-      Array.isArray(await store.all('SELECT availability_text, shipping_text, returns_text FROM company_setting LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT availability_text, shipping_text, returns_text, sender_name, sender_phone, sender_address_line1, sender_address_line2, sender_city, sender_state, sender_postcode, sender_country FROM company_setting LIMIT 0')) &&
       Array.isArray(await store.all('SELECT id FROM option_type LIMIT 0')) &&
       Array.isArray(await store.all('SELECT id FROM listing LIMIT 0')) &&
       Array.isArray(await store.all('SELECT listing_id FROM product LIMIT 0')) &&

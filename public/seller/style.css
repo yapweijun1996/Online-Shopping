@@ -420,8 +420,9 @@
 .order-filter{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end}
 .order-filter label{min-width:0}
 .order-filter.single-field label{grid-column:1/-1}
-.order-filter button{grid-column:1/-1;justify-self:end;min-width:120px}
-.order-filter #order-export{grid-column:1/-1}
+.order-filter button{grid-column:auto;justify-self:stretch;min-width:0;padding-inline:10px}
+.order-filter button[type=submit]{grid-column:1/-1}
+.order-filter>p,.order-filter>a{grid-column:1/-1}
 }
 @media(max-width:355px){
 .brand>span:not(.brand-mark){display:none}

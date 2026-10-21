@@ -1,3 +1,4 @@
+import './sender-copy.js';
 import { apiUrl } from '../shared/base-path.js';
 import { beginMutation } from '../shared/update-guard.js';
 import { containDialogFocus } from '../shared/modal.js';
@@ -91,19 +92,24 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
   let trackingDialog = null;
   let shippingButton;
   if (mode === 'confirmations' && canFulfil) {
-    shippingButton = actionButton(t('shippingExport'), () => downloadOrders(shippingButton, true));
-    shippingButton.dataset.i18n = 'shippingExport';
+    shippingButton = actionButton(t('shippingCsv'), () => downloadOrders(shippingButton, 'csv'));
+    shippingButton.dataset.i18n = 'shippingCsv';
     const shippingHelp = node('p', 'muted', t('shippingHelp'));
     shippingHelp.dataset.i18n = 'shippingHelp';
     shippingHelp.id = 'shipping-export-help';
     shippingButton.setAttribute('aria-describedby', shippingHelp.id);
+    const excelButton = actionButton(t('shippingExcel'), () => downloadOrders(excelButton, 'xlsx'));
+    excelButton.dataset.i18n = 'shippingExcel';
+    excelButton.setAttribute('aria-describedby', shippingHelp.id);
+    const senderHint = node('a', '', t('senderHint'));
+    senderHint.href = '#company'; senderHint.dataset.i18n = 'senderHint';
     const template = actionButton(t('trackingTemplate'), () => downloadTrackingCsv(trackingTemplate, 'tracking-template.csv'));
     const importButton = actionButton(t('trackingImport'), () => {
       trackingDialog = openTrackingImport({ trigger: importButton, csrfToken, onUnauthorized,
         onForbidden: () => { importButton.hidden = template.hidden = true; },
         onImported: () => { loadQueue(); if (selectedId) openOrder(selectedId); } });
     });
-    exportButton.after(shippingButton, template, importButton, shippingHelp);
+    exportButton.after(excelButton, shippingButton, template, importButton, shippingHelp, senderHint);
   }
 
   function renderStatusOptions() {
@@ -532,7 +538,7 @@ export function mountOrders(root, { mode, csrfToken, onUnauthorized, canErase = 
       const params = extraParams();
       if (search.value.trim()) params.set('search', search.value.trim());
       if (status.value) params.set('status', status.value);
-      const response = await fetch(apiUrl(`v1/seller/orders/${shipping ? 'shipping-list.csv' : 'export.csv'}?${params}`), { cache: 'no-store' });
+      const response = await fetch(apiUrl(`v1/seller/orders/${shipping ? `shipping-list.${shipping}` : 'export.csv'}?${params}`), { cache: 'no-store' });
       if (response.status === 401) { if (isCurrent()) onUnauthorized(); return; }
       if (!response.ok) {
         const code = (await response.json().catch(() => ({}))).error?.code;

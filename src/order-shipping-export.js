@@ -1,11 +1,13 @@
+import { toXlsx } from './xlsx.js';
+import { senderFields } from './sender-settings.js';
 import { ApiError } from './http.js';
 import { orderFilter } from './seller-orders.js';
 import { money, toCsv } from './csv.js';
 
-const HEADER = ['Order number', 'Parcel', 'Recipient name', 'Recipient phone', 'Address line 1', 'Address line 2', 'City', 'State', 'Postcode', 'Country', 'Items', 'Item count', 'Order total', 'Currency', 'Buyer email', 'Weight (kg)', 'Parcel content', 'Submitted (UTC)'];
+const HEADER = ['Sender name', 'Sender phone', 'Sender address line 1', 'Sender address line 2', 'Sender city', 'Sender state', 'Sender postcode', 'Sender country', 'Order number', 'Parcel', 'Recipient name', 'Recipient phone', 'Address line 1', 'Address line 2', 'City', 'State', 'Postcode', 'Country', 'Items', 'Item count', 'Order total', 'Currency', 'Buyer email', 'Weight (kg)', 'Parcel content', 'Submitted (UTC)'];
 const shorten = (text, limit) => Array.from(text).slice(0, limit).join('');
 
-export async function exportShippingList(database, params) {
+export async function exportShippingList(database, params, format = 'csv') {
   params = new URLSearchParams(params);
   if (!params.get('status')) params.set('status', 'CONFIRMED');
   const filter = orderFilter(params, 'o.');
@@ -30,17 +32,19 @@ export async function exportShippingList(database, params) {
         items.get(row.delivery_id).push(row);
       }
     }
+    const settings = await database.get('SELECT * FROM company_setting WHERE id = 1');
+    const sender = Object.values(senderFields).map(([column]) => column === 'sender_phone' && settings[column] ? `+${settings[column]}` : settings[column] ?? '');
     const positions = new Map();
     const lines = parcels.map((parcel) => {
       const position = (positions.get(parcel.order_id) || 0) + 1;
       positions.set(parcel.order_id, position);
       const contents = items.get(parcel.id) || [];
       const summary = contents.map((item) => `${item.quantity} x ${item.name_snapshot}`).join('; ');
-      return [parcel.order_no, `${position}/${parcel.parcels}`, parcel.recipient_name, parcel.recipient_phone,
+      return [...sender, parcel.order_no, `${position}/${parcel.parcels}`, parcel.recipient_name, parcel.recipient_phone,
         parcel.address_line1, parcel.address_line2, parcel.address_city, parcel.address_region, parcel.address_postcode,
         parcel.address_country, shorten(summary, 200), contents.reduce((sum, item) => sum + item.quantity, 0),
         money(parcel.total_minor), parcel.currency, parcel.buyer_email, '', shorten(summary, 60), parcel.submitted_at];
     });
-    return { csv: toCsv([HEADER, ...lines]), skipped: Number(counts.skipped) };
+    return { [format]: format === 'xlsx' ? toXlsx([HEADER, ...lines]) : toCsv([HEADER, ...lines]), skipped: Number(counts.skipped) };
   });
 }

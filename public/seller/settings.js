@@ -1,3 +1,5 @@
+import './sender-copy.js';
+const senderInputs = { senderName: 120, senderPhone: 32, senderAddressLine1: 240, senderAddressLine2: 240, senderCity: 120, senderState: 120, senderPostcode: 20, senderCountry: 2 };
 import { apiUrl } from '../shared/base-path.js';
 import { t, translate } from '../shared/i18n.js';
 import { mountAppearance } from '../shared/appearance.js';
@@ -166,6 +168,8 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
       <label><span data-i18n="stockAndDelivery">Availability &amp; delivery</span><textarea name="availabilityText" rows="3" maxlength="1000" aria-describedby="storefront-texts-help"></textarea></label>
       <label><span data-i18n="shipping">Shipping</span><textarea name="shippingText" rows="3" maxlength="1000" aria-describedby="storefront-texts-help"></textarea></label>
       <label><span data-i18n="returnsAndGuarantees">Returns and guarantees</span><textarea name="returnsText" rows="3" maxlength="1000" aria-describedby="storefront-texts-help"></textarea></label>
+      <h3 data-i18n="senderTitle"></h3>
+      ${Object.entries(senderInputs).map(([name, max]) => `<label><span data-i18n="${name}"></span><input name="${name}" maxlength="${max}"${name === 'senderPhone' ? ' type="tel"' : ''}></label>`).join('')}
       <button class="secondary-button" type="button" id="company-retry" data-i18n="retry" hidden>Retry</button>
       <button class="primary-button" type="submit" data-i18n="saveSettings">Save settings</button>
     </form><p class="settings-status" role="status"></p>
@@ -237,7 +241,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
   let phoneEdited = false;
   let mobileBarsEdited = false;
   let savedState = null;
-  const textFields = ['availabilityText', 'shippingText', 'returnsText'];
+  const textFields = ['availabilityText', 'shippingText', 'returnsText', ...Object.keys(senderInputs)];
   let textsEdited = false;
   const textValues = () => Object.fromEntries(textFields.map(name => [name, form.elements[name].value]));
   const currentState = () => JSON.stringify({
