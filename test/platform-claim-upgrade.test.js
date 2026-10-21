@@ -38,3 +38,18 @@ test('OrbStack candidate v1 comparison performs no migration and legacy runtime 
   await claimed.close();
   assert.equal((await f.platform.get('SELECT claimed_admin_id FROM platform_admin_claim')).claimed_admin_id !== null, true);
 });
+
+test('QR upgrade option targets 3 without activating claims', { skip: !platformTestUrl }, async (t) => {
+  for (const claimEnabled of [false, true]) {
+    const f = await platformFixture(t, { claimEnabled });
+    const directory = await mkdtemp(join(tmpdir(), 'qr-upgrade-'));
+    t.after(() => rm(directory, { recursive: true, force: true }));
+    const result = await upgradePlatform({ platformUrl: f.platformUrl, secretBox: f.secretBox,
+      reportPath: join(directory, 'report.json'), withQr: true,
+      backup: { format: 1, restoreVerified: true, databases: [{ database: 'platform' }] } });
+    assert.equal(result.platformVersion, 3);
+    assert.equal(await f.platform.schemaVersion(), 3);
+    assert.equal((await f.platform.get('SELECT token_hash FROM platform_admin_claim')).token_hash, null);
+    assert.deepEqual(result.upgraded, ['platform']);
+  }
+});

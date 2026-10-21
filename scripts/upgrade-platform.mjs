@@ -6,11 +6,11 @@ import { openPostgresDatabase } from '../src/postgres-db.js';
 import { createSecretBox, parseKeyFile } from '../src/secret-box.js';
 import { tenantUrl } from '../src/platform/provisioner.js';
 import { upgradePlatformSchema } from '../src/platform/migrations.js';
-import { PLATFORM_SCHEMA_VERSION, PLATFORM_CLAIM_SCHEMA_VERSION } from '../src/platform/platform-db.js';
+import { PLATFORM_SCHEMA_VERSION, PLATFORM_CLAIM_SCHEMA_VERSION, PLATFORM_QR_SCHEMA_VERSION } from '../src/platform/platform-db.js';
 import { SCHEMA_VERSION } from '../src/db.js';
 
-export async function upgradePlatform({ platformUrl, secretBox, reportPath, backup, withClaim = false, openTenant = openPostgresDatabase }) {
-  const targetVersion = withClaim ? PLATFORM_CLAIM_SCHEMA_VERSION : PLATFORM_SCHEMA_VERSION;
+export async function upgradePlatform({ platformUrl, secretBox, reportPath, backup, withClaim = false, withQr = false, openTenant = openPostgresDatabase }) {
+  const targetVersion = withQr ? PLATFORM_QR_SCHEMA_VERSION : withClaim ? PLATFORM_CLAIM_SCHEMA_VERSION : PLATFORM_SCHEMA_VERSION;
   const report = existsSync(reportPath) ? JSON.parse(readFileSync(reportPath, 'utf8')) : { format: 1, attempted: [], upgraded: [], complete: false };
   if (report.format !== 1 || report.complete || report.attempted.some((name) => name !== 'online_shopping')) throw new Error('Unexpected existing migration intent.');
   const writeReport = () => { const temporary = reportPath + '.tmp'; writeFileSync(temporary, JSON.stringify(report), { mode: 0o600 }); renameSync(temporary, reportPath); };
@@ -50,15 +50,15 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   try {
     const password = readFileSync(process.env.PLATFORM_PASSWORD_FILE || '/run/secrets/platform', 'utf8').replace(/\r?\n$/, '');
     const platformUrl = tenantUrl(process.env.PLATFORM_DATABASE_URL || 'postgresql://platform_app@postgres:5432/platform', { role: 'platform_app', password, database: 'platform' });
-    if (process.argv.length === 3 && process.argv[2] === '--with-claim') {
+    if (process.argv.length === 3 && ['--with-claim', '--with-qr'].includes(process.argv[2])) {
       const platform = openPostgresStore(platformUrl, { max: 1 });
-      try { console.log(JSON.stringify({ platformVersion: await upgradePlatformSchema(platform, { targetVersion: PLATFORM_CLAIM_SCHEMA_VERSION }) })); }
+      try { console.log(JSON.stringify({ platformVersion: await upgradePlatformSchema(platform, { targetVersion: process.argv[2] === '--with-qr' ? PLATFORM_QR_SCHEMA_VERSION : PLATFORM_CLAIM_SCHEMA_VERSION }) })); }
       finally { await platform.close(); }
       process.exit(0);
     }
     const secretBox = createSecretBox(parseKeyFile(readFileSync(process.env.INTEGRATION_KEY_FILE || '/run/secrets/integration_keys', 'utf8')));
     const backup = JSON.parse(readFileSync(process.env.BACKUP_MANIFEST_FILE || '/run/backup/manifest.json', 'utf8'));
-    if (process.argv.slice(2).some((arg) => arg !== '--with-claim')) throw new Error('Unknown upgrade option.');
-    console.log(JSON.stringify(await upgradePlatform({ platformUrl, secretBox, backup, withClaim: process.argv.includes('--with-claim'), reportPath: process.env.UPGRADE_REPORT_FILE || '/run/upgrade/report.json' })));
+    if (process.argv.slice(2).some((arg) => !['--with-claim', '--with-qr'].includes(arg))) throw new Error('Unknown upgrade option.');
+    console.log(JSON.stringify(await upgradePlatform({ platformUrl, secretBox, backup, withClaim: process.argv.includes('--with-claim'), withQr: process.argv.includes('--with-qr'), reportPath: process.env.UPGRADE_REPORT_FILE || '/run/upgrade/report.json' })));
   } catch (error) { console.error('Platform upgrade failed:', error?.code || error?.name || 'ERROR'); process.exitCode = 1; }
 }

@@ -5,9 +5,10 @@ import { openPostgresStore } from '../postgres-store.js';
 // Automatic OrbStack upgrades remain on the rollback-compatible legacy baseline.
 export const PLATFORM_SCHEMA_VERSION = 1;
 export const PLATFORM_CLAIM_SCHEMA_VERSION = 2;
+export const PLATFORM_QR_SCHEMA_VERSION = 3;
 
-/* Initialize only empty databases at the selected target. Existing v1 needs explicit claim upgrade;
-   claim-off runtime also accepts v2 after an authorized upgrade. Never migrate on open. */
+/* Initialize empty databases at the selected legacy/claim target only.
+   Compatible runtimes open v1/v2/v3 without migrating existing databases. */
 export async function openPlatformDatabase(url, { claimEnabled = false, ...options } = {}) {
   const targetVersion = claimEnabled ? PLATFORM_CLAIM_SCHEMA_VERSION : PLATFORM_SCHEMA_VERSION;
   const store = openPostgresStore(url, options);
@@ -17,7 +18,7 @@ export async function openPlatformDatabase(url, { claimEnabled = false, ...optio
         await upgradePlatformSchema(store, { targetVersion });
       }
       const version = await store.schemaVersion();
-      if (version !== targetVersion && !(version === PLATFORM_CLAIM_SCHEMA_VERSION && !claimEnabled)) throw new Error(`Unsupported platform schema version ${version}.`);
+      if (version < targetVersion || version > PLATFORM_QR_SCHEMA_VERSION) throw new Error(`Unsupported platform schema version ${version}.`);
     });
     return store;
   } catch (error) {

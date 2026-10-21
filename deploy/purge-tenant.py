@@ -87,7 +87,10 @@ def purge_locked(pg, args, row):
     # Hold the platform writer lock until both non-transactional drops finish. Console cancellation cannot race a purge.
     lease = subprocess.Popen(pg, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
     try:
-        lease.stdin.write("SET statement_timeout='15s'; BEGIN; SELECT pg_advisory_xact_lock(73119,1); SELECT 'PURGE|' || COALESCE((SELECT revision::text FROM tenant WHERE id='" + row['id'] + "' AND status='DELETING' AND revision=" + str(row['revision']) + " AND delete_after <= '" + datetime.datetime.now(datetime.timezone.utc).isoformat() + "' AND is_default=0),'STALE');\n")
+        # An existing reservation also means the static worker has not been retired.
+        # Resolve this under the same writer lock as lifecycle/admission, before DROP.
+        lease.stdin.write("SET statement_timeout='15s'; BEGIN; SELECT pg_advisory_xact_lock(73119,1); DO $$ BEGIN IF (SELECT version FROM schema_meta WHERE id=1) >= 3 THEN IF EXISTS (SELECT 1 FROM tenant_qr_binding WHERE tenant_id='" + row['id'] + "') THEN RAISE EXCEPTION 'QR cleanup and worker retirement required'; END IF; END IF; END $$;\n")
+        lease.stdin.write("SET statement_timeout='15s'; SELECT 'PURGE|' || COALESCE((SELECT revision::text FROM tenant WHERE id='" + row['id'] + "' AND status='DELETING' AND revision=" + str(row['revision']) + " AND delete_after <= '" + datetime.datetime.now(datetime.timezone.utc).isoformat() + "' AND is_default=0),'STALE');\n")
         lease.stdin.flush()
         eligible = False
         for _ in range(6):

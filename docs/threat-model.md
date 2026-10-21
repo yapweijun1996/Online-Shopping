@@ -421,3 +421,16 @@ Backend code never imports Baileys and does not call the linked-device worker
 or WhatsApp. Seller risk acknowledgement, activation/disconnection and inbox
 authorization/UI are separate, not implemented by this private listener.
 
+Platform schema 3 adds opt-in tenant QR reservations, not tenant worker
+activation. Full-MFA console enable/disable uses exact Origin, CSRF and tenant
+revision CAS. Host-injected capacity and provisioned identities bound admission;
+slot 0 is reserved for default. Capacity/policy locks serialize authorization
+callbacks and lifecycle changes. Suspend/delete disable, advance epoch and
+retain a cleanup-pending reservation without contacting the shop database.
+Purge refuses any unretired reservation. Retirement requires a trusted host
+callback proving durable shop cleanup and worker stop; unavailable cleanup
+retains the reservation. No credential or QR material is stored in platform.
+Broker wiring, manifest enforcement and restore-disabled operational gates
+remain separate release requirements; schema 3 alone grants no tenant worker
+access.
+
