@@ -2017,3 +2017,14 @@ const recoveryMessages = {
   ko: { checkoutRetryOriginal: "이전 주문이 제출되었을 수 있습니다. 원래 주문 정보로 결과를 확인하려면 다시 시도하세요.", stockTrackingConflict: '한정 재고와 무제한 재고를 전환하기 전에 확정 주문을 배송하거나 취소하세요.', checkoutIntentStorageFailed: '주문 재시도 정보를 저장하거나 읽을 수 없습니다. 브라우저 저장소를 활성화하고 다시 시도하세요. 주문 결과가 불분명할 때는 상점 데이터를 지우지 마세요.' },
 };
 for (const { code } of languages) Object.assign(messages[code], recoveryMessages[code]);
+
+const productionProfileNotices = [
+  'Contact details are saved only in this browser and sent to the seller when you place an order. This is not a verified account.',
+  'Butiran hubungan disimpan hanya dalam pelayar ini dan dihantar kepada penjual apabila anda membuat pesanan. Ini bukan akaun yang disahkan.',
+  '联系资料仅保存在此浏览器中，并在下单时发送给卖家。这不是已验证的账户。',
+  'Thông tin liên hệ chỉ lưu trong trình duyệt này và được gửi cho người bán khi bạn đặt hàng. Đây không phải tài khoản đã xác minh.',
+  'ข้อมูลติดต่อบันทึกเฉพาะในเบราว์เซอร์นี้และส่งให้ผู้ขายเมื่อคุณสั่งซื้อ นี่ไม่ใช่บัญชีที่ยืนยันแล้ว',
+  '連絡先はこのブラウザーにのみ保存され、注文時に販売者へ送信されます。認証済みアカウントではありません。',
+  '연락처는 이 브라우저에만 저장되며 주문 시 판매자에게 전송됩니다. 인증된 계정이 아닙니다.',
+];
+languages.forEach(({ code }, index) => { messages[code].profileProductionNotice = productionProfileNotices[index]; });

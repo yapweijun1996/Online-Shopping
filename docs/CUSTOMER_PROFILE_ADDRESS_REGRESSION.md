@@ -1,5 +1,15 @@
 # Customer Profile and address regression
 
+Profile privacy wording follows the existing `/api/v1/shop` mode at bootstrap
+and catalog refresh. Production explains browser-local contact storage and
+disclosure to the seller on order placement; only demo mode describes anonymous
+simulated orders. Both notices are translated in all seven locales.
+
+Tracking CSV previews translate every server row action and validation code in
+all seven locales. The third column is “Details”, with a scoped column header;
+the table retains the import dialog's accessible name. Seller v140 and Shop v146
+invalidate the existing complete offline shell caches.
+
 Run `npm run test:customer-profile-address` with Node24 and an existing Playwright
 installation/browser. Set `QA_PLAYWRIGHT_MODULE` to its absolute `index.mjs` path
 when Playwright is outside this checkout. `QA_EXPECTED_HEAD` optionally rejects a

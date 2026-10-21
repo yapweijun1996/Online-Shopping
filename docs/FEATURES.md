@@ -63,9 +63,9 @@ After confirmation an order moves **Confirmed → Shipped → Delivered**; a con
 
 Buyers see the new status, the courier and the tracking number in My orders through the existing status credential; nothing else about the order is exposed. There is no automatic courier booking, label or tracking sync yet (see [INTEGRATIONS.md](INTEGRATIONS.md)).
 
-### Bulk tracking CSV import (Seller v138)
+### Bulk tracking CSV import (Seller v139)
 
-Sales Order Confirmation offers **Download tracking template** and **Import tracking CSV** to Owner, Manager and Staff, except on passwordless sample sites. Book parcels externally and import only after dispatch, not merely booking/AWB allocation. This is the shop's format, not a verified EasyParcel template; provider results may require manual spreadsheet conversion.
+Sales Order Confirmation offers **Download tracking template** and **Import tracking CSV** to Owner, Manager and Staff, except on passwordless sample sites. Book parcels externally and import only after dispatch, not merely booking/AWB allocation. Courier exports can use the [documented header aliases](API.md) in any order, ignoring extra columns; the template header is unchanged. Preview shows source headers and ignored column names. Missing required fields or ambiguous duplicate mappings are rejected. Carrier stays required, with no default option; additional known courier labels are canonicalized and other bounded text passes through. This is not a verified provider-native round trip.
 
 Upload UTF-8 CSV with `Order number,Carrier,Tracking number` and optional `Shipped date`, up to 500 records. Keep spreadsheet identifiers as text. Preview shows counts, changes, first errors and every record in 50-row pages; download the complete validation report. Correct errors and preview again; any error blocks the entire commit. Commit rechecks the exact file hash and revisions, then uses the manual shipping transition/audit path atomically. Same tracking reimports are no-ops, including delivered orders. Conflicting/reused tracking, repeated/unknown/non-confirmed orders, simulation/erased-contact orders and multiple destinations are rejected. Declared dates are UTC+8 audit remarks, not backdated event timestamps.
 

@@ -1,6 +1,23 @@
 import { messages } from '../shared/i18n.js';
 const locales = ['en', 'ms', 'zh-Hans', 'vi', 'th', 'ja', 'ko'];
 const rows = [
+  ['importAction_ship', 'Mark shipped', 'Tandakan dihantar', '标记已发货', 'Đánh dấu đã gửi', 'ทำเครื่องหมายว่าส่งแล้ว', '発送済みにする', '발송됨으로 표시'],
+  ['importAction_unchanged', 'Unchanged', 'Tiada perubahan', '无更改', 'Không thay đổi', 'ไม่มีการเปลี่ยนแปลง', '変更なし', '변경 없음'],
+  ['importAction_error', 'Needs correction', 'Perlu pembetulan', '需要修正', 'Cần sửa', 'ต้องแก้ไข', '修正が必要', '수정 필요'],
+  ['trackingDetails', 'Details', 'Butiran', '详情', 'Chi tiết', 'รายละเอียด', '詳細', '상세'],
+  ['trackingError_INVALID', 'Invalid value', 'Nilai tidak sah', '无效值', 'Giá trị không hợp lệ', 'ค่าไม่ถูกต้อง', '無効な値', '잘못된 값'],
+  ['trackingError_DUPLICATE_ORDER', 'Repeated order', 'Pesanan berulang', '重复订单', 'Đơn trùng lặp', 'คำสั่งซื้อซ้ำ', '注文の重複', '중복 주문'],
+  ['trackingError_ORDER_NOT_FOUND', 'Order not found', 'Pesanan tidak ditemui', '找不到订单', 'Không tìm thấy đơn', 'ไม่พบคำสั่งซื้อ', '注文が見つかりません', '주문을 찾을 수 없음'],
+  ['trackingError_MULTI_DESTINATION_UNSUPPORTED', 'Multiple destinations unsupported', 'Berbilang destinasi tidak disokong', '不支持多个收货地址', 'Không hỗ trợ nhiều điểm giao', 'ไม่รองรับหลายปลายทาง', '複数配送先は非対応', '여러 배송지 지원 안 됨'],
+  ['trackingError_ORDER_NOT_ELIGIBLE', 'Order not eligible', 'Pesanan tidak layak', '订单不符合条件', 'Đơn không đủ điều kiện', 'คำสั่งซื้อไม่เข้าเกณฑ์', '対象外の注文', '대상 주문 아님'],
+  ['trackingError_TRACKING_CONFLICT', 'Existing tracking differs', 'Penjejakan sedia ada berbeza', '现有物流信息不同', 'Vận đơn hiện tại khác', 'ข้อมูลติดตามเดิมต่างกัน', '既存の追跡情報と異なります', '기존 배송 추적과 다름'],
+  ['trackingError_INVALID_STATUS', 'Order is not confirmed', 'Pesanan belum disahkan', '订单未确认', 'Đơn chưa xác nhận', 'คำสั่งซื้อยังไม่ยืนยัน', '注文は未確定です', '확정되지 않은 주문'],
+  ['trackingError_STALE_REVISION', 'Order changed; preview again', 'Pesanan berubah; pratonton semula', '订单已更改；请重新预览', 'Đơn đã đổi; xem trước lại', 'คำสั่งซื้อเปลี่ยนแล้ว ดูตัวอย่างอีกครั้ง', '注文が変更されました。再プレビューしてください', '주문 변경됨. 다시 미리보세요'],
+  ['trackingError_INVALID_DATE', 'Invalid shipped date', 'Tarikh penghantaran tidak sah', '发货日期无效', 'Ngày gửi không hợp lệ', 'วันที่ส่งไม่ถูกต้อง', '発送日が無効です', '잘못된 발송일'],
+  ['trackingError_TRACKING_REUSED', 'Tracking assigned to another order', 'Penjejakan digunakan pesanan lain', '物流单号已用于其他订单', 'Vận đơn thuộc đơn khác', 'ข้อมูลติดตามใช้กับคำสั่งซื้ออื่นแล้ว', '別の注文で使用中の追跡番号', '다른 주문에 사용된 배송 추적'],
+  ['trackingSource', 'Source column', 'Lajur sumber', '来源列', 'Cột nguồn', 'คอลัมน์ต้นทาง', '元の列', '원본 열'],
+  ['trackingIgnored', 'Ignored columns', 'Lajur diabaikan', '已忽略的列', 'Cột bỏ qua', 'คอลัมน์ที่ละเว้น', '無視した列', '무시된 열'],
+  ['trackingShippedDate', 'Shipped date', 'Tarikh penghantaran', '发货日期', 'Ngày gửi hàng', 'วันที่ส่ง', '発送日', '발송일'],
   ['trackingPrevious', 'Previous', 'Sebelumnya', '上一页', 'Trước', 'ก่อนหน้า', '前へ', '이전'],
   ['trackingNext', 'Next', 'Seterusnya', '下一页', 'Tiếp', 'ถัดไป', '次へ', '다음'],
   ['trackingOrder', 'Order number', 'Nombor pesanan', '订单号', 'Mã đơn', 'หมายเลขคำสั่งซื้อ', '注文番号', '주문번호'],

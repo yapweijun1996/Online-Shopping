@@ -3,15 +3,22 @@ import { FieldError, boundedText } from './validation.js';
 import { parseCsv, toCsv } from './csv.js';
 import { applySellerDecision } from './seller-orders.js';
 
-const columns = new Map([['order number', 'orderNo'], ['carrier', 'carrier'], ['tracking number', 'trackingNo'], ['shipped date', 'shippedDate']]);
-const carriers = new Map(['Ninja Van', 'J&T Express', 'Pos Laju', 'DHL eCommerce', 'Flash Express', 'SPX Express'].map((name) => [name.toLowerCase(), name]));
+export const TRACKING_HEADER_ALIASES = Object.freeze({
+  orderNo: Object.freeze(['Order number', 'Order No', 'Order #', 'Order Ref', 'Reference', 'Your Reference']),
+  trackingNo: Object.freeze(['Tracking Number', 'Tracking No', 'Tracking', 'AWB', 'AWB No', 'Consignment No', 'Consignment Note', 'Waybill']),
+  carrier: Object.freeze(['Carrier', 'Courier', 'Courier Name', 'Service Provider']),
+  shippedDate: Object.freeze(['Shipped Date', 'Ship Date', 'Dispatch Date', 'Date Shipped']),
+});
+const normalizeHeader = (value) => value.trim().toLowerCase().replace(/[\p{P}\p{S}\s_]+/gu, '');
+const columns = new Map(Object.entries(TRACKING_HEADER_ALIASES).flatMap(([field, aliases]) => aliases.map((alias) => [normalizeHeader(alias), field])));
+const carriers = new Map(['Ninja Van', 'J&T Express', 'Pos Laju', 'DHL eCommerce', 'Flash Express', 'SPX Express', 'EasyParcel', 'Lalamove', 'GDex', 'Skynet', 'Best Express', 'Citylink Express', 'Pos Malaysia'].map((name) => [name.toLowerCase(), name]));
 carriers.set('j&t', 'J&T Express');
 const canonicalCarrier = (value) => carriers.get(value.toLowerCase()) ?? value;
 const day = (instant) => new Date(Date.parse(instant) + 8 * 3600_000).toISOString().slice(0, 10);
 const fail = (row, field, code, message) => row.errors.push({ field, code, message });
 const digest = async (value) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))), (byte) => byte.toString(16).padStart(2, '0')).join('');
 
-export function trackingRows(csv) {
+function parseTracking(csv) {
   if (typeof csv !== 'string' || !csv.trim()) throw new FieldError('csv', 'Send a CSV file.');
   if (csv.length > 1_000_000) throw new ApiError(413, 'PAYLOAD_TOO_LARGE', 'The file exceeds 1,000,000 characters.');
   let table;
@@ -20,12 +27,14 @@ export function trackingRows(csv) {
     if (error.message.includes('more than 500')) throw new ApiError(413, 'TOO_MANY_ROWS', error.message);
     throw error;
   }
-  const header = (table.shift() ?? []).map((name) => columns.get(name.trim().replace(/[A-Z]/g, (c) => c.toLowerCase())));
-  if (header.some((value) => !value) || new Set(header).size !== header.length || !['orderNo', 'carrier', 'trackingNo'].every((key) => header.includes(key))) {
-    throw new FieldError('csv', 'Use Order number, Carrier, Tracking number and optional Shipped date; duplicate or unknown columns are not accepted.');
+  const source = (table.shift() ?? []).map((name) => name.trim());
+  const header = source.map((name) => columns.get(normalizeHeader(name)));
+  const recognized = header.filter(Boolean);
+  if (new Set(recognized).size !== recognized.length || !['orderNo', 'carrier', 'trackingNo'].every((key) => header.includes(key))) {
+    throw new FieldError('csv', 'Require Order number, Carrier and Tracking number (accepted aliases allowed); multiple columns mapping to one field are ambiguous.');
   }
   if (!table.length) throw new FieldError('csv', 'The file needs at least one tracking row.');
-  return table.map((cells, index) => {
+  const rows = table.map((cells, index) => {
     if (cells.length !== header.length) throw new FieldError('csv', `Record ${index + 2} has the wrong number of columns.`);
     const row = { line: index + 2, action: 'error', changes: [], errors: [], warnings: [] };
     for (const [field, maximum] of [['orderNo', 40], ['carrier', 40], ['trackingNo', 60], ['shippedDate', 10]]) {
@@ -40,10 +49,13 @@ export function trackingRows(csv) {
     row.carrier = canonicalCarrier(row.carrier);
     return row;
   });
+  return { rows, sourceHeaders: Object.fromEntries(header.flatMap((field, index) => field ? [[field, source[index]]] : [])), ignoredColumns: source.filter((_, index) => !header[index]) };
 }
 
+export const trackingRows = (csv) => parseTracking(csv).rows;
+
 async function plan(database, csv, expected) {
-  const rows = trackingRows(csv);
+  const { rows, sourceHeaders, ignoredColumns } = parseTracking(csv);
   const orders = new Map();
   const names = [...new Set(rows.map((row) => row.orderNo).filter(Boolean))];
   for (let start = 0; start < names.length; start += 400) {
@@ -89,7 +101,7 @@ async function plan(database, csv, expected) {
     if (rows.some((other) => other !== row && other.orderNo !== row.orderNo && other.carrier === row.carrier && other.trackingNo === row.trackingNo) || assigned.some((other) => other.id !== row.id && canonicalCarrier(other.tracking_carrier ?? '') === row.carrier && other.tracking_no === row.trackingNo)) fail(row, 'trackingNo', 'TRACKING_REUSED', 'This carrier and tracking number are assigned to another order.');
     if (row.errors.length) row.action = 'error';
   }
-  return { rows, summary: { ship: rows.filter((r) => r.action === 'ship').length, unchanged: rows.filter((r) => r.action === 'unchanged').length, errors: rows.filter((r) => r.action === 'error').length }, expectedRevisions: manifest, hiddenRows: 0, planHash: await digest(csv) };
+  return { rows, sourceHeaders, ignoredColumns, summary: { ship: rows.filter((r) => r.action === 'ship').length, unchanged: rows.filter((r) => r.action === 'unchanged').length, errors: rows.filter((r) => r.action === 'error').length }, expectedRevisions: manifest, hiddenRows: 0, planHash: await digest(csv) };
 }
 
 export const presentTrackingPlan = (value) => ({ ...value, rows: value.rows.map(({ id: _id, ...row }) => row),
