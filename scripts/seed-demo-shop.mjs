@@ -1,4 +1,5 @@
-import { readFile } from 'node:fs/promises';
+import { realpath } from 'node:fs/promises';
+import { readSeedFile, validateSeedJpeg } from './seed-image-input.mjs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readConfig } from '../src/config.js';
@@ -12,7 +13,8 @@ import { trackCreate } from '../src/product-history.js';
 import { getCompanySettings, listCategories, createCategory } from '../src/settings.js';
 
 export async function seedDemoShop(store, { data, images, shopName, dryRun = false }, report = console.log) {
-  const source = JSON.parse(await readFile(data, 'utf8'));
+  const source = JSON.parse((await readSeedFile(data, 1024 * 1024)).toString('utf8'));
+  const imageRoot = await realpath(images);
   if (!Array.isArray(source.products)) throw new Error('Data must contain a products array.');
   const name = shopName === undefined ? undefined : boundedText(shopName, 'shopName', 80);
   const currency = (await getCompanySettings(store)).defaultCurrency;
@@ -26,24 +28,32 @@ export async function seedDemoShop(store, { data, images, shopName, dryRun = fal
     if (seen.has(sku)) throw new Error(`Duplicate input SKU: ${sku}`);
     seen.add(sku);
     const label = boundedText(item.category, 'category', 80);
-    const code = label.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '');
-    if (!/^[A-Z][A-Z0-9-]{0,79}$/.test(code)) throw new Error(`Invalid category slug for ${sku}.`);
-    const existing = planned.get(code) || categories.find((category) => category.label.toLowerCase() === label.toLowerCase());
-    if (existing && (existing.code !== code || existing.label !== label || !existing.active)) throw new Error(`Category conflict for ${sku}.`);
-    planned.set(code, { code, label, active: true });
+    const matches = [...planned.values()].filter(category => category.label.toLowerCase() === label.toLowerCase());
+    if (matches.length > 1 || matches.some(category => !category.active)) throw new Error(`Category conflict for ${sku}.`);
+    const code = matches[0]?.code ?? label.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '');
+    if (!matches.length) {
+      if (!/^[A-Z][A-Z0-9-]{0,79}$/.test(code)) throw new Error(`Invalid category slug for ${sku}.`);
+      if (planned.has(code)) throw new Error(`Category conflict for ${sku}.`);
+      planned.set(code, { code, label, active: true });
+    }
     const photos = [];
     for (let view = 1; view <= 3; view++) {
       const load = async (suffix, optional) => {
         let bytes;
-        try { bytes = await readFile(resolve(images, sku, `view-${view}${suffix}.jpg`)); }
-        catch (error) { if (optional && error.code === 'ENOENT') return null; throw new Error(`${sku} view-${view}${suffix}: image cannot be read.`); }
+        try {
+          bytes = await readSeedFile(resolve(imageRoot, sku, `view-${view}${suffix}.jpg`), optional ? 80 * 1024 : 512 * 1024, imageRoot);
+          validateSeedJpeg(bytes);
+        } catch (error) {
+          if (optional && error.code === 'ENOENT') return null;
+          throw new Error(`${sku} view-${view}${suffix}: invalid JPEG or image exceeds size limit or is not a contained regular file.`);
+        }
         const url = `data:image/jpeg;base64,${bytes.toString('base64')}`;
-        try { (optional ? decodeThumbnail : decodeProductImage)(url); }
-        catch { throw new Error(`${sku} view-${view}${suffix}: invalid JPEG or image exceeds size limit.`); }
+        (optional ? decodeThumbnail : decodeProductImage)(url);
         return url;
       };
       photos.push({ imageDataUrl: await load('', false), thumbDataUrl: await load('.thumb', true) });
     }
+    if (new Set(photos.map(photo => photo.imageDataUrl)).size !== photos.length) throw new Error(`${sku}: duplicate image views.`);
     if (!Number.isSafeInteger(item.stock)) throw new Error(`${sku}: stock must be an integer.`);
     const input = { sku, name: item.name, description: item.description, category: code, priceMinor: item.priceMinor,
       currency: item.currency, stockQuantity: item.stock, active: true, ...photos[0] };
@@ -61,7 +71,8 @@ export async function seedDemoShop(store, { data, images, shopName, dryRun = fal
       continue;
     }
     const needsCategory = !available.has(input.category);
-    if (!dryRun) await trackCreate(store, 'seed-demo-shop', async () => {
+    let persisted;
+    if (!dryRun) persisted = await trackCreate(store, 'seed-demo-shop', async () => {
       if (needsCategory) {
         const { code, label } = planned.get(input.category);
         await createCategory(store, { code, label });
@@ -72,10 +83,10 @@ export async function seedDemoShop(store, { data, images, shopName, dryRun = fal
     });
     if (needsCategory) { available.add(input.category); summary.categoriesCreated++; }
     summary.created++;
-    summary.imagesAdded += photos.length;
+    summary.imagesAdded += dryRun ? photos.length : persisted.images.length;
     report(`${dryRun ? 'Would create' : 'Created'} ${input.sku}`);
   }
-  if (name !== undefined) {
+  if (name !== undefined && name !== oldName) {
     if (!dryRun) await store.run('UPDATE shop_setup SET shop_name = ? WHERE id = 1', name);
     report(`${dryRun ? 'Would rename' : 'Shop name'}: ${JSON.stringify(oldName)} -> ${JSON.stringify(name)}`);
   }

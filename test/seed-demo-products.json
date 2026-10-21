@@ -1,0 +1,146 @@
+{
+ "shopName": "Demo Mart Malaysia",
+ "currency": "MYR",
+ "products": [
+  {
+   "sku": "DEMO-101",
+   "name": "Ultrabook Laptop 14\" (i5, 16GB, 512GB)",
+   "category": "Computers & IT",
+   "priceMinor": 289900,
+   "currency": "MYR",
+   "stock": 15,
+   "description": "Slim 14-inch ultrabook with a 12th-gen i5, 16GB RAM and a 512GB NVMe SSD. Lightweight aluminium body, all-day battery, backlit keyboard.",
+   "photoSubject": "slim silver 14-inch ultrabook laptop"
+  },
+  {
+   "sku": "DEMO-102",
+   "name": "Gaming Laptop 15.6\" (RTX, 144Hz)",
+   "category": "Computers & IT",
+   "priceMinor": 499900,
+   "currency": "MYR",
+   "stock": 6,
+   "description": "15.6-inch 144Hz gaming laptop with a dedicated RTX graphics card, 16GB RAM and 1TB SSD. RGB keyboard and dual-fan cooling.",
+   "photoSubject": "black 15.6-inch gaming laptop with RGB keyboard glow"
+  },
+  {
+   "sku": "DEMO-103",
+   "name": "27\" 4K IPS Monitor",
+   "category": "Computers & IT",
+   "priceMinor": 119900,
+   "currency": "MYR",
+   "stock": 12,
+   "description": "27-inch 4K IPS monitor with 99% sRGB, thin bezels, height-adjustable stand and USB-C power delivery.",
+   "photoSubject": "27-inch 4K IPS monitor on an adjustable stand showing a colourful landscape"
+  },
+  {
+   "sku": "DEMO-104",
+   "name": "Wireless Mechanical Keyboard",
+   "category": "Computers & IT",
+   "priceMinor": 25900,
+   "currency": "MYR",
+   "stock": 40,
+   "description": "Compact 75% wireless mechanical keyboard with hot-swappable switches, Bluetooth and 2.4GHz, USB-C charging.",
+   "photoSubject": "compact white 75% wireless mechanical keyboard with keycaps"
+  },
+  {
+   "sku": "DEMO-105",
+   "name": "Wireless Ergonomic Mouse",
+   "category": "Computers & IT",
+   "priceMinor": 8900,
+   "currency": "MYR",
+   "stock": 60,
+   "description": "Ergonomic wireless mouse, silent clicks, adjustable 4000 DPI and a rechargeable battery that lasts weeks.",
+   "photoSubject": "ergonomic wireless computer mouse, matte grey"
+  },
+  {
+   "sku": "DEMO-106",
+   "name": "USB-C 7-in-1 Hub",
+   "category": "Computers & IT",
+   "priceMinor": 12900,
+   "currency": "MYR",
+   "stock": 50,
+   "description": "Aluminium USB-C hub with 4K HDMI, 2x USB-A 3.0, SD and microSD readers and 100W pass-through charging.",
+   "photoSubject": "aluminium USB-C hub with multiple ports"
+  },
+  {
+   "sku": "DEMO-107",
+   "name": "1TB Portable SSD",
+   "category": "Computers & IT",
+   "priceMinor": 38900,
+   "currency": "MYR",
+   "stock": 25,
+   "description": "Pocket-size 1TB portable SSD with up to 1050MB/s read speed, shock-resistant, USB-C with a USB-A adapter.",
+   "photoSubject": "small portable SSD drive with a USB-C cable"
+  },
+  {
+   "sku": "DEMO-108",
+   "name": "1080p Webcam with Microphone",
+   "category": "Computers & IT",
+   "priceMinor": 14900,
+   "currency": "MYR",
+   "stock": 30,
+   "description": "Full HD 1080p webcam with autofocus, dual noise-cancelling microphones and a privacy shutter.",
+   "photoSubject": "1080p webcam clipped on top of a monitor"
+  },
+  {
+   "sku": "DEMO-109",
+   "name": "Digital Rice Cooker 1.8L",
+   "category": "Home & Living",
+   "priceMinor": 19900,
+   "currency": "MYR",
+   "stock": 20,
+   "description": "1.8L digital rice cooker with 8 cooking programs, keep-warm function and a non-stick inner pot.",
+   "photoSubject": "white digital rice cooker with a control panel"
+  },
+  {
+   "sku": "DEMO-110",
+   "name": "Air Fryer 5L",
+   "category": "Home & Living",
+   "priceMinor": 32900,
+   "currency": "MYR",
+   "stock": 18,
+   "description": "5-litre air fryer with 8 presets, digital touch panel and a dishwasher-safe basket for crispy meals with little oil.",
+   "photoSubject": "black 5-litre air fryer with a digital panel"
+  },
+  {
+   "sku": "DEMO-111",
+   "name": "Cordless Stick Vacuum",
+   "category": "Home & Living",
+   "priceMinor": 49900,
+   "currency": "MYR",
+   "stock": 10,
+   "description": "Lightweight cordless vacuum with strong suction, HEPA filtration, 45 minutes runtime and wall-mount dock.",
+   "photoSubject": "cordless stick vacuum cleaner standing on its dock"
+  },
+  {
+   "sku": "DEMO-112",
+   "name": "Bamboo Towel Set (4 pcs)",
+   "category": "Home & Living",
+   "priceMinor": 7900,
+   "currency": "MYR",
+   "stock": 45,
+   "description": "Soft, quick-dry bamboo fibre towel set: 2 bath towels and 2 hand towels. Gentle on skin and anti-bacterial.",
+   "photoSubject": "folded stack of soft grey bamboo towels"
+  },
+  {
+   "sku": "DEMO-113",
+   "name": "Stackable Storage Boxes (3 pcs)",
+   "category": "Home & Living",
+   "priceMinor": 6900,
+   "currency": "MYR",
+   "stock": 35,
+   "description": "Set of 3 clear stackable storage boxes with lids. Keeps wardrobes, pantries and shelves tidy.",
+   "photoSubject": "three clear stackable storage boxes with lids"
+  },
+  {
+   "sku": "DEMO-114",
+   "name": "Stainless Steel Thermos 750ml",
+   "category": "Home & Living",
+   "priceMinor": 5900,
+   "currency": "MYR",
+   "stock": 55,
+   "description": "Double-wall vacuum insulated 750ml thermos. Keeps drinks hot for 12 hours and cold for 24 hours. BPA-free lid.",
+   "photoSubject": "stainless steel vacuum thermos bottle"
+  }
+ ]
+}
