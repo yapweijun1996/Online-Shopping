@@ -343,3 +343,24 @@ Release requirements, not executed production evidence. GCP pauses protected cha
 10. Enabling later requires reviewed fixed Compose/runtime/controller policy: neither backend Compose forwards MCP variables, and GCP runtime rejects added keys. Install reviewed OAuth/MCP/discovery proxy routes. Prove TLS/Host/trusted IP overwrite, consent/CSRF/PKCE, redaction, rotation/reuse/revoke/account invalidation and flag-off denial with fictional data and each real vendor.
 11. After accepted manual release, use the Updater-class baseline procedure above to verify CI-approved main, source mounts, runtime, health and protected/local fingerprints, then save the new baseline and restart the timer. Keep schema24 previous images ineligible for image-only recovery. Schedule per-shop lifecycle cleanup, dormant audit retention and resource monitoring. Installed-controller identity, production migration/restore and vendor acceptance remain unverified here.
 
+## Getting a SuperAdmin claim link yourself
+
+While no SuperAdmin exists and `PLATFORM_ADMIN_CLAIM_ENABLED=1`, run on your own computer (logged-in `gcloud` with IAP SSH access to the VM):
+
+```sh
+scripts/gcp-claim-link.sh
+```
+
+It restarts only the backend container (stop-before-start, so every older link is invalidated), waits for health and prints the single `platform.claim.issued` log line. Open the printed `https://<shop host>/setup/#<code>` yourself within 30 minutes and register (email, username, password), then sign in at `https://<seller host>/platform/` and enrol TOTP. The code is a bearer secret: do not paste it anywhere. If a SuperAdmin already exists the script reports that no claim line exists. Override the target with `GCP_PROJECT`, `GCP_ZONE`, `GCP_INSTANCE`.
+
+## Resetting a default-shop seller password yourself
+
+The SuperAdmin console resets seller passwords of tenant shops only; the default shop's accounts are managed on the host. To set a temporary password for the default shop Owner (`owner`) or another of its seller accounts, run on your own computer:
+
+```sh
+scripts/gcp-reset-seller-password.sh            # Owner "owner"
+scripts/gcp-reset-seller-password.sh someuser   # another seller account
+```
+
+You type the password twice (12-256 characters, not containing the username); it is not echoed, never placed on a local or remote command line, and only travels over the IAP SSH session's standard input into the backend container's environment, where `scripts/reset-seller-password.js` applies it. The account's sessions are ended and it must choose a new password at the next sign-in on `https://<seller host>/`. The script prints the result line and exits non-zero on failure (verified 2026-10-21 against live with a nonexistent username: `Could not reset: No account has this username.`, no account changed).
+

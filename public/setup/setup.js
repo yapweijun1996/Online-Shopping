@@ -1,7 +1,13 @@
 let code = location.hash.slice(1);
 history.replaceState(null, '', location.pathname + location.search);
 const form = document.querySelector('#claim'), status = document.querySelector('#status');
-const error = document.querySelector('#error'), button = form.querySelector('button');
+const error = document.querySelector('#error'), button = form.querySelector('button[type=submit]');
+const show = document.querySelector('#show-password');
+show.addEventListener('click', () => {
+  const visible = form.elements.password.type === 'password';
+  form.elements.password.type = form.elements.confirm.type = visible ? 'text' : 'password';
+  show.textContent = visible ? 'Hide passwords' : 'Show passwords'; show.setAttribute('aria-pressed', String(visible));
+});
 const unavailable = () => { code = ''; form.hidden = true; status.textContent = 'This page is not available'; };
 const failed = () => { error.textContent = 'Unable to complete setup. Check your details or sign in to the platform if you already submitted them.'; error.hidden = false; error.focus(); };
 let pending = false;
@@ -21,6 +27,9 @@ form.addEventListener('submit', async (event) => {
     const result = await response.json();
     const target = new URL(result.nextUrl);
     if (target.protocol !== 'https:' || target.pathname !== '/platform/' || target.search || target.hash || target.username || target.password) throw new Error('target');
+    // Keep the throwaway loopback QA edge on HTTP; public console links remain HTTPS.
+    const loopback = host => ['localhost', '127.0.0.1', '[::1]'].includes(host);
+    if (location.protocol === 'http:' && loopback(location.hostname) && loopback(target.hostname) && location.port === target.port) target.protocol = 'http:';
     code = ''; form.reset(); form.hidden = true;
     status.textContent = 'Account created. Sign in to finish authenticator setup.';
     const link = document.querySelector('#continue'); link.href = target.href; link.hidden = false;

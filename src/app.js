@@ -17,6 +17,7 @@ import { exportProductsCsv } from './product-export.js';
 import { IMPORT_MAX_CHARS, importProducts, planImport, presentPlan } from './product-import.js';
 import { bulkSetActive, listProductHistory, trackCreate, trackUpdate } from './product-history.js';
 import { exportOrdersCsv } from './order-export.js';
+import { exportShippingList } from './order-shipping-export.js';
 import { trackingImport } from './tracking-import.js';
 import { OPTION_LIMITS } from './option-limits.js';
 import { createOptionType, createOptionValue, listOptionTypes, updateOptionType, updateOptionValue } from './options.js';
@@ -389,6 +390,14 @@ async function createTenantApi({ store, config, tenantId, serveStatic = null, wh
     }
     if (method === 'GET' && pathname === '/api/v1/seller/orders/summary') return json(200, await pendingOrderSummary(store));
     if (method === 'GET' && pathname === '/api/v1/seller/dashboard') { allow('figures.read'); return json(200, await dashboardFigures(store)); }
+    if (method === 'GET' && pathname === '/api/v1/seller/orders/shipping-list.csv') {
+      allow('orders.fulfil');
+      if (quickLogin) throw new ApiError(403, 'FORBIDDEN', 'Export is not available on a sample site.');
+      const { csv, skipped } = await exportShippingList(store, url.searchParams);
+      return new Response(csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff', 'X-Skipped-Erased': String(skipped),
+        'Content-Disposition': `attachment; filename="shipping-list-${new Date().toISOString().slice(0, 10)}.csv"` } });
+    }
     if (method === 'GET' && pathname === '/api/v1/seller/orders/export.csv') {
       allow('data.export');
       // The file holds buyer names, numbers and emails, so a passwordless sample site must not offer it.

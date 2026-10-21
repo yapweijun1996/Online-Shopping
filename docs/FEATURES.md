@@ -63,6 +63,12 @@ After confirmation an order moves **Confirmed → Shipped → Delivered**; a con
 
 Buyers see the new status, the courier and the tracking number in My orders through the existing status credential; nothing else about the order is exposed. There is no automatic courier booking, label or tracking sync yet (see [INTEGRATIONS.md](INTEGRATIONS.md)).
 
+### Shipping list export (Seller v142)
+
+Sales Order Confirmation offers **Export shipping list** beside the accounting export for Owner, Manager and Staff. It uses current filters (CONFIRMED by default), exports one row per delivery across list pages, and refuses more than 500 parcels. Erased-contact rows are skipped; the response header counts skipped parcels. Passwordless sample sites cannot export.
+
+Recipient/address details, per-parcel item summaries and units, buyer email, repeated full order total and UTC submission time are included; weight is blank. Fill actual packed weight, then copy columns into your courier's bulk upload template. Keep phone/postcode/order identifiers as spreadsheet text; protective apostrophes neutralize formulas. This is not an EasyParcel-certified file or automatic booking. Export never marks orders shipped. Import tracking only after dispatch; the existing importer still rejects multi-destination orders.
+
 ### Bulk tracking CSV import (Seller v141)
 
 Sales Order Confirmation offers **Download tracking template** and **Import tracking CSV** to Owner, Manager and Staff, except on passwordless sample sites. Book parcels externally and import only after dispatch, not merely booking/AWB allocation. Courier exports can use the [documented header aliases](API.md) in any order. Fully recognised, unambiguous headers preview directly. Missing, ambiguous or extra columns open a labelled column-mapping step with recognised fields preselected. Select distinct columns for order number, carrier and tracking number, plus an optional shipped date. When no carrier header is recognised, a default carrier (1–40 characters) can fill every row instead. Mapping drops extra columns and sends the unchanged four-column template format to the existing API; server validation, plan hash and commit rules are unchanged. The last column selection for an identical header signature is remembered in memory only; carrier text is not remembered. This is not a verified provider-native round trip.

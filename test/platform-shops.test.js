@@ -25,6 +25,10 @@ test('shop create concurrency, CAS actions, aliases, deletion and one-time selle
   tenant = (await shops.mutate(tenant.id, 'cancel-deletion', { expectedRevision: tenant.revision }, 'owner')).tenant; assert.equal(tenant.status, 'SUSPENDED');
   tenant = (await shops.mutate(tenant.id, 'rename', { expectedRevision: tenant.revision, code: 'renamed', name: 'Fictional Renamed' }, 'owner')).tenant;
   assert.equal((await f.platform.get("SELECT tenant_id FROM tenant_code_alias WHERE code='alpha'")).tenant_id, tenant.id);
+  const renamed = (await shops.list()).items.find(item => item.id === tenant.id);
+  assert.equal(renamed.shopUrl, 'https://shop.example.test/renamed/');
+  assert.equal(renamed.sellerUrl, 'https://seller.example.test/renamed/');
+  assert.equal((await shops.detail(tenant.id)).shopUrl, renamed.shopUrl);
   await assert.rejects(shops.create(input, 'owner'), /already used/);
   const reset = await shops.mutate(tenant.id, 'reset-seller-password', { expectedRevision: tenant.revision }, 'owner');
   assert.ok(reset.sellerPassword); assert.equal(await authenticate(store, input.sellerUsername, made.sellerPassword), null);
@@ -42,6 +46,9 @@ test('default shop cannot be changed and all statuses count toward the host limi
   const shops = createShopManagement({ ...f, registry: { invalidate() {} }, publicOrigin: 'https://shop.example.test', sellerOrigin: 'https://seller.example.test' });
   const id = '00000000-0000-4000-8000-000000000000';
   await f.platform.run("INSERT INTO tenant(id,code,name,status,currency,is_default,created_at,updated_at) VALUES (?,'default','Current','ACTIVE','MYR',1,?,?)", id, stamp, stamp);
+  const current = (await shops.list()).items.find(item => item.id === id);
+  assert.equal(current.shopUrl, 'https://shop.example.test/shop/');
+  assert.equal(current.sellerUrl, 'https://seller.example.test/seller/');
   await assert.rejects(shops.mutate(id, 'suspend', { expectedRevision: 0 }, 'owner'), /host/);
   // Limit fixture rows hold sealed synthetic credentials but create no databases.
   for (let i = 0; i < 19; i++) {

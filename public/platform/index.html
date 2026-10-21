@@ -6,12 +6,21 @@
   <meta name="color-scheme" content="light dark">
   <title>Shop platform</title>
   <link rel="stylesheet" href="./style.css">
+  <script src="./vendor/qrcode.js" defer></script>
   <script type="module" src="./app.js"></script>
 </head>
-<body>
+<body class="auth">
   <a class="skip-link" href="#main">Skip to content</a>
-  <header><div><p class="eyebrow">Online Shopping</p><h1>Shop platform</h1></div><nav id="navigation" aria-label="Platform" hidden></nav></header>
-  <main id="main" tabindex="-1">
+  <header class="topbar">
+    <button class="icon-button mobile-only" id="open-menu" type="button" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+    <a class="brand" href="./"><img class="brand-mark" src="./studio-leaf.svg" alt=""><span>Shop platform</span></a>
+    <p id="identity" class="shop-context" hidden></p>
+    <div class="account-wrap"><button class="account-button" id="account-button" type="button" aria-expanded="false" aria-controls="account-menu"><span class="avatar" aria-hidden="true">S</span>Account ⌄</button><div class="account-menu" id="account-menu" hidden></div></div>
+  </header>
+  <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+  <aside id="sidebar" class="sidebar" hidden><div class="sidebar-head"><button id="collapse-nav" class="sidebar-brand" type="button" aria-label="Collapse navigation" aria-controls="sidebar" aria-expanded="true"><img class="brand-mark" src="./studio-leaf.svg" alt=""><span>Shop platform</span><svg class="brand-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button><div class="sidebar-brand-static"><img class="brand-mark" src="./studio-leaf.svg" alt=""><span>Shop platform</span></div><button id="close-menu" type="button" class="icon-button mobile-only" aria-label="Close navigation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg></button></div><nav id="navigation" aria-label="Platform" hidden></nav></aside>
+  <main id="main" class="main" tabindex="-1">
+    <div class="page-heading"><p class="eyebrow">SuperAdmin portal</p><h1 id="page-title">Shop platform</h1></div>
     <p id="notice" role="status" aria-live="polite"></p>
     <p id="error" role="alert" tabindex="-1" hidden></p>
     <section id="content" aria-label="Platform workspace"><p>Loading…</p></section>
@@ -19,8 +28,10 @@
   <dialog id="secret-dialog" aria-labelledby="secret-title">
     <h2 id="secret-title">Save these details now</h2>
     <p>These details are shown once. Store them safely before closing.</p>
-    <pre id="secret-value"></pre>
-    <form method="dialog"><button autofocus>Close and clear</button></form>
+    <dl id="secret-value"></dl>
+    <div id="secret-tools" class="actions"></div>
+    <p id="secret-notice" role="status" aria-live="polite"></p>
+    <form method="dialog"><button class="primary-button" autofocus>Close and clear</button></form>
   </dialog>
 </body>
 </html>

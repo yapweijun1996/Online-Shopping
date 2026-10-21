@@ -37,6 +37,14 @@ test('platform host separation, Origin and CSRF on every write, restricted endpo
   }
   assert.equal((await handle(new Request('https://admin.example.test/shop/'))).status, 404);
   assert.equal((await handle(new Request('https://admin.example.test/platform/'))).status, 200);
+  for (const path of ['/platform/style.css', '/platform/vendor/qrcode.js', '/platform/tokens.css', '/platform/appearance.css', '/platform/base.css']) {
+    const asset = await handle(new Request(`https://admin.example.test${path}`));
+    assert.equal(asset.status, 200, path);
+    assert.match(asset.headers.get('content-security-policy'), /script-src 'self'; style-src 'self'/);
+  }
+  for (const path of ['/shop/app.js', '/shared/modal.js', '/seller/', '/shop/tokens.css', '/shared/base.css', '/shared/appearance.css']) {
+    assert.equal((await handle(new Request(`https://admin.example.test${path}`))).status, 404, path);
+  }
   assert.equal((await call('/session')).status, 401);
   assert.equal((await call('/session', 'POST', { username: 'owner', password })).status, 403);
   const challenge = await call('/csrf'); cookie = challenge.headers.get('set-cookie').split(';')[0]; csrf = (await challenge.json()).csrfToken;
