@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { openTrackingImport } from '../public/seller/tracking-import.js';
 import { messages, languages } from '../public/shared/i18n.js';
 import { mutationsBusy } from '../public/shared/update-guard.js';
+import { readFile } from 'node:fs/promises';
 class Element extends EventTarget {
   constructor(tag) { super(); this.tagName = tag; this.children = []; this.textContent = ''; this.attributes = {}; }
   append(...nodes) { for (const node of nodes) { node.parent = this; this.children.push(node); } }
@@ -98,4 +99,30 @@ test('invalid UTF-8 tracking bytes clear the plan and cannot preview or commit',
 
 test('tracking copy is present in all seven locales', () => {
   for (const { code } of languages) for (const key of ['trackingImport', 'trackingTemplate', 'trackingIntro', 'trackingShipCount', 'trackingReport', 'trackingPreview', 'trackingUnknown', 'trackingDone']) assert.equal(typeof messages[code][key], 'string');
+});
+
+test('every server preview action and row error has human copy in every locale', async () => {
+  const source = await readFile(new URL('../src/tracking-import.js', import.meta.url), 'utf8');
+  const actions = new Set([...source.matchAll(/action:\s*'([^']+)'|row\.action\s*=\s*'([^']+)'/g)].map(match => match[1] || match[2]));
+  const errors = new Set([...source.matchAll(/fail\(row,\s*'[^']+',\s*'([^']+)'/g)].map(match => match[1]));
+  assert.deepEqual([...actions].sort(), ['error', 'ship', 'unchanged']);
+  for (const { code } of languages) for (const key of [
+    ...[...actions].map(action => `importAction_${action}`),
+    ...[...errors].map(error => `trackingError_${error}`), 'trackingDetails',
+  ]) {
+    assert.equal(typeof messages[code][key], 'string', `${code}: ${key}`);
+    assert.ok(messages[code][key].trim() && messages[code][key] !== key, `${code}: ${key}`);
+  }
+});
+
+test('unchanged preview shows human action and a scoped details column', async (t) => {
+  const ui = await fixture(t);
+  const plan = answer(1); plan.rows[0].action = 'unchanged';
+  plan.summary = { ship: 0, unchanged: 1, errors: 0 };
+  globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => plan });
+  await ui.choose();
+  assert.ok(ui.dialog.descendants().some(node => node.textContent === 'Unchanged · Courier · 000'));
+  const headings = ui.dialog.descendants().filter(node => node.tagName === 'th');
+  assert.equal(headings[2].textContent, 'Details');
+  assert.equal(headings[2].scope, 'col');
 });

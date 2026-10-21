@@ -53,12 +53,13 @@ export function openTrackingImport({ trigger, csrfToken, onUnauthorized, onImpor
       for (const [field, source] of Object.entries(plan.sourceHeaders ?? {})) result.append(node('p', `${t('trackingSource')}: ${t(labels[field])} ← ${source}`));
       if (plan.ignoredColumns?.length) result.append(node('p', `${t('trackingIgnored')}: ${plan.ignoredColumns.join(', ')}`));
       const table = node('table');
-      const head = node('tr'); for (const key of ['importLine', 'trackingOrder', 'trackingImport']) head.append(node('th', key === 'importLine' ? '#' : t(key))); table.append(head);
+      table.setAttribute('aria-label', t('trackingImport'));
+      const head = node('tr'); for (const key of ['importLine', 'trackingOrder', 'trackingDetails']) { const heading = node('th', key === 'importLine' ? '#' : t(key)); heading.scope = 'col'; head.append(heading); } table.append(head);
       for (const row of plan.rows.slice(page * 50, (page + 1) * 50)) {
         const line = node('tr');
         line.append(node('td', String(row.line)), node('td', row.orderNo));
-        const info = node('td', `${t(row.action === 'ship' ? 'shipOrder' : `importAction_${row.action}`)} · ${row.carrier} · ${row.trackingNo}`);
-        for (const error of row.errors) info.append(node('p', `${error.code}: ${error.message}`, 'import-error'));
+        const info = node('td', `${t(`importAction_${row.action}`)} · ${row.carrier} · ${row.trackingNo}`);
+        for (const error of row.errors) info.append(node('p', t(`trackingError_${error.code}`), 'import-error'));
         for (const warning of row.warnings) info.append(node('p', warning));
         for (const change of row.changes) {
           const label = { status: 'orderStatus', carrier: 'carrier', trackingNo: 'trackingNumberLabel' }[change.field];
@@ -69,7 +70,7 @@ export function openTrackingImport({ trigger, csrfToken, onUnauthorized, onImpor
       }
       result.append(summary, table);
       const firstErrors = plan.rows.filter((row) => row.errors.length).slice(0, 5);
-      if (firstErrors.length) result.prepend(node('p', firstErrors.map((row) => `#${row.line} ${row.orderNo}: ${row.errors.map((e) => e.code).join(', ')}`).join(' · '), 'import-error'));
+      if (firstErrors.length) result.prepend(node('p', firstErrors.map((row) => `#${row.line} ${row.orderNo}: ${row.errors.map((e) => t(`trackingError_${e.code}`)).join(', ')}`).join(' · '), 'import-error'));
     }
     controls();
   }

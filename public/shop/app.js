@@ -10,7 +10,7 @@ import { mountShopUpdates } from './update-view.js';
 import { draftSignature } from '../shared/update-guard.js';
 import { mountMobileNavigation } from './mobile-navigation.js';
 import { countryForCurrency, mountAddressBook } from './addresses.js';
-import { mountProfile } from './profile.js';
+import { mountProfile, updateProfileNotice } from './profile.js';
 import { createCartSelection } from './cart-selection.js';
 import { createContactHistory } from './history.js';
 import { mountProductDetail } from './product-detail.js';
@@ -271,6 +271,7 @@ async function loadCatalog(reset = true) {
     if ((shop.storageScope || shop.demoNamespace || '') !== globalThis.shopStorageNamespace) { location.reload(); return; }
     shopInfo = shop;
     mobileNavigation.setAutoHide(shop.mobileHideBarsOnScroll);
+    updateProfileNotice(shop);
     profilePage?.setCountry(countryForCurrency(shop.currency));
     addressBook?.render();
     checkoutPage?.refreshAddress();
@@ -980,6 +981,7 @@ byId('catalog-search').placeholder = t('searchProducts');
 // Resolve the server's demo revision before reading any browser-local data.
 // A failed initial request stays behind the existing retryable boot overlay.
 shopInfo = globalThis.shopBootstrapInfo || await api(apiUrl('v1/shop'));
+updateProfileNotice(shopInfo);
 globalThis.shopStorageNamespace = shopInfo.storageScope || shopInfo.demoNamespace || '';
 const [cartStore, openedOrderStore] = await Promise.all([createCartStore(), createLocalOrderStore()]);
 localOrderStore = openedOrderStore;
