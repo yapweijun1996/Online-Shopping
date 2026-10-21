@@ -34,6 +34,18 @@ test('pairing, binary persistence, restart and privacy', async t => {
   await session.auth.state.keys.set({ 'pre-key': { 0: null } });
   assert.deepEqual(await session.auth.state.keys.get('pre-key', ['0']), {});
 });
+test('control loss closes only the affected live session before any further claim', async t => {
+  const a = await setup(t), b = await setup(t);
+  const original = a.client.request.bind(a.client);
+  a.client.request = async (path, ...args) => {
+    if (path === '/v1/control') throw Object.assign(new Error('revoked'), { code: 'QR_REVOKED' });
+    return original(path, ...args);
+  };
+  await assert.rejects(a.session.tick(), { code: 'QR_REVOKED' });
+  assert.equal(a.sockets[0].ended, 1);
+  assert.equal(a.session.socket, null);
+  assert.equal(b.sockets[0].ended, 0);
+});
 test('AUTH_VERSION stops socket then reloads fresh snapshot before reconnect', async t => {
   const { db, session, sockets, advance } = await setup(t);
   db.version++;

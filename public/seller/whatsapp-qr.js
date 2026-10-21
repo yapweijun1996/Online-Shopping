@@ -1,7 +1,7 @@
 import qrcode from './vendor/qrcode.js';
 import { translate } from '../shared/i18n.js';
 import { confirmModal } from '../shared/modal.js';
-import { node, button, text, client, failureText, watch } from './whatsapp-qr-ui.js';
+import { node, button, text, client, failureText, policyFailure, watch } from './whatsapp-qr-ui.js';
 const path = 'integrations/whatsapp-qr';
 export function mountWhatsAppQr(root, { csrfToken, onUnauthorized, role = 'OWNER', encoder = qrcode, confirm = confirmModal }) {
   const section = node('section', null, 'settings-card whatsapp-qr-card'); section.hidden = true; root.append(section);
@@ -12,7 +12,7 @@ export function mountWhatsAppQr(root, { csrfToken, onUnauthorized, role = 'OWNER
     if (pairWaitingUntil && Date.now() >= pairWaitingUntil) { pairWaitingUntil = 0; render(); }
     updateCountdown();
     const pending = pairWaitingUntil > Date.now() || state && (state.desired === 'PAIR' && state.state === 'IDLE' || ['PAIRING','CONNECTING','RECONNECTING'].includes(state.state));
-    const interval = pending ? 2000 : state?.state === 'CONNECTED' && onScreen ? 15000 : Infinity;
+    const interval = pending ? 2000 : (state?.blocked || state?.state === 'CONNECTED' && onScreen) ? 15000 : Infinity;
     if (force || Date.now() - last >= interval) load();
   });
   const api = client({ csrfToken, onUnauthorized: () => { if (lifecycle.current()) onUnauthorized(); } });
@@ -33,6 +33,11 @@ export function mountWhatsAppQr(root, { csrfToken, onUnauthorized, role = 'OWNER
     section.hidden = !state.available; section.replaceChildren();
     if (section.hidden) return;
     const heading = node('h2', 'title'); heading.append(node('span', 'unofficial', 'status-badge')); section.append(heading);
+    if (state.blocked) {
+      const status = node('p', state.blocked); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite'); section.append(status); line.textContent = '';
+      if (focused) { status.tabIndex = -1; status.focus(); }
+      return;
+    }
     const notice = node(state.acknowledged ? 'details' : 'div', null, 'qr-risk');
     if (state.acknowledged) notice.append(node('summary', 'notice'));
     notice.append(node('p', 'risk')); section.append(notice);
@@ -76,7 +81,7 @@ export function mountWhatsAppQr(root, { csrfToken, onUnauthorized, role = 'OWNER
       if (value.desired === 'OFF' || ['PAIRING','CONNECTING','RECONNECTING'].includes(value.state) || value.state === 'CONNECTED' && value.desired === 'RUN') pairWaitingUntil = 0;
       if (wasWaiting !== pairWaitingUntil || JSON.stringify(state) !== JSON.stringify(value)) { state = value; render(); }
     }
-    catch (error) { if (lifecycle.current() && error.status === 404) { state = null; section.hidden = true; section.replaceChildren(); } }
+    catch (error) { if (lifecycle.current()) { state = { available: true, blocked: policyFailure(error) || 'failed' }; pairWaitingUntil = 0; render(); } }
     finally { loading = false; }
   }
   async function mutate(action, body = {}) {
@@ -88,7 +93,12 @@ export function mountWhatsAppQr(root, { csrfToken, onUnauthorized, role = 'OWNER
       if (action === 'pair') pairWaitingUntil = Date.now() + 60000;
       await load();
     }
-    catch (error) { if (lifecycle.current()) line.textContent = failureText(error); }
+    catch (error) {
+      if (lifecycle.current()) {
+        if (policyFailure(error) || error.status === 401 || error.status === 403) { state = { available: true, blocked: policyFailure(error) || 'failed' }; pairWaitingUntil = 0; render(); }
+        else line.textContent = failureText(error);
+      }
+    }
     finally { busy = false; if (lifecycle.current()) section.querySelectorAll('button').forEach(el => { el.disabled = false; }); }
   }
   function dispose() {

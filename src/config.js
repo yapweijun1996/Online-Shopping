@@ -87,11 +87,30 @@ export function readWhatsAppQrConfig(env, integrationKeys) {
     if (!integrationKeys) throw new Error('WHATSAPP_QR_ENABLED requires integration keys.');
     if (env.SELLER_QUICK_LOGIN === '1' || env.SHOP_MODE === 'public-demo') throw new Error('WhatsApp QR refuses quick login and public-demo shops.');
     if (env.WHATSAPP_QR_SHOP !== undefined && env.WHATSAPP_QR_SHOP !== 'default') throw new Error('WhatsApp QR supports only the default shop.');
-    try { token = readFileSync(env.WHATSAPP_QR_TOKEN_FILE, 'utf8').split(/\r?\n/)[0]; }
-    catch { throw new Error('WHATSAPP_QR_TOKEN_FILE is required and must be readable.'); }
-    if (!/^[A-Za-z0-9_-]{32,}$/.test(token)) throw new Error('WHATSAPP_QR_TOKEN_FILE must contain a URL-safe token of at least 32 characters.');
+    if (!env.WHATSAPP_QR_BINDINGS_FILE) {
+      try { token = readFileSync(env.WHATSAPP_QR_TOKEN_FILE, 'utf8').split(/\r?\n/)[0]; }
+      catch { throw new Error('WHATSAPP_QR_TOKEN_FILE is required and must be readable.'); }
+      if (!/^[A-Za-z0-9_-]{32,}$/.test(token)) throw new Error('WHATSAPP_QR_TOKEN_FILE must contain a URL-safe token of at least 32 characters.');
+    }
   }
-  return { enabled, token, port };
+  let bindings;
+  if (env.WHATSAPP_QR_BINDINGS_FILE) {
+    try {
+      bindings = JSON.parse(readFileSync(env.WHATSAPP_QR_BINDINGS_FILE, 'utf8'));
+      if (!Array.isArray(bindings) || !bindings.length || bindings.length > 2) throw new Error();
+      const slots = new Set(), identities = new Set(), tokens = new Set();
+      bindings = bindings.map(({ slot, shopId, tokenFile, workerLabel }) => {
+        if (![0, 1].includes(slot) || (slot === 0 ? shopId !== 'default' : !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(shopId)) ||
+          typeof tokenFile !== 'string' || !path.isAbsolute(tokenFile) || typeof workerLabel !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(workerLabel)) throw new Error();
+        const value = readFileSync(tokenFile, 'utf8').trim();
+        if (!/^[A-Za-z0-9_-]{43}$/.test(value) || slots.has(slot) || identities.has(shopId) || tokens.has(value)) throw new Error();
+        slots.add(slot); identities.add(shopId); tokens.add(value);
+        return Object.freeze({ slot, shopId, token: value, workerLabel });
+      });
+      if (!slots.has(0) || (slots.has(1) && env.PLATFORM_ENABLED !== '1')) throw new Error();
+    } catch { throw new Error('Invalid WHATSAPP_QR_BINDINGS_FILE or credential file.'); }
+  }
+  return { enabled, token, port, ...(bindings ? { bindings: Object.freeze(bindings) } : {}) };
 }
 
 export function readConfig(env = process.env) {

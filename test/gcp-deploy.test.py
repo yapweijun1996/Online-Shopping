@@ -22,6 +22,16 @@ def release(sha):
     return {'sha': sha, 'baseline': BASE, **{c: 'ghcr.io/yapweijun1996/online-shopping-' + c + '@sha256:' + ('1' if sha == A else '2') * 64 for c in ('backend', 'frontend')}}
 
 
+def activation_secrets(root):
+    directory = Path(root, 'secrets')
+    directory.mkdir(exist_ok=True)
+    for name in ('admin-password', 'postgres-password', 'postgres-owner-password',
+                 'integration-keys', 'platform-password', 'provisioner-password',
+                 'whatsapp-qr-token', 'whatsapp-qr-token-slot1', 'whatsapp-qr-bindings.json'):
+        (directory / name).write_text('fixture\n')
+    return directory
+
+
 def run(**fields):
     result = dict(id=1, run_attempt=1, head_sha=B, head_branch='main', event='push',
                   path='.github/workflows/verify.yml', repository={'full_name': u.REPO},
@@ -53,6 +63,29 @@ class Fake(u.Updater):
 
 
 class Tests(unittest.TestCase):
+    def test_activation_secret_preflight_preserves_running_release(self):
+        for initial in (False, True):
+            for name in ('admin-password', 'postgres-password', 'integration-keys',
+                         'platform-password', 'provisioner-password', 'whatsapp-qr-token',
+                         'whatsapp-qr-token-slot1', 'whatsapp-qr-bindings.json',
+                         *(['postgres-owner-password'] if initial else [])):
+                for invalid in ('missing', 'empty', 'directory'):
+                    with self.subTest(initial=initial, name=name, invalid=invalid), tempfile.TemporaryDirectory() as root:
+                        directory = activation_secrets(root)
+                        target = directory / name
+                        target.unlink()
+                        if invalid == 'empty':
+                            target.touch()
+                        elif invalid == 'directory':
+                            target.mkdir()
+                        f = u.Updater(root)
+                        Path(root, 'images.env').write_text('current release\n')
+                        with patch.object(f, 'runtime', return_value={'SECRETS_DIR': str(directory)}), patch.object(f, 'docker') as docker:
+                            with self.assertRaisesRegex(ValueError, 'Required compose secret.*' + name):
+                                f.activate(release(A), initial=initial)
+                            docker.assert_not_called()
+                        self.assertEqual('current release\n', Path(root, 'images.env').read_text())
+
     def test_ci_latest_attempt_and_scope(self):
         self.assertTrue(u.ci_passed({'workflow_runs': [run()]}, B))
         self.assertFalse(u.ci_passed({'workflow_runs': [run(), run(run_attempt=2, conclusion='failure')]}, B))
@@ -213,22 +246,95 @@ class Tests(unittest.TestCase):
             f.validate_release(enabled)
             for bad in ('evil/image:latest', 'ghcr.io/yapweijun1996/online-shopping-backend@sha256:' + '3' * 64):
                 with self.assertRaises(ValueError): f.validate_release({**release(A), 'whatsapp-qr': bad})
+            directory = activation_secrets(root)
+            path.write_text(good.replace('/opt/cloudops/secrets/online-shopping', str(directory)))
             with patch.object(f, 'docker') as docker:
                 f.activate(enabled)
             calls = [c.args for c in docker.call_args_list]
-            self.assertEqual(1, len(calls))
-            self.assertEqual(['--profile', 'whatsapp-qr'], list(calls[0][calls[0].index('--profile'):calls[0].index('--profile') + 2]))
-            self.assertEqual(('up', '-d', '--no-build', '--no-deps', 'backend', 'frontend', 'whatsapp-qr'), calls[0][-7:])
+            self.assertEqual(2, len(calls))
+            self.assertEqual(('rm', '--stop', '--force', 'whatsapp-qr', 'whatsapp-qr-slot1'), calls[0][-5:])
+            self.assertEqual(('up', '-d', '--no-build', '--no-deps', 'backend', 'frontend', 'whatsapp-qr'), calls[1][-7:])
             self.assertIn('WHATSAPP_QR_IMAGE=' + worker + '\n', Path(root, 'images.env').read_text())
             with patch.object(f, 'docker') as docker:
                 f.activate(release(A))
             calls = [c.args for c in docker.call_args_list]
-            self.assertEqual(('rm', '--stop', '--force', 'whatsapp-qr'), calls[0][-4:])
+            self.assertEqual(('rm', '--stop', '--force', 'whatsapp-qr', 'whatsapp-qr-slot1'), calls[0][-5:])
             self.assertEqual(('up', '-d', '--no-build', '--no-deps', 'backend', 'frontend'), calls[1][-6:])
             self.assertNotIn('WHATSAPP_QR_IMAGE', Path(root, 'images.env').read_text())
             with patch.object(f, 'docker') as docker:
                 f.activate(release(A), initial=True)
             self.assertEqual(('up', '-d', '--no-build', 'backend', 'frontend', 'postgres'), docker.call_args_list[1].args[-6:])
+
+    def test_fixed_slots_activation_rollback_and_health(self):
+        good = 'SHOP_HOST=shop.example\nSELLER_HOST=seller.example\nADMIN_USERNAME=owner\nSECRETS_DIR=/opt/secrets\n'
+        with tempfile.TemporaryDirectory() as root:
+            f = u.Updater(root)
+            path = Path(root, 'runtime.env')
+            for extra in ('WHATSAPP_QR_SLOT1_ENABLED=yes\n', 'WHATSAPP_QR_SLOT1_ENABLED=1\n',
+                          'WHATSAPP_QR_ENABLED=1\nWHATSAPP_QR_SLOT1_ENABLED=1\n',
+                          'WHATSAPP_QR_ENABLED=0\nWHATSAPP_QR_SLOT1_ENABLED=1\nINTEGRATION_KEY_FILE=/run/secrets/integration_keys\n'):
+                path.write_text(good + extra)
+                with self.assertRaises(ValueError):
+                    f.runtime()
+            path.write_text(good + 'WHATSAPP_QR_ENABLED=1\nWHATSAPP_QR_SLOT1_ENABLED=1\nPLATFORM_ENABLED=1\nPLATFORM_ADMIN_CLAIM_ENABLED=1\nINTEGRATION_KEY_FILE=/run/secrets/integration_keys\nWHATSAPP_QR_BINDINGS_FILE=/run/secrets/whatsapp_qr_bindings\n')
+            self.assertEqual('1', f.runtime()['WHATSAPP_QR_SLOT1_ENABLED'])
+            enabled = path.read_text()
+            for bad in (enabled.replace('WHATSAPP_QR_BINDINGS_FILE=/run/secrets/whatsapp_qr_bindings\n', ''),
+                        enabled.replace('/run/secrets/whatsapp_qr_bindings', '/tmp/untrusted.json'),
+                        enabled.replace('PLATFORM_ENABLED=1', 'PLATFORM_ENABLED=0'),
+                        enabled.replace('INTEGRATION_KEY_FILE=/run/secrets/integration_keys', 'INTEGRATION_KEY_FILE=')):
+                path.write_text(bad)
+                with self.assertRaises(ValueError):
+                    f.runtime()
+            path.write_text(enabled)
+            with patch.object(f, 'image', side_effect=lambda c, sha: 'ghcr.io/yapweijun1996/online-shopping-' + c + '@sha256:' + '3' * 64) as image:
+                item = f.release(A, BASE, {p: b'x' for p in u.MOUNTS})
+            self.assertEqual(['whatsapp-qr', 'whatsapp-qr-slot1'], item['qr_workers'])
+            self.assertEqual(['backend', 'frontend', 'whatsapp-qr'], [c.args[0] for c in image.call_args_list])
+        worker = 'ghcr.io/yapweijun1996/online-shopping-whatsapp-qr@sha256:' + '3' * 64
+        with tempfile.TemporaryDirectory() as root:
+            f = u.Updater(root)
+            directory = activation_secrets(root)
+            Path(root, 'runtime.env').write_text(good.replace('/opt/secrets', str(directory)))
+            for workers in ([], ['whatsapp-qr'], ['whatsapp-qr', 'whatsapp-qr-slot1']):
+                item = {**release(A), 'qr_workers': workers}
+                if workers:
+                    item['whatsapp-qr'] = worker
+                with patch.object(f, 'docker') as docker:
+                    f.activate(item)
+                    f.activate(item, initial=True)
+                calls = [c.args for c in docker.call_args_list]
+                for index in (0, 2):
+                    self.assertEqual(('rm', '--stop', '--force', 'whatsapp-qr', 'whatsapp-qr-slot1'), calls[index][-5:])
+                    self.assertEqual(workers, [x for x in calls[index + 1][calls[index + 1].index('up'):] if x.startswith('whatsapp-qr')])
+                with patch.object(f, 'docker', side_effect=RuntimeError('Stop failed')) as blocked:
+                    with self.assertRaisesRegex(RuntimeError, 'Stop failed'):
+                        f.activate(item)
+                self.assertEqual(1, blocked.call_count)
+                self.assertIn('rm', blocked.call_args.args)
+                def docker(*args, **kwargs):
+                    if args[0] == 'inspect':
+                        if args[2] == '{{json .State}}':
+                            return '{"Running":true}'
+                        component = args[-1].removeprefix('online-shopping-gcp-').removesuffix('-1')
+                        return worker if component.startswith('whatsapp-qr') else item[component]
+                    return json.dumps({'status': 'ready', 'revision': A})
+                with patch.object(f, 'runtime', return_value={'SHOP_HOST': 'shop.example'}), patch.object(f, 'docker', side_effect=docker) as calls:
+                    f.health(item)
+                inspected = [c.args[-1] for c in calls.call_args_list if c.args[0] == 'inspect']
+                for name in workers:
+                    self.assertIn('online-shopping-gcp-' + name + '-1', inspected)
+                if len(workers) == 2:
+                    def broken(*args, **kwargs):
+                        if args[-1] == 'online-shopping-gcp-whatsapp-qr-slot1-1':
+                            return '{"Running":false}' if args[2] == '{{json .State}}' else worker
+                        return docker(*args, **kwargs)
+                    with patch.object(f, 'docker', side_effect=broken), patch.object(u.time, 'sleep'):
+                        with self.assertRaisesRegex(RuntimeError, 'Readiness'):
+                            f.health(item)
+            for workers in (['whatsapp-qr-slot1'], ['whatsapp-qr', 'whatsapp-qr'], ['other']):
+                with self.assertRaises(ValueError):
+                    f.validate_release({**release(A), 'whatsapp-qr': worker, 'qr_workers': workers})
 
     def test_runtime_config_mcp_switch_and_redirects(self):
         with tempfile.TemporaryDirectory() as root:

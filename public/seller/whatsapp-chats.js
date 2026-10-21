@@ -1,5 +1,5 @@
 import { translate, formatDate } from '../shared/i18n.js';
-import { node, button, text, client, failureText, watch } from './whatsapp-qr-ui.js';
+import { node, button, text, client, failureText, policyFailure, watch } from './whatsapp-qr-ui.js';
 export function mountWhatsAppChats(root, cloud, { csrfToken, onUnauthorized }) {
   const tabs = node('div', null, 'qr-tabs'); tabs.hidden = true;
   const panel = node('section', null, 'qr-inbox'); panel.hidden = true;
@@ -12,7 +12,17 @@ export function mountWhatsAppChats(root, cloud, { csrfToken, onUnauthorized }) {
     if (force || Date.now() - listAt >= 15000) loadList();
     if (thread && (force || Date.now() - threadAt >= 5000)) loadMessages();
   });
-  const api = client({ csrfToken, onUnauthorized: () => { if (lifecycle.current()) onUnauthorized(); } });
+  const request = client({ csrfToken, onUnauthorized: () => { if (lifecycle.current()) onUnauthorized(); } });
+  const api = async (...args) => {
+    try { return await request(...args); }
+    catch (error) {
+      if (lifecycle.current() && (policyFailure(error) || error.status === 401 || error.status === 403)) {
+        connection = null; textarea.value = ''; eligibility();
+        alert.textContent = failureText(error);
+      }
+      throw error;
+    }
+  };
   const cloudTab = button('cloud', () => select(false)), chatTab = button('chats', () => select(true));
   tabs.append(cloudTab, chatTab);
   const listPane = node('div', null, 'qr-thread-pane'), conversation = node('div', null, 'qr-conversation');
@@ -121,10 +131,10 @@ export function mountWhatsAppChats(root, cloud, { csrfToken, onUnauthorized }) {
     if (!lifecycle.current() || !selected) return;
     eligibility(); if (send.disabled || !thread) return;
     const body = textarea.value.trim(), ticket = epoch;
-    if (!intent || intent.text !== body) intent = { text: body, key: crypto.randomUUID() };
+    if (!intent || intent.text !== body || intent.threadId !== thread.id) intent = { text: body, threadId: thread.id, key: crypto.randomUUID() };
     const pending = intent; sending = true; eligibility(); alert.textContent = '';
     try {
-      const result = await api(`chats/${encodeURIComponent(thread.id)}/replies`, { text: body }, pending.key);
+      const result = await api(`chats/${encodeURIComponent(pending.threadId)}/replies`, { text: body }, pending.key);
       if (!lifecycle.current() || ticket !== epoch) return;
       history = [...history.filter(row => row.id !== result.id), result]; intent = null; textarea.value = ''; renderMessages(); messages.scrollTop = messages.scrollHeight;
     } catch (error) {
@@ -135,7 +145,12 @@ export function mountWhatsAppChats(root, cloud, { csrfToken, onUnauthorized }) {
       alert.textContent = failureText(error);
     } finally { sending = false; if (lifecycle.current() && ticket === epoch) { eligibility(); if (!textarea.disabled) textarea.focus(); } }
   }
-  api('integrations/whatsapp-qr').then(status => { if (!lifecycle.current() || !status.available) return; connection = status; tabs.hidden = false; select(false); }).catch(() => {});
+  api('integrations/whatsapp-qr').then(status => { if (!lifecycle.current() || !status.available) return; connection = status; tabs.hidden = false; select(false); }).catch(error => {
+    if (!lifecycle.current() || !policyFailure(error)) return;
+    tabs.hidden = false; selected = true; cloud.hidden = true; panel.hidden = false;
+    cloudTab.setAttribute('aria-pressed', 'false'); chatTab.setAttribute('aria-pressed', 'true');
+    alert.textContent = failureText(error);
+  });
   return {
     refreshLocale() { translate(tabs); translate(panel); textarea.setAttribute('aria-label', text('draft')); renderList(); renderOrders(); renderMessages(); },
     hasUnsavedChanges: () => Boolean(textarea.value.trim()) || sending,

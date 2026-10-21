@@ -12,7 +12,7 @@ export function rewriteTenantRequest(request, basePath) {
   return new Request(url, { method: request.method, headers: request.headers, signal: request.signal,
     ...(!['GET', 'HEAD'].includes(request.method) && request.body ? { body: request.body, duplex: 'half' } : {}) });
 }
-export function createPlatformRegistry({ store, config, platform, pool, clock = Date.now }) {
+export function createPlatformRegistry({ store, config, platform, pool, clock = Date.now, qrStopped = new Map() }) {
   const fallback = singleTenantRegistry({ store, config }), cache = new Map(), probes = new Map(), identities = new Map();
   const pendingProbes = new Map();
   let generation = 0;
@@ -42,13 +42,20 @@ export function createPlatformRegistry({ store, config, platform, pool, clock = 
       for (const entry of cache.values()) entry.expires = -Infinity;
     },
     cacheSize: () => cache.size,
+    async acknowledgeQrStop(id, slot, epoch) {
+      if (!Number.isSafeInteger(epoch) || epoch < 1) throw new ApiError(403, 'QR_REVOKED', 'QR access has been revoked.');
+      const database = await db();
+      const binding = await database.get('SELECT epoch FROM tenant_qr_binding WHERE tenant_id = ? AND slot_id = ? AND enabled = false AND cleanup_pending = true', id, slot);
+      if (!binding || binding.epoch !== epoch) throw new ApiError(403, 'QR_REVOKED', 'QR access has been revoked.');
+      qrStopped.set(id, epoch);
+    },
     // Keep the platform policy lock held through the bounded caller shop transaction.
     async resolveWorkerTenant(id, slot, epoch, work) {
       const database = await db();
       const policy = createQrPolicy({ platform: database, tenantSlots: config.platform.qrTenantSlots, provisionedTenantIds: config.platform.qrProvisionedTenantIds, clock });
       return policy.withAuthorizedBinding(id, slot, epoch, async (row) => work({
         id: row.is_default === 1 ? 'default' : row.id,
-        store: row.is_default === 1 ? store : await pool.get(row), epoch, slot,
+        store: row.is_default === 1 ? store : await pool.get(row), epoch: row.qr_epoch, slot,
       }));
     },
     async resolve(request, { clientAddress = 'unknown' } = {}) {
@@ -107,7 +114,18 @@ export function createPlatformRegistry({ store, config, platform, pool, clock = 
       if (row.status !== 'ACTIVE') return edgeProbe ? unavailable(503) : { id: row.id, status: row.status };
       if (edgeProbe) return { response: new Response(null, { headers: { 'Cache-Control': 'no-store' } }) };
       let tenantStore;
-      try { tenantStore = await pool.get(row); } catch { throw new ApiError(503, 'SHOP_UNAVAILABLE', 'This shop is not available right now.'); }
+      try {
+        const qrPath = /^\/api\/v1\/seller\/(?:integrations\/whatsapp-qr(?:\/|$)|chats(?:\/|$))/.test(url.pathname.slice(segment.length + 1));
+        if (qrPath) {
+          const binding = config.whatsappQr?.bindings?.find(item => item.shopId === row.id);
+          if (!binding) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+          const policy = createQrPolicy({ platform: await db(), tenantSlots: config.platform.qrTenantSlots, provisionedTenantIds: config.platform.qrProvisionedTenantIds, clock });
+          tenantStore = await policy.withAuthorizedBinding(row.id, binding.slot, null, current => pool.get(current));
+        } else tenantStore = await pool.get(row);
+      } catch (error) {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(503, 'SHOP_UNAVAILABLE', 'This shop is not available right now.');
+      }
       const basePath = `/${row.code}`;
       let tenant = identities.get(row.id);
       if (!tenant || tenant.store !== tenantStore || tenant.code !== row.code || tenant.config.tenantName !== row.name) {

@@ -14,13 +14,17 @@ worker ----------WSS------> WhatsApp (Baileys 6.7.24, egress network)
 
 - The backend NEVER calls the worker and never imports Baileys. The worker is a pure client: it polls `control`, pushes
   state/auth/inbound events and claims replies.
-- The internal listener starts only when `WHATSAPP_QR_ENABLED=1` and `WHATSAPP_QR_TOKEN_FILE` points at a readable file
-  holding one line of >= 32 random URL-safe characters. It binds `0.0.0.0:3001` inside the container (the port is not
-  published and Caddy never proxies it). Every request needs `Authorization: Bearer <token>`, compared in constant time;
+- The internal listener starts only when `WHATSAPP_QR_ENABLED=1` with readable
+  credentials: legacy `WHATSAPP_QR_TOKEN_FILE` (>=32 URL-safe characters), or
+  `WHATSAPP_QR_BINDINGS_FILE` entries with independent 32-byte base64url tokens
+  (43 characters). It binds unpublished `0.0.0.0:3001`; Caddy never proxies it.
+  Every request needs `Authorization: Bearer <token>`, compared in constant time;
   otherwise 401 with no body detail. Body limit 256 KiB (JSON only, `Content-Type: application/json`), 64 KiB for all
   routes except `PUT /v1/auth`. Unknown routes 404. No CORS. Responses `Cache-Control: no-store`.
-- One worker serves exactly one shop. The token is bound by configuration to the default shop store
-  (`WHATSAPP_QR_SHOP=default`; tenant shops are out of scope for v1 and must be refused, not guessed).
+- One worker serves exactly one shop. Backend-only static manifest binds each
+  independent credential to `default` (slot 0) or one immutable tenant UUID
+  (slot 1). Fresh platform lifecycle/policy gates tenant access; no request
+  selector overrides identity. Legacy token-only mode remains default-only.
 - Every worker request except `GET /v1/control` carries `generation` (integer): in the JSON body for POST/PUT and as
   the query parameter `?generation=N` for `GET /v1/auth`. A request whose generation differs from the current session
   generation is rejected with 409 `{"error":"STALE_GENERATION"}` and changes nothing (fencing).
@@ -115,6 +119,7 @@ Worker side:
 - An AUTH_VERSION conflict immediately ends the old socket, reports a safe error code and reloads a fresh snapshot before reconnecting. Other persistence failures halt that generation until operator intervention; no unsaved keys are reused.
 - A claimed reply is never retried by the worker. A ten-second local send deadline or any exception from `sendMessage` is UNKNOWN, even a synchronous exception: without a library dispatch receipt, non-dispatch is not proven. Only an absent/not-connected socket before invoking send proves SOCKET_CLOSED.
 - Control/backend failures close the socket before another control poll. A failed result POST is not repeated; the backend lease must reconcile it. No automatic send retry or success inference is permitted.
+- Tenant `QR_REVOKED` responses carry the disabled cleanup-pending reservation's `X-Binding-Epoch`; the worker retains its first revoked epoch for `/stopped`, never replacing it with a later reservation's epoch or its last authorized epoch. Stop acknowledgements require that exact epoch; missing/mismatched epochs are refused.
 - Generation replacement attempts remote logout of the old socket; graceful process shutdown only ends it. Remote logout is best effort and cannot prove device removal.
 - Worker configuration accepts only credential-free HTTP(S) URLs without query/fragment and a URL-safe token first line of at least 32 characters. The container has no listener or filesystem session state.
 
@@ -163,3 +168,14 @@ Backend side:
 - LOGGED_OUT clears auth and advances `auth_version` rather than resetting it:
   a delayed pre-logout auth PUT must conflict, not recreate deleted credentials.
   Only a new seller-created generation starts at auth version zero.
+
+## Fixed-slot deployment
+
+GCP declares only slot 0 (`whatsapp-qr`, permanent `default`) and slot 1
+(`whatsapp-qr-slot1`, immutable tenant UUID). Each token is mounted only in its
+worker and backend; the backend-only manifest selects the store, never request
+data. Both use the same reviewed digest. Stop both before activation/rollback;
+rebind only after policy drain, durable auth fencing and credential rotation.
+See [the protected release runbook](GCP_DEPLOY.md#fixed-slot-protected-release).
+Schema 3 migration and measured two-worker capacity are manual gates, not protocol
+health claims. No public port, Docker socket or database/master key in workers.

@@ -53,8 +53,8 @@ async function writeFetchResponse(response, result) {
 }
 
 // Factory deliberately does not listen: tests can bind an ephemeral port.
-export function createWhatsAppQrServer({ store, config, now }) {
-  const handle = createWhatsAppQrInternalApi({ store, secretBox: createSecretBox(config.integrationKeys), token: config.whatsappQr.token, shopId: 'default', now });
+export function createWhatsAppQrServer({ store, config, now, registry }) {
+  const handle = createWhatsAppQrInternalApi({ store, secretBox: createSecretBox(config.integrationKeys), token: config.whatsappQr.token, bindings: config.whatsappQr.bindings, registry, shopId: 'default', now });
   const server = createServer(async (request, response) => {
     try { await writeFetchResponse(response, await handle(toFetchRequest(request, {}))); }
     catch { response.writeHead(500, { 'cache-control': 'no-store' }); response.end(); }
@@ -73,6 +73,10 @@ export async function createApp(config) {
   } catch (error) {
     await database.close();
     throw error;
+  }
+  if (config.platform && config.whatsappQr?.bindings) {
+    config.platform.qrProvisionedTenantIds = config.whatsappQr.bindings.filter(binding => binding.slot > 0).map(binding => binding.shopId);
+    config.platform.qrTenantSlots = config.platform.qrProvisionedTenantIds.length;
   }
   const platform = config.platform ? createPlatformRuntime({ store: database, config, paused: () => deploymentPaused(config.maintenancePath) }) : null;
   const handle = await createApi({ store: database, config, serveStatic, registry: platform?.registry,
@@ -112,7 +116,7 @@ export async function createApp(config) {
       secretBox: createSecretBox(config.integrationKeys), transport: createWhatsAppTransport(), tenants: platform?.workerTenants, paused });
     return true;
   };
-  const qrServer = config.whatsappQr?.enabled ? createWhatsAppQrServer({ store: database, config }) : null;
+  const qrServer = config.whatsappQr?.enabled ? createWhatsAppQrServer({ store: database, config, registry: platform?.registry }) : null;
   const startQr = () => qrServer ? new Promise((resolve, reject) => {
     qrServer.once('error', reject);
     qrServer.listen(config.whatsappQr.port, '0.0.0.0', () => { qrServer.removeListener('error', reject); resolve(); });

@@ -195,25 +195,40 @@ class Updater:
         release = {'sha': sha, 'baseline': baseline, 'backend': self.image('backend', sha), 'frontend': self.image('frontend', sha)}
         if self.runtime().get('WHATSAPP_QR_ENABLED') == '1':
             release['whatsapp-qr'] = self.image('whatsapp-qr', sha)
+            if self.runtime().get('WHATSAPP_QR_SLOT1_ENABLED') == '1':
+                release['qr_workers'] = ['whatsapp-qr', 'whatsapp-qr-slot1']
         return release
 
     def activate(self, release, initial=False):
         self.validate_release(release)
+        # Match the fixed Compose backend mounts even when QR/manifest mode is off.
+        # Rollback and recovery enter here too: refuse before touching containers.
+        secrets = ('admin-password', 'postgres-password', 'integration-keys',
+                   'platform-password', 'provisioner-password', 'whatsapp-qr-token',
+                   'whatsapp-qr-token-slot1', 'whatsapp-qr-bindings.json')
+        if initial:
+            secrets += ('postgres-owner-password',)
+        directory = Path(self.runtime()['SECRETS_DIR'])
+        for name in secrets:
+            path = directory / name
+            if not path.is_file() or path.stat().st_size == 0:
+                raise ValueError('Required compose secret must be a regular non-empty file: ' + str(path))
         worker = release.get('whatsapp-qr')
         env = ('BACKEND_IMAGE=' + release['backend'] + '\nFRONTEND_IMAGE=' + release['frontend']
                + ('\nWHATSAPP_QR_IMAGE=' + worker if worker else '')
                + '\nAPP_REVISION=' + release['sha'] + '\nRELEASE_DIR=' + str(self.root / 'releases' / release['sha']) + '\n')
         atomic(self.root / 'images.env', env.encode())
         compose = ['compose', '--project-name', 'online-shopping-gcp', '--env-file', str(self.root / 'runtime.env'),
-                   '--env-file', str(self.root / 'images.env'), '-f', str(self.root / 'compose.yaml'), '--profile', 'whatsapp-qr']
-        if not worker:
-            # A release without the worker image stops a worker left over from an earlier enabled release.
-            self.docker(*compose, 'rm', '--stop', '--force', 'whatsapp-qr')
+                   '--env-file', str(self.root / 'images.env'), '-f', str(self.root / 'compose.yaml'),
+                   '--profile', 'whatsapp-qr', '--profile', 'whatsapp-qr-slot1']
+        # Stop every old binding before backend mounts or credentials can change.
+        # The same barrier applies to rollback and interrupted-release recovery.
+        self.docker(*compose, 'rm', '--stop', '--force', 'whatsapp-qr', 'whatsapp-qr-slot1')
         args = compose + ['up', '-d', '--no-build']
         if not initial:
-            args += ['--no-deps', 'backend', 'frontend'] + (['whatsapp-qr'] if worker else [])
-        elif not worker:
-            args += ['backend', 'frontend', 'postgres']
+            args += ['--no-deps', 'backend', 'frontend'] + self.qr_workers(release)
+        else:
+            args += ['backend', 'frontend', 'postgres'] + self.qr_workers(release)
         self.docker(*args)
 
     def validate_release(self, release):
@@ -223,15 +238,25 @@ class Updater:
             if not DIGEST.fullmatch(image) or '/online-shopping-' + component + '@' not in image:
                 raise ValueError('Invalid state image')
 
+        workers = self.qr_workers(release)
+        if workers not in ([], ['whatsapp-qr'], ['whatsapp-qr', 'whatsapp-qr-slot1']):
+            raise ValueError('Invalid worker slots')
+        if bool(workers) != ('whatsapp-qr' in release):
+            raise ValueError('Missing worker image')
+
+    def qr_workers(self, release):
+        return release.get('qr_workers', ['whatsapp-qr'] if 'whatsapp-qr' in release else [])
+
     def health(self, release):
         # Backend readiness includes its DB schema check; also prove the running frontend revision.
         for _ in range(18):
             try:
-                for component in ('backend', 'frontend') + (('whatsapp-qr',) if 'whatsapp-qr' in release else ()):
+                for component in ['backend', 'frontend'] + self.qr_workers(release):
                     name = 'online-shopping-gcp-' + component + '-1'
                     running = json.loads(self.docker('inspect', '--format', '{{json .State}}', name))
                     image = self.docker('inspect', '--format', '{{.Config.Image}}', name).strip()
-                    if not running.get('Running') or image != release[component]:
+                    expected = release['whatsapp-qr'] if component.startswith('whatsapp-qr') else release[component]
+                    if not running.get('Running') or image != expected:
                         raise ValueError('Container mismatch')
                 body = json.loads(self.docker('exec', 'online-shopping-gcp-backend-1', 'node', '-e',
                     "fetch('http://127.0.0.1:3000/ready',{signal:AbortSignal.timeout(4000)}).then(async r=>{if(!r.ok)process.exit(1);console.log(await r.text())}).catch(()=>process.exit(1))", timeout=10))
@@ -253,7 +278,7 @@ class Updater:
             if not line or line.startswith('#'):
                 continue
             key, separator, value = line.partition('=')
-            if not separator or key in values or key not in ('SHOP_HOST', 'SELLER_HOST', 'ADMIN_USERNAME', 'SECRETS_DIR', 'PLATFORM_ENABLED', 'PLATFORM_ADMIN_CLAIM_ENABLED', 'INTEGRATION_KEY_FILE', 'MCP_ENABLED', 'MCP_REDIRECT_URIS', 'WHATSAPP_QR_ENABLED'):
+            if not separator or key in values or key not in ('SHOP_HOST', 'SELLER_HOST', 'ADMIN_USERNAME', 'SECRETS_DIR', 'PLATFORM_ENABLED', 'PLATFORM_ADMIN_CLAIM_ENABLED', 'INTEGRATION_KEY_FILE', 'MCP_ENABLED', 'MCP_REDIRECT_URIS', 'WHATSAPP_QR_ENABLED', 'WHATSAPP_QR_SLOT1_ENABLED', 'WHATSAPP_QR_BINDINGS_FILE'):
                 raise ValueError('Invalid runtime configuration')
             values[key] = value
         if not {'SHOP_HOST', 'SELLER_HOST', 'ADMIN_USERNAME', 'SECRETS_DIR'} <= set(values):
@@ -280,8 +305,14 @@ class Updater:
             raise ValueError('Invalid MCP redirect URIs')
         if values.get('MCP_ENABLED') == '1' and not redirects:
             raise ValueError('MCP requires redirect URIs')
-        if values.get('WHATSAPP_QR_ENABLED', '0') not in ('0', '1'):
+        if any(values.get(key, '0') not in ('0', '1') for key in ('WHATSAPP_QR_ENABLED', 'WHATSAPP_QR_SLOT1_ENABLED')):
             raise ValueError('Invalid WhatsApp QR switch')
+        if values.get('WHATSAPP_QR_SLOT1_ENABLED') == '1' and (values.get('WHATSAPP_QR_ENABLED') != '1' or values.get('PLATFORM_ENABLED') != '1'):
+            raise ValueError('Slot 1 requires slot 0 and platform')
+        if values.get('WHATSAPP_QR_BINDINGS_FILE', '') not in ('', '/run/secrets/whatsapp_qr_bindings'):
+            raise ValueError('Invalid QR bindings path')
+        if values.get('WHATSAPP_QR_SLOT1_ENABLED') == '1' and not values.get('WHATSAPP_QR_BINDINGS_FILE'):
+            raise ValueError('Slot 1 requires the bindings manifest')
         if values.get('WHATSAPP_QR_ENABLED') == '1' and not values.get('INTEGRATION_KEY_FILE'):
             raise ValueError('WhatsApp QR requires the integration key')
         return values

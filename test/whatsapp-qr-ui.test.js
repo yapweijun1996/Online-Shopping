@@ -56,9 +56,9 @@ for (const phase of ['PAIRING', 'CONNECTING', 'RECONNECTING']) test(`Owner cance
   assert.deepEqual(actions, ['disconnect', 'pair']);
   expired.dispose();
 }));
-test('QR card is absent on 404; staff can see risk and status but cannot acknowledge or pair', async () => fixture(async root => {
+test('QR card explains missing provisioning; staff can see risk and status but cannot acknowledge or pair', async () => fixture(async root => {
   globalThis.fetch = async () => response({}, 404);
-  const hidden = mountWhatsAppQr(root, options); await flush(); assert.equal(root.children[0].hidden, true); assert.equal(root.children[0].children.length, 0); hidden.dispose();
+  const hidden = mountWhatsAppQr(root, options); await flush(); assert.equal(root.children[0].hidden, false); assert.ok(key(root, 'notProvisioned')); hidden.dispose();
   globalThis.fetch = async () => response(initial);
   const staff = mountWhatsAppQr(root, { ...options, role: 'STAFF' }); await flush();
   assert.ok(key(root, 'risk')); assert.ok(key(root, 'idle')); assert.equal(key(root, 'ack'), undefined); assert.equal(key(root, 'pair'), undefined); staff.dispose();
@@ -120,6 +120,28 @@ test('Composer reuses an unknown-outcome key, generates a new intent after succe
   setMode('success'); form.events.submit({ preventDefault() {} }); await flush(); assert.equal(attempts[1].headers['Idempotency-Key'], first); assert.equal(input.value, '');
   input.value = 'Fictional reply'; input.events.input(); setMode('429'); input.events.keydown({ key: 'Enter', ctrlKey: true, preventDefault() {} }); await flush();
   assert.notEqual(attempts[2].headers['Idempotency-Key'], first); assert.ok(root.descendants().some(n => n.textContent === 'Too many replies, try again in 7 s')); assert.equal(key(root, 'send').disabled, true);
+}));
+test('Composer retains the reply key and thread after a lost response and background policy outage', async () => chatsFixture(async ({ root, attempts, listeners, setMode }) => {
+  const input = root.descendants().find(n => n.tagName === 'textarea'), form = root.descendants().find(n => n.tagName === 'form');
+  const workingFetch = globalThis.fetch, paths = [];
+  globalThis.fetch = (path, init) => { if (path.includes('/replies')) paths.push(path); return workingFetch(path, init); };
+  const recoveredFetch = globalThis.fetch;
+  input.value = 'Fictional reply'; input.events.input(); form.events.submit({ preventDefault() {} }); await flush();
+  assert.equal(attempts.length, 1);
+  const originalKey = attempts[0].headers['Idempotency-Key'];
+  globalThis.fetch = async () => response({ error: { code: 'UNAVAILABLE' } }, 503);
+  listeners.get('visibilitychange')(); await flush();
+  assert.equal(input.value, ''); assert.equal(input.disabled, true);
+  form.events.submit({ preventDefault() {} }); await flush(); assert.equal(attempts.length, 1);
+  globalThis.fetch = recoveredFetch; setMode('success');
+  listeners.get('visibilitychange')(); await flush();
+  assert.equal(input.disabled, false); assert.equal(attempts.length, 1);
+  input.value = 'Fictional reply'; input.events.input(); form.events.submit({ preventDefault() {} }); await flush();
+  assert.equal(attempts.length, 2);
+  assert.equal(attempts[1].headers['Idempotency-Key'], originalKey);
+  assert.equal(paths[1], paths[0]); assert.ok(paths[0].endsWith('/chats/thread-1/replies'));
+  assert.deepEqual(JSON.parse(attempts[1].body), { text: 'Fictional reply' });
+  assert.equal(input.value, '');
 }));
 test('Composer closes when disconnected or window expires; hidden pages do not poll', async () => chatsFixture(async ({ root, setState, setRows, listeners, timers }) => {
   setState({ ...initial }); listeners.get('visibilitychange')(); await flush();
@@ -192,3 +214,35 @@ test('Link again keeps polling through the old worker error until the new genera
     assert.ok(key(root, 'connected'));
   } finally { card.dispose(); Date.now = realNow; }
 }));
+for (const [status, code, copy] of [[403, 'QR_REVOKED', 'revoked'], [409, 'QR_CAPACITY', 'capacity'], [404, 'QR_WORKER_NOT_PROVISIONED', 'notProvisioned'], [503, 'UNAVAILABLE', 'unavailable']]) {
+  test(`QR clears visible code after ${code}`, async () => fixture(async (root, timers, listeners) => {
+    let denied = false;
+    globalThis.fetch = async () => denied ? response({ error: { code } }, status) : response({ ...initial, acknowledged: true, desired: 'PAIR', state: 'PAIRING', qr: 'synthetic', qrExpiresAt: new Date(Date.now() + 60000).toISOString() });
+    const card = mountWhatsAppQr(root, { ...options, encoder: () => ({ addData() {}, make() {}, getModuleCount: () => 1, isDark: () => false }) });
+    await flush(); const canvas = root.descendants().find(n => n.tagName === 'canvas'); assert.ok(canvas);
+    denied = true; listeners.get('visibilitychange')(); await flush();
+    assert.equal(canvas.width, 0); assert.ok(key(root, copy)); assert.equal(key(root, 'pair'), undefined); card.dispose();
+  }));
+}
+for (const [status, code] of [[403, 'QR_REVOKED'], [409, 'QR_CAPACITY'], [404, 'QR_WORKER_NOT_PROVISIONED'], [503, 'UNAVAILABLE']]) {
+  test(`Composer clears draft and refuses send after ${code}`, async () => chatsFixture(async ({ root, listeners, attempts }) => {
+    const input = root.descendants().find(n => n.tagName === 'textarea');
+    input.value = 'Private draft'; input.events.input(); assert.equal(key(root, 'send').disabled, false);
+    globalThis.fetch = async () => response({ error: { code } }, status);
+    listeners.get('visibilitychange')(); await flush();
+    assert.equal(input.value, ''); assert.equal(input.disabled, true); assert.equal(key(root, 'send').disabled, true);
+    root.descendants().find(n => n.tagName === 'form').events.submit({ preventDefault() {} }); await flush();
+    assert.equal(attempts.length, 0);
+  }));
+}
+for (const [status, code, copy] of [[403, 'QR_REVOKED', 'revoked'], [409, 'QR_CAPACITY', 'capacity'], [404, 'QR_WORKER_NOT_PROVISIONED', 'notProvisioned'], [503, 'UNAVAILABLE', 'unavailable']]) {
+  test(`Chats explain initial ${code} without exposing a composer`, async () => fixture(async root => {
+    const cloud = new Element('section'); root.append(cloud);
+    globalThis.fetch = async () => response({ error: { code } }, status);
+    const page = mountWhatsAppChats(root, cloud, options); await flush();
+    assert.ok(root.descendants().some(n => n.textContent === messages.en[`qr_${copy}`]));
+    assert.equal(root.descendants().find(n => n.className === 'qr-conversation').hidden, true);
+    assert.equal(root.descendants().find(n => n.className === 'qr-inbox').hidden, false);
+    page.dispose();
+  }));
+}

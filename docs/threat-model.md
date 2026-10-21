@@ -388,11 +388,14 @@ Enabled tenant discovery translates canonical paths before store resolution. Sus
 ## Private linked-device worker boundary (schema 27)
 
 The default-off WhatsApp QR backend adds a separate internal listener, not a
-route on the public application handler. It binds only the default shop store;
-tenant database selection is not accepted from requests. Deployment must keep
-the port unpublished and outside the reverse proxy. Enabling requires an
-integration key ring and a dedicated URL-safe bearer secret file; quick-login
-and public-demo deployments are rejected.
+route on the public application handler. A host-owned backend-only manifest maps
+independent slot credentials to literal `default` or one immutable tenant UUID.
+Request selectors cannot change the binding. Tenant requests read fresh ACTIVE
+lifecycle and enabled policy under the platform capacity lock before opening
+the store; that lock remains held through the bounded shop operation. Platform
+failure denies tenant access, never falling back to default. Default remains
+independent. Deployment must keep the port unpublished and outside the reverse
+proxy. Integration keys are required; quick-login and public-demo are rejected.
 
 The worker bearer grants sensitive access to the linked-device auth state,
 normalized inbound ingress and claimed human replies. Equal-length token bytes
@@ -406,16 +409,24 @@ Auth records are integration-key sealed with immutable-shop/generation/type/id/c
 contexts and SHA-256 integrity checks; incomplete/corrupt records are withheld.
 Peer-key and thread-peer contexts also bind the immutable shop identity. The default
 identity remains literal `default`; tenant UUIDs have no default-context fallback.
-These store-level controls do not enable tenant routes or worker admission.
+Tenant seller routes require a provisioned static binding and fresh enabled policy.
 Auth mutations compare-and-set the snapshot version in one transaction.
+The full-MFA platform console may read only last reported worker state, heartbeat
+and an error-present boolean alongside reservation policy/capacity. It never
+receives seller QR material, phone numbers, raw worker errors, keys or chats.
+QR Enable/Disable uses the existing exact-Origin/CSRF and tenant-revision guards.
 A sealed random HMAC key supplies stable peer/phone hashes; direct peer JIDs
 are sealed, and only masked paired phones are stored for display. Text history
 is plaintext sensitive data: control polling clears bodies older than 30 days
 in batches of 200, retaining tombstones and provider deduplication identifiers.
 QRs expire after 60 seconds. Expired SENDING leases become RECONCILE, never an
 automatic retry; eligibility and five-second spacing are enforced at claim.
-These cleanup actions require worker control polling; they are not a background
-retention scheduler. SQLite import excludes QR session/auth/threads/messages.
+Control polling performs retention cleanup; disabled-binding maintenance also
+fences generation, clears auth/QR, cancels QUEUED and reconciles SENDING.
+Retirement requires the worker's authenticated stopped acknowledgement after
+socket shutdown or explicit host stop confirmation. Unreachable is not stopped;
+backend restart loses acknowledgements safely and requires another acknowledgement.
+SQLite import excludes QR session/auth/threads/messages.
 
 Backend code never imports Baileys and does not call the linked-device worker
 or WhatsApp. Seller risk acknowledgement, activation/disconnection and inbox
@@ -434,3 +445,17 @@ Broker wiring, manifest enforcement and restore-disabled operational gates
 remain separate release requirements; schema 3 alone grants no tenant worker
 access.
 
+
+### Fixed-slot host release boundary
+
+GCP has exactly two static QR workers, each with an independent token mounted
+only there and in backend; the read-only binding manifest is backend-only.
+Workers receive neither DB credentials, master key, public ports nor Docker
+socket. Each retains 384 MiB / 0.5 CPU and 192 MiB Node old-space; native/RSS
+memory is not bounded by that heap setting. Shared-host OOM remains cross-shop
+risk: slot 1 admission requires >=512 MiB available throughout simultaneous
+pairing/reconnect/burst, no sustained swap and no OOM.
+Controller activation/rollback removes both workers before new backend bindings
+start. Host rebind requires policy drain, auth fence and token rotation.
+Restore requires disabled/cleanup-pending reservations and advanced epochs;
+never auto-connect restored enabled sessions. See the protected GCP runbook.

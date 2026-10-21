@@ -86,7 +86,8 @@ async function createTenantApi({ store, config, tenantId, serveStatic = null, wh
   const connectionLimiter = new SqlLimiter(store, 'integration-connect', { limit: 10, windowMs: LIMIT_WINDOW_MS });
   const secretBox = config.integrationKeys ? createSecretBox(config.integrationKeys) : null;
   const basePath = config.basePath || '';
-  const qrAvailable = config.whatsappQr?.enabled && !quickLogin && config.shopMode !== 'public-demo' && tenantId === 'default' && !basePath && secretBox;
+  const qrAvailable = config.whatsappQr?.enabled && !quickLogin && config.shopMode !== 'public-demo' && secretBox &&
+    (tenantId === 'default' ? !basePath : config.whatsappQr?.bindings?.some(binding => binding.shopId === tenantId));
   const qrSeller = qrAvailable ? createQrSellerApi({ store, secretBox, shopId: tenantId }) : null;
   const connector = createConnector({ store, config, tenantId, quickLogin });
   const sellerCookie = (token, maxAge) => cookieFor(token, maxAge, config.production, `${basePath}/api/v1/seller`);
@@ -608,7 +609,14 @@ export async function createApi({ store, config, registry = null, platformHandle
       if (tenant?.response) return tenant.response;
       if (!tenant) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
       if (tenant.status !== 'ACTIVE') throw new ApiError(503, 'SHOP_UNAVAILABLE', 'This shop is not available right now.');
-      const response = await (await handlerFor(tenant))(rewriteTenantRequest(request, tenant.config.basePath), context);
+      const rewritten = rewriteTenantRequest(request, tenant.config.basePath);
+      const run = async () => (await handlerFor(tenant))(rewritten, context);
+      let response;
+      if (tenant.id !== 'default' && /^\/api\/v1\/seller\/(?:integrations\/whatsapp-qr(?:\/|$)|chats(?:\/|$))/.test(new URL(rewritten.url).pathname)) {
+        const binding = config.whatsappQr?.bindings?.find(item => item.shopId === tenant.id);
+        if (!binding || !tenants.resolveWorkerTenant) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+        response = await tenants.resolveWorkerTenant(tenant.id, binding.slot, null, run);
+      } else response = await run();
       if (/^\/setup(?:\/|$)/.test(url.pathname) && response.status === 404) {
         response.headers.set('Cache-Control', 'no-store');
         response.headers.set('Referrer-Policy', 'no-referrer');

@@ -22,7 +22,9 @@ export class Session {
   }
   async stop() { this.stopped = true; this.end(); await this.events; await this.auth?.flush(); }
   async tick() {
-    const control = await this.client.request('/v1/control');
+    let control;
+    try { control = await this.client.request('/v1/control'); }
+    catch (error) { this.end(); throw error; }
     if (!Number.isSafeInteger(control.generation) || !['OFF', 'PAIR', 'RUN'].includes(control.desired)) throw new Error('CONTROL_INVALID');
     if (control.generation !== this.generation || control.desired === 'OFF') {
       const old = this.socket; const connected = this.state === 'CONNECTED';

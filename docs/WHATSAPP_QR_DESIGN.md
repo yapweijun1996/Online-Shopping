@@ -209,7 +209,7 @@ Initial hard limits, deliberately conservative and **not ban-safe thresholds**: 
 
 ### C5. Tenant/resource isolation and failure handling
 
-Proposed initial worker limit **384 MiB RAM, 0.5 vCPU, Node old-space 192 MiB**, bounded tmpfs, PID cap, read-only root, capabilities dropped, no-new-privileges and rotated code-only logs. These are protective ceilings, **not measured requirements or promises**. Existing GCP service caps total 496 MiB (48+256+192); adding worker gives 880 MiB ceilings before kernel, gateway and other shared containers. On a true 2 GiB VM, one session may fit **[INFERENCE]**, but require measured idle/reconnect/burst peaks, host reserve of at least 512 MiB and no swap thrash before rollout. On documented 1 GiB VM do not enable without relocation/resize/capacity evidence. Limits do not reserve RAM; cross-container host OOM remains possible. No unbounded message/contact caches, full-history sync, media downloads or rendering. Bounded normalized event sizes and queues; discard unsupported media bodies with a label, no remote URL fetch.
+Worker limits are **384 MiB RAM, 0.5 vCPU, Node old-space 192 MiB**, bounded tmpfs/PIDs, read-only root, capabilities dropped and no-new-privileges. Two static workers include the permanent default slot and one admitted tenant; no shared-process sessions or Docker socket. These are protective ceilings, not measured requirements. Backend/frontend/PostgreSQL ceilings total 624 MiB; two workers add 768 MiB, totaling 1392 MiB before kernel/gateway/other workloads. Require measured simultaneous pairing/reconnect/burst peaks with >=512 MiB host available RAM, no sustained swap and no OOM before slot 1 admission. Failure keeps slot 1 disabled pending separate resize. Heap limits do not bound native/RSS memory or reserve host RAM. No unbounded caches, full-history sync, media downloads or rendering; discard unsupported media bodies without remote URL fetch.
 
 | Failure | Required behavior |
 | --- | --- |
@@ -278,3 +278,14 @@ Runtime smoke: launch backend plus fake worker in local isolation, log in as syn
 - Assign an operator for disabled-by-default deployment, dependency security updates, key backup/revocation, resource alarms and controlled manual reconciliation. Neither worker restart nor Cloud failover may silently resend an ambiguous reply.
 
 **Release position:** Cloud is implemented but not “just enter Meta credentials” ready on the tracked GCP stack. QR human reply design is technically plausible with Baileys and strict isolation, but remains an unsupported-client integration with a real risk to the seller's number. No user communication pattern or acceptance checkbox removes that risk.
+
+## Fixed-slot GCP implementation
+
+The tenant design supersedes the original single-default deployment ceiling:
+two static isolated workers maximum, including default. Each retains 384 MiB /
+0.5 CPU, with 192 MiB Node old-space. No dynamic container creation or shared
+worker credentials. Slot 1 remains unavailable until the host simultaneous-load
+drill maintains >=512 MiB available RAM without sustained swap or OOM.
+See [tenant design](WHATSAPP_QR_TENANTS_DESIGN.md) and
+[release gates](GCP_DEPLOY.md#fixed-slot-protected-release). Container running
+digest/readiness is not evidence of real pairing or delivery.

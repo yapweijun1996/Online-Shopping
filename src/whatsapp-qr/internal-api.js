@@ -4,7 +4,47 @@ import { createWhatsAppQrStore, QrError } from './store.js';
 
 const prefix = '/internal/whatsapp-qr/v1';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-export function createWhatsAppQrInternalApi({ store, secretBox, token, shopId = 'default', now }) {
+export function createWhatsAppQrInternalApi({ store, secretBox, token, shopId = 'default', now, bindings, registry }) {
+  if (bindings) {
+    const handlers = bindings.map(binding => ({
+      expected: Buffer.from(`Bearer ${binding.token}`), binding,
+      handle: binding.shopId === 'default' ? createWhatsAppQrInternalApi({ store, secretBox, token: binding.token, now }) : null,
+    }));
+    return async request => {
+      const supplied = Buffer.from(request.headers.get('authorization') ?? '');
+      const selected = handlers.find(({ expected }) => supplied.length === expected.length && timingSafeEqual(supplied, expected));
+      if (!selected) return json(401, { error: 'UNAUTHORIZED' });
+      if (selected.handle) return selected.handle(request);
+      if (!uuid.test(request.headers.get('x-worker-id') ?? '')) return json(400, { error: 'INVALID_WORKER_ID' });
+      const path = new URL(request.url).pathname;
+      if (path === `${prefix}/stopped` && request.method === 'POST') {
+        try {
+          if (!registry) return json(503, { error: 'PLATFORM_UNAVAILABLE' });
+          await registry.acknowledgeQrStop(selected.binding.shopId, selected.binding.slot, Number(request.headers.get('x-binding-epoch')));
+          return json(200, { stopped: true });
+        } catch (error) { return json(error instanceof ApiError ? error.status : 503, { error: error instanceof ApiError ? error.code : 'PLATFORM_UNAVAILABLE' }); }
+      }
+      const allowed = request.method === 'GET' ? /^\/internal\/whatsapp-qr\/v1\/(?:control|auth)$/.test(path)
+        : request.method === 'PUT' ? path === `${prefix}/auth`
+        : request.method === 'POST' && /^\/internal\/whatsapp-qr\/v1\/(?:state|inbound|replies\/claim|replies\/[0-9a-f-]{36}\/result)$/.test(path);
+      if (!allowed) return json(404, { error: 'NOT_FOUND' });
+      try {
+        if (!registry) return json(503, { error: 'PLATFORM_UNAVAILABLE' });
+        const rawEpoch = request.headers.get('x-binding-epoch');
+        const epoch = rawEpoch === null && path === `${prefix}/control` ? null : Number(rawEpoch);
+        if (epoch !== null && (!Number.isSafeInteger(epoch) || epoch < 1)) return json(403, { error: 'QR_REVOKED' });
+        return await registry.resolveWorkerTenant(selected.binding.shopId, selected.binding.slot, epoch, async ({ store: tenantStore, epoch: observed }) => {
+          const response = await createWhatsAppQrInternalApi({ store: tenantStore, secretBox, token: selected.binding.token, shopId: selected.binding.shopId, now })(request);
+          response.headers.set('X-Binding-Epoch', String(observed));
+          return response;
+        });
+      } catch (error) {
+        const response = json(error instanceof ApiError ? error.status : 503, { error: error instanceof ApiError ? error.code : 'PLATFORM_UNAVAILABLE' });
+        if (error instanceof ApiError && error.code === 'QR_REVOKED' && error.bindingEpoch) response.headers.set('X-Binding-Epoch', String(error.bindingEpoch));
+        return response;
+      }
+    };
+  }
   if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{32,}$/.test(token)) throw new Error('Invalid WhatsApp QR worker token.');
   const expected = Buffer.from(`Bearer ${token}`), data = createWhatsAppQrStore({ store, secretBox, shopId, now });
   return async request => {

@@ -92,3 +92,15 @@ Screenshots are outside the repository under the task's `job-ui/shots/` director
 - `credentials`, `shop-detail`, `activity`, `account`
 
 Additional images: `qr.png`, `dashboard-768-dark.png`, and `review-<prefix>.png` contact sheets. Full-page captures may exceed the viewport height; dimensions above are browser viewport sizes. These images contain only disposable fixture credentials; do not use production enrolment/recovery screenshots as documentation.
+
+## Optional WhatsApp QR admission
+
+Shop creation does not provision a QR worker. Only one tenant slot exists beside
+the permanent default slot. The operator installs an immutable-UUID binding and
+independent credential using [the protected GCP release](GCP_DEPLOY.md#fixed-slot-protected-release),
+explicitly migrates platform to 3 with `--with-qr` (shop 27), and passes the
+>=512 MiB simultaneous-load reserve gate before SuperAdmin enable. The Owner
+must acknowledge the unofficial-client ban risk and pair a dedicated number.
+Rename does not change the binding. Disable/suspend/deletion keeps the reservation
+until durable cleanup and confirmed worker stop; resume never re-enables it.
+Restores must disable reservations/advance epochs before starting workers.
