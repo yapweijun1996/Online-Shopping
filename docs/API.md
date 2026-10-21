@@ -310,3 +310,66 @@ Every input/output object is closed; listing/variant pages stop at the offset ce
 
 Schema25 permits automatic OrbStack production database migration after merging to main, even with MCP off; its backup/maintenance safeguards are not a manual approval gate. GCP pauses for protected manual release and never migrates. Image-only rollback cannot reverse schema25. Required owner decision: **"merging = auto-migrate OrbStack production DB to schema 25; backups/rollback procedure"**. See [SELLER_MCP_DESIGN.md](SELLER_MCP_DESIGN.md#p1-implementation-record) and the [ordered GCP procedure](GCP_DEPLOY.md#seller-mcp-schema25-manual-release). Deployment files were not changed.
 
+
+## Private WhatsApp QR worker API (schema 27; default OFF)
+
+`WHATSAPP_QR_ENABLED=1` enables a separate internal HTTP listener on `0.0.0.0:3001`
+(`WHATSAPP_QR_PORT`: 1024–65535). It requires integration keys and a readable
+`WHATSAPP_QR_TOKEN_FILE` whose first line is at least 32 URL-safe characters.
+Quick login, public-demo mode and a non-default `WHATSAPP_QR_SHOP` are refused.
+Do not publish this port or proxy it through Caddy. It is not a seller API.
+
+All routes are under `/internal/whatsapp-qr/v1`: `GET control`, `POST state`,
+`GET/PUT auth`, `POST inbound`, `POST replies/claim`, and `POST replies/{id}/result`.
+See [WHATSAPP_QR_PROTOCOL.md](WHATSAPP_QR_PROTOCOL.md) for bodies, fencing,
+auth version conflicts, lease ownership and recovery rules. Authentication is an
+exact bearer token plus a UUID `X-Worker-Id`; no CORS, all responses `no-store`.
+JSON limits are 64 KiB, except auth PUT at 256 KiB. The listener has 10-second
+request, header and socket timeouts. Unknown routes return 404.
+
+Schema 27 adds session, encrypted/chunked auth, sealed-peer thread and message
+tables, with inbound/idempotency uniqueness and thread/status indexes. SQLite
+imports intentionally omit all four QR tables: the target retains a fresh
+OFF/IDLE session and cannot reactivate device credentials, QR text or queued
+replies from the source. No Baileys dependency, external transport or seller UI
+is included. Seller activation and reply endpoints are documented below.
+
+
+## Experimental linked-device WhatsApp QR seller API
+
+Default off. All routes below return `404 NOT_FOUND` when QR is disabled, on
+public-demo/quick-login sites, or outside the immutable `default` tenant (including
+prefixed tenant routes). Integration keys are required. Every response is
+`Cache-Control: no-store`. Reads require a seller session; every mutation additionally
+requires exact seller Origin and `X-CSRF-Token`. No route calls WhatsApp.
+
+Seller workflow: [Using WhatsApp QR chats](WHATSAPP_QR_GUIDE.md).
+
+| Method | Path | Contract |
+| --- | --- | --- |
+| GET | `/api/v1/seller/integrations/whatsapp-qr` | All roles: `{available:true,desired,state,generation,phoneMasked,lastError,acknowledged,qr,qrExpiresAt}`. QR text is non-null only for Owner during unexpired PAIRING. |
+| POST | `.../whatsapp-qr/acknowledge` | Owner; `{noticeVersion:1}`. Persists acknowledgement actor/time/version and `RISK_ACKNOWLEDGED` audit. |
+| POST | `.../whatsapp-qr/pair` | Owner; `{}`; requires acknowledgement (`409 ACKNOWLEDGEMENT_REQUIRED`). Limits 3/15 minutes/shop and 5/15 minutes/client address, using persistent SqlLimiter. Allowed new pair advances generation, deletes auth and clears QR; active pair/run remains unchanged. Writes CONNECT audit. |
+| POST | `.../whatsapp-qr/disconnect` | Owner; `{}`. Advances generation, sets OFF, clears auth/QR, cancels QUEUED replies; history retained. Writes DISCONNECT audit. Remote unlink is not guaranteed; unlink in the official app if necessary. |
+| GET | `/api/v1/seller/chats?limit=&offset=` | `orders.fulfil` (all roles); JSON array newest activity first. Default/max limit 50, offset max 10000. Each `{id,displayName,peerMasked,lastMessageText,lastMessageAt,lastInboundAt,unreadCount,canReply,replyWindowEndsAt}`. `lastMessageText` is the latest plain-text body, or null for removed/absent bodies. LIDs have no phone association. |
+| GET | `/api/v1/seller/chats/{id}/messages?before=&limit=` | `orders.fulfil`; JSON array `{id,direction,text,status,errorCode,createdAt,actor}`. Default/max limit 100. `before` is a message ID in this thread; newest page returned oldest-first, stable timestamp/ID ordering. Retained tombstones have null text. |
+| POST | `/api/v1/seller/chats/{id}/read` | `orders.fulfil`; `{}`; returns `{unreadCount:0}`. |
+| POST | `/api/v1/seller/chats/{id}/replies` | `chats.reply` (Owner/Manager/Staff); `{text}` and `Idempotency-Key` matching `[A-Za-z0-9_-]{16,100}`. Trimmed 1–4096 characters, no control characters except LF/TAB. Returns 201 message; same thread/text/key returns 200 existing message, changed content/thread gives 409 IDEMPOTENCY_CONFLICT. |
+| GET | `/api/v1/seller/chats/{id}/orders` | `orders.fulfil`; `{suggested:[{id,orderNo,status,submittedAt}]}`, up to five newest non-erased matches among the latest 500 orders. Compares normalized buyer/recipient digits with the thread HMAC; never creates links. Suppressed and LID threads yield no suggestions. |
+
+Reply enqueue and worker claims serialize on the same session. Enqueue requires
+CONNECTED with desired not OFF, an unsuppressed thread and inbound age <=24 hours.
+Denial returns `409 {error:{code:"NOT_ELIGIBLE",message},reason}` (`NOT_CONNECTED`, `SUPPRESSED`,
+`WINDOW_EXPIRED`). Limits: 20 accepted intents/hour/shop, 5/minute/thread, 50
+QUEUED+SENDING/shop. Limits return 429 with Retry-After; failed reservations roll
+back. Idempotency replay consumes no quota and precedes eligibility checks.
+The worker rechecks eligibility before dispatch; uncertain outcomes never auto-retry.
+
+Erasing a finished order also suppresses matching QR threads, clears their names,
+sealed peer addresses and all message bodies in the same transaction. Later
+inbound retains only metadata/dedupe tombstones, never text or display names.
+Erasure refuses with 503 if existing QR peer keys cannot be accessed because
+integration keys are absent. Backups retain historical personal data until expiry.
+Schema 27 is unreleased: its thread name/sealed-peer fields now allow NULL for
+erasure on both engines; no audit CHECK expansion or new schema version is needed.
+

@@ -184,6 +184,7 @@ function showLogin(messageKey = '', clearHint = true) {
   if (clearHint) sessionHint(false);
   messageBadge?.dispose();
   messageBadge = null;
+  settingsPage?.dispose?.();
   messagesPage?.dispose();
   messagesPage = null;
   csrfToken = null;
@@ -213,6 +214,7 @@ function showWorkspace(session) {
   sessionViewSequence++;
   sessionHint(true);
   messageBadge?.dispose();
+  settingsPage?.dispose?.();
   messagesPage?.dispose();
   messagesPage = null;
   csrfToken = session.csrfToken;
@@ -254,6 +256,7 @@ function showWorkspace(session) {
 }
 
 function renderView() {
+  settingsPage?.dispose?.();
   messagesPage?.dispose();
   messagesPage = null;
   if (updateView !== currentView) {
@@ -340,7 +343,7 @@ function renderView() {
     return;
   }
   if (currentView === 'company') {
-    settingsPage = mountCompanySettings(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError') });
+    settingsPage = mountCompanySettings(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError'), role });
     return;
   }
   renderDashboard(content);
