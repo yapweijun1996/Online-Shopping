@@ -1,5 +1,5 @@
 import { unzip, assertBalanced } from './helpers/xlsx.js';
-import { migrateStore } from '../src/db.js';
+import { migrateStore, SCHEMA_VERSION } from '../src/db.js';
 import { upgradePostgres } from '../src/postgres/upgrade.js';
 import { toXlsx } from '../src/xlsx.js';
 import '../public/seller/sender-copy.js';
@@ -36,7 +36,7 @@ for (const backend of ['SQLite', 'PostgreSQL']) test(`${backend}: shipping parce
   await db.setSchemaVersion(25);
   if (backend === 'SQLite') await migrateStore(db);
   else await db.transaction(() => upgradePostgres(db, 25));
-  assert.equal(await db.schemaVersion(), 26);
+  assert.equal(await db.schemaVersion(), SCHEMA_VERSION);
   await createCategory(db, { code: 'TEST', label: 'Fictional' });
   const product = await createProduct(db, { sku: 'PARCEL', name: 'Fictional item', description: 'Fictional', category: 'TEST', priceMinor: 1250, active: true });
   async function make(count, confirmed = true) {

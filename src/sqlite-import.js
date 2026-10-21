@@ -5,6 +5,10 @@ export const importTables = ['admin', 'seller_account', 'account_event', 'sessio
   'checkout_idempotency', 'rate_limit_attempt', 'integration_connection', 'integration_audit', 'webhook_receipt', 'message_outbox', 'message_inbound',
   'oauth_client', 'oauth_authorization_request', 'oauth_grant', 'oauth_authorization_code', 'oauth_token', 'mcp_audit'];
 
+// QR device identity, sealed peers and reply intents must not reactivate after a restore.
+// Keep the fresh OFF/IDLE session; do not import auth, QR material or dependent history.
+export const excludedImportTables = ['whatsapp_qr_session', 'whatsapp_qr_auth', 'message_thread', 'message_thread_message'];
+
 export function rowsDigest(rows) {
   const normalized = rows.map(row => Object.fromEntries(Object.keys(row).sort().map(key =>
     [key, ArrayBuffer.isView(row[key]) ? { bytes: Buffer.from(row[key]).toString('base64') } : row[key]])));
@@ -22,6 +26,14 @@ export async function importSqlite(source, target) {
     for (const table of importTables) {
       const rows = await target.all(`SELECT * FROM ${table}`);
       if ((!defaults.has(table) && rows.length) || (defaults.has(table) && rows.length !== 1)) throw new Error('Import destination must be a fresh baseline.');
+    }
+    const qr = await target.get('SELECT * FROM whatsapp_qr_session WHERE id = 1');
+    if (!qr || qr.desired !== 'OFF' || qr.state !== 'IDLE' || qr.generation !== 1 || qr.auth_version !== 0 ||
+      qr.revision !== 1 || qr.qr_text !== null || qr.peer_key_sealed !== null || qr.lease_owner !== null) {
+      throw new Error('Import destination must have a fresh QR session.');
+    }
+    for (const table of excludedImportTables.filter(table => table !== 'whatsapp_qr_session')) {
+      if (await target.get(`SELECT 1 AS found FROM ${table} LIMIT 1`)) throw new Error('Import destination must have no QR history or auth.');
     }
     const setting = await target.get('SELECT mode FROM shop_setup WHERE id = 1');
     const sequence = await target.get('SELECT value FROM order_sequence WHERE id = 1');

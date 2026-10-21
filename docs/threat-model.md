@@ -361,3 +361,37 @@ Enabled tenant discovery translates canonical paths before store resolution. Sus
 
 **Merging schema25 to main permits automatic OrbStack production database migration, even with MCP off; there is no manual OrbStack schema gate.** Required owner decision: **"merging = auto-migrate OrbStack production DB to schema 25; backups/rollback procedure"**. Approve the automatic maintenance/backup/migration/restore path or stop the installed poller before merge. GCP instead pauses for a protected manual release and never migrates. Follow [the ordered manual GCP procedure](GCP_DEPLOY.md#seller-mcp-schema25-manual-release). Image-only rollback cannot reverse committed schema25; use a compatible disabled build or coordinated restore with all writers stopped, losing later writes. Restored tokens require invalidation with MCP off. Installed controller identity, production release/restore and TLS/vendor behavior remain UNVERIFIED.
 
+
+## Private linked-device worker boundary (schema 27)
+
+The default-off WhatsApp QR backend adds a separate internal listener, not a
+route on the public application handler. It binds only the default shop store;
+tenant database selection is not accepted from requests. Deployment must keep
+the port unpublished and outside the reverse proxy. Enabling requires an
+integration key ring and a dedicated URL-safe bearer secret file; quick-login
+and public-demo deployments are rejected.
+
+The worker bearer grants sensitive access to the linked-device auth state,
+normalized inbound ingress and claimed human replies. Equal-length token bytes
+are compared with `timingSafeEqual` before parsing bodies. UUID worker identity,
+60-second session ownership and generation fencing protect against concurrent
+or stale workers. The token is not a substitute for private-network isolation.
+Responses are no-store without CORS; payloads are bounded JSON and the HTTP
+adapter enforces ten-second timeouts.
+
+Auth records are integration-key sealed with per-generation/type/id/chunk
+contexts and SHA-256 integrity checks; incomplete/corrupt records are withheld.
+Auth mutations compare-and-set the snapshot version in one transaction.
+A sealed random HMAC key supplies stable peer/phone hashes; direct peer JIDs
+are sealed, and only masked paired phones are stored for display. Text history
+is plaintext sensitive data: control polling clears bodies older than 30 days
+in batches of 200, retaining tombstones and provider deduplication identifiers.
+QRs expire after 60 seconds. Expired SENDING leases become RECONCILE, never an
+automatic retry; eligibility and five-second spacing are enforced at claim.
+These cleanup actions require worker control polling; they are not a background
+retention scheduler. SQLite import excludes QR session/auth/threads/messages.
+
+Backend code never imports Baileys and does not call the linked-device worker
+or WhatsApp. Seller risk acknowledgement, activation/disconnection and inbox
+authorization/UI are separate, not implemented by this private listener.
+

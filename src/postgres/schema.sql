@@ -1,4 +1,4 @@
--- PostgreSQL baseline matching SQLite schema 26. Timestamps stay ISO text to preserve API snapshots.
+-- PostgreSQL baseline matching SQLite schema 27. Timestamps stay ISO text to preserve API snapshots.
 CREATE TABLE admin (
         id BIGINT PRIMARY KEY CHECK (id = 1),
         username TEXT NOT NULL UNIQUE,
@@ -300,7 +300,7 @@ CREATE TABLE product_event (
   created_at TEXT NOT NULL
 );
 CREATE INDEX product_event_product ON product_event(product_id, created_at);
-INSERT INTO schema_meta VALUES (1, 26);
+INSERT INTO schema_meta VALUES (1, 27);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 INSERT INTO shop_setup(id, mode, shop_name) VALUES (1, NULL, 'Online Shopping');
@@ -369,3 +369,40 @@ CREATE TABLE mcp_audit (
  duration_ms BIGINT NOT NULL CHECK (duration_ms >= 0), result_count BIGINT NOT NULL CHECK (result_count >= 0)
 );
 CREATE INDEX mcp_audit_time ON mcp_audit(at);
+
+CREATE TABLE whatsapp_qr_session (
+ id INTEGER PRIMARY KEY CHECK (id = 1),
+ desired TEXT NOT NULL CHECK (desired IN ('OFF','PAIR','RUN')),
+ state TEXT NOT NULL CHECK (state IN ('IDLE','PAIRING','CONNECTING','CONNECTED','RECONNECTING','LOGGED_OUT','ERROR')),
+ generation INTEGER NOT NULL CHECK (generation > 0), auth_version INTEGER NOT NULL DEFAULT 0 CHECK (auth_version >= 0),
+ qr_text TEXT, qr_expires_at TEXT, phone_masked TEXT, phone_hash TEXT, last_error TEXT,
+ lease_owner TEXT, lease_expires_at TEXT, heartbeat_at TEXT, last_claim_at TEXT,
+ acknowledged_at TEXT, acknowledged_by TEXT, ack_notice_version TEXT,
+ peer_key_sealed BYTEA, peer_key_id TEXT, revision INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL
+);
+INSERT INTO whatsapp_qr_session (id,desired,state,generation,auth_version,revision,updated_at)
+ VALUES (1,'OFF','IDLE',1,0,1,'1970-01-01T00:00:00.000Z');
+CREATE TABLE whatsapp_qr_auth (
+ generation INTEGER NOT NULL, record_type TEXT NOT NULL, record_id TEXT NOT NULL,
+ chunk_index INTEGER NOT NULL CHECK (chunk_index >= 0), chunk_count INTEGER NOT NULL CHECK (chunk_count > 0 AND chunk_index < chunk_count),
+ ciphertext BYTEA NOT NULL, key_id TEXT NOT NULL, digest TEXT NOT NULL, updated_at TEXT NOT NULL,
+ PRIMARY KEY (generation,record_type,record_id,chunk_index)
+);
+CREATE TABLE message_thread (
+ id TEXT PRIMARY KEY, provider TEXT NOT NULL CHECK (provider = 'WHATSAPP_QR'), peer_hash TEXT NOT NULL UNIQUE,
+ peer_sealed BYTEA NOT NULL, peer_key_id TEXT NOT NULL, display_name TEXT NOT NULL,
+ phone_hash TEXT, last_inbound_at TEXT, last_message_at TEXT, unread_count INTEGER NOT NULL DEFAULT 0 CHECK (unread_count >= 0),
+ suppressed_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE message_thread_message (
+ id TEXT PRIMARY KEY, thread_id TEXT NOT NULL REFERENCES message_thread(id),
+ direction TEXT NOT NULL CHECK (direction IN ('IN','OUT')), provider_message_id TEXT,
+ body TEXT CHECK (body IS NULL OR length(body) <= 4096),
+ status TEXT NOT NULL CHECK (status IN ('RECEIVED','QUEUED','SENDING','SENT','FAILED','RECONCILE','CANCELLED')),
+ error_code TEXT, actor TEXT, idempotency_key TEXT, body_digest TEXT, attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+ lease_expires_at TEXT, generation INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX qr_inbound_id ON message_thread_message(provider_message_id) WHERE direction = 'IN';
+CREATE UNIQUE INDEX qr_reply_intent ON message_thread_message(idempotency_key) WHERE idempotency_key IS NOT NULL;
+CREATE INDEX qr_thread_time ON message_thread_message(thread_id,created_at,id);
+CREATE INDEX qr_message_status ON message_thread_message(status,created_at,id);

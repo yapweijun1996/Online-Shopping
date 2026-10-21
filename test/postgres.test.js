@@ -13,7 +13,7 @@ import { createOptionType, createOptionValue, updateOptionValue, listOptionTypes
 import { createOrder } from '../src/orders.js';
 import { decideSellerOrder } from '../src/seller-orders.js';
 import { ensureAdmin } from '../src/auth.js';
-import { importSqlite, importTables, rowsDigest } from '../src/sqlite-import.js';
+import { importSqlite, importTables, excludedImportTables, rowsDigest } from '../src/sqlite-import.js';
 import { createSecretBox } from '../src/secret-box.js';
 import { saveWhatsAppConnection } from '../src/integration-connections.js';
 
@@ -45,7 +45,7 @@ test('PostgreSQL parameter conversion preserves quoted data and search behavior'
 test('SQLite import inventory covers every durable baseline table', async t => {
   const source = await openDatabase(':memory:'); t.after(() => source.close());
   const tables = (await source.all("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")).map(row => row.name).sort();
-  assert.deepEqual([...importTables].sort(), tables);
+  assert.deepEqual([...importTables, ...excludedImportTables].sort(), tables);
 });
 
 test('PostgreSQL dual-origin API: login, CSRF, checkout, replay, catalog and seller decisions', { skip: !base }, async t => {
@@ -117,7 +117,7 @@ test('SQLite import preserves rows, binary images, hashes and identity sequences
   const evidence=await importSqlite(source,target);assert.equal(evidence.tables.find(x=>x.table==='shop_order').rows,1);assert.equal(await ready(target),true);
   for(const table of importTables)assert.equal(rowsDigest(await source.all(`SELECT * FROM ${table}`)),rowsDigest(await target.all(`SELECT * FROM ${table}`)), table);
   const tables = (await target.all("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'schema_meta'")).map(row => row.tablename).sort();
-  assert.deepEqual([...importTables].sort(), tables);
+  assert.deepEqual([...importTables, ...excludedImportTables].sort(), tables);
   for (const table of ['integration_connection', 'integration_audit', 'webhook_receipt', 'message_outbox', 'message_inbound']) assert.equal(evidence.tables.find(row => row.table === table).rows, 1);
   const restored = await target.get('SELECT * FROM integration_connection');
   assert.equal(secretBox.open(Buffer.from(restored.secret_ciphertext), restored.secret_key_id, 'WHATSAPP_CLOUD:SANDBOX'),

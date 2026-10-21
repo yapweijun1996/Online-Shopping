@@ -15,6 +15,7 @@ import { startWhatsAppWorker } from './whatsapp-outbox.js';
 import { createPlatformRuntime } from './platform/runtime.js';
 import { deploymentPaused } from './deployment-maintenance.js';
 import { ApiError, errorResponse } from './http.js';
+import { createWhatsAppQrInternalApi } from './whatsapp-qr/internal-api.js';
 
 function clientAddress(request, config) {
   const forwarded = request.headers['x-real-ip'];
@@ -49,6 +50,19 @@ async function writeFetchResponse(response, result) {
   if (body && !headers['content-length']) headers['content-length'] = body.length;
   response.writeHead(result.status, headers);
   response.end(body);
+}
+
+// Factory deliberately does not listen: tests can bind an ephemeral port.
+export function createWhatsAppQrServer({ store, config, now }) {
+  const handle = createWhatsAppQrInternalApi({ store, secretBox: createSecretBox(config.integrationKeys), token: config.whatsappQr.token, now });
+  const server = createServer(async (request, response) => {
+    try { await writeFetchResponse(response, await handle(toFetchRequest(request, {}))); }
+    catch { response.writeHead(500, { 'cache-control': 'no-store' }); response.end(); }
+  });
+  server.requestTimeout = 10_000;
+  server.headersTimeout = 10_000;
+  server.setTimeout(10_000, socket => socket.destroy());
+  return server;
 }
 
 export async function createApp(config) {
@@ -98,7 +112,13 @@ export async function createApp(config) {
       secretBox: createSecretBox(config.integrationKeys), transport: createWhatsAppTransport(), tenants: platform?.workerTenants, paused });
     return true;
   };
-  return { server, database, platform, startWorker, close: () => new Promise((resolve, reject) => server.close(async (error) => {
+  const qrServer = config.whatsappQr?.enabled ? createWhatsAppQrServer({ store: database, config }) : null;
+  const startQr = () => qrServer ? new Promise((resolve, reject) => {
+    qrServer.once('error', reject);
+    qrServer.listen(config.whatsappQr.port, '0.0.0.0', () => { qrServer.removeListener('error', reject); resolve(); });
+  }) : Promise.resolve();
+  return { server, qrServer, database, platform, startWorker, startQr, close: () => new Promise((resolve, reject) => server.close(async (error) => {
+    if (qrServer?.listening) await new Promise(done => qrServer.close(done));
     await worker?.stop();
     await platform?.close();
     await database.close();
@@ -111,6 +131,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === fileURLToPath(new URL(
   try {
     const config = readConfig();
     const app = await createApp(config);
+    await app.startQr();
     app.server.listen(config.port, () => {
       console.log(`Online Shopping listening on port ${app.server.address().port}`);
       app.startWorker();

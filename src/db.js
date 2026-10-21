@@ -1,3 +1,4 @@
+import { migrateWhatsAppQr } from './whatsapp-qr/schema.js';
 import { migrateSenderSettings } from './sender-settings.js';
 import { randomUUID } from 'node:crypto';
 import { openNodeStore } from './store.js';
@@ -6,7 +7,7 @@ import { migrateListings } from './listings.js';
 import { migrateSharedGalleries } from './product-gallery.js';
 import { migrateOAuth } from './mcp/schema.js';
 
-export const SCHEMA_VERSION = 26;
+export const SCHEMA_VERSION = 27;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -602,6 +603,13 @@ export async function migrateStore(store) {
     });
     version = 26;
   }
+  if (version === 26) {
+    await store.transaction(async () => {
+      await migrateWhatsAppQr(store);
+      await store.setSchemaVersion(27);
+    });
+    version = 27;
+  }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }
 
@@ -635,7 +643,8 @@ export async function ready(store) {
       Boolean(await store.get('SELECT id FROM shop_setup WHERE id = 1')) &&
       (await Promise.all(['session', 'product', 'general_code', 'shop_order', 'delivery', 'order_item', 'order_event', 'checkout_idempotency',
         'rate_limit_attempt', 'shop_setup', 'product_gallery_image', 'oauth_client', 'oauth_authorization_request',
-        'oauth_grant', 'oauth_authorization_code', 'oauth_token', 'mcp_audit']
+        'oauth_grant', 'oauth_authorization_code', 'oauth_token', 'mcp_audit',
+        'whatsapp_qr_session', 'whatsapp_qr_auth', 'message_thread', 'message_thread_message']
         .map(async (table) => Array.isArray(await store.all(`SELECT * FROM ${table} LIMIT 0`))))).every(Boolean);
   } catch {
     return false;

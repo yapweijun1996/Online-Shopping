@@ -310,3 +310,27 @@ Every input/output object is closed; listing/variant pages stop at the offset ce
 
 Schema25 permits automatic OrbStack production database migration after merging to main, even with MCP off; its backup/maintenance safeguards are not a manual approval gate. GCP pauses for protected manual release and never migrates. Image-only rollback cannot reverse schema25. Required owner decision: **"merging = auto-migrate OrbStack production DB to schema 25; backups/rollback procedure"**. See [SELLER_MCP_DESIGN.md](SELLER_MCP_DESIGN.md#p1-implementation-record) and the [ordered GCP procedure](GCP_DEPLOY.md#seller-mcp-schema25-manual-release). Deployment files were not changed.
 
+
+## Private WhatsApp QR worker API (schema 27; default OFF)
+
+`WHATSAPP_QR_ENABLED=1` enables a separate internal HTTP listener on `0.0.0.0:3001`
+(`WHATSAPP_QR_PORT`: 1024–65535). It requires integration keys and a readable
+`WHATSAPP_QR_TOKEN_FILE` whose first line is at least 32 URL-safe characters.
+Quick login, public-demo mode and a non-default `WHATSAPP_QR_SHOP` are refused.
+Do not publish this port or proxy it through Caddy. It is not a seller API.
+
+All routes are under `/internal/whatsapp-qr/v1`: `GET control`, `POST state`,
+`GET/PUT auth`, `POST inbound`, `POST replies/claim`, and `POST replies/{id}/result`.
+See [WHATSAPP_QR_PROTOCOL.md](WHATSAPP_QR_PROTOCOL.md) for bodies, fencing,
+auth version conflicts, lease ownership and recovery rules. Authentication is an
+exact bearer token plus a UUID `X-Worker-Id`; no CORS, all responses `no-store`.
+JSON limits are 64 KiB, except auth PUT at 256 KiB. The listener has 10-second
+request, header and socket timeouts. Unknown routes return 404.
+
+Schema 27 adds session, encrypted/chunked auth, sealed-peer thread and message
+tables, with inbound/idempotency uniqueness and thread/status indexes. SQLite
+imports intentionally omit all four QR tables: the target retains a fresh
+OFF/IDLE session and cannot reactivate device credentials, QR text or queued
+replies from the source. No Baileys dependency, external transport, seller
+activation endpoint or seller UI is included in this backend phase.
+

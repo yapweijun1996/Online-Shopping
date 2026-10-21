@@ -1,3 +1,4 @@
+import { migrateWhatsAppQr } from '../whatsapp-qr/schema.js';
 import { migrateSenderSettings } from '../sender-settings.js';
 import { randomUUID } from 'node:crypto';
 import { SCHEMA_VERSION } from '../db.js';
@@ -13,8 +14,14 @@ const legacyApplicationGrant = `current_database() !~ '^t_[a-z0-9]{3,30}_[0-9a-f
 
 // Called only by an explicit operator/test opt-in, inside the store-owned transaction.
 export async function upgradePostgres(store, version) {
+  if (version === 26) {
+    await migrateQr(store);
+    await store.setSchemaVersion(SCHEMA_VERSION);
+    return;
+  }
   if (version === 25) {
     await migrateSenderSettings(store);
+    await migrateQr(store);
     await store.setSchemaVersion(SCHEMA_VERSION);
     return;
   }
@@ -22,6 +29,7 @@ export async function upgradePostgres(store, version) {
     await migrateOAuth(store);
     await grantOAuth(store);
     await migrateSenderSettings(store);
+    await migrateQr(store);
     await store.setSchemaVersion(SCHEMA_VERSION);
     return;
   }
@@ -231,6 +239,7 @@ END $$;`);
   await migrateOAuth(store);
   await grantOAuth(store);
   await migrateSenderSettings(store);
+  await migrateQr(store);
   await store.setSchemaVersion(SCHEMA_VERSION);
 }
 
@@ -238,5 +247,13 @@ async function grantOAuth(store) {
   await store.exec(`DO $$ BEGIN IF ${legacyApplicationGrant} THEN
     GRANT SELECT, INSERT, UPDATE, DELETE ON oauth_client, oauth_authorization_request, oauth_grant,
       oauth_authorization_code, oauth_token, mcp_audit TO online_shopping_app;
+    END IF; END $$;`);
+}
+
+async function migrateQr(store) {
+  await migrateWhatsAppQr(store);
+  await store.exec(`DO $$ BEGIN IF ${legacyApplicationGrant} THEN
+    GRANT SELECT, INSERT, UPDATE, DELETE ON whatsapp_qr_session, whatsapp_qr_auth,
+      message_thread, message_thread_message TO online_shopping_app;
     END IF; END $$;`);
 }
