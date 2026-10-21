@@ -71,3 +71,21 @@ test('App Secret proof belongs to the signed phone and is cleared on rotation', 
   await receiveWhatsAppWebhook(store, box, { rawBody, signature });
   assert.equal(await status(), 'UNKNOWN', 'old body replay cannot re-prove rotated credentials');
 });
+test('shared phone and App Secret prove both environments without changing message routing', async t => {
+  const store = await openDatabase(':memory:'); t.after(() => store.close());
+  const box = createSecretBox(parseKeyFile(`k=${randomBytes(32).toString('base64')}`));
+  const transport = { ...provider(), verify: async () => ({ ok: true }) };
+  for (const environment of ['SANDBOX', 'PRODUCTION']) {
+    await saveWhatsAppConnection(store, box, transport, { ...input, environment }, 'fixture');
+  }
+  const rawBody = Buffer.from(JSON.stringify({ object: 'whatsapp_business_account', entry: [{ changes: [{ field: 'messages', value: { metadata: { phone_number_id: input.phoneNumberId }, messages: [{ id: 'wamid.shared-phone', from: '15555550100', timestamp: '1760000100', type: 'text', text: { body: 'Fixture' } }] } }] }] }));
+  const signature = 'sha256=' + createHmac('sha256', input.appSecret).update(rawBody).digest('hex');
+  assert.equal((await receiveWhatsAppWebhook(store, box, { rawBody, signature })).messages, 1);
+  const stored = await store.all(`SELECT c.environment FROM message_inbound m
+    JOIN integration_connection c ON c.id = m.connection_id WHERE m.provider_message_id = ?`, 'wamid.shared-phone');
+  assert.deepEqual(stored.map(row => row.environment), ['PRODUCTION']);
+  for (const environment of ['PRODUCTION', 'SANDBOX']) {
+    const readiness = await checkWhatsAppReadiness(store, box, transport, environment);
+    assert.equal(readiness.checks.find(c => c.id === 'appSecret').status, 'PASS', environment);
+  }
+});

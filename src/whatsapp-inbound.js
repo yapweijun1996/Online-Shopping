@@ -60,9 +60,9 @@ export async function receiveWhatsAppWebhook(store, secretBox, { rawBody, signat
 
     // Bind proof to the current sealed credential generation, not the provider-wide body receipt.
     // Connecting/rotating replaces public_config and clears this marker; resealing does not.
-    const selectedIds = new Set([...parsed.statuses, ...parsed.messages].map(select).filter(Boolean).map(item => item.connection.id));
+    const phoneIds = new Set([...parsed.statuses, ...parsed.messages].map(item => item.phoneNumberId));
     for (const { connection, secrets } of match) {
-      if (!selectedIds.has(connection.id)) continue;
+      if (!phoneIds.has(connection.publicConfig.phoneNumberId)) continue;
       const currentSecrets = await openWhatsAppSecrets(store, secretBox, connection.environment);
       if (currentSecrets.appSecret !== secrets.appSecret || currentSecrets.accessToken !== secrets.accessToken) continue;
       const row = await store.get('SELECT public_config FROM integration_connection WHERE id = ?', connection.id);
