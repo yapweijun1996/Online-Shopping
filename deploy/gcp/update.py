@@ -201,6 +201,18 @@ class Updater:
 
     def activate(self, release, initial=False):
         self.validate_release(release)
+        # Match the fixed Compose backend mounts even when QR/manifest mode is off.
+        # Rollback and recovery enter here too: refuse before touching containers.
+        secrets = ('admin-password', 'postgres-password', 'integration-keys',
+                   'platform-password', 'provisioner-password', 'whatsapp-qr-token',
+                   'whatsapp-qr-token-slot1', 'whatsapp-qr-bindings.json')
+        if initial:
+            secrets += ('postgres-owner-password',)
+        directory = Path(self.runtime()['SECRETS_DIR'])
+        for name in secrets:
+            path = directory / name
+            if not path.is_file() or path.stat().st_size == 0:
+                raise ValueError('Required compose secret must be a regular non-empty file: ' + str(path))
         worker = release.get('whatsapp-qr')
         env = ('BACKEND_IMAGE=' + release['backend'] + '\nFRONTEND_IMAGE=' + release['frontend']
                + ('\nWHATSAPP_QR_IMAGE=' + worker if worker else '')

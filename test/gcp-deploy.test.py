@@ -22,6 +22,16 @@ def release(sha):
     return {'sha': sha, 'baseline': BASE, **{c: 'ghcr.io/yapweijun1996/online-shopping-' + c + '@sha256:' + ('1' if sha == A else '2') * 64 for c in ('backend', 'frontend')}}
 
 
+def activation_secrets(root):
+    directory = Path(root, 'secrets')
+    directory.mkdir(exist_ok=True)
+    for name in ('admin-password', 'postgres-password', 'postgres-owner-password',
+                 'integration-keys', 'platform-password', 'provisioner-password',
+                 'whatsapp-qr-token', 'whatsapp-qr-token-slot1', 'whatsapp-qr-bindings.json'):
+        (directory / name).write_text('fixture\n')
+    return directory
+
+
 def run(**fields):
     result = dict(id=1, run_attempt=1, head_sha=B, head_branch='main', event='push',
                   path='.github/workflows/verify.yml', repository={'full_name': u.REPO},
@@ -53,6 +63,29 @@ class Fake(u.Updater):
 
 
 class Tests(unittest.TestCase):
+    def test_activation_secret_preflight_preserves_running_release(self):
+        for initial in (False, True):
+            for name in ('admin-password', 'postgres-password', 'integration-keys',
+                         'platform-password', 'provisioner-password', 'whatsapp-qr-token',
+                         'whatsapp-qr-token-slot1', 'whatsapp-qr-bindings.json',
+                         *(['postgres-owner-password'] if initial else [])):
+                for invalid in ('missing', 'empty', 'directory'):
+                    with self.subTest(initial=initial, name=name, invalid=invalid), tempfile.TemporaryDirectory() as root:
+                        directory = activation_secrets(root)
+                        target = directory / name
+                        target.unlink()
+                        if invalid == 'empty':
+                            target.touch()
+                        elif invalid == 'directory':
+                            target.mkdir()
+                        f = u.Updater(root)
+                        Path(root, 'images.env').write_text('current release\n')
+                        with patch.object(f, 'runtime', return_value={'SECRETS_DIR': str(directory)}), patch.object(f, 'docker') as docker:
+                            with self.assertRaisesRegex(ValueError, 'Required compose secret.*' + name):
+                                f.activate(release(A), initial=initial)
+                            docker.assert_not_called()
+                        self.assertEqual('current release\n', Path(root, 'images.env').read_text())
+
     def test_ci_latest_attempt_and_scope(self):
         self.assertTrue(u.ci_passed({'workflow_runs': [run()]}, B))
         self.assertFalse(u.ci_passed({'workflow_runs': [run(), run(run_attempt=2, conclusion='failure')]}, B))
@@ -213,6 +246,8 @@ class Tests(unittest.TestCase):
             f.validate_release(enabled)
             for bad in ('evil/image:latest', 'ghcr.io/yapweijun1996/online-shopping-backend@sha256:' + '3' * 64):
                 with self.assertRaises(ValueError): f.validate_release({**release(A), 'whatsapp-qr': bad})
+            directory = activation_secrets(root)
+            path.write_text(good.replace('/opt/cloudops/secrets/online-shopping', str(directory)))
             with patch.object(f, 'docker') as docker:
                 f.activate(enabled)
             calls = [c.args for c in docker.call_args_list]
@@ -259,6 +294,8 @@ class Tests(unittest.TestCase):
         worker = 'ghcr.io/yapweijun1996/online-shopping-whatsapp-qr@sha256:' + '3' * 64
         with tempfile.TemporaryDirectory() as root:
             f = u.Updater(root)
+            directory = activation_secrets(root)
+            Path(root, 'runtime.env').write_text(good.replace('/opt/secrets', str(directory)))
             for workers in ([], ['whatsapp-qr'], ['whatsapp-qr', 'whatsapp-qr-slot1']):
                 item = {**release(A), 'qr_workers': workers}
                 if workers:
