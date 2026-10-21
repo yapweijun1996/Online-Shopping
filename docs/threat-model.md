@@ -73,6 +73,8 @@ Meta ──signed HTTPS webhook──► shop host / tenant prefix ──► bac
 7. **Application → external providers.** `src/whatsapp-transport.js` verifies connections and sends templates to a fixed Meta Graph API host with a timeout. The worker sends outside database transactions through this boundary; order routes never call providers. Payments/couriers and the separate synthetic ledger have no live transport.
 8. **External provider → webhook endpoint.** `/api/v1/webhooks/whatsapp` and its tenant-prefixed route authenticate raw bytes against every connected account's App Secret, then route individual items by phone-number ID among authenticated connections. Mixed-phone/shared-secret batches retain one transactional body receipt; an unrelated connection's signature does not authorize another phone.
 
+GCP policy (`compose.gcp.yaml`) additionally attaches backend alone to a non-internal `egress` network for outbound provider HTTPS. PostgreSQL remains private-only; frontend networking, published ports and inbound routing are unchanged. Egress is not a destination allow-list: backend compromise or a future arbitrary-URL fetch can reach internet, private services and VM metadata. Keep provider destinations fixed and review future URL/callback handling for SSRF, redirects, DNS rebinding and metadata access; this network does not supply an SSRF defence.
+
 ## 4. Entry Points
 
 All HTTP routes are in `src/app.js` (path constants at the top, handlers in `route()`).

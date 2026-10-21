@@ -78,8 +78,8 @@ class Provisioner:
         self.env = self.updater.runtime()
         self.compose = ['docker', 'compose', '-p', 'online-shopping-gcp', '--env-file', str(self.root / 'runtime.env'), '--env-file', str(self.root / 'images.env'), '-f', str(self.root / 'compose.yaml')]
 
-    def query(self, sql):
-        return self.runner(self.compose + ['exec', '-T', 'postgres', 'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', 'online_shopping', '-d', 'postgres', '-At'], sql)
+    def query(self, sql, database='postgres'):
+        return self.runner(self.compose + ['exec', '-T', 'postgres', 'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', 'online_shopping', '-d', database, '-At'], sql)
 
     def preflight(self):
         u = load_updater()
@@ -129,6 +129,17 @@ class Provisioner:
             raise ValueError('password authentication not enforced on this path; private reconciliation required')
         if result != {'status': 'ready'}:
             raise ValueError('Mounted platform credentials require private reconciliation; no passwords were changed')
+
+    def claim_schema(self):
+        exists = self.query("SELECT to_regclass('public.schema_meta');", 'platform')
+        if not exists:
+            return 'empty; claim schema initializes on claim-enabled backend startup'
+        version = self.query('SELECT version FROM public.schema_meta WHERE id = 1;', 'platform')
+        if version == '2':
+            return 'v2; no migration required'
+        if version == '1':
+            raise ValueError('Platform v1 requires private manual backup and migration; see docs/GCP_DEPLOY.md')
+        raise ValueError('Unsupported platform schema; private reconciliation required')
 
     def secret(self, name, check=False):
         path = Path(self.env['SECRETS_DIR']) / name
@@ -184,7 +195,8 @@ class Provisioner:
             if len(roles) != 2 or database != 'platform_app|true' or any(value is None for value in values.values()):
                 raise ValueError('Platform readiness failed; private reconciliation or provisioning required')
             self.authenticate()
-            return {'mode': 'check', 'status': 'ready'}
+            schema = self.claim_schema()
+            return {'mode': 'check', 'status': 'ready', 'claimSchema': schema}
         if any(value is None for value in values.values()):
             raise ValueError('Run the secrets step before provisioning')
         for role, name, flags in (('platform_app', 'platform-password', 'NOCREATEDB NOCREATEROLE'), ('platform_provisioner', 'provisioner-password', 'CREATEDB CREATEROLE')):
@@ -198,8 +210,8 @@ class Provisioner:
         _, database = self.inspect()
         if database != 'platform_app|true': raise ValueError('Platform boundary verification failed')
         self.authenticate()
-        self.runner(self.compose + ['run', '--rm', '--no-deps', 'backend', 'node', 'scripts/upgrade-platform.mjs', '--with-claim'])
-        return {'mode': 'apply', 'status': 'ready'}
+        schema = self.claim_schema()
+        return {'mode': 'apply', 'status': 'ready', 'claimSchema': schema}
 
 
 def main():
@@ -213,7 +225,9 @@ def main():
             raise ValueError('Linux root required')
         print(json.dumps(Provisioner(args.root).run(args.check, args.step)))
         return 0
-    except Exception:
+    except Exception as error:
+        if isinstance(error, ValueError) and str(error) == 'Platform v1 requires private manual backup and migration; see docs/GCP_DEPLOY.md':
+            print(str(error), file=sys.stderr)
         print('Platform enablement failed; private reconciliation required; inspect private state, not credentials.', file=sys.stderr)
         return 1
 
