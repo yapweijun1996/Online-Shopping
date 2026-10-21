@@ -49,6 +49,9 @@ export function openTrackingImport({ trigger, csrfToken, onUnauthorized, onImpor
     result.replaceChildren();
     if (plan) {
       const summary = node('p', `${fill('trackingShipCount', plan.summary.ship)} · ${fill('importUnchanged', plan.summary.unchanged)} · ${fill('importErrors', plan.summary.errors)}`, 'import-summary');
+      const labels = { orderNo: 'trackingOrder', carrier: 'carrier', trackingNo: 'trackingNumberLabel', shippedDate: 'trackingShippedDate' };
+      for (const [field, source] of Object.entries(plan.sourceHeaders ?? {})) result.append(node('p', `${t('trackingSource')}: ${t(labels[field])} ← ${source}`));
+      if (plan.ignoredColumns?.length) result.append(node('p', `${t('trackingIgnored')}: ${plan.ignoredColumns.join(', ')}`));
       const table = node('table');
       const head = node('tr'); for (const key of ['importLine', 'trackingOrder', 'trackingImport']) head.append(node('th', key === 'importLine' ? '#' : t(key))); table.append(head);
       for (const row of plan.rows.slice(page * 50, (page + 1) * 50)) {

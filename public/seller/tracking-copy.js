@@ -1,6 +1,9 @@
 import { messages } from '../shared/i18n.js';
 const locales = ['en', 'ms', 'zh-Hans', 'vi', 'th', 'ja', 'ko'];
 const rows = [
+  ['trackingSource', 'Source column', 'Lajur sumber', '来源列', 'Cột nguồn', 'คอลัมน์ต้นทาง', '元の列', '원본 열'],
+  ['trackingIgnored', 'Ignored columns', 'Lajur diabaikan', '已忽略的列', 'Cột bỏ qua', 'คอลัมน์ที่ละเว้น', '無視した列', '무시된 열'],
+  ['trackingShippedDate', 'Shipped date', 'Tarikh penghantaran', '发货日期', 'Ngày gửi hàng', 'วันที่ส่ง', '発送日', '발송일'],
   ['trackingPrevious', 'Previous', 'Sebelumnya', '上一页', 'Trước', 'ก่อนหน้า', '前へ', '이전'],
   ['trackingNext', 'Next', 'Seterusnya', '下一页', 'Tiếp', 'ถัดไป', '次へ', '다음'],
   ['trackingOrder', 'Order number', 'Nombor pesanan', '订单号', 'Mã đơn', 'หมายเลขคำสั่งซื้อ', '注文番号', '주문번호'],

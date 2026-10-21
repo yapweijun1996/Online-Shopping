@@ -42,6 +42,16 @@ test('100/500 row preview is paged, commit is bound to preview, completed import
   assert.equal(ui.find('importConfirm').hidden, true); assert.equal(mutationsBusy(), false);
 });
 
+test('preview displays source mappings and ignored headers as literal text', async (t) => {
+  const ui = await fixture(t);
+  globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ ...answer(1), sourceHeaders: { orderNo: 'Order #', carrier: 'Courier', trackingNo: 'AWB' }, ignoredColumns: ['<img src=x>', 'Price'] }) });
+  await ui.choose();
+  const text = ui.dialog.descendants().map((node) => node.textContent);
+  assert.ok(text.includes('Source column: Order number ← Order #'));
+  assert.ok(text.includes('Source column: Courier ← Courier') || text.includes(`Source column: ${messages.en.carrier} ← Courier`));
+  assert.ok(text.includes('Ignored columns: <img src=x>, Price'));
+});
+
 for (const failure of ['network loss', 'HTTP 500']) test(`${failure}: unknown commit retains file/update guard until successful repreview`, async (t) => {
   const ui = await fixture(t); let mode = 'preview';
   globalThis.fetch = async (_path, options) => {

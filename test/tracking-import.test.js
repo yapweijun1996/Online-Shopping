@@ -8,7 +8,7 @@ import { createCategory } from '../src/settings.js';
 import { createProduct } from '../src/products.js';
 import { createOrder } from '../src/orders.js';
 import { applySellerDecision } from '../src/seller-orders.js';
-import { trackingRows, trackingImport } from '../src/tracking-import.js';
+import { TRACKING_HEADER_ALIASES, trackingRows, trackingImport } from '../src/tracking-import.js';
 import { parseCsv, toCsv } from '../src/csv.js';
 import { sellerFixture } from './helpers/seller-app.js';
 import { createApi } from '../src/app.js';
@@ -45,13 +45,26 @@ async function fixture(t, backend) {
 
 test('strict CSV syntax, bounds, BOM, CRLF, quoted cells and unsafe identities', () => {
   assert.equal(trackingRows('\uFEFFOrder number,Carrier,Tracking number\r\nOS-00000001,"Carrier, Inc.",001234\r\n')[0].trackingNo, '001234');
-  for (const csv of ['Order number,Carrier,Tracking number\na,"b"junk,c', 'Order number,Carrier,Tracking number\na,b"x,c', 'Order number,Carrier,Tracking number\na,b', 'Order number,Carrier,Tracking number,Other\na,b,c,d', 'Order number,Carrier,Carrier,Tracking number\na,b,c,d']) assert.throws(() => trackingRows(csv));
+  for (const csv of ['Order number,Carrier,Tracking number\na,"b"junk,c', 'Order number,Carrier,Tracking number\na,b"x,c', 'Order number,Carrier,Tracking number\na,b', 'Order number,Carrier,Carrier,Tracking number\na,b,c,d']) assert.throws(() => trackingRows(csv));
   for (const value of ['=SUM(1)', "'=SUM(1)", '1e12', 'a b', 'a\tb']) assert.equal(trackingRows(`Order number,Carrier,Tracking number\na,Carrier,${value}`)[0].errors[0].field, 'trackingNo');
   assert.throws(() => trackingRows('x'.repeat(1_000_001)), (error) => error.status === 413);
   assert.throws(() => trackingRows(header + Array.from({ length: 501 }, () => 'a,b,c,').join('\n')), (error) => error.code === 'TOO_MANY_ROWS');
   assert.throws(() => trackingRows(header + `a,b,${'c'.repeat(4001)},`));
   assert.deepEqual(parseCsv('a,b\n"a\nb","x""y"', { strict: true }), [['a', 'b'], ['a\nb', 'x"y']]);
   for (const dangerous of [' =SUM(1)', '\n=SUM(1)', '\tfoo', '@cmd', '+cmd', '-cmd']) assert.equal(parseCsv(toCsv([[dangerous]]))[0][0], `'${dangerous}`);
+});
+
+test('header aliases normalize punctuation, case and spaces without ambiguous mapping', () => {
+  const values = { orderNo: 'OS-1', carrier: 'Courier', trackingNo: '00123', shippedDate: '2026-01-01' };
+  for (const [field, aliases] of Object.entries(TRACKING_HEADER_ALIASES)) for (const alias of aliases) {
+    const fields = Object.keys(values);
+    const headers = fields.map((key) => key === field ? ` \uFEFF${alias.toUpperCase().replaceAll(' ', '_')} ` : TRACKING_HEADER_ALIASES[key][0]);
+    assert.equal(trackingRows(toCsv([headers, fields.map((key) => values[key])]))[0][field], values[field]);
+  }
+  for (const csv of ['Order No,Reference,Carrier,AWB\na,a,b,c', 'Order No,Courier,AWB,Tracking\na,b,c,c', 'Order No,AWB\na,c', 'a,b,c']) assert.throws(() => trackingRows(csv));
+  for (const carrier of ['Ninja Van', 'J&T Express', 'Pos Laju', 'DHL eCommerce', 'Flash Express', 'SPX Express', 'EasyParcel', 'Lalamove', 'GDex', 'Skynet', 'Best Express', 'Citylink Express', 'Pos Malaysia', 'Unlisted courier']) {
+    assert.equal(trackingRows(`Order No,Courier,AWB\nOS-1,${carrier.toLowerCase()},001`)[0].carrier, carrier === 'Unlisted courier' ? carrier.toLowerCase() : carrier);
+  }
 });
 
 test('replacement-decoded invalid UTF-8 tracking bytes receive a field error', async () => {
@@ -63,6 +76,20 @@ test('replacement-decoded invalid UTF-8 tracking bytes receive a field error', a
 });
 
 for (const backend of ['SQLite', 'PostgreSQL']) {
+  test(`${backend}: EasyParcel-style reordered export ignores personal and price columns`, { skip: backend === 'PostgreSQL' && !base }, async (t) => {
+    const { store, make } = await fixture(t, backend);
+    const [order] = await make(1);
+    const headers = ['Receiver Name', 'AWB No', 'Address', 'Postcode', 'Price', 'Courier Name', 'Your Reference', 'Weight', 'Sender', 'Phone', 'Service', 'Dispatch Date'];
+    const csv = toCsv([headers, ['Fictional Recipient', '001234', 'Fictional Road', '00000', '12.50', 'gdex', order.order_no, '1', 'Fictional Sender', '000', '=HYPERLINK("unsafe")', '']]);
+    const plan = await trackingImport(store, { csv, commit: false }, 'actor');
+    assert.deepEqual(plan.sourceHeaders, { trackingNo: 'AWB No', carrier: 'Courier Name', orderNo: 'Your Reference', shippedDate: 'Dispatch Date' });
+    assert.deepEqual(plan.ignoredColumns, ['Receiver Name', 'Address', 'Postcode', 'Price', 'Weight', 'Sender', 'Phone', 'Service']);
+    assert.equal(plan.summary.errors, 0);
+    assert.equal(JSON.stringify(plan).includes('Fictional Recipient'), false);
+    assert.deepEqual((await trackingImport(store, commit(csv, plan), 'actor')).applied, { shipped: 1, unchanged: 0 });
+    const saved = await store.get('SELECT status, tracking_carrier, tracking_no FROM shop_order WHERE id = ?', order.id);
+    assert.deepEqual({ ...saved }, { status: 'SHIPPED', tracking_carrier: 'GDex', tracking_no: '001234' });
+  });
   test(`${backend}: 100 and 500 row atomic shipping, replay and unchanged audit`, { skip: backend === 'PostgreSQL' && !base }, async (t) => {
     const { store, make } = await fixture(t, backend);
     for (const count of [100, 500]) {
