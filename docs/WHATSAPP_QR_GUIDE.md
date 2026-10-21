@@ -4,7 +4,7 @@ The official WhatsApp Cloud API remains the recommended connection. QR linking i
 
 ## Enable and link
 
-1. Ask your operator to enable the experimental QR worker for the default shop as described in [the design](WHATSAPP_QR_DESIGN.md) and [worker protocol](WHATSAPP_QR_PROTOCOL.md). Disabled shops, tenant shops and sample/quick-login shops do not show the card or inbox tab.
+1. Ask your operator to provision a fixed worker slot and, for a tenant, have SuperAdmin enable its QR policy. Default uses slot 0; at most one admitted tenant uses slot 1. Unprovisioned/disabled shops and public-demo/quick-login shops remain unavailable. See [the release gates](GCP_DEPLOY.md#fixed-slot-protected-release).
 2. As Owner, open **Company settings**. Below the official **WhatsApp connection** card, read **Link WhatsApp by QR code** and select **I understand the risk**. Other roles can view status but cannot acknowledge, pair or disconnect.
 3. Select **Show QR code**. On your phone open WhatsApp → Settings → Linked devices → Link a device, then scan. Codes expire after 60 seconds; select **Get a new code** if necessary. Keep the settings page visible while connecting.
 4. A connected status and masked phone number confirm the worker's connection. The risk notice remains available as an expandable section.
@@ -22,3 +22,8 @@ Only visible pages poll: the open chat every five seconds, the list every fiftee
 ## Disconnect
 
 As Owner, select **Disconnect** on the pairing card and confirm. Queued replies are cancelled; history remains subject to retention and erasure rules. Remote unlinking is not guaranteed: remove the linked device in the official phone app as well when required. Relinking requires scanning again. Acknowledging these risks is not customer consent.
+
+Platform disable/suspension revokes QR access; resume does not automatically
+re-enable or pair. Ask the operator to resolve pending cleanup before reusing a
+slot. An unavailable worker is not proof it stopped. Remove linked devices in
+the official phone app when required; no automatic Cloud failover or resend.

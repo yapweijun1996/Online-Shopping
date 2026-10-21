@@ -385,13 +385,60 @@ You type the password twice (12-256 characters, not containing the username); it
 
 ## WhatsApp linked-device (QR) worker
 
-Optional and default off (`WHATSAPP_QR_ENABLED=0`). `compose.gcp.yaml` defines a `whatsapp-qr` service behind the
-`whatsapp-qr` profile (CI image `ghcr.io/yapweijun1996/online-shopping-whatsapp-qr:<sha>` from `Dockerfile.whatsapp-qr`;
-384 MiB, 0.5 vCPU, read-only, all capabilities dropped, private + egress networks, no ports, no database credentials or
-master key). The backend always mounts `SECRETS_DIR/whatsapp-qr-token` (a host-generated single line of at least 32
-URL-safe characters, shared with the worker only) and opens its private internal listener on port 3001 only when
-`WHATSAPP_QR_ENABLED=1`. With the switch on (it also requires `INTEGRATION_KEY_FILE`), `deploy/gcp/update.py` pulls the
-worker image for every release, writes `WHATSAPP_QR_IMAGE` into `images.env`, starts/updates the worker with the backend
-and frontend and checks it is running the release digest; a release without the switch stops and removes a leftover
-worker. The egress guard applies to the worker like the backend (no metadata or RFC1918). Protocol:
-`docs/WHATSAPP_QR_PROTOCOL.md`; seller guide and risks: `docs/WHATSAPP_QR_DESIGN.md`.
+Two static workers are available behind separate profiles: slot 0 is the existing
+`whatsapp-qr` service/token (identity `default`, never change it); slot 1 is
+`whatsapp-qr-slot1`, with `whatsapp_qr_token_slot1`. Both use the same reviewed
+worker digest, 384 MiB / 0.5 CPU, 192 MiB Node old-space, read-only root, bounded
+tmpfs/PIDs and no capabilities, ports, Docker socket, DB credentials or master key.
+The backend alone mounts both tokens and the read-only bindings manifest.
+
+### Fixed-slot protected release
+
+1. Stop updater timer/service and all QR workers; preserve controller/config/state,
+   current/previous digests and coordinated platform/all-shop backups. Restore-test
+   privately, including QR policy rows. Restored bindings must be disabled,
+   cleanup-pending with advanced epochs before any worker starts.
+2. Run the reviewed `node scripts/upgrade-platform.mjs --with-qr` explicitly:
+   platform target 3 (002 then 003), shop schema remains 27. Startup and the updater
+   do not perform this migration. Old schema-1/2-only images are not rollback targets.
+3. Preserve `SECRETS_DIR/whatsapp-qr-token` for slot 0. For each new binding create
+   an independent 32-byte base64url token, e.g. Node
+   `require('node:crypto').randomBytes(32).toString('base64url')`, through private
+   file output, never logs/argv. Install tokens owner-readable by container UID
+   1000, mode 0600, under a protected host directory. Prepare the slot-1 token
+   even when its worker is disabled: backend mounts both files.
+4. Install `SECRETS_DIR/whatsapp-qr-bindings.json` from
+   `deploy/gcp/whatsapp-qr-bindings.example.json`, replacing the fictional UUID
+   with the immutable tenant UUID. For slot-0-only provisioning omit entry 1.
+   Keep slot 0 `default`, exact `/run/secrets/` token paths, independent values
+   and unique labels. Never put tokens in the manifest or platform DB.
+5. Install reviewed Compose/controller. Runtime defaults are both off:
+   `WHATSAPP_QR_ENABLED=0`, `WHATSAPP_QR_SLOT1_ENABLED=0`. Slot 1 requires slot 0,
+   `PLATFORM_ENABLED=1` and `INTEGRATION_KEY_FILE=/run/secrets/integration_keys`.
+   These switches start containers, not platform policy. Keep tenant policy disabled.
+6. Use the protected Updater-class release procedure above, not initialize/poll:
+   exact main/CI, source, release, activate, health. Enabled workers share one
+   pulled digest. Activation and rollback remove both workers before backend/
+   frontend updates, then start only the release's recorded workers. PostgreSQL
+   is not recreated. Never manually run a second worker for the same binding.
+7. Before admitting slot 1, drill simultaneous pairing/reconnect/bursts on the
+   target host. Record cgroup peaks/RSS, host MemAvailable, swap-in/out and OOM:
+   require >=512 MiB available throughout, no sustained swap and no OOM.
+   Failure means slot 1 off and a separately reviewed resize, not smaller reserve.
+   Two ceilings total 768 MiB; idle RSS is not capacity evidence.
+8. Verify both running digests, private unauthenticated 401, public internal-path
+   404, tenant/prefix isolation, revoke/cleanup and duplicate lease fencing.
+   SuperAdmin then enables admitted policy; Owner acknowledges/pairs a controlled
+   number and proves inbound, human reply/handset receipt and unlink. No buyer sends.
+   Record evidence and only then save compatible baseline/restart timer.
+
+Rebinding: disable/drain policy, stop worker, fence/clear old auth, rotate that
+slot token, replace reviewed manifest, then restart. Never transfer a token to
+another tenant. Rollback stops both first, retains platform 3 and only uses
+schema-compatible images/config; a DB restore needs the recovery-disabled gate.
+The historical release record above proves only the old slot-0 idle deployment,
+not tenant admission, two-worker capacity, pairing or delivery.
+
+Set `WHATSAPP_QR_BINDINGS_FILE=/run/secrets/whatsapp_qr_bindings` in runtime.env
+for manifest mode (mandatory for slot 1). Empty preserves legacy slot-0-only
+configuration; the manifest remains mounted read-only either way.

@@ -52,7 +52,8 @@ services:
       MCP_REDIRECT_URIS: ${MCP_REDIRECT_URIS:-}
       WHATSAPP_QR_ENABLED: ${WHATSAPP_QR_ENABLED:-0}
       WHATSAPP_QR_TOKEN_FILE: /run/secrets/whatsapp_qr_token
-    secrets: [admin_password, database_password, integration_keys, platform, provisioner, whatsapp_qr_token]
+      WHATSAPP_QR_BINDINGS_FILE: ${WHATSAPP_QR_BINDINGS_FILE:-}
+    secrets: [admin_password, database_password, integration_keys, platform, provisioner, whatsapp_qr_token, whatsapp_qr_token_slot1, whatsapp_qr_bindings]
     networks: [private, egress]
     mem_limit: 384m
     cpus: 0.5
@@ -70,16 +71,39 @@ services:
     restart: unless-stopped
     security_opt: ["no-new-privileges:true"]
     logging: *logging
-  # Optional WhatsApp linked-device worker (docs/WHATSAPP_QR_PROTOCOL.md). Started only with the whatsapp-qr profile,
-  # which deploy/gcp/update.py adds when runtime.env sets WHATSAPP_QR_ENABLED=1. It holds no database or master key.
+  # Fixed worker slots; the controller starts only the release's enabled services.
+  # Both hold one independent credential, never a database or master key.
   whatsapp-qr:
     image: ${WHATSAPP_QR_IMAGE:-online-shopping-whatsapp-qr-disabled}
     profiles: [whatsapp-qr]
     environment:
       NODE_ENV: production
+      NODE_OPTIONS: --max-old-space-size=192
       WHATSAPP_QR_BACKEND_URL: http://backend:3001/internal/whatsapp-qr
       WHATSAPP_QR_TOKEN_FILE: /run/secrets/whatsapp_qr_token
     secrets: [whatsapp_qr_token]
+    networks: [private, egress]
+    depends_on:
+      backend:
+        condition: service_healthy
+    mem_limit: 384m
+    cpus: 0.5
+    pids_limit: 128
+    read_only: true
+    tmpfs: ["/tmp:size=16m"]
+    cap_drop: [ALL]
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    logging: *logging
+  whatsapp-qr-slot1:
+    image: ${WHATSAPP_QR_IMAGE:-online-shopping-whatsapp-qr-disabled}
+    profiles: [whatsapp-qr-slot1]
+    environment:
+      NODE_ENV: production
+      NODE_OPTIONS: --max-old-space-size=192
+      WHATSAPP_QR_BACKEND_URL: http://backend:3001/internal/whatsapp-qr
+      WHATSAPP_QR_TOKEN_FILE: /run/secrets/whatsapp_qr_token_slot1
+    secrets: [whatsapp_qr_token_slot1]
     networks: [private, egress]
     depends_on:
       backend:
@@ -132,6 +156,10 @@ secrets:
     file: ${SECRETS_DIR:?Set SECRETS_DIR}/provisioner-password
   whatsapp_qr_token:
     file: ${SECRETS_DIR:?Set SECRETS_DIR}/whatsapp-qr-token
+  whatsapp_qr_token_slot1:
+    file: ${SECRETS_DIR:?Set SECRETS_DIR}/whatsapp-qr-token-slot1
+  whatsapp_qr_bindings:
+    file: ${SECRETS_DIR:?Set SECRETS_DIR}/whatsapp-qr-bindings.json
 volumes:
   pg_data:
 networks:

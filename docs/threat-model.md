@@ -445,3 +445,17 @@ Broker wiring, manifest enforcement and restore-disabled operational gates
 remain separate release requirements; schema 3 alone grants no tenant worker
 access.
 
+
+### Fixed-slot host release boundary
+
+GCP has exactly two static QR workers, each with an independent token mounted
+only there and in backend; the read-only binding manifest is backend-only.
+Workers receive neither DB credentials, master key, public ports nor Docker
+socket. Each retains 384 MiB / 0.5 CPU and 192 MiB Node old-space; native/RSS
+memory is not bounded by that heap setting. Shared-host OOM remains cross-shop
+risk: slot 1 admission requires >=512 MiB available throughout simultaneous
+pairing/reconnect/burst, no sustained swap and no OOM.
+Controller activation/rollback removes both workers before new backend bindings
+start. Host rebind requires policy drain, auth fence and token rotation.
+Restore requires disabled/cleanup-pending reservations and advanced epochs;
+never auto-connect restored enabled sessions. See the protected GCP runbook.

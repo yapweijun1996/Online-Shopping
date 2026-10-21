@@ -1,6 +1,6 @@
 # WhatsApp QR for platform shops
 
-Status: design with job 2 platform policy, job 3 static broker and job 4 seller/SuperAdmin UI implemented locally; 2026-10-21. No deployment authorization. Requirements outside the implementation contracts below remain design decisions, not existing behavior. Historical evidence references are working-copy file:line ranges. Host figures supplied by the task are not independently measured here.
+Status: design with job 2 platform policy, job 3 static broker and job 4 seller/SuperAdmin UI and job 5 fixed-slot release tooling implemented locally; 2026-10-21. No deployment authorization. Requirements outside the implementation contracts below remain design decisions, not existing behavior. Historical evidence references are working-copy file:line ranges. Host figures supplied by the task are not independently measured here.
 
 ## Decision
 
@@ -191,9 +191,37 @@ disablement. This is not handset pairing, remote logout or delivery evidence.
 4. Install reviewed static compose, binding manifest, independent secret files and controller allowlist/health updates. Provision no Docker resources from app. Keep tenant policy disabled. Preserve slot-0 identity/token and default encrypted records; start compatible backend/frontend, then slot 0, then slot 1 after its binding is validated. No overlapping old/new workers. No PostgreSQL recreation, public port or edge route for :3001.
 5. Verify readiness/digests, public internal-path 404, internal unauthenticated 401, prefixed seller isolation, disabled tenant rejection, lifecycle fencing, duplicate worker lease rejection and private egress guard. Drill synthetic simultaneous loads/reconnects while recording RSS/cgroup peaks, host available/swap/OOM. If reserve fails, leave slot 1 disabled and resize in a separate release.
 6. SuperAdmin enables the admitted tenant; its Owner acknowledges and pairs a dedicated controlled number. Prove handset pairing, one live inbound, one human reply and actual handset receipt, then disable/suspend/restart/unlink drill. These owner-device steps cannot be proven by CI. Default/demo shop undergoes the same consent/risk controls. No buyer test sends.
-7. Record revision/digests, platform 3/shop 27 versions, capacity measurements, redacted lifecycle and phone acceptance evidence. Only then establish reviewed controller baseline and restart timer. Existing updater checks only the single worker's running digest today (`deploy/gcp/update.py:195-238`); neither that nor backend readiness proves pairing/delivery.
+7. Record revision/digests, platform 3/shop 27 versions, capacity measurements, redacted lifecycle and phone acceptance evidence. Only then establish reviewed controller baseline and restart timer. The fixed-slot updater checks every enabled worker's running digest; neither that nor backend readiness proves pairing/delivery.
 8. Rollback: disable policies and stop workers first; retain schema 3 and use only a tested compatible previous image/config, or perform a separately reviewed full DB restore with recovery gate. Never restore old enabled bindings/auth and auto-connect. Keep timer stopped on unresolved acceptance; no state deletion/reinitialize to bypass gates.
 
 ## Verification limits
 
 The original investigation was source-based. Job 2 has local PostgreSQL migration/admission/lifecycle tests and admin-route/purge smoke evidence; job 4 has the synthetic browser verification recorded above. Neither establishes deployed tenant worker support. No host inspection, phone scan, live send, deployment or resource measurement was performed. Task-provided RSS/RAM figures and recorded GCP acceptance remain distinct from locally exercised behavior. Release acceptance must supply its own evidence, not convert estimates into readiness claims.
+
+### Job 5 release tooling contract
+
+Compose declares slot 0 and slot 1 behind separate profiles with disjoint token
+mounts and the backend-only manifest. `WHATSAPP_QR_SLOT1_ENABLED` is strict 0/1,
+requires slot 0, platform and integration key. Releases record the two-worker
+selection; legacy worker releases mean slot 0 only. Activation and rollback
+remove both before starting backend/new workers, using one reviewed worker
+digest. See GCP_DEPLOY's fixed-slot protected release for token installation,
+schema-3 migration, restore-disabled recovery and the measured capacity gate.
+Local controller tests do not establish target-host capacity or handset delivery.
+
+Job 5 local evidence: offline controller/platform deployment suites pass (15/14).
+An isolated Compose project ran two synthetic Node workers with the production
+worker service restrictions and independent fictional token mounts; each denied
+access to the other token and reported cgroup memory.max=402653184 and
+cpu.max=50000/100000 during concurrent allocation bursts, exiting zero.
+This used a local cached image and internal-only network, not Baileys pairing,
+target-host RAM measurements or production resources. The target-host capacity
+drill and real phone acceptance remain mandatory, unverified release gates.
+
+Additional local synthetic allocation drill: 193400832-byte peak RSS,
+226729984-byte cgroup peak under the 402653184-byte cap, exit 0, no cgroup OOM.
+Node 24/PostgreSQL 16 full-suite run: 706 passed, 1 failed, 1 skipped.
+The unchanged job-2 policy test at `test/platform-whatsapp-qr.test.js:76`
+assumes disable wins concurrent enable/disable requests with the same revision;
+this run admitted enable instead. The test was corrected in commit 5b94d75 to assert the outcome
+matches the actual winner (either is legitimate). Deployment suites remain 15/14 passing.
