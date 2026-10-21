@@ -1,47 +1,45 @@
-# WhatsApp go-live checklist (slice 7)
+# WhatsApp Cloud: GCP owner checklist
 
-Status: checklist for the owner. The code is merged (slices 0 to 6, see [WHATSAPP_IMPLEMENTATION_PLAN.md](WHATSAPP_IMPLEMENTATION_PLAN.md)); nothing is sent until the steps below are done. Meta facts are marked **[assumed]**: they come from general knowledge of the WhatsApp Business Platform and must be checked against Meta's current documentation as each step is done.
+Open https://seller.demoonlineshopping.xyz with an Owner password login → Settings → WhatsApp connection → How to connect. Never paste credentials into chat, Git, screenshots or issues. Integration keys and provider egress are operator prerequisites; this checklist does not deploy or alter them.
 
-## 0. The decision that blocks everything: which site gets the real account
+## Connect
 
-The live shop currently runs with quick sign-in on (`SELLER_QUICK_LOGIN=1`, the passwordless "Try the seller dashboard" entry), shop mode `production`, and 6 sample orders. While quick sign-in is on, the server refuses to connect an account, hides connections and messages, and never starts the message worker, because anyone could reach the seller area.
+- [ ] Create a Meta developer app (Business type), add WhatsApp, and follow the dashboard's account-specific registration, verification, access and billing requirements. For Sandbox use a Meta test number and an allowlisted handset you control. Sandbox and Production are separate saved connections, not separate Graph hosts.
+- [ ] Create a System User permanent access token with `whatsapp_business_messaging` and `whatsapp_business_management`, assigned to the correct WABA assets. Permanent does not mean immune to revocation.
+- [ ] Copy **App Secret** from App settings → Basic. Copy **Phone Number ID** and **WhatsApp Business Account ID** from WhatsApp → API Setup. These are not the phone digits or Business Portfolio ID.
+- [ ] Paste the four values into Sandbox and Connect. CONNECTED only proves the token/phone lookup succeeded.
+- [ ] Copy the returned Callback URL (default GCP: `https://demoonlineshopping.xyz/api/v1/webhooks/whatsapp`) and generated Verify token using the page's Copy buttons. Paste them into Meta webhook settings, verify the callback, subscribe to `messages`, and subscribe the app to the WABA. Verify token is not App Secret; a successful challenge does not prove signed POST delivery.
 
-| Option | What it means | Cost |
-| --- | --- | --- |
-| A. Turn quick sign-in off on the live shop | Real account on `shop.gmb01.xyz` / `seller.gmb01.xyz`; the passwordless sample entry disappears | Simplest; the sample entry is lost until another site exists |
-| B. A separate stack for the real account | Second Compose project with its own database and hostnames, quick sign-in off; the current site stays the sample | More containers and host work; this is also the shape of the future per-client tenant |
-| C. Test only with Sandbox first | Same as A, but only the Sandbox connection and Meta's test number until the owner is happy | Same cost as A, smaller blast radius |
+## Create templates
 
-Recommendation: C, then A. Turning it off is a host change (`SELLER_QUICK_LOGIN=0` in the updater's `runtime.env` on the MacBook Air, followed by a redeploy); it is not done until the owner chooses.
+Create these exact names as **Utility**, with body variables in the listed order. Meta decides category and approval. Supply fictional sample values when Meta asks for examples.
 
-## 1. What the owner prepares in Meta (all **[assumed]**)
+| Name | Suggested English body |
+| --- | --- |
+| `order_submitted` | Hello {{1}}, we received your order {{2}}. |
+| `order_confirmed` | Hello {{1}}, your order {{2}} is confirmed. |
+| `order_rejected` | Hello {{1}}, we cannot accept your order {{2}}. |
+| `order_shipped` | Hello {{1}}, your order {{2}} has shipped with {{3}}. Tracking number: {{4}}. |
 
-1. A Meta Business account, and a developer app of type Business with the WhatsApp product added.
-2. A WhatsApp Business Account (WABA) and a phone number. For a first test Meta provides a test number and lets you add a few recipient numbers (use the owner's own).
-3. Values to collect: **Phone number ID**, **WhatsApp Business Account ID**, **App secret** (app settings, basic), and a **permanent access token** (a system user with the messaging and management permissions; the temporary token expires within about a day and is only good for a quick check).
-4. Four message templates, category Utility, in every language the shop uses, with exactly the names and variables in the plan's "Template contract": `order_submitted`, `order_confirmed`, `order_rejected` (`{{1}}` buyer name, `{{2}}` order number) and `order_shipped` (`{{3}}` carrier, `{{4}}` tracking number). Approval takes minutes to a day or more.
-5. Sending to arbitrary customers (outside the test recipients) needs business verification and a registered number; this can take days and is outside the code.
+`{{1}}` = buyer name, `{{2}}` = order number; shipped adds `{{3}}` = carrier and `{{4}}` = tracking number (`-` when empty). Create every language offered to buyers: `en`, `ms`, `zh_CN`, `vi`, `th`, `ja`, `ko`; other buyer locales fall back to English. The readiness matrix conservatively checks all seven supported languages, not a dynamically selected subset.
 
-Never paste the token or the app secret into chat, git, or an issue. They go only into the seller page.
+## Check and exercise
 
-## 2. What happens on the day (in this order)
+- [ ] Click **Check readiness**. Correct WABA/phone IDs and token asset access on phone FAIL. Subscribe the app on subscription FAIL. Create missing templates or obtain approval on template FAIL. PENDING and REJECTED are not ready. UNKNOWN is unavailable/incomplete evidence, never success; check connectivity, permissions and Meta configuration, then retry.
+- [ ] App Secret is proven by the first valid signed, phone-matched webhook since connect/rotate. Send a handset reply or trigger a delivery receipt and check again. Callback verification alone cannot prove it. Rotation clears this proof; replaying an old body does not restore it.
+- [ ] With explicit order WhatsApp consent and an owner-controlled recipient, exercise submitted, confirmed, rejected (separate order) and shipped messages. Observe actual handset delivery, panel delivery/read receipts where available, and an inbound reply. Readiness does not prove messaging permission, billing, registration, template body compatibility or handset delivery.
+- [ ] Repeat with the intended Production account before contacting buyers. Confirm reply retention/lawful basis. A non-empty subscribed-app list proves some app is subscribed, not that it is the intended app.
 
-1. Owner decides section 0. If A or C: set `SELLER_QUICK_LOGIN=0`, redeploy, confirm the passwordless entry is gone and the login page asks for the password.
-2. Owner signs in, opens Settings, **WhatsApp connection**, picks **Sandbox**, pastes the four values and presses Connect. Expected: status Connected, token hint, Meta's display number and verified name. A rejected token shows "Meta rejected the credentials".
-3. Owner copies the callback URL and the **verify token** from the card into the app's webhook settings in Meta, verifies, and subscribes the `messages` field. Expected: Meta accepts the handshake (the server answers the challenge only for the stored verify token).
-4. Place one real order from the shop with the owner's own number (the number added as a test recipient), WhatsApp consent ticked. Expected within about 15 seconds: a message row `ACCEPTED`, the message on the phone, then `DELIVERED` and `READ` from Meta's receipts.
-5. Confirm and ship that order in the seller area: two more messages. Reply from the phone: the reply appears under Messages and on the order, unread count in the menu.
-6. Break something on purpose once: rename a template in Meta, place an order, expect `FAILED` ("WhatsApp did not accept this message") and that **Send again** works after fixing it.
-7. Only then connect **Production** with the real number, or switch the existing connection.
+## Stop / recover
 
-## 3. Rollback
+Disconnect removes local credentials and prevents subsequent claims; an already in-flight send cannot be recalled. Revoke tokens in Meta when required. Unknown send outcomes stay RECONCILE and are never automatically resent; inspect the handset before deciding to resend. Backups retain historical records until expiry.
 
-Press **Disconnect** on the card: the stored secrets are cleared and no message is sent after the next tick. Messages already queued stay in the table and are failed when the worker finds no connection. Setting `SELLER_QUICK_LOGIN=1` again also stops the worker. The master key and database are untouched.
+## Graph evidence and limitations
 
-## 4. Known limits to accept before go-live
+Inspected 2026-10-21; the implementation deliberately retains existing Graph `v21.0` rather than silently upgrading:
 
-- A message whose outcome is unknown is never retried automatically; the seller decides in the Messages page (a short window of work for the owner each time).
-- A delivery receipt that arrives before the send result is recorded leaves that message at `ACCEPTED`.
-- Replies keep text only; images and other media say "Open WhatsApp".
-- Buyer reply retention and lawful basis (DEC-07) are not decided; the owner must confirm before buyers' real replies are stored.
-- Single backend process; a second replica would need the claim to be re-checked.
+- `GET /{waba-id}/phone_numbers?fields=id,display_phone_number`: **UNVERIFIED** in the current reference. [Meta phone_numbers reference](https://developers.facebook.com/docs/graph-api/reference/whats-app-business-account/phone_numbers/) currently says Reading is unavailable and documents POST. Retained as requested; unsupported responses fail/produce UNKNOWN, never synthetic success.
+- `GET /{waba-id}/subscribed_apps`: [Meta reference](https://developers.facebook.com/docs/graph-api/reference/whats-app-business-account/subscribed_apps/) confirms GET and a `data` list.
+- `GET /{waba-id}/message_templates?fields=name,language,status&limit=100`: [Meta reference](https://developers.facebook.com/docs/graph-api/reference/whats-app-business-account/message_templates/) confirms GET, name/language/status response fields and paging. Exact field projection and page-size behavior on v21.0, its current support lifetime, real account access and Meta dashboard labels remain **UNVERIFIED** without a live account. No live Meta request was used for development/tests.
+
+Each GET has a 10-second timeout and 16 KiB cap, refuses redirects and uses bearer authentication only on HTTPS graph.facebook.com. Templates read at most five pages total; off-host paging is refused. If pagination is incomplete, unseen templates are UNKNOWN rather than MISSING. Phone-list pagination is not followed: absence on a partial page is UNKNOWN. Unsupported template states are conservatively treated as not available (MISSING after a complete listing), never APPROVED. Readiness is read-only and is not persisted as a verified connection status.

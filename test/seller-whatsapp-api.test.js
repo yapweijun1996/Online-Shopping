@@ -115,3 +115,28 @@ test('connection attempts are rate limited', async (t) => {
   assert.equal(last.status, 429);
   assert.equal(f.calls.length, 10);
 });
+
+test('readiness requires an Owner session, refuses quick login, and needs no CSRF on GET', async t => {
+  const f = await fixture(t);
+  const target = `${base}/SANDBOX/readiness`;
+  assert.equal((await f.call('GET', target)).status, 401);
+  await f.authed('PUT', `${base}/SANDBOX`, body);
+  const result = await f.call('GET', target, undefined, { cookie: f.cookie });
+  assert.equal(result.status, 200);
+  const text = await result.text();
+  assert.deepEqual(leaks(text), []);
+  assert.deepEqual(JSON.parse(text).checks.map(c => c.status), ['UNKNOWN', 'UNKNOWN', 'UNKNOWN', 'UNKNOWN']);
+  for (const role of ['STAFF', 'MANAGER']) {
+    await f.store.run('UPDATE seller_account SET role = ? WHERE username = ?', role, username);
+    assert.equal((await f.authed('GET', target)).status, 403);
+  }
+  const quick = await fixture(t, { quick: true });
+  assert.equal((await quick.authed('GET', target)).status, 403);
+});
+
+test('readiness shares the connection rate limit', async t => {
+  const f = await fixture(t);
+  await f.authed('PUT', `${base}/SANDBOX`, body);
+  for (let i = 0; i < 9; i++) assert.equal((await f.authed('GET', `${base}/SANDBOX/readiness`)).status, 200);
+  assert.equal((await f.authed('GET', `${base}/SANDBOX/readiness`)).status, 429);
+});
