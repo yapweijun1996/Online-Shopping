@@ -3,10 +3,12 @@ import { SqlLimiter } from '../limiter.js';
 import { createAdminAuth, platformCookie, platformCookieFrom, requirePlatformCsrf } from './admin-auth.js';
 import { createShopManagement } from './shops.js';
 import { recordAudit } from './platform-db.js';
+import { createQrPolicy } from './whatsapp-qr.js';
 
 export function createPlatformRoutes({ platform, secretBox, config, pool, registry, deps, defaultStore, clock = Date.now }) {
   const auth = createAdminAuth({ platform, secretBox, clock });
   const shops = createShopManagement({ platform, pool, registry, deps, defaultStore, publicOrigin: config.publicOrigin, sellerOrigin: config.sellerOrigin, clock });
+  const qr = createQrPolicy({ platform, tenantSlots: config.platform.qrTenantSlots, provisionedTenantIds: config.platform.qrProvisionedTenantIds, clock });
   const limiter = new SqlLimiter(platform, 'platform-login', { limit: 10, windowMs: 15 * 60_000, now: clock });
   const challengeLimiter = new SqlLimiter(platform, 'platform-challenge', { limit: 30, windowMs: 15 * 60_000, now: clock });
   const expectedOrigin = `https://${config.platform.adminHost}`;
@@ -49,6 +51,9 @@ export function createPlatformRoutes({ platform, secretBox, config, pool, regist
     if (path === '/account/recovery-codes' && method === 'POST') return json(200, await auth.regenerateRecovery(token, (await readJson(request, 1024)).password));
     if (path === '/shops' && method === 'GET') return json(200, await shops.list());
     if (path === '/shops' && method === 'POST') return json(201, await shops.create(await readJson(request, 4096), session.username));
+    const qrShop = /^\/shops\/([0-9a-f-]{36})\/qr(?:\/(enable|disable))?$/.exec(path);
+    if (qrShop && method === 'GET' && !qrShop[2]) return json(200, await qr.view(qrShop[1]));
+    if (qrShop && method === 'POST' && qrShop[2]) return json(200, await qr.mutate(qrShop[1], qrShop[2] === 'enable', await readJson(request, 1024), session.username));
     const shop = /^\/shops\/([0-9a-f-]{36})(?:\/(suspend|resume|rename|request-deletion|cancel-deletion|reset-seller-password))?$/.exec(path);
     if (shop && method === 'GET' && !shop[2]) return json(200, await shops.detail(shop[1]));
     if (shop && method === 'POST' && shop[2]) return json(200, await shops.mutate(shop[1], shop[2], await readJson(request, 2048), session.username));

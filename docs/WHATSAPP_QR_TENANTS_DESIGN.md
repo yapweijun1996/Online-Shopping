@@ -1,6 +1,6 @@
 # WhatsApp QR for platform shops
 
-Status: proposed, implementation-ready; 2026-10-21. No implementation or deployment authorization. All requirements below are **design decisions**, not existing behavior. Evidence references are working-copy file:line ranges. Host figures supplied by the task are not independently measured here.
+Status: design with job 2 platform policy implemented locally; 2026-10-21. No deployment authorization. Requirements outside the job 2 implementation contract below remain design decisions, not existing behavior. Historical evidence references are working-copy file:line ranges. Host figures supplied by the task are not independently measured here.
 
 ## Decision
 
@@ -87,6 +87,45 @@ Each row is one omp job, with its own behavior docs and runtime smoke. Tests use
 
 All implementation jobs run `npm run check` and `NODE_ENV=test npm test` with PostgreSQL available; worker/deployment jobs also run worker tests and `python3 test/gcp-deploy.test.py`. These are future acceptance requirements, not results of this design task. No dependency addition is needed for multiplexing or orchestration.
 
+### Job 2 implementation contract
+
+Platform policy is implemented independently of worker activation. Run
+`node scripts/upgrade-platform.mjs --with-qr` explicitly to apply 002 then 003;
+`--with-claim` still targets 2 and unflagged upgrades still target 1. Startup
+does not migrate existing databases. Shop schema remains 27.
+
+Full-MFA SuperAdmin endpoints are `GET /api/v1/platform/shops/:id/qr` and
+`POST /api/v1/platform/shops/:id/qr/enable` or `/disable`. POST accepts only
+`expectedRevision` (the tenant revision), exact console Origin and session CSRF.
+The runtime receives `config.platform.qrTenantSlots` (default 1, excluding slot 0)
+and `qrProvisionedTenantIds` (default empty). These are host inputs, never admin
+request fields. Default uses slot 0 only and cannot consume a tenant slot.
+Disabled/cleanup-pending reservations continue consuming capacity.
+
+`registry.resolveWorkerTenant(id, slot, epoch, work)` authorizes fresh state and
+holds the platform transaction/capacity lock through `work`; the callback must
+perform only bounded shop operations, not provider I/O. Job 3 must wire all
+broker/seller operations to this boundary and replace provisional tenant-id
+admission with validated static manifest bindings. No worker activation is
+implemented by job 2.
+
+Suspend and deletion requests persist disabled/pending state and advance epoch
+even with the shop DB down. Resume/cancel-deletion never enable QR. Runtime
+accepts a host-only `qrCleanupAndStop(binding)` callback and retries pending rows
+on its maintenance pass; absent callback leaves reservations pending. It must
+return true only after durable shop generation/auth/queue cleanup and confirmed
+worker stop. Job 3 must supply that real implementation; no callback may infer
+stop from an unreachable worker. Successful retirement appends QR_CLEANUP and
+QR_BINDING_RETIRED and removes the reservation. Purge rejects any remaining
+reservation under the same platform writer lock before database removal.
+
+Jobs 4–5 must wire safe policy/status UI and host stop/retirement, manifest,
+restore-disabled recovery and release tooling. A restore must disable bindings,
+mark cleanup pending and advance epochs before workers are started; do not
+automatically run restored enabled reservations. This remains a manual recovery
+gate, not an automatic startup transformation.
+
+
 ## GCP release sequence
 
 1. Review full policy/DDL/credential diff and CI-approved immutable backend/frontend/worker digests. Inspect actual host RAM, paired workload peaks, schema versions and current bindings privately; do not treat historical docs as live health. Confirm platform activation and owner MFA. Keep slot 1 unavailable until its capacity drill passes.
@@ -100,4 +139,4 @@ All implementation jobs run `npm run check` and `NODE_ENV=test npm test` with Po
 
 ## Verification limits
 
-This document is a source-based design. No host inspection, phone scan, live send, migration, deployment or resource measurement was performed. Task-provided RSS/RAM figures and recorded GCP acceptance are explicitly distinguished above. Existing source remains unchanged; only this design is added. Implementation must resolve runtime evidence through the acceptance jobs, not convert estimates into readiness claims.
+The original investigation was source-based. Job 2 now has local PostgreSQL migration/admission/lifecycle tests and admin-route/purge smoke evidence; this does not establish deployed tenant worker support. No host inspection, phone scan, live send, deployment or resource measurement was performed. Task-provided RSS/RAM figures and recorded GCP acceptance remain distinct from locally exercised behavior. Jobs 3–5 must supply their own acceptance evidence, not convert estimates into readiness claims.

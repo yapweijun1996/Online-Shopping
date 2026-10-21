@@ -3,6 +3,7 @@ import { ApiError } from '../http.js';
 import { singleTenantRegistry } from '../tenants.js';
 import { RESERVED_CODES } from './tenant-code.js';
 import { connectorPath } from '../mcp/routes.js';
+import { createQrPolicy } from './whatsapp-qr.js';
 
 const codePattern = /^[a-z0-9]{3,30}$/;
 export function rewriteTenantRequest(request, basePath) {
@@ -41,6 +42,15 @@ export function createPlatformRegistry({ store, config, platform, pool, clock = 
       for (const entry of cache.values()) entry.expires = -Infinity;
     },
     cacheSize: () => cache.size,
+    // Keep the platform policy lock held through the bounded caller shop transaction.
+    async resolveWorkerTenant(id, slot, epoch, work) {
+      const database = await db();
+      const policy = createQrPolicy({ platform: database, tenantSlots: config.platform.qrTenantSlots, provisionedTenantIds: config.platform.qrProvisionedTenantIds, clock });
+      return policy.withAuthorizedBinding(id, slot, epoch, async (row) => work({
+        id: row.is_default === 1 ? 'default' : row.id,
+        store: row.is_default === 1 ? store : await pool.get(row), epoch, slot,
+      }));
+    },
     async resolve(request, { clientAddress = 'unknown' } = {}) {
       const url = new URL(request.url), segment = url.pathname.split('/')[1];
       if (!codePattern.test(segment) || RESERVED_CODES.has(segment)) return fallback.resolve(request);

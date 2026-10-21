@@ -5,6 +5,7 @@ import { resetPasswordFromHost } from '../accounts.js';
 import { normalizeTenantCode } from './tenant-code.js';
 import { createTenant } from './provisioner.js';
 import { recordAudit } from './platform-db.js';
+import { disableQrBinding, lockQrPolicy } from './whatsapp-qr.js';
 
 const fields = 'id, code, name, status, currency, is_default, seller_username, revision, delete_after, created_at, updated_at';
 export const shopView = (row) => ({ id: row.id, code: row.code, name: row.name, status: row.status, currency: row.currency,
@@ -48,6 +49,7 @@ export function createShopManagement({ platform, pool, deps, registry, defaultSt
       if (!Object.hasOwn(allowed, action)) throw unknown();
       if (Object.keys(input).some((key) => !['expectedRevision', ...allowed[action]].includes(key))) throw new FieldError('shop', 'Unexpected shop field.');
       const result = await platform.transaction(async () => {
+        await lockQrPolicy(platform);
         const row = await rowFor(id);
         if (row.is_default === 1) throw new ApiError(403, 'DEFAULT_SHOP', 'The default shop is managed on the host.');
         if (row.revision !== input.expectedRevision) throw conflict();
@@ -76,6 +78,7 @@ export function createShopManagement({ platform, pool, deps, registry, defaultSt
           await resetPasswordFromHost(await pool.get(row), row.seller_username, password);
           event = 'SELLER_PASSWORD_RESET';
         }
+        if (action === 'suspend' || action === 'request-deletion') await disableQrBinding(platform, row.id, actor, stamp());
         await platform.run(`UPDATE tenant SET status = ?, code = ?, name = ?, delete_after = ?, revision = revision + 1, updated_at = ?
           WHERE id = ? AND status = ? AND revision = ?`, status, code, name, deleteAfter, stamp(), row.id, row.status, row.revision);
         await recordAudit(platform, { actor, action: event, tenantId: row.id, detail: code });

@@ -10,8 +10,9 @@ import { createAdminAuth } from './admin-auth.js';
 import { createPlatformRoutes } from './admin-routes.js';
 import { issueAdminClaim } from './admin-claim.js';
 import { createSetupRoutes } from './setup-routes.js';
+import { createQrPolicy } from './whatsapp-qr.js';
 
-export function createPlatformRuntime({ store, config, clock = Date.now, paused = () => false }) {
+export function createPlatformRuntime({ store, config, clock = Date.now, paused = () => false, qrCleanupAndStop }) {
   const secretBox = createSecretBox(config.integrationKeys);
   const pool = createTenantPool({ secretBox, baseUrl: config.platform.databaseUrl, connectionsPerTenant: 3 });
   let connection = null, pending = null, retryAfter = 0, stopped = false, routes = null, setupRoutes = null, timer, background = null, maintenanceTasks = 0;
@@ -31,6 +32,12 @@ export function createPlatformRuntime({ store, config, clock = Date.now, paused 
           if (changed) await recordAudit(platform, { actor: 'host', action: 'TENANT_FAILED', tenantId: row.id, detail: 'INTERRUPTED' });
         }
       });
+      if (qrCleanupAndStop && await platform.schemaVersion() >= 3) {
+        const policy = createQrPolicy({ platform, tenantSlots: config.platform.qrTenantSlots, provisionedTenantIds: config.platform.qrProvisionedTenantIds, clock });
+        for (const binding of await platform.all('SELECT tenant_id, epoch FROM tenant_qr_binding WHERE cleanup_pending = true ORDER BY tenant_id LIMIT 20')) {
+          await policy.reconcile(binding.tenant_id, binding.epoch, qrCleanupAndStop).catch(() => {});
+        }
+      }
     } finally { maintenanceTasks--; }
   }
   async function connect() {
@@ -87,6 +94,7 @@ export function createPlatformRuntime({ store, config, clock = Date.now, paused 
   }, 15_000); timer.unref();
   return {
     registry, pool, connect, isBusy: () => Boolean(pending || background || maintenanceTasks), reconcile: async () => recoverInterrupted(await connect()),
+    async qrPolicy() { return createQrPolicy({ platform: await connect(), tenantSlots: config.platform.qrTenantSlots, provisionedTenantIds: config.platform.qrProvisionedTenantIds, clock }); },
     workerTenants: {
       async list() { return (await connect()).all("SELECT * FROM tenant WHERE is_default = 0 AND status = 'ACTIVE' ORDER BY code LIMIT 20"); },
       async get(tenant) {
