@@ -6,10 +6,23 @@ const element = (tag, text, className) => { const node = document.createElement(
 const button = (label, action) => { const node = element('button', label); node.type = 'button'; node.addEventListener('click', () => run(action)); return node; };
 function field(form, name, title, { type = 'text', value = '', required = true, autocomplete = 'off', maxLength = 80 } = {}) {
   const label = element('label', title), input = element('input'); input.id = `platform-field-${++fieldId}`; label.htmlFor = input.id;
-  Object.assign(input, { name, type, value, required, autocomplete, maxLength }); label.append(input); form.append(label); return input;
+  Object.assign(input, { name, type, value, required, autocomplete, maxLength }); label.append(input); form.append(label);
+  if (type === 'password') {
+    const toggle = button('Show password', () => { input.type = input.type === 'password' ? 'text' : 'password'; toggle.textContent = input.type === 'password' ? 'Show password' : 'Hide password'; toggle.setAttribute('aria-pressed', String(input.type === 'text')); });
+    toggle.setAttribute('aria-controls', input.id); toggle.setAttribute('aria-pressed', 'false'); label.after(toggle);
+  }
+  return input;
 }
 function screen(title) {
+  for (const canvas of content.querySelectorAll('canvas')) { canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height); canvas.width = 0; }
+  for (const node of content.querySelectorAll('[data-secret]')) node.replaceChildren();
+  document.body.classList.toggle('auth', session?.stage !== 'FULL');
+  document.body.classList.remove('saving-recovery');
   content.replaceChildren(element('h2', title)); notice.textContent = ''; errorBox.hidden = true; errorBox.textContent = '';
+  const current = ({ 'Add shop': 'Add shop', 'Audit trail': 'Activity', Account: 'Account' })[title] || 'Shops';
+  for (const node of navigation.querySelectorAll('button')) {
+    if (node.textContent === current) node.setAttribute('aria-current', 'page'); else node.removeAttribute('aria-current');
+  }
   document.querySelector('#main').focus();
 }
 function form(action) {
@@ -32,22 +45,61 @@ async function run(action) {
     if (error.status === 401 && session?.stage === 'FULL') { csrf = null; session = null; await signIn(); }
     errorBox.textContent = error.name === 'TimeoutError' ? 'The request timed out. Refresh the shop list before retrying a change.' : error.message;
     errorBox.hidden = false; errorBox.focus();
-  } finally { busy = false; content.removeAttribute('aria-busy'); for (const node of document.querySelectorAll('button')) node.disabled = false; }
+  } finally { busy = false; content.removeAttribute('aria-busy'); for (const node of document.querySelectorAll('button')) node.disabled = node.dataset.requiresSaved === 'true' && !content.querySelector('.check-label input')?.checked; }
+}
+async function copy(value) {
+  const feedback = dialog.open ? document.querySelector('#secret-notice') : notice;
+  try { await navigator.clipboard.writeText(value); feedback.textContent = 'Copied. Keep these details private.'; }
+  catch { feedback.textContent = 'Clipboard unavailable. Select and copy the details manually.'; }
+}
+function download(value, filename) {
+  const url = URL.createObjectURL(new Blob([value], { type: 'text/plain' }));
+  const link = element('a'); link.href = url; link.download = filename; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function steps(active) {
+  const list = element('ol', undefined, 'steps'); list.setAttribute('aria-label', 'Account setup');
+  ['Account created', 'Set up authenticator', 'Save recovery codes'].forEach((text, index) => {
+    const item = element('li', `${index + 1} · ${text}`); if (index + 1 === active) item.setAttribute('aria-current', 'step'); list.append(item);
+  }); content.prepend(list);
+}
+function recovery(codes) {
+  screen('Save your recovery codes'); steps(3);
+  document.body.classList.add('auth', 'saving-recovery');
+  content.append(element('p', 'Shown once. Each code lets you sign in once if you lose your authenticator. Store them somewhere private, separate from your phone.', 'callout'));
+  const grid = element('div', undefined, 'recovery-grid'); grid.dataset.secret = '';
+  for (const code of codes) grid.append(element('code', code));
+  const tools = element('div', undefined, 'actions');
+  tools.append(button('Copy all', () => copy(grid.textContent ? [...grid.children].map(n => n.textContent).join('\n') : '')),
+    button('Download .txt', () => download([...grid.children].map(n => n.textContent).join('\n'), 'shop-platform-recovery-codes.txt')));
+  const label = element('label', undefined, 'check-label'), check = element('input'); check.type = 'checkbox'; label.append(check, document.createTextNode('I have saved these recovery codes'));
+  const next = button('Continue to shops', async () => { if (!check.checked) throw new Error('Save your recovery codes and tick the checkbox first.'); grid.replaceChildren(); nav(); await listShops(); });
+  next.dataset.requiresSaved = 'true';
+  next.disabled = true; check.addEventListener('change', () => { next.disabled = !check.checked; });
+  content.append(grid, tools, label, next); navigation.hidden = true;
 }
 function showSecrets(title, value) {
-  returnFocus = document.activeElement; document.querySelector('#secret-title').textContent = title; secretValue.textContent = value; dialog.showModal();
+  returnFocus = document.activeElement; document.querySelector('#secret-title').textContent = title; secretValue.textContent = value;
+  document.querySelector('#secret-notice').textContent = '';
+  document.querySelector('#secret-tools').replaceChildren(button('Copy details', () => copy(secretValue.textContent)));
+  dialog.showModal();
 }
-dialog.addEventListener('close', () => { secretValue.textContent = ''; returnFocus?.isConnected && returnFocus.focus(); returnFocus = null; });
+dialog.addEventListener('close', () => {
+  secretValue.textContent = ''; document.querySelector('#secret-tools').replaceChildren();
+  const target = returnFocus?.isConnected && returnFocus !== document.body ? returnFocus : document.querySelector('#main');
+  target.focus(); returnFocus = null;
+});
 function nav() {
   const full = session?.stage === 'FULL'; navigation.hidden = !full;
-  navigation.replaceChildren(button('Shops', listShops), button('Create shop', createShop), button('Audit', audit), button('Account', account),
+  const identity = document.querySelector('#identity'); identity.hidden = !full; identity.textContent = full ? `${session.username || 'SuperAdmin'} · Session active` : '';
+  navigation.replaceChildren(button('Shops', listShops), button('Add shop', createShop), button('Activity', audit), button('Account', account),
     button('Sign out', async () => { await api('/session', { method: 'DELETE' }); session = null; csrf = null; await signIn(); }));
 }
 async function signIn() {
   session = null; nav(); screen('Sign in');
+  content.append(element('p', 'Welcome back. Manage your shops securely from one place.'));
   const challenge = await api('/csrf'); csrf = challenge.csrfToken;
   const node = form(async (data) => {
-    const result = await api('/session', { method: 'POST', body: data }); node.reset(); session = result; csrf = result.csrfToken; await authenticator();
+    const result = await api('/session', { method: 'POST', body: data }); node.reset(); session = { ...result, username: data.username }; csrf = result.csrfToken; await authenticator();
   });
   field(node, 'username', 'SuperAdmin username', { autocomplete: 'username', maxLength: 64 });
   field(node, 'password', 'Password', { type: 'password', autocomplete: 'current-password', maxLength: 256 }); submit(node, 'Continue');
@@ -56,14 +108,23 @@ async function authenticator() {
   screen(session.totpEnabled ? 'Confirm authenticator' : 'Set up authenticator'); nav();
   if (!session.totpEnabled) {
     const setup = await api('/totp/enrol', { method: 'POST', body: {} });
-    content.append(element('p', `Add an account to your authenticator. Issuer: ${setup.issuer}. Account: ${setup.account}.`));
-    content.append(element('p', setup.setupKey.match(/.{1,4}/g).join(' '), 'setup-key'));
-    const link = element('a', 'Open in authenticator'); link.href = setup.uri; content.append(link);
+    steps(2);
+    content.append(element('p', 'Scan this QR code with your authenticator app, then enter the code it shows.'));
+    const qr = window.qrcode(0, 'M'); qr.addData(setup.uri, 'Byte'); qr.make();
+    const canvas = element('canvas'); canvas.setAttribute('role', 'img'); canvas.setAttribute('aria-label', 'Scan to add Shop platform to your authenticator');
+    const size = qr.getModuleCount(), scale = 5; canvas.width = canvas.height = (size + 8) * scale;
+    const context = canvas.getContext('2d'); context.fillStyle = '#fff'; context.fillRect(0, 0, canvas.width, canvas.height); context.fillStyle = '#000';
+    for (let row = 0; row < size; row++) for (let col = 0; col < size; col++) if (qr.isDark(row, col)) context.fillRect((col + 4) * scale, (row + 4) * scale, scale, scale);
+    const panel = element('div', undefined, 'enrol-panel'); panel.append(canvas);
+    const manual = element('details'), summary = element('summary', "Can't scan? Enter this key manually"); manual.append(summary);
+    manual.append(element('p', `In your authenticator, add an account manually. Name: ${setup.account}. Issuer: ${setup.issuer}. Choose Time-based, 6 digits, 30 s.`));
+    const key = element('code', setup.setupKey.match(/.{1,4}/g).join(' '), 'setup-key'); key.dataset.secret = '';
+    manual.append(key, button('Copy setup key', () => copy(key.textContent.replaceAll(' ', '')))); panel.append(manual); content.append(panel);
   }
   const node = form(async (data) => {
-    const result = await api('/totp/confirm', { method: 'POST', body: data }); node.reset(); csrf = result.csrfToken; session = { ...result, totpEnabled: true }; nav();
+    const result = await api('/totp/confirm', { method: 'POST', body: data }); node.reset(); csrf = result.csrfToken; session = { ...result, username: session.username, totpEnabled: true }; nav();
     // Recovery codes have only one response; preserve them before the next read can fail.
-    if (result.recoveryCodes) showSecrets('Save your recovery codes', result.recoveryCodes.join('\n'));
+    if (result.recoveryCodes) { recovery(result.recoveryCodes); return; }
     await listShops();
   });
   const input = field(node, 'code', 'Six-digit authenticator code', { autocomplete: 'one-time-code', maxLength: 6, required: !session.totpEnabled }); input.inputMode = 'numeric'; input.pattern = '[0-9]{6}';
@@ -72,21 +133,44 @@ async function authenticator() {
 }
 async function listShops() {
   const result = await api('/shops'); screen('Shops'); const cards = element('div', undefined, 'cards');
+  content.append(element('p', 'Your shops, at a glance. Open a workspace or manage its access.'), button('Add shop', createShop));
   for (const shop of result.items) {
-    const card = element('article', undefined, 'card'); card.append(element('h3', shop.name), element('p', `${shop.code} · ${shop.currency} · ${shop.status}`));
+    const card = element('article', undefined, 'card'); const chip = element('span', shop.status, `chip status-${shop.status.toLowerCase()}`);
+    card.append(chip, element('h3', shop.name), element('p', `${shop.code} · ${shop.currency}`));
+    if (shop.createdAt) card.append(element('p', `Created ${new Date(shop.createdAt).toLocaleDateString()}`, 'meta'));
+    for (const [label, url] of [['Shop', shop.shopUrl], ['Seller', shop.sellerUrl]]) if (url) {
+      const row = element('div', undefined, 'url-row'), link = element('a', `Open ${label.toLowerCase()}`); link.href = url; link.target = '_blank'; link.rel = 'noopener';
+      row.append(element('small', url), link, button(`Copy ${label.toLowerCase()} URL`, () => copy(url))); card.append(row);
+    }
     if (shop.isDefault) card.append(element('p', 'Current shop · managed on the host'));
-    card.append(button('View shop', () => detail(shop.id))); cards.append(card);
+    const menu = element('details', undefined, 'shop-actions'); menu.append(element('summary', 'Shop actions'));
+    menu.append(button('Manage shop', () => detail(shop.id)));
+    if (!shop.isDefault) {
+      const change = async action => { await mutateShop(shop, action); await listShops(); notice.textContent = 'Shop updated.'; };
+      if (shop.status === 'ACTIVE') menu.append(button('Suspend shop', () => change('suspend')));
+      if (shop.status === 'SUSPENDED') menu.append(button('Resume shop', () => change('resume')));
+      if (['ACTIVE', 'SUSPENDED'].includes(shop.status)) menu.append(button('Reset seller password', () => change('reset-seller-password')), button('Rename shop code', () => detail(shop.id)));
+    }
+    card.append(menu); cards.append(card);
   }
   content.append(cards); if (!result.items.length) content.append(element('p', 'No shops yet.'));
 }
+async function mutateShop(shop, action, body = {}) {
+  const result = await api(`/shops/${shop.id}/${action}`, { method: 'POST', body: { expectedRevision: shop.revision, ...body } });
+  // Preserve one-time credentials before any subsequent query can fail.
+  if (result.sellerPassword) showSecrets('Save the new seller password', `${shop.sellerUsername}\n${result.sellerPassword}`);
+  return result;
+}
 async function createShop() {
-  screen('Create shop'); content.append(element('p', 'The seller starts as Owner and must replace the first password. This host supports 20 shops including the current shop.'));
+  screen('Add shop'); content.append(element('p', 'Give your shop a home. We will create a separate workspace and a temporary password for its seller. Up to 20 shops per host.'));
   const node = form(async (data) => {
     const result = await api('/shops', { method: 'POST', body: data }); node.reset();
     showSecrets('Save the new shop details', `Buyer: ${result.shopUrl}\nSeller: ${result.sellerUrl}\nUsername: ${result.tenant.sellerUsername}\nFirst password: ${result.sellerPassword}`);
     await detail(result.tenant.id);
   });
   const code = field(node, 'code', 'Shop code', { maxLength: 30 }); code.pattern = '[a-z0-9]{3,30}';
+  const hint = element('p', '3–30 lowercase letters and numbers. This becomes part of the shop address.', 'field-hint'); hint.id = 'code-hint'; code.setAttribute('aria-describedby', hint.id); code.after(hint);
+  code.addEventListener('input', () => { hint.textContent = code.validity.patternMismatch ? 'Use 3–30 lowercase letters and numbers only.' : 'Format looks good. Availability is checked when you create the shop.'; });
   field(node, 'name', 'Shop name');
   const label = element('label', 'Currency'), select = element('select'); select.name = 'currency'; select.id = 'platform-currency'; label.htmlFor = select.id;
   for (const currency of ['MYR', 'SGD']) { const option = element('option', currency); option.value = currency; select.append(option); } label.append(select); node.append(label);
@@ -99,9 +183,7 @@ async function detail(id) {
   }
   content.append(data); if (shop.isDefault) return;
   const action = async (name, body = {}) => {
-    const result = await api(`/shops/${id}/${name}`, { method: 'POST', body: { expectedRevision: shop.revision, ...body } });
-    // Preserve the only copy of a returned password even if the next detail query fails.
-    if (result.sellerPassword) showSecrets('Save the new seller password', `${shop.sellerUsername}\n${result.sellerPassword}`);
+    const result = await mutateShop(shop, name, body);
     await detail(id); return result;
   };
   const actions = element('div', undefined, 'actions');
@@ -122,7 +204,10 @@ async function detail(id) {
 async function audit(cursor = null) {
   const result = await api(`/audit?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`); screen('Audit trail');
   const list = element('ol', undefined, 'audit-list');
-  for (const item of result.items) list.append(element('li', `${item.created_at} · ${item.actor} · ${item.action}${item.detail ? ` · ${item.detail}` : ''}`));
+  for (const item of result.items) {
+    const row = element('li'), time = element('time', new Date(item.created_at).toLocaleString()); time.dateTime = item.created_at;
+    row.append(time, element('strong', item.action.toLowerCase().replaceAll('_', ' ')), element('span', `${item.actor}${item.detail ? ` · ${item.detail}` : ''}`)); list.append(row);
+  }
   content.append(list); if (result.nextCursor) content.append(button('Older events', () => audit(result.nextCursor)));
 }
 async function account() {
@@ -131,10 +216,17 @@ async function account() {
   field(passwordForm, 'currentPassword', 'Current password', { type: 'password', autocomplete: 'current-password', maxLength: 256 });
   field(passwordForm, 'newPassword', 'New password', { type: 'password', autocomplete: 'new-password', maxLength: 256 }); submit(passwordForm, 'Change password');
   content.append(element('h3', 'Recovery codes'), element('p', 'Regenerating invalidates every previous recovery code.'));
-  const recoveryForm = form(async (data, node) => { const result = await api('/account/recovery-codes', { method: 'POST', body: data }); node.reset(); showSecrets('Save your new recovery codes', result.recoveryCodes.join('\n')); });
+  const recoveryForm = form(async (data, node) => { const result = await api('/account/recovery-codes', { method: 'POST', body: data }); node.reset(); recovery(result.recoveryCodes); });
   field(recoveryForm, 'password', 'Current password', { type: 'password', autocomplete: 'current-password', maxLength: 256 }); submit(recoveryForm, 'Regenerate recovery codes');
 }
 await run(async () => {
   try { session = await api('/session'); csrf = session.csrfToken; nav(); if (session.stage === 'FULL') await listShops(); else await authenticator(); }
   catch (error) { if (error.status === 401) await signIn(); else throw error; }
 });
+addEventListener('pagehide', () => {
+  for (const canvas of content.querySelectorAll('canvas')) canvas.width = canvas.height = 0;
+  for (const node of content.querySelectorAll('[data-secret]')) node.replaceChildren();
+  secretValue.textContent = ''; document.querySelector('#secret-tools').replaceChildren();
+  for (const input of document.querySelectorAll('input')) input.value = '';
+});
+addEventListener('pageshow', event => { if (event.persisted) location.reload(); });

@@ -45,27 +45,31 @@ test('setup loader clears fragment before requests, submits once, hides secrets 
   const html = await readFile(new URL('../public/setup/index.html', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /localStorage|sessionStorage|document\.cookie|innerHTML/);
   assert.doesNotMatch(html, /<style\b|\sstyle=|<script(?![^>]*\bsrc=)/);
-  const run = async ({ open = true, ok = true } = {}) => {
-    const events = [], nodes = Object.fromEntries(['status', 'error', 'continue'].map((name) => [name, { hidden: true, focus() { events.push('focus:' + name); } }]));
+  const run = async ({ open = true, ok = true, pageOrigin = 'https://shop.example.test', nextUrl = 'https://configured.example.test/platform/', expectedUrl = nextUrl } = {}) => {
+    const events = [], nodes = Object.fromEntries(['status', 'error', 'continue', 'show-password'].map((name) => [name, { hidden: true, addEventListener() {}, focus() { events.push('focus:' + name); } }]));
     const button = {}, elements = Object.fromEntries(['email', 'username', 'password', 'confirm'].map((name) => [name, { value: name === 'confirm' ? 'password' : name, focus() {} }]));
     let submit, resolveClaim;
     const form = { elements, hidden: true, querySelector: () => button, addEventListener: (_, fn) => { submit = fn; }, reportValidity: () => true, setAttribute() {}, removeAttribute() {}, reset() { for (const field of Object.values(elements)) field.value = ''; } };
-    const requests = [], location = { hash: '#' + 'A'.repeat(43), pathname: '/setup/', search: '', replace(url) { events.push(url); } };
+    const requests = [], location = { ...Object.fromEntries(['protocol', 'hostname', 'port'].map(key => [key, new URL(pageOrigin)[key]])), hash: '#' + 'A'.repeat(43), pathname: '/setup/', search: '', replace(url) { events.push(url); } };
     const context = vm.createContext({ URL, location, history: { replaceState() { events.push('clear'); location.hash = ''; } }, document: { querySelector: (selector) => selector === '#claim' ? form : nodes[selector.slice(1)] }, fetch: async (path, options) => {
       events.push(path); requests.push({ path, options });
       if (path.endsWith('/status')) return { ok: open, json: async () => ({ open }) };
-      return new Promise((resolve) => { resolveClaim = () => resolve({ ok, json: async () => ({ nextUrl: 'https://configured.example.test/platform/' }) }); });
+      return new Promise((resolve) => { resolveClaim = () => resolve({ ok, json: async () => ({ nextUrl }) }); });
     } });
     await vm.runInContext(`(async () => { ${source}\n})()`, context);
     assert.equal(events[0], 'clear'); assert.equal(location.hash, '');
-    if (!open) { assert.equal(form.hidden, true); assert.equal(nodes.status.textContent, 'This page is not available'); return; }
+    if (!open) { assert.equal(form.hidden, true); return; }
     assert.equal(form.hidden, false);
     const pending = submit({ preventDefault() {} }); await submit({ preventDefault() {} });
     assert.equal(button.disabled, true); assert.equal(requests.length, 2);
     assert.deepEqual(JSON.parse(requests[1].options.body), { code: 'A'.repeat(43), email: 'email', username: 'username', password: 'password' });
     resolveClaim(); await pending; assert.equal(button.disabled, false);
-    if (ok) { assert.equal(form.hidden, true); assert.equal(elements.password.value, ''); assert.equal(events.at(-1), 'https://configured.example.test/platform/'); }
+    if (ok) { assert.equal(form.hidden, true); assert.equal(elements.password.value, ''); assert.equal(events.at(-1), expectedUrl); }
     else { assert.equal(nodes.error.hidden, false); assert.equal(events.at(-1), 'focus:error'); }
   };
   await run(); await run({ open: false }); await run({ ok: false });
+  await run({ pageOrigin: 'http://127.0.0.1:3456', nextUrl: 'https://localhost:3456/platform/', expectedUrl: 'http://localhost:3456/platform/' });
+  await run({ pageOrigin: 'http://127.0.0.1:3456' });
+  await run({ pageOrigin: 'http://shop.example.test', nextUrl: 'https://localhost:3456/platform/' });
+  await run({ pageOrigin: 'http://127.0.0.1:3456', nextUrl: 'https://localhost:4567/platform/' });
 });

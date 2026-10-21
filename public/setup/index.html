@@ -10,7 +10,13 @@
 </head>
 <body>
 <main>
+  <p class="eyebrow">Online Shopping · SuperAdmin</p>
   <h1>Set up Shop platform</h1>
+  <ol class="steps" aria-label="Account setup">
+    <li>1 · Create your account</li>
+    <li>2 · Scan your authenticator QR code</li>
+    <li>3 · Save your recovery codes</li>
+  </ol>
   <p id="status" role="status">Checking availability…</p>
   <p id="error" role="alert" tabindex="-1" hidden></p>
   <form id="claim" hidden>
@@ -23,6 +29,7 @@
     <label for="password">Password</label>
     <input id="password" name="password" type="password" autocomplete="new-password" minlength="12" maxlength="256" required aria-describedby="password-help">
     <p id="password-help">Use 12–256 characters, without your username or a single repeated character.</p>
+    <button id="show-password" type="button" aria-controls="password confirm" aria-pressed="false">Show passwords</button>
     <label for="confirm">Confirm password</label>
     <input id="confirm" name="confirm" type="password" autocomplete="new-password" minlength="12" maxlength="256" required>
     <button type="submit">Create account and continue</button>

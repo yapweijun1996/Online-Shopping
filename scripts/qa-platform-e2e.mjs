@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
-import { request } from 'node:http';
+import { request, createServer as createHttpServer } from 'node:http';
 import { totpCode } from '../src/platform/totp.js';
 
 const rows = [], suffix = randomBytes(6).toString('hex'), prefix = `qa_pe_${suffix}`;
@@ -13,7 +13,7 @@ const quote = (name) => { if (!/^[a-z0-9_]+$/.test(name)) throw Error('Unsafe id
 const base = new URL(process.env.SHOP_TEST_DATABASE_URL || 'postgres://postgres@127.0.0.1:54329/online_shopping_test');
 if (!['127.0.0.1', 'localhost', '[::1]'].includes(base.hostname)) throw Error('Loopback PostgreSQL required');
 const root = new URL('../', import.meta.url), databases = [], roles = [];
-let child, directory, admin, platformName, failure = false, current = 'infrastructure';
+let child, preview, directory, admin, platformName, failure = false, current = 'infrastructure';
 const check = (ok) => { if (!ok) throw Error('Behavior assertion failed'); };
 async function main() {
   admin = new pg.Client({ connectionString: base.href, connectionTimeoutMillis: 5000 }); await admin.connect();
@@ -36,6 +36,24 @@ async function main() {
   const listener = createServer(); listener.listen(0, '127.0.0.1'); await once(listener, 'listening');
   const port = listener.address().port; await new Promise((resolve) => listener.close(resolve));
   env.PORT = String(port); env.PUBLIC_ORIGIN = env.SELLER_ORIGIN = `http://127.0.0.1:${port}`; env.PLATFORM_ADMIN_HOST = `localhost:${port}`;
+  if (process.argv.includes('--serve')) {
+    // A loopback-only development edge mirrors the HTTPS host boundary without
+    // weakening application Origin checks or production Secure cookies.
+    preview = createHttpServer((incoming, outgoing) => {
+      const headers = { ...incoming.headers };
+      if (headers.origin === `http://${env.PLATFORM_ADMIN_HOST}`) headers.origin = `https://${env.PLATFORM_ADMIN_HOST}`;
+      const upstream = request({ hostname: '127.0.0.1', port, path: incoming.url, method: incoming.method, headers }, response => {
+        const returned = { ...response.headers };
+        if (returned['set-cookie']) returned['set-cookie'] = returned['set-cookie'].map(cookie => cookie.replace(/; Secure/g, ''));
+        outgoing.writeHead(response.statusCode, returned); response.pipe(outgoing);
+      });
+      upstream.on('error', () => { outgoing.writeHead(502); outgoing.end('Local server unavailable.'); });
+      incoming.pipe(upstream);
+    });
+    preview.listen(0, '127.0.0.1'); await once(preview, 'listening');
+    const edgePort = preview.address().port;
+    env.PUBLIC_ORIGIN = env.SELLER_ORIGIN = `http://127.0.0.1:${edgePort}`; env.PLATFORM_ADMIN_HOST = `localhost:${edgePort}`;
+  }
   let claim, emissions = 0, pending = '';
   child = spawn(process.execPath, ['src/server.js'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
   child.stdout.setEncoding('utf8'); child.stdout.on('data', (text) => { pending += text; const lines = pending.split('\n'); pending = lines.pop(); for (const line of lines) { try { const event = JSON.parse(line); if (event.event === 'platform.claim.issued') { emissions++; claim = new URL(event.url).hash.slice(1); } } catch {} } });
@@ -58,6 +76,31 @@ async function main() {
   };
   for (let i = 0; !claim && i < 300; i++) { if (child.exitCode !== null) throw Error('Server exited'); await new Promise(r => setTimeout(r, 100)); }
   check(claim && emissions === 1); rows.push(['single startup claim emission', 'PASS', '1']);
+  if (process.argv.includes('--serve')) {
+    console.log(`Claim URL: ${env.PUBLIC_ORIGIN}/setup/#${claim}`);
+    console.log(`Console URL: http://${env.PLATFORM_ADMIN_HOST}/platform/`);
+    console.log(`Fixture shop code prefix: qa${suffix}`);
+    console.log('Loopback development edge: HTTP only; production Origin checks and cookie settings unchanged.');
+    if (process.argv.includes('--seed-shops')) {
+      const { createTenant } = await import('../src/platform/provisioner.js');
+      const { openPlatformDatabase } = await import('../src/platform/platform-db.js');
+      const { createSecretBox, parseKeyFile } = await import('../src/secret-box.js');
+      const { readFile } = await import('node:fs/promises');
+      const platformUrl = new URL(base); platformUrl.pathname = '/' + platformName;
+      const platform = await openPlatformDatabase(platformUrl.href);
+      const box = createSecretBox(parseKeyFile(await readFile(env.INTEGRATION_KEY_FILE, 'utf8')));
+      const provisionerUrl = new URL(base); provisionerUrl.username = env.PLATFORM_PROVISIONER_USER; provisionerUrl.password = (await readFile(env.PLATFORM_PROVISIONER_PASSWORD_FILE, 'utf8')).trim();
+      try {
+        for (const [index, name] of ['Evergreen Goods', 'North Studio', 'Little Market'].entries()) {
+          await createTenant(platform, { secretBox: box, provisionerUrl: provisionerUrl.href, baseUrl: base.href },
+            { code: `qa${suffix}${index}`, name, currency: 'MYR', sellerUsername: 'shopowner' }, 'qa');
+        }
+      } finally { await platform.close(); }
+      console.log('Seeded three fictional shops.');
+    }
+    await new Promise(resolve => { process.once('SIGINT', resolve); process.once('SIGTERM', resolve); });
+    return;
+  }
   const shop = client(`127.0.0.1:${port}`, env.PUBLIC_ORIGIN), consoleApi = client(env.PLATFORM_ADMIN_HOST, `https://${env.PLATFORM_ADMIN_HOST}`);
   await shop('setup page open', '/setup/'); check((await shop('setup status open', '/api/v1/setup/status')).open);
   const password = secret(), credentials = { code: claim, email: 'owner@example.test', username: 'qaowner', password };
@@ -113,15 +156,26 @@ try { await main(); } catch { failure = true; rows.push([current, 'FAIL', 'redac
 finally {
   current = 'cleanup';
   try {
+    if (preview) await new Promise(resolve => preview.close(resolve));
     if (child && child.exitCode === null) { const exited = once(child, 'exit'); child.kill('SIGTERM'); const timer = setTimeout(() => child.kill('SIGKILL'), 10000); await exited; clearTimeout(timer); }
     if (admin) {
       if (platformName && databases.includes(platformName)) {
         const url = new URL(base); url.pathname = '/' + platformName;
         const client = new pg.Client({ connectionString: url.href }); await client.connect();
-        try { const result = await client.query('SELECT database_name, database_role FROM tenant WHERE is_default = 0'); for (const row of result.rows) { if (!/^t_qa[0-9a-f]{12}_[0-9a-f]{8}$/.test(row.database_name) || !row.database_name.startsWith(`t_qa${suffix}_`)) throw Error('Cleanup scope'); databases.push(row.database_name); roles.push(row.database_role); } } catch (error) { if (error.code !== '42P01') throw error; } finally { await client.end(); }
+        try {
+          // The random platform database is owned by this rig. Validate each
+          // tenant's provisioner-derived identifiers before removing its artifacts.
+          const result = await client.query('SELECT id, database_name, database_role FROM tenant WHERE is_default = 0');
+          for (const row of result.rows) {
+            // A rename changes the public code, not the physical database name.
+            const identifier = row.database_name, tail = row.id.replaceAll('-', '').slice(0, 8);
+            if (!/^t_[a-z0-9]{3,30}_[0-9a-f]{8}$/.test(identifier) || !identifier.endsWith(`_${tail}`) || row.database_role !== identifier) throw Error('Cleanup scope');
+            databases.push(identifier); roles.push(identifier);
+          }
+        } catch (error) { if (error.code !== '42P01') throw error; } finally { await client.end(); }
       }
-      for (const name of databases.reverse()) await admin.query(`DROP DATABASE ${quote(name)} WITH (FORCE)`);
-      for (const role of roles.reverse()) await admin.query(`DROP ROLE ${quote(role)}`);
+      for (const name of databases.reverse()) await admin.query(`DROP DATABASE IF EXISTS ${quote(name)} WITH (FORCE)`);
+      for (const role of roles.reverse()) await admin.query(`DROP ROLE IF EXISTS ${quote(role)}`);
       await admin.end();
     }
     if (directory) await rm(directory, { recursive: true, force: true });
