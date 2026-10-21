@@ -411,6 +411,10 @@ Peer-key and thread-peer contexts also bind the immutable shop identity. The def
 identity remains literal `default`; tenant UUIDs have no default-context fallback.
 Tenant seller routes require a provisioned static binding and fresh enabled policy.
 Auth mutations compare-and-set the snapshot version in one transaction.
+The full-MFA platform console may read only last reported worker state, heartbeat
+and an error-present boolean alongside reservation policy/capacity. It never
+receives seller QR material, phone numbers, raw worker errors, keys or chats.
+QR Enable/Disable uses the existing exact-Origin/CSRF and tenant-revision guards.
 A sealed random HMAC key supplies stable peer/phone hashes; direct peer JIDs
 are sealed, and only masked paired phones are stored for display. Text history
 is plaintext sensitive data: control polling clears bodies older than 30 days

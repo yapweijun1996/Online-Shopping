@@ -33,6 +33,8 @@ export function createShopManagement({ platform, pool, deps, registry, defaultSt
         const store = row.is_default === 1 ? defaultStore : await pool.get(row);
         result.orderCount = (await store.get('SELECT COUNT(*) AS n FROM shop_order')).n;
         result.productCount = (await store.get('SELECT COUNT(*) AS n FROM product')).n;
+        const qr = await store.get('SELECT state, heartbeat_at, last_error IS NOT NULL AS has_error FROM whatsapp_qr_session WHERE id = 1');
+        result.qrStatus = qr ? { state: qr.state, heartbeatAt: qr.heartbeat_at, hasError: Boolean(qr.has_error) } : null;
       }
       return result;
     },

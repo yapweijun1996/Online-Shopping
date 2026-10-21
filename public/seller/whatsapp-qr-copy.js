@@ -22,3 +22,13 @@ const pairing = {
  ko: ['취소', '2분 이내에 스캔하지 않아 코드가 만료되었습니다.']
 };
 for (const [locale, [cancel, timeout]] of Object.entries(pairing)) Object.assign(messages[locale], { qr_cancel: cancel, qr_pairingTimeout: timeout });
+const policy = {
+ en: ['Disabled by platform. Unlink this device in official WhatsApp.', 'No QR capacity. Contact the platform administrator.', 'QR worker not provisioned. Contact the platform administrator.', 'WhatsApp QR is unavailable. Try again later.'],
+ ms: ['Dilumpuhkan oleh platform. Nyahpaut peranti dalam WhatsApp rasmi.', 'Tiada kapasiti QR. Hubungi pentadbir platform.', 'Pekerja QR belum disediakan. Hubungi pentadbir platform.', 'WhatsApp QR tidak tersedia. Cuba lagi kemudian.'],
+ 'zh-Hans': ['平台已停用。请在官方 WhatsApp 中解除设备关联。', 'QR 容量已满，请联系平台管理员。', '尚未配置 QR 工作进程，请联系平台管理员。', 'WhatsApp QR 暂不可用，请稍后重试。'],
+ vi: ['Nền tảng đã tắt. Hủy liên kết thiết bị trong WhatsApp chính thức.', 'Hết dung lượng QR. Liên hệ quản trị viên.', 'Chưa cấp worker QR. Liên hệ quản trị viên.', 'WhatsApp QR không khả dụng. Thử lại sau.'],
+ th: ['แพลตฟอร์มปิดใช้งานแล้ว ยกเลิกการเชื่อมอุปกรณ์ใน WhatsApp ทางการ', 'ไม่มีความจุ QR ติดต่อผู้ดูแลแพลตฟอร์ม', 'ยังไม่ได้จัดเตรียมเวิร์กเกอร์ QR ติดต่อผู้ดูแลแพลตฟอร์ม', 'WhatsApp QR ไม่พร้อมใช้งาน ลองใหม่ภายหลัง'],
+ ja: ['プラットフォームにより無効です。公式 WhatsApp で端末の連携を解除してください。', 'QR の空き容量がありません。管理者に連絡してください。', 'QR ワーカーが未設定です。管理者に連絡してください。', 'WhatsApp QR は利用できません。後で再試行してください。'],
+ ko: ['플랫폼에서 비활성화했습니다. 공식 WhatsApp에서 기기 연결을 해제하세요.', 'QR 용량이 없습니다. 관리자에게 문의하세요.', 'QR 작업자가 준비되지 않았습니다. 관리자에게 문의하세요.', 'WhatsApp QR을 사용할 수 없습니다. 나중에 다시 시도하세요.']
+};
+for (const [locale, values] of Object.entries(policy)) ['revoked', 'capacity', 'notProvisioned', 'unavailable'].forEach((key, i) => { messages[locale][`qr_${key}`] = values[i]; });
