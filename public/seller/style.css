@@ -308,6 +308,7 @@
 .import-summary{display:flex;flex-wrap:wrap;gap:6px 14px;font-weight:700}.import-count.has-errors{color:#aa3946}
 .import-rows{list-style:none;margin:8px 0;padding:0;display:grid;gap:8px;max-height:45vh;overflow:auto}.import-row{display:grid;gap:2px;padding:8px 10px;border-radius:8px;background:var(--ui-hover-surface);font-size:13px}.import-row.is-error{outline:1px solid #aa3946}.import-error{color:#aa3946}.import-change{color:var(--ui-muted)}.import-dialog{width:min(640px,calc(100% - 28px))}
 .tracking-import-dialog .import-result{max-height:45vh;overflow:auto}.tracking-import-dialog table{width:100%;border-collapse:collapse;font-size:13px}.tracking-import-dialog th,.tracking-import-dialog td{padding:8px;text-align:left;vertical-align:top;overflow-wrap:anywhere;border-bottom:1px solid var(--ui-border)}.tracking-import-dialog td:last-child{min-width:150px}.tracking-import-dialog button{min-height:44px}.tracking-import-dialog p{overflow-wrap:anywhere}
+.tracking-mapping label{display:grid;gap:6px;min-width:0;margin-block:12px}.tracking-mapping select,.tracking-mapping input{width:100%;min-width:0;max-width:100%;min-height:44px;box-sizing:border-box;font:inherit}
 .erase-confirm{background:#aa3946;border-color:#aa3946;color:#fff}.erase-confirm:disabled{opacity:.5}
 .order-erased-note{margin:0 0 8px;padding:8px 10px;border-radius:8px;background:var(--ui-hover-surface);font-size:13px}
 .decision-dialog textarea{resize:vertical;font:inherit;min-height:100px}

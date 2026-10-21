@@ -5,6 +5,7 @@ import { containDialogFocus } from '../shared/modal.js';
 import { beginMutation } from '../shared/update-guard.js';
 import { apiUrl } from '../shared/base-path.js';
 import { statusKey } from './order-status-label.js';
+import { parseTrackingFile, mappingFields, validMapping, mappedTrackingCsv } from './tracking-mapping.js';
 
 const node = (tag, text = '', className = '') => { const value = document.createElement(tag); value.textContent = text; if (className) value.className = className; return value; };
 const fill = (key, count) => t(key).replace('{count}', count);
@@ -22,23 +23,47 @@ export function openTrackingImport({ trigger, csrfToken, onUnauthorized, onImpor
   const label = node('label'); label.append(node('span', t('importChoose')), file);
   const status = node('p', '', 'message'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
   const result = node('div', '', 'import-result');
+  const mapping = node('div', '', 'tracking-mapping'); mapping.hidden = true;
   const actions = node('div', '', 'decision-actions');
   const button = (key, handler) => { const value = node('button', t(key), 'secondary-button'); value.type = 'button'; value.addEventListener('click', handler); return value; };
   const close = button('close', () => dialog.close());
-  const preview = button('trackingPreview', () => run(false));
+  const preview = button('trackingPreview', () => { if (parsed) { if (!validMapping(parsed, selection, defaultCarrier.value)) return; csv = mappedTrackingCsv(parsed, selection, defaultCarrier.value); } run(false); });
   const commit = button('importConfirm', () => run(true)); commit.className = 'primary-button';
   const report = button('trackingReport', () => downloadTrackingCsv(plan.reportCsv, 'tracking-report.csv'));
   const previous = button('trackingPrevious', () => { page--; show(); });
   const next = button('trackingNext', () => { page++; show(); });
   actions.append(close, preview, report, commit);
-  dialog.append(title, node('p', t('trackingIntro')), label, status, result, previous, next, actions);
+  dialog.append(title, node('p', t('trackingIntro')), label, mapping, status, result, previous, next, actions);
   document.body.append(dialog); containDialogFocus(dialog);
   let csv = '', plan = null, busy = false, unknownFinish = null, page = 0, generation = 0;
+  let parsed = null, selection = [];
+  const defaultCarrier = node('input'); defaultCarrier.type = 'text'; defaultCarrier.maxLength = 40;
+  const selects = [];
+  const mappingMessage = node('p', '', 'message'); mappingMessage.setAttribute('role', 'status');
+  function mappingChanged() {
+    selection = selects.map((select) => Number(select.value));
+    csv = ''; plan = null; show();
+    mappingMessage.textContent = validMapping(parsed, selection, defaultCarrier.value) ? '' : t('trackingMappingInvalid');
+  }
+  defaultCarrier.addEventListener('input', mappingChanged);
+  function showMapping() {
+    mapping.replaceChildren(node('p', t('trackingMappingIntro'))); selects.length = 0;
+    for (const [index, field] of mappingFields.entries()) {
+      const select = node('select'); const empty = node('option', t('trackingMappingNone')); empty.value = '-1'; select.append(empty);
+      parsed.headers.forEach((header, column) => { const option = node('option', header); option.value = String(column); select.append(option); });
+      select.value = String(selection[index]); select.addEventListener('change', mappingChanged); selects.push(select);
+      const wrapper = node('label'); wrapper.append(node('span', t({ orderNo: 'trackingOrder', carrier: 'carrier', trackingNo: 'trackingNumberLabel', shippedDate: 'trackingShippedDate' }[field])), select); mapping.append(wrapper);
+    }
+    if (parsed.noCarrier) { const wrapper = node('label'); wrapper.append(node('span', t('trackingDefaultCarrier')), defaultCarrier); mapping.append(wrapper); }
+    mapping.append(mappingMessage); mapping.hidden = false; mappingChanged();
+  }
   const notify = () => document.dispatchEvent(new Event('updateguardchange'));
   function controls() {
     const offline = navigator.onLine === false;
     file.disabled = busy || Boolean(unknownFinish); close.disabled = busy || Boolean(unknownFinish);
-    preview.disabled = busy || offline || !csv;
+    preview.disabled = busy || offline || (parsed ? !validMapping(parsed, selection, defaultCarrier.value) : !csv);
+    for (const select of selects) select.disabled = busy || Boolean(unknownFinish);
+    defaultCarrier.disabled = busy || Boolean(unknownFinish);
     commit.hidden = !plan || Boolean(plan.requiresPreview) || Boolean(plan.applied) || plan.summary.errors > 0 || plan.summary.ship === 0 || Boolean(unknownFinish);
     commit.disabled = busy || offline;
     report.hidden = !plan; report.disabled = busy;
@@ -109,18 +134,25 @@ export function openTrackingImport({ trigger, csrfToken, onUnauthorized, onImpor
     } finally { finish(); busy = false; controls(); notify(); }
   }
   file.addEventListener('change', async () => {
-    const current = ++generation; csv = ''; plan = null; page = 0; show(); status.textContent = '';
+    const current = ++generation; csv = ''; parsed = null; mapping.hidden = true; defaultCarrier.value = ''; plan = null; page = 0; show(); status.textContent = '';
     const chosen = file.files?.[0]; if (!chosen) return;
     if (chosen.size > 1_500_000) { status.textContent = t('importBadFile'); return; }
     busy = true; controls(); notify();
-    try { const text = new TextDecoder('utf-8', { fatal: true }).decode(await chosen.arrayBuffer()); if (current !== generation || !dialog.open) return; csv = text; }
+    try {
+      const text = new TextDecoder('utf-8', { fatal: true }).decode(await chosen.arrayBuffer());
+      if (current !== generation || !dialog.open) return;
+      const source = parseTrackingFile(text);
+      if (source.needsMapping) { parsed = source; selection = source.selection; showMapping(); }
+      else csv = text;
+    }
     catch { status.textContent = t('importBadFile'); }
     finally { busy = false; controls(); notify(); }
+    if (parsed) selects[0].focus();
     if (csv) await run(false);
   });
   dialog.addEventListener('cancel', (event) => { if (busy || unknownFinish) event.preventDefault(); });
   dialog.addEventListener('close', () => {
-    ++generation; csv = ''; plan = null; file.value = ''; unknownFinish?.(); unknownFinish = null;
+    ++generation; csv = ''; parsed = null; selection = []; defaultCarrier.value = ''; plan = null; file.value = ''; unknownFinish?.(); unknownFinish = null;
     window.removeEventListener('online', controls); window.removeEventListener('offline', controls);
     dialog.remove(); if (trigger?.isConnected) trigger.focus(); notify();
   });

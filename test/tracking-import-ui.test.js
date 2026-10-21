@@ -4,6 +4,9 @@ import { openTrackingImport } from '../public/seller/tracking-import.js';
 import { messages, languages } from '../public/shared/i18n.js';
 import { mutationsBusy } from '../public/shared/update-guard.js';
 import { readFile } from 'node:fs/promises';
+import { parseTrackingFile, validMapping, mappedTrackingCsv } from '../public/seller/tracking-mapping.js';
+import { parseCsv } from '../src/csv.js';
+import { TRACKING_HEADER_ALIASES, trackingRows } from '../src/tracking-import.js';
 class Element extends EventTarget {
   constructor(tag) { super(); this.tagName = tag; this.children = []; this.textContent = ''; this.attributes = {}; }
   append(...nodes) { for (const node of nodes) { node.parent = this; this.children.push(node); } }
@@ -26,7 +29,7 @@ async function fixture(t) {
   const dialog = openTrackingImport({ csrfToken: () => 'csrf', onUnauthorized() {}, onImported() {} });
   const find = (key) => dialog.descendants().find((node) => node.tagName === 'button' && node.textContent === messages.en[key]);
   const file = dialog.descendants().find((node) => node.tagName === 'input');
-  const choose = async (text = 'fictional csv') => { file.files = [new Blob([text])]; file.dispatchEvent(new Event('change')); await flush(); };
+  const choose = async (text = 'Order number,Carrier,Tracking number\nOS-1,Courier,ABC') => { file.files = [new Blob([text])]; file.dispatchEvent(new Event('change')); await flush(); };
   return { dialog, file, find, choose };
 }
 
@@ -39,7 +42,7 @@ test('100/500 row preview is paged, commit is bound to preview, completed import
   ui.find('trackingNext').dispatchEvent(new Event('click'));
   assert.equal(ui.dialog.descendants().find((node) => node.tagName === 'td').textContent, '52');
   ui.find('importConfirm').dispatchEvent(new Event('click')); await flush();
-  assert.deepEqual(sent[1], { csv: 'fictional csv', commit: true, planHash: 'hash', expectedRevisions: [{ orderNo: 'OS-1', revision: 2 }] });
+  assert.deepEqual(sent[1], { csv: 'Order number,Carrier,Tracking number\nOS-1,Courier,ABC', commit: true, planHash: 'hash', expectedRevisions: [{ orderNo: 'OS-1', revision: 2 }] });
   assert.equal(ui.find('importConfirm').hidden, true); assert.equal(mutationsBusy(), false);
 });
 
@@ -78,7 +81,7 @@ test('file errors, conflicts, offline, changed file and expiry cannot commit a s
   navigator.onLine = true; window.dispatchEvent(new Event('online'));
   status = 409; ui.find('importConfirm').dispatchEvent(new Event('click')); await flush(); assert.equal(ui.find('importConfirm').hidden, true);
   ui.file.files = [{ size: 1_500_001 }]; ui.file.dispatchEvent(new Event('change')); await flush(); assert.equal(ui.find('importConfirm').hidden, true); assert.equal(count, 2);
-  status = 401; await ui.choose('new csv'); assert.equal(ui.dialog.open, false); assert.equal(mutationsBusy(), false);
+  status = 401; await ui.choose(); assert.equal(ui.dialog.open, false); assert.equal(mutationsBusy(), false);
 });
 
 test('invalid UTF-8 tracking bytes clear the plan and cannot preview or commit', async (t) => {
@@ -98,7 +101,7 @@ test('invalid UTF-8 tracking bytes clear the plan and cannot preview or commit',
 });
 
 test('tracking copy is present in all seven locales', () => {
-  for (const { code } of languages) for (const key of ['trackingImport', 'trackingTemplate', 'trackingIntro', 'trackingShipCount', 'trackingReport', 'trackingPreview', 'trackingUnknown', 'trackingDone']) assert.equal(typeof messages[code][key], 'string');
+  for (const { code } of languages) for (const key of ['trackingMappingIntro', 'trackingMappingNone', 'trackingDefaultCarrier', 'trackingMappingInvalid', 'trackingImport', 'trackingTemplate', 'trackingIntro', 'trackingShipCount', 'trackingReport', 'trackingPreview', 'trackingUnknown', 'trackingDone']) assert.equal(typeof messages[code][key], 'string');
 });
 
 test('every server preview action and row error has human copy in every locale', async () => {
@@ -125,4 +128,67 @@ test('unchanged preview shows human action and a scoped details column', async (
   const headings = ui.dialog.descendants().filter(node => node.tagName === 'th');
   assert.equal(headings[2].textContent, 'Details');
   assert.equal(headings[2].scope, 'col');
+});
+
+test('recognised headers skip mapping; realistic courier export maps real columns before preview', async (t) => {
+  assert.equal(parseTrackingFile('Order No,Courier,AWB\nOS-1,DHL,001').needsMapping, false);
+  const ui = await fixture(t), sent = [];
+  globalThis.fetch = async (_path, options) => { sent.push(JSON.parse(options.body)); return { ok: true, status: 200, json: async () => answer(1) }; };
+  await ui.choose('Order Reference,Courier Name,AWB No,Recipient,Phone,Address,Postcode,Weight (kg),Service,Charge (RM),Date Shipped\r\nOS-1,DHL,001,Person,000,Street,00000,1,Express,5,2026-01-01');
+  assert.equal(sent.length, 0);
+  const selects = ui.dialog.descendants().filter((element) => element.tagName === 'select');
+  assert.deepEqual(selects.map((element) => element.value), ['0', '1', '2', '10']);
+  assert.equal(selects[0].focused, true);
+  assert.equal(selects[0].children[1].textContent, 'Order Reference');
+  selects[2].value = '0'; selects[2].dispatchEvent(new Event('change'));
+  assert.equal(ui.find('trackingPreview').disabled, true);
+  selects[2].value = '2'; selects[2].dispatchEvent(new Event('change'));
+  assert.equal(ui.find('trackingPreview').disabled, false);
+  ui.find('trackingPreview').dispatchEvent(new Event('click')); await flush();
+  assert.equal(sent[0].csv, '\uFEFFOrder number,Carrier,Tracking number,Shipped date\r\nOS-1,DHL,001,2026-01-01\r\n');
+});
+
+test('mapping preserves CSV text, BOM, CRLF and server injection validation', () => {
+  const file = parseTrackingFile('\uFEFFcustom,provider,label,extra\r\nOS-1,\"A,\"\"B\"\"\nC\",001,ignored\r\n');
+  const csv = mappedTrackingCsv(file, [0, 1, 2, -1]);
+  assert.deepEqual(parseCsv(csv, { strict: true }), [['Order number', 'Carrier', 'Tracking number', 'Shipped date'], ['OS-1', 'A,\"B\"\nC', '001', '']]);
+  for (const value of ['=cmd', '+cmd', '-cmd', '@cmd']) {
+    const input = parseTrackingFile(`custom,provider,label\n${value},DHL,${value}`);
+    const output = mappedTrackingCsv(input, [0, 1, 2, -1]);
+    assert.equal(parseCsv(output)[1][0], value);
+    assert.equal(trackingRows(output)[0].errors.length, 2);
+  }
+  const rows = 'custom,provider,label\n' + Array.from({ length: 500 }, (_, index) => `OS-${index},DHL,T${index}`).join('\r\n');
+  assert.equal(parseTrackingFile(mappedTrackingCsv(parseTrackingFile(rows), [0, 1, 2, -1])).rows.length, 500);
+  assert.throws(() => parseTrackingFile(rows + '\r\nOS-501,DHL,T501'));
+  assert.throws(() => mappedTrackingCsv(file, [0, 1, 0, -1]));
+});
+
+test('default carrier requires bounded text and remembered mapping uses exact headers', async (t) => {
+  const ui = await fixture(t), sent = [];
+  globalThis.fetch = async (_path, options) => { sent.push(JSON.parse(options.body)); return { ok: true, status: 200, json: async () => answer(1) }; };
+  await ui.choose('Order ID,Tracking Code\nOS-1,001');
+  assert.equal(ui.find('trackingPreview').disabled, true);
+  const carrier = ui.dialog.descendants().find((element) => element.type === 'text');
+  carrier.value = 'DHL'; carrier.dispatchEvent(new Event('input'));
+  assert.equal(ui.find('trackingPreview').disabled, false);
+  ui.find('trackingPreview').dispatchEvent(new Event('click')); await flush();
+  assert.equal(trackingRows(sent[0].csv)[0].carrier, 'DHL');
+  const file = parseTrackingFile('x,y,z\nOS-1,DHL,001');
+  assert.equal(validMapping(file, [0, -1, 2, -1], 'x'.repeat(41)), false);
+  mappedTrackingCsv(file, [0, 1, 2, -1]);
+  assert.deepEqual(parseTrackingFile('x,y,z\nOS-2,DHL,002').selection, [0, 1, 2, -1]);
+  assert.deepEqual(parseTrackingFile('z,y,x\n001,DHL,OS-1').selection, [-1, -1, -1, -1]);
+  assert.equal(parseTrackingFile('Order No,Order Ref,Courier,AWB\nOS-1,OS-1,DHL,001').needsMapping, true);
+  assert.equal(parseTrackingFile('Order No,Courier,AWB,Delivered On\nOS-1,DHL,001,2026-01-01').selection[3], -1);
+});
+
+test('client recognises every server alias with identical normalisation', () => {
+  const fields = ['orderNo', 'carrier', 'trackingNo', 'shippedDate'];
+  for (const [field, aliases] of Object.entries(TRACKING_HEADER_ALIASES)) for (const alias of aliases) {
+    const headers = fields.map((key) => key === field ? ` \uFEFF${alias.toUpperCase().replaceAll(' ', '_')} ` : TRACKING_HEADER_ALIASES[key][0]);
+    const parsed = parseTrackingFile(headers.join(',') + '\nOS-1,Courier,001,2026-01-01');
+    assert.equal(parsed.needsMapping, false, alias);
+    assert.deepEqual(parsed.selection, [0, 1, 2, 3], alias);
+  }
 });

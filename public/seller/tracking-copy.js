@@ -1,6 +1,10 @@
 import { messages } from '../shared/i18n.js';
 const locales = ['en', 'ms', 'zh-Hans', 'vi', 'th', 'ja', 'ko'];
 const rows = [
+  ['trackingMappingIntro', 'Choose the columns to import. Other columns are ignored.', 'Pilih lajur untuk diimport. Lajur lain diabaikan.', '选择要导入的列，其他列将被忽略。', 'Chọn cột để nhập. Bỏ qua các cột khác.', 'เลือกคอลัมน์ที่จะนำเข้า คอลัมน์อื่นจะถูกละเว้น', '取り込む列を選択してください。他の列は無視されます。', '가져올 열을 선택하세요. 다른 열은 무시됩니다.'],
+  ['trackingMappingNone', 'No column', 'Tiada lajur', '不选择列', 'Không chọn cột', 'ไม่มีคอลัมน์', '列なし', '열 없음'],
+  ['trackingDefaultCarrier', 'Default carrier (no carrier column)', 'Kurier lalai (tiada lajur kurier)', '默认承运商（无承运商列）', 'Hãng vận chuyển mặc định (không có cột)', 'ผู้ขนส่งเริ่มต้น (ไม่มีคอลัมน์ผู้ขนส่ง)', '既定の配送業者（配送業者列なし）', '기본 배송업체 (배송업체 열 없음)'],
+  ['trackingMappingInvalid', 'Choose each required column once, or enter a default carrier (1–40 characters).', 'Pilih setiap lajur wajib sekali, atau isi kurier lalai (1–40 aksara).', '请为每个必填字段选择不同的列，或输入默认承运商（1–40字符）。', 'Chọn mỗi cột bắt buộc một lần, hoặc nhập hãng mặc định (1–40 ký tự).', 'เลือกคอลัมน์ที่จำเป็นไม่ซ้ำกัน หรือระบุผู้ขนส่งเริ่มต้น (1–40 ตัวอักษร)', '必須列を重複せず選ぶか、既定の配送業者を入力してください（1～40文字）。', '필수 열을 중복 없이 선택하거나 기본 배송업체를 입력하세요 (1–40자).'],
   ['importAction_ship', 'Mark shipped', 'Tandakan dihantar', '标记已发货', 'Đánh dấu đã gửi', 'ทำเครื่องหมายว่าส่งแล้ว', '発送済みにする', '발송됨으로 표시'],
   ['importAction_unchanged', 'Unchanged', 'Tiada perubahan', '无更改', 'Không thay đổi', 'ไม่มีการเปลี่ยนแปลง', '変更なし', '변경 없음'],
   ['importAction_error', 'Needs correction', 'Perlu pembetulan', '需要修正', 'Cần sửa', 'ต้องแก้ไข', '修正が必要', '수정 필요'],
