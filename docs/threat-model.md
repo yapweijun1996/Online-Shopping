@@ -99,6 +99,26 @@ All HTTP routes are in `src/app.js` (path constants at the top, handlers in `rou
 - WhatsApp connection: `GET /api/v1/seller/integrations/whatsapp` (status, webhook URL, never a secret), `PUT` and `DELETE .../whatsapp/{SANDBOX|PRODUCTION}` (origin and CSRF, body ≤8 KiB, `integration-connect` limiter 10 per 15 min per IP; the provider is verified before anything is stored). While quick sign-in is on (a passwordless sample site) the reads return `available: false` and the writes 403, so a visitor can neither connect nor disconnect real credentials. Logic in `src/integration-connections.js`.
 - WhatsApp readiness: Owner-only `GET .../whatsapp/{SANDBOX|PRODUCTION}/readiness`, session and `settings.write`, quick-login refused, shared `integration-connect` rate limit. No CSRF for this read-only GET. Opens sealed credentials only server-side and calls fixed HTTPS Graph phone_numbers/subscribed_apps/message_templates edges through the transport boundary. Each GET is bounded to 10 seconds/16 KiB, redirects refused; template paging at most five pages with exact HTTPS Graph origin and no URL credentials. Network/unusable responses cannot PASS. No provider error text or secrets returned. App Secret proof uses a phone-matched signed webhook marker in the existing connection public_config, transactionally recorded alongside receipt handling; connect/rotate clears it, key reseal preserves it. The provider-wide deduplication receipt cannot itself prove a particular connection. No schema change or readiness-status persistence. A non-empty subscription list does not authenticate app identity; readiness is not a send/delivery/billing guarantee.
 - WhatsApp messages: `GET /api/v1/seller/messages/{summary,replies,outbox}`, `GET /api/v1/seller/orders/{uuid}/messages`, `POST /api/v1/seller/messages/replies/{uuid}/read`, `POST /api/v1/seller/messages/outbox/{uuid}/resolve` (origin and CSRF on the POSTs, lists capped at 100 rows, body ≤1 KiB). Buyer reply text is personal data shown only to the signed-in seller as plain text; no phone number or sender hash is returned; empty and read-only while quick sign-in is on. Logic in `src/whatsapp-messages.js`.
+- Experimental linked-device QR: `GET /api/v1/seller/integrations/whatsapp-qr`,
+  Owner-only `POST .../{acknowledge,pair,disconnect}`, `GET /api/v1/seller/chats`,
+  `GET .../{id}/{messages,orders}`, `POST .../{id}/{read,replies}`. Default-shop
+  identity only; disabled, prefixed/platform tenant, public-demo and quick-login
+  requests are 404. Every mutation requires exact Origin/CSRF and current role.
+  QR pairing credentials are no-store and Owner-only until expiry. Reply intents
+  have actor, persistent idempotency, shop/thread quotas and a bounded queue;
+  enqueue and worker claim share the session lock and generation fencing.
+  Seller UI generates QR pixels locally with the vendored MIT encoder, keeps QR
+  and retry intents in memory only, and renders chat names/previews/bodies as
+  text nodes. The seller service worker excludes every `/api/` request. Chat
+  list previews expose only the latest retained body to the same authenticated
+  roles that may read the conversation; erased bodies remain null.
+  Suggested orders use keyed phone matching over at most 500 non-erased orders,
+  never identity guesses for LIDs or automatic links. Order erasure suppresses
+  matching threads and removes names, sealed peers and bodies transactionally;
+  late inbound cannot restore text. Peer hashes remain pseudonymous suppression
+  markers; backups retain prior PII. Missing integration keys block erasure of
+  existing QR data rather than silently skipping it. Unofficial linking remains
+  a number-ban/session-theft risk; acknowledgement is not buyer consent.
 - Settings: `/api/v1/seller/categories`, `/api/v1/seller/company-settings`, `GET /api/v1/seller/integrations` (static catalog, no credentials).
 - Orders: `GET /api/v1/seller/orders` (status, search ≤40 chars, `limit` ≤100, `offset` ≤10 000), `GET /api/v1/seller/orders/summary`, `GET /api/v1/seller/orders/{uuid}` (full buyer and delivery PII), `POST /api/v1/seller/orders/{uuid}/{confirm|reject|ship|deliver|cancel}` (`src/seller-orders.js`).
 - Shipping PII export: `GET /api/v1/seller/orders/shipping-list.csv`, session plus `orders.fulfil`, intentionally available to Owner/Manager/Staff who already view recipient addresses. This does not broaden the Owner-only accounting `data.export` capability. Quick-login sample sites are refused. Tenant-resolved store, shared parameterized filters, 500 non-erased delivery-row limit, erased-contact rows omitted with `X-Skipped-Erased`, no-store/nosniff attachment. Every cell uses shared formula safety, including whitespace-prefixed formulas and E.164 `+` phones. No Origin/CSRF is needed for this read-only GET. The downloaded file contains PII outside application custody; sellers must protect it. No export audit event is persisted beyond the HTTP request, and no order status/provider effect occurs.
@@ -363,4 +383,38 @@ Metadata-only `mcp_audit` must succeed before delivering tool data. Authorizatio
 Enabled tenant discovery translates canonical paths before store resolution. Suspended/unknown shops fail before token lookup; enabled aliases never redirect connector credentials. Enabled creation/actual rename reserves `mcp`/`oauth`, but an existing canonical or alias prefix still wins over the default connector; operators must reconcile collisions before activation. Off-mode provisioning/routing retains the previous contract. Deployed inventory is UNVERIFIED. Shared backend/store/provisioner compromise remains cross-shop. The complete eight-item off-mode delta list in SELLER_MCP_DESIGN.md distinguishes repaired routing from intentional strict configuration validation, unconditional credential invalidation and the protected schema25/readiness/import release.
 
 **Merging schema25 to main permits automatic OrbStack production database migration, even with MCP off; there is no manual OrbStack schema gate.** Required owner decision: **"merging = auto-migrate OrbStack production DB to schema 25; backups/rollback procedure"**. Approve the automatic maintenance/backup/migration/restore path or stop the installed poller before merge. GCP instead pauses for a protected manual release and never migrates. Follow [the ordered manual GCP procedure](GCP_DEPLOY.md#seller-mcp-schema25-manual-release). Image-only rollback cannot reverse committed schema25; use a compatible disabled build or coordinated restore with all writers stopped, losing later writes. Restored tokens require invalidation with MCP off. Installed controller identity, production release/restore and TLS/vendor behavior remain UNVERIFIED.
+
+
+## Private linked-device worker boundary (schema 27)
+
+The default-off WhatsApp QR backend adds a separate internal listener, not a
+route on the public application handler. It binds only the default shop store;
+tenant database selection is not accepted from requests. Deployment must keep
+the port unpublished and outside the reverse proxy. Enabling requires an
+integration key ring and a dedicated URL-safe bearer secret file; quick-login
+and public-demo deployments are rejected.
+
+The worker bearer grants sensitive access to the linked-device auth state,
+normalized inbound ingress and claimed human replies. Equal-length token bytes
+are compared with `timingSafeEqual` before parsing bodies. UUID worker identity,
+60-second session ownership and generation fencing protect against concurrent
+or stale workers. The token is not a substitute for private-network isolation.
+Responses are no-store without CORS; payloads are bounded JSON and the HTTP
+adapter enforces ten-second timeouts.
+
+Auth records are integration-key sealed with per-generation/type/id/chunk
+contexts and SHA-256 integrity checks; incomplete/corrupt records are withheld.
+Auth mutations compare-and-set the snapshot version in one transaction.
+A sealed random HMAC key supplies stable peer/phone hashes; direct peer JIDs
+are sealed, and only masked paired phones are stored for display. Text history
+is plaintext sensitive data: control polling clears bodies older than 30 days
+in batches of 200, retaining tombstones and provider deduplication identifiers.
+QRs expire after 60 seconds. Expired SENDING leases become RECONCILE, never an
+automatic retry; eligibility and five-second spacing are enforced at claim.
+These cleanup actions require worker control polling; they are not a background
+retention scheduler. SQLite import excludes QR session/auth/threads/messages.
+
+Backend code never imports Baileys and does not call the linked-device worker
+or WhatsApp. Seller risk acknowledgement, activation/disconnection and inbox
+authorization/UI are separate, not implemented by this private listener.
 

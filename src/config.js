@@ -76,6 +76,24 @@ export function readPlatformConfig(env, integrationKeys) {
     provisionerUrl: connection(provisioner, readSecret('PLATFORM_PROVISIONER_PASSWORD_FILE'), 'postgres') };
 }
 
+export function readWhatsAppQrConfig(env, integrationKeys) {
+  const flag = env.WHATSAPP_QR_ENABLED ?? '0';
+  if (!['0', '1'].includes(flag)) throw new Error('WHATSAPP_QR_ENABLED must be 0 or 1.');
+  const rawPort = env.WHATSAPP_QR_PORT ?? '3001', port = Number(rawPort);
+  if (!/^\d+$/.test(rawPort) || !Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('WHATSAPP_QR_PORT must be 1024..65535.');
+  const enabled = flag === '1';
+  let token = null;
+  if (enabled) {
+    if (!integrationKeys) throw new Error('WHATSAPP_QR_ENABLED requires integration keys.');
+    if (env.SELLER_QUICK_LOGIN === '1' || env.SHOP_MODE === 'public-demo') throw new Error('WhatsApp QR refuses quick login and public-demo shops.');
+    if (env.WHATSAPP_QR_SHOP !== undefined && env.WHATSAPP_QR_SHOP !== 'default') throw new Error('WhatsApp QR supports only the default shop.');
+    try { token = readFileSync(env.WHATSAPP_QR_TOKEN_FILE, 'utf8').split(/\r?\n/)[0]; }
+    catch { throw new Error('WHATSAPP_QR_TOKEN_FILE is required and must be readable.'); }
+    if (!/^[A-Za-z0-9_-]{32,}$/.test(token)) throw new Error('WHATSAPP_QR_TOKEN_FILE must contain a URL-safe token of at least 32 characters.');
+  }
+  return { enabled, token, port };
+}
+
 export function readConfig(env = process.env) {
   const production = env.NODE_ENV === 'production';
   const username = (env.ADMIN_USERNAME || '').trim();
@@ -125,6 +143,7 @@ export function readConfig(env = process.env) {
     try { text = readFileSync(env.INTEGRATION_KEY_FILE, 'utf8'); } catch { throw new Error('INTEGRATION_KEY_FILE cannot be read.'); }
     integrationKeys = parseKeyFile(text);
   }
+  const whatsappQr = readWhatsAppQrConfig(env, integrationKeys);
   const appRevision = env.APP_REVISION || null;
   if (appRevision && !/^(local|[0-9a-f]{40})$/.test(appRevision)) throw new Error('APP_REVISION must be a commit SHA or local.');
   const port = Number(env.PORT || 3000);
@@ -140,5 +159,5 @@ export function readConfig(env = process.env) {
     try { const url = new URL(value); return url.protocol !== 'https:' || url.origin !== value; } catch { return true; }
   })) throw new Error('Invalid MCP_BROWSER_ORIGINS.');
   if (mcpEnabled && (!sellerOrigin || new URL(sellerOrigin).protocol !== 'https:')) throw new Error('MCP_ENABLED requires an HTTPS SELLER_ORIGIN.');
-  return { production, username, password, dbPath, databaseUrl, publicOrigin, sellerOrigin, appRevision, integrationKeys, mcpEnabled, mcpRedirectUris, mcpBrowserOrigins, platform: readPlatformConfig(env, integrationKeys), port, trustProxy, shopMode: readShopMode(env), sellerQuickLogin: env.SELLER_QUICK_LOGIN === '1', demoRevision: readDemoRevision(env) };
+  return { production, username, password, dbPath, databaseUrl, publicOrigin, sellerOrigin, appRevision, integrationKeys, whatsappQr, mcpEnabled, mcpRedirectUris, mcpBrowserOrigins, platform: readPlatformConfig(env, integrationKeys), port, trustProxy, shopMode: readShopMode(env), sellerQuickLogin: env.SELLER_QUICK_LOGIN === '1', demoRevision: readDemoRevision(env) };
 }

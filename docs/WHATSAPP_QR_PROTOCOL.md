@@ -105,9 +105,51 @@ stored as `RECONCILE`, never retried automatically). Only from `SENDING`. Respon
 
 ## Clarifications
 
+Worker side:
+
 - Auth record `creds` and each key `value` are JSON **strings** produced by `JSON.stringify(value, BufferJSON.replacer)`, not double-parsed backend objects. GET returns the same strings and one consistent `version`; the worker revives them once. The adapter also accepts already-encoded objects for fixture compatibility.
 - An AUTH_VERSION conflict immediately ends the old socket, reports a safe error code and reloads a fresh snapshot before reconnecting. Other persistence failures halt that generation until operator intervention; no unsaved keys are reused.
 - A claimed reply is never retried by the worker. A ten-second local send deadline or any exception from `sendMessage` is UNKNOWN, even a synchronous exception: without a library dispatch receipt, non-dispatch is not proven. Only an absent/not-connected socket before invoking send proves SOCKET_CLOSED.
 - Control/backend failures close the socket before another control poll. A failed result POST is not repeated; the backend lease must reconcile it. No automatic send retry or success inference is permitted.
 - Generation replacement attempts remote logout of the old socket; graceful process shutdown only ends it. Remote logout is best effort and cannot prove device removal.
 - Worker configuration accepts only credential-free HTTP(S) URLs without query/fragment and a URL-safe token first line of at least 32 characters. The container has no listener or filesystem session state.
+
+Backend side:
+
+- This protocol takes precedence over the older design C2 proposal for schema
+  names and secret contexts. Schema 27 contains session, auth, thread, message and
+  peer-suppression tables; no integration-channel or order-link tables are added here.
+- Encoded auth `creds` and key `value` fields are opaque JSON **text strings**:
+  the worker serializes with BufferJSON before sending, then parses after GET.
+  Missing creds leaves the stored record unchanged; deleting Signal keys uses
+  `delete`. The reserved record type `creds` is not allowed in set/delete.
+  Set and delete together are capped at 500 items; deletes apply first, then
+  sets (a set wins for the same identity). UTF-16 surrogate pairs are kept
+  intact across 4096-character chunks; malformed Unicode is rejected.
+- Peer HMAC key context is `WHATSAPP_QR:default:peer-key`; sealed thread JID
+  context is `WHATSAPP_QR:default:peer:<threadId>`. Auth uses the context in
+  the route contract, with reserved creds identity `creds:creds`.
+- A valid worker lease is required for auth GET as well as mutations. Generation
+  fencing is checked before lease ownership for non-control routes. Error JSON
+  is `{ \"error\": \"CODE\" }`; authentication failure has an empty body.
+- Direct peers are numeric identities (1–30 digits) at `s.whatsapp.net` or `lid`;
+  LIDs never imply a phone match. Names are bounded to 200 characters. Inbound
+  timestamps must be parseable UTC ISO timestamps ending in Z, not in the future;
+  server receipt time never renews a historical message's 24-hour reply window.
+- Contact erasure persists an `ERASED` phone-HMAC marker in `message_peer_suppression`
+  under the shared session transaction, initializing the stable peer key if needed.
+  This applies even before the first thread exists. Later phone ingress retains only
+  suppressed tombstones: no display name, sealed peer or message body, and no replies.
+  LID identities do not imply a phone and are unaffected.
+- Result reports after the reply's 60-second dispatch lease expires are rejected.
+  Control polling moves such rows to RECONCILE; a late SENT report cannot turn
+  that uncertain outcome into a retry or overwrite the reconciled state.
+- SQLite import deliberately excludes session, auth, threads, messages and phone
+  suppression markers, retaining a fresh OFF/IDLE session. Restoring history without its sealed peer
+  identity/key would not produce a usable thread; restoring dispatch intents
+  or device state could reactivate an old session. Backups still contain these
+  sensitive records and require the existing operational custody controls.
+
+- LOGGED_OUT clears auth and advances `auth_version` rather than resetting it:
+  a delayed pre-logout auth PUT must conflict, not recreate deleted credentials.
+  Only a new seller-created generation starts at auth version zero.

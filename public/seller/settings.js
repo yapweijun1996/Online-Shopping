@@ -7,6 +7,7 @@ import { beginMutation } from '../shared/update-guard.js';
 import { confirmModal } from '../shared/modal.js';
 import { mountIntegrations } from './integrations.js';
 import { mountWhatsAppConnection } from './whatsapp-connection.js';
+import { mountWhatsAppQr } from './whatsapp-qr.js';
 
 const SHOW_INTEGRATIONS = false;
 
@@ -153,7 +154,7 @@ async function mountDemoReset(root, csrfToken, onUnauthorized) {
   root.append(card); translate(card);
 }
 
-export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUnauthorized }) {
+export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUnauthorized, role = 'OWNER' }) {
   root.innerHTML = `<section class="settings-card" aria-labelledby="company-heading">
     <h2 id="company-heading" data-i18n="companySettings">Company settings</h2>
     <p data-i18n="currencyIntro">Choose the default currency for new products. Existing product prices and orders keep their own currency.</p>
@@ -191,6 +192,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
   // Provider cards stay hidden until a provider can really be connected; an all-"Not configured" list reads as unfinished.
   const integrations = SHOW_INTEGRATIONS ? mountIntegrations(root, { csrfToken, onUnauthorized }) : { refreshLocale() {} };
   const whatsapp = mountWhatsAppConnection(root, { csrfToken, onUnauthorized, request });
+  const whatsappQr = mountWhatsAppQr(root, { csrfToken, onUnauthorized, role });
   const setupForm = setup.querySelector('form');
   const setupStatus = setup.querySelector('.setup-status');
   const setupButton = setupForm.querySelector('button');
@@ -306,6 +308,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
     }
   });
   return {
+    dispose() { whatsappQr.dispose(); },
     isBusy: () => pendingWrites > 0,
     hasUnsavedChanges() {
       return currentState() !== (savedState ?? initialState) ||
@@ -316,6 +319,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
       if (setupState?.mode) showSetup(setupState);
       integrations.refreshLocale();
       whatsapp.refreshLocale();
+      whatsappQr.refreshLocale();
       const line = root.querySelector('.settings-status');
       line.textContent = line.dataset.statusKey ? t(line.dataset.statusKey) : '';
     },

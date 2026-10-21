@@ -1,4 +1,6 @@
 import { createDemoSandbox } from './demo-sandbox.js';
+import { createQrSellerApi } from './whatsapp-qr/seller-api.js';
+import { createWhatsAppQrStore } from './whatsapp-qr/store.js';
 import { getShopSetup, resetDemo, setupShop, shopObjectName } from './shop-setup.js';
 import { authenticate, cookieFor, createSession, deleteSession, readSession, sampleAccount, sessionCookieFrom } from './auth.js';
 import { changeOwnPassword, createAccount, listAccounts, updateAccount } from './accounts.js';
@@ -84,6 +86,8 @@ async function createTenantApi({ store, config, tenantId, serveStatic = null, wh
   const connectionLimiter = new SqlLimiter(store, 'integration-connect', { limit: 10, windowMs: LIMIT_WINDOW_MS });
   const secretBox = config.integrationKeys ? createSecretBox(config.integrationKeys) : null;
   const basePath = config.basePath || '';
+  const qrAvailable = config.whatsappQr?.enabled && !quickLogin && config.shopMode !== 'public-demo' && tenantId === 'default' && !basePath && secretBox;
+  const qrSeller = qrAvailable ? createQrSellerApi({ store, secretBox }) : null;
   const connector = createConnector({ store, config, tenantId, quickLogin });
   const sellerCookie = (token, maxAge) => cookieFor(token, maxAge, config.production, `${basePath}/api/v1/seller`);
   const prefix = (value) => typeof value === 'string' && /^\/(?:api|shop|seller|shared)\//.test(value) ? basePath + value : value;
@@ -247,6 +251,8 @@ async function createTenantApi({ store, config, tenantId, serveStatic = null, wh
       });
     }
 
+    const qrPath = /^\/api\/v1\/seller\/(?:integrations\/whatsapp-qr(?:\/|$)|chats(?:\/|$))/.test(pathname);
+    if (qrPath && !qrAvailable) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
     const token = sessionCookieFrom(request.headers.get('cookie') ?? '');
     const session = await readSession(store, token);
     if (!session) throw new ApiError(401, 'UNAUTHORIZED', 'Sign in required.');
@@ -263,6 +269,15 @@ async function createTenantApi({ store, config, tenantId, serveStatic = null, wh
     // (On a quick sign-in site passwords cannot be changed, so the flag is ignored there rather than locking everyone out.)
     if (account.mustChangePassword && !quickLogin && pathname !== '/api/v1/seller/account/password') {
       throw new ApiError(403, 'PASSWORD_CHANGE_REQUIRED', 'Change your temporary password first.');
+    }
+    if (qrPath) {
+      if (method !== 'GET') {
+        requireOrigin(request, expectedOrigin);
+        requireCsrf(request, session);
+      }
+      const response = await qrSeller({ request, url, account, allow, clientAddress });
+      response.headers.set('Cache-Control', 'no-store');
+      return response;
     }
     if (method === 'POST' && pathname === '/api/v1/seller/account/password') {
       requireOrigin(request, expectedOrigin);
@@ -447,7 +462,7 @@ async function createTenantApi({ store, config, tenantId, serveStatic = null, wh
       if (sellerOrder[2] === 'erase-contact') {
         // A passwordless sample site is open to anyone, so it must never be able to erase data permanently.
         if (quickLogin) throw new ApiError(403, 'FORBIDDEN', 'Erasing contact data is not available on a sample site.');
-        await eraseOrderContact(store, sellerOrder[1], body, account.username);
+        await eraseOrderContact(store, sellerOrder[1], body, account.username, secretBox ? createWhatsAppQrStore({ store, secretBox }) : null);
         return json(200, withProductLinks(await getSellerOrder(store, sellerOrder[1]), `${config.publicOrigin || url.origin}${basePath}`));
       }
       return json(200, withProductLinks(await decideSellerOrder(store, sellerOrder[1], sellerOrder[2], body, account.username), `${config.publicOrigin || url.origin}${basePath}`));
