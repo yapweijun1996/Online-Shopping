@@ -14,6 +14,9 @@ const unknown = () => new ApiError(404, 'NOT_FOUND', 'Not found.');
 const conflict = () => new ApiError(409, 'STATE_CONFLICT', 'The shop changed. Refresh and try again.');
 export function createShopManagement({ platform, pool, deps, registry, defaultStore, publicOrigin, sellerOrigin, clock = Date.now }) {
   const stamp = () => new Date(clock()).toISOString();
+  const withUrls = (row) => ({ ...shopView(row),
+    shopUrl: `${publicOrigin}/${row.is_default === 1 ? 'shop' : row.code}/`,
+    sellerUrl: `${sellerOrigin}/${row.is_default === 1 ? 'seller' : row.code}/` });
   async function rowFor(id) {
     if (typeof id !== 'string' || !/^[0-9a-f-]{36}$/.test(id)) throw unknown();
     const row = await platform.get('SELECT * FROM tenant WHERE id = ?', id);
@@ -21,10 +24,10 @@ export function createShopManagement({ platform, pool, deps, registry, defaultSt
     return row;
   }
   return {
-    async list() { return { items: (await platform.all(`SELECT ${fields} FROM tenant WHERE status <> 'PURGED' ORDER BY created_at, id LIMIT 20`)).map(shopView) }; },
+    async list() { return { items: (await platform.all(`SELECT ${fields} FROM tenant WHERE status <> 'PURGED' ORDER BY created_at, id LIMIT 20`)).map(withUrls) }; },
     async detail(id) {
       const row = await rowFor(id);
-      const result = shopView(row);
+      const result = withUrls(row);
       if (['ACTIVE', 'SUSPENDED', 'DELETING'].includes(row.status)) {
         const store = row.is_default === 1 ? defaultStore : await pool.get(row);
         result.orderCount = (await store.get('SELECT COUNT(*) AS n FROM shop_order')).n;
