@@ -373,10 +373,10 @@ It restarts only the backend container (stop-before-start, so every older link i
 
 ## Resetting a default-shop seller password yourself
 
-The SuperAdmin console resets seller passwords of tenant shops only; the default shop's accounts are managed on the host. To set a temporary password for the default shop Owner (`owner`) or another of its seller accounts, run on your own computer:
+The SuperAdmin console resets seller passwords of tenant shops only; the default shop's accounts are managed on the host. To set a temporary password for the default shop Owner (`seller`) or another of its seller accounts, run on your own computer:
 
 ```sh
-scripts/gcp-reset-seller-password.sh            # Owner "owner"
+scripts/gcp-reset-seller-password.sh            # Owner "seller"
 scripts/gcp-reset-seller-password.sh someuser   # another seller account
 ```
 
