@@ -44,6 +44,7 @@ test('shipping UI: confirmation-only action, filters, download, errors and mobil
   const bounds = await button.boundingBox(); assert.ok(bounds.height >= 44); assert.ok(bounds.width <= 390);
   assert.equal(await button.getAttribute('aria-describedby'), 'shipping-export-help');
   await page.locator('a[href="#company"]').click();
+  await page.getByRole('tab', { name: 'Shipping', exact: true }).click();
   await page.locator('[name="senderName"]').fill('Fictional Pickup');
   await page.locator('[name="senderPhone"]').fill('+60123456789');
   await page.locator('[name="senderPostcode"]').fill('01000');
