@@ -280,7 +280,7 @@ Hold these true; a change that weakens one is at least P1.
 Give these extra scrutiny.
 
 - Authentication and sessions: `src/auth.js`, `src/config.js`, `src/app.js` (login, demo-session, `requireCsrf`, `requireOrigin`).
-- Seller credential recovery: `src/accounts.js`, `scripts/reset-seller-password.js`; credential validation and session issuance must serialize with reset.
+- Seller credential recovery: `src/accounts.js`, `scripts/reset-seller-password.js`; credential validation and session issuance must serialize with reset. The SuperAdmin console (`src/platform/shops.js`, MFA session, CSRF, expected revision) may reset the Owner of any shop including the default one; the temporary password is returned once, never stored in the platform audit, and the email template is built in the browser only.
 - Authorization/routing: `src/app.js`, `src/http.js`, `deploy/Caddyfile.production`, `deploy/Caddyfile`.
 - Checkout and pricing: `src/orders.js`, `src/checkout-input.js`, `src/phone.js`, `src/validation.js`, `public/shop/checkout.js`, `public/shop/checkout-payload.js`, `public/shop/cart.js`.
 - Order state and stock: `src/seller-orders.js`, `public/seller/orders.js`.

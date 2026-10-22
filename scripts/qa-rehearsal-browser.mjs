@@ -155,7 +155,7 @@ try {
   check(alias.headers().location.includes('/' + renamedCode + '/api/v1/products'), 'Rename alias redirect failed');
   await click('Suspend shop'); await admin.getByLabel('Type ' + renamedCode + ' to confirm').fill(renamedCode); await click('Request deletion');
   check((await admin.locator('dl').innerText()).includes('DELETING'), 'Deletion request failed'); await click('Cancel deletion'); await click('Resume shop');
-  const resetResponse = waitResponse(admin, '/reset-seller-password'); await click('Reset seller password');
+  const resetResponse = waitResponse(admin, '/reset-seller-password'); await click('Reset seller password'); await click('Reset and show password');
   const reset = await responseCheck(await resetResponse); check(Boolean(reset.sellerPassword), 'Reset did not return one-time credential'); await secretClose();
   await seller.goto(origin('seller') + '/' + renamedCode + '/seller/'); await seller.locator('#login-form').waitFor({ state: 'visible' });
   await seller.locator('#username').fill(oneCode + '.owner'); await seller.locator('#password').fill(reset.sellerPassword); await seller.locator('#login-form button[type=submit]').click(); await seller.locator('.password-dialog[open]').waitFor();

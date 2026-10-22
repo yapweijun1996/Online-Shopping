@@ -45,6 +45,30 @@ test('shop create concurrency, CAS actions, aliases, deletion and one-time selle
   assert.ok(!text.includes(reset.sellerPassword)); assert.ok(!text.includes(made.sellerPassword)); assert.ok(invalidations >= 7);
 });
 
+test('SuperAdmin can reset the default shop Owner: username shown, password one-time, sessions ended, change forced', { skip: !platformTestUrl }, async (t) => {
+  const f = await platformFixture(t), stamp = new Date().toISOString();
+  const { openDatabase } = await import('../src/db.js');
+  const defaultStore = await openDatabase(':memory:'); t.after(() => defaultStore.close());
+  const { ensureAdmin } = await import('../src/auth.js');
+  await ensureAdmin(defaultStore, 'seller', 'Original-password-1');
+  const owner = await authenticate(defaultStore, 'seller', 'Original-password-1');
+  const session = await createSession(defaultStore, owner.id);
+  const shops = createShopManagement({ ...f, defaultStore, registry: { invalidate() {} }, publicOrigin: 'https://shop.example.test', sellerOrigin: 'https://seller.example.test' });
+  const id = '00000000-0000-4000-8000-000000000000';
+  await f.platform.run("INSERT INTO tenant(id,code,name,status,currency,is_default,created_at,updated_at) VALUES (?,'default','Current','ACTIVE','MYR',1,?,?)", id, stamp, stamp);
+  assert.equal((await shops.detail(id)).sellerUsername, 'seller');
+  const reset = await shops.mutate(id, 'reset-seller-password', { expectedRevision: 0 }, 'superadmin');
+  assert.equal(reset.sellerUsername, 'seller'); assert.ok(reset.sellerPassword.length >= 24);
+  assert.equal(await authenticate(defaultStore, 'seller', 'Original-password-1'), null);
+  assert.equal((await authenticate(defaultStore, 'seller', reset.sellerPassword)).mustChangePassword, true);
+  assert.equal((await defaultStore.get('SELECT COUNT(*) AS n FROM session WHERE token_hash = ?', (await import('node:crypto')).createHash('sha256').update(session.token).digest('hex'))).n, 0);
+  assert.equal((await defaultStore.get("SELECT actor FROM account_event WHERE action = 'PASSWORD_RESET'")).actor, 'superadmin');
+  assert.ok(!JSON.stringify(await f.platform.all('SELECT * FROM platform_audit')).includes(reset.sellerPassword));
+  assert.equal((await f.platform.get("SELECT action FROM platform_audit WHERE action = 'SELLER_PASSWORD_RESET'")).action, 'SELLER_PASSWORD_RESET');
+  await assert.rejects(shops.mutate(id, 'reset-seller-password', { expectedRevision: 0 }, 'superadmin'), /changed/);
+  for (const [action, extra] of [['suspend', {}], ['rename', { code: 'other' }], ['request-deletion', { code: 'default' }]]) await assert.rejects(shops.mutate(id, action, { expectedRevision: 1, ...extra }, 'superadmin'), /host/);
+});
+
 test('default shop cannot be changed and all statuses count toward the host limit', { skip: !platformTestUrl }, async (t) => {
   const f = await platformFixture(t), stamp = new Date().toISOString();
   const shops = createShopManagement({ ...f, registry: { invalidate() {} }, publicOrigin: 'https://shop.example.test', sellerOrigin: 'https://seller.example.test' });

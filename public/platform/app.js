@@ -1,6 +1,7 @@
 import { tableRows, safeLink } from './table.js';
 import { mountAppearance, paletteChoices } from './shared/appearance.js';
 import { containDialogFocus, confirmModal } from './shared/modal.js';
+import { sellerEmailTemplate } from './email-template.js';
 const paletteListeners = new Set();
 window.sellerPalette = {
   choose(id) { if (!paletteChoices.some(([key]) => key === id)) return false; document.documentElement.dataset.sellerPalette = id; for (const listener of paletteListeners) listener(id); return false; },
@@ -126,7 +127,7 @@ function recovery(codes) {
   next.disabled = true; check.addEventListener('change', () => { next.disabled = !check.checked; });
   content.append(grid, tools, label, next); navigation.hidden = true;
 }
-function showSecrets(title, value) {
+function showSecrets(title, value, email) {
   returnFocus = document.activeElement; document.querySelector('#secret-title').textContent = title; secretValue.replaceChildren();
   const entries = typeof value === 'string' ? [['Credentials', value]] : Object.entries(value);
   for (const [label, text] of entries) {
@@ -134,7 +135,14 @@ function showSecrets(title, value) {
     secretValue.append(element('dt', label), dd);
   }
   document.querySelector('#secret-notice').textContent = '';
-  document.querySelector('#secret-tools').replaceChildren(button('Copy all details', () => copy(entries.map(([key, text]) => `${key}: ${text}`).join('\n'))));
+  const tools = [button('Copy all details', () => copy(entries.map(([key, text]) => `${key}: ${text}`).join('\n')))];
+  if (email) {
+    // A ready-to-send message for the seller; it holds the one-time password, so it is cleared with the dialog.
+    const template = sellerEmailTemplate(email), label = element('label', 'Email to the seller'), area = element('textarea');
+    area.readOnly = true; area.rows = 12; area.value = template.text; area.id = 'seller-email-template'; label.htmlFor = area.id; label.append(area);
+    tools.push(label, button('Copy email', () => copy(template.text)), button('Copy subject', () => copy(template.subject)), button('Copy message only', () => copy(template.body)));
+  }
+  document.querySelector('#secret-tools').replaceChildren(...tools);
   dialog.showModal();
 }
 function clearSecrets() { secretValue.replaceChildren(); document.querySelector('#secret-tools').replaceChildren(); }
@@ -307,14 +315,16 @@ async function listShops() {
 async function mutateShop(shop, action, body = {}) {
   const result = await api(`/shops/${shop.id}/${action}`, { method: 'POST', body: { expectedRevision: shop.revision, ...body } });
   // Preserve one-time credentials before any subsequent query can fail.
-  if (result.sellerPassword) showSecrets('Save the new seller password', `${shop.sellerUsername}\n${result.sellerPassword}`);
+  if (result.sellerPassword) showSecrets('Seller password reset', { 'Seller URL': shop.sellerUrl, Username: result.sellerUsername, 'Temporary password': result.sellerPassword },
+    { shopName: shop.name, sellerUrl: shop.sellerUrl, username: result.sellerUsername, password: result.sellerPassword });
   return result;
 }
 async function createShop() {
   screen('Add shop'); content.append(element('p', 'Give your shop a home. We will create a separate workspace and a temporary password for its seller. Up to 20 shops per host.'));
   const node = form(async (data) => {
     const result = await api('/shops', { method: 'POST', body: data }); node.reset();
-    showSecrets('Save the new shop details', { 'Buyer URL': result.shopUrl, 'Seller URL': result.sellerUrl, Username: result.tenant.sellerUsername, 'First password': result.sellerPassword });
+    showSecrets('Save the new shop details', { 'Buyer URL': result.shopUrl, 'Seller URL': result.sellerUrl, Username: result.tenant.sellerUsername, 'First password': result.sellerPassword },
+      { shopName: result.tenant.name, sellerUrl: result.sellerUrl, username: result.tenant.sellerUsername, password: result.sellerPassword });
     await detail(result.tenant.id);
   });
   const code = field(node, 'code', 'Shop code', { maxLength: 30 }); code.pattern = '[a-z0-9]{3,30}';
@@ -354,17 +364,26 @@ async function detail(id) {
       control.disabled = control.dataset.unavailable === 'true'; qrPanel.append(control);
     }
   } catch (error) { qrPanel.append(element('p', error.message)); }
-  if (shop.isDefault) return;
   const action = async (name, body = {}) => {
     const result = await mutateShop(shop, name, body);
     await detail(id); return result;
   };
+  const resetSeller = button('Reset seller password', async () => {
+    if (!await confirmModal(`A new temporary password is created for ${shop.sellerUsername}. Their open sessions and connector sign-ins end, and they must choose a new password at the next sign-in. The password is shown once.`,
+      { title: 'Reset seller password?', confirmLabel: 'Reset and show password' })) return;
+    await action('reset-seller-password');
+  });
+  if (shop.isDefault) {
+    // The default shop is otherwise managed on the host; only its Owner account can be reset from here.
+    if (shop.status === 'ACTIVE' && shop.sellerUsername) content.append(element('h3', 'Seller account'), element('p', `The Owner account is ${shop.sellerUsername}. After a reset you get the sign-in details and an email you can send to the seller.`), resetSeller);
+    return;
+  }
   const actions = element('div', undefined, 'actions');
   if (shop.status === 'ACTIVE') actions.append(button('Suspend shop', () => action('suspend')));
   if (shop.status === 'SUSPENDED') actions.append(button('Resume shop', () => action('resume')));
   if (shop.status === 'DELETING') actions.append(button('Cancel deletion', () => action('cancel-deletion')));
   if (['ACTIVE', 'SUSPENDED'].includes(shop.status)) {
-    actions.append(button('Reset seller password', () => action('reset-seller-password')));
+    actions.append(resetSeller);
     content.append(actions, element('h3', 'Rename shop'));
     const node = form(async (body) => action('rename', body)); field(node, 'code', 'Shop code', { value: shop.code, maxLength: 30 }); field(node, 'name', 'Shop name', { value: shop.name }); submit(node, 'Save name and code');
   } else content.append(actions);

@@ -120,7 +120,7 @@ export async function changeOwnPassword(database, accountId, input, currentToken
 }
 
 /* Server-side recovery for the Owner (and anyone else): sets a temporary password that must be replaced at next sign-in. */
-export async function resetPasswordFromHost(database, username, password, { forceChange = true } = {}) {
+export async function resetPasswordFromHost(database, username, password, { forceChange = true, source = 'host-script', note = 'reset on the server' } = {}) {
   checkPassword(password, 'password', username);
   return database.transaction(async () => {
     const account = await database.get('SELECT id, username FROM seller_account WHERE username_key = ?', username.toLowerCase());
@@ -130,7 +130,7 @@ export async function resetPasswordFromHost(database, username, password, { forc
       encodePassword(password), forceChange ? 1 : 0, stamp, stamp, account.id);
     await revokeSessions(database, account.id);
     await invalidateOAuth(database, account.id);
-    await record(database, account.id, 'host-script', 'PASSWORD_RESET', 'reset on the server');
+    await record(database, account.id, source, 'PASSWORD_RESET', note);
     return account.username;
   });
 }
