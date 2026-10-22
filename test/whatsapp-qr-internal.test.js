@@ -168,6 +168,44 @@ for (const engine of ['sqlite','postgres']) {
     assert.equal(Buffer.from(thread.peer_sealed).includes(Buffer.from('60123456789')), false);
     assert.equal((await f.store.get('SELECT phone_hash FROM message_thread WHERE phone_hash IS NULL')).phone_hash, null);
   });
+  test(`${engine}: imported history, the phone's own messages and names behave like WhatsApp Web`, options, async t => {
+    const f = await fixture(t, engine); await f.call('control');
+    const row = (id, extra = {}) => ({ ...f.inbound(id).messages[0], ...extra });
+    const batch = messages => ({ generation: 1, messages });
+    const old = new Date(f.now() - 3 * 86400000).toISOString();
+    // History: stored, named, no unread badge; the phone's own message is a sent outgoing message that never renames the thread.
+    assert.deepEqual((await f.call('inbound', batch([row('h-in', { at: old, name: 'Ali Shop', history: true }), row('h-out', { at: new Date(Date.parse(old) + 1000).toISOString(), name: 'Owner Name', out: true, history: true })]))).data, { accepted: 2, duplicates: 0 });
+    const thread = await f.store.get('SELECT * FROM message_thread');
+    assert.equal(thread.display_name, 'Ali Shop'); assert.equal(thread.unread_count, 0);
+    const rows = await f.store.all('SELECT direction,status,actor,body FROM message_thread_message ORDER BY created_at,id');
+    assert.deepEqual(rows.map(r => [r.direction, r.status, r.actor]), [['IN', 'RECEIVED', null], ['OUT', 'SENT', 'phone']]);
+    // A live customer message counts as unread; a later message without a name keeps the stored name.
+    await f.call('inbound', batch([row('live-1', { name: '' })]));
+    assert.equal((await f.store.get('SELECT unread_count, display_name FROM message_thread')).unread_count, 1);
+    assert.equal((await f.store.get('SELECT display_name FROM message_thread')).display_name, 'Ali Shop');
+    // A live message sent from the phone adds no unread; a first-ever own message creates a thread without the owner's name.
+    await f.call('inbound', batch([row('live-out', { out: true, name: 'Owner Name' }), row('first-out', { peer: '60199999999@s.whatsapp.net', out: true, name: 'Owner Name' })]));
+    assert.equal((await f.store.get('SELECT unread_count FROM message_thread WHERE peer_hash <> ?', thread.peer_hash)).unread_count, 0);
+    assert.equal((await f.store.get('SELECT display_name FROM message_thread WHERE peer_hash <> ?', thread.peer_hash)).display_name, null);
+    assert.equal((await f.store.get('SELECT unread_count FROM message_thread WHERE id = ?', thread.id)).unread_count, 1);
+    // Duplicates are ignored in either direction.
+    assert.deepEqual((await f.call('inbound', batch([row('h-out', { out: true }), row('h-in')]))).data, { accepted: 0, duplicates: 2 });
+    // Invalid markers are refused.
+    assert.equal((await f.call('inbound', batch([row('bad-flag', { out: 'yes' })]))).status, 400);
+    assert.equal((await f.call('inbound', batch([row('bad-flag2', { history: false })]))).status, 400);
+  });
+  test(`${engine}: the phone's echo of a reply sent from the panel is not shown twice`, options, async t => {
+    const f = await fixture(t, engine); await f.call('control'); await f.call('inbound', f.inbound());
+    await f.call('state', { generation: 1, state: 'CONNECTED' });
+    const id = await f.queue();
+    assert.equal((await f.call('replies/claim', { generation: 1 })).data.reply.id, id);
+    // The echo arrives before the send result is recorded.
+    await f.call('inbound', { generation: 1, messages: [{ ...f.inbound('echo-1').messages[0], out: true, text: 'Fictional human reply' }] });
+    assert.equal((await f.store.get("SELECT COUNT(*) AS n FROM message_thread_message WHERE direction = 'OUT'")).n, 2);
+    assert.equal((await f.call(`replies/${id}/result`, { generation: 1, status: 'SENT', providerMessageId: 'echo-1' })).status, 204);
+    const outgoing = await f.store.all("SELECT id,actor,provider_message_id FROM message_thread_message WHERE direction = 'OUT'");
+    assert.deepEqual(outgoing.map(r => [r.id, r.provider_message_id]), [[id, 'echo-1']]);
+  });
   test(`${engine}: claim eligibility, one in-flight, spacing and result transitions`, options, async t => {
     const f = await fixture(t, engine); await f.call('control'); await f.call('inbound', f.inbound());
     const disconnected = await f.queue(); assert.deepEqual((await f.call('replies/claim', { generation: 1 })).data, { reply: null });
@@ -178,10 +216,8 @@ for (const engine of ['sqlite','postgres']) {
     await f.store.run('UPDATE message_thread SET suppressed_at = ?', new Date(f.now()).toISOString());
     const suppressed = await f.queue(); await f.call('replies/claim', { generation: 1 });
     assert.equal((await f.store.get('SELECT status FROM message_thread_message WHERE id = ?', suppressed)).status, 'FAILED');
-    await f.store.run('UPDATE message_thread SET suppressed_at = NULL, last_inbound_at = ?', new Date(f.now() - 86400001).toISOString());
-    const expired = await f.queue(); await f.call('replies/claim', { generation: 1 });
-    assert.equal((await f.store.get('SELECT status FROM message_thread_message WHERE id = ?', expired)).status, 'FAILED');
-    await f.store.run('UPDATE message_thread SET last_inbound_at = ?', new Date(f.now() - 86400000).toISOString());
+    // No reply window: a thread whose last customer message is days old is still eligible.
+    await f.store.run('UPDATE message_thread SET suppressed_at = NULL, last_inbound_at = ?', new Date(f.now() - 5 * 86400000).toISOString());
     const first = await f.queue(), second = await f.queue({ at: new Date(f.now() + 1).toISOString() });
     assert.deepEqual((await f.call('replies/claim', { generation: 1 })).data.reply, { id: first, peer: '60123456789@s.whatsapp.net', text: 'Fictional human reply' });
     assert.equal((await f.call('replies/claim', { generation: 1 })).data.reply, null);

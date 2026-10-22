@@ -28,7 +28,10 @@ export function mountWhatsAppChats(root, cloud, { csrfToken, onUnauthorized }) {
   const listPane = node('div', null, 'qr-thread-pane'), conversation = node('div', null, 'qr-conversation');
   const list = node('div', null, 'qr-thread-list'), more = button('more', () => loadList(true));
   const alert = node('p'); alert.setAttribute('role', 'status'); alert.setAttribute('aria-live', 'polite');
-  listPane.append(list, more); panel.append(listPane, conversation, alert);
+  const search = node('input', null, 'qr-search'); search.type = 'search'; search.maxLength = 100; search.autocomplete = 'off'; search.setAttribute('aria-label', text('search')); search.placeholder = text('search');
+  let needle = '';
+  search.addEventListener('input', () => { needle = search.value.trim().toLowerCase(); renderList(); });
+  listPane.append(search, list, more); panel.append(listPane, conversation, alert);
   const back = button('back', () => { ++epoch; thread = null; intent = null; history = []; textarea.value = ''; panel.classList.remove('qr-thread-open'); conversation.hidden = true; renderList(); list.querySelector('button')?.focus(); });
   const heading = node('h3'), suggestions = node('div', null, 'qr-order-chips'), messages = node('div', null, 'qr-bubbles');
   const older = button('earlier', () => loadMessages(true));
@@ -45,21 +48,31 @@ export function mountWhatsAppChats(root, cloud, { csrfToken, onUnauthorized }) {
   }
   function eligibility() {
     if (!thread) return;
-    let why = connection?.state !== 'CONNECTED' || connection?.desired === 'OFF' ? 'notLinked' : thread.suppressed ? 'suppressed' : !thread.canReply || Date.parse(thread.replyWindowEndsAt) <= Date.now() ? 'closed' : null;
+    let why = connection?.state !== 'CONNECTED' || connection?.desired === 'OFF' ? 'notLinked' : thread.suppressed ? 'suppressed' : !thread.canReply ? 'closed' : null;
     const wait = Math.ceil((retryUntil - Date.now()) / 1000);
     reason.textContent = wait > 0 ? text('retry', wait) : why ? text(why) : '';
     textarea.disabled = Boolean(why) || sending; send.disabled = Boolean(why) || wait > 0 || sending || !textarea.value.trim();
     counter.textContent = `${textarea.value.length} / 4096`;
   }
+  const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  // Today shows the clock time like WhatsApp Web; older chats show the date.
+  function shortTime(value) {
+    const date = new Date(value); if (Number.isNaN(date.getTime())) return '';
+    try { return sameDay(date, new Date()) ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : date.toLocaleDateString([], { day: 'numeric', month: 'short' }); } catch { return ''; }
+  }
+  const initial = value => { const first = [...String(value || '').trim()].find(char => /[\p{L}\p{N}]/u.test(char)); return first ? first.toUpperCase() : '#'; };
   function renderList() {
     list.replaceChildren();
-    if (!threads.length) list.append(node('p', 'empty'));
-    for (const item of threads) {
+    const shown = needle ? threads.filter(item => [item.displayName, item.peerMasked, item.lastMessageText].some(value => String(value ?? '').toLowerCase().includes(needle))) : threads;
+    if (!shown.length) list.append(node('p', 'empty', 'qr-empty'));
+    for (const item of shown) {
       const row = button(null, () => open(item)); row.className = 'qr-thread'; row.setAttribute('aria-current', String(thread?.id === item.id));
-      const name = node('strong'); name.textContent = item.displayName || item.peerMasked;
-      const time = node('time'); const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(item.lastMessageAt)) / 60000)); time.textContent = minutes ? text('ago', minutes) : text('now'); time.dateTime = item.lastMessageAt;
-      const preview = node('p'); preview.textContent = item.lastMessageText ?? '';
-      row.append(name, time, preview);
+      const label = item.displayName || item.peerMasked || '';
+      const avatar = node('span', null, 'qr-avatar'); avatar.textContent = initial(label); avatar.setAttribute('aria-hidden', 'true');
+      const name = node('strong'); name.textContent = label;
+      const time = node('time'); time.textContent = shortTime(item.lastMessageAt); time.dateTime = item.lastMessageAt || '';
+      const preview = node('p'); preview.textContent = `${item.lastMessageDirection === 'OUT' ? `${text('you')}: ` : ''}${item.lastMessageText ?? ''}`;
+      row.append(avatar, name, time, preview);
       if (item.unreadCount) { const badge = node('span', null, 'status-badge'); badge.textContent = String(item.unreadCount); row.append(badge); }
       if (!item.canReply) row.append(node('small', 'closed'));
       list.append(row);
@@ -68,12 +81,21 @@ export function mountWhatsAppChats(root, cloud, { csrfToken, onUnauthorized }) {
   }
   function renderMessages() {
     messages.replaceChildren();
+    let lastDay = null;
     for (const item of history) {
+      const created = new Date(item.createdAt);
+      if (!Number.isNaN(created.getTime()) && (!lastDay || !sameDay(lastDay, created))) {
+        const day = node('div', null, 'qr-day'); try { day.textContent = created.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }); } catch { day.textContent = ''; }
+        messages.append(day); lastDay = created;
+      }
       const bubble = node('article', null, `qr-bubble ${item.direction === 'OUT' ? 'qr-out' : 'qr-in'}`);
       const body = node('p'); body.textContent = item.text === null ? text('removed') : item.text;
-      const time = node('time'); time.dateTime = item.createdAt; try { time.textContent = formatDate(item.createdAt); } catch { time.textContent = ''; }
+      const time = node('time'); time.dateTime = item.createdAt; try { time.textContent = Number.isNaN(created.getTime()) ? '' : created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch { time.textContent = ''; }
       bubble.append(body, time);
-      if (item.direction === 'OUT') bubble.append(node('span', ['QUEUED','SENDING','SENT','FAILED','RECONCILE','CANCELLED'].includes(item.status) ? item.status : 'FAILED', 'status-badge'));
+      if (item.direction === 'OUT') {
+        if (item.actor === 'phone') bubble.append(node('span', 'fromPhone', 'qr-from-phone'));
+        else bubble.append(node('span', ['QUEUED','SENDING','SENT','FAILED','RECONCILE','CANCELLED'].includes(item.status) ? item.status : 'FAILED', 'status-badge'));
+      }
       messages.append(bubble);
     }
     older.hidden = !earlier;
@@ -152,7 +174,7 @@ export function mountWhatsAppChats(root, cloud, { csrfToken, onUnauthorized }) {
     alert.textContent = failureText(error);
   });
   return {
-    refreshLocale() { translate(tabs); translate(panel); textarea.setAttribute('aria-label', text('draft')); renderList(); renderOrders(); renderMessages(); },
+    refreshLocale() { translate(tabs); translate(panel); textarea.setAttribute('aria-label', text('draft')); search.setAttribute('aria-label', text('search')); search.placeholder = text('search'); renderList(); renderOrders(); renderMessages(); },
     hasUnsavedChanges: () => Boolean(textarea.value.trim()) || sending,
     draftSignature: () => JSON.stringify([thread?.id, textarea.value]),
     isBusy: () => sending,

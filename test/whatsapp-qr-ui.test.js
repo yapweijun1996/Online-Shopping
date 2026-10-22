@@ -143,12 +143,39 @@ test('Composer retains the reply key and thread after a lost response and backgr
   assert.deepEqual(JSON.parse(attempts[1].body), { text: 'Fictional reply' });
   assert.equal(input.value, '');
 }));
-test('Composer closes when disconnected or window expires; hidden pages do not poll', async () => chatsFixture(async ({ root, setState, setRows, listeners, timers }) => {
+test('Composer closes when disconnected or the chat is erased; hidden pages do not poll', async () => chatsFixture(async ({ root, setState, setRows, listeners, timers }) => {
   setState({ ...initial }); listeners.get('visibilitychange')(); await flush();
   assert.ok(root.descendants().some(n => n.textContent === 'WhatsApp is not linked')); assert.equal(key(root, 'send').disabled, true);
   setState({ ...initial, state: 'CONNECTED', desired: 'RUN' }); setRows([{ ...thread, canReply: false }]); listeners.get('visibilitychange')(); await flush();
-  assert.ok(root.descendants().some(n => n.textContent === 'Reply window closed: the customer must message you first'));
+  assert.ok(root.descendants().some(n => n.textContent === 'Replies are unavailable for this contact'));
   document.hidden = true; globalThis.fetch = () => { assert.fail('hidden polling'); }; for (const tick of timers.values()) tick();
+}));
+test('Chats look like WhatsApp Web: avatar, You: preview, search, day separators, phone-sent label and no reply window', async () => fixture(async root => {
+  const cloud = new Element('div'); root.append(cloud);
+  const day = n => new Date(Date.now() - n * 86400000).toISOString();
+  const rows = [
+    { ...thread, id: 't1', displayName: 'Ali Shop', lastMessageText: 'See you', lastMessageDirection: 'OUT', unreadCount: 0, lastMessageAt: day(0), lastInboundAt: day(40), replyWindowEndsAt: day(39) },
+    { ...thread, id: 't2', displayName: '  Siti', peerMasked: '+••••8780', lastMessageText: 'Hello', lastMessageDirection: 'IN', unreadCount: 3, lastMessageAt: day(2) }
+  ];
+  const stored = [{ id: 'a', text: 'old in', direction: 'IN', createdAt: day(2) }, { id: 'b', text: 'phone out', direction: 'OUT', status: 'SENT', actor: 'phone', createdAt: day(2) }, { id: 'c', text: 'panel out', direction: 'OUT', status: 'SENT', actor: 'owner', createdAt: day(0) }];
+  globalThis.fetch = async path => path.includes('whatsapp-qr') ? response({ ...initial, state: 'CONNECTED', desired: 'RUN' }) : path.includes('/messages') ? response(stored) : path.includes('/orders') ? response({ suggested: [] }) : path.includes('/read') ? response({ unreadCount: 0 }) : response(rows);
+  const page = mountWhatsAppChats(root, cloud, options); await flush();
+  try {
+    await key(root, 'chats').events.click(); await flush();
+    const text = () => root.descendants().filter(n => n.className === 'qr-thread').map(n => n.descendants().map(d => d.textContent).join('|'));
+    assert.deepEqual(root.descendants().filter(n => n.className === 'qr-avatar').map(n => n.textContent), ['A', 'S']);
+    assert.ok(text()[0].includes('You: See you')); assert.ok(!text()[1].includes('You:'));
+    const search = root.descendants().find(n => n.className === 'qr-search'); assert.ok(search);
+    search.value = 'siti'; search.events.input(); assert.equal(root.descendants().filter(n => n.className === 'qr-thread').length, 1);
+    search.value = ''; search.events.input();
+    await root.descendants().find(n => n.className === 'qr-thread').events.click(); await flush();
+    // A chat whose last customer message is 40 days old can still be answered.
+    assert.equal(key(root, 'send').disabled, true); const input = root.descendants().find(n => n.tagName === 'textarea'); input.value = 'Hi'; input.events.input();
+    assert.equal(key(root, 'send').disabled, false); assert.equal(input.disabled, false);
+    assert.equal(root.descendants().filter(n => n.className === 'qr-day').length, 2);
+    assert.ok(root.descendants().some(n => n.className === 'qr-from-phone' && n.textContent === 'Sent from your phone'));
+    assert.equal(root.descendants().filter(n => n.className === 'status-badge' && n.textContent === 'Sent').length, 1);
+  } finally { page.dispose(); }
 }));
 test('Inbox pagination preserves earlier messages and uses the same-thread cursor; locale refresh keeps the draft', async () => fixture(async root => {
   const cloud = new Element('div'); root.append(cloud);

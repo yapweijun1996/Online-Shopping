@@ -1,12 +1,14 @@
 import { Browsers, DisconnectReason } from '@whiskeysockets/baileys';
 import { loadAuth } from './auth-state.js';
-import { filterMessages } from './filters.js';
+import { filterHistory, filterMessages } from './filters.js';
+// WhatsApp sends the chat history once, right after a device is linked: INITIAL_BOOTSTRAP, RECENT and PUSH_NAME.
+const HISTORY_TYPES = [0, 3, 4];
 export const backoff = attempt => [1000, 2000, 4000, 8000, 16000, 30000][Math.min(attempt, 5)];
 export const silentLogger = { level: 'silent', trace() {}, debug() {}, info() {}, warn() {}, error() {}, fatal() {}, child() { return this; } };
 export class Session {
   constructor({ client, makeSocket, log = line => process.stdout.write(`${line}\n`), now = Date.now }) {
     Object.assign(this, { client, makeSocket, log, now });
-    this.generation = null; this.desired = 'OFF'; this.state = 'IDLE'; this.attempt = 0; this.nextConnect = 0; this.failureSince = null; this.lastClaim = -Infinity; this.epoch = 0; this.events = Promise.resolve(); this.halted = false;
+    this.generation = null; this.desired = 'OFF'; this.state = 'IDLE'; this.attempt = 0; this.nextConnect = 0; this.failureSince = null; this.lastClaim = -Infinity; this.epoch = 0; this.events = Promise.resolve(); this.halted = false; this.historyUntil = 0;
   }
   async report(state, extra = {}) {
     if (this.state !== state) { this.log(JSON.stringify({ state, ...(extra.reason ? { code: extra.reason } : {}) })); this.state = state; }
@@ -62,7 +64,7 @@ export class Session {
     this.auth = auth;
     if (this.stopped || epoch !== this.epoch) return;
     await this.report('CONNECTING');
-    const socket = this.makeSocket({ auth: this.auth.state, logger: silentLogger, browser: Browsers.ubuntu('Online Shopping'), syncFullHistory: false, shouldSyncHistoryMessage: () => false, markOnlineOnConnect: false, generateHighQualityLinkPreview: false, getMessage: async () => undefined });
+    const socket = this.makeSocket({ auth: this.auth.state, logger: silentLogger, browser: Browsers.ubuntu('Online Shopping'), syncFullHistory: false, shouldSyncHistoryMessage: notification => this.now() < this.historyUntil && HISTORY_TYPES.includes(notification?.syncType), markOnlineOnConnect: false, generateHighQualityLinkPreview: false, getMessage: async () => undefined });
     this.socket = socket;
     socket.ev.process(events => {
       this.events = this.events.then(async () => {
@@ -75,29 +77,36 @@ export class Session {
           const messages = filterMessages(events['messages.upsert']);
           // Counts only (never a number, name or text) so an operator can tell "nothing arrived" from "arrived but filtered".
           this.log(JSON.stringify({ inbound: { type: String(events['messages.upsert'].type).slice(0, 16), received: events['messages.upsert'].messages?.length ?? 0, accepted: messages.length } }));
-          const envelopeBytes = Buffer.byteLength(JSON.stringify({ generation, messages: [] }));
-          let batch = []; let bytes = envelopeBytes;
-          for (const message of messages) {
-            if (epoch !== this.epoch) break;
-            const messageBytes = Buffer.byteLength(JSON.stringify(message));
-            if (batch.length && (batch.length === 50 || bytes + 1 + messageBytes > 60 * 1024)) {
-              await this.client.request('/v1/inbound', { generation, messages: batch });
-              batch = []; bytes = envelopeBytes;
-              if (epoch !== this.epoch) break;
-            }
-            bytes += messageBytes + (batch.length ? 1 : 0);
-            batch.push(message);
-          }
-          if (batch.length && epoch === this.epoch) {
-            await this.client.request('/v1/inbound', { generation, messages: batch });
-          }
+          await this.deliver(messages, generation, epoch);
+        }
+        if (events['messaging-history.set'] && this.now() < this.historyUntil) {
+          const history = events['messaging-history.set'], messages = filterHistory(history, this.now());
+          this.log(JSON.stringify({ history: { received: history.messages?.length ?? 0, accepted: messages.length, latest: history.isLatest === true } }));
+          await this.deliver(messages, generation, epoch);
+          if (history.isLatest === true) this.historyUntil = 0;
         }
       }).catch(error => { if (epoch === this.epoch) this.fail(error); });
       return this.events;
     });
   }
+  async deliver(messages, generation, epoch) {
+    const envelopeBytes = Buffer.byteLength(JSON.stringify({ generation, messages: [] }));
+    let batch = [], bytes = envelopeBytes;
+    for (const message of messages) {
+      if (epoch !== this.epoch) return;
+      const messageBytes = Buffer.byteLength(JSON.stringify(message));
+      if (batch.length && (batch.length === 50 || bytes + 1 + messageBytes > 60 * 1024)) {
+        await this.client.request('/v1/inbound', { generation, messages: batch });
+        batch = []; bytes = envelopeBytes;
+        if (epoch !== this.epoch) return;
+      }
+      bytes += messageBytes + (batch.length ? 1 : 0);
+      batch.push(message);
+    }
+    if (batch.length && epoch === this.epoch) await this.client.request('/v1/inbound', { generation, messages: batch });
+  }
   async connection(update, socket) {
-    if (update.qr) await this.report('PAIRING', { qr: update.qr });
+    if (update.qr) { this.historyUntil = this.now() + 20 * 60000; await this.report('PAIRING', { qr: update.qr }); }
     if (update.connection === 'open') {
       const phone = socket.user?.id?.split('@')[0].split(':')[0];
       if (!/^[0-9]{8,15}$/.test(phone || '')) throw new Error('PHONE_INVALID');
