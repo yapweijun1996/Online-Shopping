@@ -5,7 +5,7 @@ import { createWhatsAppQrStore } from './store.js';
 
 const missing = () => { throw new ApiError(404, 'NOT_FOUND', 'Not found.'); };
 const message = row => ({ id: row.id, direction: row.direction, text: row.body, status: row.status, errorCode: row.error_code, createdAt: row.created_at, actor: row.actor });
-const reason = (s, t, time) => s.desired === 'OFF' || s.state !== 'CONNECTED' ? 'NOT_CONNECTED' : t.suppressed_at ? 'SUPPRESSED' : !t.last_inbound_at || Date.parse(t.last_inbound_at) < time - 86400000 ? 'WINDOW_EXPIRED' : null;
+const reason = (s, t, time) => s.desired === 'OFF' || s.state !== 'CONNECTED' ? 'NOT_CONNECTED' : t.suppressed_at ? 'SUPPRESSED' : null;
 const integer = (value, fallback, max) => {
   if (value === null) return fallback;
   if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) > max) throw new ApiError(400, 'INVALID_QUERY', 'Invalid pagination.');
@@ -15,7 +15,7 @@ export function createQrSellerApi({ store, secretBox, shopId = 'default', now = 
   const qr = createWhatsAppQrStore({ store, secretBox, shopId, now });
   const limiter = (bucket, limit, windowMs) => new SqlLimiter(store, bucket, { limit, windowMs, now });
   const shopPair = limiter('qr-pair-shop', 3, 900000), addressPair = limiter('qr-pair-address', 5, 900000);
-  const shopReply = limiter('qr-reply-shop', 20, 3600000), threadReply = limiter('qr-reply-thread', 5, 60000);
+  const shopReply = limiter('qr-reply-shop', 60, 3600000), threadReply = limiter('qr-reply-thread', 5, 60000);
   const limited = seconds => json(429, { error: { code: 'RATE_LIMITED', message: 'Too many attempts.' } }, { 'Retry-After': String(seconds), 'Cache-Control': 'no-store' });
   const denyLimit = seconds => { const error = new ApiError(429, 'RATE_LIMITED', 'Too many attempts.'); error.retryAfter = seconds; throw error; };
   return async ({ request, url, account, allow, clientAddress }) => {
@@ -52,8 +52,8 @@ export function createQrSellerApi({ store, secretBox, shopId = 'default', now = 
       }
       const id = chat[1], action = chat[2];
       if (!id && method === 'GET') {
-        const rows = await store.all('SELECT message_thread.*, (SELECT body FROM message_thread_message WHERE thread_id = message_thread.id ORDER BY created_at DESC,id DESC LIMIT 1) AS last_message_text FROM message_thread ORDER BY last_message_at DESC,id DESC LIMIT ? OFFSET ?', integer(url.searchParams.get('limit'), 50, 50), integer(url.searchParams.get('offset'), 0, 10000));
-        return json(200, rows.map(t => ({ id: t.id, displayName: t.display_name, peerMasked: qr.maskPeer(t), lastMessageText: t.last_message_text, lastMessageAt: t.last_message_at, lastInboundAt: t.last_inbound_at, unreadCount: t.unread_count, canReply: !reason(session, t, time), replyWindowEndsAt: t.last_inbound_at ? new Date(Date.parse(t.last_inbound_at) + 86400000).toISOString() : null })));
+        const rows = await store.all('SELECT message_thread.*, (SELECT body FROM message_thread_message WHERE thread_id = message_thread.id ORDER BY created_at DESC,id DESC LIMIT 1) AS last_message_text, (SELECT direction FROM message_thread_message WHERE thread_id = message_thread.id ORDER BY created_at DESC,id DESC LIMIT 1) AS last_message_direction FROM message_thread ORDER BY last_message_at DESC,id DESC LIMIT ? OFFSET ?', integer(url.searchParams.get('limit'), 50, 50), integer(url.searchParams.get('offset'), 0, 10000));
+        return json(200, rows.map(t => ({ id: t.id, displayName: t.display_name, peerMasked: qr.maskPeer(t), lastMessageText: t.last_message_text, lastMessageDirection: t.last_message_direction, lastMessageAt: t.last_message_at, lastInboundAt: t.last_inbound_at, unreadCount: t.unread_count, canReply: !reason(session, t, time) })));
       }
       const thread = await store.get('SELECT * FROM message_thread WHERE id = ?', id);
       if (!thread) return missing();

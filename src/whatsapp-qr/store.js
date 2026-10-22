@@ -3,6 +3,8 @@ import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto';
 export class QrError extends Error {
   constructor(status, code) { super(code); this.status = status; this.code = code; }
 }
+// Marks rows the linked phone sent. Contains ':' so no seller username (3-64 of [A-Za-z0-9._-]) can ever equal it.
+export const PHONE_ACTOR = 'phone:device';
 const fail = (code, status = 409) => { throw new QrError(status, code); };
 const digest = value => createHash('sha256').update(value).digest('hex');
 export const validPeer = value => typeof value === 'string' && /^[0-9]{1,30}@(s\.whatsapp\.net|lid)$/.test(value);
@@ -143,32 +145,40 @@ export function createWhatsAppQrStore({ store, secretBox, shopId = 'default', no
       return { version: result.auth_version };
     }),
     inbound: (worker, body) => transact(worker, body.generation, async (session, time, at) => {
-      if (!Array.isArray(body.messages) || body.messages.length > 50 || !body.messages.every(row => row && printable(row.id, 128) && validPeer(row.peer) && string(row.name, 0, 200) && string(row.text, 1, 4096) && typeof row.at === 'string' && Number.isFinite(Date.parse(row.at)) && /T.*Z$/.test(row.at) && Date.parse(row.at) <= time)) invalid();
+      if (!Array.isArray(body.messages) || body.messages.length > 50 || !body.messages.every(row => row && printable(row.id, 128) && validPeer(row.peer) && string(row.name, 0, 200) && string(row.text, 1, 4096) && (row.out === undefined || row.out === true) && (row.history === undefined || row.history === true) && (row.phone === undefined || (typeof row.phone === 'string' && /^[0-9]{8,15}$/.test(row.phone))) && typeof row.at === 'string' && Number.isFinite(Date.parse(row.at)) && /T.*Z$/.test(row.at) && Date.parse(row.at) <= time)) invalid();
       const key = await peerKey(session, at); let accepted = 0, duplicates = 0;
       for (const row of body.messages) {
-        if (await store.get("SELECT id FROM message_thread_message WHERE direction = 'IN' AND provider_message_id = ?", row.id)) { duplicates++; continue; }
+        // Customer messages dedupe on the partial index; the phone's own messages dedupe inside their thread (no table scan).
+        if (row.out !== true && await store.get("SELECT id FROM message_thread_message WHERE direction = 'IN' AND provider_message_id = ?", row.id)) { duplicates++; continue; }
         const peerHash = hash(key, row.peer), receivedAt = new Date(row.at).toISOString();
-        const phoneHash = row.peer.endsWith('@s.whatsapp.net') ? hash(key, row.peer.split('@')[0]) : null;
+        // A LID address hides the number; the worker may pass it separately so erasure and order matching still work.
+        const phone = row.peer.endsWith('@s.whatsapp.net') ? row.peer.split('@')[0] : row.phone ?? null;
+        const phoneHash = phone ? hash(key, phone) : null;
+        // The account's own number is the owner's private self-chat, never a customer thread.
+        if (phoneHash && session.phone_hash && phoneHash === session.phone_hash) { duplicates++; continue; }
         const suppression = phoneHash ? await store.get('SELECT created_at FROM message_peer_suppression WHERE phone_hash = ?', phoneHash) : null;
-        let thread = await store.get('SELECT id,suppressed_at FROM message_thread WHERE peer_hash = ?', peerHash);
+        let thread = await store.get('SELECT id,suppressed_at,phone_hash FROM message_thread WHERE peer_hash = ?', peerHash);
+        if (row.out === true && thread && await store.get('SELECT id FROM message_thread_message WHERE thread_id = ? AND provider_message_id = ?', thread.id, row.id)) { duplicates++; continue; }
+        if (thread && phoneHash && !thread.phone_hash) await store.run('UPDATE message_thread SET phone_hash = ? WHERE id = ?', phoneHash, thread.id);
         if (!thread) {
           thread = { id: randomUUID(), suppressed_at: suppression?.created_at ?? null };
           const sealed = thread.suppressed_at ? null : secretBox.seal(row.peer, threadContext(thread.id));
-          await store.run(`INSERT INTO message_thread (id,provider,peer_hash,peer_sealed,peer_key_id,display_name,phone_hash,suppressed_at,created_at,updated_at) VALUES (?,'WHATSAPP_QR',?,?,?,?,?,?,?,?)`, thread.id, peerHash, sealed?.sealed ?? null, sealed?.keyId ?? session.peer_key_id, thread.suppressed_at ? null : row.name, phoneHash, thread.suppressed_at, at, at);
+          await store.run(`INSERT INTO message_thread (id,provider,peer_hash,peer_sealed,peer_key_id,display_name,phone_hash,suppressed_at,created_at,updated_at) VALUES (?,'WHATSAPP_QR',?,?,?,?,?,?,?,?)`, thread.id, peerHash, sealed?.sealed ?? null, sealed?.keyId ?? session.peer_key_id, thread.suppressed_at || row.out === true ? null : row.name, phoneHash, thread.suppressed_at, at, at);
         } else if (suppression && !thread.suppressed_at) {
           thread.suppressed_at = suppression.created_at;
           await store.run('UPDATE message_thread SET suppressed_at = ?, display_name = NULL, peer_sealed = NULL WHERE id = ?', thread.suppressed_at, thread.id);
           await store.run('UPDATE message_thread_message SET body = NULL WHERE thread_id = ?', thread.id);
         }
-        await store.run(`INSERT INTO message_thread_message (id,thread_id,direction,provider_message_id,body,status,generation,created_at,updated_at) VALUES (?,?,'IN',?,?,'RECEIVED',?,?,?)`, randomUUID(), thread.id, row.id, thread.suppressed_at ? null : row.text, body.generation, receivedAt, at);
-        await store.run(`UPDATE message_thread SET display_name = ?, last_inbound_at = CASE WHEN last_inbound_at IS NULL OR last_inbound_at < ? THEN ? ELSE last_inbound_at END, last_message_at = CASE WHEN last_message_at IS NULL OR last_message_at < ? THEN ? ELSE last_message_at END, unread_count = unread_count + 1, updated_at = ? WHERE id = ?`, thread.suppressed_at ? null : row.name, receivedAt, receivedAt, receivedAt, receivedAt, at, thread.id);
+        // A message the linked phone sent is stored as a sent outgoing message; imported history changes no unread count.
+        const out = row.out === true, live = row.history !== true, name = out || thread.suppressed_at ? '' : row.name;
+        await store.run(`INSERT INTO message_thread_message (id,thread_id,direction,provider_message_id,body,status,actor,generation,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)`, randomUUID(), thread.id, out ? 'OUT' : 'IN', row.id, thread.suppressed_at ? null : row.text, out ? 'SENT' : 'RECEIVED', out ? PHONE_ACTOR : null, body.generation, receivedAt, at);
+        await store.run(`UPDATE message_thread SET display_name = CASE WHEN ? = '' THEN display_name ELSE ? END, last_inbound_at = CASE WHEN ? = 1 AND (last_inbound_at IS NULL OR last_inbound_at < ?) THEN ? ELSE last_inbound_at END, last_message_at = CASE WHEN last_message_at IS NULL OR last_message_at < ? THEN ? ELSE last_message_at END, unread_count = unread_count + ?, updated_at = ? WHERE id = ?`, name, name, out ? 0 : 1, receivedAt, receivedAt, receivedAt, receivedAt, out || !live ? 0 : 1, at, thread.id);
         accepted++;
       }
       return { accepted, duplicates };
     }),
     claim: (worker, body) => transact(worker, body.generation, async (session, time, at) => {
-      const cutoff = new Date(time - 86400000).toISOString();
-      await store.run(`UPDATE message_thread_message SET status = 'FAILED', error_code = 'NOT_ELIGIBLE', updated_at = ? WHERE direction = 'OUT' AND status = 'QUEUED' AND (generation <> ? OR ? <> 'CONNECTED' OR body IS NULL OR thread_id IN (SELECT id FROM message_thread WHERE suppressed_at IS NOT NULL OR last_inbound_at IS NULL OR last_inbound_at < ?))`, at, body.generation, session.state, cutoff);
+      await store.run(`UPDATE message_thread_message SET status = 'FAILED', error_code = 'NOT_ELIGIBLE', updated_at = ? WHERE direction = 'OUT' AND status = 'QUEUED' AND (generation <> ? OR ? <> 'CONNECTED' OR body IS NULL OR thread_id IN (SELECT id FROM message_thread WHERE suppressed_at IS NOT NULL))`, at, body.generation, session.state);
       if (session.state !== 'CONNECTED' || (session.last_claim_at && time - Date.parse(session.last_claim_at) < 5000) || await store.get("SELECT id FROM message_thread_message WHERE status = 'SENDING' LIMIT 1")) return { reply: null };
       const row = await store.get(`SELECT m.*,t.peer_sealed,t.peer_key_id FROM message_thread_message m JOIN message_thread t ON t.id = m.thread_id WHERE m.status = 'QUEUED' AND m.direction = 'OUT' AND m.generation = ? ORDER BY m.created_at,m.id LIMIT 1`, body.generation);
       if (!row) return { reply: null };
@@ -183,7 +193,11 @@ export function createWhatsAppQrStore({ store, secretBox, shopId = 'default', no
       if (!['SENT','FAILED','UNKNOWN'].includes(body.status) || (body.status === 'SENT' && !printable(body.providerMessageId, 128)) || (body.status === 'FAILED' && !validCode(body.code))) invalid();
       const changed = await store.get(`UPDATE message_thread_message SET status = ?, provider_message_id = ?, error_code = ?, lease_expires_at = NULL, updated_at = ? WHERE id = ? AND direction = 'OUT' AND status = 'SENDING' AND generation = ? AND lease_expires_at > ? RETURNING thread_id`, body.status === 'UNKNOWN' ? 'RECONCILE' : body.status, body.providerMessageId ?? null, body.code ?? null, at, id, body.generation, at);
       if (!changed) fail('REPLY_STATUS');
-      if (body.status === 'SENT') await store.run('UPDATE message_thread SET last_message_at = ?, updated_at = ? WHERE id = ?', at, at, changed.thread_id);
+      if (body.status === 'SENT') {
+        // The phone's copy of this very message may have arrived first; keep only the reply the seller wrote.
+        await store.run('DELETE FROM message_thread_message WHERE thread_id = ? AND provider_message_id = ? AND actor = ? AND id <> ?', changed.thread_id, body.providerMessageId, PHONE_ACTOR, id);
+        await store.run('UPDATE message_thread SET last_message_at = ?, updated_at = ? WHERE id = ?', at, at, changed.thread_id);
+      }
     }),
   };
 }

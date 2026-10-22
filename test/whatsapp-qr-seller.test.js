@@ -247,7 +247,8 @@ for (const engine of ['sqlite', 'postgres']) {
     await f.store.run('DELETE FROM rate_limit_attempt');
     f.advance(86400000 - 60000);
     assert.equal((await f.direct(reply, { text: '24 hours exact' })).status, 201);
-    f.advance(1); assert.equal((await f.direct(reply, { text: 'too late' })).data.reason, 'WINDOW_EXPIRED');
+    // Like WhatsApp Web, a chat stays repliable long after the customer's last message.
+    f.advance(1); assert.equal((await f.direct(reply, { text: 'no reply window' })).status, 201);
     await f.store.run('UPDATE message_thread SET last_inbound_at = ?, suppressed_at = ? WHERE id = ?', new Date(f.now()).toISOString(), new Date(f.now()).toISOString(), thread.id);
     assert.equal((await f.direct(reply, { text: 'suppressed' })).data.reason, 'SUPPRESSED');
     await f.store.run("UPDATE whatsapp_qr_session SET state = 'RECONNECTING' WHERE id = 1");
@@ -256,15 +257,16 @@ for (const engine of ['sqlite', 'postgres']) {
     await f.store.run('UPDATE message_thread SET suppressed_at = NULL WHERE id = ?', thread.id);
     await f.store.run('DELETE FROM rate_limit_attempt');
     await f.store.run('DELETE FROM message_thread_message WHERE direction = ?', 'OUT');
-    for (let batch = 0; batch < 4; batch++) {
+    for (let batch = 0; batch < 12; batch++) {
       for (let i = 0; i < 5; i++) assert.equal((await f.direct(reply, { text: `batch ${batch} ${i}` })).status, 201);
+      await f.store.run("UPDATE message_thread_message SET status = 'SENT' WHERE direction = 'OUT' AND status = 'QUEUED'");
       f.advance(60000);
     }
-    assert.equal((await f.direct(reply, { text: '21st' })).status, 429);
-    f.advance(3600000 - 240000); assert.equal((await f.direct(reply, { text: 'hour boundary' })).status, 201);
+    assert.equal((await f.direct(reply, { text: '61st' })).status, 429);
+    f.advance(3600000 - 720000); assert.equal((await f.direct(reply, { text: 'hour boundary' })).status, 201);
     await f.store.run('DELETE FROM rate_limit_attempt');
     const at = new Date(f.now()).toISOString();
-    for (let i = 21; i < 50; i++) await f.store.run("INSERT INTO message_thread_message (id,thread_id,direction,body,status,generation,created_at,updated_at) VALUES (?,?,'OUT','queue','QUEUED',2,?,?)", randomUUID(), thread.id, at, at);
+    for (let i = 1; i < 50; i++) await f.store.run("INSERT INTO message_thread_message (id,thread_id,direction,body,status,generation,created_at,updated_at) VALUES (?,?,'OUT','queue','QUEUED',2,?,?)", randomUUID(), thread.id, at, at);
     assert.equal((await f.direct(reply, { text: 'queue full' })).status, 429);
     await f.store.run('UPDATE message_thread_message SET body = NULL');
     assert.equal((await f.direct(`${root}/chats/${thread.id}/messages`)).data.every(row => row.text === null), true);

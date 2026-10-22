@@ -1,12 +1,15 @@
 import { Browsers, DisconnectReason } from '@whiskeysockets/baileys';
 import { loadAuth } from './auth-state.js';
-import { filterMessages } from './filters.js';
+import { digits, filterHistory, filterMessages } from './filters.js';
+// WhatsApp sends the chat history once, right after a device is linked: INITIAL_BOOTSTRAP, RECENT and PUSH_NAME.
+const HISTORY_TYPES = [0, 3, 4];
+const HISTORY_LIMIT = 5000;
 export const backoff = attempt => [1000, 2000, 4000, 8000, 16000, 30000][Math.min(attempt, 5)];
 export const silentLogger = { level: 'silent', trace() {}, debug() {}, info() {}, warn() {}, error() {}, fatal() {}, child() { return this; } };
 export class Session {
   constructor({ client, makeSocket, log = line => process.stdout.write(`${line}\n`), now = Date.now }) {
     Object.assign(this, { client, makeSocket, log, now });
-    this.generation = null; this.desired = 'OFF'; this.state = 'IDLE'; this.attempt = 0; this.nextConnect = 0; this.failureSince = null; this.lastClaim = -Infinity; this.epoch = 0; this.events = Promise.resolve(); this.halted = false;
+    this.generation = null; this.desired = 'OFF'; this.state = 'IDLE'; this.attempt = 0; this.nextConnect = 0; this.failureSince = null; this.lastClaim = -Infinity; this.epoch = 0; this.events = Promise.resolve(); this.halted = false; this.historyUntil = 0; this.historyCount = 0;
   }
   async report(state, extra = {}) {
     if (this.state !== state) { this.log(JSON.stringify({ state, ...(extra.reason ? { code: extra.reason } : {}) })); this.state = state; }
@@ -37,7 +40,7 @@ export class Session {
           }
         } catch {} finally { clearTimeout(timer); old.end(new Error('SESSION_STOP')); }
       }
-      if (control.generation !== this.generation) { this.halted = false; this.attempt = 0; this.failureSince = null; this.nextConnect = 0; }
+      if (control.generation !== this.generation) { this.halted = false; this.attempt = 0; this.failureSince = null; this.nextConnect = 0; this.historyUntil = 0; }
       this.generation = control.generation;
       if (control.desired === 'OFF') await this.report('IDLE');
     }
@@ -62,7 +65,7 @@ export class Session {
     this.auth = auth;
     if (this.stopped || epoch !== this.epoch) return;
     await this.report('CONNECTING');
-    const socket = this.makeSocket({ auth: this.auth.state, logger: silentLogger, browser: Browsers.ubuntu('Online Shopping'), syncFullHistory: false, shouldSyncHistoryMessage: () => false, markOnlineOnConnect: false, generateHighQualityLinkPreview: false, getMessage: async () => undefined });
+    const socket = this.makeSocket({ auth: this.auth.state, logger: silentLogger, browser: Browsers.ubuntu('Online Shopping'), syncFullHistory: false, shouldSyncHistoryMessage: notification => this.now() < this.historyUntil && HISTORY_TYPES.includes(notification?.syncType), markOnlineOnConnect: false, generateHighQualityLinkPreview: false, getMessage: async () => undefined });
     this.socket = socket;
     socket.ev.process(events => {
       this.events = this.events.then(async () => {
@@ -72,32 +75,54 @@ export class Session {
         if (events['connection.update']) await this.connection(events['connection.update'], socket);
         if (epoch !== this.epoch) return;
         if (events['messages.upsert']) {
-          const messages = filterMessages(events['messages.upsert']);
+          const messages = filterMessages(events['messages.upsert'], { now: this.now(), self: this.ownNumbers() });
           // Counts only (never a number, name or text) so an operator can tell "nothing arrived" from "arrived but filtered".
           this.log(JSON.stringify({ inbound: { type: String(events['messages.upsert'].type).slice(0, 16), received: events['messages.upsert'].messages?.length ?? 0, accepted: messages.length } }));
-          const envelopeBytes = Buffer.byteLength(JSON.stringify({ generation, messages: [] }));
-          let batch = []; let bytes = envelopeBytes;
-          for (const message of messages) {
-            if (epoch !== this.epoch) break;
-            const messageBytes = Buffer.byteLength(JSON.stringify(message));
-            if (batch.length && (batch.length === 50 || bytes + 1 + messageBytes > 60 * 1024)) {
-              await this.client.request('/v1/inbound', { generation, messages: batch });
-              batch = []; bytes = envelopeBytes;
-              if (epoch !== this.epoch) break;
-            }
-            bytes += messageBytes + (batch.length ? 1 : 0);
-            batch.push(message);
-          }
-          if (batch.length && epoch === this.epoch) {
-            await this.client.request('/v1/inbound', { generation, messages: batch });
-          }
+          await this.deliver(messages, generation, epoch);
+        }
+        if (events['messaging-history.set'] && this.now() < this.historyUntil) {
+          // WhatsApp sends several history chunks while linking (the first one is flagged isLatest, later ones are not),
+          // so the window is time-based and the 5000-message cap counts across all chunks.
+          const history = events['messaging-history.set'], messages = filterHistory(history, { now: this.now(), limit: HISTORY_LIMIT - this.historyCount, self: this.ownNumbers() });
+          this.historyCount += messages.length;
+          this.log(JSON.stringify({ history: { received: history.messages?.length ?? 0, accepted: messages.length, total: this.historyCount } }));
+          await this.deliver(messages, generation, epoch);
         }
       }).catch(error => { if (epoch === this.epoch) this.fail(error); });
       return this.events;
     });
   }
+  // The account's own phone number and LID: messages to or from them are the owner's private self-chat.
+  ownNumbers() {
+    const me = this.socket?.user ?? this.auth?.state?.creds?.me ?? {};
+    return new Set([digits(me.id), digits(me.lid)].filter(Boolean));
+  }
+  async send(batch, generation) {
+    try { await this.client.request('/v1/inbound', { generation, messages: batch }); }
+    catch (error) {
+      // The backend refuses a whole batch for one bad row; retry row by row and skip only the refused ones.
+      if (error?.status !== 400 || batch.length < 2) { if (error?.status === 400) return; throw error; }
+      for (const message of batch) await this.send([message], generation);
+    }
+  }
+  async deliver(messages, generation, epoch) {
+    const envelopeBytes = Buffer.byteLength(JSON.stringify({ generation, messages: [] }));
+    let batch = [], bytes = envelopeBytes;
+    for (const message of messages) {
+      if (epoch !== this.epoch) return;
+      const messageBytes = Buffer.byteLength(JSON.stringify(message));
+      if (batch.length && (batch.length === 50 || bytes + 1 + messageBytes > 60 * 1024)) {
+        await this.send(batch, generation);
+        batch = []; bytes = envelopeBytes;
+        if (epoch !== this.epoch) return;
+      }
+      bytes += messageBytes + (batch.length ? 1 : 0);
+      batch.push(message);
+    }
+    if (batch.length && epoch === this.epoch) await this.send(batch, generation);
+  }
   async connection(update, socket) {
-    if (update.qr) await this.report('PAIRING', { qr: update.qr });
+    if (update.qr) { this.historyUntil = this.now() + 20 * 60000; this.historyCount = 0; await this.report('PAIRING', { qr: update.qr }); }
     if (update.connection === 'open') {
       const phone = socket.user?.id?.split('@')[0].split(':')[0];
       if (!/^[0-9]{8,15}$/.test(phone || '')) throw new Error('PHONE_INVALID');
@@ -106,7 +131,7 @@ export class Session {
     }
     if (update.connection === 'close') {
       this.end();
-      if (update.lastDisconnect?.error?.output?.statusCode === DisconnectReason.loggedOut) { this.halted = true; await this.report('LOGGED_OUT'); return; }
+      if (update.lastDisconnect?.error?.output?.statusCode === DisconnectReason.loggedOut) { this.halted = true; this.historyUntil = 0; await this.report('LOGGED_OUT'); return; }
       this.failureSince ??= this.now();
       if (this.now() - this.failureSince >= 300000) { this.halted = true; await this.report('ERROR', { reason: 'RECONNECT_LIMIT' }); return; }
       this.nextConnect = this.now() + backoff(this.attempt++);

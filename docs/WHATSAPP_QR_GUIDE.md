@@ -13,7 +13,11 @@ The official WhatsApp Cloud API remains the recommended connection. QR linking i
 
 Open **Messages → WhatsApp chats**. The existing **Cloud messages** view stays separate. Select a thread to read it; on a phone use **Back** to return to the list. **Load more** and **Load earlier** page through threads and messages. Suggested order chips open Sales Orders; these are suggestions, not automatic customer identity links.
 
-Replies are limited to customers who messaged you within the last 24 hours. When the window closes, the customer must send another message first. The connection must also be active. Messages are limited to 4096 characters. Select **Send** or press Ctrl/Cmd+Enter. If the network fails, retrying unchanged text in the same composer reuses the original intent to avoid duplicate replies. Do not reload or switch threads to retry an uncertain send; this in-memory intent does not survive navigation.
+Like WhatsApp Web, Messages shows your chats with avatars, last message and time, a search box and day separators. You can reply to any listed chat while the connection is active; there is no 24-hour reply window. Messages you sent from your phone appear in the chat as outgoing messages labelled **Sent from your phone**.
+
+**What is imported.** When you link WhatsApp, WhatsApp sends your recent chats once. The panel imports direct one-to-one text messages from the last 30 days (at most 5000 messages) with the contact names WhatsApp provides. Groups, status, broadcasts, newsletters, media, voice notes and reactions are not imported, and imported history never adds an unread badge. After that, new text messages (including those you send from your phone) appear as they happen. To import your chats again, choose **Disconnect** and link again; WhatsApp only sends the history while linking. Messages older than 30 days lose their text (retention) while the row stays.
+
+Messages are limited to 4096 characters. Select **Send** or press Ctrl/Cmd+Enter. If the network fails, retrying unchanged text in the same composer reuses the original intent to avoid duplicate replies. Do not reload or switch threads to retry an uncertain send; this in-memory intent does not survive navigation.
 
 Queued and Sending are not delivery confirmations. Sent means the worker reported sending. **Check your phone** means the outcome is uncertain: inspect WhatsApp rather than sending a duplicate. Failed and Cancelled remain visible. Rate-limit notices show the wait in seconds. Removed message bodies show **Message removed after 30 days**.
 

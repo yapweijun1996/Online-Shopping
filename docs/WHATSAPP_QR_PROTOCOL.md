@@ -85,12 +85,15 @@ returned only when all chunks open and the stored SHA-256 matches. `type` matche
 printable. Max 500 set/delete items per call.
 
 ### `POST /v1/inbound`
-Body `{"generation":7,"messages":[{"id":"<provider id 1..128>","peer":"<jid>","name":"<pushName or empty>","at":"<ISO time>","text":"<1..4096>"}]}`
-(max 50 per call). The worker sends ONLY live (`messages.upsert` type `notify`) direct one-to-one messages that are not
-`fromMe`, whose `remoteJid` ends with `@s.whatsapp.net` or `@lid`, that carry text (`conversation` or
-`extendedTextMessage.text`). Groups, broadcasts, status, newsletters, history sync, reactions, media and own echoes are
-dropped in the worker AND validated again by the backend (peer pattern). Unique `(provider, provider_message_id)` dedupes
-retries. Response `200 {"accepted": n, "duplicates": m}`.
+Body `{"generation":7,"messages":[{"id":"<provider id 1..128>","peer":"<jid>","name":"<pushName/chat name or empty>","at":"<ISO time>","text":"<1..4096>","phone":"<8..15 digits>","out":true,"history":true}]}`
+(max 50 per call; `out` and `history` are optional and, when present, exactly `true`; `phone` is optional and only given for a `@lid` peer whose phone number WhatsApp supplied, so erasure suppression and order matching work for it). The worker sends direct one-to-one text
+messages whose `remoteJid` is `<digits>@s.whatsapp.net` or `<digits>@lid` (a device suffix is stripped): live
+`messages.upsert` of type `notify` or `append`, and the one-off `messaging-history.set` import right after linking.
+`out: true` marks a message the linked phone itself sent (stored as an outgoing `SENT` message with actor `phone`; the owner's
+push name is never used as the contact name). `history: true` marks imported history (last 30 days, newest 5000 messages;
+it never increments the unread count; WhatsApp sends several chunks while linking and flags only the first `isLatest`, so the worker keeps the 20-minute window and counts the cap across chunks). The worker also drops the account's own self-chat (its phone number and LID) and applies the backend's validation rules (printable ASCII id, well-formed text without NUL, names clipped by code point, peer at most 30 digits, timestamps clamped to now); the backend ignores rows for the account's own number as a backstop. If the backend still refuses a batch with 400 the worker retries the rows one by one and skips only the refused ones; it never halts for it. Groups, broadcasts, status, newsletters, reactions and media are dropped in the worker AND validated
+again by the backend (peer pattern). A message whose provider id is already stored (either direction) is a duplicate; when the
+send result of a panel reply arrives after the phone's echo of it, the echo row is removed. Response `200 {"accepted": n, "duplicates": m}`.
 
 ### `POST /v1/replies/claim`
 Body `{"generation":7}`. Atomically moves the oldest eligible `QUEUED` reply to `SENDING` with a 60 s lease and returns
@@ -107,7 +110,7 @@ stored as `RECONCILE`, never retried automatically). Only from `SENDING`. Respon
 
 - Poll `control` every `pollMs` while `desired != OFF`, every 10 s otherwise. Exponential reconnect backoff 1/2/4/8/16/30 s,
   give up (report `ERROR` `RECONNECT_LIMIT`) after 5 minutes of failures; `loggedOut` disconnect → `LOGGED_OUT`.
-- Never request history (`syncFullHistory: false`, `shouldSyncHistoryMessage: () => false`, `markOnlineOnConnect: false`).
+- History: `syncFullHistory: false`, `markOnlineOnConnect: false`; `shouldSyncHistoryMessage` accepts only the INITIAL_BOOTSTRAP, RECENT and PUSH_NAME notifications and only for 20 minutes after a QR was shown (the history is sent only while linking), so ordinary reconnects never wait for it.
 - In-memory caches only as Baileys needs them; no file system auth state (`useMultiFileAuthState` is forbidden).
 - Logs: one line per state change with codes only; never log QR, JIDs, phone numbers, message text, auth or the token.
 
