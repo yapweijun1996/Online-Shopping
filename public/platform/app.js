@@ -1,3 +1,4 @@
+import { icon } from './shared/icons.js';
 import { tableRows, safeLink } from './table.js';
 import { mountAppearance, paletteChoices } from './shared/appearance.js';
 import { containDialogFocus, confirmModal } from './shared/modal.js';
@@ -254,17 +255,19 @@ function dataTable(items, columns, { activity = false } = {}) {
     const result = tableRows(source, { ...state, status: activity ? '' : state.status }); state.page = result.page;
     count.textContent = `${result.total} of ${items.length} ${activity ? 'events' : 'shops'}`;
     sortSelect.value = state.sort;
-    direction.textContent = state.direction === 'ascending' ? 'Ascending ↑' : state.direction === 'descending' ? 'Descending ↓' : 'Unsorted';
+    direction.textContent = state.direction === 'ascending' ? 'Ascending' : state.direction === 'descending' ? 'Descending' : 'Unsorted';
+    if (state.direction) direction.append(icon(state.direction === 'ascending' ? 'up' : 'down'));
     const table = element('table', undefined, 'data-table'), caption = element('caption', activity ? 'Platform activity' : 'Shops'); caption.className = 'sr-only'; table.append(caption);
     const head = element('thead'), header = element('tr'), body = element('tbody');
     for (const column of columns) {
       const th = element('th'); th.scope = 'col';
       if (column.key) {
         th.setAttribute('aria-sort', state.sort === column.key && state.direction ? state.direction : 'none');
-        const control = button(`${column.label}${state.sort === column.key && state.direction ? state.direction === 'ascending' ? ' ↑' : ' ↓' : ''}`, () => {
+        const control = button(column.label, () => {
           state.direction = state.sort !== column.key ? 'ascending' : state.direction === 'ascending' ? 'descending' : state.direction === 'descending' ? '' : 'ascending';
           state.sort = column.key; state.page = 1; draw(column.key);
         }); control.dataset.sort = column.key; th.append(control);
+        if (state.sort === column.key && state.direction) control.append(icon(state.direction === 'ascending' ? 'up' : 'down'));
       } else th.textContent = column.label;
       header.append(th);
     }
@@ -282,7 +285,7 @@ function dataTable(items, columns, { activity = false } = {}) {
     pageButton('Previous', state.page - 1, state.page === 1);
     let previous = 0;
     for (let page = 1; page <= result.pages; page++) if (page === 1 || page === result.pages || Math.abs(page - state.page) <= 1) {
-      if (previous && page - previous > 1) paging.append(element('span', '…'));
+      if (previous && page - previous > 1) paging.append(icon('more'));
       const control = pageButton(String(page), page); if (page === state.page) control.setAttribute('aria-current', 'page'); previous = page;
     }
     pageButton('Next', state.page + 1, state.page === result.pages);
@@ -302,7 +305,7 @@ async function listShops() {
   const loading = loadingRows('Loading shops…'); content.append(loading);
   try {
     const result = await api('/shops'); loading.remove();
-    const urlCell = (shop, key, label) => { const row = element('div', undefined, 'table-links'); row.append(externalLink(shop[key], `Open ${label}`), button(`Copy ${label} URL`, () => copy(shop[key]))); return row; };
+    const urlCell = (shop, key, label) => { const row = element('div', undefined, 'table-links'); const copyButton = button('', () => copy(shop[key])); copyButton.setAttribute('aria-label', `Copy ${label} URL`); copyButton.append(icon('copy')); row.append(externalLink(shop[key], `Open ${label}`), copyButton); return row; };
     dataTable(result.items, [
       { key: 'name', label: 'Name', render: shop => { const name = element('span', shop.name, 'shop-name'); name.title = shop.name; if (shop.isDefault) name.append(element('small', ' default', 'chip')); return name; } },
       { key: 'code', label: 'Code' }, { key: 'status', label: 'Status', render: shop => element('span', shop.status, `chip status-${shop.status.toLowerCase()}`) },

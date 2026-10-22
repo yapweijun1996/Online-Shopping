@@ -1,3 +1,4 @@
+import { icon } from '../shared/icons.js';
 import { apiUrl } from '../shared/base-path.js';
 import { mountAppearance } from '../shared/appearance.js';
 import { mountTabIcon } from '../shared/tab-icon.js';
@@ -474,10 +475,12 @@ function renderCart() {
     input.setAttribute('aria-label', `${t('quantity')}: ${product?.name || t('productUnavailable')}`);
     input.addEventListener('input', () => quantityRevisions.set(productId, (quantityRevisions.get(productId) || 0) + 1));
     input.addEventListener('change', () => changeQuantity(productId, input.valueAsNumber));
-    const decrease = action('−', () => changeQuantity(productId, current => current - 1));  // reaching 0 asks to remove
+    const decrease = action('', () => changeQuantity(productId, current => current - 1));  // reaching 0 asks to remove
+    decrease.append(icon('minus'));
     decrease.dataset.focusKey = `decrease-${productId}`;
     decrease.setAttribute('aria-label', `${t('decreaseQuantity')}: ${product?.name || t('productUnavailable')}`);
-    const increase = action('+', () => changeQuantity(productId, current => current + 1));
+    const increase = action('', () => changeQuantity(productId, current => current + 1));
+    increase.append(icon('plus'));
     increase.dataset.focusKey = `increase-${productId}`;
     increase.disabled = quantity >= 100;
     increase.setAttribute('aria-label', `${t('increaseQuantity')}: ${product?.name || t('productUnavailable')}`);
@@ -774,7 +777,7 @@ function drawLocalOrders(orders) {
     preview.append(orderThumbnail(item), summary); card.append(preview);
     const footer = element('div', 'order-card-footer'); footer.append(element('span', 'shop-note', formatDate(order.submittedAt)), element('strong', 'local-order-total', formatMoney(order.totalMinor, order.currency))); card.append(footer);
     if (order.simulation) card.append(element('p', 'shop-note', t('localDemoOrder')));
-    card.append(element('span', 'order-details-action', `${t('orderDetails')} ›`));
+    const details = element('span', 'order-details-action', t('orderDetails')); details.append(icon('right')); card.append(details);
     card.addEventListener('click', () => { ordersScroll = window.scrollY; });
     list.append(card);
   }
@@ -786,7 +789,7 @@ function orderStatusBadge(order) {
 }
 function orderThumbnail(item) {
   const box = element('span', 'order-thumbnail'); box.setAttribute('aria-hidden', 'true');
-  box.textContent = '▧';
+  box.append(icon('image'));
   // Orders saved before images were recorded fall back to the product's public image; a missing image leaves the placeholder.
   const source = item?.imageUrl || (/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(item?.productId || '') ? apiUrl(`v1/products/${item.productId}/image`) : null);
   if (source) { const img = element('img'); img.alt = ''; img.loading = 'lazy'; img.src = source; img.addEventListener('error', () => img.remove()); box.append(img); }

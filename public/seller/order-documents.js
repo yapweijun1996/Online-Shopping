@@ -1,3 +1,4 @@
+import { icon } from '../shared/icons.js';
 import PrintForm from './vendor/printform.js';
 import { formatDate, formatMoney, t } from '../shared/i18n.js';
 import { documentTitleKey, orderDocumentModel } from './order-document-model.js';
@@ -113,7 +114,7 @@ export function createOrderDocuments() {
       const columns = node('colgroup'); for (const width of kind === 'packing' ? ['15%','50%','15%','20%'] : ['15%','38%','9%','19%','19%']) { const col = node('col'); col.className = 'document-col-' + width.replace('%',''); columns.append(col); } table.append(columns);
       for (const [indexKey, key] of keys.entries()) { const th = node('th',t(key)); th.scope = 'col'; if (!indexKey) th.append(node('span', `${data.orderNo} · ${t('destination')} ${index + 1} / ${data.deliveries.length} · ${t('orderRevision')} ${data.revision}`, 'document-repeat-id')); row.append(th); } head.append(row); table.append(head);
       const body = node('tbody');
-      for (const item of delivery.items) { const r = node('tr'); for (const value of kind === 'packing' ? [item.sku,item.name,item.quantity,'☐'] : [item.sku,item.name,item.quantity,formatMoney(item.priceMinor,data.currency),formatMoney(item.lineTotalMinor,data.currency)]) r.append(node('td',String(value))); body.append(r); } table.append(body); section.append(table);
+      for (const item of delivery.items) { const r = node('tr'); for (const value of kind === 'packing' ? [item.sku,item.name,item.quantity] : [item.sku,item.name,item.quantity,formatMoney(item.priceMinor,data.currency),formatMoney(item.lineTotalMinor,data.currency)]) r.append(node('td',String(value))); if (kind === 'packing') { const cell = node('td'); cell.append(icon('square')); r.append(cell); } body.append(r); } table.append(body); section.append(table);
       const totals = node('div', '', 'order-document-totals');
       totals.append(node('p', `${data.orderNo} · ${t('destination')} ${index + 1} / ${data.deliveries.length} · ${t('orderRevision')} ${data.revision}`, 'document-repeat-id'));
       field(totals,t('destinationQuantity'),delivery.quantity);
