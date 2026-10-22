@@ -1,4 +1,5 @@
 import './sender-copy.js';
+import { mountCompanyTabs } from './company-tabs.js';
 const senderInputs = { senderName: 120, senderPhone: 32, senderAddressLine1: 240, senderAddressLine2: 240, senderCity: 120, senderState: 120, senderPostcode: 20, senderCountry: 2 };
 import { apiUrl } from '../shared/base-path.js';
 import { t, translate } from '../shared/i18n.js';
@@ -156,21 +157,27 @@ async function mountDemoReset(root, csrfToken, onUnauthorized) {
 
 export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUnauthorized, role = 'OWNER' }) {
   root.innerHTML = `<section class="settings-card" aria-labelledby="company-heading">
+    <form id="company-form" class="settings-form">
+      <div id="company-group-general">
     <h2 id="company-heading" data-i18n="companySettings">Company settings</h2>
     <p data-i18n="currencyIntro">Choose the default currency for new products. Existing product prices and orders keep their own currency.</p>
-    <form id="company-form" class="settings-form">
       <label><span data-i18n="defaultCurrency">Default currency</span><select name="defaultCurrency"><option value="MYR">MYR</option><option value="SGD">SGD</option></select></label>
       <label><span data-i18n="sellerWhatsAppPhone">Seller WhatsApp number</span><input name="sellerWhatsAppPhone" type="tel" inputmode="tel" autocomplete="tel" maxlength="32" placeholder="+60 / +65" aria-describedby="seller-whatsapp-help"></label>
       <p id="seller-whatsapp-help" data-i18n="sellerWhatsAppHelp">The public product page uses this number for Chat. Enter a +60 or +65 number, or leave it blank to turn Chat off.</p>
       <label class="settings-check"><input name="mobileHideBarsOnScroll" type="checkbox"><span data-i18n="mobileHideBarsOnScroll">Hide mobile navigation bars while scrolling down</span></label>
       <p class="settings-check-help" data-i18n="mobileHideBarsHelp">By default, the shop's top search bar and bottom navigation stay visible. Turn this on to hide them when shoppers scroll down and show them when they scroll up.</p>
-      <h3 data-i18n="storefrontTextsTitle">Product page information</h3>
+      </div>
+      <div id="company-group-storefront">
+      <h2 data-i18n="storefrontTextsTitle">Product page information</h2>
       <p id="storefront-texts-help" data-i18n="storefrontTextsHelp">Shown on every product page in the matching section. Leave a box empty to hide that section.</p>
       <label><span data-i18n="stockAndDelivery">Availability &amp; delivery</span><textarea name="availabilityText" rows="3" maxlength="1000" aria-describedby="storefront-texts-help"></textarea></label>
       <label><span data-i18n="shipping">Shipping</span><textarea name="shippingText" rows="3" maxlength="1000" aria-describedby="storefront-texts-help"></textarea></label>
       <label><span data-i18n="returnsAndGuarantees">Returns and guarantees</span><textarea name="returnsText" rows="3" maxlength="1000" aria-describedby="storefront-texts-help"></textarea></label>
-      <h3 data-i18n="senderTitle"></h3>
+      </div>
+      <div id="company-group-shipping">
+      <h2 data-i18n="senderTitle"></h2>
       ${Object.entries(senderInputs).map(([name, max]) => `<label><span data-i18n="${name}"></span><input name="${name}" maxlength="${max}"${name === 'senderPhone' ? ' type="tel"' : ''}></label>`).join('')}
+      </div>
       <button class="secondary-button" type="button" id="company-retry" data-i18n="retry" hidden>Retry</button>
       <button class="primary-button" type="submit" data-i18n="saveSettings">Save settings</button>
     </form><p class="settings-status" role="status"></p>
@@ -186,13 +193,25 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
       <label><span data-i18n="shopName"></span><input name="shopName" maxlength="80" value="Preview General Store" required></label>
       <button class="primary-button" type="submit" data-i18n="setupShop" disabled></button>
     </form><p class="setup-status" role="status"></p>`;
-  root.prepend(setup);
+  const formCard = form.closest('.settings-card');
+  formCard.before(setup);
   const appearance = document.createElement('section'); appearance.className = 'settings-card';
-  root.append(appearance); mountAppearance(appearance, 'seller');
+  const messaging = document.createElement('div'), extras = document.createElement('div');
+  extras.className = 'company-extra';
+  root.append(extras, messaging, appearance); mountAppearance(appearance, 'seller');
   // Provider cards stay hidden until a provider can really be connected; an all-"Not configured" list reads as unfinished.
-  const integrations = SHOW_INTEGRATIONS ? mountIntegrations(root, { csrfToken, onUnauthorized }) : { refreshLocale() {} };
-  const whatsapp = mountWhatsAppConnection(root, { csrfToken, onUnauthorized, request });
-  const whatsappQr = mountWhatsAppQr(root, { csrfToken, onUnauthorized, role });
+  const integrations = SHOW_INTEGRATIONS ? mountIntegrations(messaging, { csrfToken, onUnauthorized }) : { refreshLocale() {} };
+  const whatsapp = mountWhatsAppConnection(messaging, { csrfToken, onUnauthorized, request });
+  const whatsappQr = mountWhatsAppQr(messaging, { csrfToken, onUnauthorized, role });
+  const groups = { general: form.querySelector('#company-group-general'), storefront: form.querySelector('#company-group-storefront'), shipping: form.querySelector('#company-group-shipping') };
+  const tabs = mountCompanyTabs(root, [
+    { id: 'general', label: 'companyTabGeneral', panels: [setup, groups.general, extras] },
+    { id: 'storefront', label: 'companyTabStorefront', panels: [groups.storefront] },
+    { id: 'shipping', label: 'companyTabShipping', panels: [groups.shipping] },
+    { id: 'messaging', label: 'companyTabMessaging', panels: [messaging] },
+    { id: 'appearance', label: 'companyTabAppearance', panels: [appearance] },
+  ], { onSelect: (id) => { formCard.hidden = !['general', 'storefront', 'shipping'].includes(id); } });
+  const tabOfField = (field = '') => field.startsWith('sender') ? 'shipping' : ['availabilityText', 'shippingText', 'returnsText'].includes(field) ? 'storefront' : 'general';
   const setupForm = setup.querySelector('form');
   const setupStatus = setup.querySelector('.setup-status');
   const setupButton = setupForm.querySelector('button');
@@ -213,9 +232,6 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
     setup.querySelector('[data-i18n="setupIntro"]').hidden = Boolean(value.mode);
     if (value.mode) {
       setupStatus.textContent = `${value.shopName} — ${t(value.mode === 'demo' ? 'demoMode' : 'productionMode')}`;
-      root.append(setup);
-    } else {
-      root.prepend(setup);
     }
     setupButton.disabled = false;
   }
@@ -234,7 +250,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
       if (isCurrent()) setupStatus.textContent = t(['SHOP_ALREADY_CONFIGURED', 'SHOP_NOT_EMPTY'].includes(error.code) ? 'setupConflict' : 'productError');
     } finally { if (isCurrent()) setupButton.disabled = false; }
   });
-  mountDemoReset(root, csrfToken, onUnauthorized);
+  mountDemoReset(extras, csrfToken, onUnauthorized);
   translate(root);
   const saveButton = form.querySelector('[type="submit"]');
   const retryButton = form.querySelector('#company-retry');
@@ -299,7 +315,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
       savedState = currentState();
       currencyEdited = phoneEdited = mobileBarsEdited = textsEdited = false;
       status(root, 'settingsSaved');
-    } catch (error) { if (isCurrent()) status(root, error.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : error.field === 'sellerWhatsAppPhone' ? 'sellerWhatsAppInvalid' : error.field?.startsWith('sender') ? 'senderInvalid' : 'productError', true); }
+    } catch (error) { if (isCurrent()) tabs.select(error.code === 'COMPANY_CURRENCY_CONFLICT' ? 'general' : tabOfField(error.field)); if (isCurrent()) status(root, error.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : error.field === 'sellerWhatsAppPhone' ? 'sellerWhatsAppInvalid' : error.field?.startsWith('sender') ? 'senderInvalid' : 'productError', true); }
     finally {
       if (isCurrent()) {
         for (const input of form.querySelectorAll('input, select, textarea')) input.disabled = false;
@@ -315,7 +331,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
         (!setupForm.hidden && JSON.stringify([setupForm.elements.mode.value, setupForm.elements.shopName.value]) !== setupBaseline);
     },
     refreshLocale() {
-      translate(root);
+      translate(root); tabs.refreshLocale();
       if (setupState?.mode) showSetup(setupState);
       integrations.refreshLocale();
       whatsapp.refreshLocale();

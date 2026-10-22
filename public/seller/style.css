@@ -639,3 +639,14 @@
 .qr-inbox>p{grid-column:1/-1;padding:0 16px;overflow-wrap:anywhere}
 @media(max-width:720px){.qr-inbox{grid-template-columns:minmax(0,1fr)}.qr-thread-pane{border-right:0}.qr-inbox:not(.qr-thread-open) .qr-conversation{display:none}.qr-thread-open .qr-thread-pane{display:none}.qr-conversation{padding:12px}.qr-bubble{max-width:92%}.qr-tabs button{flex:1;white-space:normal}.qr-bubbles{height:40vh}}
 @media(prefers-reduced-motion:reduce){.qr-connecting::before{animation:none}}
+.company-tabs{display:flex;gap:4px;max-width:860px;margin:0 0 16px;overflow-x:auto;border-bottom:1px solid var(--ui-border);scrollbar-width:thin}
+.company-tabs [role=tab]{flex:none;min-height:44px;padding:0 16px;border:0;border-bottom:3px solid transparent;background:transparent;color:var(--ui-muted);font:inherit;font-weight:600;cursor:pointer}
+.company-tabs [role=tab]:hover{color:var(--ui-text)}
+.company-tabs [role=tab][aria-selected=true]{border-bottom-color:var(--ui-primary);color:var(--ui-primary)}
+.company-tabs [role=tab]:focus-visible{outline:2px solid var(--ui-focus);outline-offset:-2px}
+.company-extra:not(:empty),.company-extra .settings-card{margin-top:20px}
+#company-form>[id^=company-group-]{display:flex;align-items:end;gap:12px;flex-wrap:wrap;flex-basis:100%}
+#company-form [id^=company-group-]>h2{flex-basis:100%;margin:0}
+#company-form [id^=company-group-]>p{flex-basis:100%;margin:-4px 0 0;color:var(--ui-muted);font-size:14px;line-height:1.5}
+#company-form [hidden]{display:none}
+
