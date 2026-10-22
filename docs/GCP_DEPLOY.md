@@ -470,6 +470,17 @@ base64url values, the running containers were force-recreated (they still held t
 release was completed with the Updater `activate`/`health`/`save` path: state `deployed`, current `330d523`,
 workers `whatsapp-qr` and `whatsapp-qr-slot1`, timer active. The token rule and the inode note were added above.
 
+### Source-only manual release (2026-10-22, `src/platform/` change, no schema or configuration change)
+
+`src/platform/` is a protected path, so a change there (here: SuperAdmin resets the default shop Owner, `c9218ee`) leaves
+the Updater in `manual_release_required` although CI is green. With no schema, compose or runtime change the release is
+light: stop the timer, take a `pg_dumpall` backup (sanity-checked for size), `release.py stage` (re-checks that `main` is
+the requested commit and CI-approved, pulls the CI-built image digests), `release.py activate` (Updater `activate` and
+`health`; on failure it re-activates the previous release and returns to `manual_release_required`), then
+`save('deployed', current=candidate, previous=<old current>)` so the previous image stays a rollback target, and restart
+the timer. No data migration happens, so no isolated restore test is needed; a release that changes the schema must
+still follow the full procedure above. Result: state `deployed` at `c9218ee`, previous `4ae1b8e`, all services healthy.
+
 After release: both workers idle (~40 MiB each), slot 1 reports `QR_REVOKED` until SuperAdmin enables policy for
 the shop, host MemAvailable ~1.1 GB, `/internal/*` 404 publicly. The slot-1 capacity drill under real pairing and
 handset acceptance remain owner-device gates.
