@@ -1,3 +1,4 @@
+import { icon } from '../shared/icons.js';
 import { storageKey } from '../shared/storage-scope.js';
 import { apiUrl } from '../shared/base-path.js';
 import { formatDate, formatMoney, locale, setupLanguageMenu, t } from '../shared/i18n.js';
@@ -228,7 +229,8 @@ function showWorkspace(session) {
     if (needed) button.hidden = !can(needed) || (button.dataset.view === 'team' && quickLogin);
   }
   byId('change-password').hidden = quickLogin;
-  accountButton.querySelector('.avatar').textContent = Array.from(username.trim())[0]?.toLocaleUpperCase(locale()) || '•';
+  const initial = Array.from(username.trim())[0]?.toLocaleUpperCase(locale());
+  accountButton.querySelector('.avatar').replaceChildren(initial || icon('user'));
   setLoginMessage('');
   setWorkspaceMessage('');
   loginView.hidden = true;

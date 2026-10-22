@@ -1,3 +1,4 @@
+import { icon } from '../shared/icons.js';
 import { apiUrl } from '../shared/base-path.js';
 import { languages, t, translate } from '../shared/i18n.js';
 import { request } from './settings.js';
@@ -151,7 +152,8 @@ export function mountOptions(root, { csrfToken, onUnauthorized: notifyUnauthoriz
     const card = el('details', 'option-type-card'); card.open = openTypes.has(type.id);
     card.addEventListener('toggle', () => { if (card.open) openTypes.add(type.id); else openTypes.delete(type.id); });
     const display = t(displays.find(([value]) => value === type.display)?.[1] || 'displayButton');
-    const summary = el('summary'); summary.append(el('strong', '', type.name), el('span', 'option-meta', ` · ${display} · ${type.values.length}${type.active ? '' : ' · ✕'}`));
+    const summary = el('summary'); summary.append(el('strong', '', type.name), el('span', 'option-meta', ` · ${display} · ${type.values.length}`));
+    if (!type.active) summary.append(icon('close'));
     const form = el('form', 'settings-form option-type-form');
     const name = el('input'); name.value = type.name; name.required = true; name.maxLength = 60; name.name = 'name';
     const select = displaySelect(type.display);

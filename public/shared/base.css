@@ -7,6 +7,7 @@ button:disabled{cursor:not-allowed;opacity:.58}
 [hidden]{display:none!important}
 a{color:inherit}
 svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.ui-icon{display:inline-block;width:1em;height:1em;flex:none;vertical-align:-.125em;stroke-width:2}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible{outline:3px solid var(--ui-focus, #42b9b5);outline-offset:2px}
 .topbar{height:72px;position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:16px;padding:0 28px;background:var(--ui-surface, #fff);border-bottom:1px solid var(--ui-border, #dce7eb)}
 .brand{text-decoration:none;font-weight:750;display:flex;align-items:center;gap:11px;white-space:nowrap}

@@ -1,3 +1,4 @@
+import { icon } from '../shared/icons.js';
 import { apiUrl } from '../shared/base-path.js';
 import { formatDate, t, translate } from '../shared/i18n.js';
 import { statusKey } from './order-status-label.js';
@@ -47,7 +48,7 @@ export function mountAudit(root, { onUnauthorized }) {
       const what = node('span', 'audit-event');
       if (event.type === 'CONTACT_ERASED') what.append(node('span', 'order-chip rejected', t('contactErasedChip')));
       else what.append(node('span', `order-chip ${event.status.toLowerCase()}`, t(statusKey(event.status))));
-      if (event.previousStatus) what.append(node('span', 'audit-from', `← ${t(statusKey(event.previousStatus))}`));
+      if (event.previousStatus) { const from = node('span', 'audit-from', t(statusKey(event.previousStatus))); from.prepend(icon('left')); what.append(from); }
       li.append(time, order, what, node('span', 'audit-by', who(event)));
       if (event.reason) li.append(node('span', 'audit-reason', `${t('auditReason')}: ${event.reason}`));
       return li;

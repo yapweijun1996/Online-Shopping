@@ -1,3 +1,4 @@
+import { icon } from '../shared/icons.js';
 import { apiUrl } from '../shared/base-path.js';
 import { productMedia, revealImage, setProductMedia } from './product-media.js';
 import { locale, t } from '../shared/i18n.js';
@@ -327,8 +328,8 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     const label = node('label', '', t('quantity')); label.htmlFor = quantity.id;
     const quantityRow = node('div', 'product-quantity-row');
     const stepper = node('div', 'quantity-stepper');
-    const minus = button('−', () => step(-1)); minus.setAttribute('aria-label', t('decreaseQuantity'));
-    const plus = button('+', () => step(1)); plus.setAttribute('aria-label', t('increaseQuantity'));
+    const minus = button('', () => step(-1)); minus.append(icon('minus')); minus.setAttribute('aria-label', t('decreaseQuantity'));
+    const plus = button('', () => step(1)); plus.append(icon('plus')); plus.setAttribute('aria-label', t('increaseQuantity'));
     stepper.append(minus, quantity, plus);
     const subtotal = node('p', 'product-subtotal');
     quantityRow.append(label, stepper, subtotal);

@@ -5,10 +5,11 @@ const asset = (path) => new URL(path, self.registration.scope).pathname;
 
 self.setupOfflineWorker({
   cachePrefix: code ? `tenant-${code}-shop` : 'os-shop',
-  version: 'v146',
+  version: 'v147',
   scopePath,
   offlinePage: asset('./offline.html'),
   assets: [
+    '../shared/icons.js',
     './', './index.html', './offline.html', './style.css', './tokens.css', './palette.js', './bootstrap.js', './app.js', './version.js', './catalog-presentation.js', './cart.js',
     './mobile-navigation.js', './update-view.js', './profile.js', './addresses.js', './postcodes-my.js', './checkout-payload.js', './cart-selection.js', './checkout.js', './history.js', './local-orders.js', './product-detail.js', './product-media.js', './option-selector.js', './product-share.js', './storage-scope.js', './image-zoom.js', './shop-route.js',
     './checkout-intent.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png',
