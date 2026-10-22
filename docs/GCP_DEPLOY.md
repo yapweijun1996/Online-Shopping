@@ -481,6 +481,13 @@ the requested commit and CI-approved, pulls the CI-built image digests), `releas
 the timer. No data migration happens, so no isolated restore test is needed; a release that changes the schema must
 still follow the full procedure above. Result: state `deployed` at `c9218ee`, previous `4ae1b8e`, all services healthy.
 
+**Disk reserve (2026-10-22 incident).** The Updater refuses to pull images when less than 3 GiB is free
+(`Insufficient disk reserve`, which only shows as a repeating `GCP updater failed: RuntimeError` in the journal and a
+state stuck at `waiting_for_ci`). Each release leaves three tagged images (about 0.9 GiB) plus a ~170 MiB cluster dump
+under `rollback-*`. After a release, remove tagged `online-shopping-*` images other than `current` and `previous` from
+`state.json` (`docker rmi`; images in use are refused) and delete superseded `rollback-*` dumps once a newer verified one
+exists. Check `df -h /` before and after a release.
+
 After release: both workers idle (~40 MiB each), slot 1 reports `QR_REVOKED` until SuperAdmin enables policy for
 the shop, host MemAvailable ~1.1 GB, `/internal/*` 404 publicly. The slot-1 capacity drill under real pairing and
 handset acceptance remain owner-device gates.
