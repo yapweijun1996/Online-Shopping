@@ -73,6 +73,8 @@ export class Session {
         if (epoch !== this.epoch) return;
         if (events['messages.upsert']) {
           const messages = filterMessages(events['messages.upsert']);
+          // Counts only (never a number, name or text) so an operator can tell "nothing arrived" from "arrived but filtered".
+          this.log(JSON.stringify({ inbound: { type: String(events['messages.upsert'].type).slice(0, 16), received: events['messages.upsert'].messages?.length ?? 0, accepted: messages.length } }));
           const envelopeBytes = Buffer.byteLength(JSON.stringify({ generation, messages: [] }));
           let batch = []; let bytes = envelopeBytes;
           for (const message of messages) {

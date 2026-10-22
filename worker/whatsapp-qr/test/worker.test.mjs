@@ -27,6 +27,7 @@ test('pairing, binary persistence, restart and privacy', async t => {
   assert.equal(db.states.at(-1).state, 'CONNECTED');
   await emit(session, { 'messages.upsert': { type: 'notify', messages: [{ key: { id: 'in-1', remoteJid: '60123456789@s.whatsapp.net' }, messageTimestamp: 1, message: { conversation: 'fictional-private-text' } }] } });
   assert.equal(db.inbound[0].text, 'fictional-private-text');
+  assert.ok(logs.some(line => line === '{"inbound":{"type":"notify","received":1,"accepted":1}}'));
   for (const secret of ['60123456789', 'fictional-private-qr', 'fictional-private-text', token]) assert.ok(!logs.join('').includes(secret));
   const items = Object.fromEntries(Array.from({ length: 501 }, (_, i) => [String(i), { data: Buffer.from([i % 256]) }]));
   await session.auth.state.keys.set({ 'pre-key': items });
