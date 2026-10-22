@@ -25,7 +25,7 @@ const rows = [
   ['minTotal', 'Minimum total', 'Jumlah minimum', '最低金额', 'Tổng tối thiểu', 'ยอดรวมขั้นต่ำ', '最小合計', '최소 합계'],
   ['maxTotal', 'Maximum total', 'Jumlah maksimum', '最高金额', 'Tổng tối đa', 'ยอดรวมสูงสุด', '最大合計', '최대 합계'],
   ['exportCsv', 'Export CSV', 'Eksport CSV', '导出 CSV', 'Xuất CSV', 'ส่งออก CSV', 'CSV を出力', 'CSV 내보내기'],
-  ['exportDone', 'CSV file downloaded.', 'Fail CSV dimuat turun.', 'CSV 文件已下载。', 'Đã tải tệp CSV.', 'ดาวน์โหลดไฟล์ CSV แล้ว', 'CSV ファイルをダウンロードしました。', 'CSV 파일을 내려받았습니다.'],
+  ['exportDone', 'File downloaded.', 'Fail dimuat turun.', '文件已下载。', 'Đã tải tệp xuống.', 'ดาวน์โหลดไฟล์แล้ว', 'ファイルをダウンロードしました。', '파일을 내려받았습니다.'],
   ['exportTooMany', 'Too many orders match. Narrow the filters and try again.', 'Terlalu banyak pesanan sepadan. Ketatkan penapis dan cuba lagi.', '符合的订单太多，请缩小筛选范围后重试。', 'Quá nhiều đơn khớp. Hãy thu hẹp bộ lọc rồi thử lại.', 'มีคำสั่งซื้อตรงเงื่อนไขมากเกินไป โปรดจำกัดตัวกรองแล้วลองใหม่', '該当する注文が多すぎます。絞り込んでもう一度お試しください。', '일치하는 주문이 너무 많습니다. 필터를 좁혀 다시 시도하세요.'],
   ['exportFailed', 'Could not export. Try again.', 'Tidak dapat eksport. Cuba lagi.', '无法导出，请重试。', 'Không thể xuất. Hãy thử lại.', 'ส่งออกไม่สำเร็จ ลองอีกครั้ง', '出力できませんでした。もう一度お試しください。', '내보낼 수 없습니다. 다시 시도하세요.'],
   ['figuresTitle', 'Sales at a glance', 'Jualan sepintas lalu', '销售概览', 'Tổng quan doanh số', 'ภาพรวมยอดขาย', '売上の概要', '판매 현황'],
