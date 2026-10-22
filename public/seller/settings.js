@@ -299,7 +299,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
       savedState = currentState();
       currencyEdited = phoneEdited = mobileBarsEdited = textsEdited = false;
       status(root, 'settingsSaved');
-    } catch (error) { if (isCurrent()) status(root, error.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : error.field === 'sellerWhatsAppPhone' ? 'sellerWhatsAppInvalid' : 'productError', true); }
+    } catch (error) { if (isCurrent()) status(root, error.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : error.field === 'sellerWhatsAppPhone' ? 'sellerWhatsAppInvalid' : error.field?.startsWith('sender') ? 'senderInvalid' : 'productError', true); }
     finally {
       if (isCurrent()) {
         for (const input of form.querySelectorAll('input, select, textarea')) input.disabled = false;
