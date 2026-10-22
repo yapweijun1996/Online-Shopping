@@ -373,7 +373,9 @@ It restarts only the backend container (stop-before-start, so every older link i
 
 ## Resetting a default-shop seller password yourself
 
-The SuperAdmin console resets seller passwords of tenant shops only; the default shop's accounts are managed on the host. To set a temporary password for the default shop Owner (`seller`) or another of its seller accounts, run on your own computer:
+The easiest way is the SuperAdmin console (`/platform/` → Shops → Manage): the default shop and every tenant shop show their Owner username and a **Reset seller password** button. It asks for confirmation, ends the Owner's sessions and connector sign-ins, shows the Owner username and a generated temporary password once, and offers a ready-to-send email (subject and body with the seller URL, username and temporary password, telling the seller to choose a new password right after signing in; the shop enforces that change). For the default shop the console can only reset its Owner and set the WhatsApp QR policy (nothing else about it is changed there), and a sample/quick-login shop refuses the reset because it cannot enforce a password change; the audit trail records `SELLER_PASSWORD_RESET` without the password, and the seller's own account history records the actor `superadmin`.
+
+To set a temporary password for another seller account of the default shop (a Manager or Staff account), or if the console is unavailable, run on your own computer:
 
 ```sh
 scripts/gcp-reset-seller-password.sh            # Owner "seller"

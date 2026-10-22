@@ -72,3 +72,4 @@ body.auth #main{margin-inline:auto}
  .table-tools>select{grid-row:2}
  .mobile-sort>select,.mobile-sort>button{grid-row:3}
 }
+#secret-tools label{display:block;flex:1 0 100%;font-weight:600}#secret-tools textarea{display:block;width:100%;margin-top:6px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical}

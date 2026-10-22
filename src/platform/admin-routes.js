@@ -7,7 +7,8 @@ import { createQrPolicy } from './whatsapp-qr.js';
 
 export function createPlatformRoutes({ platform, secretBox, config, pool, registry, deps, defaultStore, clock = Date.now }) {
   const auth = createAdminAuth({ platform, secretBox, clock });
-  const shops = createShopManagement({ platform, pool, registry, deps, defaultStore, publicOrigin: config.publicOrigin, sellerOrigin: config.sellerOrigin, clock });
+  const shops = createShopManagement({ platform, pool, registry, deps, defaultStore, publicOrigin: config.publicOrigin, sellerOrigin: config.sellerOrigin,
+    quickLogin: Boolean(config.sellerQuickLogin || config.shopMode === 'public-demo'), clock });
   const qr = createQrPolicy({ platform, tenantSlots: config.platform.qrTenantSlots, provisionedTenantIds: config.platform.qrProvisionedTenantIds, clock });
   const limiter = new SqlLimiter(platform, 'platform-login', { limit: 10, windowMs: 15 * 60_000, now: clock });
   const challengeLimiter = new SqlLimiter(platform, 'platform-challenge', { limit: 30, windowMs: 15 * 60_000, now: clock });

@@ -13,11 +13,13 @@ export const shopView = (row) => ({ id: row.id, code: row.code, name: row.name, 
   createdAt: row.created_at, updatedAt: row.updated_at });
 const unknown = () => new ApiError(404, 'NOT_FOUND', 'Not found.');
 const conflict = () => new ApiError(409, 'STATE_CONFLICT', 'The shop changed. Refresh and try again.');
-export function createShopManagement({ platform, pool, deps, registry, defaultStore, publicOrigin, sellerOrigin, clock = Date.now }) {
+export function createShopManagement({ platform, pool, deps, registry, defaultStore, publicOrigin, sellerOrigin, quickLogin = false, clock = Date.now }) {
   const stamp = () => new Date(clock()).toISOString();
   const withUrls = (row) => ({ ...shopView(row),
     shopUrl: `${publicOrigin}/${row.is_default === 1 ? 'shop' : row.code}/`,
     sellerUrl: `${sellerOrigin}/${row.is_default === 1 ? 'seller' : row.code}/` });
+  // The default shop's seller account is not stored in the platform database: its single Owner is read from the shop itself.
+  const ownerOf = async (store) => (await store.get("SELECT username FROM seller_account WHERE role = 'OWNER' ORDER BY created_at, id LIMIT 1"))?.username ?? null;
   async function rowFor(id) {
     if (typeof id !== 'string' || !/^[0-9a-f-]{36}$/.test(id)) throw unknown();
     const row = await platform.get('SELECT * FROM tenant WHERE id = ?', id);
@@ -31,6 +33,7 @@ export function createShopManagement({ platform, pool, deps, registry, defaultSt
       const result = withUrls(row);
       if (['ACTIVE', 'SUSPENDED', 'DELETING'].includes(row.status)) {
         const store = row.is_default === 1 ? defaultStore : await pool.get(row);
+        if (row.is_default === 1) { result.sellerUsername = await ownerOf(store); result.canResetSeller = !quickLogin; }
         result.orderCount = (await store.get('SELECT COUNT(*) AS n FROM shop_order')).n;
         result.productCount = (await store.get('SELECT COUNT(*) AS n FROM product')).n;
         const qr = await store.get('SELECT state, heartbeat_at, last_error IS NOT NULL AS has_error FROM whatsapp_qr_session WHERE id = 1');
@@ -53,9 +56,9 @@ export function createShopManagement({ platform, pool, deps, registry, defaultSt
       const result = await platform.transaction(async () => {
         await lockQrPolicy(platform);
         const row = await rowFor(id);
-        if (row.is_default === 1) throw new ApiError(403, 'DEFAULT_SHOP', 'The default shop is managed on the host.');
+        if (row.is_default === 1 && action !== 'reset-seller-password') throw new ApiError(403, 'DEFAULT_SHOP', 'The default shop is managed on the host.');
         if (row.revision !== input.expectedRevision) throw conflict();
-        let status = row.status, code = row.code, name = row.name, deleteAfter = row.delete_after, event, password;
+        let status = row.status, code = row.code, name = row.name, deleteAfter = row.delete_after, event, password, username, applyReset;
         if (action === 'suspend') { if (status !== 'ACTIVE') throw conflict(); status = 'SUSPENDED'; event = 'TENANT_SUSPEND'; }
         if (action === 'resume') { if (status !== 'SUSPENDED') throw conflict(); status = 'ACTIVE'; event = 'TENANT_RESUME'; }
         if (action === 'rename') {
@@ -77,14 +80,22 @@ export function createShopManagement({ platform, pool, deps, registry, defaultSt
         if (action === 'reset-seller-password') {
           if (!['ACTIVE', 'SUSPENDED'].includes(status)) throw conflict();
           password = randomBytes(24).toString('base64url');
-          await resetPasswordFromHost(await pool.get(row), row.seller_username, password);
+          // A sample shop shares one Owner session among visitors and cannot enforce a password change.
+          if (row.is_default === 1 && quickLogin) throw new ApiError(409, 'SAMPLE_SHOP', 'Passwords cannot be reset on a sample shop.');
+          const store = row.is_default === 1 ? defaultStore : await pool.get(row);
+          username = row.is_default === 1 ? await ownerOf(store) : row.seller_username;
+          if (!username) throw new ApiError(404, 'NOT_FOUND', 'This shop has no Owner account.');
           event = 'SELLER_PASSWORD_RESET';
+          // Written last: the shop database commits on its own, so every platform write that can fail comes first.
+          applyReset = () => resetPasswordFromHost(store, username, password, { source: 'superadmin', note: 'reset by the platform administrator' });
         }
         if (action === 'suspend' || action === 'request-deletion') await disableQrBinding(platform, row.id, actor, stamp());
         await platform.run(`UPDATE tenant SET status = ?, code = ?, name = ?, delete_after = ?, revision = revision + 1, updated_at = ?
           WHERE id = ? AND status = ? AND revision = ?`, status, code, name, deleteAfter, stamp(), row.id, row.status, row.revision);
         await recordAudit(platform, { actor, action: event, tenantId: row.id, detail: code });
-        return { tenant: shopView(await rowFor(row.id)), ...(password ? { sellerPassword: password } : {}) };
+        const view = shopView(await rowFor(row.id));
+        await applyReset?.();
+        return { tenant: view, ...(password ? { sellerPassword: password, sellerUsername: username } : {}) };
       });
       registry.invalidate();
       return result;
