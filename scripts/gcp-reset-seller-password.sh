@@ -7,7 +7,8 @@
 #
 # You type the password here; it is not echoed, never placed on a command line (local or remote) and only travels through
 # the SSH session's standard input into the backend container's environment. The account must change it at the next
-# sign-in and its open sessions are ended. Tenant shops: use "Reset seller password" in the SuperAdmin console instead.
+# sign-in and its open sessions are ended. The SuperAdmin console (Shops -> Manage -> Reset seller password) can reset the Owner of any shop and prepares an email for the seller;
+# use this script for other accounts (Manager/Staff) or when the console is unavailable.
 set -euo pipefail
 PROJECT="${GCP_PROJECT:-cloudops-mcp-175269}"
 ZONE="${GCP_ZONE:-asia-southeast1-b}"

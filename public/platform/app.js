@@ -375,7 +375,7 @@ async function detail(id) {
   });
   if (shop.isDefault) {
     // The default shop is otherwise managed on the host; only its Owner account can be reset from here.
-    if (shop.status === 'ACTIVE' && shop.sellerUsername) content.append(element('h3', 'Seller account'), element('p', `The Owner account is ${shop.sellerUsername}. After a reset you get the sign-in details and an email you can send to the seller.`), resetSeller);
+    if (shop.status === 'ACTIVE' && shop.sellerUsername && shop.canResetSeller !== false) content.append(element('h3', 'Seller account'), element('p', `The Owner account is ${shop.sellerUsername}. After a reset you get the sign-in details and an email you can send to the seller.`), resetSeller);
     return;
   }
   const actions = element('div', undefined, 'actions');

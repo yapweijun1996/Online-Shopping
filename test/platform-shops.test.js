@@ -65,8 +65,27 @@ test('SuperAdmin can reset the default shop Owner: username shown, password one-
   assert.equal((await defaultStore.get("SELECT actor FROM account_event WHERE action = 'PASSWORD_RESET'")).actor, 'superadmin');
   assert.ok(!JSON.stringify(await f.platform.all('SELECT * FROM platform_audit')).includes(reset.sellerPassword));
   assert.equal((await f.platform.get("SELECT action FROM platform_audit WHERE action = 'SELLER_PASSWORD_RESET'")).action, 'SELLER_PASSWORD_RESET');
+  // A stale revision is refused before anything is touched: the new password still works.
   await assert.rejects(shops.mutate(id, 'reset-seller-password', { expectedRevision: 0 }, 'superadmin'), /changed/);
-  for (const [action, extra] of [['suspend', {}], ['rename', { code: 'other' }], ['request-deletion', { code: 'default' }]]) await assert.rejects(shops.mutate(id, action, { expectedRevision: 1, ...extra }, 'superadmin'), /host/);
+  assert.ok(await authenticate(defaultStore, 'seller', reset.sellerPassword));
+  for (const [action, extra] of [['suspend', {}], ['resume', {}], ['cancel-deletion', {}], ['rename', { code: 'other' }], ['request-deletion', { code: 'default' }]]) await assert.rejects(shops.mutate(id, action, { expectedRevision: 1, ...extra }, 'superadmin'), /host/);
+});
+
+test('the default shop reset is refused on a sample shop and when the shop has no Owner', { skip: !platformTestUrl }, async (t) => {
+  const f = await platformFixture(t), stamp = new Date().toISOString();
+  const { openDatabase } = await import('../src/db.js');
+  const { ensureAdmin } = await import('../src/auth.js');
+  const defaultStore = await openDatabase(':memory:'); t.after(() => defaultStore.close());
+  const id = '00000000-0000-4000-8000-000000000000';
+  await f.platform.run("INSERT INTO tenant(id,code,name,status,currency,is_default,created_at,updated_at) VALUES (?,'default','Current','ACTIVE','MYR',1,?,?)", id, stamp, stamp);
+  const make = (quickLogin) => createShopManagement({ ...f, defaultStore, quickLogin, registry: { invalidate() {} }, publicOrigin: 'https://shop.example.test', sellerOrigin: 'https://seller.example.test' });
+  await assert.rejects(make(false).mutate(id, 'reset-seller-password', { expectedRevision: 0 }, 'superadmin'), /no Owner/);
+  await ensureAdmin(defaultStore, 'seller', 'Original-password-1');
+  assert.equal((await make(true).detail(id)).canResetSeller, false);
+  await assert.rejects(make(true).mutate(id, 'reset-seller-password', { expectedRevision: 0 }, 'superadmin'), /sample shop/);
+  assert.ok(await authenticate(defaultStore, 'seller', 'Original-password-1'));
+  assert.equal((await f.platform.get('SELECT revision FROM tenant WHERE id = ?', id)).revision, 0);
+  assert.equal((await make(false).detail(id)).canResetSeller, true);
 });
 
 test('default shop cannot be changed and all statuses count toward the host limit', { skip: !platformTestUrl }, async (t) => {
