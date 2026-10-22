@@ -178,7 +178,7 @@ for (const engine of ['sqlite','postgres']) {
     const thread = await f.store.get('SELECT * FROM message_thread');
     assert.equal(thread.display_name, 'Ali Shop'); assert.equal(thread.unread_count, 0);
     const rows = await f.store.all('SELECT direction,status,actor,body FROM message_thread_message ORDER BY created_at,id');
-    assert.deepEqual(rows.map(r => [r.direction, r.status, r.actor]), [['IN', 'RECEIVED', null], ['OUT', 'SENT', 'phone']]);
+    assert.deepEqual(rows.map(r => [r.direction, r.status, r.actor]), [['IN', 'RECEIVED', null], ['OUT', 'SENT', 'phone:device']]);
     // A live customer message counts as unread; a later message without a name keeps the stored name.
     await f.call('inbound', batch([row('live-1', { name: '' })]));
     assert.equal((await f.store.get('SELECT unread_count, display_name FROM message_thread')).unread_count, 1);
@@ -193,6 +193,29 @@ for (const engine of ['sqlite','postgres']) {
     // Invalid markers are refused.
     assert.equal((await f.call('inbound', batch([row('bad-flag', { out: 'yes' })]))).status, 400);
     assert.equal((await f.call('inbound', batch([row('bad-flag2', { history: false })]))).status, 400);
+  });
+  test(`${engine}: a LID chat with a known phone follows erasure, and the owner's own number is never a customer thread`, options, async t => {
+    const f = await fixture(t, engine); await f.call('control');
+    const row = (id, extra = {}) => ({ ...f.inbound(id).messages[0], ...extra });
+    const batch = messages => ({ generation: 1, messages });
+    // Learn the hash of a phone through an ordinary thread, then erase it (suppression marker) and drop the thread.
+    await f.call('inbound', batch([row('seed', { peer: '60155555555@s.whatsapp.net' })]));
+    const erasedHash = (await f.store.get('SELECT phone_hash FROM message_thread')).phone_hash;
+    await f.store.run('DELETE FROM message_thread_message'); await f.store.run('DELETE FROM message_thread');
+    await f.store.run("INSERT INTO message_peer_suppression (phone_hash, reason, created_at) VALUES (?, 'ERASED', ?)", erasedHash, new Date(f.now()).toISOString());
+    assert.equal((await f.call('inbound', batch([row('lid-erased', { peer: '777@lid', phone: '60155555555', name: 'Must not keep', text: 'Must not keep' })]))).status, 200);
+    const erased = await f.store.get('SELECT * FROM message_thread');
+    assert.ok(erased.suppressed_at); assert.equal(erased.display_name, null); assert.equal(erased.peer_sealed, null);
+    assert.equal((await f.store.get('SELECT body FROM message_thread_message')).body, null);
+    // A LID chat without a known phone still works but cannot be matched to an erasure (documented residual risk).
+    assert.deepEqual((await f.call('inbound', batch([row('lid-plain', { peer: '888@lid' })]))).data, { accepted: 1, duplicates: 0 });
+    // The phone is validated.
+    assert.equal((await f.call('inbound', batch([row('bad-phone', { peer: '999@lid', phone: '12ab' })]))).status, 400);
+    // The account's own number (reported by the worker when it connects) is ignored, directly and through a LID alternate.
+    await f.call('state', { generation: 1, state: 'CONNECTED', phone: '60100000000' });
+    const before = (await f.store.get('SELECT COUNT(*) AS n FROM message_thread')).n;
+    assert.deepEqual((await f.call('inbound', batch([row('self-1', { peer: '60100000000@s.whatsapp.net', out: true }), row('self-2', { peer: '555@lid', phone: '60100000000' })]))).data, { accepted: 0, duplicates: 2 });
+    assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM message_thread')).n, before);
   });
   test(`${engine}: the phone's echo of a reply sent from the panel is not shown twice`, options, async t => {
     const f = await fixture(t, engine); await f.call('control'); await f.call('inbound', f.inbound());
@@ -240,9 +263,9 @@ for (const engine of ['sqlite','postgres']) {
     assert.equal((await f.call('state', { generation: 1, state: 'PAIRING', qr: 'fictional-qr' })).status, 204);
     f.advance(60001); await f.call('control');
     assert.equal((await f.store.get('SELECT qr_text FROM whatsapp_qr_session')).qr_text, null);
-    await f.call('state', { generation: 1, state: 'CONNECTED', phone: '60123456789' });
+    await f.call('state', { generation: 1, state: 'CONNECTED', phone: '60100000000' });
     const session = await f.store.get('SELECT * FROM whatsapp_qr_session');
-    assert.equal(session.desired, 'RUN'); assert.equal(session.phone_masked, '+60•••••6789'); assert.match(session.phone_hash, /^[a-f0-9]{64}$/);
+    assert.equal(session.desired, 'RUN'); assert.equal(session.phone_masked, '+60•••••0000'); assert.match(session.phone_hash, /^[a-f0-9]{64}$/);
     await f.call('auth', { generation: 1, version: 0, creds: 'fictional credentials' }, { method: 'PUT' });
     await f.call('inbound', f.inbound()); const sending = await f.queue(); await f.call('replies/claim', { generation: 1 });
     await f.store.run('UPDATE message_thread_message SET created_at = ? WHERE direction = ?', new Date(f.now() - 31 * 86400000).toISOString(), 'IN');

@@ -53,7 +53,7 @@ export function createQrSellerApi({ store, secretBox, shopId = 'default', now = 
       const id = chat[1], action = chat[2];
       if (!id && method === 'GET') {
         const rows = await store.all('SELECT message_thread.*, (SELECT body FROM message_thread_message WHERE thread_id = message_thread.id ORDER BY created_at DESC,id DESC LIMIT 1) AS last_message_text, (SELECT direction FROM message_thread_message WHERE thread_id = message_thread.id ORDER BY created_at DESC,id DESC LIMIT 1) AS last_message_direction FROM message_thread ORDER BY last_message_at DESC,id DESC LIMIT ? OFFSET ?', integer(url.searchParams.get('limit'), 50, 50), integer(url.searchParams.get('offset'), 0, 10000));
-        return json(200, rows.map(t => ({ id: t.id, displayName: t.display_name, peerMasked: qr.maskPeer(t), lastMessageText: t.last_message_text, lastMessageDirection: t.last_message_direction, lastMessageAt: t.last_message_at, lastInboundAt: t.last_inbound_at, unreadCount: t.unread_count, canReply: !reason(session, t, time), replyWindowEndsAt: t.last_inbound_at ? new Date(Date.parse(t.last_inbound_at) + 86400000).toISOString() : null })));
+        return json(200, rows.map(t => ({ id: t.id, displayName: t.display_name, peerMasked: qr.maskPeer(t), lastMessageText: t.last_message_text, lastMessageDirection: t.last_message_direction, lastMessageAt: t.last_message_at, lastInboundAt: t.last_inbound_at, unreadCount: t.unread_count, canReply: !reason(session, t, time) })));
       }
       const thread = await store.get('SELECT * FROM message_thread WHERE id = ?', id);
       if (!thread) return missing();

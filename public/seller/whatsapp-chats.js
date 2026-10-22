@@ -64,7 +64,7 @@ export function mountWhatsAppChats(root, cloud, { csrfToken, onUnauthorized }) {
   function renderList() {
     list.replaceChildren();
     const shown = needle ? threads.filter(item => [item.displayName, item.peerMasked, item.lastMessageText].some(value => String(value ?? '').toLowerCase().includes(needle))) : threads;
-    if (!shown.length) list.append(node('p', 'empty', 'qr-empty'));
+    if (!shown.length) list.append(node('p', threads.length ? 'noMatch' : 'empty', 'qr-empty'));
     for (const item of shown) {
       const row = button(null, () => open(item)); row.className = 'qr-thread'; row.setAttribute('aria-current', String(thread?.id === item.id));
       const label = item.displayName || item.peerMasked || '';
@@ -74,7 +74,6 @@ export function mountWhatsAppChats(root, cloud, { csrfToken, onUnauthorized }) {
       const preview = node('p'); preview.textContent = `${item.lastMessageDirection === 'OUT' ? `${text('you')}: ` : ''}${item.lastMessageText ?? ''}`;
       row.append(avatar, name, time, preview);
       if (item.unreadCount) { const badge = node('span', null, 'status-badge'); badge.textContent = String(item.unreadCount); row.append(badge); }
-      if (!item.canReply) row.append(node('small', 'closed'));
       list.append(row);
     }
     more.hidden = !listMore; more.disabled = listBusy;
@@ -93,7 +92,7 @@ export function mountWhatsAppChats(root, cloud, { csrfToken, onUnauthorized }) {
       const time = node('time'); time.dateTime = item.createdAt; try { time.textContent = Number.isNaN(created.getTime()) ? '' : created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch { time.textContent = ''; }
       bubble.append(body, time);
       if (item.direction === 'OUT') {
-        if (item.actor === 'phone') bubble.append(node('span', 'fromPhone', 'qr-from-phone'));
+        if (item.actor === 'phone:device') bubble.append(node('span', 'fromPhone', 'qr-from-phone'));
         else bubble.append(node('span', ['QUEUED','SENDING','SENT','FAILED','RECONCILE','CANCELLED'].includes(item.status) ? item.status : 'FAILED', 'status-badge'));
       }
       messages.append(bubble);

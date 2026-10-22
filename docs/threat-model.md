@@ -402,6 +402,7 @@ history import (`history`, last 30 days, at most 5000 messages) with chat/contac
 internal API validates the flags (exactly `true`), the peer pattern and body limits again; retention (30-day body purge), erasure suppression
 and sealed peer identifiers apply to imported and outgoing rows alike; the worker logs only counts. Reply windows were removed by owner
 decision, so abuse limits rest on suppression, rate limits (5/min per chat, 60/h per shop) and the 50-message queue cap.
+Residual risks: a `@lid` chat whose phone number WhatsApp did not supply cannot be matched to an erasure marker, so after an erasure and a re-link its imported history can reappear; self-chat is dropped by the worker and the backend; rows the phone sent carry the actor `phone:device`, which no seller username can equal; deduplication of the phone's own messages is bounded to their thread (no table scan); linking with history enabled makes WhatsApp resync app state, whose records are bounded by the existing auth-store limits (a very large account could hit them and show `PERSISTENCE_FAILED`; link again).
 
 The worker bearer grants sensitive access to the linked-device auth state,
 normalized inbound ingress and claimed human replies. Equal-length token bytes

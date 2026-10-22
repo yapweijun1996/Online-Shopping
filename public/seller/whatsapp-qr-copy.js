@@ -44,3 +44,6 @@ const web = {
 for (const [locale, [search, you, fromPhone, empty]] of Object.entries(web)) Object.assign(messages[locale], { qr_search: search, qr_you: you, qr_fromPhone: fromPhone, qr_empty: empty });
 // There is no reply window any more: a chat is closed only when it is erased/suppressed or the device is not linked.
 for (const locale of Object.keys(messages)) if (messages[locale].qr_suppressed) messages[locale].qr_closed = messages[locale].qr_suppressed;
+const noMatch = { en: 'No loaded chat matches your search.', ms: 'Tiada sembang dimuatkan yang sepadan dengan carian anda.', 'zh-Hans': '已加载的聊天中没有匹配的结果。', vi: 'Không có cuộc trò chuyện đã tải nào khớp với tìm kiếm.', th: 'ไม่พบแชตที่โหลดแล้วตรงกับการค้นหา', ja: '読み込み済みのチャットに一致するものはありません。', ko: '불러온 채팅 중 검색과 일치하는 항목이 없습니다.' };
+for (const [locale, value] of Object.entries(noMatch)) messages[locale].qr_noMatch = value;
+

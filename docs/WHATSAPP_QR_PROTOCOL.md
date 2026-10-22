@@ -85,13 +85,13 @@ returned only when all chunks open and the stored SHA-256 matches. `type` matche
 printable. Max 500 set/delete items per call.
 
 ### `POST /v1/inbound`
-Body `{"generation":7,"messages":[{"id":"<provider id 1..128>","peer":"<jid>","name":"<pushName/chat name or empty>","at":"<ISO time>","text":"<1..4096>","out":true,"history":true}]}`
-(max 50 per call; `out` and `history` are optional and, when present, exactly `true`). The worker sends direct one-to-one text
+Body `{"generation":7,"messages":[{"id":"<provider id 1..128>","peer":"<jid>","name":"<pushName/chat name or empty>","at":"<ISO time>","text":"<1..4096>","phone":"<8..15 digits>","out":true,"history":true}]}`
+(max 50 per call; `out` and `history` are optional and, when present, exactly `true`; `phone` is optional and only given for a `@lid` peer whose phone number WhatsApp supplied, so erasure suppression and order matching work for it). The worker sends direct one-to-one text
 messages whose `remoteJid` is `<digits>@s.whatsapp.net` or `<digits>@lid` (a device suffix is stripped): live
 `messages.upsert` of type `notify` or `append`, and the one-off `messaging-history.set` import right after linking.
 `out: true` marks a message the linked phone itself sent (stored as an outgoing `SENT` message with actor `phone`; the owner's
 push name is never used as the contact name). `history: true` marks imported history (last 30 days, newest 5000 messages;
-it never increments the unread count). Groups, broadcasts, status, newsletters, reactions and media are dropped in the worker AND validated
+it never increments the unread count; WhatsApp sends several chunks while linking and flags only the first `isLatest`, so the worker keeps the 20-minute window and counts the cap across chunks). The worker also drops the account's own self-chat (its phone number and LID) and applies the backend's validation rules (printable ASCII id, well-formed text without NUL, names clipped by code point, peer at most 30 digits, timestamps clamped to now); the backend ignores rows for the account's own number as a backstop. If the backend still refuses a batch with 400 the worker retries the rows one by one and skips only the refused ones; it never halts for it. Groups, broadcasts, status, newsletters, reactions and media are dropped in the worker AND validated
 again by the backend (peer pattern). A message whose provider id is already stored (either direction) is a duplicate; when the
 send result of a panel reply arrives after the phone's echo of it, the echo row is removed. Response `200 {"accepted": n, "duplicates": m}`.
 

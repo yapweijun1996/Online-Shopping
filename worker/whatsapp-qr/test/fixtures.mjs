@@ -51,7 +51,7 @@ export async function backend(t) {
 }
 export function fakeSocket() {
   const ev = new EventEmitter(); ev.process = callback => ev.on('batch', callback);
-  return { ev, user: { id: '60123456789:1@s.whatsapp.net' }, sent: [], ended: 0, loggedOut: 0,
+  return { ev, user: { id: '60100000000:1@s.whatsapp.net' }, sent: [], ended: 0, loggedOut: 0,
     async sendMessage(peer, body) { this.sent.push({ peer, body }); return { key: { id: 'sent-id' } }; },
     async logout() { this.loggedOut++; }, end() { this.ended++; } };
 }

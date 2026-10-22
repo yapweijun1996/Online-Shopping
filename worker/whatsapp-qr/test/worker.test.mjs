@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { BufferJSON, proto, DisconnectReason } from '@whiskeysockets/baileys';
 import { Session, backoff } from '../src/session.js';
+import { ApiError } from '../src/client.js';
 import { loadAuth } from '../src/auth-state.js';
 import { filterHistory, filterMessages } from '../src/filters.js';
 import { backend, fakeSocket, emit, token } from './fixtures.mjs';
@@ -131,18 +132,54 @@ test('filter keeps direct text only, marks the phone\'s own messages and normali
   assert.equal(filterMessages({ type: 'append', messages: [message] }).length, 1);
   assert.deepEqual(filterMessages({ type: 'prepend', messages: [message] }), []);
 });
-test('history is imported once, only right after linking, and delivered as marked history rows', async t => {
-  const { db, session, logs } = await setup(t);
-  const event = { isLatest: true, chats: [{ id: '60123456789@s.whatsapp.net', name: 'Ali' }], contacts: [], messages: [{ key: { id: 'h-1', remoteJid: '60123456789@s.whatsapp.net' }, messageTimestamp: 0, message: { conversation: 'old-private-text' } }, { key: { id: 'h-2', remoteJid: '60123456789@s.whatsapp.net', fromMe: true }, messageTimestamp: 0, message: { conversation: 'my-private-text' } }] };
-  await emit(session, { 'messaging-history.set': event });
+test('history is imported only while linking: every chunk counts, the cap is cumulative, the window closes by time', async t => {
+  const { db, session, logs, advance } = await setup(t);
+  const chunk = (id, text = 'old-private-text', extra = {}) => ({ isLatest: false, chats: [{ id: '60123456789@s.whatsapp.net', name: 'Ali' }], contacts: [], messages: [{ key: { id, remoteJid: '60123456789@s.whatsapp.net', ...extra }, messageTimestamp: 0, message: { conversation: text } }] });
+  await emit(session, { 'messaging-history.set': chunk('h-0') });
   assert.equal(db.inbound.length, 0, 'ignored while no device was linked');
   await emit(session, { 'connection.update': { qr: 'fictional-private-qr' } });
-  await emit(session, { 'messaging-history.set': event });
+  // WhatsApp flags only the FIRST chunk isLatest; later chunks must still be imported.
+  await emit(session, { 'messaging-history.set': { ...chunk('h-1'), isLatest: true } });
+  await emit(session, { 'messaging-history.set': chunk('h-2', 'my-private-text', { fromMe: true }) });
   assert.deepEqual(db.inbound.map(row => [row.id, row.name, Boolean(row.out), row.history]), [['h-1', 'Ali', false, true], ['h-2', '', true, true]]);
-  await emit(session, { 'messaging-history.set': event });
-  assert.equal(db.inbound.length, 2, 'the window closes after the latest chunk');
-  assert.ok(logs.some(line => line === '{"history":{"received":2,"accepted":2,"latest":true}}'));
+  assert.ok(logs.some(line => line === '{"history":{"received":1,"accepted":1,"total":2}}'));
+  advance(21 * 60000);
+  await emit(session, { 'messaging-history.set': chunk('h-3') });
+  assert.equal(db.inbound.length, 2, 'the window closes after 20 minutes');
   for (const secret of ['old-private-text', 'my-private-text', '60123456789', 'Ali']) assert.ok(!logs.join('').includes(secret));
+});
+test('one refused row never halts the worker: the batch is retried row by row', async t => {
+  const { db, client, session } = await setup(t);
+  await emit(session, { 'connection.update': { connection: 'open' } });
+  const original = client.request.bind(client);
+  client.request = async (path, body, ...rest) => {
+    if (path === '/v1/inbound' && body.messages.some(row => row.text === 'poison')) throw new ApiError('BACKEND_ERROR', 400);
+    return original(path, body, ...rest);
+  };
+  const live = (id, text) => ({ key: { id, remoteJid: '60123456789@s.whatsapp.net' }, messageTimestamp: 1, message: { conversation: text } });
+  await emit(session, { 'messages.upsert': { type: 'notify', messages: [live('ok-1', 'fine'), live('bad-1', 'poison'), live('ok-2', 'also fine')] } });
+  assert.deepEqual(db.inbound.map(row => row.id), ['ok-1', 'ok-2']);
+  assert.equal(session.halted, false);
+});
+test('the account\'s own self-chat is never imported', async t => {
+  const { db, session } = await setup(t);
+  session.socket.user = { id: '60199990000:7@s.whatsapp.net', lid: '98765432:7@lid' };
+  await emit(session, { 'connection.update': { connection: 'open' } });
+  const msg = (id, jid, extra = {}) => ({ key: { id, remoteJid: jid, ...extra }, messageTimestamp: 1, message: { conversation: 'private note' } });
+  await emit(session, { 'messages.upsert': { type: 'notify', messages: [msg('self-1', '60199990000@s.whatsapp.net', { fromMe: true }), msg('self-2', '98765432@lid'), msg('cust-1', '60123456789@s.whatsapp.net')] } });
+  assert.deepEqual(db.inbound.map(row => row.id), ['cust-1']);
+});
+test('filter rows always satisfy the backend rules: ids, well-formed text, code-point name clipping, peer length, future clock, LID phone', () => {
+  const base = { key: { id: 'id', remoteJid: '60123456789@s.whatsapp.net' }, messageTimestamp: 1, pushName: 'N', message: { conversation: 'hello' } };
+  const run = (value, options) => filterMessages({ type: 'notify', messages: [value] }, options);
+  for (const bad of [{ message: { conversation: 'a\0b' } }, { message: { conversation: 'lone \ud800 surrogate' } }, { key: { ...base.key, id: 'caf\u00e9' } }, { key: { ...base.key, id: 'x'.repeat(129) } }, { key: { ...base.key, remoteJid: `${'1'.repeat(31)}@s.whatsapp.net` } }]) assert.deepEqual(run({ ...base, ...bad }), []);
+  const emoji = '\u{1F600}'.repeat(150), clipped = run({ ...base, pushName: emoji })[0].name;
+  assert.equal([...clipped].length, 150); assert.ok(clipped.isWellFormed());
+  assert.equal(run({ ...base, pushName: 'x'.repeat(250) })[0].name.length, 200);
+  assert.equal(run({ ...base, messageTimestamp: 4102444800 }, { now: Date.UTC(2026, 9, 22) })[0].at, '2026-10-22T00:00:00.000Z');
+  const lid = { ...base, key: { ...base.key, remoteJid: '555@lid', remoteJidAlt: '60123456789@s.whatsapp.net' } };
+  assert.equal(run(lid)[0].phone, '60123456789'); assert.equal(run({ ...lid, key: { ...lid.key, remoteJidAlt: undefined } })[0].phone, undefined);
+  assert.deepEqual(run(lid, { self: new Set(['60123456789']) }), []);
 });
 test('history filter keeps the last 30 days of direct text, newest first-capped, with names from chats and contacts', () => {
   const now = Date.UTC(2026, 9, 22), second = ms => Math.floor(ms / 1000);
@@ -151,7 +188,7 @@ test('history filter keeps the last 30 days of direct text, newest first-capped,
     chats: [{ id: '60111111111@s.whatsapp.net', name: 'Ali Shop' }], contacts: [{ id: '60122222222@s.whatsapp.net', notify: 'Siti' }],
     messages: [text('a', '60111111111@s.whatsapp.net', 1), text('b', '60111111111@s.whatsapp.net', 31), text('c', '60122222222@s.whatsapp.net', 2, { key: { fromMe: true } }), text('d', '120363@g.us', 1), text('e', '60122222222@s.whatsapp.net', 3, { rest: { pushName: 'Push Siti' } })]
   };
-  const rows = filterHistory(event, now);
+  const rows = filterHistory(event, { now });
   assert.deepEqual(rows.map(row => [row.id, row.name, Boolean(row.out), row.history]), [['e', 'Push Siti', false, true], ['c', '', true, true], ['a', 'Ali Shop', false, true]]);
   assert.ok(rows.every((row, index) => index === 0 || rows[index - 1].at <= row.at));
 });

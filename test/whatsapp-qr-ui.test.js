@@ -157,7 +157,7 @@ test('Chats look like WhatsApp Web: avatar, You: preview, search, day separators
     { ...thread, id: 't1', displayName: 'Ali Shop', lastMessageText: 'See you', lastMessageDirection: 'OUT', unreadCount: 0, lastMessageAt: day(0), lastInboundAt: day(40), replyWindowEndsAt: day(39) },
     { ...thread, id: 't2', displayName: '  Siti', peerMasked: '+••••8780', lastMessageText: 'Hello', lastMessageDirection: 'IN', unreadCount: 3, lastMessageAt: day(2) }
   ];
-  const stored = [{ id: 'a', text: 'old in', direction: 'IN', createdAt: day(2) }, { id: 'b', text: 'phone out', direction: 'OUT', status: 'SENT', actor: 'phone', createdAt: day(2) }, { id: 'c', text: 'panel out', direction: 'OUT', status: 'SENT', actor: 'owner', createdAt: day(0) }];
+  const stored = [{ id: 'a', text: 'old in', direction: 'IN', createdAt: day(2) }, { id: 'b', text: 'phone out', direction: 'OUT', status: 'SENT', actor: 'phone:device', createdAt: day(2) }, { id: 'c', text: 'panel out', direction: 'OUT', status: 'SENT', actor: 'owner', createdAt: day(0) }];
   globalThis.fetch = async path => path.includes('whatsapp-qr') ? response({ ...initial, state: 'CONNECTED', desired: 'RUN' }) : path.includes('/messages') ? response(stored) : path.includes('/orders') ? response({ suggested: [] }) : path.includes('/read') ? response({ unreadCount: 0 }) : response(rows);
   const page = mountWhatsAppChats(root, cloud, options); await flush();
   try {
