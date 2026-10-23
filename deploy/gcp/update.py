@@ -205,7 +205,7 @@ class Updater:
         # Rollback and recovery enter here too: refuse before touching containers.
         secrets = ('admin-password', 'postgres-password', 'integration-keys',
                    'platform-password', 'provisioner-password', 'whatsapp-qr-token',
-                   'whatsapp-qr-token-slot1', 'whatsapp-qr-bindings.json')
+                   'whatsapp-qr-token-slot1', 'whatsapp-qr-bindings.json', 'ai-api-key')
         if initial:
             secrets += ('postgres-owner-password',)
         directory = Path(self.runtime()['SECRETS_DIR'])
@@ -278,7 +278,7 @@ class Updater:
             if not line or line.startswith('#'):
                 continue
             key, separator, value = line.partition('=')
-            if not separator or key in values or key not in ('SHOP_HOST', 'SELLER_HOST', 'ADMIN_USERNAME', 'SECRETS_DIR', 'PLATFORM_ENABLED', 'PLATFORM_ADMIN_CLAIM_ENABLED', 'INTEGRATION_KEY_FILE', 'MCP_ENABLED', 'MCP_REDIRECT_URIS', 'WHATSAPP_QR_ENABLED', 'WHATSAPP_QR_SLOT1_ENABLED', 'WHATSAPP_QR_BINDINGS_FILE'):
+            if not separator or key in values or key not in ('SHOP_HOST', 'SELLER_HOST', 'ADMIN_USERNAME', 'SECRETS_DIR', 'PLATFORM_ENABLED', 'PLATFORM_ADMIN_CLAIM_ENABLED', 'INTEGRATION_KEY_FILE', 'MCP_ENABLED', 'MCP_REDIRECT_URIS', 'AI_ENABLED', 'AI_MODEL', 'WHATSAPP_QR_ENABLED', 'WHATSAPP_QR_SLOT1_ENABLED', 'WHATSAPP_QR_BINDINGS_FILE'):
                 raise ValueError('Invalid runtime configuration')
             values[key] = value
         if not {'SHOP_HOST', 'SELLER_HOST', 'ADMIN_USERNAME', 'SECRETS_DIR'} <= set(values):
@@ -315,6 +315,15 @@ class Updater:
             raise ValueError('Slot 1 requires the bindings manifest')
         if values.get('WHATSAPP_QR_ENABLED') == '1' and not values.get('INTEGRATION_KEY_FILE'):
             raise ValueError('WhatsApp QR requires the integration key')
+        # AI assistant: the key file always exists (placeholder while off); switching it on needs a real key and valid model id.
+        if values.get('AI_ENABLED', '0') not in ('0', '1'):
+            raise ValueError('Invalid AI switch')
+        if not re.fullmatch(r'[a-z0-9.-]{3,64}', values.get('AI_MODEL', 'claude-haiku-5-5')):
+            raise ValueError('Invalid AI model')
+        if values.get('AI_ENABLED') == '1':
+            key = Path(secret_dir) / 'ai-api-key'
+            if not key.is_file() or not 20 <= key.stat().st_size <= 400:
+                raise ValueError('AI requires a real API key file')
         return values
 
     def local_fingerprint(self):
