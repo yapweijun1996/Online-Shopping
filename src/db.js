@@ -1,3 +1,4 @@
+import { migrateAi } from './ai/schema.js';
 import { migrateWhatsAppQr } from './whatsapp-qr/schema.js';
 import { migrateSenderSettings } from './sender-settings.js';
 import { randomUUID } from 'node:crypto';
@@ -7,7 +8,7 @@ import { migrateListings } from './listings.js';
 import { migrateSharedGalleries } from './product-gallery.js';
 import { migrateOAuth } from './mcp/schema.js';
 
-export const SCHEMA_VERSION = 27;
+export const SCHEMA_VERSION = 28;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -611,6 +612,13 @@ export async function migrateStore(store) {
     });
     version = 27;
   }
+  if (version === 27) {
+    await store.transaction(async () => {
+      await migrateAi(store);
+      await store.setSchemaVersion(28);
+    });
+    version = 28;
+  }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }
 
@@ -642,10 +650,11 @@ export async function ready(store) {
       Boolean(await store.get('SELECT id FROM order_sequence WHERE id = 1')) &&
       Boolean(await store.get('SELECT id FROM company_setting WHERE id = 1')) &&
       Boolean(await store.get('SELECT id FROM shop_setup WHERE id = 1')) &&
+      Boolean(await store.get('SELECT id FROM ai_setting WHERE id = 1')) &&
       (await Promise.all(['session', 'product', 'general_code', 'shop_order', 'delivery', 'order_item', 'order_event', 'checkout_idempotency',
         'rate_limit_attempt', 'shop_setup', 'product_gallery_image', 'oauth_client', 'oauth_authorization_request',
         'oauth_grant', 'oauth_authorization_code', 'oauth_token', 'mcp_audit',
-        'whatsapp_qr_session', 'whatsapp_qr_auth', 'message_peer_suppression', 'message_thread', 'message_thread_message']
+        'whatsapp_qr_session', 'whatsapp_qr_auth', 'message_peer_suppression', 'message_thread', 'message_thread_message', 'ai_setting', 'ai_usage', 'ai_suggestion_audit']
         .map(async (table) => Array.isArray(await store.all(`SELECT * FROM ${table} LIMIT 0`))))).every(Boolean);
   } catch {
     return false;

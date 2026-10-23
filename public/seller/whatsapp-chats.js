@@ -1,5 +1,6 @@
 import { translate, formatDate } from '../shared/i18n.js';
 import { node, button, text, client, failureText, policyFailure, watch } from './whatsapp-qr-ui.js';
+import { mountAiSuggestions } from './ai-suggestions.js';
 export function mountWhatsAppChats(root, cloud, { csrfToken, onUnauthorized }) {
   const tabs = node('div', null, 'qr-tabs'); tabs.hidden = true;
   const panel = node('section', null, 'qr-inbox'); panel.hidden = true;
@@ -32,7 +33,7 @@ export function mountWhatsAppChats(root, cloud, { csrfToken, onUnauthorized }) {
   let needle = '';
   search.addEventListener('input', () => { needle = search.value.trim().toLowerCase(); renderList(); });
   listPane.append(search, list, more); panel.append(listPane, conversation, alert);
-  const back = button('back', () => { ++epoch; thread = null; intent = null; history = []; textarea.value = ''; panel.classList.remove('qr-thread-open'); conversation.hidden = true; renderList(); list.querySelector('button')?.focus(); });
+  const back = button('back', () => { ++epoch; ai.clear(); thread = null; intent = null; history = []; textarea.value = ''; panel.classList.remove('qr-thread-open'); conversation.hidden = true; renderList(); list.querySelector('button')?.focus(); });
   const heading = node('h3'), suggestions = node('div', null, 'qr-order-chips'), messages = node('div', null, 'qr-bubbles');
   const older = button('earlier', () => loadMessages(true));
   const form = node('form', null, 'qr-composer'), label = node('label'), textarea = node('textarea');
@@ -41,6 +42,7 @@ export function mountWhatsAppChats(root, cloud, { csrfToken, onUnauthorized }) {
   const counter = node('span'), reason = node('p'), send = node('button', 'send', 'primary-button'); send.type = 'submit';
   reason.setAttribute('aria-live', 'polite'); form.append(label, counter, reason, send);
   conversation.append(back, heading, suggestions, older, messages, form); conversation.hidden = true;
+  const ai = mountAiSuggestions(form, textarea, { request, current: () => lifecycle.current(), changed: eligibility, lazySettings: true });
   function select(value) {
     selected = value; cloud.hidden = value; panel.hidden = !value;
     cloudTab.setAttribute('aria-pressed', String(!value)); chatTab.setAttribute('aria-pressed', String(value));
@@ -53,6 +55,7 @@ export function mountWhatsAppChats(root, cloud, { csrfToken, onUnauthorized }) {
     reason.textContent = wait > 0 ? text('retry', wait) : why ? text(why) : '';
     textarea.disabled = Boolean(why) || sending; send.disabled = Boolean(why) || wait > 0 || sending || !textarea.value.trim();
     counter.textContent = `${textarea.value.length} / 4096`;
+    ai.update(thread.id, !why && wait <= 0 && !sending);
   }
   const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
   // Today shows the clock time like WhatsApp Web; older chats show the date.
@@ -116,6 +119,7 @@ export function mountWhatsAppChats(root, cloud, { csrfToken, onUnauthorized }) {
   }
   async function open(item) {
     const ticket = ++epoch; thread = item; history = []; orders = []; earlier = true; intent = null; textarea.value = ''; alert.textContent = ''; retryUntil = 0;
+    ai.clear(item.id);
     heading.textContent = item.displayName || item.peerMasked; suggestions.replaceChildren(); messages.replaceChildren(); conversation.hidden = false; panel.classList.add('qr-thread-open');
     eligibility(); heading.tabIndex = -1; heading.focus();
     loadMessages(false, true);
@@ -173,10 +177,10 @@ export function mountWhatsAppChats(root, cloud, { csrfToken, onUnauthorized }) {
     alert.textContent = failureText(error);
   });
   return {
-    refreshLocale() { translate(tabs); translate(panel); textarea.setAttribute('aria-label', text('draft')); search.setAttribute('aria-label', text('search')); search.placeholder = text('search'); renderList(); renderOrders(); renderMessages(); },
-    hasUnsavedChanges: () => Boolean(textarea.value.trim()) || sending,
+    refreshLocale() { translate(tabs); translate(panel); ai.refreshLocale(); textarea.setAttribute('aria-label', text('draft')); search.setAttribute('aria-label', text('search')); search.placeholder = text('search'); renderList(); renderOrders(); renderMessages(); },
+    hasUnsavedChanges: () => Boolean(textarea.value.trim()) || sending || ai.isBusy(),
     draftSignature: () => JSON.stringify([thread?.id, textarea.value]),
-    isBusy: () => sending,
-    dispose() { ++epoch; lifecycle.dispose(); textarea.value = ''; intent = null; history = []; panel.remove(); tabs.remove(); },
+    isBusy: () => sending || ai.isBusy(),
+    dispose() { ++epoch; ai.clear(); lifecycle.dispose(); textarea.value = ''; intent = null; history = []; panel.remove(); tabs.remove(); },
   };
 }

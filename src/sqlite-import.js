@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 export const importTables = ['admin', 'seller_account', 'account_event', 'session', 'general_code', 'company_setting', 'shop_setup', 'option_type', 'option_value', 'listing', 'product',
   'product_option', 'product_gallery_image', 'order_sequence', 'shop_order', 'delivery', 'order_item', 'order_event', 'order_note', 'product_event',
   'checkout_idempotency', 'rate_limit_attempt', 'integration_connection', 'integration_audit', 'webhook_receipt', 'message_outbox', 'message_inbound',
-  'oauth_client', 'oauth_authorization_request', 'oauth_grant', 'oauth_authorization_code', 'oauth_token', 'mcp_audit'];
+  'oauth_client', 'oauth_authorization_request', 'oauth_grant', 'oauth_authorization_code', 'oauth_token', 'mcp_audit', 'ai_setting', 'ai_usage', 'ai_suggestion_audit'];
 
 // QR device identity, sealed peers and reply intents must not reactivate after a restore.
 // Keep the fresh OFF/IDLE session; do not import auth, QR material or dependent history.
@@ -22,7 +22,7 @@ export async function importSqlite(source, target) {
   if (source.dialect !== 'sqlite' || target.dialect !== 'postgres') throw new Error('Expected SQLite source and PostgreSQL target.');
   if (await source.schemaVersion() !== await target.schemaVersion()) throw new Error('Schema versions do not match.');
   return target.transaction(async () => {
-    const defaults = new Set(['company_setting', 'shop_setup', 'order_sequence']);
+    const defaults = new Set(['company_setting', 'shop_setup', 'order_sequence', 'ai_setting']);
     for (const table of importTables) {
       const rows = await target.all(`SELECT * FROM ${table}`);
       if ((!defaults.has(table) && rows.length) || (defaults.has(table) && rows.length !== 1)) throw new Error('Import destination must be a fresh baseline.');

@@ -2,6 +2,18 @@
 
 This deployment is separate from OrbStack/Cloudflare. The existing VM is now e2-small (2 GiB RAM), shared with other containers. Preserve its existing PostgreSQL volume; never reinitialize it to enable platform mode.
 
+## AI assistant
+
+AI suggestions require runtime `AI_ENABLED`, `AI_MODEL` and `AI_API_KEY_FILE`.
+Provision the API key as a backend-only, read-only secret file readable by the
+runtime UID; never inline it in environment values, images or frontend files.
+Install the complete schema 28 (including `ai_suggestion_audit`) before enabling.
+The per-shop switch remains off until an owner enables it. Review external LLM
+privacy/retention terms and customer notice first. This release is human-reviewed
+level 1 only: no automatic send or order creation. See
+[AI_ASSISTANT_DESIGN.md](AI_ASSISTANT_DESIGN.md). No deploy manifest is changed.
+
+
 ## Trust boundary and runtime policy
 
 The public gateway terminates TLS for `demoonlineshopping.xyz` and `seller.demoonlineshopping.xyz`, preserves `Host`, and **overwrites** `X-Real-IP` with the client IP from the connection. Connect only that trusted gateway to the external `online-shopping-edge` network and proxy both hosts to `online-shopping-frontend:80`. Do not expose application or PostgreSQL ports. Anyone allowed onto this network could forge client IP headers. There are no Cloudflare headers or services in this deployment.

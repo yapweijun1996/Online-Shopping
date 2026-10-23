@@ -78,6 +78,10 @@ GCP policy (`compose.gcp.yaml`) attaches backend alone to non-internal IPv4 egre
 
 The optional QR worker retains plaintext auth in memory. Its token or process compromise grants linked-account access; non-root/read-only root do not protect live memory. Use a protected private network: HTTP is not transport encryption. Code-only logs omit QR, JIDs, phone, text, auth and token. Unknown sends require backend lease reconciliation, never automatic retries. Remote logout is best effort; unlink in the official app when uncertain. The owner accepts libsignal GPL-3.0 obligations and unofficial-client ToS/number-ban risk, not immunity. Network isolation, retention, seller acknowledgement, backend fencing and host memory admission require separate backend/deployment verification; the isolated worker job activates nothing.
 
+Seller AI draft controls (`public/seller/ai-settings.js`, `ai-suggestions.js`) expose only the existing authenticated AI endpoints. The Owner-only settings tab waits for host availability; server authorization remains authoritative. Suggestions and read-only order cards use `createElement`/`textContent`, never provider HTML. They cannot send messages or create orders; the seller must explicitly use the existing Send flow. Thread-generation fencing prevents a late suggestion from being inserted into another conversation. Clipboard access is explicit and failure-safe. The privacy notice identifies Anthropic processing; the data-minimization limitations in `AI_ASSISTANT_DESIGN.md` still apply.
+
+AI suggestion backend uses two short transactions: serialized eligibility/rate/cap checks plus a conservative usage reservation, then final usage/audit persistence after provider work. No external LLM call holds the shop transaction lock. Provider responses are bounded, partial/refused output is rejected, opaque thinking blocks are forwarded unchanged only inside the tool loop, and read-only tools never disclose exact inventory. Level zero disables suggestions. Settings audit records the authenticated actor without notes; usage and AI audit metadata expire after 90 days via bounded request-time deletion.
+
 ## 4. Entry Points
 
 All HTTP routes are in `src/app.js` (path constants at the top, handlers in `route()`).
@@ -120,6 +124,7 @@ All HTTP routes are in `src/app.js` (path constants at the top, handlers in `rou
   existing QR data rather than silently skipping it. Unofficial linking remains
   a number-ban/session-theft risk; acknowledgement is not buyer consent.
 - Settings: `/api/v1/seller/categories`, `/api/v1/seller/company-settings`, `GET /api/v1/seller/integrations` (static catalog, no credentials).
+- AI settings (schema 28): `GET/PATCH /api/v1/seller/ai-settings` and tenant-prefixed equivalents use the resolved shop store and seller session. GET requires `chats.reply`; PATCH requires Owner-only `ai.settings`, exact Origin, CSRF and revision CAS. Host-disabled routes return 404; all responses are no-store. `AI_API_KEY_FILE` is read only when explicitly enabled, remains server-only, and enabled AI refuses quick login/public-demo. `ai_usage` stores only UTC token-count metadata, actor/thread identifiers and outcome, never prompts, customer text or model output. These identifiers remain pseudonymous data. `POST /api/v1/seller/chats/:id/suggestions` enforces the daily cap and thread/shop request limits before sending selected chat text to Anthropic; see the AI suggestion provider boundary below.
 - Orders: `GET /api/v1/seller/orders` (status, search ≤40 chars, `limit` ≤100, `offset` ≤10 000), `GET /api/v1/seller/orders/summary`, `GET /api/v1/seller/orders/{uuid}` (full buyer and delivery PII), `POST /api/v1/seller/orders/{uuid}/{confirm|reject|ship|deliver|cancel}` (`src/seller-orders.js`).
 - Shipping PII export: `GET /api/v1/seller/orders/shipping-list.csv`, session plus `orders.fulfil`, intentionally available to Owner/Manager/Staff who already view recipient addresses. This does not broaden the Owner-only accounting `data.export` capability. Quick-login sample sites are refused. Tenant-resolved store, shared parameterized filters, 500 non-erased delivery-row limit, erased-contact rows omitted with `X-Skipped-Erased`, no-store/nosniff attachment. Every cell uses shared formula safety, including whitespace-prefixed formulas and E.164 `+` phones. No Origin/CSRF is needed for this read-only GET. The downloaded file contains PII outside application custody; sellers must protect it. No export audit event is persisted beyond the HTTP request, and no order status/provider effect occurs.
 - Schema 26 adds `GET /api/v1/seller/orders/shipping-list.xlsx` with the same shipping-list controls as CSV. All XLSX cells are inline strings, never formulas or numeric coercions; XML is escaped and illegal XML characters stripped. Both exports include private sender/pickup settings, managed only through the existing Owner-only company-settings boundary. No new provider calls or public sender exposure.
@@ -466,3 +471,31 @@ Controller activation/rollback removes both workers before new backend bindings
 start. Host rebind requires policy drain, auth fence and token rotation.
 Restore requires disabled/cleanup-pending reservations and advanced epochs;
 never auto-connect restored enabled sessions. See the protected GCP runbook.
+
+## AI suggestion provider boundary (schema 28)
+
+Authenticated `chats.reply` sellers may request human-reviewed suggestions.
+The existing QR mutation Origin/CSRF and tenant-store gates apply. Default-off
+host and shop switches, daily token accounting and per-thread/shop SQL limits
+gate outbound requests. Suppressed/erased threads are excluded.
+
+Selected customer chat text crosses a new boundary to the external Anthropic
+Messages API. Requests use a fixed HTTPS URL, no redirects, an abort deadline
+and a 512 KiB response cap. Backend-only file-loaded keys never enter tool
+results or returned errors. Operators must assess provider retention and obtain
+appropriate customer notice; local nonretention does not imply provider deletion.
+
+Read-only bounded tools enforce phone-hash order ownership and reject erased
+contacts. Unauthorized and nonexistent orders return identical results. Exact
+stock, buyer/recipient contacts and other orders are not tool outputs.
+Model-supplied prices never control totals: drafts are reconstructed from the
+active catalog and cannot send messages or create orders. Prompt delimiters,
+PII minimization and handoff instructions reduce exposure but do not make
+prompt injection impossible. Server authorization and mandatory human review
+remain the security boundary.
+
+Usage and suggestion audit rows contain actor/thread metadata, counts and
+outcomes only; prompts, transcripts and generated suggestions are not persisted
+by this feature. Existing chat retention remains unchanged. See
+[AI_ASSISTANT_DESIGN.md](AI_ASSISTANT_DESIGN.md) for limits and operational gates.
+

@@ -2,6 +2,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import { ApiError, json, readJson } from '../http.js';
 import { SqlLimiter } from '../limiter.js';
 import { createWhatsAppQrStore } from './store.js';
+import { orderMatchesThread } from './order-match.js';
+import { getAiSettings, todayTokens, recordUsage } from '../ai/settings.js';
+import { suggestReply } from '../ai/agent.js';
 
 const missing = () => { throw new ApiError(404, 'NOT_FOUND', 'Not found.'); };
 const message = row => ({ id: row.id, direction: row.direction, text: row.body, status: row.status, errorCode: row.error_code, createdAt: row.created_at, actor: row.actor });
@@ -11,22 +14,23 @@ const integer = (value, fallback, max) => {
   if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) > max) throw new ApiError(400, 'INVALID_QUERY', 'Invalid pagination.');
   return Number(value);
 };
-export function createQrSellerApi({ store, secretBox, shopId = 'default', now = Date.now }) {
+export function createQrSellerApi({ store, secretBox, shopId = 'default', now = Date.now, ai, provider }) {
   const qr = createWhatsAppQrStore({ store, secretBox, shopId, now });
   const limiter = (bucket, limit, windowMs) => new SqlLimiter(store, bucket, { limit, windowMs, now });
   const shopPair = limiter('qr-pair-shop', 3, 900000), addressPair = limiter('qr-pair-address', 5, 900000);
   const shopReply = limiter('qr-reply-shop', 60, 3600000), threadReply = limiter('qr-reply-thread', 5, 60000);
+  const shopSuggest = limiter('ai-suggest-shop', 40, 3600000), threadSuggest = limiter('ai-suggest-thread', 6, 60000);
   const limited = seconds => json(429, { error: { code: 'RATE_LIMITED', message: 'Too many attempts.' } }, { 'Retry-After': String(seconds), 'Cache-Control': 'no-store' });
   const denyLimit = seconds => { const error = new ApiError(429, 'RATE_LIMITED', 'Too many attempts.'); error.retryAfter = seconds; throw error; };
   return async ({ request, url, account, allow, clientAddress }) => {
     const path = url.pathname, method = request.method;
     const connection = /^\/api\/v1\/seller\/integrations\/whatsapp-qr(?:\/(acknowledge|pair|disconnect))?$/.exec(path);
-    const chat = /^\/api\/v1\/seller\/chats(?:\/([^/]+)\/(messages|read|replies|orders))?$/.exec(path);
+    const chat = /^\/api\/v1\/seller\/chats(?:\/([^/]+)\/(messages|read|replies|orders|suggestions))?$/.exec(path);
     if (!connection && !chat) return missing();
     if (connection && method === 'POST') allow('settings.write');
-    if (chat) allow(chat[2] === 'replies' ? 'chats.reply' : 'orders.fulfil');
+    if (chat) allow(['replies', 'suggestions'].includes(chat[2]) ? 'chats.reply' : 'orders.fulfil');
     const body = method === 'POST' ? await readJson(request, 32768) : null;
-    return qr.sellerTransaction(async (session, time, at) => {
+    const prepared = await qr.sellerTransaction(async (session, time, at) => {
       if (connection) {
         const status = () => ({ available: true, desired: session.desired, state: session.state, generation: session.generation, phoneMasked: session.phone_masked, lastError: session.last_error, acknowledged: session.ack_notice_version === '1', qr: account.role === 'OWNER' && session.state === 'PAIRING' && session.qr_expires_at > at ? session.qr_text : null, qrExpiresAt: session.state === 'PAIRING' && session.qr_expires_at > at ? session.qr_expires_at : null });
         if (method === 'GET' && !connection[1]) return json(200, status());
@@ -75,11 +79,28 @@ export function createQrSellerApi({ store, secretBox, shopId = 'default', now = 
         }
         const matches = [];
         for (const order of orders) {
-          const phones = [order.buyer_phone, ...(phonesByOrder.get(order.id) ?? [])];
-          if ((await Promise.all(phones.filter(Boolean).map(p => qr.phoneHash(p, session)))).includes(thread.phone_hash)) matches.push({ id: order.id, orderNo: order.order_no, status: order.status, submittedAt: order.submitted_at });
+          if (await orderMatchesThread({ store, qr, session, thread, order, recipientPhones: phonesByOrder.get(order.id) ?? [] })) matches.push({ id: order.id, orderNo: order.order_no, status: order.status, submittedAt: order.submitted_at });
           if (matches.length === 5) break;
         }
         return json(200, { suggested: matches });
+      }
+      if (method === 'POST' && action === 'suggestions') {
+        if (!ai?.enabled) return missing();
+        const cutoff = new Date(time - 90 * 86400000).toISOString();
+        for (const table of ['ai_usage', 'ai_suggestion_audit']) {
+          await store.run(`DELETE FROM ${table} WHERE id IN (SELECT id FROM ${table} WHERE created_at < ? ORDER BY created_at,id LIMIT 200)`, cutoff);
+        }
+        const settings = await getAiSettings(store);
+        if (!settings.enabled || settings.level === 0) return json(409, { error: { code: 'AI_DISABLED', message: 'AI assistance is disabled.' } });
+        if (thread.suppressed_at || !thread.peer_sealed) return json(409, { error: { code: 'NOT_ELIGIBLE', message: 'This thread is not eligible.' } });
+        if (!await shopSuggest.attempt(shopId)) return limited(3600);
+        if (!await threadSuggest.attempt(id)) return limited(60);
+        if (await todayTokens(store, time) >= settings.dailyTokenCap) {
+          return json(429, { error: { code: 'AI_CAP', message: 'Daily AI allowance reached.' } }, { 'Retry-After': '3600' });
+        }
+        const history = (await store.all('SELECT direction,body FROM message_thread_message WHERE thread_id = ? AND body IS NOT NULL ORDER BY created_at DESC,id DESC LIMIT 30', id)).reverse();
+        const reservation = await recordUsage(store, { actor: account.username, threadId: id, outcome: 'ERROR', inputTokens: 4000, outputTokens: 0, now: time });
+        return { reservation, thread, history, settings };
       }
       if (method === 'POST' && action === 'read') {
         await store.run('UPDATE message_thread SET unread_count = 0, updated_at = ? WHERE id = ?', at, id);
@@ -110,5 +131,19 @@ export function createQrSellerApi({ store, secretBox, shopId = 'default', now = 
       if (error.retryAfter) return limited(error.retryAfter);
       throw error;
     });
+    if (prepared instanceof Response) return prepared;
+    const { reservation, thread, history, settings } = prepared;
+    let result, failure;
+    try {
+      result = await suggestReply({ store, provider, thread, history, settings, now, secretBox, qr });
+    } catch (error) { failure = error; }
+    await store.transaction(async () => {
+      const usage = result?.usage ?? failure?.usage ?? { inputTokens: 0, outputTokens: 0 };
+      await store.run('UPDATE ai_usage SET input_tokens = ?, output_tokens = ?, outcome = ? WHERE id = ?', usage.inputTokens, usage.outputTokens, failure ? 'ERROR' : result.handoff ? 'HANDOFF' : 'OK', reservation.id);
+      await store.run('INSERT INTO ai_suggestion_audit (id,actor,thread_id,created_at) VALUES (?,?,?,?)', randomUUID(), account.username, thread.id, new Date(now()).toISOString());
+    });
+    if (failure) return json(failure.code === 'AI_TIMEOUT' ? 504 : 502, { error: { code: failure.code === 'AI_TIMEOUT' ? 'AI_TIMEOUT' : 'AI_UNAVAILABLE', message: 'AI assistance is unavailable.' } }, { 'Cache-Control': 'no-store' });
+    const { usage, ...response } = result;
+    return json(200, response, { 'Cache-Control': 'no-store' });
   };
 }

@@ -660,3 +660,11 @@
 #company-form [hidden]{display:none}
 @media(min-width:721px){.qr-conversation>button:first-child{display:none}}
 
+.ai-settings,.ai-order-card,.ai-handoff{min-width:0;max-width:100%;overflow-wrap:anywhere}
+.ai-settings .settings-form{display:grid;grid-template-columns:minmax(0,1fr)}
+.ai-settings input:not([type=checkbox]),.ai-settings textarea{width:100%;min-width:0;box-sizing:border-box}
+.ai-order-card{margin:12px 0;padding:12px;border:1px solid var(--ui-border);border-radius:8px;background:var(--ui-surface)}
+.ai-order-card p{white-space:pre-wrap;margin:8px 0}
+.ai-handoff{padding:12px;border:2px solid var(--ui-primary);color:var(--ui-text)}
+.ai-settings [aria-invalid=true]{border-color:var(--ui-primary)}
+.qr-composer>button{margin:4px;max-width:100%;white-space:normal}

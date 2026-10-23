@@ -76,6 +76,21 @@ export function readPlatformConfig(env, integrationKeys) {
     provisionerUrl: connection(provisioner, readSecret('PLATFORM_PROVISIONER_PASSWORD_FILE'), 'postgres') };
 }
 
+export function readAiConfig(env) {
+  const flag = env.AI_ENABLED ?? '0';
+  if (!['0', '1'].includes(flag)) throw new Error('AI_ENABLED must be 0 or 1.');
+  const model = env.AI_MODEL ?? 'claude-haiku-5-5';
+  if (!/^[a-z0-9.-]{3,64}$/.test(model)) throw new Error('Invalid AI_MODEL.');
+  const enabled = flag === '1';
+  if (!enabled) return { enabled, model };
+  if (env.SELLER_QUICK_LOGIN === '1' || env.SHOP_MODE === 'public-demo') throw new Error('AI refuses quick login and public-demo shops.');
+  let apiKey;
+  try { apiKey = readFileSync(env.AI_API_KEY_FILE, 'utf8').trim(); }
+  catch { throw new Error('AI_API_KEY_FILE cannot be read.'); }
+  if (!/^[\x20-\x7e]{20,300}$/.test(apiKey)) throw new Error('Invalid AI_API_KEY_FILE.');
+  return { enabled, apiKey, model };
+}
+
 export function readWhatsAppQrConfig(env, integrationKeys) {
   const flag = env.WHATSAPP_QR_ENABLED ?? '0';
   if (!['0', '1'].includes(flag)) throw new Error('WHATSAPP_QR_ENABLED must be 0 or 1.');
@@ -163,6 +178,7 @@ export function readConfig(env = process.env) {
     integrationKeys = parseKeyFile(text);
   }
   const whatsappQr = readWhatsAppQrConfig(env, integrationKeys);
+  const ai = readAiConfig(env);
   const appRevision = env.APP_REVISION || null;
   if (appRevision && !/^(local|[0-9a-f]{40})$/.test(appRevision)) throw new Error('APP_REVISION must be a commit SHA or local.');
   const port = Number(env.PORT || 3000);
@@ -178,5 +194,5 @@ export function readConfig(env = process.env) {
     try { const url = new URL(value); return url.protocol !== 'https:' || url.origin !== value; } catch { return true; }
   })) throw new Error('Invalid MCP_BROWSER_ORIGINS.');
   if (mcpEnabled && (!sellerOrigin || new URL(sellerOrigin).protocol !== 'https:')) throw new Error('MCP_ENABLED requires an HTTPS SELLER_ORIGIN.');
-  return { production, username, password, dbPath, databaseUrl, publicOrigin, sellerOrigin, appRevision, integrationKeys, whatsappQr, mcpEnabled, mcpRedirectUris, mcpBrowserOrigins, platform: readPlatformConfig(env, integrationKeys), port, trustProxy, shopMode: readShopMode(env), sellerQuickLogin: env.SELLER_QUICK_LOGIN === '1', demoRevision: readDemoRevision(env) };
+  return { production, username, password, dbPath, databaseUrl, publicOrigin, sellerOrigin, appRevision, integrationKeys, whatsappQr, ai, mcpEnabled, mcpRedirectUris, mcpBrowserOrigins, platform: readPlatformConfig(env, integrationKeys), port, trustProxy, shopMode: readShopMode(env), sellerQuickLogin: env.SELLER_QUICK_LOGIN === '1', demoRevision: readDemoRevision(env) };
 }
