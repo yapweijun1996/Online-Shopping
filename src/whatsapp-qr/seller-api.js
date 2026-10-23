@@ -5,6 +5,8 @@ import { createWhatsAppQrStore } from './store.js';
 import { orderMatchesThread } from './order-match.js';
 import { getAiSettings, todayTokens, recordUsage } from '../ai/settings.js';
 import { suggestReply } from '../ai/agent.js';
+import { buildSystemPrompt, buildMessages } from '../ai/prompt.js';
+import { getShopSetup } from '../shop-setup.js';
 
 const missing = () => { throw new ApiError(404, 'NOT_FOUND', 'Not found.'); };
 const message = row => ({ id: row.id, direction: row.direction, text: row.body, status: row.status, errorCode: row.error_code, createdAt: row.created_at, actor: row.actor });
@@ -93,13 +95,15 @@ export function createQrSellerApi({ store, secretBox, shopId = 'default', now = 
         const settings = await getAiSettings(store);
         if (!settings.enabled || settings.level === 0) return json(409, { error: { code: 'AI_DISABLED', message: 'AI assistance is disabled.' } });
         if (thread.suppressed_at || !thread.peer_sealed) return json(409, { error: { code: 'NOT_ELIGIBLE', message: 'This thread is not eligible.' } });
-        if (!await shopSuggest.attempt(shopId)) return limited(3600);
         if (!await threadSuggest.attempt(id)) return limited(60);
-        if (await todayTokens(store, time) >= settings.dailyTokenCap) {
+        if (!await shopSuggest.attempt(shopId)) return limited(3600);
+        const history = (await store.all('SELECT direction,body FROM message_thread_message WHERE thread_id = ? AND body IS NOT NULL ORDER BY created_at DESC,id DESC LIMIT 30', id)).reverse();
+        const shop = await getShopSetup(store);
+        const reservationTokens = 4 * (2000 + Math.ceil((buildSystemPrompt({ shopName: shop.shopName, tone: settings.tone }).length + buildMessages(history, thread)[0].content.length) / 3));
+        if (await todayTokens(store, time) + reservationTokens > settings.dailyTokenCap) {
           return json(429, { error: { code: 'AI_CAP', message: 'Daily AI allowance reached.' } }, { 'Retry-After': '3600' });
         }
-        const history = (await store.all('SELECT direction,body FROM message_thread_message WHERE thread_id = ? AND body IS NOT NULL ORDER BY created_at DESC,id DESC LIMIT 30', id)).reverse();
-        const reservation = await recordUsage(store, { actor: account.username, threadId: id, outcome: 'ERROR', inputTokens: 4000, outputTokens: 0, now: time });
+        const reservation = { ...await recordUsage(store, { actor: account.username, threadId: id, outcome: 'ERROR', inputTokens: reservationTokens, outputTokens: 0, now: time }), tokens: reservationTokens };
         return { reservation, thread, history, settings };
       }
       if (method === 'POST' && action === 'read') {
@@ -136,9 +140,17 @@ export function createQrSellerApi({ store, secretBox, shopId = 'default', now = 
     let result, failure;
     try {
       result = await suggestReply({ store, provider, thread, history, settings, now, secretBox, qr });
-    } catch (error) { failure = error; }
+    } catch (error) {
+      failure = error;
+      if (!['AI_TIMEOUT', 'AI_BAD_RESPONSE', 'AI_UNAVAILABLE'].includes(error.code)) {
+        const code = typeof error.code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(error.code) ? error.code : 'AI_UNEXPECTED';
+        const errorClass = /^[A-Za-z][A-Za-z0-9]{0,63}$/.test(error.constructor?.name ?? '') ? error.constructor.name : 'Error';
+        console.error(`${code} ${errorClass}`);
+      }
+    }
     await store.transaction(async () => {
       const usage = result?.usage ?? failure?.usage ?? { inputTokens: 0, outputTokens: 0 };
+      if (failure) usage.inputTokens = Math.max(usage.inputTokens, reservation.tokens - usage.outputTokens);
       await store.run('UPDATE ai_usage SET input_tokens = ?, output_tokens = ?, outcome = ? WHERE id = ?', usage.inputTokens, usage.outputTokens, failure ? 'ERROR' : result.handoff ? 'HANDOFF' : 'OK', reservation.id);
       await store.run('INSERT INTO ai_suggestion_audit (id,actor,thread_id,created_at) VALUES (?,?,?,?)', randomUUID(), account.username, thread.id, new Date(now()).toISOString());
     });

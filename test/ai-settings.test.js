@@ -34,10 +34,10 @@ for (const engine of ['sqlite', 'postgres']) {
     assert.equal(await store.schemaVersion(), SCHEMA_VERSION);
     assert.deepEqual(await getAiSettings(store), { enabled: false, level: 1, tone: '', businessNotes: '', dailyTokenCap: 100000, revision: 1, updatedAt: '1970-01-01T00:00:00.000Z' });
     assert.deepEqual(await store.all('SELECT id,actor,thread_id,created_at FROM ai_suggestion_audit'), []);
-    const updated = await updateAiSettings(store, { enabled: true, tone: ' friendly ', businessNotes: ' first\nsecond ', dailyTokenCap: 1000, level: 0, expectedRevision: 1 }, 'seller:fixture');
+    const updated = await updateAiSettings(store, { enabled: true, tone: ' friendly ', businessNotes: ' first\nsecond ', dailyTokenCap: 1000, level: 0, expectedRevision: 1 }, 'fixture');
     assert.equal(updated.tone, 'friendly'); assert.equal(updated.businessNotes, 'first\nsecond'); assert.equal(updated.revision, 2);
     const audit = await store.get("SELECT actor,action FROM ai_suggestion_audit WHERE action = 'SETTINGS_UPDATED'");
-    assert.equal(audit.actor, 'seller:fixture');
+    assert.equal(audit.actor, 'fixture');
     assert.equal(audit.action, 'SETTINGS_UPDATED');
     await assert.rejects(updateAiSettings(store, { tone: 'stale', expectedRevision: 1 }, 'fixture'), e => e.status === 409);
     for (const patch of [{ tone: 'x'.repeat(301) }, { businessNotes: 'x'.repeat(3001) }, { enabled: 1 }, { level: 2 }, { level: -1 }, { level: 0.5 }, { dailyTokenCap: 999 }, { dailyTokenCap: 2000001 }, { dailyTokenCap: '1000' }, { tone: '\n' }, { tone: '\t' }, { businessNotes: '\r' }, { businessNotes: '\u007f' }, { tone: '\ud800' }, { apiKey: 'forbidden' }, { expectedRevision: 0 }, { expectedRevision: undefined }]) {
@@ -79,10 +79,13 @@ for (const engine of ['sqlite', 'postgres']) {
       await store.run('UPDATE seller_account SET role = ?', role);
       const get = await request(handle, '/api/v1/seller/ai-settings', 'GET', null, { cookie });
       assert.equal(get.status, 200); assert.equal(get.headers.get('cache-control'), 'no-store');
-      assert.equal((await get.json()).available, true);
+      const visible = await get.json();
+      assert.equal(visible.available, true);
+      if (role !== 'OWNER') assert.deepEqual(Object.keys(visible).sort(), ['available', 'enabled', 'level']);
       const patch = await request(handle, '/api/v1/seller/ai-settings', 'PATCH', { enabled: true, expectedRevision: 1 }, headers);
       assert.equal(patch.status, role === 'OWNER' ? 200 : 403);
     }
+    assert.equal((await store.get("SELECT actor FROM ai_suggestion_audit WHERE action = 'SETTINGS_UPDATED'")).actor, 'fixture_owner');
     await store.run("UPDATE seller_account SET role = 'OWNER'");
     for (const invalid of [{ cookie }, { cookie, origin: config.publicOrigin }, { cookie, origin: 'https://evil.example.test', 'x-csrf-token': csrf }, { cookie, 'x-csrf-token': csrf }]) {
       assert.equal((await request(handle, '/api/v1/seller/ai-settings', 'PATCH', { tone: 'bad', expectedRevision: 2 }, invalid)).status, 403);

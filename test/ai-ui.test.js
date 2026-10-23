@@ -71,6 +71,12 @@ for(const reason of ['COMPLAINT','REFUND','UNKNOWN','SENSITIVE','OTHER']) test(`
   assert.ok(root.descendants().some(n=>n.textContent==='an item is unavailable')); assert.ok(root.descendants().some(n=>n.tagName==='li'&&n.textContent==='Recipient name'));
   assert.equal(root.descendants().some(n=>n.tagName==='img'),false); assert.ok(root.descendants().some(n=>n.textContent.includes(draft.items[0].name))); assert.equal(button.disabled,false);
 }));
+test('Stock and currency draft issues render readable descriptions', async () => suggestions(async ({ root, button, setResult }) => {
+  setResult({ reply: 'Draft', handoff: false, orderDraft: { ...draft, missing: ['product:p:stock', 'product:p:currency'] } });
+  await button.events.click();
+  const issues = root.descendants().filter(node => node.tagName === 'li').map(node => node.textContent);
+  assert.deepEqual(issues, ['an item has less stock than requested', 'an item is priced in another currency']);
+}));
 for(const [error,key] of [[{code:'AI_CAP'},'cap'],[{code:'AI_DISABLED'},'disabled'],[{status:429,retryAfter:7},'retry'],[{code:'AI_UNAVAILABLE'},'unavailable'],[{code:'AI_TIMEOUT'},'timeout'],[{},'failed']]) test(`Suggestion error ${key} resets button`,async()=>suggestions(async({root,button,setError})=>{
   setError(error); await button.events.click(); assert.ok(root.descendants().some(n=>n.textContent===messages.en[`ai_${key}`].replace('{n}','7'))); assert.equal(button.disabled,false);
 }));

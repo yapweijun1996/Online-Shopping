@@ -36,7 +36,10 @@ export async function suggestReply({ store, provider, thread, history, settings,
         let orderDraft = null;
         if (value.order) {
           orderDraft = { items: [], totalMinor: 0, currency: shop.defaultCurrency, recipientName: clean(value.order.recipientName, 80), address: clean(value.order.address, 240), notes: clean(value.order.notes, 200), missing: [] };
-          for (const item of value.order.items) {
+          const quantities = new Map();
+          for (const item of value.order.items) quantities.set(item.productId, (quantities.get(item.productId) ?? 0) + item.quantity);
+          for (const [productId, quantity] of quantities) {
+            const item = { productId, quantity };
             const p = await tools.run('get_product', { productId: item.productId });
             if (!p.id) { orderDraft.missing.push(`product:${clean(item.productId, 100)}:unavailable`); continue; }
             if (p.currency !== orderDraft.currency) { orderDraft.missing.push(`product:${clean(item.productId, 100)}:currency`); continue; }
@@ -57,5 +60,8 @@ export async function suggestReply({ store, provider, thread, history, settings,
       messages.push({ role: 'user', content });
     }
     throw aiError('AI_BAD_RESPONSE');
-  } catch (error) { error.usage = usage; throw error; }
+  } catch (error) {
+    error.usage = { inputTokens: usage.inputTokens + (error.usage?.inputTokens ?? 0), outputTokens: usage.outputTokens + (error.usage?.outputTokens ?? 0) };
+    throw error;
+  }
 }

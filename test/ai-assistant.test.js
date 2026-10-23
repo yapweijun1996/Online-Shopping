@@ -84,12 +84,16 @@ test(`${engine}: catalog tools and agent preserve server authority under injecte
   assert.equal(partial.orderDraft.totalMinor, 0);
   assert.deepEqual(partial.orderDraft.items, []);
   assert.deepEqual(partial.orderDraft.missing, ['product:p1:currency', 'product:p2:stock', 'address', 'recipientName']);
+  const duplicate = await suggestReply({ store, provider: { complete: async () => answer({ ...suggestion, order: { items: [{ productId: 'p2', quantity: 1 }, { productId: 'p2', quantity: 1 }] } }) }, thread: {}, settings: {}, history: [] });
+  assert.deepEqual(duplicate.orderDraft.items, []);
+  assert.ok(duplicate.orderDraft.missing.includes('product:p2:stock'));
   for (const invalid of [
     { ...suggestion, price: 1 }, { ...suggestion, handoff: 'yes' }, { ...suggestion, handoff: true },
     { ...suggestion, reply: 'x'.repeat(1001) }, { ...suggestion, handoffReason: 'INVALID' },
-    ...[0, 100, 1.5, '2'].map(quantity => ({ ...suggestion, order: { items: [{ productId: 'p0', quantity }] } })),
+    ...[0, 100, 500, 1.5, '2'].map(quantity => ({ ...suggestion, order: { items: [{ productId: 'p0', quantity }] } })),
     { ...suggestion, order: { items: [{ productId: 'p0', quantity: 1, price: 1 }] } },
     { ...suggestion, order: { items: [{ productId: 'p0', quantity: 1 }], address: 'x'.repeat(241) } }
+    ,{ ...suggestion, order: { items: Array.from({ length: 101 }, () => ({ productId: 'p0', quantity: 1 })) } }
   ]) await assert.rejects(suggestReply({ store, provider: { complete: async () => answer(invalid) }, thread: {}, settings: {}, history: [] }), e => e.code === 'AI_BAD_RESPONSE');
   let calls = 0;
   await assert.rejects(suggestReply({ store, provider: { complete: async () => { calls++; return { ...answer(suggestion), content: [{ type: 'tool_use', id: 'read', name: 'get_shop_info', input: {} }] }; } }, thread: {}, settings: {}, history: [] }), e => e.code === 'AI_BAD_RESPONSE');

@@ -384,10 +384,13 @@ async function createTenantApi({ store, config, tenantId, serveStatic = null, wh
     if (pathname === '/api/v1/seller/ai-settings' && (method === 'GET' || method === 'PATCH')) {
       if (!config.ai?.enabled) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
       allow(method === 'GET' ? 'chats.reply' : 'ai.settings');
-      if (method === 'GET') return json(200, { available: true, ...await getAiSettings(store) }, { 'Cache-Control': 'no-store' });
+      if (method === 'GET') {
+        const settings = await getAiSettings(store);
+        return json(200, { available: true, ...(account.role === 'OWNER' ? settings : { enabled: settings.enabled, level: settings.level }) }, { 'Cache-Control': 'no-store' });
+      }
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
-      return json(200, { available: true, ...await updateAiSettings(store, await readJson(request), `seller:${account.username}`) }, { 'Cache-Control': 'no-store' });
+      return json(200, { available: true, ...await updateAiSettings(store, await readJson(request), account.username) }, { 'Cache-Control': 'no-store' });
     }
     if (method === 'GET' && pathname === '/api/v1/seller/company-settings') {
       return json(200, await getCompanySettings(store));

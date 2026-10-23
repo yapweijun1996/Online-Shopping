@@ -80,7 +80,7 @@ The optional QR worker retains plaintext auth in memory. Its token or process co
 
 Seller AI draft controls (`public/seller/ai-settings.js`, `ai-suggestions.js`) expose only the existing authenticated AI endpoints. The Owner-only settings tab waits for host availability; server authorization remains authoritative. Suggestions and read-only order cards use `createElement`/`textContent`, never provider HTML. They cannot send messages or create orders; the seller must explicitly use the existing Send flow. Thread-generation fencing prevents a late suggestion from being inserted into another conversation. Clipboard access is explicit and failure-safe. The privacy notice identifies Anthropic processing; the data-minimization limitations in `AI_ASSISTANT_DESIGN.md` still apply.
 
-AI suggestion backend uses two short transactions: serialized eligibility/rate/cap checks plus a conservative usage reservation, then final usage/audit persistence after provider work. No external LLM call holds the shop transaction lock. Provider responses are bounded, partial/refused output is rejected, opaque thinking blocks are forwarded unchanged only inside the tool loop, and read-only tools never disclose exact inventory. Level zero disables suggestions. Settings audit records the authenticated actor without notes; usage and AI audit metadata expire after 90 days via bounded request-time deletion.
+AI suggestion backend uses two short transactions: serialized eligibility/rate/cap checks plus a conservative usage reservation, then final usage/audit persistence after provider work. No external LLM call holds the shop transaction lock. Provider responses are bounded, partial/refused output is rejected, opaque thinking blocks are forwarded unchanged only inside the tool loop, and read-only tools never disclose exact inventory. Level zero disables suggestions. Settings audit records the bare authenticated username without notes; usage and AI audit metadata expire after 90 days via bounded request-time and QR worker control deletion, including when AI is disabled. Failed calls retain at least the reserved tokens; successful calls settle to observed usage.
 
 ## 4. Entry Points
 
@@ -484,6 +484,7 @@ Messages API. Requests use a fixed HTTPS URL, no redirects, an abort deadline
 and a 512 KiB response cap. Backend-only file-loaded keys never enter tool
 results or returned errors. Operators must assess provider retention and obtain
 appropriate customer notice; local nonretention does not imply provider deletion.
+Phone redaction first normalizes message text with NFKC and recognizes common separators and masked forms; it is best effort, not a promise that all phone numbers or other PII are removed. Strict wire schemas omit provider-unsupported limits, while local validators retain them. Non-Owner settings reads expose only availability, enabled and level.
 
 Read-only bounded tools enforce phone-hash order ownership and reject erased
 contacts. Unauthorized and nonexistent orders return identical results. Exact

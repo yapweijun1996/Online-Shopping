@@ -17,7 +17,7 @@ export function mountAiSuggestions(form, textarea, { request, current, changed, 
     ++generation; id = threadId; busy = false; draft = null; handoffReason = null; statusKey = ''; failure = null;
     status.textContent = ''; handoff.hidden = true; handoff.textContent = ''; card.hidden = true; card.replaceChildren(); eligibility();
   }
-  const missingText = value => /^product:.*:unavailable$/.test(value) ? aiText('unavailableItem') : ['address','recipientName'].includes(value) ? aiText(value) : value;
+  const missingText = value => /^product:.*:unavailable$/.test(value) ? aiText('unavailableItem') : /^product:.*:stock$/.test(value) ? aiText('stockItem') : /^product:.*:currency$/.test(value) ? aiText('currencyItem') : ['address','recipientName'].includes(value) ? aiText(value) : value;
   const money = (minor, currency) => `${currency} ${(minor / 100).toFixed(2)}`;
   function summary() {
     if (!draft) return '';

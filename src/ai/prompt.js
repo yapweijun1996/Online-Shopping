@@ -5,13 +5,12 @@ Reply briefly and politely in the customer's language. Never invent prices, stoc
 }
 export function buildMessages(history, thread = {}) {
   const redact = value => {
-    let result = clean(value, 1000);
+    let result = clean(String(value ?? '').normalize('NFKC'), 1000);
     if (thread.display_name) result = result.replaceAll(thread.display_name, clean(thread.display_name.trim().split(/\s+/)[0], 30));
-    for (const privateValue of [thread.phone, thread.phone_masked, thread.peerMasked].filter(Boolean)) result = result.replaceAll(privateValue, '[phone omitted]');
-    return result.replace(/[<>]/g, c => c === '<' ? '‹' : '›').replace(/[A-Z]{2,5}-\d{6,10}|\d{4}-\d{2}-\d{2}|\+?\d(?:[\d ()-]*\d)?/g, value => {
-      if (/^[A-Z]{2,5}-\d{6,10}$/.test(value) || /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    return result.replace(/[<>]/g, c => c === '<' ? '‹' : '›').replace(/(?:OS|DEMO)-\d{8}(?!\d)|(?<![\w\d-])\d{4}-\d{2}-\d{2}(?![\d-])|\+[•\d][•\d .\/()-]*|\d(?:[\d .\/()-]*\d)?/g, (value, offset, source) => {
+      if (/^(?:OS|DEMO)-\d{8}$/.test(value) || (/^\d{4}-\d{2}-\d{2}$/.test(value) && !/[\w-]/.test(source[offset - 1] ?? '') && !/[\w-]/.test(source[offset + value.length] ?? ''))) return value;
       return value.startsWith('+') || value.replace(/\D/g, '').length >= 9 ? '[phone omitted]' : value;
-    }).replace(/\+?\d[\d• ()-]*[•][\d• ()-]*/g, '[phone omitted]').slice(0, 1000);
+    }).slice(0, 1000);
   };
   const lines = history.slice(-30).map(row => `${row.direction === 'IN' ? 'CUSTOMER' : 'SHOP'}: ${redact(row.body ?? row.text)}`);
   return [{ role: 'user', content: `<conversation>\n${lines.join('\n')}\n</conversation>` }];
