@@ -18,6 +18,7 @@ const remember = (id) => { try { sessionStorage.setItem(STORAGE_KEY, id); } catc
 /* Tab strip for the Company settings page. `tabs` is [{ id, label (i18n key), panels: [elements] }]; every element that
    belongs to any tab is hidden unless the selected tab lists it. Returns { select, refreshLocale }. */
 export function mountCompanyTabs(root, tabs, { onSelect = () => {} } = {}) {
+  const initialTab = remembered();
   const list = document.createElement('div');
   list.className = 'company-tabs'; list.setAttribute('role', 'tablist'); list.setAttribute('aria-label', t('companyTabsLabel'));
   const buttons = new Map();
@@ -48,6 +49,25 @@ export function mountCompanyTabs(root, tabs, { onSelect = () => {} } = {}) {
   }
   root.prepend(list);
   for (const tab of tabs) for (const element of tab.panels) if (!element.hasAttribute('role')) { element.setAttribute('role', 'tabpanel'); element.setAttribute('aria-labelledby', `company-tab-${tab.id}`); }
-  select(remembered());
-  return { select, refreshLocale() { translate(list); list.setAttribute('aria-label', t('companyTabsLabel')); } };
+  select(initialTab);
+  return {
+    select,
+    add(tab) {
+      if (tabs.some(item => item.id === tab.id)) return;
+      tabs.push(tab);
+      const button = document.createElement('button');
+      button.type = 'button'; button.id = `company-tab-${tab.id}`; button.dataset.i18n = tab.label; button.textContent = t(tab.label);
+      button.setAttribute('role', 'tab'); button.setAttribute('aria-selected', 'false'); button.tabIndex = -1;
+      button.addEventListener('click', () => select(tab.id));
+      button.addEventListener('keydown', event => {
+        const at = tabs.indexOf(tab), next = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: tabs.length - 1 }[event.key];
+        if (next === undefined) return;
+        event.preventDefault(); select(tabs[(next + tabs.length) % tabs.length].id, { focus: true });
+      });
+      buttons.set(tab.id, button); list.append(button);
+      for (const panel of tab.panels) { everything.add(panel); panel.hidden = true; panel.setAttribute('role', 'tabpanel'); panel.setAttribute('aria-labelledby', button.id); }
+      if (initialTab === tab.id) select(tab.id);
+    },
+    refreshLocale() { translate(list); list.setAttribute('aria-label', t('companyTabsLabel')); }
+  };
 }

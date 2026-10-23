@@ -7,6 +7,7 @@ class Element {
   constructor(tag) { this.tagName = tag; this.children = []; this.dataset = {}; this.attributes = {}; this.events = {}; this.value = ''; this.textContent = ''; this.hidden = false; this.classes = new Set(); this.classList = { add: x => this.classes.add(x), remove: x => this.classes.delete(x) }; }
   get isConnected() { return this.connected || Boolean(this.parent?.isConnected); }
   append(...nodes) { for (const node of nodes) { node.parent = this; this.children.push(node); } }
+  prepend(...nodes) { for (const node of nodes) node.parent = this; this.children.unshift(...nodes); }
   replaceChildren(...nodes) { for (const child of this.children) child.parent = null; this.children = []; this.append(...nodes); }
   remove() { if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this); this.parent = null; }
   setAttribute(k,v) { this.attributes[k] = v; }
@@ -89,11 +90,13 @@ test('Owner acknowledges, pairs, renders QR locally, expires, connects and disco
 const hostile = '<img onerror=alert(1)>';
 const thread = { id: 'thread-1', displayName: hostile, peerMasked: '•••0100', lastMessageText: hostile, unreadCount: 2, canReply: true, lastMessageAt: new Date().toISOString(), replyWindowEndsAt: new Date(Date.now() + 60000).toISOString() };
 const incoming = { id: 'msg-1', text: hostile, direction: 'IN', createdAt: new Date().toISOString() };
-async function chatsFixture(run) {
+async function chatsFixture(run, aiSettings = { available: false }) {
   return fixture(async (root, timers, listeners) => {
     const cloud = new Element('div'); root.append(cloud);
     let state = { ...initial, state: 'CONNECTED', desired: 'RUN' }, rows = [{ ...thread }], replyMode = 'network'; const attempts = [];
     globalThis.fetch = async (path, init) => {
+      if (path.endsWith('/ai-settings')) return response(aiSettings);
+      if (path.endsWith('/suggestions')) { attempts.push(init); return replyMode === '429' ? response({ error: { code: 'RATE_LIMITED' } }, 429) : response({ reply: 'A draft for review', handoff: false, orderDraft: null }); }
       if (path.includes('whatsapp-qr')) return response(state);
       if (path.includes('/replies')) { attempts.push(init); if (replyMode === 'network') throw new TypeError('offline'); if (replyMode === '429') return response({ error: { code: 'RATE_LIMITED' } }, 429); return response({ ...incoming, id: 'out-1', text: JSON.parse(init.body).text, direction: 'OUT', status: 'QUEUED' }, 201); }
       if (path.includes('/messages')) return response([incoming, { ...incoming, id: 'removed', text: null, direction: 'OUT', status: 'RECONCILE' }]);
@@ -273,3 +276,20 @@ for (const [status, code, copy] of [[403, 'QR_REVOKED', 'revoked'], [409, 'QR_CA
     page.dispose();
   }));
 }
+test('Inbox AI uses CSRF, shows Retry-After seconds and hides for suppressed or disconnected threads', async () => chatsFixture(async ({ root, attempts, setMode, setRows, setState, listeners }) => {
+  const suggest = root.descendants().find(n => n.dataset.i18n === 'ai_suggest');
+  const composer = root.descendants().find(n => n.tagName === 'textarea');
+  assert.equal(suggest.hidden, false);
+  setMode('429'); await suggest.events.click();
+  assert.ok(root.descendants().some(n => n.textContent === 'Too many requests. Try again in 7 seconds.'));
+  assert.equal(suggest.disabled, false);
+  setMode('ok'); await suggest.events.click();
+  assert.equal(composer.value, 'A draft for review');
+  assert.equal(attempts[1].headers['X-CSRF-Token'], 'fictional-token');
+  assert.equal(attempts[1].headers['Idempotency-Key'], undefined);
+  assert.deepEqual(JSON.parse(attempts[1].body), {});
+  setRows([{ ...thread, suppressed: true }]); listeners.get('visibilitychange')(); await flush();
+  assert.equal(suggest.hidden, true);
+  setRows([{ ...thread, suppressed: false }]); setState({ ...initial }); listeners.get('visibilitychange')(); await flush();
+  assert.equal(suggest.hidden, true);
+}, { available: true, enabled: true }));

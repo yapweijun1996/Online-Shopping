@@ -1,5 +1,6 @@
 import './sender-copy.js';
 import { mountCompanyTabs } from './company-tabs.js';
+import { mountAiSettings } from './ai-settings.js';
 const senderInputs = { senderName: 120, senderPhone: 32, senderAddressLine1: 240, senderAddressLine2: 240, senderCity: 120, senderState: 120, senderPostcode: 20, senderCountry: 2 };
 import { apiUrl } from '../shared/base-path.js';
 import { t, translate } from '../shared/i18n.js';
@@ -204,6 +205,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
   const whatsapp = mountWhatsAppConnection(messaging, { csrfToken, onUnauthorized, request });
   const whatsappQr = mountWhatsAppQr(messaging, { csrfToken, onUnauthorized, role });
   const groups = { general: form.querySelector('#company-group-general'), storefront: form.querySelector('#company-group-storefront'), shipping: form.querySelector('#company-group-shipping') };
+  const ai = role === 'OWNER' ? mountAiSettings(root, { csrfToken, onUnauthorized }) : null;
   const tabs = mountCompanyTabs(root, [
     { id: 'general', label: 'companyTabGeneral', panels: [setup, groups.general, extras] },
     { id: 'storefront', label: 'companyTabStorefront', panels: [groups.storefront] },
@@ -211,6 +213,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
     { id: 'messaging', label: 'companyTabMessaging', panels: [messaging] },
     { id: 'appearance', label: 'companyTabAppearance', panels: [appearance] },
   ], { onSelect: (id) => { formCard.hidden = !['general', 'storefront', 'shipping'].includes(id); } });
+  ai?.ready.then(available => { if (available && isCurrent()) tabs.add({ id: 'ai', label: 'ai_title', panels: [ai.section] }); });
   const tabOfField = (field = '') => field.startsWith('sender') ? 'shipping' : ['availabilityText', 'shippingText', 'returnsText'].includes(field) ? 'storefront' : 'general';
   const setupForm = setup.querySelector('form');
   const setupStatus = setup.querySelector('.setup-status');
@@ -325,9 +328,9 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
   });
   return {
     dispose() { whatsappQr.dispose(); },
-    isBusy: () => pendingWrites > 0,
+    isBusy: () => pendingWrites > 0 || Boolean(ai?.isBusy()),
     hasUnsavedChanges() {
-      return currentState() !== (savedState ?? initialState) ||
+      return Boolean(ai?.hasUnsavedChanges()) || currentState() !== (savedState ?? initialState) ||
         (!setupForm.hidden && JSON.stringify([setupForm.elements.mode.value, setupForm.elements.shopName.value]) !== setupBaseline);
     },
     refreshLocale() {
@@ -336,6 +339,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
       integrations.refreshLocale();
       whatsapp.refreshLocale();
       whatsappQr.refreshLocale();
+      ai?.refreshLocale();
       const line = root.querySelector('.settings-status');
       line.textContent = line.dataset.statusKey ? t(line.dataset.statusKey) : '';
     },

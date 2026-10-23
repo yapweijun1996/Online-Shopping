@@ -85,6 +85,9 @@ export function createWhatsAppQrStore({ store, secretBox, shopId = 'default', no
       await expirePair(session, time, at);
       await store.run('UPDATE whatsapp_qr_session SET lease_owner = ?, lease_expires_at = ?, heartbeat_at = ?, qr_text = CASE WHEN qr_expires_at <= ? THEN NULL ELSE qr_text END, qr_expires_at = CASE WHEN qr_expires_at <= ? THEN NULL ELSE qr_expires_at END WHERE id = 1', worker, new Date(time + 60000).toISOString(), at, at, at);
       await store.run(`UPDATE message_thread_message SET body = NULL WHERE id IN (SELECT id FROM message_thread_message WHERE body IS NOT NULL AND created_at < ? ORDER BY created_at,id LIMIT 200)`, new Date(time - 30 * 86400000).toISOString());
+      for (const table of ['ai_usage', 'ai_suggestion_audit']) {
+        await store.run(`DELETE FROM ${table} WHERE id IN (SELECT id FROM ${table} WHERE created_at < ? ORDER BY created_at,id LIMIT 200)`, new Date(time - 90 * 86400000).toISOString());
+      }
       await store.run(`UPDATE message_thread_message SET status = 'RECONCILE', updated_at = ? WHERE status = 'SENDING' AND id IN (SELECT id FROM message_thread_message WHERE status = 'SENDING' AND lease_expires_at <= ? ORDER BY created_at,id LIMIT 200)`, at, at);
       return { generation: session.generation, desired: session.desired, leaseSeconds: 60, pollMs: 2000 };
     }, true),

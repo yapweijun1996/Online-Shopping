@@ -1,4 +1,4 @@
--- PostgreSQL baseline matching SQLite schema 27. Timestamps stay ISO text to preserve API snapshots.
+-- PostgreSQL baseline matching SQLite schema 28. Timestamps stay ISO text to preserve API snapshots.
 CREATE TABLE admin (
         id BIGINT PRIMARY KEY CHECK (id = 1),
         username TEXT NOT NULL UNIQUE,
@@ -300,7 +300,7 @@ CREATE TABLE product_event (
   created_at TEXT NOT NULL
 );
 CREATE INDEX product_event_product ON product_event(product_id, created_at);
-INSERT INTO schema_meta VALUES (1, 27);
+INSERT INTO schema_meta VALUES (1, 28);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 INSERT INTO shop_setup(id, mode, shop_name) VALUES (1, NULL, 'Online Shopping');
@@ -409,3 +409,26 @@ CREATE UNIQUE INDEX qr_inbound_id ON message_thread_message(provider_message_id)
 CREATE UNIQUE INDEX qr_reply_intent ON message_thread_message(idempotency_key) WHERE idempotency_key IS NOT NULL;
 CREATE INDEX qr_thread_time ON message_thread_message(thread_id,created_at,id);
 CREATE INDEX qr_message_status ON message_thread_message(status,created_at,id);
+
+CREATE TABLE ai_setting (
+ id INTEGER PRIMARY KEY CHECK (id = 1),
+ enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0,1)),
+ level INTEGER NOT NULL DEFAULT 1 CHECK (level BETWEEN 0 AND 1),
+ tone TEXT NOT NULL DEFAULT '' CHECK (length(tone) <= 300),
+ business_notes TEXT NOT NULL DEFAULT '' CHECK (length(business_notes) <= 3000),
+ daily_token_cap INTEGER NOT NULL DEFAULT 100000 CHECK (daily_token_cap BETWEEN 1000 AND 2000000),
+ revision INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL
+);
+INSERT INTO ai_setting (id, updated_at) VALUES (1,'1970-01-01T00:00:00.000Z') ON CONFLICT (id) DO NOTHING;
+CREATE TABLE ai_usage (
+ id TEXT PRIMARY KEY, day TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('SUGGEST')),
+ actor TEXT NOT NULL, thread_id TEXT,
+ input_tokens INTEGER NOT NULL CHECK (input_tokens >= 0),
+ output_tokens INTEGER NOT NULL CHECK (output_tokens >= 0),
+ outcome TEXT NOT NULL CHECK (outcome IN ('OK','HANDOFF','ERROR','CAP')), created_at TEXT NOT NULL
+);
+CREATE INDEX ai_usage_day ON ai_usage(day);
+CREATE TABLE ai_suggestion_audit (
+ id TEXT PRIMARY KEY, actor TEXT NOT NULL, thread_id TEXT NOT NULL, created_at TEXT NOT NULL,
+ action TEXT NOT NULL DEFAULT 'SUGGEST' CHECK (action IN ('SUGGEST','SETTINGS_UPDATED'))
+);

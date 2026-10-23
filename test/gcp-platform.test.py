@@ -302,6 +302,9 @@ setTimeout(() => console.log(JSON.stringify({ output, attempts })), 20);
         self.assertEqual('${PLATFORM_ENABLED:-0}', backend['environment']['PLATFORM_ENABLED'])
         self.assertEqual('${PLATFORM_ADMIN_CLAIM_ENABLED:-0}', backend['environment']['PLATFORM_ADMIN_CLAIM_ENABLED'])
         self.assertEqual('${MCP_ENABLED:-0}', backend['environment']['MCP_ENABLED'])
+        self.assertEqual('${AI_ENABLED:-0}', backend['environment']['AI_ENABLED'])
+        self.assertEqual('/run/secrets/ai_api_key', backend['environment']['AI_API_KEY_FILE'])
+        self.assertIn('ai_api_key', backend['secrets'])
         self.assertEqual('${MCP_REDIRECT_URIS:-}', backend['environment']['MCP_REDIRECT_URIS'])
         self.assertNotIn('MCP_BROWSER_ORIGINS', backend['environment'])
         self.assertEqual('${WHATSAPP_QR_ENABLED:-0}', backend['environment']['WHATSAPP_QR_ENABLED'])
@@ -315,7 +318,7 @@ setTimeout(() => console.log(JSON.stringify({ output, attempts })), 20);
         self.assertNotIn('PLATFORM_ADMIN_USERNAME',backend['environment'])
         self.assertNotIn('PLATFORM_ADMIN_PASSWORD_FILE',backend['environment'])
         self.assertEqual('384m',backend['mem_limit'])
-        self.assertEqual({'admin_password','database_password','integration_keys','platform','provisioner','whatsapp_qr_token','whatsapp_qr_token_slot1','whatsapp_qr_bindings'},set(backend['secrets']))
+        self.assertEqual({'admin_password','database_password','integration_keys','platform','provisioner','whatsapp_qr_token','whatsapp_qr_token_slot1','whatsapp_qr_bindings','ai_api_key'},set(backend['secrets']))
         self.assertEqual('${WHATSAPP_QR_BINDINGS_FILE:-}', backend['environment']['WHATSAPP_QR_BINDINGS_FILE'])
         workers = {name: service for name, service in compose['services'].items() if name.startswith('whatsapp-qr')}
         self.assertEqual({'whatsapp-qr', 'whatsapp-qr-slot1'}, set(workers))

@@ -1,5 +1,7 @@
+import { getAiSettings, updateAiSettings } from './ai/settings.js';
 import { createDemoSandbox } from './demo-sandbox.js';
 import { createQrSellerApi } from './whatsapp-qr/seller-api.js';
+import { createAnthropicProvider } from './ai/provider.js';
 import { createWhatsAppQrStore } from './whatsapp-qr/store.js';
 import { getShopSetup, resetDemo, setupShop, shopObjectName } from './shop-setup.js';
 import { authenticate, cookieFor, createSession, deleteSession, readSession, sampleAccount, sessionCookieFrom } from './auth.js';
@@ -70,7 +72,7 @@ function requireCsrf(request, session) {
  * the client address it trusts and, optionally, a handler for non-API paths.
  */
 /* Routes for one tenant (one shop, one store). Built once per tenant by createApi. */
-async function createTenantApi({ store, config, tenantId, serveStatic = null, whatsappTransport = createWhatsAppTransport() }) {
+async function createTenantApi({ store, config, tenantId, serveStatic = null, whatsappTransport = createWhatsAppTransport(), aiProvider, aiFetchImpl }) {
   const demoEnabled = config.shopMode === 'public-demo' && (await getShopSetup(store)).mode === 'demo';
   // Explicit opt-in: passwordless seller sign-in for a sample site. Never enable it for a real tenant.
   const quickLogin = demoEnabled || config.sellerQuickLogin === true;
@@ -88,7 +90,7 @@ async function createTenantApi({ store, config, tenantId, serveStatic = null, wh
   const basePath = config.basePath || '';
   const qrAvailable = config.whatsappQr?.enabled && !quickLogin && config.shopMode !== 'public-demo' && secretBox &&
     (tenantId === 'default' ? !basePath : config.whatsappQr?.bindings?.some(binding => binding.shopId === tenantId));
-  const qrSeller = qrAvailable ? createQrSellerApi({ store, secretBox, shopId: tenantId }) : null;
+  const qrSeller = qrAvailable ? createQrSellerApi({ store, secretBox, shopId: tenantId, ai: config.ai, provider: aiProvider ?? createAnthropicProvider({ ...config.ai, fetchImpl: aiFetchImpl }) }) : null;
   const connector = createConnector({ store, config, tenantId, quickLogin });
   const sellerCookie = (token, maxAge) => cookieFor(token, maxAge, config.production, `${basePath}/api/v1/seller`);
   const prefix = (value) => typeof value === 'string' && /^\/(?:api|shop|seller|shared)\//.test(value) ? basePath + value : value;
@@ -379,6 +381,17 @@ async function createTenantApi({ store, config, tenantId, serveStatic = null, wh
     if (method === 'GET' && pathname === '/api/v1/seller/categories') {
       return json(200, { items: await listCategories(store) });
     }
+    if (pathname === '/api/v1/seller/ai-settings' && (method === 'GET' || method === 'PATCH')) {
+      if (!config.ai?.enabled) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+      allow(method === 'GET' ? 'chats.reply' : 'ai.settings');
+      if (method === 'GET') {
+        const settings = await getAiSettings(store);
+        return json(200, { available: true, ...(account.role === 'OWNER' ? settings : { enabled: settings.enabled, level: settings.level }) }, { 'Cache-Control': 'no-store' });
+      }
+      requireOrigin(request, expectedOrigin);
+      requireCsrf(request, session);
+      return json(200, { available: true, ...await updateAiSettings(store, await readJson(request), account.username) }, { 'Cache-Control': 'no-store' });
+    }
     if (method === 'GET' && pathname === '/api/v1/seller/company-settings') {
       return json(200, await getCompanySettings(store));
     }
@@ -572,12 +585,12 @@ async function createTenantApi({ store, config, tenantId, serveStatic = null, wh
  * resolved to a tenant first; an unknown tenant is 404 and a suspended one 503 without touching any database.
  * Every tenant gets its own route table (limiters, secret box, quick sign-in decision), built on first use.
  */
-export async function createApi({ store, config, registry = null, platformHandler = null, setupHandler = null, serveStatic = null, whatsappTransport = createWhatsAppTransport() }) {
+export async function createApi({ store, config, registry = null, platformHandler = null, setupHandler = null, serveStatic = null, whatsappTransport = createWhatsAppTransport(), aiProvider, aiFetchImpl }) {
   const tenants = registry ?? singleTenantRegistry({ store, config });
   const handlers = new WeakMap();
   const handlerFor = (tenant) => {
     if (!handlers.has(tenant)) {
-      handlers.set(tenant, createTenantApi({ store: tenant.store, config: tenant.config, tenantId: tenant.id, serveStatic, whatsappTransport })
+      handlers.set(tenant, createTenantApi({ store: tenant.store, config: tenant.config, tenantId: tenant.id, serveStatic, whatsappTransport, aiProvider, aiFetchImpl })
         .catch((error) => { handlers.delete(tenant); throw error; }));
     }
     return handlers.get(tenant);
