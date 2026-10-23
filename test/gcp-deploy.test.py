@@ -27,7 +27,7 @@ def activation_secrets(root):
     directory.mkdir(exist_ok=True)
     for name in ('admin-password', 'postgres-password', 'postgres-owner-password',
                  'integration-keys', 'platform-password', 'provisioner-password',
-                 'whatsapp-qr-token', 'whatsapp-qr-token-slot1', 'whatsapp-qr-bindings.json'):
+                 'whatsapp-qr-token', 'whatsapp-qr-token-slot1', 'whatsapp-qr-bindings.json', 'ai-api-key'):
         (directory / name).write_text('fixture\n')
     return directory
 
@@ -67,7 +67,7 @@ class Tests(unittest.TestCase):
         for initial in (False, True):
             for name in ('admin-password', 'postgres-password', 'integration-keys',
                          'platform-password', 'provisioner-password', 'whatsapp-qr-token',
-                         'whatsapp-qr-token-slot1', 'whatsapp-qr-bindings.json',
+                         'whatsapp-qr-token-slot1', 'whatsapp-qr-bindings.json', 'ai-api-key',
                          *(['postgres-owner-password'] if initial else [])):
                 for invalid in ('missing', 'empty', 'directory'):
                     with self.subTest(initial=initial, name=name, invalid=invalid), tempfile.TemporaryDirectory() as root:
@@ -352,6 +352,29 @@ class Tests(unittest.TestCase):
                         'MCP_REDIRECT_URIS=https://claude.ai:8443/cb\n', 'MCP_REDIRECT_URIS=https://127.0.0.1/cb\n']:
                 path.write_text(good + bad)
                 with self.assertRaises(ValueError, msg=bad): f.runtime()
+
+    def test_runtime_config_ai_switch_model_and_key_file(self):
+        with tempfile.TemporaryDirectory() as root:
+            f = u.Updater(root)
+            path = Path(root, 'runtime.env')
+            secrets = Path(root, 'secrets'); secrets.mkdir()
+            good = 'SHOP_HOST=demoonlineshopping.xyz\nSELLER_HOST=seller.demoonlineshopping.xyz\nADMIN_USERNAME=owner\nSECRETS_DIR=' + str(secrets) + '\n'
+            path.write_text(good)
+            self.assertNotIn('AI_ENABLED', f.runtime())
+            path.write_text(good + 'AI_ENABLED=0\nAI_MODEL=claude-haiku-5-5\n')
+            self.assertEqual('0', f.runtime()['AI_ENABLED'])
+            for bad in ['AI_ENABLED=yes\n', 'AI_MODEL=Claude Haiku\n', 'AI_MODEL=a\n', 'AI_MODEL=$(touch /tmp/pwn)\n']:
+                path.write_text(good + bad)
+                with self.assertRaises(ValueError, msg=bad): f.runtime()
+            # Switching AI on needs a real key file; a placeholder or missing file is refused.
+            for content in (None, 'placeholder'):
+                (secrets / 'ai-api-key').unlink(missing_ok=True)
+                if content: (secrets / 'ai-api-key').write_text(content)
+                path.write_text(good + 'AI_ENABLED=1\n')
+                with self.assertRaises(ValueError, msg=str(content)): f.runtime()
+            (secrets / 'ai-api-key').write_text('sk-ant-' + 'x' * 40 + '\n')
+            path.write_text(good + 'AI_ENABLED=1\nAI_MODEL=claude-sonnet-5-5\n')
+            self.assertEqual('1', f.runtime()['AI_ENABLED'])
 
     def test_runtime_config_rejects_injection_and_unknown_keys(self):
         with tempfile.TemporaryDirectory() as root:
