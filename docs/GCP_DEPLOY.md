@@ -482,6 +482,26 @@ base64url values, the running containers were force-recreated (they still held t
 release was completed with the Updater `activate`/`health`/`save` path: state `deployed`, current `330d523`,
 workers `whatsapp-qr` and `whatsapp-qr-slot1`, timer active. The token rule and the inode note were added above.
 
+### Schema 28 release record (2026-10-24, AI assistant) and its outage
+
+Procedure as for schema 27: stop the timer, `pg_dumpall` backup restored into an isolated container and compared by row counts
+(0 non-benign errors), install the reviewed compose/update.py, create the `ai-api-key` placeholder secret file, runtime keys
+`AI_ENABLED=0` / `AI_MODEL`, stage, stop the backend, migrate the default shop (`upgrade-database.mjs` -> `{"version":28}`),
+migrate platform and tenants with a durable report, then Updater `activate`/`health`/`save` (previous images ineligible for rollback).
+
+Outage of about 10 minutes (shop and seller returned 502): the release script ran the migration steps inside `echo "$(docker run ...)"`,
+so a failing step was only printed, and it then activated the new image against a schema 27 database (the backend refuses to start
+on a schema it does not know). Cause of the failed step: `scripts/upgrade-platform.mjs` and `scripts/upgrade-database.mjs` are not
+guaranteed to be in the backend image (Dockerfile.backend copies selected scripts), so they must be mounted read-only from the reviewed
+release (`-v $T/upgrade-platform.mjs:/app/scripts/upgrade-platform.mjs:ro`). Fix applied live: the same migrations were run by hand
+with those mounts (default shop 28, tenant 28, platform 3), then `activate`. Rules for the next schema release: capture each migration
+command's output and exit status and abort (restoring the old controller files and restarting the OLD backend) unless it prints the
+expected version before `activate`; verify every `schema_meta.version` with psql before `activate`; dry-run the new configuration with
+`BACKEND_IMAGE=<candidate> docker compose run --rm --no-deps --entrypoint node backend -e "...readConfig(process.env)..."` (real compose
+environment and secrets) before stopping anything. After release: 10 orders and 120 products intact, WhatsApp worker CONNECTED, AI off
+by default (`ai_setting.enabled = 0` for the default shop and the tenant). Turning AI on needs a real key in `SECRETS_DIR/ai-api-key`
+and `AI_ENABLED=1` in `runtime.env` (the updater refuses a missing or placeholder key file when enabled).
+
 ### Source-only manual release (2026-10-22, `src/platform/` change, no schema or configuration change)
 
 `src/platform/` is a protected path, so a change there (here: SuperAdmin resets the default shop Owner, `c9218ee`) leaves
