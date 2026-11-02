@@ -1,6 +1,6 @@
 # Integration plan: WhatsApp and Malaysian couriers
 
-**Status: planning only. Nothing here is implemented.** Vendor capabilities, prices and approval rules below are from general knowledge and were not re-verified against vendor documentation on 2026-10-05; confirm each with the vendor before building. Current product boundary: no automatic outbound messages, courier or tracking integration (see [SPEC.md](SPEC.md)); this plan describes how that boundary could be lifted.
+**Status: planning only. Nothing here is implemented.** The current design and release plan is [INTEGRATION_DESIGN.md](INTEGRATION_DESIGN.md); this file keeps the earlier options for reference. Vendor capabilities, prices and approval rules below are from general knowledge and were not re-verified against vendor documentation on 2026-10-05; confirm each with the vendor before building. Current product boundary: no automatic outbound messages, courier or tracking integration (see [SPEC.md](SPEC.md)); this plan describes how that boundary could be lifted.
 
 ## WhatsApp
 

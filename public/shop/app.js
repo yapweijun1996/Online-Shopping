@@ -1,14 +1,17 @@
+import { icon } from '../shared/icons.js';
+import { apiUrl } from '../shared/base-path.js';
 import { mountAppearance } from '../shared/appearance.js';
 import { mountTabIcon } from '../shared/tab-icon.js';
 import { confirmModal } from '../shared/modal.js';
 import { revealImage } from './product-media.js';
+import { thumbUrl } from '../shared/image-thumb.js';
 import { storageKey } from './storage-scope.js';
 import { categoryIconPath, formatCatalogPrice } from './catalog-presentation.js';
 import { mountShopUpdates } from './update-view.js';
 import { draftSignature } from '../shared/update-guard.js';
 import { mountMobileNavigation } from './mobile-navigation.js';
 import { countryForCurrency, mountAddressBook } from './addresses.js';
-import { mountProfile } from './profile.js';
+import { mountProfile, updateProfileNotice } from './profile.js';
 import { createCartSelection } from './cart-selection.js';
 import { createContactHistory } from './history.js';
 import { mountProductDetail } from './product-detail.js';
@@ -113,7 +116,7 @@ function action(label, handler, className = 'outline-button') {
 function imageFor(product, className) {
   if (!product.imageUrl) return element('div', `${className} image-placeholder`, t('imageMissing'));
   const image = element('img', className);
-  image.src = product.imageUrl;
+  image.src = thumbUrl(product.imageUrl);   // cards are small: the preview is enough
   image.alt = product.name;
   image.loading = 'lazy';
   image.decoding = 'async';
@@ -221,7 +224,7 @@ function renderCatalog(startIndex = 0) {
     const body = element('div', 'catalog-card-body');
     const name = element('h3');
     const nameLink = element('a', 'product-name-link', product.name); nameLink.href = productHash(product.id); nameLink.dataset.productId = product.id; nameLink.dataset.catalogLink = 'title'; name.append(nameLink);
-    body.append(name, element('strong', 'catalog-price', formatCatalogPrice(product.priceMinor, product.currency, locale())));
+    body.append(name, element('strong', 'catalog-price', product.priceVaries ? t('priceFromFormat').replace('{price}', formatCatalogPrice(product.priceMinor, product.currency, locale())) : formatCatalogPrice(product.priceMinor, product.currency, locale())));
     if (product.inStock === false) body.append(element('span', 'catalog-stock', t('outOfStock')));
     card.append(body);
     cards.append(card);
@@ -264,11 +267,12 @@ async function loadCatalog(reset = true) {
       search: byId('catalog-search').value.trim(), category: category.value,
     });
     if (reset) catalogFilters = { search: params.get('search'), category: params.get('category') };
-    const [data, shop] = await Promise.all([api(`/api/v1/products?${params}`), api('/api/v1/shop')]);
+    const [data, shop] = await Promise.all([api(apiUrl(`v1/products?${params}`)), api(apiUrl('v1/shop'))]);
     if (request !== catalogRequest) return;
-    if ((shop.demoNamespace || '') !== globalThis.shopStorageNamespace) { location.reload(); return; }
+    if ((shop.storageScope || shop.demoNamespace || '') !== globalThis.shopStorageNamespace) { location.reload(); return; }
     shopInfo = shop;
     mobileNavigation.setAutoHide(shop.mobileHideBarsOnScroll);
+    updateProfileNotice(shop);
     profilePage?.setCountry(countryForCurrency(shop.currency));
     addressBook?.render();
     checkoutPage?.refreshAddress();
@@ -381,7 +385,7 @@ function changeQuantity(productId, value) {
     if (!Number.isInteger(next) || next < 1 || next > 100) {
       quantityErrors.set(productId, 'quantityLimit'); setMessage('quantityLimit'); return;
     }
-    const product = await api(`/api/v1/products/${encodeURIComponent(productId)}`);
+    const product = await api(apiUrl(`v1/products/${encodeURIComponent(productId)}`));
     const previous = resolvedCart.find(line => line.productId === productId)?.product;
     if (previous && (previous.priceMinor !== product.priceMinor || previous.currency !== product.currency)) priceChangedNotice = true;
     await cartStore.set(productId, next);
@@ -471,10 +475,12 @@ function renderCart() {
     input.setAttribute('aria-label', `${t('quantity')}: ${product?.name || t('productUnavailable')}`);
     input.addEventListener('input', () => quantityRevisions.set(productId, (quantityRevisions.get(productId) || 0) + 1));
     input.addEventListener('change', () => changeQuantity(productId, input.valueAsNumber));
-    const decrease = action('−', () => changeQuantity(productId, current => current - 1));  // reaching 0 asks to remove
+    const decrease = action('', () => changeQuantity(productId, current => current - 1));  // reaching 0 asks to remove
+    decrease.append(icon('minus'));
     decrease.dataset.focusKey = `decrease-${productId}`;
     decrease.setAttribute('aria-label', `${t('decreaseQuantity')}: ${product?.name || t('productUnavailable')}`);
-    const increase = action('+', () => changeQuantity(productId, current => current + 1));
+    const increase = action('', () => changeQuantity(productId, current => current + 1));
+    increase.append(icon('plus'));
     increase.dataset.focusKey = `increase-${productId}`;
     increase.disabled = quantity >= 100;
     increase.setAttribute('aria-label', `${t('increaseQuantity')}: ${product?.name || t('productUnavailable')}`);
@@ -579,7 +585,7 @@ async function refreshCart() {
   setCartStatus('loading');
   try {
     const results = await Promise.all(lines.map(async (line) => {
-      try { return { ...line, product: await api(`/api/v1/products/${encodeURIComponent(line.productId)}`) }; }
+      try { return { ...line, product: await api(apiUrl(`v1/products/${encodeURIComponent(line.productId)}`)) }; }
       catch (error) {
         if (error.status === 404) return { ...line, product: null };
         throw error;
@@ -701,7 +707,6 @@ async function completeOrder(receipt, { orderItems, submittedItems, cartBacked, 
   catch { receiptNotes.push('cartClearFailed'); }
   resolvedCart = [];
   cartReady = false;
-  checkoutPage.reset();
   setDirectPurchase(null);
   updateCount();
   updatePersistence();
@@ -709,6 +714,7 @@ async function completeOrder(receipt, { orderItems, submittedItems, cartBacked, 
   setMessage('orderSubmitted');
   location.hash = '#receipt';
   showRoute();
+  checkoutPage.reset();
 }
 
 let ordersScroll = 0;
@@ -740,8 +746,8 @@ function drawLocalOrders(orders) {
       const items = element('ul', 'local-order-items');
       for (const item of order.items) {
         const row = element('li');
-        // The picture and name open the product page, so a buyer can check or reorder what they bought.
-        const link = element('a', 'order-item-link'); link.href = productHash(item.productId);
+        // The picture and name open the product page in a new tab, so the order stays open while a buyer checks or reorders.
+        const link = element('a', 'order-item-link'); link.href = productHash(item.productId); link.target = '_blank'; link.rel = 'noopener noreferrer';
         link.append(orderThumbnail(item), element('span', '', `${item.name} × ${item.quantity}`));
         row.append(link, element('strong', '', formatMoney(item.unitPriceMinor * item.quantity, order.currency)));
         items.append(row);
@@ -771,7 +777,7 @@ function drawLocalOrders(orders) {
     preview.append(orderThumbnail(item), summary); card.append(preview);
     const footer = element('div', 'order-card-footer'); footer.append(element('span', 'shop-note', formatDate(order.submittedAt)), element('strong', 'local-order-total', formatMoney(order.totalMinor, order.currency))); card.append(footer);
     if (order.simulation) card.append(element('p', 'shop-note', t('localDemoOrder')));
-    card.append(element('span', 'order-details-action', `${t('orderDetails')} ›`));
+    const details = element('span', 'order-details-action', t('orderDetails')); details.append(icon('right')); card.append(details);
     card.addEventListener('click', () => { ordersScroll = window.scrollY; });
     list.append(card);
   }
@@ -783,9 +789,9 @@ function orderStatusBadge(order) {
 }
 function orderThumbnail(item) {
   const box = element('span', 'order-thumbnail'); box.setAttribute('aria-hidden', 'true');
-  box.textContent = '▧';
+  box.append(icon('image'));
   // Orders saved before images were recorded fall back to the product's public image; a missing image leaves the placeholder.
-  const source = item?.imageUrl || (/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(item?.productId || '') ? `/api/v1/products/${item.productId}/image` : null);
+  const source = item?.imageUrl || (/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(item?.productId || '') ? apiUrl(`v1/products/${item.productId}/image`) : null);
   if (source) { const img = element('img'); img.alt = ''; img.loading = 'lazy'; img.src = source; img.addEventListener('error', () => img.remove()); box.append(img); }
   return box;
 }
@@ -834,7 +840,7 @@ async function renderLocalOrders(navigating = false) {
   try {
     for (let offset = 0; offset < credentials.length; offset += 50) {
       const batch = credentials.slice(offset, offset + 50);
-      const response = await fetch('/api/v1/orders/statuses', {
+      const response = await fetch(apiUrl('v1/orders/statuses'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orders: batch }), signal: controller.signal,
       });
@@ -897,13 +903,14 @@ function showRoute() {
     if (active) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   }
+  const optionSwitch = route === 'product' && previousRoute === 'product' && detailPage.isSibling(parsed.id);
   if (route === 'product') detailPage.show(parsed.id);
   else {
     detailPage.hide();
     document.title = shopInfo?.shopName || t('shop');
   }
   if (catalogRoute && previousRoute === 'product') { restoreCatalogFocus = Boolean(catalogReturnFocus); restoreCatalogLinkFocus(); }
-  if (previousRoute !== route || route === 'product') {
+  if (!optionSwitch && (previousRoute !== route || route === 'product')) {
     window.scrollTo(0, catalogRoute && previousRoute === 'product' ? catalogScroll : 0);
   }
   previousRoute = route;
@@ -921,8 +928,10 @@ function showRoute() {
     const intent = directPurchase;
     const ownsCheckoutRead = () => checkoutRequest === checkoutRouteRequest &&
       location.hash === '#checkout' && directPurchase === intent;
-    if (directPurchase) {
-      api(`/api/v1/products/${intent.productId}`).then((product) => {
+    if (checkoutPage.isRecovering()) {
+      checkoutPage.setItems(cartStore.list());
+    } else if (directPurchase) {
+      api(apiUrl(`v1/products/${intent.productId}`)).then((product) => {
         if (ownsCheckoutRead()) {
           checkoutPage.setItems([{ productId: intent.productId, quantity: intent.quantity, product }], { fromCart: false });
           const back = document.querySelector('#checkout-view .shop-actionbar a');
@@ -974,8 +983,9 @@ byId('catalog-search').placeholder = t('searchProducts');
 
 // Resolve the server's demo revision before reading any browser-local data.
 // A failed initial request stays behind the existing retryable boot overlay.
-shopInfo = await api('/api/v1/shop');
-globalThis.shopStorageNamespace = shopInfo.demoNamespace || '';
+shopInfo = globalThis.shopBootstrapInfo || await api(apiUrl('v1/shop'));
+updateProfileNotice(shopInfo);
+globalThis.shopStorageNamespace = shopInfo.storageScope || shopInfo.demoNamespace || '';
 const [cartStore, openedOrderStore] = await Promise.all([createCartStore(), createLocalOrderStore()]);
 localOrderStore = openedOrderStore;
 let selectionStorage;
@@ -1242,5 +1252,5 @@ await loadCatalog();
 showRoute();
 
 
-mountShopUpdates(() => ({ dirty: profilePage.isDirty() || addressBook.isDirty(), busy: cartWrites > 0 || checkoutPage.isBusy(), signature: draftSignature() }), productUpdateBanner);
+mountShopUpdates(() => ({ dirty: profilePage.isDirty() || addressBook.isDirty() || checkoutPage.hasPendingIntent(), busy: cartWrites > 0 || checkoutPage.isBusy(), signature: draftSignature() }), productUpdateBanner);
 finishBoot();

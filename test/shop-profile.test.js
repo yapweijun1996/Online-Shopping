@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createProfileStore, normalizeProfile, profileForCountry } from '../public/shop/profile.js';
+import { createProfileStore, normalizeProfile, profileForCountry, updateProfileNotice } from '../public/shop/profile.js';
 import { createCartSelection } from '../public/shop/cart-selection.js';
 const memoryStorage = () => { const data = new Map(); return { getItem: (key) => data.get(key), setItem: (key, value) => data.set(key, value) }; };
 
@@ -57,4 +57,21 @@ test('cart selection preserves deselected items across refresh and supports Buy 
   assert.deepEqual(reloaded.items(lines), [lines[1]]);
   reloaded.sync([lines[0]]);
   assert.deepEqual(reloaded.items([lines[0]]), []);
+});
+
+test('profile notice follows production and preview mode changes', () => {
+  const previous = globalThis.document;
+  const notice = { dataset: {}, textContent: '' };
+  globalThis.document = { querySelector: () => notice };
+  try {
+    updateProfileNotice({ mode: 'production' });
+    assert.equal(notice.dataset.i18n, 'profileProductionNotice');
+    assert.match(notice.textContent, /sent to the seller when you place an order/);
+    assert.doesNotMatch(notice.textContent, /simulat|anonymous/);
+    updateProfileNotice({ mode: 'demo' });
+    assert.equal(notice.dataset.i18n, 'profileLocalNotice');
+    assert.match(notice.textContent, /simulated orders are anonymous/);
+    updateProfileNotice({ mode: 'production' });
+    assert.doesNotMatch(notice.textContent, /simulat|anonymous/);
+  } finally { globalThis.document = previous; }
 });

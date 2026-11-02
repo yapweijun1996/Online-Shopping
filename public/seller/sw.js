@@ -1,15 +1,22 @@
-importScripts('/shared/sw-core.js');
+importScripts('../shared/sw-core.js');
+const scopePath = new URL(self.registration.scope).pathname;
+const code = scopePath.split('/').filter(Boolean).length === 2 ? scopePath.split('/')[1] : '';
+const asset = (path) => new URL(path, self.registration.scope).pathname;
 
 self.setupOfflineWorker({
-  cachePrefix: 'os-seller',
-  version: 'v109',
-  scopePath: '/seller/',
-  offlinePage: '/seller/offline.html',
+  cachePrefix: code ? `tenant-${code}-seller` : 'os-seller',
+  version: 'v152',
+  scopePath,
+  offlinePage: asset('./offline.html'),
   assets: [
-    '/seller/', '/seller/index.html', '/seller/offline.html', '/seller/style.css', '/seller/palette.js', '/shop/tokens.css', '/seller/app.js', '/seller/alerts.js', '/seller/version.js', '/seller/products.js', '/seller/orders.js', '/seller/order-documents.js', '/seller/order-document-model.js', '/seller/order-print.css', '/seller/vendor/printform.js', '/seller/settings.js', '/seller/options.js', '/seller/product-fields.js', '/seller/assets/login-workspace.webp',
-    '/seller/integrations.js', '/shared/integration-catalog.js',
-    '/seller/commerce.css', '/seller/studio-copy.js', '/seller/assets/studio-leaf.svg',
-    '/seller/manifest.webmanifest', '/seller/icons/icon-192.png', '/seller/icons/icon-512.png',
-    '/shared/base.css', '/shared/demo-entry.js', '/shared/appearance.js', '/shared/appearance.css', '/shared/update-guard.js', '/shared/i18n.js', '/shared/pwa.js', '/shared/modal.js', '/shared/tab-icon.js', '/shared/offline.js', '/favicon.svg',
-  ],
+    '../shared/icons.js',
+    './', './index.html', './offline.html', './style.css', './palette.js', '../shop/tokens.css', './bootstrap.js', './app.js', './alerts.js', './version.js', './products.js', './orders.js', './order-documents.js', './order-document-model.js', './order-print.css', './vendor/printform.js', './settings.js', './sender-copy.js', './company-tabs.js', './options.js', './product-fields.js', './assets/login-workspace.webp',
+    './integrations.js', './whatsapp-connection.js', '../shared/integration-catalog.js',
+    './whatsapp-qr.js', './whatsapp-chats.js', './whatsapp-qr-ui.js', './whatsapp-qr-copy.js', './vendor/qrcode.js',
+    './ai-copy.js', './ai-settings.js', './ai-suggestions.js',
+    './commerce.css', './studio-copy.js', './trail-copy.js', './audit.js', './messages.js', './ops-copy.js', './erase-contact.js', './dashboard-figures.js', './team.js', './order-notes.js', './product-import.js', './password-dialog.js', './order-status-label.js', './assets/studio-leaf.svg',
+    './tracking-import.js', './tracking-copy.js', './tracking-mapping.js',
+    './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png',
+    '../shared/base-path.js', '../shared/storage-scope.js', '../shared/offline-bootstrap.js', '../shared/base.css', '../shared/demo-entry.js', '../shared/appearance.js', '../shared/appearance.css', '../shared/update-guard.js', '../shared/image-reveal.js', '../shared/image-thumb.js', '../shared/i18n.js', '../shared/pwa.js', '../shared/modal.js', '../shared/tab-icon.js', '../shared/offline.js', '/favicon.svg',
+  ].map(asset),
 });

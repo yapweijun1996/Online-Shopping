@@ -1,7 +1,7 @@
-// The shared address is /p/<id>: link-preview crawlers ignore #fragments, so it is served with preview
-// tags and sends browsers on to /shop/#product/<id> (see src/share.js).
+import { basePath } from '../shared/base-path.js';
+// Share paths preserve the tenant prefix because crawlers ignore app hash fragments.
 export function productShareURL(id, href) {
-  return new URL(`/p/${id}`, href).href;
+  return new URL(`${basePath(new URL(href).pathname)}/p/${id}`, href).href;
 }
 
 // Call directly from the click handler: native sharing requires user activation.

@@ -1,6 +1,11 @@
+import { apiUrl } from '../shared/base-path.js';
 import { formatMoney, t, translate } from '../shared/i18n.js';
 import { beginMutation } from '../shared/update-guard.js';
+import { revealImage } from '../shared/image-reveal.js';
+import { makeThumbnail, thumbUrl } from '../shared/image-thumb.js';
 import { inputFailure, priceToMinor, stockFromInput } from './product-fields.js';
+import './ops-copy.js';
+import { openImportDialog } from './product-import.js';
 
 function readImage(file) {
   if (!file) return Promise.resolve(undefined);
@@ -151,6 +156,11 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   let originalGallery = [];
   let galleryReferences = [];
   let galleryLoaded = false;
+  // A product with several variants shows one shared gallery: only its main variant edits it, and the product image above
+  // is this variant's own photo, which never touches the shared photos.
+  let sharedGallery = false;
+  let galleryEditable = true;
+  let galleryHolderId = null;
   let expectedUpdatedAt = null;
   let readingGallery = false;
   let categories = [];
@@ -202,7 +212,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     imagePanel.hidden = state === 'none';
     preview.hidden = !source;
     preview.alt = `${form.elements.name.value}: ${t('currentImage')}`;
-    if (source) preview.src = source;
+    if (source) { revealImage(preview); preview.src = source; }
     else preview.removeAttribute('src');
     imageStatus.dataset.i18n = { current: 'currentImage', replacement: 'newImage', removed: 'imagePendingRemoval' }[state] || '';
     imageStatus.textContent = imageStatus.dataset.i18n ? t(imageStatus.dataset.i18n) : '';
@@ -217,11 +227,22 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     imageRemovalHelp.hidden = !editingId || !originalImageUrl || (galleryLoaded && galleryImages.length <= 1);
     imageRemovalHelp.dataset.i18n = galleryLoaded ? 'removeGalleryFirst' : 'loading';
     imageRemovalHelp.textContent = imageRemovalHelp.hidden ? '' : t(imageRemovalHelp.dataset.i18n);
+    const sharedNote = find('#product-gallery-shared-note'), openMain = find('#product-open-main');
+    sharedNote.hidden = !sharedGallery;
+    if (sharedGallery) sharedNote.textContent = t(galleryEditable ? 'sharedGalleryHolderNote' : 'sharedGalleryNote');
+    openMain.hidden = !sharedGallery || galleryEditable;
+    if (sharedGallery) {
+      form.elements.gallery.disabled = !galleryEditable || saving || readingGallery || !galleryLoaded || galleryImages.length >= 10;
+      removeImage.disabled = !galleryLoaded;
+      imageRemovalHelp.hidden = true;
+    }
+    const preview = (state, source) => { if (!sharedGallery) showImage(state, source); };
     galleryList.replaceChildren();
     galleryImages.forEach((entry, index) => {
       const item = document.createElement('div');
       item.className = 'product-gallery-item'; item.dataset.imageId = entry.id || 'new';
       const photo = document.createElement('img');
+      revealImage(photo);
       photo.src = entry.src;
       photo.alt = `${form.elements.name.value}: ${t('gallery')} ${index + 1}`;
       const label = document.createElement('p'); label.textContent = `${index + 1} · ${t(index === 0 ? 'primaryPhoto' : 'gallery')}`;
@@ -232,17 +253,17 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
         galleryList.children[Math.min(index, galleryImages.length - 1)]?.querySelector('button:not([disabled])')?.focus({ preventScroll: true });
         document.dispatchEvent(new Event('updateguardchange'));
       };
-      const primary = button(t('setPrimaryPhoto'), () => change(() => { galleryImages.splice(index, 1); galleryImages.unshift(entry); showImage('current', entry.src); }), `${t('setPrimaryPhoto')} ${index + 1}`);
-      primary.dataset.galleryAction = 'primary'; primary.disabled = saving || readingGallery || index === 0;
-      const earlier = button(t('movePhotoEarlier'), () => change(() => { [galleryImages[index - 1], galleryImages[index]] = [entry, galleryImages[index - 1]]; showImage('current', galleryImages[0]?.src); }), `${t('movePhotoEarlier')} ${index + 1}`);
-      earlier.dataset.galleryAction = 'earlier'; earlier.disabled = saving || readingGallery || index === 0;
-      const later = button(t('movePhotoLater'), () => change(() => { [galleryImages[index + 1], galleryImages[index]] = [entry, galleryImages[index + 1]]; showImage('current', galleryImages[0]?.src); }), `${t('movePhotoLater')} ${index + 1}`);
-      later.dataset.galleryAction = 'later'; later.disabled = saving || readingGallery || index === galleryImages.length - 1;
-      const remove = button(t('removePhoto'), () => change(() => { galleryImages.splice(index, 1); showImage(galleryImages.length ? 'current' : 'none', galleryImages[0]?.src); }), `${t('removePhoto')} ${index + 1}`);
-      remove.dataset.galleryAction = 'remove'; remove.disabled = saving || readingGallery;
+      const primary = button(t('setPrimaryPhoto'), () => change(() => { galleryImages.splice(index, 1); galleryImages.unshift(entry); preview('current', entry.src); }), `${t('setPrimaryPhoto')} ${index + 1}`);
+      primary.dataset.galleryAction = 'primary'; primary.disabled = !galleryEditable || saving || readingGallery || index === 0;
+      const earlier = button(t('movePhotoEarlier'), () => change(() => { [galleryImages[index - 1], galleryImages[index]] = [entry, galleryImages[index - 1]]; preview('current', galleryImages[0]?.src); }), `${t('movePhotoEarlier')} ${index + 1}`);
+      earlier.dataset.galleryAction = 'earlier'; earlier.disabled = !galleryEditable || saving || readingGallery || index === 0;
+      const later = button(t('movePhotoLater'), () => change(() => { [galleryImages[index + 1], galleryImages[index]] = [entry, galleryImages[index + 1]]; preview('current', galleryImages[0]?.src); }), `${t('movePhotoLater')} ${index + 1}`);
+      later.dataset.galleryAction = 'later'; later.disabled = !galleryEditable || saving || readingGallery || index === galleryImages.length - 1;
+      const remove = button(t('removePhoto'), () => change(() => { galleryImages.splice(index, 1); preview(galleryImages.length ? 'current' : 'none', galleryImages[0]?.src); }), `${t('removePhoto')} ${index + 1}`);
+      remove.dataset.galleryAction = 'remove'; remove.disabled = !galleryEditable || saving || readingGallery;
       actions.append(primary, earlier, later, remove); item.append(photo, label, actions); galleryList.append(item);
     });
-    const available = galleryReferences.filter(reference => !galleryImages.some(item => item.id === reference.id));
+    const available = !galleryEditable ? [] : galleryReferences.filter(reference => !galleryImages.some(item => item.id === reference.id));
     if (available.length) {
       const heading = document.createElement('p'); heading.textContent = t('availableReferencePhotos'); galleryList.append(heading);
       for (const reference of available) {
@@ -259,7 +280,11 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   }
 
   function acceptGallery(detail, { capture = true } = {}) {
-    galleryImages = (detail.galleryItems || []).map(item => ({ ...item }));
+    sharedGallery = Boolean(detail.galleryShared);
+    galleryHolderId = detail.galleryHolderId || null;
+    galleryEditable = !sharedGallery || galleryHolderId === detail.id;
+    // Shared photos only: this variant's own photo is the product image above, not part of the gallery.
+    galleryImages = (detail.galleryItems || []).filter(item => !sharedGallery || item.shared).map(item => ({ ...item }));
     originalGallery = galleryImages.map(item => ({ ...item }));
     galleryReferences = (detail.galleryReferenceItems || []).map(item => ({ ...item }));
     expectedUpdatedAt = detail.updatedAt;
@@ -286,8 +311,8 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   async function loadSettings() {
     try {
       const [categoryResult, settings, optionResult] = await Promise.all([
-        api('GET', '/api/v1/seller/categories'), api('GET', '/api/v1/seller/company-settings'),
-        api('GET', '/api/v1/seller/option-types').catch(() => ({ items: [] })),
+        api('GET', apiUrl('v1/seller/categories')), api('GET', apiUrl('v1/seller/company-settings')),
+        api('GET', apiUrl('v1/seller/option-types')).catch(() => ({ items: [] })),
       ]);
       if (!isCurrent()) return;
       categories = categoryResult.items;
@@ -304,15 +329,193 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     }
   }
 
+  // Who changed this product, when, and from what to what. Loaded when the section is opened.
+  const historyPanel = find('#product-history'), historyList = find('#product-history-list');
+  let historyFor = null, historyLoaded = false;
+  function historyValue(field, value, currency) {
+    if (field === 'stockQuantity' && value === null) return t('historyUnlimited');
+    if (value === null || value === undefined || value === '') return '–';
+    if (field === 'active') return t(value ? 'active' : 'inactive');
+    if (field === 'priceMinor') return formatMoney(value, currency || 'MYR');
+    if (field === 'stockQuantity') return String(value);
+    return String(value);
+  }
+  function setupHistory(id) {
+    if (id === historyFor) return;
+    historyFor = id; historyLoaded = false;
+    historyPanel.hidden = !id; historyPanel.open = false; historyList.replaceChildren();
+  }
+  historyPanel.addEventListener('toggle', async () => {
+    if (!historyPanel.open) { historyLoaded = false; return; }   // closing forgets the list, so reopening shows fresh entries
+    if (historyLoaded || !historyFor) return;
+    const id = historyFor;
+    try {
+      const data = await api('GET', apiUrl(`v1/seller/products/${id}/history?limit=50`));
+      if (!isCurrent() || id !== historyFor) return;
+      historyLoaded = true;
+      historyList.replaceChildren(...(data.items.length ? data.items.map((entry) => {
+        const item = document.createElement('li');
+        const meta = document.createElement('span');
+        meta.className = 'history-meta';
+        meta.textContent = `${new Date(entry.at).toLocaleString(document.documentElement.lang || undefined)} · ${entry.actor}${entry.action === 'CREATED' ? ` · ${t('historyCreated')}` : ''}`;
+        item.append(meta);
+        for (const change of entry.changes) {
+          const line = document.createElement('div');
+          line.textContent = entry.action === 'CREATED' ? `${t(`historyField_${change.field}`)}: ${historyValue(change.field, change.to)}`
+            : `${t(`historyField_${change.field}`)}: ${historyValue(change.field, change.from)} → ${historyValue(change.field, change.to)}`;
+          item.append(line);
+        }
+        return item;
+      }) : [Object.assign(document.createElement('li'), { textContent: t('historyEmpty') })]));
+    } catch { if (isCurrent() && id === historyFor) historyList.replaceChildren(Object.assign(document.createElement('li'), { textContent: t('historyLoadError') })); }
+  });
+
+  const variantsPanel = find('#product-variants');
+  /* The variants of the product being edited: one line each, the one on screen marked, the others one click away. */
+  function renderVariants(detail) {
+    setupHistory(detail?.id || null);
+    const variants = detail?.variants || [];
+    variantsPanel.hidden = variants.length < 2;
+    const rows = find('#product-variants-list');
+    rows.replaceChildren();
+    if (variants.length < 2) return;
+    for (const variant of variants) {
+      const row = document.createElement('li');
+      row.className = `product-variant-row${variant.id === detail.id ? ' current' : ''}`;
+      const name = document.createElement('span');
+      name.className = 'product-variant-name';
+      name.textContent = variant.label || variant.sku;
+      const code = document.createElement('span');
+      code.className = 'product-variant-sku';
+      code.textContent = variant.sku;
+      const main = document.createElement('div');
+      main.className = 'product-variant-main';
+      main.append(name, code);
+      const price = document.createElement('span');
+      price.className = 'product-variant-price';
+      price.textContent = formatMoney(variant.priceMinor, variant.currency);
+      const stock = document.createElement('span');
+      stock.className = 'product-variant-stock';
+      stock.textContent = variant.stockQuantity === null ? t('unlimitedStock') : variant.stockQuantity === 0 ? t('outOfStock') : String(variant.stockQuantity);
+      const state = document.createElement('span');
+      state.className = `product-status-chip${variant.active ? '' : ' inactive'}`;
+      state.textContent = t(variant.active ? 'active' : 'inactive');
+      const figures = document.createElement('div');
+      figures.className = 'product-variant-figures';
+      figures.append(price, stock);
+      const actions = document.createElement('div');
+      actions.className = 'product-variant-actions';
+      row.append(main, figures, state, actions);
+      if (variant.id !== detail.id) {
+        const switchButton = button(t(variant.active ? 'deactivateProduct' : 'activateProduct'), async (event) => {
+          const control = event.currentTarget;
+          control.disabled = true;
+          try {
+            await api('PATCH', apiUrl(`v1/seller/products/${variant.id}`), { active: !variant.active });
+            if (!isCurrent() || editingId !== detail.id) return;
+            renderVariants(await api('GET', apiUrl(`v1/seller/products/${detail.id}`)));
+          } catch { control.disabled = false; if (isCurrent()) setError('productError'); }
+        }, `${t(variant.active ? 'deactivateProduct' : 'activateProduct')}: ${variant.label || variant.sku} (${variant.sku})`);
+        actions.append(switchButton);
+      }
+      if (variant.id === detail.id) {
+        const here = document.createElement('span');
+        here.className = 'product-variant-here';
+        here.textContent = t('variantEditing');
+        actions.append(here);
+      } else {
+        actions.append(button(t('editProduct'), () => onNavigate(`products/${variant.id}`), `${t('editProduct')}: ${variant.label || variant.sku} (${variant.sku})`));
+      }
+      rows.append(row);
+    }
+  }
+
+  // Several products at once: tick the products, then switch them on or off together. All or nothing on the server.
+  const selected = new Set();
+  const bulkBar = document.createElement('div');
+  bulkBar.className = 'product-bulk'; bulkBar.hidden = true;
+  const bulkCount = document.createElement('strong');
+  const bulkMessage = document.createElement('p');
+  bulkMessage.className = 'message'; bulkMessage.setAttribute('role', 'status');
+  let bulkBusy = false, bulkMessageKey = '', bulkMessageCount = 0, bulkMessageValues = null;
+  const bulkButtons = [['bulkActivate', 'activate'], ['bulkDeactivate', 'deactivate']].map(([label, action]) => {
+    const control = button(t(label), () => runBulk(action));
+    control.dataset.labelKey = label;
+    return control;
+  });
+  const bulkClear = button(t('bulkClear'), () => { selected.clear(); renderList(); });
+  bulkClear.dataset.labelKey = 'bulkClear';
+  bulkBar.append(bulkCount, ...bulkButtons, bulkClear, bulkMessage);
+  list.before(bulkBar);
+  function refreshBulk() {
+    bulkBar.hidden = selected.size === 0 && !bulkMessageKey;
+    bulkCount.textContent = selected.size ? t('bulkSelected').replace('{count}', selected.size) : '';
+    for (const control of [...bulkButtons, bulkClear]) { control.textContent = t(control.dataset.labelKey); control.hidden = selected.size === 0; control.disabled = bulkBusy; }
+    bulkMessage.textContent = bulkMessageKey ? Object.entries(bulkMessageValues ?? { count: bulkMessageCount }).reduce((text, [name, value]) => text.replace(`{${name}}`, value), t(bulkMessageKey)) : '';
+    bulkMessage.classList.toggle('is-error', ['bulkFailed', 'exportFailed', 'exportTooMany'].includes(bulkMessageKey));
+  }
+  find('#product-import').addEventListener('click', (event) => {
+    openImportDialog({ trigger: event.currentTarget, onUnauthorized,
+      post: async (body) => {
+        const response = await fetch(apiUrl('v1/seller/products/import'), { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() }, body: JSON.stringify(body) });
+        const data = await response.json().catch(() => null);
+        if (!response.ok) throw Object.assign(new Error('import'), { status: response.status, data });
+        return data;
+      },
+      onImported: async (summary) => {
+        if (!isCurrent()) return;
+        bulkMessageKey = 'importDone'; bulkMessageValues = { created: summary.create, updated: summary.update };
+        await load(true); refreshBulk();
+      } });
+  });
+  find('#product-export').addEventListener('click', async (event) => {
+    const control = event.currentTarget;
+    control.disabled = true;
+    try {
+      const response = await fetch(apiUrl(`v1/seller/products/export.csv?${new URLSearchParams({ search: search.value.trim() })}`), { cache: 'no-store' });
+      if (response.status === 401) { if (isCurrent()) onUnauthorized(); return; }
+      if (!response.ok) {
+        const code = (await response.json().catch(() => ({}))).error?.code;
+        if (isCurrent()) { bulkMessageValues = null; bulkMessageKey = code === 'TOO_MANY_ROWS' ? 'exportTooMany' : 'exportFailed'; refreshBulk(); }
+        return;
+      }
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(await response.blob());
+      link.download = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') || '')?.[1] || 'products.csv';
+      document.body.append(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      if (isCurrent()) { bulkMessageKey = 'exportDone'; refreshBulk(); }
+    } catch { if (isCurrent()) { bulkMessageKey = 'exportFailed'; refreshBulk(); } }
+    finally { if (control.isConnected) control.disabled = false; }
+  });
+
+  async function runBulk(action) {
+    if (!selected.size || bulkBusy) return;
+    bulkBusy = true; bulkMessageKey = ''; refreshBulk();
+    try {
+      const result = await api('POST', apiUrl('v1/seller/products/bulk'), { ids: [...selected], action });
+      if (!isCurrent()) return;
+      selected.clear(); bulkMessageKey = 'bulkDone'; bulkMessageCount = result.changed; bulkMessageValues = null;
+    } catch (failure) {
+      if (!isCurrent() || failure.message === 'unauthorized') return;
+      bulkMessageKey = 'bulkFailed';
+    }
+    bulkBusy = false;
+    await load(true);
+    refreshBulk();
+  }
+
   function renderList() {
     list.replaceChildren();
+    for (const id of [...selected]) if (!items.some((product) => product.id === id && product.variantCount <= 1)) selected.delete(id);
     for (const product of items) {
       const card = document.createElement('article');
       card.className = 'product-card';
       card.dataset.productId = product.id;
       if (product.imageUrl) {
         const image = document.createElement('img');
-        image.src = product.imageUrl;
+        revealImage(image);
+        image.src = thumbUrl(product.imageUrl);
         image.alt = product.name;
         card.append(image);
       } else {
@@ -332,19 +535,26 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       identity.className = 'product-row-identity';
       detail.textContent = product.category;
       identity.append(title, detail);
+      const grouped = product.variantCount > 1;
       const sku = document.createElement('p');
       sku.className = 'product-row-sku';
-      sku.textContent = product.sku;
+      sku.textContent = grouped ? t('variantsCountFormat').replace('{count}', product.variantCount) : product.sku;
       const price = document.createElement('p');
       price.className = 'product-card-price';
-      price.textContent = formatMoney(product.priceMinor, product.currency);
+      price.textContent = grouped && product.priceFromMinor !== product.priceToMinor
+        ? `${formatMoney(product.priceFromMinor, product.currency)} – ${formatMoney(product.priceToMinor, product.currency)}`
+        : formatMoney(grouped ? product.priceFromMinor : product.priceMinor, product.currency);
       const chip = document.createElement('span');
-      chip.className = `product-status-chip${product.active ? '' : ' inactive'}`;
-      chip.textContent = t(product.active ? 'active' : 'inactive');
+      const activeNow = grouped ? product.activeCount > 0 : product.active;
+      chip.className = `product-status-chip${activeNow ? '' : ' inactive'}`;
+      chip.textContent = grouped && product.activeCount > 0 && product.activeCount < product.variantCount
+        ? t('variantsActiveFormat').replace('{active}', product.activeCount).replace('{count}', product.variantCount)
+        : t(activeNow ? 'active' : 'inactive');
       const stock = document.createElement('p');
       stock.className = 'product-card-identity';
-      stock.textContent = product.stockQuantity === null ? `${t('stockLabel')}: ${t('unlimitedStock')}`
-        : product.stockQuantity === 0 ? t('outOfStock') : `${t('stockLabel')}: ${product.stockQuantity}`;
+      const stockNow = grouped ? product.stockTotal : product.stockQuantity;
+      stock.textContent = stockNow === null ? `${t('stockLabel')}: ${t('unlimitedStock')}`
+        : stockNow === 0 ? t('outOfStock') : `${t('stockLabel')}: ${stockNow}`;
       main.append(identity, sku, price, stock, chip);
       const actions = document.createElement('div');
       actions.className = 'product-card-actions';
@@ -353,7 +563,19 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
         `${t(product.active ? 'deactivateProduct' : 'activateProduct')}: ${product.name} (${product.sku})`);
       toggleButton.dataset.action = 'toggle';
       toggleButton.disabled = pendingChanges.has(product.id);
-      actions.append(button(t('editProduct'), () => onNavigate(`products/${product.id}`), `${t('editProduct')}: ${product.name} (${product.sku})`), toggleButton);
+      // A product with several variants is switched on or off per variant, inside the product.
+      actions.append(button(t('editProduct'), () => onNavigate(`products/${product.id}`), `${t('editProduct')}: ${product.name} (${product.sku})`));
+      if (!grouped) {
+        actions.append(toggleButton);
+        const pick = document.createElement('label');
+        pick.className = 'product-select';
+        const box = document.createElement('input');
+        box.type = 'checkbox'; box.checked = selected.has(product.id); box.dataset.action = 'select';
+        box.setAttribute('aria-label', t('bulkSelectProduct').replace('{name}', `${product.name} (${product.sku})`));
+        box.addEventListener('change', () => { if (box.checked) selected.add(product.id); else selected.delete(product.id); bulkMessageKey = ''; refreshBulk(); });
+        pick.append(box);
+        actions.prepend(pick);
+      }
       card.append(main, actions);
       const undo = undoStates.get(product.id);
       if (undo && undo.appliedActive === product.active) {
@@ -371,6 +593,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       list.append(card);
     }
     more.hidden = nextOffset === null;
+    refreshBulk();
   }
 
   async function api(method, path, body) {
@@ -401,7 +624,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     setStatus('loading');
     try {
       const params = new URLSearchParams({ limit: '24', offset: String(offset), search: query });
-      const result = await api('GET', `/api/v1/seller/products?${params}`);
+      const result = await api('GET', apiUrl(`v1/seller/products?${params}`));
       if (sequence !== loadSequence || !isCurrent()) return false;
       items = reset ? result.items : [...items, ...result.items];
       if (reset) appliedSearch = query;
@@ -435,6 +658,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     galleryImages = [];
     galleryReferences = [];
     galleryLoaded = false;
+    sharedGallery = false; galleryEditable = true; galleryHolderId = null;
     expectedUpdatedAt = null;
     showImage('none');
     renderGallery();
@@ -468,6 +692,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     showImage(product.imageUrl ? 'current' : 'none', product.imageUrl);
     galleryImages = [];
     galleryLoaded = false;
+    sharedGallery = false; galleryEditable = true; galleryHolderId = null;
     renderGallery();
     setError('');
     setFormSuccess('');
@@ -478,13 +703,16 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     }
     if (detailLoaded) {
       acceptGallery(product);
+      renderVariants(product);
       return;
     }
+    renderVariants(null);
     try {
-      const detail = await api('GET', `/api/v1/seller/products/${product.id}`);
+      const detail = await api('GET', apiUrl(`v1/seller/products/${product.id}`));
       if (!isCurrent() || editingId !== product.id || sequence !== editorLoadSequence) return;
       if (detail.updatedAt !== product.updatedAt) { setError('productChangedReopen'); return; }
       acceptGallery(detail, { capture: false });
+      renderVariants(detail);
     } catch { if (isCurrent() && editingId === product.id && sequence === editorLoadSequence) setError('productError'); }
   }
 
@@ -501,12 +729,27 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     editorView.hidden = false;
     resetForm();
     setEditorStatus(route === 'products/new' ? '' : 'loading');
-    if (route === 'products/new') {
+    const variantOf = /^products\/new\/([0-9a-f-]{36})$/.exec(route)?.[1];
+    if (route === 'products/new' || variantOf) {
       await settingsPromise;
+      let base = null;
+      if (variantOf) {
+        try { base = await api('GET', apiUrl(`v1/seller/products/${variantOf}`)); } catch { setEditorStatus('productNotFound'); return; }
+      }
       if (sequence !== routeSequence || !isCurrent()) return;
       form.hidden = false;
-      populateCategories();
-      form.elements.currency.value = defaultCurrency;
+      populateCategories(base?.categoryCode);
+      form.elements.currency.value = base?.currency || defaultCurrency;
+      if (base) {
+        // A new variant starts from the shared details of the product it joins; SKU, options and price are its own.
+        form.elements.name.value = base.name;
+        form.elements.description.value = base.description;
+        form.elements.price.value = (base.priceMinor / 100).toFixed(2);
+        form.elements.variantGroup.value = base.variantGroup || '';
+        form.elements.active.checked = true;
+        setEditorStatus('');
+        form.elements.sku.focus();
+      }
       const currencyHelp = find('#product-currency-help');
       currencyHelp.dataset.i18n = 'currencyInherited';
       currencyHelp.textContent = t('currencyInherited');
@@ -515,7 +758,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     }
     const id = route.slice('products/'.length);
     try {
-      const detail = await api('GET', `/api/v1/seller/products/${id}`);
+      const detail = await api('GET', apiUrl(`v1/seller/products/${id}`));
       await settingsPromise;
       if (sequence !== routeSequence || !isCurrent()) return;
       await edit(detail, { skipGuard: true, detailLoaded: true });
@@ -556,7 +799,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     pendingChanges.add(product.id);
     control.disabled = true;
     try {
-      const updated = await api('PATCH', `/api/v1/seller/products/${product.id}`, { active: !product.active });
+      const updated = await api('PATCH', apiUrl(`v1/seller/products/${product.id}`), { active: !product.active });
       undoStates.set(product.id, { previousActive: product.active, appliedActive: updated.active });
       pendingChanges.delete(product.id);
       replaceProduct(updated);
@@ -575,14 +818,14 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     pendingChanges.add(product.id);
     control.disabled = true;
     try {
-      const latest = await api('GET', `/api/v1/seller/products/${product.id}`);
+      const latest = await api('GET', apiUrl(`v1/seller/products/${product.id}`));
       if (latest.active !== undo.appliedActive) {
         undoStates.delete(product.id);
         pendingChanges.delete(product.id);
         replaceProduct(latest);
         setStatus('productUndoUnavailable', product.name);
       } else {
-        const restored = await api('PATCH', `/api/v1/seller/products/${product.id}`, { active: undo.previousActive });
+        const restored = await api('PATCH', apiUrl(`v1/seller/products/${product.id}`), { active: undo.previousActive });
         undoStates.delete(product.id);
         pendingChanges.delete(product.id);
         replaceProduct(restored);
@@ -597,16 +840,18 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   }
 
   find('#product-new').addEventListener('click', () => onNavigate('products/new'));
+  find('#product-add-variant').addEventListener('click', () => { if (editingId) onNavigate(`products/new/${editingId}`); });
+  find('#product-open-main').addEventListener('click', () => { if (galleryHolderId) onNavigate(`products/${galleryHolderId}`); });
   find('#product-cancel').addEventListener('click', () => onNavigate('products'));
   form.addEventListener('input', () => { if (formSuccessKey) setFormSuccess(''); });
   form.addEventListener('change', () => { if (formSuccessKey) setFormSuccess(''); });
   find('#product-search-form').addEventListener('submit', (event) => { event.preventDefault(); load(); });
   more.addEventListener('click', () => load(false));
   removeImage.addEventListener('click', () => {
-    if (!galleryLoaded || galleryImages.length > 1) return;
+    if (!galleryLoaded || (galleryImages.length > 1 && !sharedGallery)) return;
     form.elements.image.value = '';
     pendingRemove = Boolean(originalImageUrl);
-    galleryImages = [];
+    if (!sharedGallery) galleryImages = [];
     showImage(pendingRemove ? 'removed' : 'none');
     renderGallery();
   });
@@ -625,7 +870,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
         const dataUrl = await readImage(file);
         if (!ownsRead()) return;
         pendingRemove = false;
-        if (editingId) {
+        if (editingId && !sharedGallery) {
           galleryImages = galleryImages.filter(item => item.id !== 'main');
           galleryImages.unshift({ id: 'main', src: dataUrl });
         }
@@ -645,10 +890,11 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     readingGallery = true; renderGallery(); find('#product-save').disabled = true; setError('');
     try {
       const data = await Promise.all(files.map(readImage));
+      const previews = await Promise.all(files.map(file => makeThumbnail(file)));
       if (!ownsRead()) return;
-      for (const imageDataUrl of data) {
-        if (!galleryImages.some(item => item.imageDataUrl === imageDataUrl)) galleryImages.push({ imageDataUrl, src: imageDataUrl });
-      }
+      data.forEach((imageDataUrl, index) => {
+        if (!galleryImages.some(item => item.imageDataUrl === imageDataUrl)) galleryImages.push({ imageDataUrl, src: imageDataUrl, thumbDataUrl: previews[index] });
+      });
     } catch { if (ownsRead()) setError('productError'); }
     finally {
       if (ownsRead()) {
@@ -692,17 +938,24 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
         if (payload.priceMinor === priceToMinor(baseline.values.price)) delete payload.priceMinor;
         if (payload.currency === baseline.values.currency) delete payload.currency;
         if (payload.active === baseline.active) delete payload.active;
+        if (payload.stockQuantity === stockFromInput(baseline.values.stockQuantity)) delete payload.stockQuantity;
       }
       // Snapshot the initiating editor before image decoding yields to navigation.
       if (productId) {
-        payload.gallery = galleryImages.map(item => item.imageDataUrl ? { imageDataUrl: item.imageDataUrl } : { id: item.id });
         payload.expectedUpdatedAt = expectedUpdatedAt;
+        if (galleryEditable) {
+          payload.gallery = galleryImages.map(item => item.imageDataUrl ? { imageDataUrl: item.imageDataUrl, ...(item.thumbDataUrl ? { thumbDataUrl: item.thumbDataUrl } : {}) } : { id: item.id });
+        }
       }
       const file = form.elements.image.files[0];
-      if (file) payload.imageDataUrl = await readImage(file);
+      if (file) {
+        payload.imageDataUrl = await readImage(file);
+        const preview = await makeThumbnail(file);   // the browser makes the small copy that lists download
+        if (preview) payload.thumbDataUrl = preview;
+      }
       else if (pendingRemove) payload.imageDataUrl = null;
       if (!ownsRoute()) return;
-      const saved = await api(productId ? 'PATCH' : 'POST', productId ? `/api/v1/seller/products/${productId}` : '/api/v1/seller/products', payload);
+      const saved = await api(productId ? 'PATCH' : 'POST', productId ? apiUrl(`v1/seller/products/${productId}`) : apiUrl('v1/seller/products'), payload);
       if (!ownsRoute()) return;
       resetForm();
       await load();
@@ -718,7 +971,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       const galleryConflict = pendingRemove && failure.field === 'imageDataUrl';
       const optionKey = failure.field === 'options' ? (optionErrorKey[failure.code] || 'productError') : null;
       if (optionKey) { optionsError.textContent = t(optionKey); optionsError.hidden = false; }
-      setError(optionKey || (failure.code === 'PRODUCT_CHANGED' ? 'productChangedReopen' : failure.field === 'gallery' ? 'galleryLimit' : galleryConflict ? 'removeGalleryFirst' : failure.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : failure.code === 'DUPLICATE_SKU' ? 'duplicateSku' : failure.code === 'DUPLICATE_VARIANT' ? 'duplicateVariant' : 'productError'));
+      setError(optionKey || (failure.code === 'PRODUCT_CHANGED' ? 'productChangedReopen' : failure.code === 'STOCK_TRACKING_CONFLICT' ? 'stockTrackingConflict' : failure.field === 'gallery' ? 'galleryLimit' : galleryConflict ? 'removeGalleryFirst' : failure.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : failure.code === 'DUPLICATE_SKU' ? 'duplicateSku' : failure.code === 'DUPLICATE_VARIANT' ? 'duplicateVariant' : 'productError'));
       if (galleryConflict && productId && editingId === productId) {
         // A rejected write owns no new baseline. Preserve all draft metadata,
         // image removals and order so retry and navigation guards remain truthful.

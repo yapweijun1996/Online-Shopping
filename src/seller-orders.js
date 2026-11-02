@@ -1,12 +1,14 @@
 import { ApiError } from './http.js';
 import { FieldError, boundedText } from './validation.js';
 import { productCover } from './product-gallery.js';
+import { documentTrail } from './document-trail.js';
+import { listOrderNotes } from './order-notes.js';
 
 const orderColumns = `id, order_no, buyer_name, buyer_phone, buyer_email, whatsapp_opt_in,
   whatsapp_consent_at, whatsapp_consent_version, locale, status, revision, currency,
-  total_minor, submitted_at, updated_at, tracking_carrier, tracking_no`;
-const queueColumns = 'id, order_no, buyer_name, status, revision, currency, total_minor, submitted_at, updated_at, tracking_carrier, tracking_no';
-const statuses = new Set(['SUBMITTED', 'CONFIRMED', 'REJECTED', 'SHIPPED', 'DELIVERED', 'CANCELLED']);
+  total_minor, submitted_at, updated_at, tracking_carrier, tracking_no, contact_erased_at, contact_erased_by`;
+const queueColumns = 'id, order_no, buyer_name, status, revision, currency, total_minor, submitted_at, updated_at, tracking_carrier, tracking_no, contact_erased_at';
+export const statuses = new Set(['SUBMITTED', 'CONFIRMED', 'REJECTED', 'SHIPPED', 'DELIVERED', 'CANCELLED']);
 // Each seller action moves an order from one status to the next; cancelling is possible until it ships.
 const transitions = {
   confirm: { from: 'SUBMITTED', to: 'CONFIRMED' },
@@ -16,7 +18,7 @@ const transitions = {
   cancel: { from: 'CONFIRMED', to: 'CANCELLED' },
 };
 
-function listNumber(params, key, fallback, maximum) {
+export function listNumber(params, key, fallback, maximum) {
   const value = params.get(key);
   if (value === null) return fallback;
   if (!/^(0|[1-9]\d*)$/.test(value) || Number(value) > maximum) {
@@ -32,6 +34,7 @@ function summary(row) {
     status: row.status, revision: row.revision, currency: row.currency,
     totalMinor: row.total_minor, submittedAt: row.submitted_at, updatedAt: row.updated_at,
     ...(row.tracking_carrier ? { trackingCarrier: row.tracking_carrier, trackingNo: row.tracking_no } : {}),
+    ...(row.contact_erased_at ? { contactErased: true } : {}),
   };
 }
 
@@ -58,16 +61,54 @@ async function orderPreviews(database, orderIds) {
   return previews;
 }
 
-export async function listSellerOrders(database, params) {
-  const status = params.get('status') || '';
-  if (status && !statuses.has(status)) throw new FieldError('status', 'Choose a valid order status.');
+const isoInstant = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const currencies = new Set(['MYR', 'SGD']);
+
+function instantParam(params, key) {
+  const value = params.get(key);
+  if (!value) return null;
+  if (!isoInstant.test(value) || Number.isNaN(Date.parse(value))) throw new FieldError(key, 'Enter a valid date.');
+  return value;
+}
+
+function amountParam(params, key) {
+  const value = params.get(key);
+  if (!value) return null;
+  if (!/^(0|[1-9]\d{0,11})$/.test(value)) throw new FieldError(key, 'Enter a valid amount.');
+  return Number(value);
+}
+
+/* WHERE clause shared by the order list and the CSV export: status, order-number search, submitted date range
+   (exact UTC instants, `to` exclusive), currency and total range in minor units. Values are always bound parameters. */
+export function orderFilter(params, prefix = '') {
+  const requested = (params.get('status') || '').split(',').filter(Boolean);
+  if (requested.length > statuses.size || requested.some((value) => !statuses.has(value)) || new Set(requested).size !== requested.length) {
+    throw new FieldError('status', 'Choose a valid order status.');
+  }
   const search = boundedText(params.get('search'), 'search', 40, false);
+  const currency = params.get('currency') || '';
+  if (currency && !currencies.has(currency)) throw new FieldError('currency', 'Choose a valid currency.');
+  const from = instantParam(params, 'from'), to = instantParam(params, 'to');
+  const minTotal = amountParam(params, 'minTotal'), maxTotal = amountParam(params, 'maxTotal');
+  if (minTotal !== null && maxTotal !== null && minTotal > maxTotal) throw new FieldError('minTotal', 'The minimum is above the maximum.');
+  const clauses = [], values = [];
+  if (requested.length) { clauses.push(`${prefix}status IN (${requested.map(() => '?').join(', ')})`); values.push(...requested); }
+  if (search) { clauses.push(`instr(lower(${prefix}order_no), lower(?)) > 0`); values.push(search); }
+  if (currency) { clauses.push(`${prefix}currency = ?`); values.push(currency); }
+  if (from) { clauses.push(`${prefix}submitted_at >= ?`); values.push(from); }
+  if (to) { clauses.push(`${prefix}submitted_at < ?`); values.push(to); }
+  if (minTotal !== null) { clauses.push(`${prefix}total_minor >= ?`); values.push(minTotal); }
+  if (maxTotal !== null) { clauses.push(`${prefix}total_minor <= ?`); values.push(maxTotal); }
+  return { where: clauses.length ? clauses.join(' AND ') : '1 = 1', values };
+}
+
+export async function listSellerOrders(database, params) {
+  const filter = orderFilter(params);
   const limit = listNumber(params, 'limit', 20, 100);
   const offset = listNumber(params, 'offset', 0, 10_000);
   if (limit < 1) throw new FieldError('limit', 'Enter a valid list range.');
   const rows = await database.all(`SELECT ${queueColumns} FROM shop_order
-    WHERE (? = '' OR status = ?) AND (? = '' OR instr(lower(order_no), lower(?)) > 0)
-    ORDER BY submitted_at DESC, id DESC LIMIT ? OFFSET ?`, status, status, search, search, limit + 1, offset);
+    WHERE ${filter.where} ORDER BY submitted_at DESC, id DESC LIMIT ? OFFSET ?`, ...filter.values, limit + 1, offset);
   const page = rows.slice(0, limit);
   const previews = await orderPreviews(database, page.map((row) => row.id));
   return { items: page.map((row) => ({ ...summary(row), ...(previews.get(row.id) ? { preview: previews.get(row.id) } : {}) })), nextOffset: rows.length > limit ? offset + limit : null };
@@ -106,18 +147,52 @@ async function readSellerOrder(database, id) {
     }));
   return {
     ...summary(row), locale: row.locale,
+    ...(row.contact_erased_at ? { contactErasedAt: row.contact_erased_at, contactErasedBy: row.contact_erased_by } : {}),
     buyer: {
       fullName: row.buyer_name, whatsappPhone: row.buyer_phone, email: row.buyer_email,
       whatsappOrderContactOptIn: Boolean(row.whatsapp_opt_in),
       whatsappConsentAt: row.whatsapp_consent_at,
       whatsappConsentVersion: row.whatsapp_consent_version,
     },
-    deliveries, events,
+    deliveries, events, notes: await listOrderNotes(database, id),
+    documents: documentTrail(row.order_no, events, { carrier: row.tracking_carrier, trackingNo: row.tracking_no }),
   };
 }
 
 export async function getSellerOrder(database, id) {
   return await database.transaction(async () => await readSellerOrder(database, id));
+}
+
+// Closed read-only projection: never materialize contacts, history, documents or covers.
+const readOrderColumns = 'id, order_no, status, currency, total_minor, submitted_at, updated_at';
+const readOrderSummary = (row) => ({
+  id: row.id, orderNo: row.order_no, status: row.status, currency: row.currency,
+  totalMinor: row.total_minor, submittedAt: row.submitted_at, updatedAt: row.updated_at,
+});
+export async function listOrderReadProjection(database, params) {
+  const filter = orderFilter(params), limit = listNumber(params, 'limit', 20, 50), offset = listNumber(params, 'offset', 0, 10000);
+  if (limit < 1) throw new FieldError('limit', 'Enter a valid list range.');
+  const rows = await database.all(`SELECT ${readOrderColumns} FROM shop_order WHERE ${filter.where}
+    ORDER BY submitted_at DESC, id DESC LIMIT ? OFFSET ?`, ...filter.values, limit + 1, offset);
+  return { items: rows.slice(0, limit).map(readOrderSummary), nextOffset: rows.length > limit ? offset + limit : null };
+}
+export async function getOrderReadProjection(database, id) {
+  const row = await database.get(`SELECT ${readOrderColumns} FROM shop_order WHERE id = ?`, id);
+  if (!row) return null;
+  const deliveries = await database.all(`SELECT id, address_city, address_region, address_country
+    FROM delivery WHERE order_id = ? ORDER BY position LIMIT 11`, id);
+  if (deliveries.length > 10) return { tooLarge: true };
+  const items = await database.all(`SELECT i.delivery_id, i.product_id, i.sku_snapshot, i.name_snapshot,
+    i.price_minor, i.quantity, i.line_total_minor, i.currency FROM order_item i
+    JOIN delivery d ON d.id = i.delivery_id WHERE d.order_id = ? ORDER BY d.position, i.position LIMIT 101`, id);
+  if (items.length > 100) return { tooLarge: true };
+  return { order: readOrderSummary(row), deliveries: deliveries.map((d) => ({
+    city: d.address_city || '', region: d.address_region || '', country: d.address_country || '',
+    items: items.filter((i) => i.delivery_id === d.id).map((i) => ({
+      productId: i.product_id, sku: i.sku_snapshot, name: i.name_snapshot, priceMinor: i.price_minor,
+      quantity: i.quantity, lineTotalMinor: i.line_total_minor, currency: i.currency,
+    })),
+  })) };
 }
 
 function validateDecision(action, input) {
@@ -142,9 +217,9 @@ function validateDecision(action, input) {
 
 /* Confirming an order takes its quantities from tracked stock; the transaction rolls back if any product is short. */
 async function deductStock(database, orderId) {
-  const lines = await database.all(`SELECT i.product_id, SUM(i.quantity) AS quantity, p.sku, p.stock_quantity
+  const lines = await database.all(`SELECT i.product_id, SUM(i.quantity) AS quantity, p.sku, p.stock_quantity, p.updated_at
     FROM order_item i JOIN delivery d ON d.id = i.delivery_id JOIN product p ON p.id = i.product_id
-    WHERE d.order_id = ? GROUP BY i.product_id, p.sku, p.stock_quantity`, orderId);
+    WHERE d.order_id = ? GROUP BY i.product_id, p.sku, p.stock_quantity, p.updated_at`, orderId);
   for (const line of lines) {
     if (line.stock_quantity === null) continue;
     if (line.stock_quantity < line.quantity) {
@@ -152,20 +227,24 @@ async function deductStock(database, orderId) {
       error.field = 'stock';
       throw error;
     }
-    await database.run('UPDATE product SET stock_quantity = stock_quantity - ? WHERE id = ?', line.quantity, line.product_id);
+    const updatedAt = new Date(Math.max(Date.now(), Date.parse(line.updated_at) + 1)).toISOString();
+    await database.run('UPDATE product SET stock_quantity = stock_quantity - ?, updated_at = ? WHERE id = ?', line.quantity, updatedAt, line.product_id);
   }
 }
 
 /* Cancelling a confirmed order returns its quantities to tracked stock. */
 async function restoreStock(database, orderId) {
-  await database.run(`UPDATE product SET stock_quantity = stock_quantity + COALESCE((
-      SELECT SUM(i.quantity) FROM order_item i JOIN delivery d ON d.id = i.delivery_id
-      WHERE d.order_id = ? AND i.product_id = product.id), 0)
-    WHERE stock_quantity IS NOT NULL AND id IN (
-      SELECT i.product_id FROM order_item i JOIN delivery d ON d.id = i.delivery_id WHERE d.order_id = ?)`, orderId, orderId);
+  const lines = await database.all(`SELECT p.id, p.updated_at, SUM(i.quantity) AS quantity
+    FROM order_item i JOIN delivery d ON d.id = i.delivery_id JOIN product p ON p.id = i.product_id
+    WHERE d.order_id = ? AND p.stock_quantity IS NOT NULL GROUP BY p.id, p.updated_at`, orderId);
+  for (const line of lines) {
+    const updatedAt = new Date(Math.max(Date.now(), Date.parse(line.updated_at) + 1)).toISOString();
+    await database.run('UPDATE product SET stock_quantity = stock_quantity + ?, updated_at = ? WHERE id = ?', line.quantity, updatedAt, line.id);
+  }
 }
 
-export async function decideSellerOrder(database, id, action, input, actorId) {
+// Mutation-only helper joins an outer import transaction without loading order detail.
+export async function applySellerDecision(database, id, action, input, actorId, auditReason = null) {
   if (!Object.hasOwn(transitions, action)) throw new TypeError('Invalid order action.');
   const decision = validateDecision(action, input);
   const now = new Date().toISOString();
@@ -188,8 +267,12 @@ export async function decideSellerOrder(database, id, action, input, actorId) {
     if (decision.status === 'CANCELLED') await restoreStock(database, id);
     await database.run(`INSERT INTO order_event
       (order_id, event_type, actor_type, actor_id, previous_status, status, reason, occurred_at)
-      VALUES (?, ?, 'SELLER', ?, ?, ?, ?, ?)`, id, decision.status, actorId, from, decision.status, decision.reason, now);
+      VALUES (?, ?, 'SELLER', ?, ?, ?, ?, ?)`, id, decision.status, actorId, from, decision.status, auditReason ?? decision.reason, now);
   });
+}
+
+export async function decideSellerOrder(database, id, action, input, actorId) {
+  await applySellerDecision(database, id, action, input, actorId);
   return await getSellerOrder(database, id);
 }
 

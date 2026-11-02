@@ -63,6 +63,12 @@ export function createProfileStore(storage) {
   };
 }
 
+export function updateProfileNotice(shop) {
+  const notice = document.querySelector('[data-i18n="profileLocalNotice"], [data-i18n="profileProductionNotice"]');
+  notice.dataset.i18n = shop.mode === 'demo' ? 'profileLocalNotice' : 'profileProductionNotice';
+  notice.textContent = t(notice.dataset.i18n);
+}
+
 export function mountProfile({ onSaved }) {
   let storage;
   try { storage = localStorage; } catch { /* Save will report storage unavailable. */ }

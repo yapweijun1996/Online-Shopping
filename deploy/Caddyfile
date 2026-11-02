@@ -4,6 +4,36 @@
 	header Referrer-Policy strict-origin-when-cross-origin
 	header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
 
+	@tenant {
+		path_regexp tenant ^/([a-z0-9]{3,30})(?:/|$)
+		not path_regexp ^/(admin|api|shop|seller|demo|www|health|ready|static|assets|shared|platform|default|login|logout|public|root|support|system|test|tenant|tenants|webhook|webhooks|sw|manifest|favicon|icons|p|s)(?:/|$)
+	}
+	handle @tenant {
+		route {
+			@tenant_api path_regexp ^/[a-z0-9]{3,30}/(?:api/|(?:shop|seller)/manifest\.webmanifest$|p/|s/)
+			handle @tenant_api {
+				reverse_proxy backend:3000
+			}
+			forward_auth backend:3000 {
+				uri /{re.tenant.1}/api/v1/tenant-access
+				header_up X-Tenant-Original-Uri {http.request.orig_uri}
+			}
+			@tenant_entry path_regexp ^/[a-z0-9]{3,30}/?$
+			handle @tenant_entry {
+				redir * /{re.tenant.1}/shop/ 302
+			}
+			@tenant_static path_regexp tenant_static ^/[a-z0-9]{3,30}/((?:shop|seller|shared)/.*)$
+			handle @tenant_static {
+				rewrite * /{re.tenant_static.1}
+				root * /srv/public
+				file_server
+			}
+			handle {
+				respond 404
+			}
+		}
+	}
+
 	@api path /api/* /health /ready
 	handle @api {
 		reverse_proxy backend:3000 {

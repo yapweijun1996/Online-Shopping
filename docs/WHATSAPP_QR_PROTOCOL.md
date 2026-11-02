@@ -1,0 +1,184 @@
+# WhatsApp QR worker ↔ backend internal protocol (v1)
+
+Status: implementation contract for the isolated, default-off "WhatsApp (linked device)" human-reply module designed in
+[WHATSAPP_QR_DESIGN.md](WHATSAPP_QR_DESIGN.md) section C. Owner decision 2026-10-21: build it for the default shop and the
+Demo shop; the official Cloud API stays the recommended channel and the seller must acknowledge the number-ban risk first.
+
+## Processes and trust
+
+```text
+browser (seller) --HTTPS--> backend public listener :3000  (existing session/CSRF/Origin/capabilities)
+worker ----------HTTP-----> backend internal listener :3001 (bearer token; private compose network only)
+worker ----------WSS------> WhatsApp (Baileys 6.7.24, egress network)
+```
+
+- The backend NEVER calls the worker and never imports Baileys. The worker is a pure client: it polls `control`, pushes
+  state/auth/inbound events and claims replies.
+- The internal listener starts only when `WHATSAPP_QR_ENABLED=1` with readable
+  credentials: legacy `WHATSAPP_QR_TOKEN_FILE` (>=32 URL-safe characters), or
+  `WHATSAPP_QR_BINDINGS_FILE` entries with independent 32-byte base64url tokens
+  (43 characters). It binds unpublished `0.0.0.0:3001`; Caddy never proxies it.
+  Every request needs `Authorization: Bearer <token>`, compared in constant time;
+  otherwise 401 with no body detail. Body limit 256 KiB (JSON only, `Content-Type: application/json`), 64 KiB for all
+  routes except `PUT /v1/auth`. Unknown routes 404. No CORS. Responses `Cache-Control: no-store`.
+- One worker serves exactly one shop. Backend-only static manifest binds each
+  independent credential to `default` (slot 0) or one immutable tenant UUID
+  (slot 1). Fresh platform lifecycle/policy gates tenant access; no request
+  selector overrides identity. Legacy token-only mode remains default-only.
+- Every worker request except `GET /v1/control` carries `generation` (integer): in the JSON body for POST/PUT and as
+  the query parameter `?generation=N` for `GET /v1/auth`. A request whose generation differs from the current session
+  generation is rejected with 409 `{"error":"STALE_GENERATION"}` and changes nothing (fencing).
+- Lease: the worker sends header `X-Worker-Id: <uuid chosen at process start>`. `GET /v1/control` acquires/renews a
+  60-second lease on the session row for that worker id; any other worker id gets 409 `{"error":"LEASE_HELD"}` while the
+  lease is valid. All mutating routes require the caller to hold the lease (409 otherwise).
+
+## Session states
+
+`desired` is set by the seller API and pairing-timeout housekeeping: `OFF` | `PAIR` | `RUN`. `state` is reported only by the worker:
+`IDLE` | `PAIRING` | `CONNECTING` | `CONNECTED` | `RECONNECTING` | `LOGGED_OUT` | `ERROR`.
+
+- Seller "Pair" (Owner only, after risk acknowledgement): if `desired` is `OFF` or state is `LOGGED_OUT`/`ERROR`/`IDLE`,
+  increment `generation`, delete all auth records of older generations, set `desired = PAIR`, record `pair_started_at`, clear QR and last error.
+- Seller "Disconnect": increment `generation`, set `desired = OFF`, delete all auth records, clear QR, cancel every
+  QUEUED reply (status `CANCELLED`), keep thread history. The worker sees a new generation with `desired = OFF`, logs the
+  socket out if it can (`sock.logout()`), closes it and reports `IDLE`.
+- Worker reports `CONNECTED` → backend sets `desired = RUN` if it was `PAIR`.
+- Worker reports `LOGGED_OUT` (WhatsApp unlinked the device or rejected it) → backend sets `desired = OFF`, deletes auth
+  records, clears QR. The seller must pair again.
+- Control polling and seller status transactions stop an unconnected PAIR attempt after more than 120 seconds:
+  revision CAS sets desired OFF, clears QR and records PAIRING_TIMEOUT. Plain worker IDLE preserves that reason;
+  a new explicit Pair clears it. Connected sessions are not expired. Owners can Cancel pending pairing through
+  Disconnect; timeout shows “The code expired because it was not scanned in 2 minutes.” and “Get a new code”.
+
+## Routes (all under `http://backend:3001/internal/whatsapp-qr`)
+
+### `GET /v1/control`
+Response `200 {"generation": 7, "desired": "PAIR", "leaseSeconds": 60, "pollMs": 2000}`.
+Also performs bounded housekeeping (at most 200 rows each call): delete message bodies older than 30 days
+(`body = NULL`, keep the row as a tombstone), expire QR older than 60 s, move SENDING replies whose lease expired to
+`RECONCILE`.
+
+### `POST /v1/state`
+Body `{"generation":7,"state":"PAIRING","qr":"<string from Baileys connection.update>"}` |
+`{"generation":7,"state":"CONNECTED","phone":"60123456789"}` | `{"generation":7,"state":"ERROR","reason":"<code>"}`.
+- `qr` only with `PAIRING`, 1..1024 printable ASCII chars; stored with `qr_expires_at = now + 60 s`; replaced by a newer
+  value; cleared on any other state.
+- `phone` digits only 8..15; stored masked for display (`+60•••••6789`) and as an HMAC for order matching; never
+  returned in full.
+- `reason` matches `^[A-Z_]{2,40}$`.
+Response `204`.
+
+### `GET /v1/auth?generation=7`
+Response `200 {"version": 41, "creds": <BufferJSON-encoded object or null>, "keys": [{"type":"pre-key","id":"1","value":<encoded>}, ...]}`
+for the current generation, all read from ONE consistent snapshot (same transaction). `version` is the session's
+`auth_version`; it starts at 0 for a new generation (no records) and the worker sends it unchanged in the next
+`PUT /v1/auth`. The backend decrypts records sealed with the integration secret box; context string
+`WHATSAPP_QR:<shopId>:<generation>:<type>:<id>:<chunk>`. Values are JSON text produced by Baileys `BufferJSON.replacer`
+(the backend treats them as opaque strings, never parses Baileys structures). At most 5000 key records.
+
+### `PUT /v1/auth`
+Body `{"generation":7,"version":41,"creds":<encoded|undefined>,"set":[{"type","id","value"}],"delete":[{"type","id"}]}`.
+Applied in ONE transaction, compare-and-set on `auth_version = version` (409 `{"error":"AUTH_VERSION"}` on mismatch —
+the worker must then stop the socket, reload from `GET /v1/auth` and reconnect; continuing with stale Signal keys
+corrupts the session). Success `200 {"version":42}`. Chunk values > 4096 chars into several sealed rows; a record is
+returned only when all chunks open and the stored SHA-256 matches. `type` matches `^[a-z-]{2,40}$`, `id` 1..200 chars
+printable. Max 500 set/delete items per call.
+
+### `POST /v1/inbound`
+Body `{"generation":7,"messages":[{"id":"<provider id 1..128>","peer":"<jid>","name":"<pushName/chat name or empty>","at":"<ISO time>","text":"<1..4096>","phone":"<8..15 digits>","out":true,"history":true}]}`
+(max 50 per call; `out` and `history` are optional and, when present, exactly `true`; `phone` is optional and only given for a `@lid` peer whose phone number WhatsApp supplied, so erasure suppression and order matching work for it). The worker sends direct one-to-one text
+messages whose `remoteJid` is `<digits>@s.whatsapp.net` or `<digits>@lid` (a device suffix is stripped): live
+`messages.upsert` of type `notify` or `append`, and the one-off `messaging-history.set` import right after linking.
+`out: true` marks a message the linked phone itself sent (stored as an outgoing `SENT` message with actor `phone`; the owner's
+push name is never used as the contact name). `history: true` marks imported history (last 30 days, newest 5000 messages;
+it never increments the unread count; WhatsApp sends several chunks while linking and flags only the first `isLatest`, so the worker keeps the 20-minute window and counts the cap across chunks). The worker also drops the account's own self-chat (its phone number and LID) and applies the backend's validation rules (printable ASCII id, well-formed text without NUL, names clipped by code point, peer at most 30 digits, timestamps clamped to now); the backend ignores rows for the account's own number as a backstop. If the backend still refuses a batch with 400 the worker retries the rows one by one and skips only the refused ones; it never halts for it. Groups, broadcasts, status, newsletters, reactions and media are dropped in the worker AND validated
+again by the backend (peer pattern). A message whose provider id is already stored (either direction) is a duplicate; when the
+send result of a panel reply arrives after the phone's echo of it, the echo row is removed. Response `200 {"accepted": n, "duplicates": m}`.
+
+### `POST /v1/replies/claim`
+Body `{"generation":7}`. Atomically moves the oldest eligible `QUEUED` reply to `SENDING` with a 60 s lease and returns
+`200 {"reply":{"id":"<uuid>","peer":"<jid>","text":"<body>"}}` or `200 {"reply":null}`. Eligibility is re-checked here
+(thread not suppressed, last inbound within 24 h, session CONNECTED, same generation as when queued); ineligible replies
+become `FAILED` with `error_code` `NOT_ELIGIBLE`. One in-flight reply per session; at most one claim per 5 seconds.
+
+### `POST /v1/replies/{id}/result`
+Body `{"generation":7,"status":"SENT","providerMessageId":"<id>"}` | `{"generation":7,"status":"FAILED","code":"<CODE>"}`
+(only for failures proven before dispatch) | `{"generation":7,"status":"UNKNOWN"}` (crash/timeout after dispatch →
+stored as `RECONCILE`, never retried automatically). Only from `SENDING`. Response `204`.
+
+## Worker behaviour (summary)
+
+- Poll `control` every `pollMs` while `desired != OFF`, every 10 s otherwise. Exponential reconnect backoff 1/2/4/8/16/30 s,
+  give up (report `ERROR` `RECONNECT_LIMIT`) after 5 minutes of failures; `loggedOut` disconnect → `LOGGED_OUT`.
+- History: `syncFullHistory: false`, `markOnlineOnConnect: false`; `shouldSyncHistoryMessage` accepts only the INITIAL_BOOTSTRAP, RECENT and PUSH_NAME notifications and only for 20 minutes after a QR was shown (the history is sent only while linking), so ordinary reconnects never wait for it.
+- In-memory caches only as Baileys needs them; no file system auth state (`useMultiFileAuthState` is forbidden).
+- Logs: one line per state change with codes only; never log QR, JIDs, phone numbers, message text, auth or the token.
+
+## Clarifications
+
+Worker side:
+
+- Auth record `creds` and each key `value` are JSON **strings** produced by `JSON.stringify(value, BufferJSON.replacer)`, not double-parsed backend objects. GET returns the same strings and one consistent `version`; the worker revives them once. The adapter also accepts already-encoded objects for fixture compatibility.
+- An AUTH_VERSION conflict immediately ends the old socket, reports a safe error code and reloads a fresh snapshot before reconnecting. Other persistence failures halt that generation until operator intervention; no unsaved keys are reused.
+- A claimed reply is never retried by the worker. A ten-second local send deadline or any exception from `sendMessage` is UNKNOWN, even a synchronous exception: without a library dispatch receipt, non-dispatch is not proven. Only an absent/not-connected socket before invoking send proves SOCKET_CLOSED.
+- Control/backend failures close the socket before another control poll. A failed result POST is not repeated; the backend lease must reconcile it. No automatic send retry or success inference is permitted.
+- Tenant `QR_REVOKED` responses carry the disabled cleanup-pending reservation's `X-Binding-Epoch`; the worker retains its first revoked epoch for `/stopped`, never replacing it with a later reservation's epoch or its last authorized epoch. Stop acknowledgements require that exact epoch; missing/mismatched epochs are refused.
+- Generation replacement attempts remote logout of the old socket; graceful process shutdown only ends it. Remote logout is best effort and cannot prove device removal.
+- Worker configuration accepts only credential-free HTTP(S) URLs without query/fragment and a URL-safe token first line of at least 32 characters. The container has no listener or filesystem session state.
+
+Backend side:
+
+- While `desired = OFF` and `last_error = PAIRING_TIMEOUT`, worker state reports may record state but cannot clear/replace the timeout reason or store QR text/expiry; only a new seller POST pair clears the timeout.
+- This protocol takes precedence over the older design C2 proposal for schema
+  names and secret contexts. Schema 27 contains session, auth, thread, message and
+  peer-suppression tables; no integration-channel or order-link tables are added here.
+- Encoded auth `creds` and key `value` fields are opaque JSON **text strings**:
+  the worker serializes with BufferJSON before sending, then parses after GET.
+  Missing creds leaves the stored record unchanged; deleting Signal keys uses
+  `delete`. The reserved record type `creds` is not allowed in set/delete.
+  Set and delete together are capped at 500 items; deletes apply first, then
+  sets (a set wins for the same identity). UTF-16 surrogate pairs are kept
+  intact across 4096-character chunks; malformed Unicode is rejected.
+- Store factories accept a trusted immutable `shopId`: literal `default` for the default
+  shop, canonical tenant UUID otherwise. Auth, peer-key and thread contexts all bind
+  this identity; tenant contexts never retry with `default`. The default strings
+  remain byte-for-byte compatible with existing ciphertext.
+- Peer HMAC key context is `WHATSAPP_QR:<shopId>:peer-key`; sealed thread JID
+  context is `WHATSAPP_QR:<shopId>:peer:<threadId>`. Auth uses the context in
+  the route contract, with reserved creds identity `creds:creds`. This crypto
+  preparation does not enable tenant seller routes or tenant worker bindings.
+- A valid worker lease is required for auth GET as well as mutations. Generation
+  fencing is checked before lease ownership for non-control routes. Error JSON
+  is `{ \"error\": \"CODE\" }`; authentication failure has an empty body.
+- Direct peers are numeric identities (1–30 digits) at `s.whatsapp.net` or `lid`;
+  LIDs never imply a phone match. Names are bounded to 200 characters. Inbound
+  timestamps must be parseable UTC ISO timestamps ending in Z, not in the future;
+  server receipt time never renews a historical message's 24-hour reply window.
+- Contact erasure persists an `ERASED` phone-HMAC marker in `message_peer_suppression`
+  under the shared session transaction, initializing the stable peer key if needed.
+  This applies even before the first thread exists. Later phone ingress retains only
+  suppressed tombstones: no display name, sealed peer or message body, and no replies.
+  LID identities do not imply a phone and are unaffected.
+- Result reports after the reply's 60-second dispatch lease expires are rejected.
+  Control polling moves such rows to RECONCILE; a late SENT report cannot turn
+  that uncertain outcome into a retry or overwrite the reconciled state.
+- SQLite import deliberately excludes session, auth, threads, messages and phone
+  suppression markers, retaining a fresh OFF/IDLE session. Restoring history without its sealed peer
+  identity/key would not produce a usable thread; restoring dispatch intents
+  or device state could reactivate an old session. Backups still contain these
+  sensitive records and require the existing operational custody controls.
+
+- LOGGED_OUT clears auth and advances `auth_version` rather than resetting it:
+  a delayed pre-logout auth PUT must conflict, not recreate deleted credentials.
+  Only a new seller-created generation starts at auth version zero.
+
+## Fixed-slot deployment
+
+GCP declares only slot 0 (`whatsapp-qr`, permanent `default`) and slot 1
+(`whatsapp-qr-slot1`, immutable tenant UUID). Each token is mounted only in its
+worker and backend; the backend-only manifest selects the store, never request
+data. Both use the same reviewed digest. Stop both before activation/rollback;
+rebind only after policy drain, durable auth fencing and credential rotation.
+See [the protected release runbook](GCP_DEPLOY.md#fixed-slot-protected-release).
+Schema 3 migration and measured two-worker capacity are manual gates, not protocol
+health claims. No public port, Docker socket or database/master key in workers.

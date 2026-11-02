@@ -1,6 +1,6 @@
-@import url('/shared/appearance.css');
-@import url('/shared/base.css');
-@import url('/shop/tokens.css');
+@import url('../shared/appearance.css');
+@import url('../shared/base.css');
+@import url('./tokens.css');
 .shop-topbar .language-control select,.shop-topbar .language-trigger,.modal-secondary-button,.outline-button{border-color:var(--ui-control-border)}
 .shop-topbar .language-trigger:hover,.shop-topbar .language-trigger[aria-expanded="true"]{border-color:var(--ui-primary);background:var(--ui-hover-surface)}
 .shop-topbar .language-options button:hover,.shop-topbar .language-options button[aria-current="true"]{background:var(--shop-selected-surface);color:var(--shop-selected-text)}
@@ -630,6 +630,7 @@ body:has(.app-modal[open]) .shop-actionbar{visibility:hidden}
 .catalog-card-actions button{border:1px solid var(--ui-control-border);background:var(--ui-surface);color:var(--ui-primary);font-weight:700;border-radius:8px}
 .catalog-card-actions button:hover{background:var(--shop-accent-soft)}
 .product-price-label{font-size:12px;color:var(--ui-muted)}
+.product-price-range{font-size:13px;line-height:18px;color:var(--ui-muted)}
 .product-navigation-title{display:none}
 .product-heading-block{gap:8px}
 .product-price{background:transparent;padding:0;border-radius:0;line-height:1.15;letter-spacing:-.035em}
@@ -929,14 +930,11 @@ h1,h2{letter-spacing:-.01em}
 /* Image reveal: shimmer placeholder, then blurred -> sharp fade-in. */
 .img-reveal{background:linear-gradient(100deg,#e6eff1 30%,#f5f9f9 50%,#e6eff1 70%);background-size:220% 100%;animation:skeleton-shimmer 1.4s linear infinite;filter:blur(14px);transform:scale(1.02);transition:filter .6s ease,transform .6s ease}
 .img-reveal.is-loaded{filter:none;transform:none;animation:none;background:transparent}
+.img-reveal.is-broken{content:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48' fill='none' stroke='%239aa9ad' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='8' y='10' width='32' height='28' rx='4'/%3E%3Ccircle cx='18' cy='20' r='3'/%3E%3Cpath d='m10 34 10-9 7 6 5-4 6 6'/%3E%3C/svg%3E");object-fit:none;filter:none;transform:none;animation:none;background:#eef3f4}
 @media (prefers-reduced-motion:reduce){.img-reveal{transition:none;animation:none;filter:none;transform:none}}
 
-/* Quantity stepper: draw the minus/plus as centred bars instead of font glyphs, which sit off-centre in many fonts. */
-.quantity-stepper button{position:relative;padding:0;font-size:0;line-height:0;color:transparent}
-.quantity-stepper button::before,.quantity-stepper button:last-child::after{content:"";position:absolute;inset:0;margin:auto;border-radius:1px;background:var(--ui-ink)}
-.quantity-stepper button::before{width:14px;height:2px}
-.quantity-stepper button:last-child::after{width:2px;height:14px}
-.quantity-stepper button:disabled::before,.quantity-stepper button:disabled::after{opacity:.35}
+/* Quantity icons stay centred independently of font metrics. */
+.quantity-stepper button{display:grid;place-items:center;padding:0;color:var(--ui-ink)}
 .img-reveal.has-lqip{background:var(--lqip) center/cover no-repeat;filter:blur(12px);animation:none}
 .img-reveal.has-lqip.is-loaded{filter:none;transform:none;background:transparent}
 @media (prefers-reduced-motion:reduce){.img-reveal.has-lqip{filter:none}}

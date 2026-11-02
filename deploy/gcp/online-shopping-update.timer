@@ -1,0 +1,9 @@
+[Unit]
+Description=Check Online Shopping main every three minutes
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=3min
+RandomizedDelaySec=30s
+Persistent=true
+[Install]
+WantedBy=timers.target

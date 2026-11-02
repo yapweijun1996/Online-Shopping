@@ -1,0 +1,17 @@
+[Unit]
+Description=CI gated Online Shopping image update
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStart=/usr/bin/python3 /opt/online-shopping-gcp/update.py --root /opt/online-shopping-gcp run
+TimeoutStartSec=15min
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/online-shopping-gcp

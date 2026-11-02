@@ -1,7 +1,14 @@
+import { migrateAi } from './ai/schema.js';
+import { migrateWhatsAppQr } from './whatsapp-qr/schema.js';
+import { migrateSenderSettings } from './sender-settings.js';
+import { randomUUID } from 'node:crypto';
 import { openNodeStore } from './store.js';
 import { migrateLegacyVariants } from './options.js';
+import { migrateListings } from './listings.js';
+import { migrateSharedGalleries } from './product-gallery.js';
+import { migrateOAuth } from './mcp/schema.js';
 
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 28;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -45,6 +52,143 @@ const optionTablesSql = `
     PRIMARY KEY (product_id, option_type_id)
   ) STRICT;
   CREATE INDEX IF NOT EXISTS product_option_value ON product_option(option_value_id);`;
+
+const listingTableSql = `
+  CREATE TABLE IF NOT EXISTS listing (
+    id TEXT PRIMARY KEY,
+    code TEXT UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    category TEXT NOT NULL,
+    translations_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(translations_json)),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  ) STRICT;`;
+
+/* Provider connections, audit trail, webhook dedupe and WhatsApp message queues (see docs/WHATSAPP_IMPLEMENTATION_PLAN.md). */
+const integrationTablesSql = `
+CREATE TABLE IF NOT EXISTS integration_connection (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL CHECK (provider IN ('NINJAVAN', 'WHATSAPP_CLOUD', 'WHATSAPP_QR')),
+  environment TEXT NOT NULL CHECK (environment IN ('SANDBOX', 'PRODUCTION')),
+  status TEXT NOT NULL DEFAULT 'NOT_CONFIGURED' CHECK (status IN ('NOT_CONFIGURED', 'CONNECTED', 'ERROR', 'DISABLED')),
+  public_config TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(public_config)),
+  secret_ciphertext BLOB,
+  secret_key_id TEXT CHECK (secret_key_id IS NULL OR length(secret_key_id) BETWEEN 1 AND 32),
+  secret_hint TEXT CHECK (secret_hint IS NULL OR length(secret_hint) <= 12),
+  last_checked_at TEXT,
+  last_error TEXT CHECK (last_error IS NULL OR length(last_error) <= 500),
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  UNIQUE (provider, environment),
+  CHECK ((secret_ciphertext IS NULL) = (secret_key_id IS NULL))
+) STRICT;
+CREATE TABLE IF NOT EXISTS integration_audit (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL CHECK (provider IN ('NINJAVAN', 'WHATSAPP_CLOUD', 'WHATSAPP_QR')),
+  environment TEXT NOT NULL CHECK (environment IN ('SANDBOX', 'PRODUCTION')),
+  action TEXT NOT NULL CHECK (action IN ('CONNECT', 'ROTATE', 'DISCONNECT', 'CHECK_FAILED', 'RISK_ACKNOWLEDGED')),
+  actor TEXT NOT NULL CHECK (length(actor) BETWEEN 1 AND 120),
+  detail TEXT CHECK (detail IS NULL OR length(detail) <= 500),
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX IF NOT EXISTS integration_audit_time ON integration_audit(created_at);
+CREATE TABLE IF NOT EXISTS webhook_receipt (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL CHECK (provider IN ('NINJAVAN', 'WHATSAPP_CLOUD', 'WHATSAPP_QR')),
+  dedupe_key TEXT NOT NULL CHECK (length(dedupe_key) BETWEEN 1 AND 200),
+  verified INTEGER NOT NULL CHECK (verified IN (0, 1)),
+  received_at TEXT NOT NULL,
+  UNIQUE (provider, dedupe_key)
+) STRICT;
+CREATE TABLE IF NOT EXISTS message_outbox (
+  id TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL REFERENCES shop_order(id) ON DELETE RESTRICT,
+  connection_id TEXT NOT NULL REFERENCES integration_connection(id) ON DELETE RESTRICT,
+  kind TEXT NOT NULL CHECK (kind IN ('ORDER_SUBMITTED', 'ORDER_CONFIRMED', 'ORDER_REJECTED', 'ORDER_SHIPPED')),
+  recipient_hash TEXT NOT NULL CHECK (length(recipient_hash) BETWEEN 16 AND 128),
+  template TEXT NOT NULL CHECK (length(template) BETWEEN 1 AND 100),
+  locale TEXT NOT NULL CHECK (length(locale) BETWEEN 2 AND 10),
+  idempotency_key TEXT NOT NULL UNIQUE CHECK (length(idempotency_key) BETWEEN 1 AND 200),
+  status TEXT NOT NULL DEFAULT 'QUEUED' CHECK (status IN ('QUEUED', 'SENDING', 'ACCEPTED', 'DELIVERED', 'READ', 'FAILED', 'RECONCILE')),
+  provider_message_id TEXT UNIQUE CHECK (provider_message_id IS NULL OR length(provider_message_id) BETWEEN 1 AND 200),
+  attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 20),
+  next_attempt_at TEXT,
+  last_error TEXT CHECK (last_error IS NULL OR length(last_error) <= 500),
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX IF NOT EXISTS message_outbox_due ON message_outbox(status, next_attempt_at);
+CREATE INDEX IF NOT EXISTS message_outbox_order ON message_outbox(order_id);
+CREATE TABLE IF NOT EXISTS message_inbound (
+  id TEXT PRIMARY KEY,
+  connection_id TEXT NOT NULL REFERENCES integration_connection(id) ON DELETE RESTRICT,
+  order_id TEXT REFERENCES shop_order(id) ON DELETE RESTRICT,
+  from_hash TEXT NOT NULL CHECK (length(from_hash) BETWEEN 16 AND 128),
+  provider_message_id TEXT NOT NULL UNIQUE CHECK (length(provider_message_id) BETWEEN 1 AND 200),
+  kind TEXT NOT NULL CHECK (kind IN ('TEXT', 'MEDIA_UNSUPPORTED', 'OTHER')),
+  body TEXT CHECK (body IS NULL OR length(body) <= 4096),
+  received_at TEXT NOT NULL,
+  read_at TEXT,
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX IF NOT EXISTS message_inbound_order ON message_inbound(order_id);
+CREATE INDEX IF NOT EXISTS message_inbound_unread ON message_inbound(received_at) WHERE read_at IS NULL;
+`;
+
+// Seller accounts (SEL-04): one row per person who can sign in, replacing the single `admin` row. The old row is copied in
+// as the OWNER and stays untouched. `account_event` records changes to accounts, never passwords.
+const accountTablesSql = `
+CREATE TABLE IF NOT EXISTS seller_account (
+  id TEXT PRIMARY KEY,
+  username TEXT NOT NULL CHECK (length(username) BETWEEN 3 AND 64),
+  username_key TEXT NOT NULL UNIQUE CHECK (length(username_key) BETWEEN 3 AND 64),
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('OWNER', 'MANAGER', 'STAFF')),
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  must_change_password INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1)),
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, password_changed_at TEXT, last_login_at TEXT
+) STRICT;
+CREATE TABLE IF NOT EXISTS account_event (
+  id TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL REFERENCES seller_account(id) ON DELETE RESTRICT,
+  actor TEXT NOT NULL CHECK (length(actor) BETWEEN 1 AND 64),
+  action TEXT NOT NULL CHECK (action IN ('CREATED', 'ROLE_CHANGED', 'DEACTIVATED', 'ACTIVATED', 'PASSWORD_RESET', 'PASSWORD_CHANGED')),
+  detail TEXT CHECK (detail IS NULL OR length(detail) <= 200),
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX IF NOT EXISTS account_event_time ON account_event(created_at);
+`;
+
+// Internal order notes (append-only, seller-written) and the history of product edits (who changed what, never deleted).
+const historyTablesSql = `
+CREATE TABLE IF NOT EXISTS order_note (
+  id TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL REFERENCES shop_order(id) ON DELETE RESTRICT,
+  author TEXT NOT NULL CHECK (length(author) BETWEEN 1 AND 64),
+  body TEXT NOT NULL CHECK (length(body) BETWEEN 1 AND 1000),
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX IF NOT EXISTS order_note_order ON order_note(order_id, created_at);
+CREATE TABLE IF NOT EXISTS product_event (
+  id TEXT PRIMARY KEY,
+  product_id TEXT NOT NULL REFERENCES product(id) ON DELETE RESTRICT,
+  actor TEXT NOT NULL CHECK (length(actor) BETWEEN 1 AND 64),
+  action TEXT NOT NULL CHECK (action IN ('CREATED', 'UPDATED')),
+  changes TEXT NOT NULL CHECK (json_valid(changes) AND length(changes) <= 4000),
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX IF NOT EXISTS product_event_product ON product_event(product_id, created_at);
+`;
+
+async function migrateAccounts(store) {
+  await store.exec(accountTablesSql);
+  const present = (await store.all("SELECT name FROM pragma_table_info('session')")).map(column => column.name);
+  if (!present.includes('account_id')) await store.exec('ALTER TABLE session ADD COLUMN account_id TEXT');
+  const admin = await store.get('SELECT username, password_hash, created_at FROM admin WHERE id = 1');
+  if (admin && !await store.get('SELECT 1 AS found FROM seller_account LIMIT 1')) {
+    await store.run(`INSERT INTO seller_account(id, username, username_key, password_hash, role, active, must_change_password, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'OWNER', 1, 0, ?, ?)`, randomUUID(), admin.username, admin.username.toLowerCase(), admin.password_hash, admin.created_at, admin.created_at);
+  }
+}
 
 async function migrate(store, version, sql) {
   await store.transaction(async () => {
@@ -298,7 +442,7 @@ export async function migrateStore(store) {
         created_at TEXT NOT NULL,
         UNIQUE(product_id, position)
       ) STRICT;
-      INSERT INTO product_gallery_image_v11 SELECT * FROM product_gallery_image;
+      INSERT INTO product_gallery_image_v11 SELECT id, product_id, position, mime, data, created_at FROM product_gallery_image;
       DROP TABLE product_gallery_image;
       ALTER TABLE product_gallery_image_v11 RENAME TO product_gallery_image;
       CREATE INDEX product_gallery_product ON product_gallery_image(product_id, position);`);
@@ -360,7 +504,7 @@ export async function migrateStore(store) {
         mime TEXT NOT NULL CHECK (mime IN ('image/png', 'image/jpeg', 'image/webp')),
         data BLOB NOT NULL, created_at TEXT NOT NULL, UNIQUE(product_id, position)
       ) STRICT;
-      INSERT INTO product_gallery_image_v15 SELECT * FROM product_gallery_image;
+      INSERT INTO product_gallery_image_v15 SELECT id, product_id, position, mime, data, created_at FROM product_gallery_image;
       DROP TABLE product_gallery_image;
       ALTER TABLE product_gallery_image_v15 RENAME TO product_gallery_image;
       CREATE INDEX product_gallery_product ON product_gallery_image(product_id, position);`);
@@ -387,24 +531,130 @@ export async function migrateStore(store) {
     });
     version = 17;
   }
+  if (version === 17) {
+    // One listing per product (shared title, description, category) with the old product rows as its variants.
+    await store.transaction(async () => {
+      await store.exec(listingTableSql);
+      const present = (await store.all("SELECT name FROM pragma_table_info('product')")).map(column => column.name);
+      if (!present.includes('listing_id')) await store.exec('ALTER TABLE product ADD COLUMN listing_id TEXT REFERENCES listing(id) ON DELETE RESTRICT');
+      await store.exec('CREATE INDEX IF NOT EXISTS product_listing ON product(listing_id)');
+      await migrateListings(store);
+      await store.setSchemaVersion(18);
+    });
+    version = 18;
+  }
+  if (version === 18) {
+    // Data only: one shared photo gallery per listing, and the per-variant copies of it are removed.
+    await store.transaction(async () => {
+      // The gallery copy below reads the preview columns, so they must exist before schema 20 is reached.
+      await addThumbnailColumns(store);
+      await migrateSharedGalleries(store);
+      await store.setSchemaVersion(19);
+    });
+    version = 19;
+  }
+  if (version === 19) {
+    // Small previews of product and gallery images, so lists need not download full-size photos.
+    await store.transaction(async () => {
+      await addThumbnailColumns(store);
+      await store.setSchemaVersion(20);
+    });
+    version = 20;
+  }
+  if (version === 20) {
+    // Additive: tables for provider connections and WhatsApp messages. Nothing reads them yet.
+    await migrate(store, 21, integrationTablesSql);
+    version = 21;
+  }
+  if (version === 21) {
+    // Additive: when and by whom an order's buyer contact and delivery data were erased (see erase-contact.js).
+    await store.transaction(async () => {
+      const present = (await store.all("SELECT name FROM pragma_table_info('shop_order')")).map(column => column.name);
+      for (const column of ['contact_erased_at', 'contact_erased_by']) {
+        if (!present.includes(column)) await store.exec(`ALTER TABLE shop_order ADD COLUMN ${column} TEXT`);
+      }
+      await store.setSchemaVersion(22);
+    });
+    version = 22;
+  }
+  if (version === 22) {
+    // Sessions now belong to an account. Existing sessions have none, so they stop working and everyone signs in again.
+    await store.transaction(async () => {
+      await migrateAccounts(store);
+      await store.setSchemaVersion(23);
+    });
+    version = 23;
+  }
+  if (version === 23) {
+    await migrate(store, 24, historyTablesSql);
+    version = 24;
+  }
+  if (version === 24) {
+    await store.transaction(async () => {
+      // Unreleased schema25 includes the token predecessor lookup index.
+      await migrateOAuth(store);
+      await store.setSchemaVersion(25);
+    });
+    version = 25;
+  }
+  if (version === 25) {
+    await store.transaction(async () => {
+      await migrateSenderSettings(store);
+      await store.setSchemaVersion(26);
+    });
+    version = 26;
+  }
+  if (version === 26) {
+    await store.transaction(async () => {
+      // Shared schema 27 includes the seller pairing-attempt deadline timestamp.
+      await migrateWhatsAppQr(store);
+      await store.setSchemaVersion(27);
+    });
+    version = 27;
+  }
+  if (version === 27) {
+    await store.transaction(async () => {
+      await migrateAi(store);
+      await store.setSchemaVersion(28);
+    });
+    version = 28;
+  }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
+}
+
+async function addThumbnailColumns(store) {
+  for (const table of ['product', 'product_gallery_image']) {
+    const present = (await store.all(`SELECT name FROM pragma_table_info('${table}')`)).map(column => column.name);
+    if (!present.includes('thumb_mime')) await store.exec(`ALTER TABLE ${table} ADD COLUMN thumb_mime TEXT CHECK (thumb_mime IS NULL OR thumb_mime IN ('image/png', 'image/jpeg', 'image/webp'))`);
+    if (!present.includes('thumb_data')) await store.exec(`ALTER TABLE ${table} ADD COLUMN thumb_data BLOB`);
+  }
 }
 
 export async function ready(store) {
   try {
     return await store.schemaVersion() === SCHEMA_VERSION &&
       Array.isArray(await store.all('SELECT stock_quantity, gallery_layout_json FROM product LIMIT 0')) &&
-      Array.isArray(await store.all('SELECT tracking_carrier, tracking_no FROM shop_order LIMIT 0')) &&
-      Array.isArray(await store.all('SELECT availability_text, shipping_text, returns_text FROM company_setting LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT tracking_carrier, tracking_no, contact_erased_at, contact_erased_by FROM shop_order LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT availability_text, shipping_text, returns_text, sender_name, sender_phone, sender_address_line1, sender_address_line2, sender_city, sender_state, sender_postcode, sender_country FROM company_setting LIMIT 0')) &&
       Array.isArray(await store.all('SELECT id FROM option_type LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT id FROM listing LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT listing_id FROM product LIMIT 0')) &&
       Array.isArray(await store.all('SELECT id FROM option_value LIMIT 0')) &&
       Array.isArray(await store.all('SELECT product_id FROM product_option LIMIT 0')) &&
-      Boolean(await store.get('SELECT id FROM admin WHERE id = 1')) &&
+      Array.isArray(await store.all('SELECT id, username_key, role, active, must_change_password, oauth_auth_version FROM seller_account LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT id, account_id, action FROM account_event LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT account_id FROM session LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT id, order_id, author FROM order_note LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT id, product_id, changes FROM product_event LIMIT 0')) &&
+      Boolean(await store.get('SELECT id FROM seller_account WHERE role = ? AND active = 1 LIMIT 1', 'OWNER')) &&
       Boolean(await store.get('SELECT id FROM order_sequence WHERE id = 1')) &&
       Boolean(await store.get('SELECT id FROM company_setting WHERE id = 1')) &&
       Boolean(await store.get('SELECT id FROM shop_setup WHERE id = 1')) &&
+      Boolean(await store.get('SELECT id FROM ai_setting WHERE id = 1')) &&
       (await Promise.all(['session', 'product', 'general_code', 'shop_order', 'delivery', 'order_item', 'order_event', 'checkout_idempotency',
-        'rate_limit_attempt', 'shop_setup', 'product_gallery_image']
+        'rate_limit_attempt', 'shop_setup', 'product_gallery_image', 'oauth_client', 'oauth_authorization_request',
+        'oauth_grant', 'oauth_authorization_code', 'oauth_token', 'mcp_audit',
+        'whatsapp_qr_session', 'whatsapp_qr_auth', 'message_peer_suppression', 'message_thread', 'message_thread_message', 'ai_setting', 'ai_usage', 'ai_suggestion_audit']
         .map(async (table) => Array.isArray(await store.all(`SELECT * FROM ${table} LIMIT 0`))))).every(Boolean);
   } catch {
     return false;

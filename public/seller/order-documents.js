@@ -1,6 +1,8 @@
+import { icon } from '../shared/icons.js';
 import PrintForm from './vendor/printform.js';
 import { formatDate, formatMoney, t } from '../shared/i18n.js';
-import { orderDocumentModel } from './order-document-model.js';
+import { documentTitleKey, orderDocumentModel } from './order-document-model.js';
+import './trail-copy.js';
 import { containDialogFocus } from '../shared/modal.js';
 
 function node(tag, text = '', className = '') {
@@ -89,10 +91,16 @@ export function createOrderDocuments() {
     close.textContent = t('close'); print.textContent = t('printSavePdf');
     data.deliveries.forEach((delivery, index) => {
       const section = node('section', '', `order-document-page ${kind === 'packing' ? 'packing-document' : ''}`);
-      const heading = node('h1', t(kind === 'packing' ? 'packingSheet' : 'orderDocument')); if (!index) heading.id = 'order-document-title';
+      const heading = node('h1', t(documentTitleKey(kind, order.status))); if (!index) heading.id = 'order-document-title';
       section.append(node('p', shopName || t('sellerPortal'), 'order-document-brand'), heading);
       section.append(node('p', data.simulation ? t('documentDemo') : t('documentLimits'), 'order-document-notice'));
-      field(section, t('orderNumber'), data.orderNo); field(section, t('orderStatus'), t({SUBMITTED:'statusSubmitted',CONFIRMED:'statusConfirmed',REJECTED:'statusRejected',SHIPPED:'statusShipped',DELIVERED:'statusDelivered',CANCELLED:'statusCancelled'}[data.status]));
+      const confirmation = (order.documents || []).find((doc) => doc.type === 'SALES_ORDER_CONFIRMATION');
+      field(section, t('orderNumber'), data.orderNo);
+      if (confirmation && kind === 'packing') field(section, t('salesOrderConfirmationDocument'), confirmation.number);
+      if (confirmation && kind === 'summary' && documentTitleKey(kind, order.status) === 'salesOrderConfirmationDocument') {
+        field(section, t('documentNumber'), confirmation.number); field(section, t('issuedAt'), formatDate(confirmation.issuedAt));
+      }
+      field(section, t('orderStatus'), t({SUBMITTED:'sellerStatusSubmitted',CONFIRMED:'statusConfirmed',REJECTED:'statusRejected',SHIPPED:'statusShipped',DELIVERED:'statusDelivered',CANCELLED:'sellerStatusCancelled'}[data.status]));
       field(section, t('orderRevision'), data.revision); field(section, t('submittedAt'), `${formatDate(data.submittedAt)} (${data.submittedAt})`);
       field(section, t('updatedAt'), `${formatDate(data.updatedAt)} (${data.updatedAt})`);
       if (data.rejectionReason) field(section, t('rejectionReason'), data.rejectionReason);
@@ -106,7 +114,7 @@ export function createOrderDocuments() {
       const columns = node('colgroup'); for (const width of kind === 'packing' ? ['15%','50%','15%','20%'] : ['15%','38%','9%','19%','19%']) { const col = node('col'); col.className = 'document-col-' + width.replace('%',''); columns.append(col); } table.append(columns);
       for (const [indexKey, key] of keys.entries()) { const th = node('th',t(key)); th.scope = 'col'; if (!indexKey) th.append(node('span', `${data.orderNo} · ${t('destination')} ${index + 1} / ${data.deliveries.length} · ${t('orderRevision')} ${data.revision}`, 'document-repeat-id')); row.append(th); } head.append(row); table.append(head);
       const body = node('tbody');
-      for (const item of delivery.items) { const r = node('tr'); for (const value of kind === 'packing' ? [item.sku,item.name,item.quantity,'☐'] : [item.sku,item.name,item.quantity,formatMoney(item.priceMinor,data.currency),formatMoney(item.lineTotalMinor,data.currency)]) r.append(node('td',String(value))); body.append(r); } table.append(body); section.append(table);
+      for (const item of delivery.items) { const r = node('tr'); for (const value of kind === 'packing' ? [item.sku,item.name,item.quantity] : [item.sku,item.name,item.quantity,formatMoney(item.priceMinor,data.currency),formatMoney(item.lineTotalMinor,data.currency)]) r.append(node('td',String(value))); if (kind === 'packing') { const cell = node('td'); cell.append(icon('square')); r.append(cell); } body.append(r); } table.append(body); section.append(table);
       const totals = node('div', '', 'order-document-totals');
       totals.append(node('p', `${data.orderNo} · ${t('destination')} ${index + 1} / ${data.deliveries.length} · ${t('orderRevision')} ${data.revision}`, 'document-repeat-id'));
       field(totals,t('destinationQuantity'),delivery.quantity);

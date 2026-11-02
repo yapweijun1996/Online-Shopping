@@ -6,28 +6,27 @@
   <meta name="theme-color" content="#24553e">
   <title>Seller portal · Online Shopping</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="manifest" href="/seller/manifest.webmanifest">
-  <link rel="apple-touch-icon" href="/seller/icons/icon-192.png">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="OS Seller">
-  <link rel="stylesheet" href="/seller/style.css">
-  <script src="/seller/palette.js"></script>
-  <script type="module" src="/seller/app.js"></script>
-  <link rel="stylesheet" href="/seller/order-print.css">
-  <link rel="stylesheet" href="/seller/commerce.css">
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./bootstrap.js"></script>
+  <link rel="stylesheet" href="./order-print.css">
+  <link rel="stylesheet" href="./commerce.css">
 </head>
 <body>
   <header class="topbar">
     <button class="icon-button mobile-only" id="open-menu" type="button" data-i18n-aria="openMenu" aria-controls="sidebar" aria-expanded="false">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
-    <a class="brand" href="/seller/" data-i18n-aria="sellerPortal"><img class="brand-mark" src="/seller/assets/studio-leaf.svg" alt=""><span>Seller Studio</span></a>
+    <a class="brand" href="./" data-i18n-aria="sellerPortal"><img class="brand-mark" src="./assets/studio-leaf.svg" alt=""><span>Seller Studio</span></a>
     <p id="shop-context" class="shop-context" hidden></p>
     <div class="top-actions">
       <div id="language" class="language-menu"></div>
       <div class="account-wrap" id="account-wrap" hidden>
-        <button id="account-button" class="account-button" type="button" data-i18n-aria="account" aria-expanded="false" aria-controls="account-menu"><span class="avatar" aria-hidden="true"></span><span data-i18n="account">Account</span><span aria-hidden="true">⌄</span></button>
+        <button id="account-button" class="account-button" type="button" data-i18n-aria="account" aria-expanded="false" aria-controls="account-menu"><span class="avatar" aria-hidden="true"></span><span data-i18n="account">Account</span><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></button>
         <div id="account-menu" class="account-menu" hidden>
           <button id="alerts-button" type="button"></button>
           <button id="profile-button" type="button" data-i18n="profile">View profile</button>
@@ -43,23 +42,26 @@
   </header>
   <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
   <aside id="sidebar" class="sidebar" hidden>
-    <div class="sidebar-head"><button id="collapse-nav" class="sidebar-brand" type="button" data-i18n-aria="collapse" aria-controls="sidebar" aria-expanded="true"><img class="brand-mark" src="/seller/assets/studio-leaf.svg" alt=""><span>Seller Studio</span><svg class="brand-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button><div class="sidebar-brand-static" aria-hidden="true"><img class="brand-mark" src="/seller/assets/studio-leaf.svg" alt=""><span>Seller Studio</span></div><button id="close-menu" class="icon-button mobile-only" type="button" data-i18n-aria="closeMenu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg></button></div>
+    <div class="sidebar-head"><button id="collapse-nav" class="sidebar-brand" type="button" data-i18n-aria="collapse" aria-controls="sidebar" aria-expanded="true"><img class="brand-mark" src="./assets/studio-leaf.svg" alt=""><span>Seller Studio</span><svg class="brand-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button><div class="sidebar-brand-static" aria-hidden="true"><img class="brand-mark" src="./assets/studio-leaf.svg" alt=""><span>Seller Studio</span></div><button id="close-menu" class="icon-button mobile-only" type="button" data-i18n-aria="closeMenu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg></button></div>
     <nav aria-label="Seller portal" data-i18n-aria="sellerPortal">
       <button class="nav-item active" type="button" data-view="dashboard" data-i18n-aria="dashboard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5V21H3zM9 21v-7h6v7"/></svg><span data-i18n="dashboard">Dashboard</span></button>
       <button class="nav-item" type="button" data-view="products" data-i18n-aria="products"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v14H4zM3 7l2-4h14l2 4M9 12h6"/></svg><span data-i18n="products">Products</span></button>
       <div class="nav-group" data-i18n="salesManager">Sales Manager</div>
-      <button class="nav-item" type="button" data-view="orders" data-i18n-aria="salesOrders"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18l-3-2-4 2-4-2-3 2zM8 8h8M8 12h8"/></svg><span data-i18n="salesOrders">Sales Orders</span></button>
-      <button class="nav-item" type="button" data-view="review" data-i18n-aria="orderReview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM8 12l3 3 5-6"/></svg><span data-i18n="orderReview">Sales Order Confirmation</span><span id="pending-badge" class="nav-badge" role="status" hidden></span></button>
+      <button class="nav-item" type="button" data-view="orders" data-i18n-aria="salesOrders"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18l-3-2-4 2-4-2-3 2zM8 8h8M8 12h8"/></svg><span data-i18n="salesOrders">Sales Orders</span><span id="pending-badge" class="nav-badge" role="status" hidden></span></button>
+      <button class="nav-item" type="button" data-view="confirmations" data-i18n-aria="orderReview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM8 12l3 3 5-6"/></svg><span data-i18n="orderReview">Sales Order Confirmation</span></button>
+      <button id="messages-nav" class="nav-item" type="button" data-view="messages" data-i18n-aria="msgHeading" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v14H8l-5 3zM7 8h10M7 12h7"/></svg><span data-i18n="msgHeading">Messages</span><span id="messages-badge" class="nav-badge" role="status" hidden></span></button>
+      <button class="nav-item" type="button" data-view="audit" data-i18n-aria="auditLog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5l3 2M3 12a9 9 0 1 0 3-6.7M3 4v4h4"/></svg><span data-i18n="auditLog">Audit log</span></button>
       <div class="nav-group" data-i18n="configuration">Configuration</div>
       <button class="nav-item" type="button" data-view="categories" data-i18n-aria="categoryCodes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h6"/></svg><span data-i18n="categoryCodes">Category codes</span></button>
       <button class="nav-item" type="button" data-view="options" data-i18n-aria="optionsNav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span data-i18n="optionsNav">Product options</span></button>
+      <button id="team-nav" class="nav-item" type="button" data-view="team" data-i18n-aria="teamNav" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20v-1.5a6.5 6.5 0 0 1 13 0V20M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 5.5V20"/></svg><span data-i18n="teamNav">Team</span></button>
       <button class="nav-item" type="button" data-view="company" data-i18n-aria="companySettings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V7l8-4 8 4v14M2 21h20M9 21v-6h6v6"/></svg><span data-i18n="companySettings">Company settings</span></button>
     </nav>
   </aside>
   <main id="main" class="main">
     <section id="login-view" class="login-layout" hidden>
       <div class="login-intro">
-        <img class="login-photo" src="/seller/assets/login-workspace.webp" alt="" aria-hidden="true" width="1200" height="800">
+        <img class="login-photo" src="./assets/login-workspace.webp" alt="" aria-hidden="true" width="1200" height="800">
         <div class="login-intro-content">
           <img class="brand-mark large" src="/favicon.svg" alt="">
           <p class="eyebrow" data-i18n="loginPrompt">Seller access only</p>
@@ -74,7 +76,7 @@
       </div>
       <div class="login-area">
         <form id="login-form" class="login-card">
-          <div class="studio-login-brand"><img src="/seller/assets/studio-leaf.svg" alt="" width="40" height="40"><span>Seller Studio</span></div>
+          <div class="studio-login-brand"><img src="./assets/studio-leaf.svg" alt="" width="40" height="40"><span>Seller Studio</span></div>
           <h2 data-i18n="signInAccount">Sign in to your account</h2>
           <p class="login-card-lead" data-i18n="signInCardIntro">Use your seller credentials to continue.</p>
           <label for="username" data-i18n="username">Username</label>
@@ -83,6 +85,7 @@
           <div class="login-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 15v2"/></svg><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="256"><button id="password-toggle" class="password-toggle" type="button" data-i18n-aria="showPassword" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="3"/><path class="password-hidden-mark" d="M3 3l18 18"/></svg></button></div>
           <p id="login-message" class="message" role="alert"></p>
           <button id="login-submit" class="primary-button" type="submit"><span data-i18n="signIn">Sign in</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg></button>
+          <div id="demo-entry"></div>
           <p class="privacy-note"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="10" width="12" height="10" rx="2"/><path d="M9 10V7a3 3 0 0 1 6 0v3"/></svg><span data-i18n="protected">Your catalog and orders are private.</span></p>
           <div class="login-update">
             <p id="login-version"></p>
@@ -91,7 +94,6 @@
             <p id="login-update-status" role="status" aria-live="polite"></p>
           </div>
         </form>
-        <div id="demo-entry"></div>
       </div>
     </section>
     <section id="workspace" hidden>
@@ -107,6 +109,7 @@
   <dialog id="profile-dialog" class="profile-dialog" aria-labelledby="profile-title">
     <h2 id="profile-title" data-i18n="profile">View profile</h2>
     <dl><dt data-i18n="username">Username</dt><dd id="profile-username"></dd><dt data-i18n="role">Role</dt><dd id="profile-role"></dd></dl>
+    <button id="change-password" class="secondary-button" type="button" data-i18n="changePassword" hidden>Change password</button>
     <button id="close-profile" class="primary-button" type="button" data-i18n="close">Close</button>
   </dialog>
   <template id="products-template">
@@ -116,11 +119,23 @@
         <input id="product-search" type="search" maxlength="100" placeholder="Name or SKU" data-i18n-aria="searchNameOrSku">
         <button type="submit" class="secondary-button" data-i18n="applySearch">Search</button>
       </form>
+      <button id="product-import" type="button" class="secondary-button" data-i18n="importCsv">Import CSV</button>
+      <button id="product-export" type="button" class="secondary-button" data-i18n="exportCsv">Export CSV</button>
       <button id="product-new" type="button" class="primary-button" data-i18n="addProduct">Add product</button>
     </div>
     <form id="product-form" class="product-form" hidden>
       <div class="product-form-heading"><h2 id="product-form-title" data-i18n="addProduct">Add product</h2><button id="product-cancel" type="button" class="text-button" data-i18n="cancelEdit">Cancel edit</button></div>
       <p id="product-form-success" class="product-form-success" role="status" tabindex="-1"></p>
+      <section id="product-variants" class="product-variants-panel" aria-labelledby="product-variants-title" hidden>
+        <h3 id="product-variants-title" data-i18n="variantsPanelTitle">Variants</h3>
+        <p class="shop-note" data-i18n="variantManageHint">Title, description and category are shared by all variants. Price, stock and photos are set per variant.</p>
+        <ul id="product-variants-list" class="product-variants-list"></ul>
+        <button id="product-add-variant" type="button" class="secondary-button" data-i18n="addVariant">Add variant</button>
+      </section>
+      <details id="product-history" class="product-history" hidden>
+        <summary data-i18n="productHistory">Change history</summary>
+        <ol id="product-history-list" class="product-history-list"></ol>
+      </details>
       <div class="product-fields">
         <label><span data-i18n="sku">SKU</span><input name="sku" maxlength="40" required autocomplete="off"></label>
         <label><span data-i18n="name">Name</span><input name="name" maxlength="120" required></label>
@@ -140,7 +155,7 @@
         </fieldset>
         <label class="full"><span data-i18n="image">Product image</span><input name="image" type="file" accept="image/png,image/jpeg,image/webp"><small data-i18n="imageHelp">PNG, JPEG or WebP, up to 512 KB.</small></label>
         <div id="product-image-panel" class="product-image-panel full" hidden><img id="product-image-preview" class="product-image-preview" alt=""><div><p id="product-image-status" data-i18n="currentImage">Current image</p><button id="product-remove-image" class="secondary-button" type="button" data-i18n="removeImage">Remove image</button><button id="product-restore-image" class="text-button" type="button" data-i18n="restoreImage" hidden>Undo removal</button><p id="product-image-removal-help" class="product-image-removal-help" role="status" hidden></p></div></div>
-        <div id="product-gallery-panel" class="product-gallery-panel full" hidden><h3 data-i18n="gallery">Gallery</h3><p class="shop-note" data-i18n="galleryHelp">Up to ten images in total. Arrange images and choose the primary image, then save the product. Cancel discards unsaved image changes.</p><div id="product-gallery-list" class="product-gallery-list"></div><label><span data-i18n="addPhoto">Add photos</span><input name="gallery" type="file" accept="image/png,image/jpeg,image/webp" multiple></label></div>
+        <div id="product-gallery-panel" class="product-gallery-panel full" hidden><h3 data-i18n="gallery">Gallery</h3><p class="shop-note" data-i18n="galleryHelp">Up to ten images in total. Arrange images and choose the primary image, then save the product. Cancel discards unsaved image changes.</p><p id="product-gallery-shared-note" class="shop-note" hidden></p><button id="product-open-main" class="secondary-button" type="button" data-i18n="openMainVariant" hidden>Open the main variant</button><div id="product-gallery-list" class="product-gallery-list"></div><label><span data-i18n="addPhoto">Add photos</span><input name="gallery" type="file" accept="image/png,image/jpeg,image/webp" multiple></label></div>
         <label class="check-row full"><input name="active" type="checkbox"><span data-i18n="available">Active in shop</span></label>
       </div>
       <p id="product-form-error" class="message" role="alert"></p>
@@ -154,8 +169,19 @@
     <div class="order-toolbar">
       <form id="order-filter" class="order-filter">
         <label><span data-i18n="searchOrderNo">Order number</span><input id="order-search" name="search" type="search" maxlength="40" autocomplete="off"></label>
-        <label id="order-status-label"><span data-i18n="orderStatus">Status</span><select id="order-status" name="status"><option value="" data-i18n="allStatuses">All statuses</option><option value="SUBMITTED" data-i18n="statusSubmitted">Submitted</option><option value="CONFIRMED" data-i18n="statusConfirmed">Confirmed</option><option value="REJECTED" data-i18n="statusRejected">Rejected</option><option value="SHIPPED" data-i18n="statusShipped">Shipped</option><option value="DELIVERED" data-i18n="statusDelivered">Delivered</option><option value="CANCELLED" data-i18n="statusCancelled">Cancelled</option></select></label>
+        <label id="order-status-label"><span data-i18n="orderStatus">Status</span><select id="order-status" name="status"></select></label>
+        <details id="order-more-filters" class="order-more-filters">
+          <summary data-i18n="moreFilters">More filters</summary>
+          <div class="order-extra-grid">
+            <label><span data-i18n="auditFrom">From date</span><input id="order-from" type="date"></label>
+            <label><span data-i18n="auditTo">To date</span><input id="order-to" type="date"></label>
+            <label><span data-i18n="currency">Currency</span><select id="order-currency"></select></label>
+            <label><span data-i18n="minTotal">Minimum total</span><input id="order-min" type="number" min="0" step="0.01" inputmode="decimal"></label>
+            <label><span data-i18n="maxTotal">Maximum total</span><input id="order-max" type="number" min="0" step="0.01" inputmode="decimal"></label>
+          </div>
+        </details>
         <button type="submit" class="secondary-button" data-i18n="applySearch">Search</button>
+        <button type="button" id="order-export" class="secondary-button" data-i18n="exportCsv" hidden>Export CSV</button>
       </form>
     </div>
     <p id="order-message" class="message order-message" role="status" aria-live="polite"></p>

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createApp } from '../src/server.js';
 import { openDatabase, ready } from '../src/db.js';
@@ -13,7 +13,9 @@ import { createOptionType, createOptionValue, updateOptionValue, listOptionTypes
 import { createOrder } from '../src/orders.js';
 import { decideSellerOrder } from '../src/seller-orders.js';
 import { ensureAdmin } from '../src/auth.js';
-import { importSqlite, rowsDigest } from '../src/sqlite-import.js';
+import { importSqlite, importTables, excludedImportTables, rowsDigest } from '../src/sqlite-import.js';
+import { createSecretBox } from '../src/secret-box.js';
+import { saveWhatsAppConnection } from '../src/integration-connections.js';
 
 const base = process.env.SHOP_TEST_DATABASE_URL;
 if (base && (process.env.NODE_ENV !== 'test' || !/test/i.test(new URL(base).pathname))) throw new Error('PostgreSQL tests require NODE_ENV=test and a disposable test database.');
@@ -38,6 +40,12 @@ async function seed(store) {
 
 test('PostgreSQL parameter conversion preserves quoted data and search behavior', () => {
   assert.equal(postgresSql("SELECT '?' AS value WHERE name = ? AND instr(lower(name), lower(?)) > 0"), "SELECT '?' AS value WHERE name = $1 AND strpos(lower(name), lower($2)) > 0");
+});
+
+test('SQLite import inventory covers every durable baseline table', async t => {
+  const source = await openDatabase(':memory:'); t.after(() => source.close());
+  const tables = (await source.all("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")).map(row => row.name).sort();
+  assert.deepEqual([...importTables, ...excludedImportTables].sort(), tables);
 });
 
 test('PostgreSQL dual-origin API: login, CSRF, checkout, replay, catalog and seller decisions', { skip: !base }, async t => {
@@ -89,12 +97,33 @@ test('PostgreSQL concurrent stock confirmation and limiter preserve atomicity; f
 test('SQLite import preserves rows, binary images, hashes and identity sequences; refuses overwrite', {skip:!base}, async t => {
   const source=await openDatabase(':memory:');t.after(()=>source.close());await ensureAdmin(source,username,password);
   const product=await seed(source);await createOrder(source,'pg-import-intent-0001',input(product));
+  const secretBox = createSecretBox({ activeId: 'fixture', keys: new Map([['fixture', randomBytes(32)]]) });
+  await saveWhatsAppConnection(source, secretBox, { verify: async () => ({ ok: true }) }, {
+    environment: 'SANDBOX', accessToken: 'Synthetic-Access-Token-Only-123456', appSecret: 'Synthetic-App-Secret-Only-123456',
+    phoneNumberId: '111111', businessAccountId: '222222',
+  }, username);
+  const connection = await source.get('SELECT * FROM integration_connection');
+  const order = await source.get('SELECT id FROM shop_order');
+  const now = new Date().toISOString();
+  await source.run(`INSERT INTO webhook_receipt(id, provider, dedupe_key, verified, received_at) VALUES (?, 'WHATSAPP_CLOUD', 'synthetic-receipt', 1, ?)`, randomUUID(), now);
+  await source.run(`INSERT INTO message_outbox(id, order_id, connection_id, kind, recipient_hash, template, locale,
+    idempotency_key, status, provider_message_id, attempts, created_at, updated_at)
+    VALUES (?, ?, ?, 'ORDER_SUBMITTED', ?, 'synthetic_template', 'en', 'synthetic-outbox', 'RECONCILE', 'synthetic-outbound-id', 1, ?, ?)`,
+  randomUUID(), order.id, connection.id, 'a'.repeat(64), now, now);
+  await source.run(`INSERT INTO message_inbound(id, connection_id, order_id, from_hash, provider_message_id, kind, body, received_at, created_at)
+    VALUES (?, ?, ?, ?, 'synthetic-inbound-id', 'TEXT', 'Fictional reply fixture', ?, ?)`, randomUUID(), connection.id, order.id, 'a'.repeat(64), now, now);
   const target=await openPostgresDatabase(await database(t));t.shoppingClosers.push(()=>target.close());
   await addGalleryImage(source,product.id,'data:image/png;base64,'+readFileSync(new URL('../public/shop/icons/icon-192.png',import.meta.url)).toString('base64'));
   const evidence=await importSqlite(source,target);assert.equal(evidence.tables.find(x=>x.table==='shop_order').rows,1);assert.equal(await ready(target),true);
-  for(const table of ['product','shop_order','order_event'])assert.equal(rowsDigest(await source.all(`SELECT * FROM ${table}`)),rowsDigest(await target.all(`SELECT * FROM ${table}`)));
+  for(const table of importTables)assert.equal(rowsDigest(await source.all(`SELECT * FROM ${table}`)),rowsDigest(await target.all(`SELECT * FROM ${table}`)), table);
+  const tables = (await target.all("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'schema_meta'")).map(row => row.tablename).sort();
+  assert.deepEqual([...importTables, ...excludedImportTables].sort(), tables);
+  for (const table of ['integration_connection', 'integration_audit', 'webhook_receipt', 'message_outbox', 'message_inbound']) assert.equal(evidence.tables.find(row => row.table === table).rows, 1);
+  const restored = await target.get('SELECT * FROM integration_connection');
+  assert.equal(secretBox.open(Buffer.from(restored.secret_ciphertext), restored.secret_key_id, 'WHATSAPP_CLOUD:SANDBOX'),
+    secretBox.open(Buffer.from(connection.secret_ciphertext), connection.secret_key_id, 'WHATSAPP_CLOUD:SANDBOX'));
   await assert.rejects(importSqlite(source,target),/fresh baseline/);
-  const order=await target.get('SELECT id FROM shop_order');await decideSellerOrder(target,order.id,'confirm',{expectedRevision:1},username);
+  await decideSellerOrder(target,order.id,'confirm',{expectedRevision:1},username);
   assert.equal((await target.get('SELECT COUNT(*) AS n FROM order_event')).n,2);
 });
 
@@ -104,7 +133,7 @@ test('PostgreSQL unavailable database fails readiness without leaking credential
 });
 
 // Real PostgreSQL fixtures, independent from the historical synchronous SQL mock suite.
-for (const version of [10, 11, 12, 13, 14, 15, 16]) test(`PostgreSQL physical schema${version} upgrades explicitly to17, preserves bytes and supports gallery writes`, {skip:!base}, async t => {
+for (const version of [10, 11, 12, 13, 14, 15, 16]) test(`PostgreSQL physical schema${version} upgrades explicitly to24, preserves bytes and supports gallery writes`, {skip:!base}, async t => {
   const url = await database(t), store = openPostgresStore(url);
   t.shoppingClosers.push(() => store.close());
   const {postgresSchema12Sql} = await import('../deploy/postgres/schema12.js');
@@ -125,7 +154,6 @@ for (const version of [10, 11, 12, 13, 14, 15, 16]) test(`PostgreSQL physical sc
   assert.equal(await store.schemaVersion(),version);
   assert.deepEqual(await store.get('SELECT * FROM product'),original);
   const upgraded = await openPostgresDatabase(url,{allowUpgrade:true}); t.shoppingClosers.push(()=>upgraded.close());
-  assert.equal(await upgraded.schemaVersion(),17);
   assert.deepEqual((await upgraded.get('SELECT image_data FROM product')).image_data,bytes);
   const {getProduct,updateProduct} = await import('../src/products.js');
   const before = await getProduct(upgraded,'synthetic-preserved',true);
@@ -193,4 +221,95 @@ test('PostgreSQL stock holds: 20 buyers racing for 5 units get exactly 5 orders 
   const confirmed = await Promise.allSettled(ids.map(id => decideSellerOrder(store, id, 'confirm', { expectedRevision: 1 }, username)));
   assert.equal(confirmed.filter(r => r.status === 'fulfilled').length, 5, 'every held order can be confirmed');
   assert.equal((await store.get('SELECT stock_quantity FROM product')).stock_quantity, 0);
+});
+
+test('PostgreSQL public list collapses variant groups to one card with the group size and price spread', {skip:!base}, async t => {
+  const store = await openPostgresDatabase(await database(t)); t.shoppingClosers.push(()=>store.close());
+  const {listProducts} = await import('../src/products.js');
+  await createCategory(store, { code: 'WEAR', label: 'Wear' });
+  const make = (sku, price, extra = {}) => createProduct(store, { sku, name: 'Tee', description: 'x', category: 'WEAR', priceMinor: price, currency: 'MYR', active: true, ...extra });
+  await make('TEE-S', 1200, { variantGroup: 'TEE', variantLabel: 'S', stockQuantity: 0 });
+  await make('TEE-M', 1400, { variantGroup: 'TEE', variantLabel: 'M' });
+  await make('TEE-L', 1600, { variantGroup: 'TEE', variantLabel: 'L' });
+  await make('MUG', 900);
+  const shop = (await listProducts(store, new URLSearchParams(''), false)).items;
+  assert.deepEqual(shop.map(p => p.sku).sort(), ['MUG', 'TEE-M']);
+  const tee = shop.find(p => p.sku === 'TEE-M');
+  assert.deepEqual([tee.variantCount, tee.priceVaries, tee.priceMinor], [3, true, 1400]);
+  assert.deepEqual((await listProducts(store, new URLSearchParams('search=TEE-L'), false)).items.map(p => p.sku), ['TEE-L']);
+  const sellerRows = (await listProducts(store, new URLSearchParams(''), true)).items;
+  assert.equal(sellerRows.length, 2, 'the seller list has one row per listing');
+  const teeRow = sellerRows.find(p => p.variantGroup === 'TEE');
+  assert.deepEqual([teeRow.variantCount, teeRow.activeCount, teeRow.priceFromMinor, teeRow.priceToMinor, teeRow.stockTotal], [3, 3, 1200, 1600, null]);
+});
+
+test('PostgreSQL schema 17 upgrades into listings, keeping every product id and order line', {skip:!base}, async t => {
+  const url = await database(t);
+  const store = await openPostgresDatabase(url); t.shoppingClosers.push(()=>store.close());
+  await createCategory(store, { code: 'WEAR', label: 'Wear' });
+  const make = (sku, extra = {}) => createProduct(store, { sku, name: 'Tee', description: 'Soft', category: 'WEAR', priceMinor: 1200, currency: 'MYR', active: true, stockQuantity: 5, ...extra });
+  const tee = await make('TEE', { variantGroup: 'TEE', variantLabel: 'S' });
+  const teeM = await make('TEE-M', { variantGroup: 'TEE', variantLabel: 'M' });
+  const mug = await make('MUG', { name: 'Mug' });
+  const order = await createOrder(store, 'pg-listing-intent-0001', input(teeM));
+  const before = await store.all('SELECT id, sku, name, price_minor, stock_quantity FROM product ORDER BY id');
+  // Put the database back into its schema 17 shape.
+  await store.exec('ALTER TABLE product ALTER COLUMN listing_id DROP NOT NULL; UPDATE product SET listing_id = NULL; DELETE FROM listing');
+  await store.setSchemaVersion(17);
+  const upgraded = await openPostgresDatabase(url, { allowUpgrade: true }); t.shoppingClosers.push(()=>upgraded.close());
+  assert.deepEqual(await upgraded.all('SELECT id, sku, name, price_minor, stock_quantity FROM product ORDER BY id'), before);
+  assert.equal((await upgraded.get('SELECT COUNT(*)::int AS n FROM listing')).n, 2);
+  assert.equal((await getProduct(upgraded, tee.id, true)).listingId, (await getProduct(upgraded, teeM.id, true)).listingId);
+  assert.notEqual((await getProduct(upgraded, mug.id, true)).listingId, (await getProduct(upgraded, tee.id, true)).listingId);
+  await assert.rejects(upgraded.run("UPDATE product SET listing_id = NULL WHERE id = ?", mug.id), /null value|not-null/i);
+  assert.ok(order);
+  assert.equal((await upgraded.get('SELECT COUNT(*)::int AS n FROM order_item WHERE product_id = ?', teeM.id)).n, 1);
+});
+
+test('PostgreSQL schema 18 upgrades to one shared gallery per listing and drops the per-colour copies', {skip:!base}, async t => {
+  const url = await database(t);
+  const store = await openPostgresDatabase(url); t.shoppingClosers.push(()=>store.close());
+  await createCategory(store, { code: 'WEAR', label: 'Wear' });
+  const png = readFileSync(new URL('../public/shop/icons/icon-192.png',import.meta.url));
+  const photo = label => 'data:image/png;base64,' + Buffer.concat([png, Buffer.from(label)]).toString('base64');
+  const make = (sku, label) => createProduct(store, { sku, name: 'Tee', description: 'Soft', category: 'WEAR', priceMinor: 1200, currency: 'MYR', active: true, imageDataUrl: photo(label), variantGroup: 'TEE', variantLabel: sku });
+  const white = await make('TEE-WHITE', 'white'), black = await make('TEE-BLACK', 'black');
+  const extra = Buffer.concat([png, Buffer.from('extra')]);
+  await store.run('DELETE FROM product_gallery_image');
+  for (const [index, product] of [white, black].entries()) {
+    await store.run('INSERT INTO product_gallery_image(id, product_id, position, mime, data, created_at) VALUES (?, ?, 1, ?, ?, ?)', `copy-${index}`, product.id, 'image/png', extra, new Date().toISOString());
+    await store.run('UPDATE product SET gallery_layout_json = ? WHERE id = ?', JSON.stringify(['main', `copy-${index}`]), product.id);
+  }
+  // The real schema 18 has no preview columns; the gallery step of the upgrade must still copy photos.
+  await store.exec('ALTER TABLE product DROP COLUMN thumb_mime; ALTER TABLE product DROP COLUMN thumb_data; ALTER TABLE product_gallery_image DROP COLUMN thumb_mime; ALTER TABLE product_gallery_image DROP COLUMN thumb_data');
+  await store.setSchemaVersion(18);
+  const upgraded = await openPostgresDatabase(url, { allowUpgrade: true }); t.shoppingClosers.push(()=>upgraded.close());
+  assert.equal((await upgraded.get('SELECT COUNT(*)::int AS n FROM product_gallery_image WHERE product_id = ?', black.id)).n, 0);
+  assert.equal((await upgraded.get('SELECT gallery_layout_json FROM product WHERE id = ?', black.id)).gallery_layout_json, null);
+  const shown = await getProduct(upgraded, black.id, true), holder = await getProduct(upgraded, white.id, true);
+  assert.equal(shown.galleryItems[0].id, 'main');
+  assert.deepEqual(shown.galleryItems.filter(item => item.shared).map(item => item.id), holder.galleryItems.filter(item => item.shared).map(item => item.id));
+  assert.equal(holder.galleryItems.filter(item => item.shared).length, 2);
+});
+
+test('PostgreSQL stores image previews, serves them on request and upgrades from schema 19', {skip:!base}, async t => {
+  const url = await database(t);
+  const store = await openPostgresDatabase(url); t.shoppingClosers.push(()=>store.close());
+  const { getProductImage, getGalleryImage, setProductThumbnail } = await import('../src/products.js');
+  await createCategory(store, { code: 'WEAR', label: 'Wear' });
+  const png = readFileSync(new URL('../public/shop/icons/icon-192.png',import.meta.url));
+  const data = label => 'data:image/png;base64,' + Buffer.concat([png, Buffer.from(label)]).toString('base64');
+  const made = await createProduct(store, { sku: 'THUMB-1', name: 'Thumb', description: 'x', category: 'WEAR', priceMinor: 1200, currency: 'MYR', active: true, imageDataUrl: data('full'), thumbDataUrl: data('small') });
+  assert.deepEqual(Buffer.from((await getProductImage(store, made.id, true, true)).data), Buffer.concat([png, Buffer.from('small')]));
+  assert.deepEqual(Buffer.from((await getProductImage(store, made.id, true, false)).data), Buffer.concat([png, Buffer.from('full')]));
+  const added = await addGalleryImage(store, made.id, data('gallery'), 'manual', data('gallery-small'));
+  const galleryId = added.galleryItems.find(item => item.id !== 'main').id;
+  assert.deepEqual(Buffer.from((await getGalleryImage(store, made.id, galleryId, true, true)).data), Buffer.concat([png, Buffer.from('gallery-small')]));
+  // The schema 19 shape: no preview columns yet; the upgrade adds them and keeps the images.
+  await store.exec('ALTER TABLE product DROP COLUMN thumb_mime; ALTER TABLE product DROP COLUMN thumb_data; ALTER TABLE product_gallery_image DROP COLUMN thumb_mime; ALTER TABLE product_gallery_image DROP COLUMN thumb_data');
+  await store.setSchemaVersion(19);
+  const upgraded = await openPostgresDatabase(url, { allowUpgrade: true }); t.shoppingClosers.push(()=>upgraded.close());
+  assert.deepEqual(Buffer.from((await getProductImage(upgraded, made.id, true, true)).data), Buffer.concat([png, Buffer.from('full')]), 'no preview yet: the full image answers');
+  await setProductThumbnail(upgraded, made.id, data('late'));
+  assert.deepEqual(Buffer.from((await getProductImage(upgraded, made.id, true, true)).data), Buffer.concat([png, Buffer.from('late')]));
 });

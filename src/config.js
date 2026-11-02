@@ -1,7 +1,15 @@
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
+import { parseKeyFile } from './secret-box.js';
+import { checkPassword } from './accounts.js';
+import { safeRedirect } from './mcp/oauth.js';
 
 const weakPasswords = new Set(['password', 'password123', 'changeme', 'admin123', 'testpassword', 'replace-me']);
+
+function databasePort(value = '5432') {
+  if (!/^[0-9]+$/.test(value) || Number(value) < 1 || Number(value) > 65535) throw new Error('Invalid database port.');
+  return Number(value);
+}
 const placeholderWords = /password|changeme|replace[-_]?me|example|sample|default/i;
 
 export function readShopMode(env) {
@@ -39,6 +47,87 @@ function validatePublicOrigin(publicOrigin, production) {
   return publicOrigin;
 }
 
+export function readPlatformConfig(env, integrationKeys) {
+  if (!env.PLATFORM_ENABLED || env.PLATFORM_ENABLED === '0') return null;
+  if (env.PLATFORM_ENABLED !== '1') throw new Error('PLATFORM_ENABLED must be 1 or 0.');
+  if (!integrationKeys) throw new Error('INTEGRATION_KEY_FILE is required for the platform.');
+  const adminHost = env.PLATFORM_ADMIN_HOST;
+  const username = env.PLATFORM_ADMIN_USERNAME;
+  const claimEnabled = env.PLATFORM_ADMIN_CLAIM_ENABLED === '1';
+  if (env.PLATFORM_ADMIN_CLAIM_ENABLED !== undefined && !['0', '1'].includes(env.PLATFORM_ADMIN_CLAIM_ENABLED)) throw new Error('PLATFORM_ADMIN_CLAIM_ENABLED must be 1 or 0.');
+  if (claimEnabled && (env.PLATFORM_ADMIN_USERNAME !== undefined || env.PLATFORM_ADMIN_PASSWORD_FILE !== undefined)) throw new Error('Claim mode cannot use PLATFORM_ADMIN_USERNAME or PLATFORM_ADMIN_PASSWORD_FILE.');
+  if (typeof adminHost !== 'string' || !/^[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]{1,5})?$/.test(adminHost)) throw new Error('Invalid PLATFORM_ADMIN_HOST.');
+  try { if (new URL(`https://${adminHost}`).host !== adminHost) throw new Error(); } catch { throw new Error('Invalid PLATFORM_ADMIN_HOST.'); }
+  if (!claimEnabled && (typeof username !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/.test(username))) throw new Error('Invalid PLATFORM_ADMIN_USERNAME.');
+  const readSecret = (key) => {
+    let value;
+    try { value = readFileSync(env[key], 'utf8').replace(/\r?\n$/, ''); } catch { throw new Error(`${key} cannot be read.`); }
+    if (!value || value.length > 1024 || /[\r\n\0]/.test(value)) throw new Error(`Invalid ${key}.`);
+    return value;
+  };
+  const password = claimEnabled ? undefined : readSecret('PLATFORM_ADMIN_PASSWORD_FILE');
+  if (!claimEnabled) checkPassword(password, 'PLATFORM_ADMIN_PASSWORD_FILE', username);
+  const host = env.PLATFORM_DATABASE_HOST || 'postgres', database = env.PLATFORM_DATABASE_NAME || 'platform';
+  const user = env.PLATFORM_DATABASE_USER || 'platform_app', provisioner = env.PLATFORM_PROVISIONER_USER || 'platform_provisioner';
+  if (![host, database, user, provisioner].every((value) => /^[a-zA-Z0-9_.-]+$/.test(value))) throw new Error('Invalid platform database connection setting.');
+  const port = databasePort(env.PLATFORM_DATABASE_PORT);
+  const connection = (role, secret, name) => `postgresql://${encodeURIComponent(role)}:${encodeURIComponent(secret)}@${host}:${port}/${name}`;
+  return { adminHost, username, password, claimEnabled, databaseUrl: connection(user, readSecret('PLATFORM_DATABASE_PASSWORD_FILE'), database),
+    provisionerUrl: connection(provisioner, readSecret('PLATFORM_PROVISIONER_PASSWORD_FILE'), 'postgres') };
+}
+
+export function readAiConfig(env) {
+  const flag = env.AI_ENABLED ?? '0';
+  if (!['0', '1'].includes(flag)) throw new Error('AI_ENABLED must be 0 or 1.');
+  const model = env.AI_MODEL ?? 'claude-haiku-5-5';
+  if (!/^[a-z0-9.-]{3,64}$/.test(model)) throw new Error('Invalid AI_MODEL.');
+  const enabled = flag === '1';
+  if (!enabled) return { enabled, model };
+  if (env.SELLER_QUICK_LOGIN === '1' || env.SHOP_MODE === 'public-demo') throw new Error('AI refuses quick login and public-demo shops.');
+  let apiKey;
+  try { apiKey = readFileSync(env.AI_API_KEY_FILE, 'utf8').trim(); }
+  catch { throw new Error('AI_API_KEY_FILE cannot be read.'); }
+  if (!/^[\x20-\x7e]{20,300}$/.test(apiKey)) throw new Error('Invalid AI_API_KEY_FILE.');
+  return { enabled, apiKey, model };
+}
+
+export function readWhatsAppQrConfig(env, integrationKeys) {
+  const flag = env.WHATSAPP_QR_ENABLED ?? '0';
+  if (!['0', '1'].includes(flag)) throw new Error('WHATSAPP_QR_ENABLED must be 0 or 1.');
+  const rawPort = env.WHATSAPP_QR_PORT ?? '3001', port = Number(rawPort);
+  if (!/^\d+$/.test(rawPort) || !Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('WHATSAPP_QR_PORT must be 1024..65535.');
+  const enabled = flag === '1';
+  let token = null;
+  if (enabled) {
+    if (!integrationKeys) throw new Error('WHATSAPP_QR_ENABLED requires integration keys.');
+    if (env.SELLER_QUICK_LOGIN === '1' || env.SHOP_MODE === 'public-demo') throw new Error('WhatsApp QR refuses quick login and public-demo shops.');
+    if (env.WHATSAPP_QR_SHOP !== undefined && env.WHATSAPP_QR_SHOP !== 'default') throw new Error('WhatsApp QR supports only the default shop.');
+    if (!env.WHATSAPP_QR_BINDINGS_FILE) {
+      try { token = readFileSync(env.WHATSAPP_QR_TOKEN_FILE, 'utf8').split(/\r?\n/)[0]; }
+      catch { throw new Error('WHATSAPP_QR_TOKEN_FILE is required and must be readable.'); }
+      if (!/^[A-Za-z0-9_-]{32,}$/.test(token)) throw new Error('WHATSAPP_QR_TOKEN_FILE must contain a URL-safe token of at least 32 characters.');
+    }
+  }
+  let bindings;
+  if (env.WHATSAPP_QR_BINDINGS_FILE) {
+    try {
+      bindings = JSON.parse(readFileSync(env.WHATSAPP_QR_BINDINGS_FILE, 'utf8'));
+      if (!Array.isArray(bindings) || !bindings.length || bindings.length > 2) throw new Error();
+      const slots = new Set(), identities = new Set(), tokens = new Set();
+      bindings = bindings.map(({ slot, shopId, tokenFile, workerLabel }) => {
+        if (![0, 1].includes(slot) || (slot === 0 ? shopId !== 'default' : !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(shopId)) ||
+          typeof tokenFile !== 'string' || !path.isAbsolute(tokenFile) || typeof workerLabel !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(workerLabel)) throw new Error();
+        const value = readFileSync(tokenFile, 'utf8').trim();
+        if (!/^[A-Za-z0-9_-]{43}$/.test(value) || slots.has(slot) || identities.has(shopId) || tokens.has(value)) throw new Error();
+        slots.add(slot); identities.add(shopId); tokens.add(value);
+        return Object.freeze({ slot, shopId, token: value, workerLabel });
+      });
+      if (!slots.has(0) || (slots.has(1) && env.PLATFORM_ENABLED !== '1')) throw new Error();
+    } catch { throw new Error('Invalid WHATSAPP_QR_BINDINGS_FILE or credential file.'); }
+  }
+  return { enabled, token, port, ...(bindings ? { bindings: Object.freeze(bindings) } : {}) };
+}
+
 export function readConfig(env = process.env) {
   const production = env.NODE_ENV === 'production';
   const username = (env.ADMIN_USERNAME || '').trim();
@@ -73,18 +162,37 @@ export function readConfig(env = process.env) {
     const user = env.DATABASE_USER || 'online_shopping';
     const name = env.DATABASE_NAME || 'online_shopping';
     if (![host, user, name].every(value => /^[a-zA-Z0-9_.-]+$/.test(value))) throw new Error('Invalid database connection setting.');
-    databaseUrl = `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(dbPassword)}@${host}:5432/${name}`;
+    databaseUrl = `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(dbPassword)}@${host}:${databasePort(env.DATABASE_PORT)}/${name}`;
   }
   if (databaseUrl) {
     let url;
     try { url = new URL(databaseUrl); } catch { throw new Error('Invalid DATABASE_URL.'); }
     if (!['postgres:', 'postgresql:'].includes(url.protocol)) throw new Error('DATABASE_URL must use PostgreSQL.');
   }
+  // Master keys for stored integration credentials. When a key file is configured it must be valid: a bad or missing
+  // file stops startup (the deploy health check then fails) instead of silently running without encryption.
+  let integrationKeys = null;
+  if (env.INTEGRATION_KEY_FILE) {
+    let text;
+    try { text = readFileSync(env.INTEGRATION_KEY_FILE, 'utf8'); } catch { throw new Error('INTEGRATION_KEY_FILE cannot be read.'); }
+    integrationKeys = parseKeyFile(text);
+  }
+  const whatsappQr = readWhatsAppQrConfig(env, integrationKeys);
+  const ai = readAiConfig(env);
   const appRevision = env.APP_REVISION || null;
   if (appRevision && !/^(local|[0-9a-f]{40})$/.test(appRevision)) throw new Error('APP_REVISION must be a commit SHA or local.');
   const port = Number(env.PORT || 3000);
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('PORT must be a valid port.');
   const trustProxy = env.TRUST_PROXY === '1';
   if (env.TRUST_PROXY && !trustProxy) throw new Error('TRUST_PROXY must be 1 when set.');
-  return { production, username, password, dbPath, databaseUrl, publicOrigin, sellerOrigin, appRevision, port, trustProxy, shopMode: readShopMode(env), sellerQuickLogin: env.SELLER_QUICK_LOGIN === '1', demoRevision: readDemoRevision(env) };
+  if (env.MCP_ENABLED !== undefined && !['0', '1'].includes(env.MCP_ENABLED)) throw new Error('MCP_ENABLED must be 0 or 1.');
+  const mcpEnabled = env.MCP_ENABLED === '1';
+  const mcpRedirectUris = (env.MCP_REDIRECT_URIS || '').split(',').filter(Boolean);
+  const mcpBrowserOrigins = (env.MCP_BROWSER_ORIGINS || '').split(',').filter(Boolean);
+  if (mcpRedirectUris.some((uri) => !safeRedirect(uri, mcpRedirectUris))) throw new Error('Invalid MCP_REDIRECT_URIS.');
+  if (mcpBrowserOrigins.some((value) => {
+    try { const url = new URL(value); return url.protocol !== 'https:' || url.origin !== value; } catch { return true; }
+  })) throw new Error('Invalid MCP_BROWSER_ORIGINS.');
+  if (mcpEnabled && (!sellerOrigin || new URL(sellerOrigin).protocol !== 'https:')) throw new Error('MCP_ENABLED requires an HTTPS SELLER_ORIGIN.');
+  return { production, username, password, dbPath, databaseUrl, publicOrigin, sellerOrigin, appRevision, integrationKeys, whatsappQr, ai, mcpEnabled, mcpRedirectUris, mcpBrowserOrigins, platform: readPlatformConfig(env, integrationKeys), port, trustProxy, shopMode: readShopMode(env), sellerQuickLogin: env.SELLER_QUICK_LOGIN === '1', demoRevision: readDemoRevision(env) };
 }

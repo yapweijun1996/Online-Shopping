@@ -9,7 +9,9 @@ self.setupOfflineWorker = ({ cachePrefix, version, assets, scopePath, offlinePag
   });
 
   self.addEventListener('install', (event) => {
-    event.waitUntil(caches.open(cacheName).then((cache) => cache.addAll(assets)));
+    // `reload` skips the browser's HTTP cache. The edge sets a 4-hour browser max-age on scripts, so a plain
+    // addAll() could store the previous release's scripts under the new version and mix them with the new HTML.
+    event.waitUntil(caches.open(cacheName).then((cache) => Promise.all(assets.map((path) => cache.add(new Request(path, { cache: 'reload' }))))));
   });
 
   self.addEventListener('activate', (event) => {
@@ -25,13 +27,15 @@ self.setupOfflineWorker = ({ cachePrefix, version, assets, scopePath, offlinePag
     const request = event.request;
     if (request.method !== 'GET') return;
     const url = new URL(request.url);
-    if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
+    if (url.origin !== self.location.origin || url.pathname.includes('/api/')) return;
 
     if (request.mode === 'navigate' && url.pathname.startsWith(scopePath)) {
       event.respondWith((async () => {
         const cache = await caches.open(cacheName);
         try {
           const response = await fetch(request);
+          // An alias must move an installed app to the new scope, rather than retain its old shell.
+          if (response.redirected && new URL(response.url).origin === self.location.origin) return Response.redirect(response.url, 308);
           if (!response.ok) return response;
           return (await cache.match(scopePath)) || response;
         } catch {

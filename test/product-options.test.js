@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { openDatabase } from '../src/db.js';
 import { setupShop } from '../src/shop-setup.js';
 import { createApi } from '../src/app.js';
-import { createSession } from '../src/auth.js';
+import { ownerSession } from './helpers/session.js';
 import { createCategory } from '../src/settings.js';
 import { createProduct, updateProduct, getProduct } from '../src/products.js';
 import { createOptionType, createOptionValue, updateOptionType, updateOptionValue, listOptionTypes, migrateLegacyVariants } from '../src/options.js';
@@ -108,7 +108,7 @@ test('single-label variants from the previous schema become one tenant option ty
 test('seller API manages the library with CSRF and the product API accepts options', async t => {
   const store = await fixture(t);
   const config = { shopMode: 'manual', production: false, publicOrigin: 'http://fixture.test' };
-  const api = await createApi({ store, config }), session = await createSession(store);
+  const api = await createApi({ store, config }), session = await ownerSession(store);
   const call = async (path, method = 'GET', body, auth = true) => {
     const response = await api(new Request('http://fixture.test' + path, {
       method, headers: { ...(auth ? { cookie: 'seller_session=' + session.token, 'x-csrf-token': session.csrfToken } : {}),

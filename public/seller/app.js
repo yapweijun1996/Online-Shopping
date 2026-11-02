@@ -1,11 +1,21 @@
+import { icon } from '../shared/icons.js';
+import { storageKey } from '../shared/storage-scope.js';
+import { apiUrl } from '../shared/base-path.js';
 import { formatDate, formatMoney, locale, setupLanguageMenu, t } from '../shared/i18n.js';
 import { registerWorker } from '../shared/pwa.js';
+import { revealImage } from '../shared/image-reveal.js';
+import { thumbUrl } from '../shared/image-thumb.js';
 import { confirmModal, containDialogFocus } from '../shared/modal.js';
 import { draftSignature, mutationsBusy } from '../shared/update-guard.js';
 import { APP_VERSION } from './version.js';
 import { mountDemoEntry } from '../shared/demo-entry.js';
 import { createOrderAlerts } from './alerts.js';
 import { snapshotCount } from './studio-copy.js';
+import { mountAudit } from './audit.js';
+import { mountTeam } from './team.js';
+import { openPasswordDialog } from './password-dialog.js';
+import { mountFigures } from './dashboard-figures.js';
+import { mountMessages, startMessageBadge } from './messages.js';
 import { mountProducts } from './products.js';
 import { mountOrders } from './orders.js';
 import { mountCategories, mountCompanySettings } from './settings.js';
@@ -37,9 +47,12 @@ let currentView = 'dashboard';
 let currentRoute = 'dashboard';
 let username = '';
 let role = '';
+let quickLogin = false;
 let productsPage = null;
 let ordersPage = null;
 let settingsPage = null;
+let messagesPage = null;
+let messageBadge = null;
 let loginMessageKey = '';
 let workspaceMessageKey = '';
 let dashboardRequest = 0;
@@ -49,26 +62,35 @@ let updateActions = null;
 let updateDismissed = false;
 let updateView = null;
 let updateIdentity = '';
-const sessionHintKey = 'online-shopping-seller-session-hint';
+const sessionHintKey = storageKey('online-shopping-seller-session-hint');
 mountTabIcon(window.sellerPalette);
-const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'review', 'categories', 'options', 'company']);
-const PRODUCT_ROUTE = /^products\/(?:new|[0-9a-f-]{36})$/;
+const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'confirmations', 'audit', 'messages', 'categories', 'options', 'company', 'team']);
+// Pages a role cannot use are hidden and their addresses fall back to the dashboard. The server refuses them anyway.
+const VIEW_CAPABILITY = { products: 'catalog.write', categories: 'catalog.write', options: 'catalog.write', company: 'settings.write', team: 'staff.manage' };
+let capabilities = [];
+const can = (capability) => capabilities.includes(capability);
+const allowedRoute = (route) => { const view = route.split('/')[0], needed = VIEW_CAPABILITY[view]; return (!needed || can(needed)) && !(view === 'team' && quickLogin); };
+const PRODUCT_ROUTE = /^products\/(?:new(?:\/[0-9a-f-]{36})?|[0-9a-f-]{36})$/;
+const ORDER_ROUTE = /^(?:orders|confirmations)\/[0-9a-f-]{36}$/;
 
 function routeFromHash() {
-  const route = location.hash.slice(1);
-  return VALID_VIEWS.has(route) || PRODUCT_ROUTE.test(route) ? route : 'dashboard';
+  // `review` was the old address of the queue of orders waiting for a decision, which is now Sales Orders.
+  const route = location.hash.slice(1).replace(/^review(?=\/|$)/, 'orders');
+  return (VALID_VIEWS.has(route) || PRODUCT_ROUTE.test(route) || ORDER_ROUTE.test(route)) && allowedRoute(route) ? route : 'dashboard';
 }
 
-function viewFromRoute(route) { return route.startsWith('products/') ? 'products' : route; }
+function viewFromRoute(route) { return route.split('/')[0]; }
 
 function applyRoute() {
   currentRoute = routeFromHash();
   currentView = viewFromRoute(currentRoute);
+  // Old `#review` links, and pages this role cannot open, are rewritten to the address that is actually shown.
+  if (location.hash.slice(1).startsWith('review') || (location.hash.length > 1 && !allowedRoute(location.hash.slice(1)))) history.replaceState(history.state, '', `#${currentRoute}`);
   renderView();
 }
 
 function activePage() {
-  return currentView === 'products' ? productsPage : currentView === 'categories' || currentView === 'options' || currentView === 'company' ? settingsPage : currentView === 'orders' || currentView === 'review' ? ordersPage : null;
+  return currentView === 'messages' ? messagesPage : currentView === 'products' ? productsPage : currentView === 'categories' || currentView === 'options' || currentView === 'company' || currentView === 'audit' || currentView === 'team' ? settingsPage : currentView === 'orders' || currentView === 'confirmations' ? ordersPage : null;
 }
 
 function hasUnsavedChanges() { return activePage()?.hasUnsavedChanges?.() === true; }
@@ -98,7 +120,7 @@ const baseTitle = () => `${t('sellerPortal')} · Online Shopping`;
 const orderAlerts = createOrderAlerts({ badge: byId('pending-badge'), button: byId('alerts-button'), baseTitle, onUnauthorized: () => showLogin('authError') });
 document.title = baseTitle();
 document.addEventListener('ordersdecided', () => orderAlerts.poll());
-registerWorker('/seller/sw.js', '/seller/', {
+registerWorker('./sw.js', './', {
   currentVersion: APP_VERSION, autoUpdate: true,
   guard: () => ({ dirty: hasUnsavedChanges(), busy: mutationsBusy() || activePage()?.isBusy?.() === true, signature: JSON.stringify([currentRoute, draftSignature(), activePage()?.draftSignature?.()]) }),
   confirmUpdate: confirmModal,
@@ -161,9 +183,15 @@ function showLogin(messageKey = '', clearHint = true) {
   sessionViewSequence++;
   const leavingWorkspace = !workspace.hidden;
   if (clearHint) sessionHint(false);
+  messageBadge?.dispose();
+  messageBadge = null;
+  settingsPage?.dispose?.();
+  messagesPage?.dispose();
+  messagesPage = null;
   csrfToken = null;
   username = '';
   role = '';
+  capabilities = [];
   productsPage = null;
   settingsPage = null;
   ordersPage?.dispose();
@@ -186,10 +214,23 @@ function showLogin(messageKey = '', clearHint = true) {
 function showWorkspace(session) {
   sessionViewSequence++;
   sessionHint(true);
+  messageBadge?.dispose();
+  settingsPage?.dispose?.();
+  messagesPage?.dispose();
+  messagesPage = null;
   csrfToken = session.csrfToken;
+  messageBadge = startMessageBadge({ badge: byId('messages-badge'), navItem: byId('messages-nav'), csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError') });
   username = session.username;
   role = session.role;
-  accountButton.querySelector('.avatar').textContent = Array.from(username.trim())[0]?.toLocaleUpperCase(locale()) || '•';
+  quickLogin = session.quickLogin === true;
+  capabilities = Array.isArray(session.capabilities) ? session.capabilities : [];
+  for (const button of document.querySelectorAll('.nav-item[data-view]')) {
+    const needed = VIEW_CAPABILITY[button.dataset.view];
+    if (needed) button.hidden = !can(needed) || (button.dataset.view === 'team' && quickLogin);
+  }
+  byId('change-password').hidden = quickLogin;
+  const initial = Array.from(username.trim())[0]?.toLocaleUpperCase(locale());
+  accountButton.querySelector('.avatar').replaceChildren(initial || icon('user'));
   setLoginMessage('');
   setWorkspaceMessage('');
   loginView.hidden = true;
@@ -200,7 +241,7 @@ function showWorkspace(session) {
   accountWrap.hidden = false;
   document.body.classList.add('seller-signed-in');
   const sessionToken = csrfToken;
-  fetch('/api/v1/seller/setup', { cache: 'no-store' }).then(async response => {
+  fetch(apiUrl('v1/seller/setup'), { cache: 'no-store' }).then(async response => {
     if (!response.ok) return;
     const setup = await response.json();
     if (workspace.hidden || csrfToken !== sessionToken) return;
@@ -210,9 +251,16 @@ function showWorkspace(session) {
   byId('password').value = '';
   syncDrawerAccess();
   applyRoute();
+  // A temporary password (new account or reset) must be replaced before anything else works.
+  if (session.mustChangePassword) {
+    openPasswordDialog({ forced: true, csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError'), onDone: () => showWorkspace({ ...session, mustChangePassword: false }) });
+  }
 }
 
 function renderView() {
+  settingsPage?.dispose?.();
+  messagesPage?.dispose();
+  messagesPage = null;
   if (updateView !== currentView) {
     updateView = currentView;
     updateDismissed = false;
@@ -225,22 +273,35 @@ function renderView() {
     else button.removeAttribute('aria-current');
   });
   const titleKey = currentView === 'products' && currentRoute !== 'products'
-    ? currentRoute === 'products/new' ? 'addProduct' : 'editProduct'
-    : { dashboard: 'dashboard', products: 'products', orders: 'salesOrders', review: 'orderReview', categories: 'categoryCodes', options: 'optionsNav', company: 'companySettings' }[currentView];
+    ? currentRoute.startsWith('products/new') ? 'addProduct' : 'editProduct'
+    : { dashboard: 'dashboard', products: 'products', orders: 'salesOrders', confirmations: 'orderReview', audit: 'auditLog', messages: 'msgHeading', team: 'teamNav', categories: 'categoryCodes', options: 'optionsNav', company: 'companySettings' }[currentView];
   byId('page-title').dataset.i18n = titleKey;
   byId('page-title').textContent = t(titleKey);
   const content = byId('workspace-content');
-  if (currentView === 'orders' || currentView === 'review') {
+  if (currentView === 'orders' || currentView === 'confirmations') {
     productsPage = null;
     settingsPage = null;
+    const orderId = currentRoute.split('/')[1] || null;
     if (ordersPage?.mode !== currentView) {
       ordersPage?.dispose();
       ordersPage = mountOrders(content, {
         mode: currentView,
+        canErase: !quickLogin && can('data.erase'),
+        canExport: !quickLogin && can('data.export'),
+        canDecide: can('orders.decide'),
+        canFulfil: !quickLogin && can('orders.fulfil'),
         csrfToken: () => csrfToken,
         onUnauthorized: () => showLogin('authError'),
+        initialOrderId: orderId,
+        // Keep the address in step with the open order so a refresh or a shared link returns to it.
+        onSelect(id) {
+          const route = id ? `${currentView}/${id}` : currentView;
+          if (route === currentRoute) return;
+          currentRoute = route;
+          history.replaceState(history.state, '', `#${route}`);
+        },
       });
-    }
+    } else ordersPage.showOrder(orderId);
     return;
   }
   ordersPage?.dispose();
@@ -262,6 +323,19 @@ function renderView() {
     return;
   }
   productsPage = null;
+  if (currentView === 'messages') {
+    settingsPage = null;
+    messagesPage = mountMessages(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError'), canAct: can('messages.act') });
+    return;
+  }
+  if (currentView === 'team') {
+    settingsPage = mountTeam(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError') });
+    return;
+  }
+  if (currentView === 'audit') {
+    settingsPage = mountAudit(content, { onUnauthorized: () => showLogin('authError') });
+    return;
+  }
   if (currentView === 'categories') {
     settingsPage = mountCategories(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError') });
     return;
@@ -271,7 +345,7 @@ function renderView() {
     return;
   }
   if (currentView === 'company') {
-    settingsPage = mountCompanySettings(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError') });
+    settingsPage = mountCompanySettings(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError'), role });
     return;
   }
   renderDashboard(content);
@@ -298,7 +372,7 @@ async function renderDashboard(content) {
   shell.append(loading);
   content.replaceChildren(shell);
   try {
-    const response = await fetch('/api/v1/seller/setup', { cache: 'no-store' });
+    const response = await fetch(apiUrl('v1/seller/setup'), { cache: 'no-store' });
     if (response.status === 401) { if (isCurrent()) showLogin('authError'); return; }
     if (!response.ok) throw new Error('setup failed');
     const setup = await response.json();
@@ -329,33 +403,34 @@ async function renderDashboard(content) {
     const productCount = stat('products', t('loading'));
     const currency = stat('currency', t('loading'));
     stat('shopSetup', t(setup.mode === 'demo' ? 'dashboardSimulated' : 'dashboardProduction'));
-    fetch('/api/v1/seller/company-settings', { cache: 'no-store' }).then(async response => {
+    fetch(apiUrl('v1/seller/company-settings'), { cache: 'no-store' }).then(async response => {
       if (response.status === 401) { if (isCurrent()) showLogin('authError'); return; }
       if (!response.ok) throw new Error('settings failed');
       const settings = await response.json();
       if (isCurrent()) currency.textContent = settings.defaultCurrency;
     }).catch(() => { if (isCurrent()) currency.textContent = t('networkError'); });
     const grid = node('div', 'dashboard-grid');
-    shell.replaceChildren(identity, stats, node('p', 'dashboard-count-help', t('snapshotCountHelp')), grid);
+    shell.replaceChildren(identity, stats, node('p', 'dashboard-count-help', t('snapshotCountHelp')),
+      ...(can('figures.read') ? [mountFigures({ isCurrent, onUnauthorized: () => showLogin('authError') })] : []), grid);
 
     const panels = [
       {
         title: 'dashboardSubmittedOrders', intro: 'dashboardOrdersIntro',
-        path: '/api/v1/seller/orders?status=SUBMITTED&limit=100', count: orderCount,
-        action: 'dashboardReviewOrders', view: 'review', empty: 'dashboardNoSubmittedOrders',
+        path: apiUrl('v1/seller/orders?status=SUBMITTED&limit=100'), count: orderCount,
+        action: 'dashboardReviewOrders', view: 'orders', empty: 'dashboardNoSubmittedOrders',
         render(item) {
           const row = node('li', 'dashboard-order-row');
           const link = node('a', 'dashboard-order-link');
-          link.href = '#review';
+          link.href = `#orders/${item.id}`;
           const thumb = node('span', 'dashboard-order-thumb');
           if (item.preview?.imageUrl) {
-            const image = node('img'); image.src = item.preview.imageUrl; image.alt = ''; image.loading = 'lazy'; image.decoding = 'async';
+            const image = node('img'); revealImage(image); image.src = thumbUrl(item.preview.imageUrl); image.alt = ''; image.loading = 'lazy'; image.decoding = 'async';
             image.addEventListener('error', () => image.remove());
             thumb.append(image);
           }
           const text = node('span', 'dashboard-order-text');
           const line = node('span', 'dashboard-row-line');
-          line.append(node('strong', '', item.orderNo), node('span', 'dashboard-status', t('statusSubmitted')));
+          line.append(node('strong', '', item.orderNo), node('span', 'dashboard-status', t('sellerStatusSubmitted')));
           const what = item.preview ? `${item.buyerName} · ${item.preview.name}${item.preview.itemCount > 1 ? ` +${item.preview.itemCount - 1}` : ''}` : item.buyerName;
           text.append(line, node('span', 'dashboard-row-buyer', what),
             node('span', 'dashboard-row-meta', `${formatMoney(item.totalMinor, item.currency)} · ${formatDate(item.submittedAt)}`));
@@ -366,11 +441,23 @@ async function renderDashboard(content) {
       },
       {
         title: 'dashboardRecentProducts', intro: 'dashboardProductsIntro',
-        path: '/api/v1/seller/products?limit=100', count: productCount,
+        path: apiUrl('v1/seller/products?limit=100'), count: productCount,
         action: 'dashboardViewProducts', view: 'products', empty: 'noProducts',
         render(item) {
           const row = node('li', 'dashboard-product-row');
-          row.append(node('strong', '', item.name), node('span', 'dashboard-row-meta', item.sku));
+          // The row opens the product's edit page, like an order row opens its order.
+          const link = node('a', 'dashboard-order-link');
+          link.href = `#products/${item.id}`;
+          const thumb = node('span', 'dashboard-order-thumb');
+          if (item.imageUrl) {
+            const image = node('img'); revealImage(image); image.src = thumbUrl(item.imageUrl); image.alt = ''; image.loading = 'lazy'; image.decoding = 'async';
+            image.addEventListener('error', () => image.remove());
+            thumb.append(image);
+          }
+          const text = node('span', 'dashboard-order-text');
+          text.append(node('strong', '', item.name), node('span', 'dashboard-row-meta', item.sku));
+          link.append(thumb, text);
+          row.append(link);
           return row;
         },
       },
@@ -421,6 +508,8 @@ async function renderDashboard(content) {
     shell.replaceChildren(message, retry);
   }
 }
+
+const roleLabel = () => ({ OWNER: 'roleOwner', MANAGER: 'roleManager', STAFF: 'roleStaff' }[role] ? t({ OWNER: 'roleOwner', MANAGER: 'roleManager', STAFF: 'roleStaff' }[role]) : role);
 
 function closeDrawer(restoreFocus = true) {
   const wasOpen = sidebar.classList.contains('drawer-open');
@@ -567,8 +656,12 @@ document.addEventListener('click', (event) => {
 byId('profile-button').addEventListener('click', () => {
   closeAccount();
   byId('profile-username').textContent = username;
-  byId('profile-role').textContent = role === 'SUPER_ADMIN' ? t('superAdmin') : role;
+  byId('profile-role').textContent = roleLabel();
   byId('profile-dialog').showModal();
+});
+byId('change-password').addEventListener('click', (event) => {
+  byId('profile-dialog').close();
+  openPasswordDialog({ csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError'), onDone: () => setWorkspaceMessage('passwordChanged'), trigger: byId('profile-button') });
 });
 byId('check-updates-button').addEventListener('click', () => {
   updateDismissed = false;
@@ -589,7 +682,7 @@ byId('sign-out-button').addEventListener('click', async () => {
   if (!confirmLeave()) return;
   closeAccount();
   try {
-    const response = await fetch('/api/v1/seller/session', { method: 'DELETE', headers: { 'X-CSRF-Token': csrfToken } });
+    const response = await fetch(apiUrl('v1/seller/session'), { method: 'DELETE', headers: { 'X-CSRF-Token': csrfToken } });
     if (!response.ok) throw new Error('sign out failed');
     showLogin('signedOut');
   } catch {
@@ -607,7 +700,7 @@ byId('login-form').addEventListener('submit', async (event) => {
   submit.disabled = true;
   setLoginMessage('');
   try {
-    const response = await fetch('/api/v1/seller/session', {
+    const response = await fetch(apiUrl('v1/seller/session'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: byId('username').value, password: byId('password').value }),
@@ -625,23 +718,25 @@ byId('login-form').addEventListener('submit', async (event) => {
 });
 
 document.addEventListener('localechange', () => {
-  if (currentView === 'products' && productsPage) productsPage.refreshLocale();
+  if (messagesPage) messagesPage.refreshLocale();
+  else if (currentView === 'products' && productsPage) productsPage.refreshLocale();
   else if (ordersPage) ordersPage.refreshLocale();
   else if (settingsPage) settingsPage.refreshLocale();
   else renderView();
   document.documentElement.lang = locale();
   orderAlerts.refresh();
+  messageBadge?.refreshLocale();
   setLoginMessage(loginMessageKey);
   setWorkspaceMessage(workspaceMessageKey);
   renderUpdateUI();
-  if (byId('profile-dialog').open) byId('profile-role').textContent = role === 'SUPER_ADMIN' ? t('superAdmin') : role;
+  if (byId('profile-dialog').open) byId('profile-role').textContent = roleLabel();
 });
 
 if (sessionHint()) {
   showLogin('loading', false);
   const restoreView = sessionViewSequence;
   const ownsRestore = () => restoreView === sessionViewSequence;
-  fetch('/api/v1/seller/session').then(async (response) => {
+  fetch(apiUrl('v1/seller/session')).then(async (response) => {
     if (!ownsRestore()) return;
     if (response.ok) {
       const session = await response.json();

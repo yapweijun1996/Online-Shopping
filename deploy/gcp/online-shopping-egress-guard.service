@@ -1,0 +1,15 @@
+[Unit]
+Description=Online Shopping Docker egress guard
+Requires=docker.service
+After=docker.service
+PartOf=docker.service
+Before=online-shopping-update.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/online-shopping-gcp/egress-guard.sh
+ExecReload=/opt/online-shopping-gcp/egress-guard.sh
+
+[Install]
+WantedBy=docker.service

@@ -293,7 +293,12 @@ test('tracked stock blocks oversell at checkout and is deducted only when the se
     assert.equal((await f.submit()).response.status, 201, 'a rejected order releases its hold');
     await f.app.database.run('UPDATE product SET stock_quantity = 0 WHERE id = ?', f.product.id);
     assert.equal((await f.request('GET', `/api/v1/products/${f.product.id}`)).data.inStock, false);
-    // Seller view exposes the count; clearing it returns to unlimited.
+    // A reversible confirmation must retain its tracking mode; shipping releases that restriction.
+    const conflict = await f.request('PATCH', `/api/v1/seller/products/${f.product.id}`, { stockQuantity: null },
+      { origin: f.origin, cookie: session.cookie, 'x-csrf-token': session.csrf });
+    assert.equal(conflict.response.status, 409);
+    assert.equal(conflict.data.error.code, 'STOCK_TRACKING_CONFLICT');
+    assert.equal((await decide(firstId, 'ship', { expectedRevision: 2, carrier: 'Synthetic courier' })).response.status, 200);
     assert.equal((await f.request('PATCH', `/api/v1/seller/products/${f.product.id}`, { stockQuantity: null },
       { origin: f.origin, cookie: session.cookie, 'x-csrf-token': session.csrf })).data.stockQuantity, null);
   } finally { await f.close(); }
@@ -348,5 +353,84 @@ test('fulfilment moves confirmed orders to shipped and delivered, cancelling res
     // Status filter accepts the new states.
     assert.equal((await f.request('GET', '/api/v1/seller/orders?status=DELIVERED', null, headers)).data.items.length, 1);
     assert.equal((await f.request('GET', '/api/v1/seller/orders?status=CANCELLED', null, headers)).data.items.length, 1);
+  } finally { await f.close(); }
+});
+
+test('the order list accepts one status or a comma-separated set, and rejects unknown or repeated ones', async () => {
+  const f = await fixture();
+  try {
+    const session = await f.login();
+    const first = await f.submit(); const second = await f.submit();
+    assert.equal(first.response.status, 201); assert.equal(second.response.status, 201);
+    const list = (query) => f.request('GET', `/api/v1/seller/orders${query}`, null, { cookie: session.cookie });
+    assert.equal((await list('?status=SUBMITTED')).data.items.length, 2);
+    assert.equal((await list('?status=SUBMITTED,REJECTED')).data.items.length, 2, 'a set includes its pending member');
+    assert.equal((await list('?status=REJECTED')).data.items.length, 0);
+    assert.equal((await list('?status=CONFIRMED,SHIPPED,DELIVERED,CANCELLED')).data.items.length, 0, 'pending orders are not confirmations');
+    assert.equal((await list('')).data.items.length, 2, 'no status means every order');
+    for (const bad of ['?status=NOPE', '?status=SUBMITTED,NOPE', '?status=SUBMITTED,SUBMITTED']) {
+      const result = await list(bad);
+      assert.equal(result.response.status, 400, bad); assert.equal(result.data.error.field, 'status');
+    }
+  } finally { await f.close(); }
+});
+
+test('seller order detail carries the document trail: SO, then SOC after confirmation, void kept with its reason', async () => {
+  const f = await fixture();
+  try {
+    const session = await f.login();
+    const headers = { origin: f.origin, cookie: session.cookie, 'x-csrf-token': session.csrf };
+    const submitted = await f.submit();
+    const { id } = await f.app.database.get('SELECT id FROM shop_order WHERE order_no = ?', submitted.data.orderNo);
+    const detail = async () => (await f.request('GET', `/api/v1/seller/orders/${id}`, null, { cookie: session.cookie })).data;
+    const act = (action, body) => f.request('POST', `/api/v1/seller/orders/${id}/${action}`, body, headers);
+    const digits = submitted.data.orderNo.replace('OS-', '');
+
+    let docs = (await detail()).documents;
+    assert.deepEqual(docs.map((doc) => doc.type), ['SALES_ORDER']);
+    assert.equal(docs[0].number, submitted.data.orderNo);
+
+    assert.equal((await act('confirm', { expectedRevision: 1 })).response.status, 200);
+    docs = (await detail()).documents;
+    assert.deepEqual(docs.map((doc) => doc.type), ['SALES_ORDER', 'SALES_ORDER_CONFIRMATION']);
+    assert.equal(docs[1].number, `SOC-${digits}`);
+    assert.equal(docs[1].actorId, f.config.username);
+
+    assert.equal((await act('cancel', { expectedRevision: 2, reason: 'Customer asked to cancel' })).response.status, 200);
+    docs = (await detail()).documents;
+    const confirmation = docs.find((doc) => doc.type === 'SALES_ORDER_CONFIRMATION');
+    assert.equal(confirmation.state, 'VOID');
+    assert.equal(confirmation.number, `SOC-${digits}`);
+    assert.equal(confirmation.reason, 'Customer asked to cancel');
+    assert.equal(docs.find((doc) => doc.type === 'SALES_ORDER').state, 'ISSUED');
+  } finally { await f.close(); }
+});
+
+test('the audit log lists every order event newest first, filtered by status, actor, order and date, and requires a seller session', async () => {
+  const f = await fixture();
+  try {
+    const session = await f.login();
+    const headers = { origin: f.origin, cookie: session.cookie, 'x-csrf-token': session.csrf };
+    const one = await f.submit(); const two = await f.submit();
+    const idOf = async (no) => (await f.app.database.get('SELECT id FROM shop_order WHERE order_no = ?', no)).id;
+    const act = async (no, action, body) => f.request('POST', `/api/v1/seller/orders/${await idOf(no)}/${action}`, body, headers);
+    assert.equal((await act(one.data.orderNo, 'confirm', { expectedRevision: 1 })).response.status, 200);
+    assert.equal((await act(two.data.orderNo, 'reject', { expectedRevision: 1, reason: 'Out of stock' })).response.status, 200);
+    const log = (query = '', cookie = session.cookie) => f.request('GET', `/api/v1/seller/audit-log${query}`, null, cookie ? { cookie } : {});
+
+    assert.equal((await log('', null)).response.status, 401, 'no session, no audit log');
+    const all = (await log()).data;
+    assert.deepEqual(all.items.map((e) => `${e.orderNo}:${e.status}`), [`${two.data.orderNo}:REJECTED`, `${one.data.orderNo}:CONFIRMED`, `${two.data.orderNo}:SUBMITTED`, `${one.data.orderNo}:SUBMITTED`], 'newest first');
+    const rejected = all.items[0];
+    assert.equal(rejected.reason, 'Out of stock'); assert.equal(rejected.actorType, 'SELLER'); assert.equal(rejected.actorId, f.config.username);
+    assert.equal(rejected.previousStatus, 'SUBMITTED'); assert.equal(rejected.orderStatus, 'REJECTED');
+    assert.equal((await log('?status=CONFIRMED,REJECTED')).data.items.length, 2);
+    assert.equal((await log('?actor=GUEST')).data.items.length, 2, 'the buyer submissions');
+    assert.equal((await log('?actor=SELLER')).data.items.length, 2);
+    assert.equal((await log(`?search=${one.data.orderNo}`)).data.items.length, 2);
+    assert.equal((await log('?from=2999-01-01T00:00:00.000Z')).data.items.length, 0);
+    assert.equal((await log('?to=2000-01-01T00:00:00.000Z')).data.items.length, 0);
+    assert.equal((await log('?limit=1')).data.nextOffset, 1);
+    for (const bad of ['?status=NOPE', '?actor=ROBOT', '?from=yesterday', '?limit=0']) assert.equal((await log(bad)).response.status, 400, bad);
   } finally { await f.close(); }
 });

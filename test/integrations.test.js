@@ -8,7 +8,8 @@ import { createSyntheticIntegrationLedger } from '../src/integration-ledger.js';
 import { ninjaContractLocation, verifyNinjaSignature, messagingPolicy } from '../src/integration-contracts.js';
 import { integrationCatalog } from '../public/shared/integration-catalog.js';
 import { createApi } from '../src/app.js';
-import { createSession, cookieFor } from '../src/auth.js';
+import { cookieFor } from '../src/auth.js';
+import { ownerSession } from './helpers/session.js';
 import { initializeShop } from '../src/shop-setup.js';
 
 const code = expected => error => error.code === expected;
@@ -28,7 +29,7 @@ function fixture(t, wrapped = store => store) {
 test('no integration schema or enabled capability appears on normal startup or status read', async t => {
   const store = await openDatabase(':memory:'); t.after(() => store.close());
   await initializeShop(store, { shopMode: 'public-demo', username: 'fictional-owner' });
-  const session = await createSession(store), api = await createApi({ store, config: { publicOrigin: 'https://fixture.test', shopMode: 'public-demo' } });
+  const session = await ownerSession(store), api = await createApi({ store, config: { publicOrigin: 'https://fixture.test', shopMode: 'public-demo' } });
   assert.equal((await api(new Request('https://fixture.test/api/v1/seller/integrations'))).status, 401);
   const cookie = cookieFor(session.token, session.maxAge, false).split(';')[0];
   const response = await api(new Request('https://fixture.test/api/v1/seller/integrations', { headers: { cookie } }));
@@ -164,6 +165,6 @@ test('status copy covers seven locales and cached shell never embeds a connectio
   const source = readFileSync(new URL('../public/seller/integrations.js', import.meta.url), 'utf8');
   for (const locale of ['en','ms','zh-Hans','vi','th','ja','ko']) assert.match(source, new RegExp(`(?:['"]?${locale}['"]?): \\[`));
   assert.match(source, /cache: 'no-store'/); assert.match(source, /csrfToken\(\) === identity/);
-  const worker = readFileSync(new URL('../public/seller/sw.js', import.meta.url), 'utf8'); assert.match(worker, /\/seller\/integrations\.js/);
+  const worker = readFileSync(new URL('../public/seller/sw.js', import.meta.url), 'utf8'); assert.match(worker, /\.\/integrations\.js/);
   assert.doesNotMatch(source, /localStorage|indexedDB|authorization|secretReference|access_token/);
 });

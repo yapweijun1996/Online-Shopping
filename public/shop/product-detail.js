@@ -1,3 +1,5 @@
+import { icon } from '../shared/icons.js';
+import { apiUrl } from '../shared/base-path.js';
 import { productMedia, revealImage, setProductMedia } from './product-media.js';
 import { locale, t } from '../shared/i18n.js';
 import { formatCatalogPrice } from './catalog-presentation.js';
@@ -237,8 +239,14 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     const headingBlock = node('div', 'product-heading-block');
     const priceBlock = node('div', 'product-price-block');
     priceBlock.append(node('span', 'product-price-label', t(shop()?.mode === 'demo' ? 'referencePrice' : 'unitPrice')), node('strong', 'product-price', formatMoney(product.priceMinor, product.currency)));
+    // Variants have their own SKUs, but shoppers pick options, not codes: the SKU stays on the seller side and in orders.
+    const prices = (product.variants || []).filter((variant) => variant.currency === product.currency).map((variant) => variant.priceMinor);
+    if (prices.length > 1 && Math.min(...prices) !== Math.max(...prices)) {
+      priceBlock.append(node('span', 'product-price-range', t('priceRangeFormat')
+        .replace('{from}', formatMoney(Math.min(...prices), product.currency)).replace('{to}', formatMoney(Math.max(...prices), product.currency))));
+    }
     const keyDetails = node('dl', 'product-key-details');
-    for (const [label, value] of [[t('sku'), product.sku], [t('category'), product.category]]) keyDetails.append(node('dt', '', label), node('dd', '', value));
+    for (const [label, value] of [[t('category'), product.category]]) keyDetails.append(node('dt', '', label), node('dd', '', value));
     headingBlock.append(title, priceBlock, keyDetails);
     const selectionBlock = node('div', 'product-selection-block');
     if (product.variants?.length > 1 && product.optionTypes?.length) {
@@ -320,8 +328,8 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     const label = node('label', '', t('quantity')); label.htmlFor = quantity.id;
     const quantityRow = node('div', 'product-quantity-row');
     const stepper = node('div', 'quantity-stepper');
-    const minus = button('−', () => step(-1)); minus.setAttribute('aria-label', t('decreaseQuantity'));
-    const plus = button('+', () => step(1)); plus.setAttribute('aria-label', t('increaseQuantity'));
+    const minus = button('', () => step(-1)); minus.append(icon('minus')); minus.setAttribute('aria-label', t('decreaseQuantity'));
+    const plus = button('', () => step(1)); plus.append(icon('plus')); plus.setAttribute('aria-label', t('increaseQuantity'));
     stepper.append(minus, quantity, plus);
     const subtotal = node('p', 'product-subtotal');
     quantityRow.append(label, stepper, subtotal);
@@ -459,7 +467,7 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     const description = node('section', 'product-description-section');
     description.append(node('h2', '', t('productInformation')));
     const specs = node('dl', 'detail-specifications');
-    for (const [key, value] of [[t('sku'), product.sku], [t('category'), product.category]]) {
+    for (const [key, value] of [[t('category'), product.category]]) {
       specs.append(node('dt', '', key), node('dd', '', value));
     }
     description.append(specs, node('h3', 'description-heading', t('description')),
@@ -493,29 +501,35 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     }
   }
 
+  const isSibling = (id) => Boolean(product && id && product.id !== id && product.variants?.some((variant) => variant.id === id));
   async function show(id, force = false) {
     if (!force && currentId === id && product) return;
     const previousGroup = product?.variantGroup;
     const previousQuantity = quantityValue;
+    // Choosing another option of the same product keeps the page on screen (no skeleton, scroll or focus reset).
+    const sibling = !force && isSibling(id);
     currentId = id;
     const version = ++request;
-    product = null; related = []; quantityValue = '1'; activeImageIndex = 0; busy = false; statusKey = ''; errorKey = id ? '' : 'productUnavailable';
-    render(true);
+    if (!sibling) {
+      product = null; related = []; quantityValue = '1'; activeImageIndex = 0; busy = false; statusKey = ''; errorKey = id ? '' : 'productUnavailable';
+      render(true);
+    }
     if (!id) return;
     try {
-      const result = await api(`/api/v1/products/${id}`);
+      const result = await api(apiUrl(`v1/products/${id}`));
       if (version !== request) return;
       product = result;
       const savedPhoto = history.state?.shopGallery;
       if (savedPhoto?.id === id && Number.isInteger(savedPhoto.index)) activeImageIndex = Math.max(0, Math.min(savedPhoto.index, productMedia(result).length - 1));
       if (previousGroup && result.variantGroup === previousGroup) quantityValue = previousQuantity;
-      render(true);
+      activeImageIndex = sibling ? 0 : activeImageIndex; statusKey = '';
+      render(!sibling);
       const params = new URLSearchParams({ category: result.category, limit: '5' });
       // Recommendations are optional and must never block purchase or reset quantity/focus.
       try {
-        const response = await api(`/api/v1/products?${params}`);
+        const response = await api(apiUrl(`v1/products?${params}`));
         if (version !== request) return;
-        related = response.items.filter((item) => item.id !== id).slice(0, 4);
+        related = response.items.filter((item) => item.id !== id && !(result.variantGroup && item.variantGroup === result.variantGroup)).slice(0, 4);
         renderRelated();
       } catch { /* Product details remain usable without recommendations. */ }
     } catch (error) {
@@ -535,6 +549,7 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
   return {
     updateCartCount,
     show,
+    isSibling,
     hide() { request++; currentId = undefined; product = null; busy = false; closeImage(); },
     refreshLocale() { if (busy) localePending = true; else render(); },
   };

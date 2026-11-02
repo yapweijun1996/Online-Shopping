@@ -1,8 +1,8 @@
 import { FieldError, boundedText } from './validation.js';
-import { decodeProductImage } from './product-image.js';
+import { decodeProductImage, decodeThumbnail } from './product-image.js';
 
 const requiredFields = ['sku', 'name', 'description', 'category', 'priceMinor', 'currency', 'active'];
-const fields = [...requiredFields, 'imageDataUrl', 'variantGroup', 'variantLabel', 'stockQuantity', 'options'];
+const fields = [...requiredFields, 'imageDataUrl', 'thumbDataUrl', 'variantGroup', 'variantLabel', 'stockQuantity', 'options'];
 
 export function validateProductInput(input, allowedCurrencies, { partial = false } = {}) {
   if (!Array.isArray(allowedCurrencies) || allowedCurrencies.length === 0 ||
@@ -50,6 +50,11 @@ export function validateProductInput(input, allowedCurrencies, { partial = false
     result.stockQuantity = input.stockQuantity;
   }
   if (keys.includes('imageDataUrl')) result.image = decodeProductImage(input.imageDataUrl);
+  if (keys.includes('thumbDataUrl')) {
+    // A preview belongs to the image sent with it; it never changes on its own here.
+    if (!keys.includes('imageDataUrl') || input.imageDataUrl === null) throw new FieldError('thumbDataUrl', 'Send a preview image together with its image.');
+    result.thumb = decodeThumbnail(input.thumbDataUrl);
+  }
   if (keys.includes('variantGroup')) {
     const group = boundedText(input.variantGroup, 'variantGroup', 40, false).toUpperCase();
     if (group && !/^[A-Z0-9][A-Z0-9._-]*$/.test(group)) throw new FieldError('variantGroup', 'Enter a valid variant group code.');

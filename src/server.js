@@ -9,6 +9,13 @@ import { readConfig } from './config.js';
 import { openDatabase } from './db.js';
 import { openPostgresDatabase } from './postgres-db.js';
 import { serveStatic } from './static.js';
+import { createSecretBox } from './secret-box.js';
+import { createWhatsAppTransport } from './whatsapp-transport.js';
+import { startWhatsAppWorker } from './whatsapp-outbox.js';
+import { createPlatformRuntime } from './platform/runtime.js';
+import { deploymentPaused } from './deployment-maintenance.js';
+import { ApiError, errorResponse } from './http.js';
+import { createWhatsAppQrInternalApi } from './whatsapp-qr/internal-api.js';
 
 function clientAddress(request, config) {
   const forwarded = request.headers['x-real-ip'];
@@ -16,7 +23,9 @@ function clientAddress(request, config) {
   return request.socket.remoteAddress || 'unknown';
 }
 
-function toFetchRequest(request) {
+function toFetchRequest(request, config) {
+  // WHATWG URLs normalize encoded dot segments. Reject the raw code position before that normalization.
+  if (config.platform && /^\/[^/?]*%|^\/\/|\\/.test(request.url)) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
   const headers = new Headers();
   for (let index = 0; index < request.rawHeaders.length; index += 2) {
     headers.append(request.rawHeaders[index], request.rawHeaders[index + 1]);
@@ -43,6 +52,19 @@ async function writeFetchResponse(response, result) {
   response.end(body);
 }
 
+// Factory deliberately does not listen: tests can bind an ephemeral port.
+export function createWhatsAppQrServer({ store, config, now, registry }) {
+  const handle = createWhatsAppQrInternalApi({ store, secretBox: createSecretBox(config.integrationKeys), token: config.whatsappQr.token, bindings: config.whatsappQr.bindings, registry, shopId: 'default', now });
+  const server = createServer(async (request, response) => {
+    try { await writeFetchResponse(response, await handle(toFetchRequest(request, {}))); }
+    catch { response.writeHead(500, { 'cache-control': 'no-store' }); response.end(); }
+  });
+  server.requestTimeout = 10_000;
+  server.headersTimeout = 10_000;
+  server.setTimeout(10_000, socket => socket.destroy());
+  return server;
+}
+
 export async function createApp(config) {
   const database = config.databaseUrl ? await openPostgresDatabase(config.databaseUrl) : await openDatabase(config.dbPath);
   try {
@@ -52,23 +74,57 @@ export async function createApp(config) {
     await database.close();
     throw error;
   }
-  const handle = await createApi({ store: database, config, serveStatic });
+  if (config.platform && config.whatsappQr?.bindings) {
+    config.platform.qrProvisionedTenantIds = config.whatsappQr.bindings.filter(binding => binding.slot > 0).map(binding => binding.shopId);
+    config.platform.qrTenantSlots = config.platform.qrProvisionedTenantIds.length;
+  }
+  const platform = config.platform ? createPlatformRuntime({ store: database, config, paused: () => deploymentPaused(config.maintenancePath) }) : null;
+  const handle = await createApi({ store: database, config, serveStatic, registry: platform?.registry,
+    platformHandler: platform ? (request, context) => platform.handle(request, context) : null,
+    setupHandler: platform ? (request, context) => platform.handleSetup(request, context) : null });
+  platform?.connect().catch(() => {});
+  let inFlight = 0, worker = null;
+  const paused = () => deploymentPaused(config.maintenancePath);
   const server = createServer(async (request, response) => {
+    const path = request.url?.split('?')[0], health = path === '/health' || path === '/ready';
+    if (!health) inFlight++;
     try {
-      const result = await handle(toFetchRequest(request), { clientAddress: clientAddress(request, config) });
+      if (paused() && health && path === '/health') {
+        response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+        response.end(JSON.stringify({ status: 'alive', revision: config.appRevision, maintenance: { enabled: true, inFlight, workerIdle: !worker?.isBusy(), platformIdle: !platform?.isBusy() } })); return;
+      }
+      if (paused() && !health) throw new ApiError(503, 'DEPLOYMENT_MAINTENANCE', 'The shop is temporarily unavailable during an upgrade.');
+      const result = await handle(toFetchRequest(request, config), { clientAddress: clientAddress(request, config) });
       await writeFetchResponse(response, result);
     } catch (error) {
+      if (error instanceof ApiError && !response.headersSent) { await writeFetchResponse(response, errorResponse(error)); return; }
       console.error('Response failed:', error?.code || error?.name || 'ERROR');
       if (response.headersSent) response.destroy();
       else {
         response.writeHead(500, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
         response.end(JSON.stringify({ error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred.' } }));
       }
-    }
+    } finally { if (!health) inFlight--; }
   });
   server.requestTimeout = 10_000;
   server.headersTimeout = 10_000;
-  return { server, database, close: () => new Promise((resolve, reject) => server.close(async (error) => {
+  // The message worker is started by the process entry point only (never by tests). It needs the master keys and must
+  // not run on a passwordless sample site, where the buyers and credentials are not real.
+  const startWorker = () => {
+    if (worker || !config.integrationKeys || (!platform && (config.sellerQuickLogin || config.shopMode === 'public-demo'))) return false;
+    worker = startWhatsAppWorker({ store: config.sellerQuickLogin || config.shopMode === 'public-demo' ? null : database,
+      secretBox: createSecretBox(config.integrationKeys), transport: createWhatsAppTransport(), tenants: platform?.workerTenants, paused });
+    return true;
+  };
+  const qrServer = config.whatsappQr?.enabled ? createWhatsAppQrServer({ store: database, config, registry: platform?.registry }) : null;
+  const startQr = () => qrServer ? new Promise((resolve, reject) => {
+    qrServer.once('error', reject);
+    qrServer.listen(config.whatsappQr.port, '0.0.0.0', () => { qrServer.removeListener('error', reject); resolve(); });
+  }) : Promise.resolve();
+  return { server, qrServer, database, platform, startWorker, startQr, close: () => new Promise((resolve, reject) => server.close(async (error) => {
+    if (qrServer?.listening) await new Promise(done => qrServer.close(done));
+    await worker?.stop();
+    await platform?.close();
     await database.close();
     if (error) reject(error);
     else resolve();
@@ -79,7 +135,14 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === fileURLToPath(new URL(
   try {
     const config = readConfig();
     const app = await createApp(config);
-    app.server.listen(config.port, () => console.log(`Online Shopping listening on port ${app.server.address().port}`));
+    await app.startQr();
+    app.server.listen(config.port, () => {
+      console.log(`Online Shopping listening on port ${app.server.address().port}`);
+      app.startWorker();
+    });
+    for (const signal of ['SIGTERM', 'SIGINT']) process.once(signal, () => {
+      app.close().then(() => process.exit(0), () => process.exit(1));
+    });
   } catch (error) {
     console.error('Startup failed:', error?.code || error?.name || 'ERROR');
     process.exitCode = 1;

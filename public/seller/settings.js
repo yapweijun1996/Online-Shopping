@@ -1,8 +1,15 @@
+import './sender-copy.js';
+import { mountCompanyTabs } from './company-tabs.js';
+import { mountAiSettings } from './ai-settings.js';
+const senderInputs = { senderName: 120, senderPhone: 32, senderAddressLine1: 240, senderAddressLine2: 240, senderCity: 120, senderState: 120, senderPostcode: 20, senderCountry: 2 };
+import { apiUrl } from '../shared/base-path.js';
 import { t, translate } from '../shared/i18n.js';
 import { mountAppearance } from '../shared/appearance.js';
 import { beginMutation } from '../shared/update-guard.js';
 import { confirmModal } from '../shared/modal.js';
 import { mountIntegrations } from './integrations.js';
+import { mountWhatsAppConnection } from './whatsapp-connection.js';
+import { mountWhatsAppQr } from './whatsapp-qr.js';
 
 const SHOW_INTEGRATIONS = false;
 
@@ -50,7 +57,7 @@ export function mountCategories(root, { csrfToken, onUnauthorized: notifyUnautho
   let categories = [];
   async function load() {
     try {
-      const result = await request('GET', '/api/v1/seller/categories', null, csrfToken, onUnauthorized);
+      const result = await request('GET', apiUrl('v1/seller/categories'), null, csrfToken, onUnauthorized);
       if (!isCurrent()) return;
       categories = result.items;
       render();
@@ -81,7 +88,7 @@ export function mountCategories(root, { csrfToken, onUnauthorized: notifyUnautho
       row.addEventListener('submit', async (event) => {
         event.preventDefault(); save.disabled = true;
         try {
-          await request('PATCH', `/api/v1/seller/categories/${encodeURIComponent(category.code)}`,
+          await request('PATCH', apiUrl(`v1/seller/categories/${encodeURIComponent(category.code)}`),
             { label: label.value, active: active.checked }, csrfToken, onUnauthorized);
           if (!isCurrent()) return;
           await load(); if (isCurrent()) status(root, 'categorySaved');
@@ -95,7 +102,7 @@ export function mountCategories(root, { csrfToken, onUnauthorized: notifyUnautho
     event.preventDefault();
     const button = form.querySelector('button'); button.disabled = true;
     try {
-      await request('POST', '/api/v1/seller/categories', {
+      await request('POST', apiUrl('v1/seller/categories'), {
         code: form.elements.code.value, label: form.elements.label.value,
       }, csrfToken, onUnauthorized);
       if (!isCurrent()) return;
@@ -130,7 +137,7 @@ export function mountCategories(root, { csrfToken, onUnauthorized: notifyUnautho
 /* Offered only when the server says this is the public fictional Demo. */
 async function mountDemoReset(root, csrfToken, onUnauthorized) {
   try {
-    const shop = await (await fetch('/api/v1/shop', { cache: 'no-store' })).json();
+    const shop = await (await fetch(apiUrl('v1/shop'), { cache: 'no-store' })).json();
     if (shop.demoRolesAvailable !== true || !root.isConnected) return;
   } catch { return; }
   const card = document.createElement('section'); card.className = 'settings-card';
@@ -141,7 +148,7 @@ async function mountDemoReset(root, csrfToken, onUnauthorized) {
     if (!(await confirmModal(t('resetDemoConfirm')))) return;
     button.disabled = true; line.textContent = t('loading');
     try {
-      await request('POST', '/api/v1/seller/demo/reset', { confirm: true }, csrfToken, onUnauthorized);
+      await request('POST', apiUrl('v1/seller/demo/reset'), { confirm: true }, csrfToken, onUnauthorized);
       line.textContent = t('resetDemoDone');
       setTimeout(() => location.reload(), 1200);
     } catch { line.textContent = t('resetDemoFailed'); button.disabled = false; }
@@ -149,21 +156,29 @@ async function mountDemoReset(root, csrfToken, onUnauthorized) {
   root.append(card); translate(card);
 }
 
-export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUnauthorized }) {
+export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUnauthorized, role = 'OWNER' }) {
   root.innerHTML = `<section class="settings-card" aria-labelledby="company-heading">
+    <form id="company-form" class="settings-form">
+      <div id="company-group-general">
     <h2 id="company-heading" data-i18n="companySettings">Company settings</h2>
     <p data-i18n="currencyIntro">Choose the default currency for new products. Existing product prices and orders keep their own currency.</p>
-    <form id="company-form" class="settings-form">
       <label><span data-i18n="defaultCurrency">Default currency</span><select name="defaultCurrency"><option value="MYR">MYR</option><option value="SGD">SGD</option></select></label>
       <label><span data-i18n="sellerWhatsAppPhone">Seller WhatsApp number</span><input name="sellerWhatsAppPhone" type="tel" inputmode="tel" autocomplete="tel" maxlength="32" placeholder="+60 / +65" aria-describedby="seller-whatsapp-help"></label>
       <p id="seller-whatsapp-help" data-i18n="sellerWhatsAppHelp">The public product page uses this number for Chat. Enter a +60 or +65 number, or leave it blank to turn Chat off.</p>
       <label class="settings-check"><input name="mobileHideBarsOnScroll" type="checkbox"><span data-i18n="mobileHideBarsOnScroll">Hide mobile navigation bars while scrolling down</span></label>
       <p class="settings-check-help" data-i18n="mobileHideBarsHelp">By default, the shop's top search bar and bottom navigation stay visible. Turn this on to hide them when shoppers scroll down and show them when they scroll up.</p>
-      <h3 data-i18n="storefrontTextsTitle">Product page information</h3>
+      </div>
+      <div id="company-group-storefront">
+      <h2 data-i18n="storefrontTextsTitle">Product page information</h2>
       <p id="storefront-texts-help" data-i18n="storefrontTextsHelp">Shown on every product page in the matching section. Leave a box empty to hide that section.</p>
       <label><span data-i18n="stockAndDelivery">Availability &amp; delivery</span><textarea name="availabilityText" rows="3" maxlength="1000" aria-describedby="storefront-texts-help"></textarea></label>
       <label><span data-i18n="shipping">Shipping</span><textarea name="shippingText" rows="3" maxlength="1000" aria-describedby="storefront-texts-help"></textarea></label>
       <label><span data-i18n="returnsAndGuarantees">Returns and guarantees</span><textarea name="returnsText" rows="3" maxlength="1000" aria-describedby="storefront-texts-help"></textarea></label>
+      </div>
+      <div id="company-group-shipping">
+      <h2 data-i18n="senderTitle"></h2>
+      ${Object.entries(senderInputs).map(([name, max]) => `<label><span data-i18n="${name}"></span><input name="${name}" maxlength="${max}"${name === 'senderPhone' ? ' type="tel"' : ''}></label>`).join('')}
+      </div>
       <button class="secondary-button" type="button" id="company-retry" data-i18n="retry" hidden>Retry</button>
       <button class="primary-button" type="submit" data-i18n="saveSettings">Save settings</button>
     </form><p class="settings-status" role="status"></p>
@@ -179,11 +194,27 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
       <label><span data-i18n="shopName"></span><input name="shopName" maxlength="80" value="Preview General Store" required></label>
       <button class="primary-button" type="submit" data-i18n="setupShop" disabled></button>
     </form><p class="setup-status" role="status"></p>`;
-  root.prepend(setup);
+  const formCard = form.closest('.settings-card');
+  formCard.before(setup);
   const appearance = document.createElement('section'); appearance.className = 'settings-card';
-  root.append(appearance); mountAppearance(appearance, 'seller');
+  const messaging = document.createElement('div'), extras = document.createElement('div');
+  extras.className = 'company-extra';
+  root.append(extras, messaging, appearance); mountAppearance(appearance, 'seller');
   // Provider cards stay hidden until a provider can really be connected; an all-"Not configured" list reads as unfinished.
-  const integrations = SHOW_INTEGRATIONS ? mountIntegrations(root, { csrfToken, onUnauthorized }) : { refreshLocale() {} };
+  const integrations = SHOW_INTEGRATIONS ? mountIntegrations(messaging, { csrfToken, onUnauthorized }) : { refreshLocale() {} };
+  const whatsapp = mountWhatsAppConnection(messaging, { csrfToken, onUnauthorized, request });
+  const whatsappQr = mountWhatsAppQr(messaging, { csrfToken, onUnauthorized, role });
+  const groups = { general: form.querySelector('#company-group-general'), storefront: form.querySelector('#company-group-storefront'), shipping: form.querySelector('#company-group-shipping') };
+  const ai = role === 'OWNER' ? mountAiSettings(root, { csrfToken, onUnauthorized }) : null;
+  const tabs = mountCompanyTabs(root, [
+    { id: 'general', label: 'companyTabGeneral', panels: [setup, groups.general, extras] },
+    { id: 'storefront', label: 'companyTabStorefront', panels: [groups.storefront] },
+    { id: 'shipping', label: 'companyTabShipping', panels: [groups.shipping] },
+    { id: 'messaging', label: 'companyTabMessaging', panels: [messaging] },
+    { id: 'appearance', label: 'companyTabAppearance', panels: [appearance] },
+  ], { onSelect: (id) => { formCard.hidden = !['general', 'storefront', 'shipping'].includes(id); } });
+  ai?.ready.then(available => { if (available && isCurrent()) tabs.add({ id: 'ai', label: 'ai_title', panels: [ai.section] }); });
+  const tabOfField = (field = '') => field.startsWith('sender') ? 'shipping' : ['availabilityText', 'shippingText', 'returnsText'].includes(field) ? 'storefront' : 'general';
   const setupForm = setup.querySelector('form');
   const setupStatus = setup.querySelector('.setup-status');
   const setupButton = setupForm.querySelector('button');
@@ -204,20 +235,17 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
     setup.querySelector('[data-i18n="setupIntro"]').hidden = Boolean(value.mode);
     if (value.mode) {
       setupStatus.textContent = `${value.shopName} — ${t(value.mode === 'demo' ? 'demoMode' : 'productionMode')}`;
-      root.append(setup);
-    } else {
-      root.prepend(setup);
     }
     setupButton.disabled = false;
   }
-  request('GET', '/api/v1/seller/setup', null, csrfToken, onUnauthorized)
+  request('GET', apiUrl('v1/seller/setup'), null, csrfToken, onUnauthorized)
     .then((value) => { if (isCurrent()) showSetup(value); })
     .catch(() => { if (isCurrent()) setupStatus.textContent = t('networkError'); });
   setupForm.addEventListener('submit', async (event) => {
     event.preventDefault(); setupButton.disabled = true;
     setupStatus.textContent = t('loading');
     try {
-      const value = await request('POST', '/api/v1/seller/setup', {
+      const value = await request('POST', apiUrl('v1/seller/setup'), {
         mode: setupForm.elements.mode.value, shopName: setupForm.elements.shopName.value,
       }, csrfToken, onUnauthorized);
       showSetup(value);
@@ -225,7 +253,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
       if (isCurrent()) setupStatus.textContent = t(['SHOP_ALREADY_CONFIGURED', 'SHOP_NOT_EMPTY'].includes(error.code) ? 'setupConflict' : 'productError');
     } finally { if (isCurrent()) setupButton.disabled = false; }
   });
-  mountDemoReset(root, csrfToken, onUnauthorized);
+  mountDemoReset(extras, csrfToken, onUnauthorized);
   translate(root);
   const saveButton = form.querySelector('[type="submit"]');
   const retryButton = form.querySelector('#company-retry');
@@ -234,7 +262,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
   let phoneEdited = false;
   let mobileBarsEdited = false;
   let savedState = null;
-  const textFields = ['availabilityText', 'shippingText', 'returnsText'];
+  const textFields = ['availabilityText', 'shippingText', 'returnsText', ...Object.keys(senderInputs)];
   let textsEdited = false;
   const textValues = () => Object.fromEntries(textFields.map(name => [name, form.elements[name].value]));
   const currentState = () => JSON.stringify({
@@ -252,7 +280,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
   async function loadSettings() {
     retryButton.disabled = true;
     try {
-      const settings = await request('GET', '/api/v1/seller/company-settings', null, csrfToken, onUnauthorized);
+      const settings = await request('GET', apiUrl('v1/seller/company-settings'), null, csrfToken, onUnauthorized);
       if (!isCurrent()) return;
       if (!currencyEdited) form.elements.defaultCurrency.value = settings.defaultCurrency;
       if (!phoneEdited) form.elements.sellerWhatsAppPhone.value = settings.sellerWhatsAppPhone ? `+${settings.sellerWhatsAppPhone}` : '';
@@ -277,7 +305,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
     event.preventDefault(); saveButton.disabled = true;
     for (const input of form.querySelectorAll('input, select, textarea')) input.disabled = true;
     try {
-      const settings = await request('PATCH', '/api/v1/seller/company-settings', {
+      const settings = await request('PATCH', apiUrl('v1/seller/company-settings'), {
         defaultCurrency: form.elements.defaultCurrency.value,
         sellerWhatsAppPhone: form.elements.sellerWhatsAppPhone.value.trim(),
         mobileHideBarsOnScroll: form.elements.mobileHideBarsOnScroll.checked,
@@ -290,7 +318,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
       savedState = currentState();
       currencyEdited = phoneEdited = mobileBarsEdited = textsEdited = false;
       status(root, 'settingsSaved');
-    } catch (error) { if (isCurrent()) status(root, error.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : error.field === 'sellerWhatsAppPhone' ? 'sellerWhatsAppInvalid' : 'productError', true); }
+    } catch (error) { if (isCurrent()) tabs.select(error.code === 'COMPANY_CURRENCY_CONFLICT' ? 'general' : tabOfField(error.field)); if (isCurrent()) status(root, error.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : error.field === 'sellerWhatsAppPhone' ? 'sellerWhatsAppInvalid' : error.field?.startsWith('sender') ? 'senderInvalid' : 'productError', true); }
     finally {
       if (isCurrent()) {
         for (const input of form.querySelectorAll('input, select, textarea')) input.disabled = false;
@@ -299,15 +327,19 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
     }
   });
   return {
-    isBusy: () => pendingWrites > 0,
+    dispose() { whatsappQr.dispose(); },
+    isBusy: () => pendingWrites > 0 || Boolean(ai?.isBusy()),
     hasUnsavedChanges() {
-      return currentState() !== (savedState ?? initialState) ||
+      return Boolean(ai?.hasUnsavedChanges()) || currentState() !== (savedState ?? initialState) ||
         (!setupForm.hidden && JSON.stringify([setupForm.elements.mode.value, setupForm.elements.shopName.value]) !== setupBaseline);
     },
     refreshLocale() {
-      translate(root);
+      translate(root); tabs.refreshLocale();
       if (setupState?.mode) showSetup(setupState);
       integrations.refreshLocale();
+      whatsapp.refreshLocale();
+      whatsappQr.refreshLocale();
+      ai?.refreshLocale();
       const line = root.querySelector('.settings-status');
       line.textContent = line.dataset.statusKey ? t(line.dataset.statusKey) : '';
     },

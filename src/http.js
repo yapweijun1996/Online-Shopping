@@ -37,22 +37,34 @@ export async function readJson(request, maxBytes = MAX_BODY) {
 }
 
 /* Reads a request body into memory, rejecting it as soon as it exceeds maxBytes. */
-export async function readBody(request, maxBytes) {
+export async function readBody(request, maxBytes, timeoutMs = 0) {
   const tooLarge = () => new ApiError(413, 'INVALID_INPUT', 'Request body is too large.');
   if (Number(request.headers.get('content-length')) > maxBytes) throw tooLarge();
   const chunks = [];
   let length = 0;
   if (request.body) {
     const reader = request.body.getReader();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      length += value.byteLength;
-      if (length > maxBytes) {
+    let timer;
+    const timeout = timeoutMs > 0 ? new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new ApiError(408, 'INVALID_INPUT', 'Request body timed out.'));
         reader.cancel().catch(() => {});
-        throw tooLarge();
+      }, timeoutMs);
+    }) : null;
+    try {
+      for (;;) {
+        const { done, value } = await (timeout ? Promise.race([reader.read(), timeout]) : reader.read());
+        if (done) break;
+        length += value.byteLength;
+        if (length > maxBytes) {
+          reader.cancel().catch(() => {});
+          throw tooLarge();
+        }
+        chunks.push(value);
       }
-      chunks.push(value);
+    } finally {
+      clearTimeout(timer);
+      reader.releaseLock();
     }
   }
   const bytes = new Uint8Array(length);

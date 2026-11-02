@@ -2,15 +2,16 @@ import { randomUUID } from 'node:crypto';
 import { ApiError } from './http.js';
 import { FieldError, boundedText } from './validation.js';
 import { validateProductInput } from './product-input.js';
-import { decodeProductImage } from './product-image.js';
+import { decodeProductImage, decodeThumbnail } from './product-image.js';
 import { getCompanySettings, requireActiveCategory } from './settings.js';
 import { presentCatalogCopy } from './catalog-copy.js';
 import { groupUsesOptions, loadProductOptions, optionAxes, optionError, setProductOptions } from './options.js';
+import { listingFor, moveToListing, syncListing } from './listings.js';
 import { reservedQuantitySql } from './stock-reservation.js';
-import { productCover, productGallery, requireGalleryRevision, saveProductGallery } from './product-gallery.js';
+import { galleryRole, productCover, productGallery, requireGalleryRevision, saveProductGallery, shareListingGallery } from './product-gallery.js';
 
 const columns = () => `p.id, p.sku, p.name, p.description, p.category AS category_code,
-  c.label AS category, p.price_minor, p.currency, p.active, p.image_mime, p.variant_group, p.variant_label, p.stock_quantity,
+  c.label AS category, p.price_minor, p.currency, p.active, p.image_mime, p.variant_group, p.variant_label, p.stock_quantity, p.listing_id,
   ${reservedQuantitySql('p.id')} AS reserved_quantity, p.created_at, p.updated_at`;
 const fromProduct = `FROM product p JOIN general_code c
   ON c.type = 'PRODUCT_CATEGORY' AND c.code = p.category`;
@@ -27,7 +28,7 @@ function productFromRow(row, seller = false) {
   return {
     id: row.id, sku: row.sku, name: row.name, description: row.description,
     category: row.category, priceMinor: row.price_minor, currency: row.currency,
-    variantGroup: row.variant_group, variantLabel: row.variant_label,
+    variantGroup: row.variant_group, variantLabel: row.variant_label, listingId: row.listing_id,
     ...(seller ? { categoryCode: row.category_code, active: Boolean(row.active), stockQuantity: row.stock_quantity } : { inStock: row.stock_quantity === null || row.stock_quantity - Number(row.reserved_quantity) > 0 }),
     imageUrl: row.image_mime ? imagePath : null,
     ...(seller ? { createdAt: row.created_at, updatedAt: row.updated_at } : {})
@@ -42,10 +43,11 @@ async function validateVariantGroup(database, product, excludeId = null) {
     throw new FieldError('variantLabel', 'Set both the variant group and option label.');
   }
   if (!product.variantGroup) return;
-  const related = await database.get(`SELECT category, currency FROM product WHERE variant_group = ?
+  // The category belongs to the listing, so a variant joining a group simply takes it; only the currency must match.
+  const related = await database.get(`SELECT currency FROM product WHERE variant_group = ?
     AND (? IS NULL OR id <> ?) LIMIT 1`, product.variantGroup, excludeId, excludeId);
-  if (related && (related.category !== product.category || related.currency !== product.currency)) {
-    throw new FieldError('variantGroup', 'Variants must share a category and currency.');
+  if (related && related.currency !== product.currency) {
+    throw new FieldError('variantGroup', 'Variants must share a currency.');
   }
 }
 
@@ -85,16 +87,22 @@ export async function createProduct(database, input) {
     await requireActiveCategory(database, product.category);
     await validateVariantGroup(database, product);
     const id = randomUUID();
-    const now = new Date().toISOString();
+    // Creation times in a listing strictly increase: the oldest variant holds the shared gallery and represents the listing.
+    const latest = product.variantGroup && await database.get(`SELECT MAX(p.created_at) AS last FROM product p JOIN listing l
+      ON l.id = p.listing_id WHERE l.code = ?`, product.variantGroup);
+    const now = new Date(Math.max(Date.now(), latest?.last ? Date.parse(latest.last) + 1 : 0)).toISOString();
+    // Variants share their listing's title, description and category; the first product of a group defines them.
+    const listing = await listingFor(database, product, now);
     try {
       await database.run(`INSERT INTO product
       (id, sku, name, description, category, price_minor, currency, active, image_mime, image_data,
-       variant_group, variant_label, stock_quantity, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      id, product.sku, product.name, product.description, product.category,
+       variant_group, variant_label, stock_quantity, listing_id, thumb_mime, thumb_data, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      id, product.sku, listing.name, listing.description, listing.category,
       product.priceMinor, product.currency, Number(product.active),
       product.image?.mime || null, product.image?.data || null, product.variantGroup || null,
-      product.variantLabel || null, product.stockQuantity ?? null, now, now
+      product.variantLabel || null, product.stockQuantity ?? null, listing.id,
+      product.image ? product.thumb?.mime || null : null, product.image ? product.thumb?.data || null : null, now, now
       );
     } catch (error) {duplicateSku(error);}
     const hasOptions = Array.isArray(product.options) && product.options.length > 0;
@@ -102,6 +110,7 @@ export async function createProduct(database, input) {
     else if (product.variantGroup && await groupUsesOptions(database, product.variantGroup, id)) {
       throw optionError('OPTIONS_REQUIRED', 'This variant group is described by option types; choose its options.');
     }
+    await shareListingGallery(database, listing.id);
     return await getProduct(database, id, true);
   });
 }
@@ -110,8 +119,21 @@ export async function updateProduct(database, id, input, mode = 'manual') {
   return await database.transaction(async () => {
     const existing = await getProduct(database, id, true, mode);
     if (!existing) return null;
-    const hasGallery = input && Object.hasOwn(input, 'gallery');
+    const hasRevision = input && Object.hasOwn(input, 'expectedUpdatedAt');
+    if (hasRevision) requireGalleryRevision(existing, input.expectedUpdatedAt);
+    if (hasRevision && !Object.hasOwn(input, 'gallery')) {
+      const { expectedUpdatedAt, ...metadata } = input;
+      input = metadata;
+    }
+    // A variant of a multi-product listing shows the shared gallery; only the holder edits it, so a gallery sent
+    // along with a variant edit is ignored and can never change the shared photos.
+    const role = await galleryRole(database, existing);
     let patch = input;
+    if (role === 'variant' && input && Object.hasOwn(input, 'gallery')) {
+      const { gallery, expectedUpdatedAt, ...metadata } = input;
+      patch = input = Object.keys(metadata).length ? metadata : { name: existing.name };
+    }
+    const hasGallery = input && Object.hasOwn(input, 'gallery');
     if (hasGallery) {
       requireGalleryRevision(existing, input.expectedUpdatedAt);
       const { gallery, expectedUpdatedAt, ...metadata } = input;
@@ -121,7 +143,7 @@ export async function updateProduct(database, id, input, mode = 'manual') {
     }
     await patchProduct(database, id, patch, { galleryChanging: hasGallery });
     if (hasGallery) await saveProductGallery(database, id, input.gallery, existing);else
-    if (input.imageDataUrl && !existing.galleryItems.some((item) => item.id === 'main')) {
+    if (role === 'single' && input.imageDataUrl && !existing.galleryItems.some((item) => item.id === 'main')) {
       // A legacy image-only replacement must become visible. Keep any explicitly
       // selected primary/order, append the restored main, and reject overflow
       // atomically rather than accepting an invisible replacement.
@@ -136,6 +158,13 @@ async function patchProduct(database, id, input, { galleryChanging = false } = {
   if (!existing) return null;
   const currency = (await getCompanySettings(database)).defaultCurrency;
   const patch = validateProductInput(input, [existing.currency], { partial: true });
+  if (Object.hasOwn(patch, 'stockQuantity') && (patch.stockQuantity === null) !== (existing.stockQuantity === null) &&
+      await database.get(`SELECT 1 AS found FROM order_item i JOIN delivery d ON d.id = i.delivery_id
+        JOIN shop_order o ON o.id = d.order_id WHERE i.product_id = ? AND o.status = 'CONFIRMED' LIMIT 1`, id)) {
+    const error = new ApiError(409, 'STOCK_TRACKING_CONFLICT', 'Ship or cancel confirmed orders before changing stock tracking.');
+    error.field = 'stockQuantity';
+    throw error;
+  }
   // A legacy mismatch requires explicit price review, never a currency relabel.
   if (existing.currency !== currency && (Object.hasOwn(patch, 'priceMinor') || patch.active === true || Object.hasOwn(patch, 'currency'))) {
     throw new ApiError(409, 'COMPANY_CURRENCY_CONFLICT', 'Review the existing product currency before changing its price or activating it.');
@@ -149,7 +178,7 @@ async function patchProduct(database, id, input, { galleryChanging = false } = {
     options: patch.options,
     category: patch.category || existing.categoryCode, currency: patch.currency || existing.currency
   }, id);
-  if (!galleryChanging && patch.image === null && existing.images.length > (existing.imageUrl ? 1 : 0)) {
+  if (!galleryChanging && !existing.galleryShared && patch.image === null && existing.images.length > (existing.imageUrl ? 1 : 0)) {
     throw new FieldError('imageDataUrl', 'Remove gallery images before removing the main image.');
   }
   const mapping = { sku: 'sku', name: 'name', description: 'description', category: 'category', priceMinor: 'price_minor', currency: 'currency', active: 'active', variantGroup: 'variant_group', variantLabel: 'variant_label', stockQuantity: 'stock_quantity' };
@@ -161,14 +190,24 @@ async function patchProduct(database, id, input, { galleryChanging = false } = {
     values.push(key === 'active' ? Number(patch.active) : patch[key]);
   }
   if (Object.hasOwn(patch, 'image')) {
-    assignments.push('image_mime = ?', 'image_data = ?');
-    values.push(patch.image?.mime || null, patch.image?.data || null);
+    // A new image invalidates its old preview; the seller's browser sends a fresh one with it.
+    assignments.push('image_mime = ?', 'image_data = ?', 'thumb_mime = ?', 'thumb_data = ?');
+    values.push(patch.image?.mime || null, patch.image?.data || null, patch.thumb?.mime || null, patch.thumb?.data || null);
   }
   assignments.push('updated_at = ?');
   values.push(new Date(Math.max(Date.now(), Date.parse(existing.updatedAt) + 1)).toISOString(), id);
   try {
     await database.run(`UPDATE product SET ${assignments.join(', ')} WHERE id = ?`, ...values);
   } catch (error) {duplicateSku(error);}
+  // Shared fields live on the listing; a group change moves the row to the listing of its new group.
+  const now = new Date().toISOString();
+  if (Object.hasOwn(patch, 'variantGroup') && (patch.variantGroup || null) !== (existing.variantGroup || null)) {
+    const merged = { ...existing, ...patch, category: patch.category || existing.categoryCode };
+    const listing = await moveToListing(database, id, existing.listingId, merged, now);
+    await shareListingGallery(database, listing.id);
+  } else {
+    await syncListing(database, existing.listingId, patch, now);
+  }
   await saveOptions(database, id, existing, patch);
   return await getProduct(database, id, true);
 }
@@ -184,33 +223,73 @@ async function saveOptions(database, id, existing, patch) {
   }
 }
 
-export async function getProduct(database, id, seller = false, mode = 'manual') {
+export async function getProduct(database, id, seller = false, mode = 'manual', variantPage = null) {
   const row = await database.get(`SELECT ${columns()} ${fromProduct} WHERE p.id = ? ${seller ? '' : 'AND p.active = 1'}`, id);
+  if (variantPage && seller) {
+    if (!row) return null;
+    const count = await database.get('SELECT COUNT(*) AS count FROM product WHERE listing_id = ?', row.listing_id);
+    const variants = await database.all(`SELECT id, sku, variant_label, price_minor, currency, active, stock_quantity FROM product
+      WHERE listing_id = ? ORDER BY variant_label, id LIMIT ? OFFSET ?`, row.listing_id, variantPage.limit + 1, variantPage.offset);
+    return { ...productFromRow(row, true), variantCount: Number(count.count),
+      variants: variants.slice(0, variantPage.limit).map((v) => ({ id: v.id, sku: v.sku, label: v.variant_label,
+        priceMinor: v.price_minor, currency: v.currency, active: Boolean(v.active), stockQuantity: v.stock_quantity })),
+      nextVariantOffset: variants.length > variantPage.limit ? variantPage.offset + variantPage.limit : null };
+  }
   return await detailFields(database, productFromRow(row, seller), seller, mode);
 }
 
-export async function getProductImage(database, id, seller = false) {
-  const row = await database.get(`SELECT image_mime AS mime, image_data AS data, updated_at FROM product
+/* `thumb` asks for the small preview; products without one answer with the full image. */
+export async function getProductImage(database, id, seller = false, thumb = false) {
+  const row = await database.get(`SELECT image_mime AS mime, image_data AS data, thumb_mime, thumb_data, updated_at FROM product
     WHERE id = ? ${seller ? '' : 'AND active = 1'}`, id);
-  return row && { mime: row.mime, data: row.data, version: imageVersion(row.updated_at) };
+  if (!row) return row;
+  const small = thumb && row.thumb_data;
+  return { mime: small ? row.thumb_mime : row.mime, data: small ? row.thumb_data : row.data, version: imageVersion(row.updated_at) };
 }
 
-export async function getGalleryImage(database, productId, imageId, seller = false) {
-  const row = await database.get(`SELECT i.mime, i.data, i.created_at FROM product_gallery_image i
-    JOIN product p ON p.id = i.product_id WHERE i.id = ? AND i.product_id = ? ${seller ? '' : 'AND p.active = 1'}`,
+export async function getGalleryImage(database, productId, imageId, seller = false, thumb = false) {
+  const row = await database.get(`SELECT i.mime, i.data, i.thumb_mime, i.thumb_data, i.created_at FROM product_gallery_image i
+    JOIN product p ON p.id = i.product_id WHERE i.id = ? AND i.product_id = ? ${seller ? '' : `AND (p.active = 1 OR EXISTS
+      (SELECT 1 FROM product s WHERE s.listing_id = p.listing_id AND s.active = 1))`}`,
   imageId, productId);
-  return row && { mime: row.mime, data: row.data, version: imageVersion(row.created_at) };
+  if (!row) return row;
+  const small = thumb && row.thumb_data;
+  return { mime: small ? row.thumb_mime : row.mime, data: small ? row.thumb_data : row.data, version: imageVersion(row.created_at) };
 }
 
-export async function addGalleryImage(database, productId, imageDataUrl, mode = 'manual') {
+/* Stores a preview for an image that already exists (used to back-fill photos uploaded before previews existed). */
+export async function setProductThumbnail(database, id, thumbDataUrl) {
+  const thumb = decodeThumbnail(thumbDataUrl);
+  if (!thumb) throw new FieldError('thumbDataUrl', 'Send a preview image.');
+  return await database.transaction(async () => {
+    if (!await database.get('SELECT 1 AS found FROM product WHERE id = ? AND image_data IS NOT NULL', id)) throw new ApiError(404, 'NOT_FOUND', 'Product image not found.');
+    await database.run('UPDATE product SET thumb_mime = ?, thumb_data = ? WHERE id = ?', thumb.mime, thumb.data, id);
+    return { ok: true };
+  });
+}
+
+export async function setGalleryThumbnail(database, productId, imageId, thumbDataUrl) {
+  const thumb = decodeThumbnail(thumbDataUrl);
+  if (!thumb) throw new FieldError('thumbDataUrl', 'Send a preview image.');
+  return await database.transaction(async () => {
+    if (!await database.get('SELECT 1 AS found FROM product_gallery_image WHERE id = ? AND product_id = ?', imageId, productId)) throw new ApiError(404, 'NOT_FOUND', 'Image not found.');
+    await database.run('UPDATE product_gallery_image SET thumb_mime = ?, thumb_data = ? WHERE id = ? AND product_id = ?', thumb.mime, thumb.data, imageId, productId);
+    return { ok: true };
+  });
+}
+
+const sharedGalleryError = () => new ApiError(409, 'GALLERY_SHARED', 'The photo gallery is shared by all variants; edit it on the main variant.');
+
+export async function addGalleryImage(database, productId, imageDataUrl, mode = 'manual', thumbDataUrl = null) {
   const image = decodeProductImage(imageDataUrl);
   if (!image) throw new FieldError('imageDataUrl', 'Choose an image.');
   return await database.transaction(async () => {
-    const product = await database.get('SELECT image_mime FROM product WHERE id = ?', productId);
+    const product = await database.get('SELECT image_mime, listing_id FROM product WHERE id = ?', productId);
     if (!product) throw new ApiError(404, 'NOT_FOUND', 'Product not found.');
+    if (await galleryRole(database, { id: productId, listingId: product.listing_id }) === 'variant') throw sharedGalleryError();
     if (!product.image_mime) throw new FieldError('imageDataUrl', 'Add a main image first.');
     const current = await getProduct(database, productId, true, mode);
-    await saveProductGallery(database, productId, [...current.galleryItems.map((item) => ({ id: item.id })), { imageDataUrl }], current);
+    await saveProductGallery(database, productId, [...current.galleryItems.map((item) => ({ id: item.id })), thumbDataUrl ? { imageDataUrl, thumbDataUrl } : { imageDataUrl }], current);
     await database.run('UPDATE product SET updated_at = ? WHERE id = ?', new Date(Math.max(Date.now(), Date.parse(current.updatedAt) + 1)).toISOString(), productId);
     return await getProduct(database, productId, true, mode);
   });
@@ -240,16 +319,45 @@ export async function listProducts(database, params, seller = false, mode = 'man
   const offset = parseNumber('offset', 0, 10_000);
   if (limit < 1) throw new FieldError('limit', 'Enter a valid list range.');
   const activeClause = seller ? '' : 'p.active = 1 AND ';
-  const rows = await database.all(`SELECT ${columns()} ${fromProduct} WHERE ${activeClause}
-    (? = '' OR instr(lower(p.name), lower(?)) > 0 OR instr(lower(p.sku), lower(?)) > 0)
-    AND (? = '' OR c.label = ?)
-    ORDER BY p.updated_at DESC, p.id DESC LIMIT ? OFFSET ?`, search, search, search, category, category, limit + 1, offset);
+  const filters = `(? = '' OR instr(lower(p.name), lower(?)) > 0 OR instr(lower(p.sku), lower(?)) > 0) AND (? = '' OR c.label = ?)`;
+  const siblings = (expression) => `(SELECT ${expression} FROM product x WHERE x.listing_id = p.listing_id)`;
+  const rows = seller
+    // The seller sees one row per listing too (its oldest variant, or the one that matches the search), with totals
+    // over all of its variants; the variants themselves are managed inside the listing.
+    ? await database.all(`SELECT * FROM (
+        SELECT ${columns()}, ROW_NUMBER() OVER (PARTITION BY p.listing_id ORDER BY p.created_at, p.sku, p.id) AS group_rank,
+          ${siblings('COUNT(*)')} AS group_size, ${siblings('MIN(x.price_minor)')} AS group_min_price,
+          ${siblings('MAX(x.price_minor)')} AS group_max_price, ${siblings('SUM(x.active)')} AS group_active,
+          ${siblings('CASE WHEN COUNT(*) <> COUNT(x.stock_quantity) THEN NULL ELSE SUM(x.stock_quantity) END')} AS group_stock
+        ${fromProduct} WHERE ${activeClause} ${filters}) listed
+      WHERE group_rank = 1 ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?`, search, search, search, category, category, limit + 1, offset)
+    // Shoppers see one card per product: the variants of a group collapse to its cheapest in-stock variant
+    // (the one that matches the search), with the group size and whether its prices differ.
+    : await database.all(`SELECT * FROM (
+        SELECT ${columns()}, ROW_NUMBER() OVER (PARTITION BY COALESCE('g:' || p.variant_group, 'p:' || p.id)
+          ORDER BY CASE WHEN p.stock_quantity IS NULL OR p.stock_quantity > 0 THEN 0 ELSE 1 END, p.price_minor, p.sku, p.id) AS group_rank,
+          COUNT(*) OVER (PARTITION BY COALESCE('g:' || p.variant_group, 'p:' || p.id)) AS group_size,
+          MAX(p.price_minor) OVER (PARTITION BY COALESCE('g:' || p.variant_group, 'p:' || p.id)) AS group_max_price
+        ${fromProduct} WHERE ${activeClause} ${filters}) listed
+      WHERE group_rank = 1 ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?`, search, search, search, category, category, limit + 1, offset);
   const hasMore = rows.length > limit;
   const result = { items: await Promise.all(rows.slice(0, limit).map(async (row) => {
       const product = productFromRow(row, seller);
-      return presentCatalogCopy({ ...product, imageUrl: await productCover(database, product, seller) }, mode);
+      const group = seller ? { variantCount: Number(row.group_size), activeCount: Number(row.group_active),
+        priceFromMinor: Number(row.group_min_price), priceToMinor: Number(row.group_max_price),
+        stockTotal: row.group_stock === null ? null : Number(row.group_stock) }
+        : { variantCount: Number(row.group_size), priceVaries: Number(row.group_max_price) !== row.price_minor };
+      return presentCatalogCopy({ ...product, ...group, imageUrl: await productCover(database, product, seller) }, mode);
     })), nextOffset: hasMore ? offset + limit : null };
   if (!seller) result.categories = (await database.all(`SELECT DISTINCT c.label AS category ${fromProduct}
     WHERE p.active = 1 ORDER BY c.label`)).map((row) => row.category);
   return result;
+}
+
+// Variant-level inventory page; unlike listing cards this includes every matching SKU.
+export async function lowStockProducts(database, { limit = 20, offset = 0, threshold = 5 } = {}) {
+  const rows = await database.all(`SELECT ${columns()}, (SELECT COUNT(*) FROM product x WHERE x.listing_id = p.listing_id) AS variant_count
+    ${fromProduct} WHERE p.stock_quantity IS NOT NULL AND p.stock_quantity <= ?
+    ORDER BY p.stock_quantity, p.id LIMIT ? OFFSET ?`, threshold, limit + 1, offset);
+  return { items: rows.slice(0, limit).map((row) => ({ ...productFromRow(row, true), variantCount: Number(row.variant_count) })), nextOffset: rows.length > limit ? offset + limit : null };
 }

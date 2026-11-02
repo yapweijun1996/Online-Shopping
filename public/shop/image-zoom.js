@@ -1,3 +1,4 @@
+import { icon } from '../shared/icons.js';
 import { t } from '../shared/i18n.js';
 
 export function boundedZoom(scale, x, y, width, height, imageWidth = width, imageHeight = height) {
@@ -62,12 +63,12 @@ export function attachImageZoom(dialog, image, trigger, closeButton) {
   function fitImage() { if (active && !returning) { clearGesture(); apply(1, 0, 0); } }
   function control(text, label, action) {
     const button = document.createElement('button');
-    button.type = 'button'; button.textContent = text; button.setAttribute('aria-label', label);
+    button.type = 'button'; button.append(icon(text)); button.setAttribute('aria-label', label);
     button.addEventListener('click', action); controls.append(button); return button;
   }
-  const minus = control('−', t('zoomOut'), () => changeScale(state.scale - .5));
-  const plus = control('+', t('zoomIn'), () => changeScale(state.scale + .5));
-  const reset = control('↺', t('resetZoom'), fitImage);
+  const minus = control('minus', t('zoomOut'), () => changeScale(state.scale - .5));
+  const plus = control('plus', t('zoomIn'), () => changeScale(state.scale + .5));
+  const reset = control('reset', t('resetZoom'), fitImage);
   controls.append(status); dialog.querySelector('.image-viewer-header').prepend(controls);
   const error = document.createElement('span'); error.className = 'image-zoom-error';
   error.textContent = t('imageMissing'); error.hidden = true; stage.append(error);

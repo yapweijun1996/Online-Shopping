@@ -6,7 +6,7 @@ import { setProductMedia, revealImage } from '../public/shop/product-media.js';
 function fakeImage() {
   const classes = new Set(), vars = new Map(), listeners = [];
   return { classes, vars, listeners, complete: false, naturalWidth: 0, removeAttribute() {}, src: '',
-    classList: { add: c => classes.add(c), remove: c => classes.delete(c), toggle: (c, on) => on ? classes.add(c) : classes.delete(c) },
+    classList: { add: (...tokens) => tokens.forEach(c => classes.add(c)), remove: (...tokens) => tokens.forEach(c => classes.delete(c)), toggle: (c, on) => on ? classes.add(c) : classes.delete(c) },
     style: { setProperty: (k, v) => vars.set(k, v), removeProperty: k => vars.delete(k) },
     addEventListener: (name, fn) => listeners.push([name, fn]) };
 }
@@ -34,4 +34,17 @@ test('production Caddy serves hashed gallery images as immutable', () => {
   const caddy = readFileSync(new URL('../deploy/Caddyfile.production', import.meta.url), 'utf8');
   assert.match(caddy, /@gallery path_regexp[^\n]*view-\\d\+-\[a-f0-9\]\{12\}/);
   assert.match(caddy, /handle @gallery \{\s*header Cache-Control "public, max-age=31536000, immutable"/);
+});
+
+test('an image that fails to load shows the quiet placeholder, and a new source clears it', () => {
+  const image = fakeImage();
+  setProductMedia(image, media, 'thumbnail');
+  image.listeners.find(([name]) => name === 'error')[1]();
+  assert.ok(image.classes.has('is-broken') && image.classes.has('is-loaded'));
+  const nextMedia = { ...media, src: '/demo-assets/B/view-2-bbbbbbbbbbbb-640.jpg', thumbnail: '/demo-assets/B/view-2-bbbbbbbbbbbb-160.jpg' };
+  setProductMedia(image, nextMedia, 'thumbnail');
+  assert.equal(image.src, nextMedia.thumbnail);
+  assert.ok(!image.classes.has('is-broken') && !image.classes.has('is-loaded'), 'changing the source resets the failed image state');
+  image.listeners.find(([name]) => name === 'load')[1]();
+  assert.ok(image.classes.has('is-loaded') && !image.classes.has('is-broken'));
 });

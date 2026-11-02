@@ -1,8 +1,13 @@
 import { createHash } from 'node:crypto';
 
-export const importTables = ['admin', 'session', 'general_code', 'company_setting', 'shop_setup', 'option_type', 'option_value', 'product',
-  'product_option', 'product_gallery_image', 'order_sequence', 'shop_order', 'delivery', 'order_item', 'order_event',
-  'checkout_idempotency', 'rate_limit_attempt'];
+export const importTables = ['admin', 'seller_account', 'account_event', 'session', 'general_code', 'company_setting', 'shop_setup', 'option_type', 'option_value', 'listing', 'product',
+  'product_option', 'product_gallery_image', 'order_sequence', 'shop_order', 'delivery', 'order_item', 'order_event', 'order_note', 'product_event',
+  'checkout_idempotency', 'rate_limit_attempt', 'integration_connection', 'integration_audit', 'webhook_receipt', 'message_outbox', 'message_inbound',
+  'oauth_client', 'oauth_authorization_request', 'oauth_grant', 'oauth_authorization_code', 'oauth_token', 'mcp_audit', 'ai_setting', 'ai_usage', 'ai_suggestion_audit'];
+
+// QR device identity, sealed peers and reply intents must not reactivate after a restore.
+// Keep the fresh OFF/IDLE session; do not import auth, QR material or dependent history.
+export const excludedImportTables = ['whatsapp_qr_session', 'whatsapp_qr_auth', 'message_peer_suppression', 'message_thread', 'message_thread_message'];
 
 export function rowsDigest(rows) {
   const normalized = rows.map(row => Object.fromEntries(Object.keys(row).sort().map(key =>
@@ -17,10 +22,18 @@ export async function importSqlite(source, target) {
   if (source.dialect !== 'sqlite' || target.dialect !== 'postgres') throw new Error('Expected SQLite source and PostgreSQL target.');
   if (await source.schemaVersion() !== await target.schemaVersion()) throw new Error('Schema versions do not match.');
   return target.transaction(async () => {
-    const defaults = new Set(['company_setting', 'shop_setup', 'order_sequence']);
+    const defaults = new Set(['company_setting', 'shop_setup', 'order_sequence', 'ai_setting']);
     for (const table of importTables) {
       const rows = await target.all(`SELECT * FROM ${table}`);
       if ((!defaults.has(table) && rows.length) || (defaults.has(table) && rows.length !== 1)) throw new Error('Import destination must be a fresh baseline.');
+    }
+    const qr = await target.get('SELECT * FROM whatsapp_qr_session WHERE id = 1');
+    if (!qr || qr.desired !== 'OFF' || qr.state !== 'IDLE' || qr.generation !== 1 || qr.auth_version !== 0 ||
+      qr.revision !== 1 || qr.qr_text !== null || qr.peer_key_sealed !== null || qr.lease_owner !== null) {
+      throw new Error('Import destination must have a fresh QR session.');
+    }
+    for (const table of excludedImportTables.filter(table => table !== 'whatsapp_qr_session')) {
+      if (await target.get(`SELECT 1 AS found FROM ${table} LIMIT 1`)) throw new Error('Import destination must have no QR history or auth.');
     }
     const setting = await target.get('SELECT mode FROM shop_setup WHERE id = 1');
     const sequence = await target.get('SELECT value FROM order_sequence WHERE id = 1');
