@@ -527,3 +527,18 @@ handset acceptance remain owner-device gates.
 Set `WHATSAPP_QR_BINDINGS_FILE=/run/secrets/whatsapp_qr_bindings` in runtime.env
 for manifest mode (mandatory for slot 1). Empty preserves legacy slot-0-only
 configuration; the manifest remains mounted read-only either way.
+
+
+### Schema 29 release record (2026-11-02, AI Studio)
+
+Manual release by `release29.py` (kept with the operator notes), update timer stopped for the duration. Order that worked, with every step checked and a rollback defined:
+
+1. Preconditions: timer inactive, no pending deployment, main head CI-approved with published images, `src/db.js` schema 29, live schema 28.
+2. Fresh private backup of every database (`backup.sh` now dumps each non-template database, including `platform`), restore-tested per database into an isolated PostgreSQL 16 with matching per-table row counts, plus a `pg_dumpall` copy under `platform-rollback/schema29/`.
+3. Stage the candidate release (images by digest), fetch `scripts/upgrade-database.mjs` from the exact commit and verify its git blob hash (the script is not in the backend image), and check the candidate image reports schema 29.
+4. Stop backend and frontend (about two minutes of downtime), run the migration in a one-shot candidate container on `online-shopping-gcp_private` with the owner password read-only; require `{"version":29}` and exit 0, otherwise restart the old stack.
+5. Verify in SQL: schema 29, four `ai_studio_*` tables, application role privileges.
+6. Activate and health-check the candidate; on failure drop the four new tables, set the schema back to 28 and re-activate the old images (valid because the tables are new and empty).
+7. Save the accepted release with no image-only rollback target, restart the timer; the next poll reported `deployed`.
+
+The same migration was rehearsed first on a restore of the live database (28 to 29, grants, idempotent). Tenant databases did not need upgrading (none existed).

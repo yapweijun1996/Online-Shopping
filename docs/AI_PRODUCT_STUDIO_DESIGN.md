@@ -1,6 +1,6 @@
 # AI Product Studio: per-seller OpenAI key, photo to draft product
 
-Status: DESIGN, not implemented. Owner decisions (2026-11-02): provider OpenAI; key stored encrypted in the shop database; version 1 stops at drafts.
+Status: IMPLEMENTED and released on the GCP host on 2026-11-02 (schema 29, main `f1b824f`). Not yet accepted with a real OpenAI key: the owner does that with one fictional product. Owner decisions (2026-11-02): provider OpenAI; key stored encrypted in the shop database; version 1 stops at drafts.
 
 ## Goal
 
@@ -62,6 +62,17 @@ The new tables raise the schema from 28 to 29. On the GCP deployment the automat
 ## Out of scope for version 1
 
 Auto-publish, bulk photo batches, price suggestions, Anthropic provider, WhatsApp-triggered generation, background queue worker.
+
+## As built (differences from the plan above)
+
+- **Images only for unpublished products.** A generated image is added to the product gallery, which shoppers can see, so the server refuses to generate for a product (or a listing with any published sibling) that is published. The seller unpublishes, generates, reviews, and publishes again.
+- **Calls are reserved before they are made.** The daily cap check and the reservation are one transaction (PostgreSQL also takes its global write lock), so concurrent requests cannot pass the cap. Refused, unreadable and timed-out answers count as possibly billed; failures known not to be billed (key rejected, request rejected, rate limited, provider unavailable) are released. A row left PENDING by a crash counts until the day ends.
+- **One style per request.** The browser runs the styles one after another; a timeout, cap, rejected key, published product or full gallery stops the batch.
+- **Review before save.** The image is checked by the advisory review first, then the gallery image and its AI-generated record are saved in one transaction.
+- **Provenance** is kept in `ai_studio_image` (style, verdict, issues); the seller page shows an AI-generated label and the verdict.
+- **Sizes and format.** WebP at quality 70; 1024x1280, 1024x1024 (flat lay) and 1536x864 (billboard). A result over the gallery limit of 512 KB is rejected after being charged and the seller is told. **Not yet measured with real provider output.**
+- **Models** are overridable defaults (`gpt-6-astra` for reading and review, `gpt-image-2.5-sunburst` for edits), read from the OpenAI documentation on 2026-11-02. OpenAI may require organization verification for the GPT Image models.
+- **Independent review.** Each step was reviewed read-only by a second agent (Codex, gpt-6.1-terra). Findings fixed: error and timeout handling in the body read, import freshness check, concurrent key saves and revision reuse, cap race, unbilled-looking billable answers, live galleries, wrong provenance under concurrency, charge before a variant refusal, and eight page issues (batch continuing after logout, double submit, key left in the field, stale photo, repeat save, lost currency).
 
 ## Task breakdown
 
