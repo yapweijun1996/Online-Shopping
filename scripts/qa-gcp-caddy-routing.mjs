@@ -83,6 +83,8 @@ try {
     assert.ok(file, 'Existing demo JPEG required');
     await check('shop', `/demo-assets/DEMO-001/${file}`, 200);
     for (const path of ['/seller/', '/platform/', '/api/v1/platform/x', '/api/v1/seller/session', '/demo', '/demo/x', '/api/v1/demo/x']) await check('shop', path, 404);
+    for (const path of ['/seller/style.css', '/seller/commerce.css']) await check('shop', path, 200, {}, r => assert.match(r.headers['content-type'], /^text\/css/));
+    for (const path of ['/seller/app.js', '/seller/style.css/x', '/seller/index.html']) await check('shop', path, 404);
   }));
   await group('Setup host / method / query', () => measured(async () => {
     for (const [path, method] of [['/setup/', 'GET'], ['/api/v1/setup/status', 'GET'], ['/api/v1/setup/claim', 'POST']]) {
