@@ -1,4 +1,7 @@
 import { getAiSettings, updateAiSettings } from './ai/settings.js';
+import { keyStatus, saveKey, deleteKey } from './ai-studio/credential.js';
+import { getStudioSetting, updateStudioSetting, callsToday } from './ai-studio/usage.js';
+import { createOpenAiStudioProvider } from './ai-studio/provider.js';
 import { createDemoSandbox } from './demo-sandbox.js';
 import { createQrSellerApi } from './whatsapp-qr/seller-api.js';
 import { createAnthropicProvider } from './ai/provider.js';
@@ -72,7 +75,7 @@ function requireCsrf(request, session) {
  * the client address it trusts and, optionally, a handler for non-API paths.
  */
 /* Routes for one tenant (one shop, one store). Built once per tenant by createApi. */
-async function createTenantApi({ store, config, tenantId, serveStatic = null, whatsappTransport = createWhatsAppTransport(), aiProvider, aiFetchImpl }) {
+async function createTenantApi({ store, config, tenantId, serveStatic = null, whatsappTransport = createWhatsAppTransport(), aiProvider, aiFetchImpl, studioProvider }) {
   const demoEnabled = config.shopMode === 'public-demo' && (await getShopSetup(store)).mode === 'demo';
   // Explicit opt-in: passwordless seller sign-in for a sample site. Never enable it for a real tenant.
   const quickLogin = demoEnabled || config.sellerQuickLogin === true;
@@ -392,6 +395,29 @@ async function createTenantApi({ store, config, tenantId, serveStatic = null, wh
       requireCsrf(request, session);
       return json(200, { available: true, ...await updateAiSettings(store, await readJson(request), account.username) }, { 'Cache-Control': 'no-store' });
     }
+    if (pathname === '/api/v1/seller/ai-studio' && method === 'GET') {
+      allow('catalog.write');
+      const status = await keyStatus(store);
+      const setting = await getStudioSetting(store);
+      const owner = account.role === 'OWNER';
+      return json(200, { available: Boolean(secretBox), configured: status.configured, provider: status.provider,
+        dailyCallCap: setting.dailyCallCap, usedToday: await callsToday(store),
+        ...(owner ? { last4: status.last4 ?? null, keyRevision: status.revision, settingRevision: setting.revision } : {}) }, { 'Cache-Control': 'no-store' });
+    }
+    if (pathname === '/api/v1/seller/ai-studio/key' && (method === 'PUT' || method === 'DELETE')) {
+      allow('ai.settings');
+      requireOrigin(request, expectedOrigin);
+      requireCsrf(request, session);
+      if (method === 'DELETE') return json(200, await deleteKey(store, await readJson(request)), { 'Cache-Control': 'no-store' });
+      const status = await saveKey(store, secretBox, tenantId, await readJson(request), account.username, (apiKey) => studioProvider(apiKey).validateKey());
+      return json(200, status, { 'Cache-Control': 'no-store' });
+    }
+    if (pathname === '/api/v1/seller/ai-studio/settings' && method === 'PATCH') {
+      allow('ai.settings');
+      requireOrigin(request, expectedOrigin);
+      requireCsrf(request, session);
+      return json(200, await updateStudioSetting(store, await readJson(request)), { 'Cache-Control': 'no-store' });
+    }
     if (method === 'GET' && pathname === '/api/v1/seller/company-settings') {
       return json(200, await getCompanySettings(store));
     }
@@ -585,12 +611,12 @@ async function createTenantApi({ store, config, tenantId, serveStatic = null, wh
  * resolved to a tenant first; an unknown tenant is 404 and a suspended one 503 without touching any database.
  * Every tenant gets its own route table (limiters, secret box, quick sign-in decision), built on first use.
  */
-export async function createApi({ store, config, registry = null, platformHandler = null, setupHandler = null, serveStatic = null, whatsappTransport = createWhatsAppTransport(), aiProvider, aiFetchImpl }) {
+export async function createApi({ store, config, registry = null, platformHandler = null, setupHandler = null, serveStatic = null, whatsappTransport = createWhatsAppTransport(), aiProvider, aiFetchImpl, studioProvider = (apiKey) => createOpenAiStudioProvider({ apiKey }) }) {
   const tenants = registry ?? singleTenantRegistry({ store, config });
   const handlers = new WeakMap();
   const handlerFor = (tenant) => {
     if (!handlers.has(tenant)) {
-      handlers.set(tenant, createTenantApi({ store: tenant.store, config: tenant.config, tenantId: tenant.id, serveStatic, whatsappTransport, aiProvider, aiFetchImpl })
+      handlers.set(tenant, createTenantApi({ store: tenant.store, config: tenant.config, tenantId: tenant.id, serveStatic, whatsappTransport, aiProvider, aiFetchImpl, studioProvider })
         .catch((error) => { handlers.delete(tenant); throw error; }));
     }
     return handlers.get(tenant);

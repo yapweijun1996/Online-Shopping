@@ -1,4 +1,5 @@
 import { migrateAi } from '../ai/schema.js';
+import { migrateAiStudio } from '../ai-studio/schema.js';
 import { migrateWhatsAppQr } from '../whatsapp-qr/schema.js';
 import { migrateSenderSettings } from '../sender-settings.js';
 import { randomUUID } from 'node:crypto';
@@ -16,9 +17,14 @@ const legacyApplicationGrant = `current_database() !~ '^t_[a-z0-9]{3,30}_[0-9a-f
 // Called only by an explicit operator/test opt-in, inside the store-owned transaction.
 export async function upgradePostgres(store, version) {
   await migrateAi(store);
+  await migrateAiStudio(store);
   await store.exec(`DO $$ BEGIN IF ${legacyApplicationGrant} THEN
-    GRANT SELECT, INSERT, UPDATE, DELETE ON ai_setting, ai_usage, ai_suggestion_audit TO online_shopping_app;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ai_setting, ai_usage, ai_suggestion_audit, ai_studio_credential, ai_studio_setting, ai_studio_usage TO online_shopping_app;
     END IF; END $$;`);
+  if (version === 28) {
+    await store.setSchemaVersion(SCHEMA_VERSION);
+    return;
+  }
   if (version === 27) {
     await store.setSchemaVersion(SCHEMA_VERSION);
     return;
