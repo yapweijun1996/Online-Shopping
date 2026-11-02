@@ -2,6 +2,7 @@ import { getAiSettings, updateAiSettings } from './ai/settings.js';
 import { keyStatus, saveKey, deleteKey } from './ai-studio/credential.js';
 import { getStudioSetting, updateStudioSetting, callsToday } from './ai-studio/usage.js';
 import { createOpenAiStudioProvider } from './ai-studio/provider.js';
+import { analyzePhoto, generateStyleImage, listStudioImages } from './ai-studio/jobs.js';
 import { createDemoSandbox } from './demo-sandbox.js';
 import { createQrSellerApi } from './whatsapp-qr/seller-api.js';
 import { createAnthropicProvider } from './ai/provider.js';
@@ -88,6 +89,7 @@ async function createTenantApi({ store, config, tenantId, serveStatic = null, wh
   const demoLoginLimiter = new SqlLimiter(store, 'demo-login', { limit: 30, windowMs: LIMIT_WINDOW_MS });
   const orderStatusLimiter = new SqlLimiter(store, 'order-status', { limit: 30, windowMs: LIMIT_WINDOW_MS });
   const webhookLimiter = new SqlLimiter(store, 'whatsapp-webhook', { limit: 600, windowMs: LIMIT_WINDOW_MS });
+  const studioLimiter = new SqlLimiter(store, 'ai-studio', { limit: 60, windowMs: LIMIT_WINDOW_MS });
   const connectionLimiter = new SqlLimiter(store, 'integration-connect', { limit: 10, windowMs: LIMIT_WINDOW_MS });
   const secretBox = config.integrationKeys ? createSecretBox(config.integrationKeys) : null;
   const basePath = config.basePath || '';
@@ -411,6 +413,27 @@ async function createTenantApi({ store, config, tenantId, serveStatic = null, wh
       if (method === 'DELETE') return json(200, await deleteKey(store, await readJson(request)), { 'Cache-Control': 'no-store' });
       const status = await saveKey(store, secretBox, tenantId, await readJson(request), account.username, (apiKey) => studioProvider(apiKey).validateKey());
       return json(200, status, { 'Cache-Control': 'no-store' });
+    }
+    if (pathname === '/api/v1/seller/ai-studio/analyze' && method === 'POST') {
+      requireOrigin(request, expectedOrigin);
+      requireCsrf(request, session);
+      allow('catalog.write');
+      if (!await studioLimiter.attempt(account.username)) throw new ApiError(429, 'RATE_LIMITED', 'Too many AI requests. Try again later.');
+      const body = await readJson(request, 900_000);
+      return json(200, await analyzePhoto({ store, secretBox, shopId: tenantId, studioProvider, actor: account.username, body }), { 'Cache-Control': 'no-store' });
+    }
+    const studioImages = /^\/api\/v1\/seller\/ai-studio\/products\/([0-9a-f-]{36})\/images$/.exec(pathname);
+    if (studioImages && method === 'GET') {
+      allow('catalog.write');
+      return json(200, { items: await listStudioImages(store, studioImages[1]) }, { 'Cache-Control': 'no-store' });
+    }
+    if (studioImages && method === 'POST') {
+      requireOrigin(request, expectedOrigin);
+      requireCsrf(request, session);
+      allow('catalog.write');
+      if (!await studioLimiter.attempt(account.username)) throw new ApiError(429, 'RATE_LIMITED', 'Too many AI requests. Try again later.');
+      const result = await generateStyleImage({ store, secretBox, shopId: tenantId, studioProvider, actor: account.username, productId: studioImages[1], body: await readJson(request), mode: config.shopMode });
+      return json(201, result, { 'Cache-Control': 'no-store' });
     }
     if (pathname === '/api/v1/seller/ai-studio/settings' && method === 'PATCH') {
       allow('ai.settings');

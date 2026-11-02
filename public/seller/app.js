@@ -19,6 +19,7 @@ import { mountMessages, startMessageBadge } from './messages.js';
 import { mountProducts } from './products.js';
 import { mountOrders } from './orders.js';
 import { mountCategories, mountCompanySettings } from './settings.js';
+import { mountAiStudio } from './ai-studio.js';
 import { mountOptions } from './options.js';
 import { mountTabIcon } from '../shared/tab-icon.js';
 
@@ -64,9 +65,9 @@ let updateView = null;
 let updateIdentity = '';
 const sessionHintKey = storageKey('online-shopping-seller-session-hint');
 mountTabIcon(window.sellerPalette);
-const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'confirmations', 'audit', 'messages', 'categories', 'options', 'company', 'team']);
+const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'confirmations', 'audit', 'messages', 'categories', 'options', 'company', 'team', 'aistudio']);
 // Pages a role cannot use are hidden and their addresses fall back to the dashboard. The server refuses them anyway.
-const VIEW_CAPABILITY = { products: 'catalog.write', categories: 'catalog.write', options: 'catalog.write', company: 'settings.write', team: 'staff.manage' };
+const VIEW_CAPABILITY = { aistudio: 'catalog.write', products: 'catalog.write', categories: 'catalog.write', options: 'catalog.write', company: 'settings.write', team: 'staff.manage' };
 let capabilities = [];
 const can = (capability) => capabilities.includes(capability);
 const allowedRoute = (route) => { const view = route.split('/')[0], needed = VIEW_CAPABILITY[view]; return (!needed || can(needed)) && !(view === 'team' && quickLogin); };
@@ -90,7 +91,7 @@ function applyRoute() {
 }
 
 function activePage() {
-  return currentView === 'messages' ? messagesPage : currentView === 'products' ? productsPage : currentView === 'categories' || currentView === 'options' || currentView === 'company' || currentView === 'audit' || currentView === 'team' ? settingsPage : currentView === 'orders' || currentView === 'confirmations' ? ordersPage : null;
+  return currentView === 'messages' ? messagesPage : currentView === 'products' ? productsPage : currentView === 'categories' || currentView === 'options' || currentView === 'company' || currentView === 'audit' || currentView === 'team' || currentView === 'aistudio' ? settingsPage : currentView === 'orders' || currentView === 'confirmations' ? ordersPage : null;
 }
 
 function hasUnsavedChanges() { return activePage()?.hasUnsavedChanges?.() === true; }
@@ -274,7 +275,7 @@ function renderView() {
   });
   const titleKey = currentView === 'products' && currentRoute !== 'products'
     ? currentRoute.startsWith('products/new') ? 'addProduct' : 'editProduct'
-    : { dashboard: 'dashboard', products: 'products', orders: 'salesOrders', confirmations: 'orderReview', audit: 'auditLog', messages: 'msgHeading', team: 'teamNav', categories: 'categoryCodes', options: 'optionsNav', company: 'companySettings' }[currentView];
+    : { dashboard: 'dashboard', products: 'products', orders: 'salesOrders', confirmations: 'orderReview', audit: 'auditLog', messages: 'msgHeading', team: 'teamNav', aistudio: 'aiStudioNav', categories: 'categoryCodes', options: 'optionsNav', company: 'companySettings' }[currentView];
   byId('page-title').dataset.i18n = titleKey;
   byId('page-title').textContent = t(titleKey);
   const content = byId('workspace-content');
@@ -326,6 +327,10 @@ function renderView() {
   if (currentView === 'messages') {
     settingsPage = null;
     messagesPage = mountMessages(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError'), canAct: can('messages.act') });
+    return;
+  }
+  if (currentView === 'aistudio') {
+    settingsPage = mountAiStudio(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError'), role, onNavigate: navigate, initialProductId: currentRoute.split('/')[1] || null });
     return;
   }
   if (currentView === 'team') {

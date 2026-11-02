@@ -106,3 +106,19 @@ test('failures while reading the body are sanitized and edits stay ambiguous', a
   const analyzeReset = await provider(leaky).api.analyze({ image, categories }).catch((e) => e);
   assert.equal(analyzeReset.code, 'STUDIO_BAD_RESPONSE'); assert.notEqual(analyzeReset.ambiguous, true);
 });
+
+test('review compares both photos with a strict verdict schema and returns plain issues', async () => {
+  const { calls, api } = provider(() => json(message(JSON.stringify({ verdict: 'WARN', issues: [' Logo <b>text</b> differs ', '', 'Strap is missing'] }))));
+  const result = await api.review({ source: image, result: { mime: 'image/webp', data: Buffer.from('RIFFxxxxWEBPd') } });
+  assert.deepEqual(result, { verdict: 'WARN', issues: ['Logo b text /b differs', 'Strap is missing'] });
+  const body = JSON.parse(calls[0].init.body);
+  assert.equal(body.store, false);
+  assert.deepEqual(body.text.format.schema.properties.verdict.enum, ['PASS', 'WARN', 'FAIL']);
+  assert.equal(body.input[0].content.filter((part) => part.type === 'input_image').length, 2);
+  const pass = await provider(() => json(message(JSON.stringify({ verdict: 'PASS', issues: ['ignored'] })))).api.review({ source: image, result: image });
+  assert.deepEqual(pass, { verdict: 'PASS', issues: [] });
+  for (const bad of [{ verdict: 'GREAT', issues: [] }, 'x', null]) {
+    await assert.rejects(provider(() => json(message(JSON.stringify(bad)))).api.review({ source: image, result: image }), { code: 'STUDIO_BAD_RESPONSE' });
+  }
+  await assert.rejects(provider(() => json({ status: 'completed', output: [{ type: 'message', content: [{ type: 'refusal', refusal: 'no' }] }] })).api.review({ source: image, result: image }), { code: 'STUDIO_REFUSED' });
+});

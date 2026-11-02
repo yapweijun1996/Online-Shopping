@@ -19,9 +19,16 @@ CREATE TABLE IF NOT EXISTS ai_studio_usage (
  id TEXT PRIMARY KEY, day TEXT NOT NULL,
  kind TEXT NOT NULL CHECK (kind IN ('ANALYZE','IMAGE','REVIEW')),
  actor TEXT NOT NULL, product_id TEXT,
- outcome TEXT NOT NULL CHECK (outcome IN ('OK','ERROR','AMBIGUOUS')), created_at TEXT NOT NULL
+ outcome TEXT NOT NULL CHECK (outcome IN ('PENDING','OK','ERROR','AMBIGUOUS')), created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ai_studio_usage_day ON ai_studio_usage(day);
+CREATE TABLE IF NOT EXISTS ai_studio_image (
+ id TEXT PRIMARY KEY, product_id TEXT NOT NULL, gallery_image_id TEXT NOT NULL,
+ style TEXT NOT NULL CHECK (style IN ('studio','hero','lifestyle','flat_lay','macro','ugc','billboard')),
+ verdict TEXT CHECK (verdict IS NULL OR verdict IN ('PASS','WARN','FAIL')), issues_json TEXT NOT NULL DEFAULT '[]',
+ created_by TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ai_studio_image_product ON ai_studio_image(product_id);
 `;
 }
 
@@ -29,4 +36,4 @@ export async function migrateAiStudio(store) {
   await store.exec(aiStudioSchema(store.dialect));
 }
 
-export const AI_STUDIO_TABLES = ['ai_studio_credential', 'ai_studio_setting', 'ai_studio_usage'];
+export const AI_STUDIO_TABLES = ['ai_studio_credential', 'ai_studio_setting', 'ai_studio_usage', 'ai_studio_image'];

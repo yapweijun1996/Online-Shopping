@@ -19,7 +19,7 @@ export async function upgradePostgres(store, version) {
   await migrateAi(store);
   await migrateAiStudio(store);
   await store.exec(`DO $$ BEGIN IF ${legacyApplicationGrant} THEN
-    GRANT SELECT, INSERT, UPDATE, DELETE ON ai_setting, ai_usage, ai_suggestion_audit, ai_studio_credential, ai_studio_setting, ai_studio_usage TO online_shopping_app;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ai_setting, ai_usage, ai_suggestion_audit, ai_studio_credential, ai_studio_setting, ai_studio_usage, ai_studio_image TO online_shopping_app;
     END IF; END $$;`);
   if (version === 28) {
     await store.setSchemaVersion(SCHEMA_VERSION);

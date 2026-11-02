@@ -21,23 +21,40 @@ export async function updateStudioSetting(store, input) {
   return getStudioSetting(store);
 }
 
+const COUNTED = "('PENDING', 'OK', 'AMBIGUOUS')";
+
+/* Calls that are in flight, billed, or may have been billed. Failures known not to be billed are released. */
 export async function callsToday(store, now = new Date()) {
-  const row = await store.get('SELECT COUNT(*) AS n FROM ai_studio_usage WHERE day = ?', new Date(now).toISOString().slice(0, 10));
+  const row = await store.get(`SELECT COUNT(*) AS n FROM ai_studio_usage WHERE day = ? AND outcome IN ${COUNTED}`, new Date(now).toISOString().slice(0, 10));
   return Number(row.n);
 }
 
-/* Throws 429 when `planned` more billable calls would pass today's cap. */
-export async function requireBudget(store, planned, now = new Date()) {
-  const [{ dailyCallCap }, used] = await Promise.all([getStudioSetting(store), callsToday(store, now)]);
-  if (used + planned > dailyCallCap) {
-    throw Object.assign(new ApiError(429, 'AI_STUDIO_CAP', `The daily limit of ${dailyCallCap} AI calls would be exceeded.`), { used, cap: dailyCallCap });
-  }
-  return { used, cap: dailyCallCap };
+/*
+ * Checks the daily cap and reserves the planned calls in one transaction, so concurrent requests cannot both pass.
+ * Reserved rows count immediately; settle() later marks each as OK, AMBIGUOUS (may be billed) or ERROR (released).
+ * A row left PENDING by a crash keeps counting until the day ends, which errs on the side of the seller's budget.
+ */
+export async function reserve(store, plan, actor, productId = null, now = new Date()) {
+  return store.transaction(async () => {
+    const [{ dailyCallCap }, used] = await Promise.all([getStudioSetting(store), callsToday(store, now)]);
+    if (used + plan.length > dailyCallCap) {
+      throw Object.assign(new ApiError(429, 'AI_STUDIO_CAP', `The daily limit of ${dailyCallCap} AI calls would be exceeded.`), { used, cap: dailyCallCap });
+    }
+    const at = new Date(now).toISOString(), ids = [];
+    for (const kind of plan) {
+      if (!['ANALYZE', 'IMAGE', 'REVIEW'].includes(kind)) throw new FieldError('usage', 'Enter a valid usage record.');
+      const id = randomUUID(); ids.push(id);
+      await store.run("INSERT INTO ai_studio_usage (id, day, kind, actor, product_id, outcome, created_at) VALUES (?, ?, ?, ?, ?, 'PENDING', ?)",
+        id, at.slice(0, 10), kind, String(actor).slice(0, 300), productId, at);
+    }
+    return ids;
+  });
 }
 
-export async function recordCall(store, { kind, actor, productId = null, outcome, now = new Date() }) {
-  if (!['ANALYZE', 'IMAGE', 'REVIEW'].includes(kind) || !['OK', 'ERROR', 'AMBIGUOUS'].includes(outcome)) throw new FieldError('usage', 'Enter a valid usage record.');
-  const at = new Date(now).toISOString();
-  await store.run('INSERT INTO ai_studio_usage (id, day, kind, actor, product_id, outcome, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    randomUUID(), at.slice(0, 10), kind, String(actor).slice(0, 300), productId, outcome, at);
+export async function settle(store, id, outcome) {
+  if (!['OK', 'AMBIGUOUS', 'ERROR'].includes(outcome)) throw new FieldError('usage', 'Enter a valid usage outcome.');
+  await store.run("UPDATE ai_studio_usage SET outcome = ? WHERE id = ? AND outcome = 'PENDING'", outcome, id);
 }
+
+/* A provider failure counts as billed when the request may have been processed: timeouts, unreadable or refused answers. */
+export const failureOutcome = (error) => ['STUDIO_TIMEOUT', 'STUDIO_BAD_RESPONSE', 'STUDIO_REFUSED'].includes(error?.code) || error?.ambiguous === true ? 'AMBIGUOUS' : 'ERROR';
