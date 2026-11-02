@@ -671,6 +671,7 @@
 
 /* AI Studio */
 .ai-studio { display: grid; gap: 16px; max-width: 760px; }
+.ai-studio [hidden] { display: none !important; }
 .ai-studio-card { display: grid; gap: 12px; }
 .ai-studio-note { margin: 0; color: var(--ui-muted, #5f6b66); font-size: 14px; line-height: 1.5; }
 .ai-studio-flag { padding: 8px 12px; border-left: 4px solid var(--ui-accent, #24553e); background: var(--ui-surface-2, #eef3ef); border-radius: 8px; color: var(--ui-text, inherit); }

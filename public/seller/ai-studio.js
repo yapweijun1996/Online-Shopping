@@ -53,19 +53,19 @@ export function priceToMinor(text) {
 export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigate = () => {}, initialProductId = null }) {
   const owner = role === 'OWNER';
   const identity = csrfToken();
-  const live = () => root.isConnected && identity === csrfToken();
+  const live = () => !disposed && root.isConnected && identity === csrfToken();
   const refreshers = [];
   const state = { available: false, configured: false, last4: null, usedToday: 0, dailyCallCap: 20, keyRevision: 0, settingRevision: 1 };
   let chosenProduct = null, photoData = null, currency = 'MYR', categories = [];
-  let busy = 0, dirty = false;
+  let busy = 0, dirty = false, running = false, disposed = false, photoToken = 0;
   function text(tag, key, className, values) {
     const node = document.createElement(tag); if (className) node.className = className;
     const paint = () => { node.textContent = studioText(key, values?.() ?? {}); };
     paint(); refreshers.push(paint); return node;
   }
-  function field(key, input, className = '') {
+  function field(key, input, className = '', values) {
     const label = document.createElement('label'); label.className = `ai-studio-field ${className}`.trim();
-    label.append(text('span', key), input); return label;
+    label.append(text('span', key, undefined, values), input); return label;
   }
   function button(key, className = 'secondary-button', icon) {
     const node = document.createElement('button'); node.type = 'button'; node.className = className;
@@ -138,7 +138,7 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
   inputs.category.required = true; inputs.sku.maxLength = 40; inputs.sku.required = true; inputs.sku.autocapitalize = 'characters'; inputs.sku.pattern = '[A-Za-z0-9][A-Za-z0-9._\\-]*';
   inputs.price.inputMode = 'decimal'; inputs.price.required = true; inputs.price.pattern = '\\d{1,7}(\\.\\d{1,2})?';
   for (const [name, input] of Object.entries(inputs)) { input.name = name; input.addEventListener('input', () => { dirty = true; input.removeAttribute('aria-invalid'); }); }
-  const priceLabel = field('fPrice', inputs.price); const priceSpan = priceLabel.querySelector('span');
+  const priceLabel = field('fPrice', inputs.price, '', () => ({ currency })); const priceSpan = priceLabel.querySelector('span');
   const saveDraft = button('saveDraft', 'primary-button'); saveDraft.type = 'submit';
   const draftStatus = liveLine();
   draftForm.append(text('p', 'suggestion', 'ai-studio-note ai-studio-flag'), field('fName', inputs.name), field('fDesc', inputs.description), field('fCategory', inputs.category), field('fSku', inputs.sku), priceLabel, saveDraft, draftStatus);
@@ -170,7 +170,7 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
   page.append(intro, unavailable, usageCard, photoCard, genCard);
   root.append(page);
 
-  function paintCost() { cost.textContent = studioText('cost', (() => { const n = styleInputs.filter((input) => input.checked).length; return { n, calls: n * 2, left: Math.max(0, state.dailyCallCap - state.usedToday) }; })()); generate.disabled = !state.configured || !chosenProduct; }
+  function paintCost() { cost.textContent = studioText('cost', (() => { const n = styleInputs.filter((input) => input.checked).length; return { n, calls: n * 2, left: Math.max(0, state.dailyCallCap - state.usedToday) }; })()); generate.disabled = running || !state.configured || !chosenProduct; }
   function paintState() {
     unavailable.hidden = state.available;
     for (const card of [photoCard, genCard]) card.hidden = !state.available || !state.configured;
@@ -195,9 +195,9 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
     const apiKey = keyInput.value.trim();
     if (!/^[A-Za-z0-9_-]{20,200}$/.test(apiKey)) { keyStatus.show('eKeyFormat', {}, true); keyInput.setAttribute('aria-invalid', 'true'); return; }
     saveKey.disabled = true; keyInput.removeAttribute('aria-invalid');
+    keyInput.value = '';   // the key never stays in the page, whatever the outcome
     try {
       const data = await api('PUT', 'ai-studio/key', { apiKey, expectedRevision: state.keyRevision });
-      keyInput.value = '';
       Object.assign(state, { configured: true, last4: data.last4, keyRevision: data.revision });
       keyStatus.show('keyOk'); paintState();
     } catch (error) { keyStatus.show(error.status === 422 ? 'eKeyRejected' : errorKey(error), {}, true); }
@@ -223,23 +223,26 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
   });
 
   photoInput.addEventListener('change', async () => {
+    photoToken += 1; const mine = photoToken;
     photoData = null; draftForm.hidden = true; preview.hidden = true; photoStatus.show(null);
     const [file] = photoInput.files;
     fileName.textContent = file ? file.name : studioText('noFile');
     if (!file) return;
     try {
-      photoData = await shrinkPhoto(file);
-      preview.src = photoData; preview.hidden = false;
-    } catch (error) { photoStatus.show(error.key || 'eFile', {}, true); photoInput.value = ''; fileName.textContent = studioText('noFile'); }
+      const shrunk = await shrinkPhoto(file);
+      if (mine !== photoToken) return;   // a newer photo was chosen meanwhile
+      photoData = shrunk; preview.src = photoData; preview.hidden = false;
+    } catch (error) { if (mine !== photoToken) return; photoStatus.show(error.key || 'eFile', {}, true); photoInput.value = ''; fileName.textContent = studioText('noFile'); }
   });
   readButton.addEventListener('click', async () => {
     if (!live() || readButton.disabled) return;
     if (!photoData) { photoStatus.show('eNoPhoto', {}, true); return; }
     readButton.disabled = true; photoStatus.show('working');
+    const mine = photoToken, sent = photoData;
     try {
       const [suggestion, settings, list] = await Promise.all([api('POST', 'ai-studio/analyze', { imageDataUrl: photoData }),
         api('GET', 'company-settings').catch(() => ({})), api('GET', 'categories').catch(() => ({ items: [] }))]);
-      if (!live()) return;
+      if (!live() || mine !== photoToken || sent !== photoData) return;   // the photo changed while the AI was reading it
       currency = settings.defaultCurrency || 'MYR'; priceSpan.textContent = studioText('fPrice', { currency });
       categories = (list.items || []).filter((item) => item.active);
       inputs.category.replaceChildren(new Option(studioText('chooseCategory'), ''), ...categories.map((item) => new Option(item.label, item.code)));
@@ -258,13 +261,17 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
     try {
       const product = await api('POST', 'products', { sku: inputs.sku.value.trim(), name: inputs.name.value.trim(), description: inputs.description.value.trim(),
         category: inputs.category.value, priceMinor, currency, active: false, imageDataUrl: photoData });
-      dirty = false; draftStatus.show('draftSaved');
+      dirty = false; photoStatus.show('draftSaved');
+      draftForm.hidden = true; photoData = null; photoToken += 1; photoInput.value = ''; preview.hidden = true; fileName.textContent = studioText('noFile');   // no second save of the same suggestion
       choose({ id: product.id, name: product.name, active: false });
       genCard.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
     } catch (error) { draftStatus.show(errorKey(error), {}, true); if (error.field && inputs[error.field]) inputs[error.field].setAttribute('aria-invalid', 'true'); }
     finally { saveDraft.disabled = false; }
   });
 
+  function setGenControls(disabled) {
+    for (const control of [searchInput, searchButton, ...styleInputs, ...hits.querySelectorAll('button')]) control.disabled = disabled;
+  }
   function choose(product) {
     chosenProduct = product; results.replaceChildren(); genStatus.show(product.active ? 'published' : null, {}, product.active);
     chosen.hidden = false; chosen.textContent = studioText('selected', { name: product.name }); styleBox.hidden = false; hits.replaceChildren();
@@ -299,16 +306,19 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
     if (!live() || generate.disabled || !chosenProduct) return;
     const styles = styleInputs.filter((input) => input.checked).map((input) => input.value);
     if (!styles.length) { genStatus.show('ePicked', {}, true); return; }
-    generate.disabled = true; genStatus.show('working'); results.replaceChildren();
+    const target = { ...chosenProduct };   // later clicks cannot redirect a running batch to another product
+    running = true; setGenControls(true); paintCost(); genStatus.show('working'); results.replaceChildren();
     const rows = styles.map(resultRow);
     try {
       for (let index = 0; index < styles.length; index += 1) {
+        if (!live()) break;
         const item = rows[index]; item.setStatus('working');
         try {
-          const made = await api('POST', `ai-studio/products/${chosenProduct.id}/images`, { style: styles[index] });
+          const made = await api('POST', `ai-studio/products/${target.id}/images`, { style: styles[index] });
+          if (!live()) break;
           item.setStatus('done');
           const image = document.createElement('img'); image.className = 'ai-studio-thumb'; image.loading = 'lazy'; image.alt = studioText(`style_${styles[index]}`);
-          image.src = apiUrl(`v1/seller/products/${chosenProduct.id}/gallery/${made.galleryImageId}?size=thumb`);
+          image.src = apiUrl(`v1/seller/products/${target.id}/gallery/${made.galleryImageId}?size=thumb`);
           const badges = document.createElement('p'); badges.className = 'ai-studio-badges';
           const ai = document.createElement('span'); ai.className = 'ai-studio-badge'; ai.textContent = studioText('aiLabel');
           const verdict = document.createElement('span'); verdict.className = `ai-studio-badge verdict-${made.verdict || 'NONE'}`; verdict.textContent = made.verdict ? studioText(`v${made.verdict}`) : studioText('unreviewed');
@@ -320,12 +330,12 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
           if (error.status === 401 || STOPS.has(error.code)) { rows.slice(index + 1).forEach((rest) => rest.row.remove()); break; }
         }
       }
-    } finally { generate.disabled = false; genStatus.show(null); reloadCounts(); }
+    } finally { running = false; if (live()) { setGenControls(false); paintCost(); genStatus.show(null); reloadCounts(); } }
   });
 
   load().then(() => { if (initialProductId && live() && state.configured) api('GET', `products/${initialProductId}`).then((p) => choose({ id: p.id, name: p.name, active: Boolean(p.active) })).catch(() => {}); });
   return {
-    dispose() { page.remove(); },
+    dispose() { disposed = true; page.remove(); },
     refreshLocale() { translate(page); refreshers.forEach((paint) => paint()); if (chosenProduct) chosen.textContent = studioText('selected', { name: chosenProduct.name }); paintState(); },
     hasUnsavedChanges: () => dirty && !draftForm.hidden,
     isBusy: () => busy > 0,
