@@ -662,7 +662,7 @@ export async function ready(store) {
       (await Promise.all(['session', 'product', 'general_code', 'shop_order', 'delivery', 'order_item', 'order_event', 'checkout_idempotency',
         'rate_limit_attempt', 'shop_setup', 'product_gallery_image', 'oauth_client', 'oauth_authorization_request',
         'oauth_grant', 'oauth_authorization_code', 'oauth_token', 'mcp_audit',
-        'whatsapp_qr_session', 'whatsapp_qr_auth', 'message_peer_suppression', 'message_thread', 'message_thread_message', 'ai_setting', 'ai_usage', 'ai_suggestion_audit', 'ai_studio_credential', 'ai_studio_setting', 'ai_studio_usage']
+        'whatsapp_qr_session', 'whatsapp_qr_auth', 'message_peer_suppression', 'message_thread', 'message_thread_message', 'ai_setting', 'ai_usage', 'ai_suggestion_audit', 'ai_studio_credential', 'ai_studio_setting', 'ai_studio_usage', 'ai_studio_image']
         .map(async (table) => Array.isArray(await store.all(`SELECT * FROM ${table} LIMIT 0`))))).every(Boolean);
   } catch {
     return false;

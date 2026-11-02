@@ -317,9 +317,16 @@ CREATE TABLE ai_studio_usage (
  id TEXT PRIMARY KEY, day TEXT NOT NULL,
  kind TEXT NOT NULL CHECK (kind IN ('ANALYZE','IMAGE','REVIEW')),
  actor TEXT NOT NULL, product_id TEXT,
- outcome TEXT NOT NULL CHECK (outcome IN ('OK','ERROR','AMBIGUOUS')), created_at TEXT NOT NULL
+ outcome TEXT NOT NULL CHECK (outcome IN ('PENDING','OK','ERROR','AMBIGUOUS')), created_at TEXT NOT NULL
 );
 CREATE INDEX ai_studio_usage_day ON ai_studio_usage(day);
+CREATE TABLE ai_studio_image (
+ id TEXT PRIMARY KEY, product_id TEXT NOT NULL, gallery_image_id TEXT NOT NULL,
+ style TEXT NOT NULL CHECK (style IN ('studio','hero','lifestyle','flat_lay','macro','ugc','billboard')),
+ verdict TEXT CHECK (verdict IS NULL OR verdict IN ('PASS','WARN','FAIL')), issues_json TEXT NOT NULL DEFAULT '[]',
+ created_by TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE INDEX ai_studio_image_product ON ai_studio_image(product_id);
 INSERT INTO schema_meta VALUES (1, 29);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));

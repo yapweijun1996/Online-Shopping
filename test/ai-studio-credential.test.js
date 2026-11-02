@@ -7,7 +7,7 @@ import { ensureAdmin } from '../src/auth.js';
 import { parseKeyFile } from '../src/secret-box.js';
 import { keyStatus, openKey } from '../src/ai-studio/credential.js';
 import { createSecretBox } from '../src/secret-box.js';
-import { requireBudget, recordCall, callsToday, getStudioSetting } from '../src/ai-studio/usage.js';
+import { reserve, settle, callsToday, getStudioSetting, failureOutcome } from '../src/ai-studio/usage.js';
 
 const ORIGIN = 'https://seller.example.test';
 const KEY = 'sk-fictional-0123456789abcdefghij-WXYZ';
@@ -117,11 +117,23 @@ test('the daily call cap is enforced from the usage ledger', async (t) => {
   assert.equal((await f.request('/api/v1/seller/ai-studio/settings', 'PATCH', { dailyCallCap: 3, expectedRevision: 1 }, f.headers)).status, 409);
   for (const cap of [0, 501, 1.5, '5']) assert.equal((await f.request('/api/v1/seller/ai-studio/settings', 'PATCH', { dailyCallCap: cap, expectedRevision: 2 }, f.headers)).status, 400);
   const day = new Date('2026-11-02T10:00:00Z');
-  await recordCall(f.store, { kind: 'IMAGE', actor: 'a', outcome: 'OK', now: day });
-  await recordCall(f.store, { kind: 'REVIEW', actor: 'a', outcome: 'AMBIGUOUS', now: day });
+  const [image, review] = await reserve(f.store, ['IMAGE', 'REVIEW'], 'a', null, day);
+  assert.equal(await callsToday(f.store, day), 2);              // reserved calls count at once
+  await settle(f.store, image, 'OK'); await settle(f.store, review, 'AMBIGUOUS');
   assert.equal(await callsToday(f.store, day), 2);
-  assert.deepEqual(await requireBudget(f.store, 1, day), { used: 2, cap: 3 });
-  await assert.rejects(requireBudget(f.store, 2, day), { status: 429, code: 'AI_STUDIO_CAP' });
-  assert.deepEqual(await requireBudget(f.store, 3, new Date('2026-11-03T00:00:00Z')), { used: 0, cap: 3 });
+  await assert.rejects(reserve(f.store, ['IMAGE', 'REVIEW'], 'a', null, day), { status: 429, code: 'AI_STUDIO_CAP' });
+  assert.equal(await callsToday(f.store, day), 2);              // a refused reservation leaves nothing behind
+  const [last] = await reserve(f.store, ['ANALYZE'], 'a', null, day);
+  await settle(f.store, last, 'ERROR');                         // known not billed: released
+  assert.equal(await callsToday(f.store, day), 2);
+  await settle(f.store, last, 'OK');                            // a settled row never changes again
+  assert.equal(await callsToday(f.store, day), 2);
+  assert.equal((await reserve(f.store, ['IMAGE', 'REVIEW', 'ANALYZE'], 'a', null, new Date('2026-11-03T00:00:00Z'))).length, 3);
+  assert.deepEqual(['STUDIO_TIMEOUT', 'STUDIO_BAD_RESPONSE', 'STUDIO_REFUSED'].map((code) => failureOutcome({ code })), ['AMBIGUOUS', 'AMBIGUOUS', 'AMBIGUOUS']);
+  assert.deepEqual(['STUDIO_KEY_REJECTED', 'STUDIO_REQUEST_REJECTED', 'STUDIO_RATE_LIMITED', 'STUDIO_UNAVAILABLE'].map((code) => failureOutcome({ code })), ['ERROR', 'ERROR', 'ERROR', 'ERROR']);
+  // Simultaneous reservations cannot both pass: cap 3, three requests of two calls each.
+  const race = await Promise.allSettled([1, 2, 3].map(() => reserve(f.store, ['IMAGE', 'REVIEW'], 'a', null, new Date('2026-11-05T10:00:00Z'))));
+  assert.equal(race.filter((r) => r.status === 'fulfilled').length, 1);
+  assert.equal(await callsToday(f.store, new Date('2026-11-05T10:00:00Z')), 2);
   assert.deepEqual(Object.keys(await f.store.get('SELECT * FROM ai_studio_usage LIMIT 1')).sort(), ['actor', 'created_at', 'day', 'id', 'kind', 'outcome', 'product_id']);
 });

@@ -8,7 +8,7 @@ import { upgradePostgres } from '../src/postgres/upgrade.js';
 import { ensureAdmin } from '../src/auth.js';
 import { createSecretBox, parseKeyFile } from '../src/secret-box.js';
 import { saveKey, keyStatus, openKey } from '../src/ai-studio/credential.js';
-import { getStudioSetting } from '../src/ai-studio/usage.js';
+import { getStudioSetting, reserve, callsToday } from '../src/ai-studio/usage.js';
 
 const base = process.env.SHOP_TEST_DATABASE_URL;
 if (base && (process.env.NODE_ENV !== 'test' || !/test/i.test(new URL(base).pathname))) throw new Error('Use a disposable test database.');
@@ -56,4 +56,14 @@ test('postgres: the sealed key round-trips as bytes and simultaneous saves have 
   assert.equal(winner.last4, status.last4);
   const fresh = await Promise.allSettled([save('EEEE', 0), save('FFFF', 0)]);
   assert.equal(fresh.filter((r) => r.status === 'fulfilled').length, 0);
+});
+
+test('postgres: simultaneous reservations cannot pass the daily cap and PENDING rows count', options, async (t) => {
+  const store = await database(t);
+  await store.run('UPDATE ai_studio_setting SET daily_call_cap = 4 WHERE id = 1');
+  const day = new Date('2026-11-05T10:00:00Z');
+  const race = await Promise.allSettled(Array.from({ length: 6 }, () => reserve(store, ['IMAGE', 'REVIEW'], 'fixture', null, day)));
+  assert.equal(race.filter((r) => r.status === 'fulfilled').length, 2);
+  assert.ok(race.filter((r) => r.status === 'rejected').every((r) => r.reason.code === 'AI_STUDIO_CAP'));
+  assert.equal(await callsToday(store, day), 4);
 });
