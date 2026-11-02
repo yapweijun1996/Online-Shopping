@@ -31,6 +31,17 @@ A seller uploads one product photo. The server uses **that shop's own OpenAI API
 - **No automatic retry of an ambiguous (timeout) image call**, because it may already have been billed. The seller retries explicitly.
 - Rate limits reuse the existing seller limiter. Audit rows record actor and action, never prompts, images or the key.
 
+## Agent review (automatic QA of generated images)
+
+Owner decision (2026-11-02): an agent should review the output itself before a person looks at it.
+
+- After each generated image the server makes one more vision call with the **same seller key**: it receives the original photo and the generated image and returns a strict JSON verdict `{ verdict: pass | warn | fail, issues[] }` covering product shape, colour, logo and label text legibility, invented brand marks, extra or missing objects and obvious artefacts.
+- The verdict is **advisory**. It never approves, publishes or deletes anything; a warn or fail only shows a badge and the reasons next to the image. A person still decides. A model checking a model cannot prove label fidelity (open gap BUG-007 in PWA-AI-Product-Image-Studio-BYOK), so the original photo stays first in the gallery.
+- It counts as a billable call. The pre-run summary shows "N images + N reviews" and the daily cap counts both.
+- A failed or ambiguous review leaves the image unreviewed; it does not block the image.
+- Codex subscription OAuth, OMP and Pi are **not** used at runtime. A subscription login belongs to one person's account; using it on a server for many sellers mixes accounts, usage and billing. Runtime uses each seller's own API key. A later optional reviewer provider (for example a host-level key) can be added behind the same interface.
+- During development the same idea applies to code: every step gets an independent read-only review by a second agent (Codex today; OMP/Pi once their OAuth login is done on the VM) and a person-visible result before merge.
+
 ## Data and limits
 
 - Gallery and main images are limited to 512 KB each (`src/product-image.js`). Generated images must be requested as compressed WebP/JPEG at a size that fits; a result over the limit is rejected as a failed job, not silently truncated.
