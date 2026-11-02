@@ -72,6 +72,12 @@ http://{$SHOP_HOST} {
 			header X-Robots-Tag noindex
 			import proxy
 		}
+		# setup.css imports these two seller stylesheets; nothing else under /seller is served here.
+		@setup_styles path /seller/style.css /seller/commerce.css
+		handle @setup_styles {
+			root * /srv/public
+			file_server
+		}
 		@private {
 			path /setup* /api/v1/setup* /seller* /api/v1/seller* /demo /demo/* /api/v1/demo* /platform* /api/v1/platform* /s/*
 		}
