@@ -1,4 +1,4 @@
--- PostgreSQL baseline matching SQLite schema 28. Timestamps stay ISO text to preserve API snapshots.
+-- PostgreSQL baseline matching SQLite schema 29. Timestamps stay ISO text to preserve API snapshots.
 CREATE TABLE admin (
         id BIGINT PRIMARY KEY CHECK (id = 1),
         username TEXT NOT NULL UNIQUE,
@@ -300,7 +300,27 @@ CREATE TABLE product_event (
   created_at TEXT NOT NULL
 );
 CREATE INDEX product_event_product ON product_event(product_id, created_at);
-INSERT INTO schema_meta VALUES (1, 28);
+CREATE TABLE ai_studio_credential (
+ id INTEGER PRIMARY KEY CHECK (id = 1),
+ provider TEXT NOT NULL CHECK (provider = 'OPENAI'),
+ sealed BYTEA NOT NULL, key_id TEXT NOT NULL, last4 TEXT NOT NULL CHECK (length(last4) = 4),
+ revision INTEGER NOT NULL DEFAULT 1, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE ai_studio_setting (
+ id INTEGER PRIMARY KEY CHECK (id = 1),
+ daily_call_cap INTEGER NOT NULL DEFAULT 20 CHECK (daily_call_cap BETWEEN 1 AND 500),
+ key_generation INTEGER NOT NULL DEFAULT 0 CHECK (key_generation >= 0),
+ revision INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL
+);
+INSERT INTO ai_studio_setting (id, updated_at) VALUES (1, '1970-01-01T00:00:00.000Z');
+CREATE TABLE ai_studio_usage (
+ id TEXT PRIMARY KEY, day TEXT NOT NULL,
+ kind TEXT NOT NULL CHECK (kind IN ('ANALYZE','IMAGE','REVIEW')),
+ actor TEXT NOT NULL, product_id TEXT,
+ outcome TEXT NOT NULL CHECK (outcome IN ('OK','ERROR','AMBIGUOUS')), created_at TEXT NOT NULL
+);
+CREATE INDEX ai_studio_usage_day ON ai_studio_usage(day);
+INSERT INTO schema_meta VALUES (1, 29);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 INSERT INTO shop_setup(id, mode, shop_name) VALUES (1, NULL, 'Online Shopping');
