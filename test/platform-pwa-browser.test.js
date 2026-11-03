@@ -145,6 +145,18 @@ test('platform PWA: install, offline contract, version N to N+1 update with load
   await banner.getByRole('button', { name: 'Later' }).click(); assert.equal(await banner.isHidden(), true);
   assert.equal(await state(), 'UPDATE_AVAILABLE');
   await page.locator('.edit-card', { hasText: 'App version' }).getByRole('button', { name: 'Update now' }).waitFor({ state: 'visible' });
+  // The top bar always carries the update button, also after "Later", on a desktop and on a phone.
+  const barUpdate = page.locator('#topbar-update');
+  await barUpdate.waitFor({ state: 'visible' });
+  assert.match(await barUpdate.getAttribute('aria-label'), /Update available \(v2\)/); assert.equal(await barUpdate.locator('svg').count(), 1);
+  assert.equal(await barUpdate.evaluate((node) => node.closest('.topbar') !== null), true);
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('#main')).marginLeft === '0px', null, { timeout: 5000 });
+  const phoneBox = await barUpdate.boundingBox(); assert.ok(phoneBox.width >= 44 && phoneBox.height >= 44, 'touch target on a phone');
+  assert.ok(phoneBox.x >= 0 && phoneBox.x + phoneBox.width <= 390, 'inside the phone screen');
+  assert.equal(await barUpdate.locator('.topbar-update-label').isHidden(), true, 'icon only on a phone');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('#main')).marginLeft !== '0px', null, { timeout: 5000 });
   // A dismissed update never hides the offline warning.
   await context.setOffline(true);
   await banner.waitFor({ state: 'visible' }); assert.match(await banner.innerText(), /offline/i);
@@ -174,8 +186,7 @@ test('platform PWA: install, offline contract, version N to N+1 update with load
         sessionStorage.setItem('loader-seen', JSON.stringify(seen)); }
     }).observe(loader, { attributes: true, attributeFilter: ['hidden'] });
   });
-  const choose = page.locator('.edit-card', { hasText: 'App version' }).getByRole('button', { name: 'Update now' });
-  await choose.dblclick();
+  await barUpdate.dblclick();
   await page.waitForTimeout(2500);
   await page.waitForFunction(() => window.__marker === undefined, null, { timeout: 20000 });
   await settle('READY');

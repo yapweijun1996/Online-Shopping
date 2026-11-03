@@ -6,7 +6,7 @@ import { APP_STATES, appState, bannerState, initialFlags, reduceWorkerState } fr
 export { APP_STATES, appState };
 const root = document.documentElement;
 const flags = initialFlags(navigator.onLine === false);
-let actions = null, statusLine = null, versionLine = null, checkButton = null, updateButton = null, region = null, loader = null;
+let actions = null, statusLine = null, versionLine = null, checkButton = null, updateButton = null, barUpdate = null, region = null, loader = null, lastState = '';
 const state = () => appState(flags);
 
 const make = (tag, text, className) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; };
@@ -42,6 +42,16 @@ function render() {
   if (versionLine) versionLine.textContent = `App version: ${APP_VERSION}`;
   if (checkButton) checkButton.disabled = busy || !actions;
   if (updateButton) updateButton.hidden = current !== 'UPDATE_AVAILABLE';
+  if (barUpdate) {
+    // The top bar always carries the way to update: visible while an update is waiting, installing or has failed.
+    const show = ['UPDATE_AVAILABLE', 'UPDATING', 'RELOADING', 'UPDATE_FAILED'].includes(current);
+    barUpdate.hidden = !show; barUpdate.dataset.state = current; barUpdate.disabled = busy;
+    const label = current === 'UPDATE_FAILED' ? 'Update failed, try again' : busy ? 'Updating' : `Update available${flags.available ? ` (${flags.available})` : ''}`;
+    barUpdate.setAttribute('aria-label', label); barUpdate.title = label; barUpdate.querySelector('.topbar-update-label').textContent = current === 'UPDATE_FAILED' ? 'Retry' : busy ? 'Updating…' : 'Update';
+    // A new update must be seen: bring the (smart) top bar back.
+    if (show && lastState !== current && current === 'UPDATE_AVAILABLE') document.querySelector('.topbar')?.classList.remove('topbar-hidden');
+  }
+  lastState = current;
   if (statusLine) statusLine.textContent = current === 'UPDATE_AVAILABLE' ? 'A new version is ready to install.' : current === 'UPDATE_FAILED' ? 'The update check failed. Try again.' : flags.checked ? 'This is the latest version.' : '';
   document.documentElement.style.setProperty('--app-banner-height', showBanner ? `${region.offsetHeight}px` : '0px');
 }
@@ -53,6 +63,13 @@ function buildChrome() {
   const card = make('div', undefined, 'app-loader-card'); card.append(make('span', undefined, 'app-spinner'), make('strong', 'Updating Shop platform'), make('span', undefined, 'app-loader-text'));
   card.firstChild.setAttribute('aria-hidden', 'true'); loader.append(card);
   document.body.append(region, loader);
+  const account = document.querySelector('.topbar .account-wrap');
+  if (account) {
+    barUpdate = make('button', undefined, 'topbar-update'); barUpdate.type = 'button'; barUpdate.id = 'topbar-update'; barUpdate.hidden = true;
+    barUpdate.append(icon('download'), make('span', undefined, 'topbar-update-label'));
+    barUpdate.addEventListener('click', () => { if (flags.failed) { flags.failed = false; render(); actions?.check(); } else actions?.update(); });
+    account.before(barUpdate);
+  }
 }
 
 // Hide on scroll down, reveal on scroll up (cumulative 8 px threshold), always shown near the top or while the bar is in use.
@@ -86,6 +103,8 @@ export function initPwaShell({ guard, confirmUpdate } = {}) {
   addEventListener('online', () => { flags.offline = false; render(); });
   addEventListener('offline', () => { flags.offline = true; render(); });
   initSmartTopBar(); initScrollTop();
+  // Phones keep tabs open for days: look for a new version regularly while the page is visible, not only on start.
+  setInterval(() => { if (document.visibilityState === 'visible' && navigator.onLine) actions?.check(); }, 10 * 60_000);
   if (!('serviceWorker' in navigator)) { flags.workerError = 'this browser has no Service Worker support.'; render(); return; }
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (flags.applying) { flags.reloading = true; render(); } });
   registerWorker('./sw.js', './', {

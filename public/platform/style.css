@@ -195,3 +195,12 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:var(--ui-safe
 #content form,.edit-card form{grid-template-columns:minmax(0,1fr)}
 .field-group,.login-input-wrap{min-width:0}
 .login-input-wrap input{box-sizing:border-box;min-width:0}
+
+/* Top bar update button: visible whenever an update is waiting, installing or failed. */
+.topbar-update{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-width:44px;min-height:44px;margin-left:auto;padding:0 12px;color:var(--ui-primary);background:var(--ui-surface);border:1px solid var(--ui-primary);border-radius:var(--ui-radius-sm);font-weight:650;cursor:pointer}
+.topbar-update:not([hidden])+.account-wrap{margin-left:0}
+.topbar-update .ui-icon{width:20px;height:20px}
+.topbar-update[data-state=UPDATE_AVAILABLE]::after{content:"";position:absolute;top:6px;right:6px;width:9px;height:9px;background:var(--ui-warning-text);border:2px solid var(--ui-surface);border-radius:50%}
+.topbar-update[data-state=UPDATE_FAILED]{color:var(--ui-danger);border-color:var(--ui-danger)}
+.topbar-update:disabled{opacity:.7;cursor:progress}
+@media(max-width:719px){.topbar-update-label{display:none}.topbar-update{padding:0}}
