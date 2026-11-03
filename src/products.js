@@ -35,7 +35,7 @@ function productFromRow(row, seller = false) {
   };
 }
 
-async function validateVariantGroup(database, product, excludeId = null) {
+async function validateVariantGroup(database, product, excludeId = null, joining = true) {
   // With option types the label is derived from the chosen values, so only the group is required.
   const hasOptions = Array.isArray(product.options) && product.options.length > 0;
   if (hasOptions && !product.variantGroup) throw optionError('OPTIONS_GROUP_REQUIRED', 'Set a variant group before choosing options.');
@@ -48,6 +48,16 @@ async function validateVariantGroup(database, product, excludeId = null) {
     AND (? IS NULL OR id <> ?) LIMIT 1`, product.variantGroup, excludeId, excludeId);
   if (related && related.currency !== product.currency) {
     throw new FieldError('variantGroup', 'Variants must share a currency.');
+  }
+  // One group is one listing with one category. Joining a group with another category used to adopt the group's
+  // category silently; now the seller is told and chooses (same category, or another group code).
+  if (joining && product.category) {
+    const listing = await database.get('SELECT category FROM listing WHERE code = ?', product.variantGroup);
+    if (listing && listing.category !== product.category) {
+      const error = new ApiError(409, 'VARIANT_CATEGORY_MISMATCH', 'Products in this variant group use another category.');
+      error.field = 'category';
+      throw error;
+    }
   }
 }
 
@@ -177,7 +187,7 @@ async function patchProduct(database, id, input, { galleryChanging = false } = {
     variantLabel: Object.hasOwn(patch, 'variantLabel') ? patch.variantLabel : existing.variantLabel,
     options: patch.options,
     category: patch.category || existing.categoryCode, currency: patch.currency || existing.currency
-  }, id);
+  }, id, Object.hasOwn(patch, 'variantGroup') && (patch.variantGroup || null) !== (existing.variantGroup || null));
   if (!galleryChanging && !existing.galleryShared && patch.image === null && existing.images.length > (existing.imageUrl ? 1 : 0)) {
     throw new FieldError('imageDataUrl', 'Remove gallery images before removing the main image.');
   }

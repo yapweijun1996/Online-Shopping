@@ -1016,7 +1016,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       if (optionKey) { optionsError.textContent = t(optionKey); optionsError.hidden = false; }
       // Price and stock are checked here before anything is sent: say what a valid value looks like.
       const inputKey = failure.code ? null : failure.field === 'price' ? 'priceInvalid' : failure.field === 'stockQuantity' ? 'stockInvalid' : null;
-      setError(optionKey || inputKey || (failure.code === 'PRODUCT_CHANGED' ? 'productChangedReopen' : failure.code === 'STOCK_TRACKING_CONFLICT' ? 'stockTrackingConflict' : failure.field === 'gallery' ? 'galleryLimit' : galleryConflict ? 'removeGalleryFirst' : failure.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : failure.code === 'DUPLICATE_SKU' ? 'duplicateSku' : failure.code === 'DUPLICATE_VARIANT' ? 'duplicateVariant' : 'productError'));
+      setError(optionKey || inputKey || (failure.code === 'PRODUCT_CHANGED' ? 'productChangedReopen' : failure.code === 'STOCK_TRACKING_CONFLICT' ? 'stockTrackingConflict' : failure.field === 'gallery' ? 'galleryLimit' : galleryConflict ? 'removeGalleryFirst' : failure.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : failure.code === 'DUPLICATE_SKU' ? 'duplicateSku' : failure.code === 'DUPLICATE_VARIANT' ? 'duplicateVariant' : failure.code === 'VARIANT_CATEGORY_MISMATCH' ? 'variantCategoryMismatch' : 'productError'));
       if (galleryConflict && productId && editingId === productId) {
         // A rejected write owns no new baseline. Preserve all draft metadata,
         // image removals and order so retry and navigation guards remain truthful.
