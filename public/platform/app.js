@@ -111,9 +111,9 @@ function submit(node, text, { needsChange = false } = {}) {
 }
 // One task per card: heading, what it does to the seller, then the controls.
 let taskHost = null;
-function taskCard(title, description, group = 'seller') {
+function taskCard(title, description, group = 'seller', parent = null) {
   const card = element('section', undefined, 'edit-card'), help = element('p', description, 'edit-help'); help.id = `edit-help-${++fieldId}`;
-  card.append(element('h3', title), help); (taskHost?.[group] || content).append(card); return { card, helpId: help.id };
+  card.append(element('h3', title), help); (parent || taskHost?.[group] || content).append(card); return { card, helpId: help.id };
 }
 async function api(path, { method = 'GET', body } = {}) {
   const response = await fetch(`../api/v1/platform${path}`, { method, credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(60_000),
@@ -547,15 +547,46 @@ async function audit(cursor = null) {
   } catch (error) { if (error.status === 401) throw error; loading.className = 'panel'; loading.setAttribute('role', 'alert'); loading.replaceChildren(element('p', error.message), button('Retry', () => audit(cursor))); }
 }
 async function account() {
-  screen('Account'); content.append(element('p', `Signed in as ${session.username || 'SuperAdmin'}.`), element('h3', 'Change password'));
-  const passwordForm = form(async (data, node) => { await api('/account/password', { method: 'POST', body: data }); node.reset(); notice.textContent = 'Password changed. Other sessions ended.'; });
+  screen('Account');
+  const layout = element('div', undefined, 'account-layout'), main = element('div', undefined, 'account-main'), side = element('div', undefined, 'account-side');
+  layout.append(main, side); content.append(layout);
+  const intro = element('section'); intro.append(element('h2', 'Security', 'group-title'), element('p', 'Manage your password and account recovery.', 'edit-help')); main.append(intro);
+  const username = session.username || 'SuperAdmin';
+  const describe = (input, helpId) => input.setAttribute('aria-describedby', helpId);
+
+  // Change password: the server rules (12 to 256 characters, no username, not one repeated character, not the old password) are shown and checked first.
+  const change = taskCard('Change password', 'Changing it signs out every other session, including trusted devices.', 'seller', main);
+  const rules = element('ul', undefined, 'requirements');
+  for (const rule of ['12 to 256 characters', 'Does not contain your username', 'Not one repeated character', 'Different from the current password']) rules.append(element('li', rule));
+  rules.id = `rules-${++fieldId}`; change.card.append(rules);
+  const passwordForm = form(async (data, node) => {
+    const next = data.newPassword;
+    if (next.length < 12 || next.length > 256) throw new Error('Use 12 to 256 characters for the new password.');
+    if (next.toLowerCase().includes(username.toLowerCase())) throw new Error('The new password must not contain your username.');
+    if (/^(.)\1+$/.test(next)) throw new Error('Choose a less repetitive password.');
+    if (next === data.currentPassword) throw new Error('Choose a password different from the current one.');
+    if (next !== data.confirmPassword) throw new Error('The two new passwords do not match.');
+    await api('/account/password', { method: 'POST', body: { currentPassword: data.currentPassword, newPassword: next } });
+    node.reset(); node.feedback.status.textContent = 'Password changed. Every other session was signed out.';
+  }, { parent: change.card });
   field(passwordForm, 'currentPassword', 'Current password', { type: 'password', autocomplete: 'current-password', maxLength: 256 });
-  field(passwordForm, 'newPassword', 'New password', { type: 'password', autocomplete: 'new-password', maxLength: 256 }); submit(passwordForm, 'Change password');
-  content.append(element('h3', 'Recovery codes'), element('p', 'Regenerating invalidates every previous recovery code.'));
-  const recoveryForm = form(async (data, node) => { const result = await api('/account/recovery-codes', { method: 'POST', body: data }); node.reset(); recovery(result.recoveryCodes); });
+  describe(field(passwordForm, 'newPassword', 'New password', { type: 'password', autocomplete: 'new-password', maxLength: 256 }), rules.id);
+  field(passwordForm, 'confirmPassword', 'Confirm new password', { type: 'password', autocomplete: 'new-password', maxLength: 256 });
+  submit(passwordForm, 'Change password');
+
+  // Recovery codes: regenerating is destructive, so it asks first and says what happens.
+  const codes = taskCard('Recovery codes', 'Regenerating invalidates every previous recovery code at once. You must save the new codes before you continue.', 'seller', main);
+  const recoveryForm = form(async (data, node) => {
+    if (!await confirmModal('Every previous recovery code stops working immediately. Have your password manager or a safe place ready: the new codes are shown once.', { title: 'Regenerate recovery codes?', confirmLabel: 'Regenerate codes' })) return;
+    const result = await api('/account/recovery-codes', { method: 'POST', body: data }); node.reset(); recovery(result.recoveryCodes);
+  }, { parent: codes.card });
   field(recoveryForm, 'password', 'Current password', { type: 'password', autocomplete: 'current-password', maxLength: 256 }); submit(recoveryForm, 'Regenerate recovery codes');
-  const appearance = element('section'); content.append(appearance); mountAppearance(appearance, 'seller');
-  mountAppSection(content);
+
+  // Side column: who is signed in, appearance, app version.
+  const who = taskCard('Signed in', 'The SuperAdmin account for this browser.', 'seller', side);
+  who.card.append(element('p', username, 'account-name'));
+  const appearance = element('section'); side.append(appearance); mountAppearance(appearance, 'seller');
+  mountAppSection(side);
 }
 // Update guard: unsaved edits or a request in flight defer the reload; nothing is applied without "Update now".
 const unsavedEdits = () => [...content.querySelectorAll('form input, form select, form textarea')].some((input) => input.type === 'password' ? input.value !== '' : input.type === 'checkbox' ? input.checked !== input.defaultChecked : input.value !== input.defaultValue);

@@ -166,7 +166,7 @@ test('platform PWA: install, offline contract, version N to N+1 update with load
   const card = page.locator('.edit-card', { hasText: 'App version' });
   for (const [name, on, off] of [['recovery codes', () => document.body.classList.add('saving-recovery'), () => document.body.classList.remove('saving-recovery')], ['seller credentials', () => document.querySelector('#secret-dialog').showModal(), () => document.querySelector('#secret-dialog').close()]]) {
     await page.evaluate(on);
-    await page.evaluate(() => document.querySelector('.edit-card button.primary-button').click());
+    await page.evaluate(() => [...document.querySelectorAll('.edit-card')].find((card) => card.textContent.includes('App version')).querySelector('button.primary-button').click());
     await page.locator('dialog[open] .modal-confirm-actions').waitFor({ state: 'visible' });
     await page.locator('dialog[open] .modal-confirm-actions').getByRole('button', { name: 'Cancel', exact: true }).evaluate((node) => node.click());
     await page.locator('dialog.app-modal-confirm').waitFor({ state: 'detached' });
