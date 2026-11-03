@@ -1,0 +1,1 @@
+../../shared/update-guard.js

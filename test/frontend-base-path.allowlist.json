@@ -2,6 +2,7 @@
   "public/shop/manifest.webmanifest": {"lines": 5, "reason": "Legacy static manifest id/scope/start_url and icons retain their resolved root URLs; tenants receive dynamic manifests."},
   "public/seller/manifest.webmanifest": {"lines": 5, "reason": "Legacy static manifest id/scope/start_url and icons retain their resolved root URLs; tenants receive dynamic manifests."},
   "public/shared/base-path.js": {"lines": 1, "reason": "The single API URL builder intentionally constructs the absolute path from the verified page base."},
+  "public/platform/shared/sw-core.js": {"lines": 1, "reason": "Symlink of the shared worker core, so the platform worker installs on a host that serves only /platform/*; same API bypass match."},
   "public/shared/sw-core.js": {"lines": 1, "reason": "This is an API bypass match anywhere in a request path, never a root API request."},
   "public/demo/index.html": {"lines": 3, "reason": "Root-only fictional workspace links; production and tenant routers refuse this surface."},
   "public/demo/style.css": {"lines": 3, "reason": "Root-only fictional workspace imports; it is never served below a tenant code."},
