@@ -445,10 +445,21 @@ async function renderDetail(id) {
     const policy = await api(`/shops/${id}/qr`);
     qrPanel.append(element('h3', 'WhatsApp QR'));
     if (!policy) {
-      const notice = element('div', undefined, 'qr-unavailable');
-      notice.append(element('span', 'Not set up', 'chip'), element('p', 'WhatsApp QR is not available on this platform yet. Nothing is wrong with this shop; a host operator has to finish the platform setup first.'));
-      const more = element('details'); more.append(element('summary', 'Technical details'), element('p', 'The platform database has not been upgraded to the WhatsApp QR schema. A host operator runs the platform upgrade; then Enable QR appears here.'));
-      notice.append(more); qrPanel.append(notice);
+      // Platform-level state, not a shop problem: the title row says what it is, the body says whose task it is and what to do,
+      // and the diagnostics stay folded (and copyable) so the two are not read twice.
+      qrPanel.replaceChildren(); qrPanel.classList.add('qr-unavailable');
+      const header = element('div', undefined, 'qr-header'), title = element('h3', 'WhatsApp QR'); title.prepend(icon('chat'));
+      header.append(title, element('span', 'Setup required', 'chip status-setup')); qrPanel.append(header);
+      qrPanel.append(element('p', 'Lets the shop’s Owner link a WhatsApp device from the seller console.', 'qr-purpose'));
+      const status = element('div', undefined, 'qr-status'), heading = element('h4', 'Platform setup pending'); heading.prepend(icon('info'));
+      status.append(heading, element('p', 'WhatsApp QR is unavailable until the platform database is upgraded. This is a platform task: nothing is wrong with this shop and the seller does not need to do anything.'),
+        element('p', 'Host operator: run the platform upgrade for WhatsApp QR, then reload this page.', 'qr-next'));
+      qrPanel.append(status);
+      const diagnostics = `WhatsApp QR unavailable\nShop: ${shop.code} (${shop.status})\nPolicy endpoint: returned no policy\nMissing: platform schema 3 (migration 003-whatsapp-qr.sql, explicit opt-in)\nReference: docs/WHATSAPP_QR_TENANTS_DESIGN.md\nChecked: ${new Date().toISOString()}`;
+      const more = element('details', undefined, 'qr-details'), summary = element('summary'), label = element('span', 'Technical details'); label.prepend(icon('sliders'));
+      summary.append(label, icon('chevronDown')); more.append(summary, element('pre', diagnostics));
+      const copyDiagnostics = button('Copy technical details', () => copy(diagnostics)); copyDiagnostics.className = 'link-button'; copyDiagnostics.prepend(icon('copy')); more.append(copyDiagnostics);
+      qrPanel.append(more);
     }
     else {
       const binding = policy.binding, enabled = Boolean(binding?.enabled);

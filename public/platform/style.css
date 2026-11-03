@@ -78,7 +78,7 @@ body.auth #main{margin-inline:auto}
 @media(prefers-color-scheme:dark){:root:root{--platform-danger:#ffb4ab}}
 .edit-card{display:grid;align-content:start;gap:10px;margin-block:16px;padding:20px 24px;background:var(--ui-surface);border:1px solid var(--ui-border);border-radius:12px}
 .edit-card h3{margin:0;font-size:18px}
-.edit-card .edit-help{margin:0;max-width:60ch;color:var(--ui-muted)}
+.edit-card .edit-help{margin:0;max-width:75ch;color:var(--ui-muted)}
 .edit-card form{display:grid;gap:14px;margin-top:4px}
 .edit-card input{box-sizing:border-box;width:100%;padding:10px 12px;font:inherit;color:var(--ui-text);background:var(--ui-surface);border:1px solid var(--ui-control-border);border-radius:9px}
 .edit-card button[type=submit]{justify-self:start;min-width:160px}
@@ -133,9 +133,8 @@ body.auth button[type=submit] svg{width:18px;height:18px}
 .group-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:stretch}
 @media(min-width:760px){.group-seller .group-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .group-grid>.edit-card{margin:0}
-.group-grid>.panel{min-height:0;margin:0;padding:20px 24px}
-.qr-unavailable{display:grid;justify-items:start;gap:10px}.qr-unavailable p{margin:0}
-.qr-unavailable summary{cursor:pointer;color:var(--ui-primary);font-weight:650}
+.group-grid>.panel{display:grid;align-content:start;gap:12px;min-height:0;margin:0;padding:20px 24px}
+.group-grid>.panel h3{margin:0;font-size:18px}
 .group-danger .edit-card{border-color:var(--platform-danger)}
 @media(max-width:719px){.url-row{grid-template-columns:minmax(0,1fr) 44px;padding-left:14px}.url-label{grid-column:1/-1;padding-top:8px}.detail-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}.detail-head .actions{display:contents}.detail-tools .link-button{justify-content:center;padding:0 10px}}
 .link-button{white-space:nowrap}
@@ -145,3 +144,26 @@ body.auth button[type=submit] svg{width:18px;height:18px}
 .trusted-device-choice{min-height:44px;margin-block:12px}
 
 .trusted-device-duration select{display:block;width:100%;margin-top:7px}
+
+/* WhatsApp QR "setup required": title row with the state on the right, one 12px rhythm, divider, full-row accordion. */
+:root{--setup-bg:#fdebd8;--setup-text:#9a3412}
+@media(prefers-color-scheme:dark){:root:root{--setup-bg:#4a2c14;--setup-text:#fdba74}}
+.qr-unavailable .qr-header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.qr-unavailable h3,.qr-unavailable h4{display:flex;align-items:center;gap:10px;margin:0}
+.qr-unavailable h4{font-size:16px}
+.qr-unavailable .ui-icon{width:20px;height:20px;flex:none}
+.qr-unavailable p{margin:0}
+.qr-unavailable .qr-purpose{color:var(--ui-muted)}
+.chip.status-setup{padding:5px 12px;font-size:13px;font-weight:700;background:var(--setup-bg);color:var(--setup-text);white-space:nowrap}
+.qr-status{display:grid;gap:8px;padding-top:12px;border-top:1px solid var(--ui-border)}
+.qr-status .qr-next{color:var(--ui-muted)}
+.qr-details{border-top:1px solid var(--ui-border)}
+.qr-details summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;padding:0 4px;border-radius:6px;font-weight:650;cursor:pointer;list-style:none}
+.qr-details summary::-webkit-details-marker{display:none}
+.qr-details summary>span{display:inline-flex;align-items:center;gap:10px}
+.qr-details summary .ui-icon:last-child{transition:transform .15s}
+.qr-details[open] summary .ui-icon:last-child{transform:rotate(180deg)}
+.qr-details summary:focus:not(:focus-visible){outline:none}
+.qr-details summary:focus-visible{outline:2px solid var(--ui-focus);outline-offset:2px}
+.qr-details pre{margin:4px 0 12px;padding:12px 16px;overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ui-text);background:var(--ui-canvas);border:1px solid var(--ui-border);border-radius:8px}
+@media(max-width:719px){.qr-unavailable .qr-header{align-items:flex-start;flex-wrap:wrap}}
