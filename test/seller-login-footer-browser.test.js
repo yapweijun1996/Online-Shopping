@@ -69,6 +69,11 @@ test('seller sign-in footer separates system information and shows each update s
   assert.equal(await page.evaluate(() => document.activeElement.id), 'login-check-updates');
   assert.notEqual(await check.evaluate((node) => getComputedStyle(node).outlineStyle), 'none');
 
+  // The sign-in fields show the same 3 px focus ring as every other control (on the field box, not the bare input).
+  await page.locator('#username').focus(); await page.keyboard.press('Shift+Tab'); await page.keyboard.press('Tab');
+  if (await page.evaluate(() => document.activeElement.id) === 'username') {
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('#username').closest('.login-input-wrap')).outlineStyle), 'solid');
+  }
   // Up to date: the result replaces the action, with a check icon.
   await check.click();
   await page.waitForFunction(() => document.querySelector('#login-footer').dataset.state === 'current', null, { timeout: 20000 });
