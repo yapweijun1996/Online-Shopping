@@ -100,3 +100,62 @@ test('seller sign-in footer separates system information and shows each update s
   const box = await page.locator('#login-footer').boundingBox(); assert.ok(box.x >= 0 && box.x + box.width <= 320, JSON.stringify(box));
   assert.deepEqual(pageErrors, []);
 });
+
+test('seller sign-out shows a neutral confirmation above the form, not an error, and not after a refresh', { skip: !browserModule, timeout: 60000 }, async (t) => {
+  const dir = build('v900');
+  const server = createServer((request, response) => {
+    let pathname = new URL(request.url, 'http://local').pathname;
+    if (pathname.endsWith('/')) pathname += 'index.html';
+    const file = path.join(dir, pathname);
+    if (!existsSync(file) || !statSync(file).isFile()) { response.writeHead(404).end(); return; }
+    response.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' }); response.end(readFileSync(file));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const { chromium } = await import(browserModule);
+  const browser = await chromium.launch({ headless: true, channel: 'chrome' }); t.after(() => browser.close());
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: 'block', reducedMotion: 'reduce' });
+  let signedIn = false;
+  const session = { username: 'synthetic', role: 'owner', csrfToken: 'synthetic-csrf', capabilities: [], quickLogin: false, mustChangePassword: false };
+  await context.route('**/api/**', (route) => {
+    const url = new URL(route.request().url()), method = route.request().method();
+    if (url.pathname.endsWith('/v1/seller/session')) {
+      if (method === 'DELETE') { signedIn = false; return route.fulfill({ json: { ok: true } }); }
+      if (method === 'POST') { signedIn = true; return route.fulfill({ json: session }); }
+      return signedIn ? route.fulfill({ json: session })
+        : route.fulfill({ status: 401, json: { error: { code: 'UNAUTHORIZED', message: 'Sign in required.' } } });
+    }
+    if (url.pathname.endsWith('/v1/shop')) return route.fulfill({ json: { name: 'Synthetic Shop', currency: 'MYR', storageScope: '' } });
+    return route.fulfill({ json: {} });
+  });
+  const page = await context.newPage();
+  await page.goto(`http://127.0.0.1:${server.address().port}/seller/`);
+  await page.locator('#username').fill('synthetic'); await page.locator('#password').fill('Synthetic-pass-1'); await page.locator('#login-submit').click();
+  await page.locator('#workspace').waitFor();
+  await page.evaluate(() => document.querySelector('#sign-out-button').click());
+  const notice = page.locator('#login-notice');
+  await notice.waitFor();
+  assert.equal(await notice.getAttribute('role'), 'status');
+  assert.match(await notice.innerText(), /Signed out successfully\s+Sign in to continue\./);
+  assert.equal(await notice.locator('svg').count(), 1);
+  // Not an error: nothing in the error slot beside the password, no red text.
+  assert.equal((await page.locator('#login-message').innerText()).trim(), '');
+  const colours = await page.evaluate(() => ({ notice: getComputedStyle(document.querySelector('#login-notice strong')).color, error: getComputedStyle(document.querySelector('#login-message')).color }));
+  assert.notEqual(colours.notice, colours.error);
+  // Placement: under the heading, above the first field.
+  const [noticeBox, userBox] = [await notice.boundingBox(), await page.locator('#username').boundingBox()];
+  assert.ok(noticeBox.y + noticeBox.height < userBox.y);
+  // A failed sign-in replaces it with the error next to the button.
+  await context.route('**/api/v1/seller/session', (route) => route.request().method() === 'POST' ? route.fulfill({ status: 401, json: { error: { code: 'INVALID_CREDENTIALS', message: 'no' } } }) : route.fallback());
+  await page.locator('#username').fill('synthetic'); await page.locator('#password').fill('Wrong-password-1');
+  await page.locator('#login-submit').click();
+  await page.waitForFunction(() => document.querySelector('#login-message').textContent.trim() !== '');
+  assert.equal(await notice.isHidden(), true);
+  // Service Workers blocked here: the footer shows the version only, never a check that cannot run.
+  assert.equal(await page.locator('#login-footer').getAttribute('data-state'), 'unavailable');
+  assert.equal(await page.locator('.login-footer-update').isHidden(), true);
+  // Temporary: a refresh of the sign-in page does not show it again.
+  await page.reload(); await page.locator('#login-form').waitFor();
+  await page.waitForFunction(() => !document.querySelector('#login-message').classList.contains('is-info'));
+  assert.equal(await notice.isHidden(), true);
+});

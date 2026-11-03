@@ -465,8 +465,16 @@
 .demo-role-link{align-self:center;border:0;background:none;color:var(--ui-muted);font:inherit;font-size:13px;text-decoration:underline;cursor:pointer;min-height:32px}
 .demo-role-link:disabled,.demo-role-primary:disabled{opacity:.6;cursor:default}
 
+/* Signed-out confirmation: a neutral status banner under the heading, not an error. */
+.login-notice{display:flex;align-items:flex-start;gap:10px;margin:-8px 0 22px;padding:12px 14px;border:1px solid var(--ui-border);border-radius:10px;background:var(--ui-canvas);color:var(--ui-text);font-size:14px;line-height:1.4}
+.login-notice[hidden]{display:none}
+.login-notice svg{flex:none;width:18px;height:18px;margin-top:1px;color:var(--shop-success)}
+.login-notice strong{display:block;font-weight:650}
+.login-notice small{display:block;margin-top:2px;color:var(--ui-muted);font-size:13px}
+.login-card .message.is-info{color:var(--ui-muted)}
 /* Sign-in footer: system metadata below a divider, quieter than the sign-in action (12px minimum, muted, no brand colour). */
 .login-footer{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;margin-top:24px;padding-top:14px;border-top:1px solid var(--ui-border);font-size:13px;line-height:1.4;color:var(--ui-muted)}
+.login-footer-update[hidden]{display:none}
 .login-footer-update{display:inline-flex;align-items:center;gap:8px;margin-left:auto}
 .login-footer-status{display:inline-flex;align-items:center;gap:5px}
 .login-footer-status:empty{display:none}
