@@ -45,7 +45,6 @@ body.auth .enrol-panel canvas{display:block;width:200px;max-width:100%;height:au
 body.auth .enrol-panel details{margin-block:20px}
 body.auth .sidebar,body.auth .drawer-backdrop,body.auth .account-wrap,body.auth #identity,body.auth #open-menu{display:none!important}
 #content button.primary-button,#content button[type=submit],dialog button.primary-button{background:var(--ui-action);color:#fff;border:1px solid var(--ui-action);font-weight:700}
-#content button.password-visibility{justify-self:end;width:auto;min-height:44px;padding:4px 0;border:0;background:transparent;color:var(--ui-primary);font-weight:650}
 .mobile-sort{display:none}
 @media(max-width:719px){
  body.auth .main{margin:20px auto;padding:24px}
@@ -88,3 +87,13 @@ body.auth #main{margin-inline:auto}
 .form-error{margin:0;padding:10px 12px;color:var(--platform-danger);border:1px solid var(--platform-danger);border-radius:8px;font-weight:650}
 #content button.danger-button{justify-self:start;background:transparent;color:var(--platform-danger);border:1px solid var(--platform-danger);font-weight:700}
 @media(max-width:719px){.edit-card{padding:16px}.edit-card button[type=submit],#content button.danger-button{justify-self:stretch}}
+
+/* Sign-in fields reuse the Seller login component (login-input-wrap, password-toggle); only the platform page rules that would fight it are reset here. */
+.field-group .login-input-wrap{margin-top:8px;margin-bottom:0}
+.login-input-wrap input{margin:0;padding:0 12px;border:0;border-radius:0;background:transparent;color:var(--ui-text)}
+body.auth label{font-weight:700;font-size:13px}
+#content button.password-toggle{width:46px;padding:0;border:0;border-radius:8px;background:transparent;color:var(--ui-muted)}
+#content button.password-toggle:hover{background:var(--ui-hover-surface);color:var(--ui-primary)}
+body.auth button[type=submit]{display:flex;justify-content:center;align-items:center;gap:10px}
+body.auth button[type=submit] svg{width:18px;height:18px}
+.login-input-wrap>svg,.password-toggle svg{width:20px;height:20px}

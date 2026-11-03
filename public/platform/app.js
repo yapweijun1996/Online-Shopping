@@ -52,14 +52,22 @@ containDialogFocus(dialog);
 let csrf = null, session = null, busy = false, fieldId = 0, returnFocus = null;
 const element = (tag, text, className) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; };
 const button = (label, action) => { const node = element('button', label, 'secondary-button'); node.type = 'button'; node.addEventListener('click', () => run(action)); return node; };
-function field(form, name, title, { type = 'text', value = '', required = true, autocomplete = 'off', maxLength = 80 } = {}) {
+// Sign-in fields use the shared icon set (public/shared/icons.js), the same one the Shop and Seller consoles draw from.
+function field(form, name, title, { type = 'text', value = '', required = true, autocomplete = 'off', maxLength = 80, icon: leading } = {}) {
   const label = element('label', title), input = element('input'); input.id = `platform-field-${++fieldId}`; label.htmlFor = input.id;
-  Object.assign(input, { name, type, value, required, autocomplete, maxLength }); label.append(input); form.append(label);
+  Object.assign(input, { name, type, value, required, autocomplete, maxLength });
+  if (type !== 'password' && !leading) { label.append(input); form.append(label); return input; }
+  // Sign-in style field: leading icon inside the box, and for passwords the eye button. The button sits beside the label
+  // text, not inside it, so it never becomes part of the field's accessible name.
+  const group = element('div', undefined, 'field-group'), wrap = element('div', undefined, 'login-input-wrap');
+  wrap.append(icon(leading || 'lock'), input);
   if (type === 'password') {
-    const toggle = button('Show password', () => { input.type = input.type === 'password' ? 'text' : 'password'; toggle.textContent = input.type === 'password' ? 'Show password' : 'Hide password'; toggle.setAttribute('aria-pressed', String(input.type === 'text')); });
-    toggle.setAttribute('aria-controls', input.id); toggle.setAttribute('aria-pressed', 'false'); label.after(toggle);
-    toggle.className = 'text-button password-visibility';
+    const toggle = element('button', undefined, 'password-toggle'); toggle.type = 'button'; toggle.append(icon('eyeOff'));
+    toggle.setAttribute('aria-label', 'Show password'); toggle.title = 'Show password'; toggle.setAttribute('aria-controls', input.id); toggle.setAttribute('aria-pressed', 'false');
+    toggle.addEventListener('click', () => { input.type = input.type === 'password' ? 'text' : 'password'; toggle.setAttribute('aria-pressed', String(input.type === 'text')); toggle.replaceChildren(icon(input.type === 'text' ? 'eye' : 'eyeOff')); });
+    wrap.append(toggle);
   }
+  group.append(label, wrap); form.append(group);
   return input;
 }
 function screen(title) {
@@ -91,6 +99,7 @@ function form(action, { parent = content, key } = {}) {
 // A save button that stays off until a field differs from what the shop has now.
 function submit(node, text, { needsChange = false } = {}) {
   const value = element('button', text, 'primary-button'); value.type = 'submit'; node.append(value);
+  if (document.body.classList.contains('auth')) value.append(icon('right'));
   if (needsChange) {
     const inputs = [...node.querySelectorAll('input')], initial = inputs.map((input) => input.value.trim());
     const update = () => { const same = inputs.every((input, index) => input.value.trim() === initial[index]); value.dataset.unavailable = String(same); value.disabled = same; };
@@ -208,7 +217,7 @@ async function signIn() {
   const node = form(async (data) => {
     const result = await api('/session', { method: 'POST', body: data }); node.reset(); session = { ...result, username: data.username }; csrf = result.csrfToken; await authenticator();
   });
-  field(node, 'username', 'SuperAdmin username', { autocomplete: 'username', maxLength: 64 });
+  field(node, 'username', 'SuperAdmin username', { autocomplete: 'username', maxLength: 64, icon: 'user' });
   field(node, 'password', 'Password', { type: 'password', autocomplete: 'current-password', maxLength: 256 }); submit(node, 'Continue');
 }
 async function authenticator() {
@@ -234,8 +243,8 @@ async function authenticator() {
     if (result.recoveryCodes) { recovery(result.recoveryCodes); return; }
     await listShops();
   });
-  const input = field(node, 'code', 'Six-digit authenticator code', { autocomplete: 'one-time-code', maxLength: 6, required: !session.totpEnabled }); input.inputMode = 'numeric'; input.pattern = '[0-9]{6}';
-  if (session.totpEnabled) field(node, 'recoveryCode', 'Or a recovery code', { required: false, maxLength: 11 });
+  const input = field(node, 'code', 'Six-digit authenticator code', { autocomplete: 'one-time-code', maxLength: 6, required: !session.totpEnabled, icon: 'key' }); input.inputMode = 'numeric'; input.pattern = '[0-9]{6}';
+  if (session.totpEnabled) field(node, 'recoveryCode', 'Or a recovery code', { required: false, maxLength: 11, icon: 'key' });
   submit(node, 'Confirm');
 }
 function externalLink(value, label) {
