@@ -32,7 +32,7 @@ test('SuperAdmin can edit the default shop name and the seller username of every
       shop.revision += 1; return route.fulfill({ json: { tenant: shop } });
     }
     const body = url.pathname.endsWith('/session') ? { stage: 'FULL', csrfToken: 'synthetic-csrf', username: 'admin' } : url.pathname.endsWith('/shops') ? { items: [shop] }
-      : url.pathname.endsWith('/qr') ? { provisioned: true, tenantSlots: 1, occupiedTenantSlots: 0, binding: null } : shop;
+      : url.pathname.endsWith('/qr') ? null : shop;
     await route.fulfill({ json: body });
   });
   for (const isDefault of [true, false]) {
@@ -51,7 +51,27 @@ test('SuperAdmin can edit the default shop name and the seller username of every
     assert.deepEqual(await page.locator('.group-title').allInnerTexts(), ['Shop information', 'Store links', 'Seller account & security', 'Shop settings', 'Integrations']);
     const security = (await page.locator('.group-seller').boundingBox()).y, settings = (await page.locator('.group-shop').boundingBox()).y, integrations = (await page.locator('.group-integrations').boundingBox()).y;
     assert.ok(security < settings && settings <= integrations, 'security first; settings and integrations may sit side by side on wide screens');
-    assert.match(await page.locator('.qr-unavailable, .group-integrations').first().innerText(), /WhatsApp QR|Worker/);
+    // The QR policy is unavailable here: state beside the title, whose task it is, what to do; diagnostics folded, copyable, keyboard operable.
+    const unavailable = page.locator('.qr-unavailable');
+    assert.equal(await unavailable.locator('.chip').innerText(), 'Setup required');
+    assert.equal(await unavailable.locator('.qr-header h3').innerText(), 'WhatsApp QR');
+    assert.equal(await unavailable.locator('h4').innerText(), 'Platform setup pending');
+    assert.match(await unavailable.locator('.qr-status').innerText(), /nothing is wrong with this shop[\s\S]*Host operator: run the platform upgrade/);
+    assert.equal(await unavailable.locator('details').evaluate(node => node.open), false);
+    assert.equal(await unavailable.locator('svg').evaluateAll(nodes => nodes.every(node => node.getAttribute('aria-hidden') === 'true')), true);
+    await unavailable.locator('summary').click();
+    assert.equal(await unavailable.locator('details').evaluate(node => node.open), true);
+    assert.equal(await unavailable.locator('summary').evaluate(node => getComputedStyle(node).outlineStyle), 'none', 'no focus box after a mouse click');
+    assert.match(await unavailable.locator('pre').innerText(), /Missing: platform schema 3/);
+    assert.equal(await unavailable.getByRole('button', { name: 'Copy technical details', exact: true }).count(), 1);
+    await unavailable.locator('summary').focus(); await page.keyboard.press('Enter');
+    assert.equal(await unavailable.locator('details').evaluate(node => node.open), false, 'Enter closes the accordion');
+    await page.keyboard.press('Space');
+    assert.equal(await unavailable.locator('details').evaluate(node => node.open), true, 'Space opens it again');
+    // Narrow phone: nothing overflows at 320 px.
+    await page.setViewportSize({ width: 320, height: 800 });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.setViewportSize({ width: 1280, height: 900 });
     // The header Edit shop shortcut lands on the name field.
     await page.getByRole('button', { name: 'Edit shop', exact: true }).click();
     assert.equal(await page.evaluate(() => document.activeElement?.closest('.group-shop') !== null), true);
