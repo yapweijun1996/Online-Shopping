@@ -62,6 +62,15 @@ test('platform PWA: install, offline contract, version N to N+1 update with load
   assert.ok(cachedUrls.includes('/platform/') && cachedUrls.includes('/platform/offline.html') && cachedUrls.includes('/platform/app.js'));
   assert.equal(cachedUrls.some((url) => url.includes('/api/')), false, 'no API response is cached');
 
+  // ---- Account menu: version and a manual check; the menu stays open to show the result.
+  await page.locator('#account-button').click();
+  const menu = page.locator('#account-menu');
+  assert.match(await menu.locator('.menu-update-version').innerText(), /App version v1/);
+  await menu.getByRole('button', { name: 'Check for updates' }).click();
+  await menu.getByText('This is the latest version.').waitFor();
+  assert.equal(await menu.isVisible(), true, 'the menu stays open after the check');
+  await page.keyboard.press('Escape'); assert.equal(await menu.isHidden(), true);
+
   // ---- Security/privacy: the CSRF token and API payloads are not persisted in storage or caches.
   const stored = await page.evaluate(async () => JSON.stringify([{ ...localStorage }, { ...sessionStorage }, await Promise.all((await caches.keys()).map(async (name) => { const cache = await caches.open(name); return Promise.all((await cache.keys()).map(async (request) => [request.url, (await (await cache.match(request)).text()).slice(0, 400000)])); }))]));
   assert.doesNotMatch(stored, /synthetic-csrf-token|Synthetic Shop/, 'neither request URLs nor cached response bodies hold the CSRF token or shop data');
@@ -129,6 +138,11 @@ test('platform PWA: install, offline contract, version N to N+1 update with load
   await page.waitForTimeout(1500);
   assert.equal(await page.evaluate(() => window.__marker), 'still the same page', 'still the same page after waiting');
   assert.equal(await page.evaluate(() => navigator.serviceWorker.controller.scriptURL.endsWith('sw.js')), true);
+  // The Account menu turns its check into "Update now" while a version is waiting.
+  await page.locator('#account-button').click();
+  assert.equal((await page.locator('#account-menu .menu-update-button').innerText()).trim(), 'Update now (v2)');
+  assert.equal(await page.locator('#account-menu .menu-update-status').innerText(), 'A new version is ready.');
+  await page.keyboard.press('Escape');
   // A changed field asks first; Cancel keeps the page and the draft.
   const nav = (name) => page.locator('#navigation').getByRole('button', { name, exact: true });
   await nav('Account').click();

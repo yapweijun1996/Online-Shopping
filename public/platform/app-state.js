@@ -1,7 +1,7 @@
 // Pure lifecycle logic for the platform PWA shell (no DOM), so it can be unit-tested.
 export const APP_STATES = Object.freeze(['STARTING', 'READY', 'OFFLINE', 'UPDATE_AVAILABLE', 'UPDATING', 'RELOADING', 'ERROR', 'UPDATE_FAILED']);
 
-export const initialFlags = (offline = false) => ({ booted: false, offline, available: null, ready: false, applying: false, reloading: false, failed: false, workerError: '', dismissed: '', checked: false });
+export const initialFlags = (offline = false) => ({ booted: false, offline, available: null, ready: false, applying: false, reloading: false, failed: false, workerError: '', dismissed: '', checked: false, checking: false });
 
 // What the application is doing, in priority order (pwa:product-standard §11).
 export function appState(flags) {
@@ -23,7 +23,7 @@ export function bannerState(flags) {
 
 // Folds a report from the shared update lifecycle (public/shared/pwa.js onState) into the flags.
 export function reduceWorkerState(flags, state) {
-  const next = { ...flags, available: state.available ?? null, ready: Boolean(state.ready), applying: state.applying === true };
+  const next = { ...flags, available: state.available ?? null, ready: Boolean(state.ready), applying: state.applying === true, checking: state.checking === true };
   // "Reloading" is only true while an accepted activation is still going ahead; a deferred activation keeps the page, so the loader must go.
   if (!next.applying) next.reloading = false;
   if (state.statusKey === 'updateFailed') { next.failed = true; next.applying = false; next.reloading = false; }

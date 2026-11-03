@@ -1,5 +1,5 @@
 import { icon } from './shared/icons.js';
-import { initPwaShell, markReady, mountAppSection } from './pwa-shell.js';
+import { initPwaShell, markReady, mountAppSection, mountMenuUpdate } from './pwa-shell.js';
 import { draftSignature } from './shared/update-guard.js';
 import { tableRows, safeLink } from './table.js';
 import { mountAppearance, paletteChoices } from './shared/appearance.js';
@@ -43,7 +43,7 @@ document.addEventListener('keydown', event => {
 });
 document.querySelector('#account-button').addEventListener('click', event => { const menu = document.querySelector('#account-menu'); menu.hidden = !menu.hidden; event.currentTarget.setAttribute('aria-expanded', String(!menu.hidden)); });
 document.addEventListener('click', event => {
-  if (event.target.closest('#account-button')) return;
+  if (event.target.closest('#account-button') || event.target.closest('#account-menu [data-keep-open]')) return;
   document.querySelector('#account-menu').hidden = true;
   document.querySelector('#account-button').setAttribute('aria-expanded', 'false');
 });
@@ -212,6 +212,7 @@ function nav() {
   navigation.insertBefore(element('div', 'Security', 'nav-group'), navigation.lastElementChild);
   document.querySelector('#account-menu').replaceChildren(button('Account', account), button('Sign out', async () => { await api('/session', { method: 'DELETE' }); session = null; csrf = null; await signIn(); }));
   document.querySelector('#account-menu').prepend(element('p', session?.username || 'SuperAdmin'));
+  mountMenuUpdate(document.querySelector('#account-menu'));
 }
 async function signIn() {
   session = null; nav(); screen('Sign in');
