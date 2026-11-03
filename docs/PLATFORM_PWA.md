@@ -50,7 +50,7 @@ Platform-only files: `manifest.webmanifest`, `sw.js`, `version.js`, `offline.htm
 5. **Update now**: state `UPDATING`, loader and inert page, `SKIP_WAITING`, wait for the controller change, state `RELOADING`, one reload into the new version, old cache deleted.
 6. Failure: `UPDATE_FAILED` with Try again; the current version keeps working.
 
-Release rule: bump both version strings whenever any file listed in `sw.js` changes.
+Release rule: bump both version strings whenever any file listed in `sw.js` changes, then run `node scripts/platform-shell-fingerprint.mjs`. CI fails (`test/platform-pwa.test.js`) when a cached file changes under an unchanged version, because installed browsers would otherwise keep serving the old cached files and never offer the update. (This happened once: the top bar update button shipped under version v1 and was invisible to browsers that had already installed v1; fixed by releasing v2 and adding the guard.)
 
 ## Acceptance evidence
 

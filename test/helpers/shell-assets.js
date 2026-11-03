@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 
 // The public files a page needs to start: HTML links and scripts, module imports, CSS @import/url(), and manifest icons.
@@ -31,4 +32,13 @@ export function shellAssets({ root = new URL('../../public/', import.meta.url), 
   }
   seen.add(entry);
   return [...seen].sort();
+}
+
+// A fingerprint of the cached platform shell. sw.js and version.js are left out: they carry the version that the fingerprint guards.
+export function shellFingerprint(options = {}) {
+  const root = options.root || new URL('../../public/', import.meta.url), hash = createHash('sha256');
+  for (const path of shellAssets({ root, extra: ['/platform/offline.html'] }).filter((item) => !item.endsWith('/') && !/\/platform\/(?:sw|version)\.js$/.test(item))) {
+    hash.update(path); hash.update('\0'); hash.update(readFileSync(new URL(`.${path}`, root))); hash.update('\0');
+  }
+  return hash.digest('hex');
 }
