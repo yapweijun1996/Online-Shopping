@@ -213,3 +213,68 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:var(--ui-safe
 .account-name{margin:0;font-size:20px;font-weight:700;overflow-wrap:anywhere}
 .password-toggle svg{width:22px;height:22px}
 @media(min-width:1100px){.account-layout{grid-template-columns:minmax(0,3fr) minmax(280px,2fr);align-items:start}}
+
+/* Page header: title on the left, the page's main action on the right. */
+.page-heading{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 16px}
+body.auth .page-heading{display:block}
+.page-actions{display:flex;flex-wrap:wrap;gap:8px}
+.page-actions:empty{display:none}
+.page-actions button{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 16px;border-radius:var(--ui-radius-sm);font-weight:700;cursor:pointer}
+.page-actions .primary-button{color:var(--ui-on-action);background:var(--ui-action);border:1px solid var(--ui-action)}
+.page-actions .ui-icon{width:18px;height:18px}
+.page-lead{margin:-8px 0 16px;color:var(--ui-muted)}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+
+/* Tables: search, filter, then the list; footer only when there is more than one page. */
+.shops-table.panel,.activity-table.panel{padding:20px 24px;box-shadow:none}
+.table-tools{gap:12px;margin-bottom:16px}
+.search-field{position:relative;display:flex;align-items:center;flex:1 1 280px;max-width:480px}
+.search-field>.ui-icon{position:absolute;left:12px;width:18px;height:18px;color:var(--ui-muted);pointer-events:none}
+.table-tools .search-field input{width:100%;min-width:0;padding-left:38px}
+.filter-field,.rows-field{display:inline-flex;align-items:center;gap:8px;font-weight:600;color:var(--ui-muted)}
+.filter-field select,.rows-field select{min-height:44px;padding:0 12px;color:var(--ui-text);background:var(--ui-surface);border:1px solid var(--ui-control-border);border-radius:var(--ui-radius-sm)}
+.table-header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 4px}
+.table-header h2{margin:0;font-size:16px}
+.table-count{margin:0;color:var(--ui-muted)}
+.table-output{margin-top:8px}
+.table-footer{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-top:12px}
+.table-range{margin:0;color:var(--ui-muted)}
+.shops-table .data-table th,.shops-table .data-table td{padding:10px 12px;vertical-align:middle}
+.shops-table .data-table tbody tr:hover{background:var(--ui-hover-surface)}
+.shops-table .chip{padding:3px 10px;font-size:12px;font-weight:700}
+.shop-cell{display:grid;gap:2px;min-width:0}
+.shop-line{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.shop-name{font-weight:700;overflow-wrap:anywhere}
+.shop-meta{color:var(--ui-muted);font-size:13px;overflow-wrap:anywhere}
+.mobile-meta{display:none}
+.row-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.shops-table td[data-column=actions],.shops-table th:last-child{text-align:right}
+.row-menu{position:relative}
+#content .row-menu-toggle{display:grid;place-items:center;width:44px;height:44px;padding:0}
+.row-menu-toggle .ui-icon{width:20px;height:20px}
+.row-menu-list{position:absolute;top:calc(100% + 4px);right:0;z-index:var(--ui-z-banner);display:grid;min-width:210px;padding:6px;background:var(--ui-surface);border:1px solid var(--ui-border);border-radius:var(--ui-radius-md);box-shadow:var(--ui-shadow-raised)}
+#content .row-menu-list [role=menuitem]{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 12px;color:var(--ui-text);background:transparent;border:0;border-radius:var(--ui-radius-sm);font:inherit;font-weight:600;text-align:left;text-decoration:none;cursor:pointer}
+#content .row-menu-list [role=menuitem]:hover,#content .row-menu-list [role=menuitem]:focus-visible{background:var(--ui-hover-surface)}
+.row-menu-list .ui-icon{width:18px;height:18px;flex:none}
+.empty-state{display:grid;justify-items:start;gap:8px}.empty-state h2{margin:0;font-size:18px}.empty-state p{margin:0}
+@media(max-width:719px){
+ .table-tools{display:grid;grid-template-columns:minmax(0,1fr)}
+ .table-tools>*{grid-column:1/-1;grid-row:auto}
+ .search-field{max-width:none}
+ .table-tools>.mobile-sort{display:grid;grid-template-columns:minmax(0,1fr) auto}
+ .table-tools .mobile-sort>*{grid-row:auto}
+ .filter-field{display:grid;grid-template-columns:auto minmax(0,1fr)}
+ .shops-table .data-table tbody tr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;padding:12px 0}
+ .shops-table .data-table td[data-column]{display:block;grid-column:auto;grid-row:auto;padding:0}
+ .shops-table .data-table td[data-column]::before{display:none}
+ .shops-table .data-table td[data-column=name]{grid-column:1;grid-row:1}
+ .shops-table .data-table td[data-column=status]{grid-column:2;grid-row:1;justify-self:end}
+ .shops-table .data-table td[data-column=currency],.shops-table .data-table td[data-column=createdAt]{display:none}
+ .shops-table .data-table td[data-column=actions]{grid-column:1/-1;grid-row:2}
+ .shops-table .row-actions{justify-content:stretch}
+ .shops-table .row-actions>button{flex:1}
+ .mobile-meta{display:inline}
+ .shops-table.panel,.activity-table.panel{padding:16px}
+}
+.filter-field>span,.rows-field>span{line-height:1}
+@media(max-width:719px){.filter-field{align-items:center}}

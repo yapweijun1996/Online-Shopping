@@ -18,6 +18,8 @@ const paths = {
   chevronDown: 'm6 9 6 6 6-6',
   sliders: 'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6',
   download: 'M12 3v12m0 0-4-4m4 4 4-4M4 21h16',
+  search: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3',
+  external: 'M14 4h6v6M20 4l-9 9M18 14v6H4V6h6',
   lock: 'M5 10h14v11H5zM8 10V7a4 4 0 0 1 8 0v3M12 15v2',
   key: 'M4 15a4 4 0 1 0 8 0 4 4 0 0 0-8 0M11 12l9-9M16 7l3 3',
   eye: 'M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6zM9 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0',
