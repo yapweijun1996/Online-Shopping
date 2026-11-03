@@ -132,8 +132,25 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   const pricing = group('pricingAvailability', 'product-pricing-card');
   const priceFields = document.createElement('div');
   priceFields.className = 'product-fields';
+  // Price shows its currency inside the field; the read-only currency below explains where it comes from.
+  const pricePrefix = document.createElement('span');
+  pricePrefix.className = 'input-prefix';
+  pricePrefix.setAttribute('aria-hidden', 'true');
+  const priceBox = document.createElement('span');
+  priceBox.className = 'input-affix';
+  form.elements.price.before(priceBox);
+  priceBox.append(pricePrefix, form.elements.price);
+  const setCurrency = (value) => { form.elements.currency.value = value; pricePrefix.textContent = value; pricePrefix.hidden = !value; };
+  form.elements.stockQuantity.placeholder = t('stockUnlimited');
+  const activeHelp = document.createElement('small');
+  activeHelp.id = 'product-active-help';
+  activeHelp.className = 'check-help';
+  activeHelp.dataset.i18n = 'activeHelp';
+  activeHelp.textContent = t('activeHelp');
+  form.elements.active.setAttribute('aria-describedby', 'product-active-help');
+  form.elements.active.closest('label').after(activeHelp);
   // Stock is availability: it sits with price and the shop switch, so the details card keeps only descriptive fields.
-  priceFields.append(form.elements.price.closest('label'), form.elements.currency.closest('label'), form.elements.stockQuantity.closest('label'), form.elements.active.closest('label'));
+  priceFields.append(form.elements.price.closest('label'), form.elements.currency.closest('label'), form.elements.stockQuantity.closest('label'), form.elements.active.closest('label'), activeHelp);
   pricing.append(priceFields);
   const imageColumn = group('productImages', 'product-image-column');
   imageColumn.className = 'product-image-column';
@@ -702,7 +719,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     form.elements.description.value = product.description;
     populateCategories(product.categoryCode);
     form.elements.price.value = (product.priceMinor / 100).toFixed(2);
-    form.elements.currency.value = product.currency;
+    setCurrency(product.currency);
     const currencyHelp = find('#product-currency-help');
     currencyHelp.dataset.i18n = product.currency === defaultCurrency ? 'currencyInherited' : 'currencyHistoryNote';
     currencyHelp.textContent = t(currencyHelp.dataset.i18n);
@@ -764,7 +781,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       if (sequence !== routeSequence || !isCurrent()) return;
       form.hidden = false;
       populateCategories(base?.categoryCode);
-      form.elements.currency.value = base?.currency || defaultCurrency;
+      setCurrency(base?.currency || defaultCurrency);
       if (base) {
         // A new variant starts from the shared details of the product it joins; SKU, options and price are its own.
         form.elements.name.value = base.name;
@@ -931,6 +948,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       }
     }
   });
+  form.addEventListener('input', (event) => event.target.removeAttribute?.('aria-invalid'));
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (saving || readingGallery || (editingId && !galleryLoaded)) return;
@@ -996,14 +1014,16 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       const galleryConflict = pendingRemove && failure.field === 'imageDataUrl';
       const optionKey = failure.field === 'options' ? (optionErrorKey[failure.code] || 'productError') : null;
       if (optionKey) { optionsError.textContent = t(optionKey); optionsError.hidden = false; }
-      setError(optionKey || (failure.code === 'PRODUCT_CHANGED' ? 'productChangedReopen' : failure.code === 'STOCK_TRACKING_CONFLICT' ? 'stockTrackingConflict' : failure.field === 'gallery' ? 'galleryLimit' : galleryConflict ? 'removeGalleryFirst' : failure.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : failure.code === 'DUPLICATE_SKU' ? 'duplicateSku' : failure.code === 'DUPLICATE_VARIANT' ? 'duplicateVariant' : 'productError'));
+      // Price and stock are checked here before anything is sent: say what a valid value looks like.
+      const inputKey = failure.code ? null : failure.field === 'price' ? 'priceInvalid' : failure.field === 'stockQuantity' ? 'stockInvalid' : null;
+      setError(optionKey || inputKey || (failure.code === 'PRODUCT_CHANGED' ? 'productChangedReopen' : failure.code === 'STOCK_TRACKING_CONFLICT' ? 'stockTrackingConflict' : failure.field === 'gallery' ? 'galleryLimit' : galleryConflict ? 'removeGalleryFirst' : failure.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : failure.code === 'DUPLICATE_SKU' ? 'duplicateSku' : failure.code === 'DUPLICATE_VARIANT' ? 'duplicateVariant' : 'productError'));
       if (galleryConflict && productId && editingId === productId) {
         // A rejected write owns no new baseline. Preserve all draft metadata,
         // image removals and order so retry and navigation guards remain truthful.
         galleryPanel.scrollIntoView({ block: 'nearest' });
       } else {
         const field = failure.code === 'DUPLICATE_SKU' ? 'sku' : failure.field === 'priceMinor' ? 'price' : failure.field === 'imageDataUrl' ? 'image' : failure.field;
-        if (field && form.elements[field]) form.elements[field].focus();
+        if (field && form.elements[field]) { form.elements[field].setAttribute('aria-invalid', 'true'); form.elements[field].focus(); }
       }
     } finally { saving = false; finish(); if (isCurrent()) { save.disabled = false; renderGallery(); } document.dispatchEvent(new Event('updateguardchange')); }
   });
@@ -1020,6 +1040,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       populateCategories(form.elements.category.value);
       renderOptionPickers();
       search.placeholder = t('searchNameOrSkuHint');
+      form.elements.stockQuantity.placeholder = t('stockUnlimited');
       status.textContent = statusKey ? `${statusProductName ? `${statusProductName}: ` : ''}${t(statusKey)}` : '';
       error.textContent = formErrorKey ? t(formErrorKey) : '';
       formSuccess.textContent = formSuccessKey ? t(formSuccessKey) : '';
