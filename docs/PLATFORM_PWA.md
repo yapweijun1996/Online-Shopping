@@ -44,8 +44,8 @@ Platform-only files: `manifest.webmanifest`, `sw.js`, `version.js`, `offline.htm
 ## Update lifecycle (version N to N+1)
 
 1. A release changes `version.js` and the `version` in `sw.js` together (a test enforces the pair), so the worker bytes change.
-2. The browser installs the new worker; it waits. Checks run on start, when the tab becomes visible, when the network returns, and from **Account, Check for updates**.
-3. State `UPDATE_AVAILABLE`: the banner offers **Update now** or **Later**. Later hides it, and **Update now** stays on the Account screen. Nothing reloads by itself.
+2. The browser installs the new worker; it waits. Checks run on start, when the tab becomes visible, when the network returns, every 10 minutes while the page is visible (a phone tab can stay open for days), and from **Account, Check for updates**.
+3. State `UPDATE_AVAILABLE`: an **Update** button appears in the top bar (icon with a dot on a phone; it also brings a hidden smart top bar back) and a banner offers **Update now** or **Later**. Later hides only the banner; the top bar button and the Account screen keep the option. Nothing reloads by itself.
 4. Unsaved form entries or a request in flight make the update ask first (confirm dialog) or wait.
 5. **Update now**: state `UPDATING`, loader and inert page, `SKIP_WAITING`, wait for the controller change, state `RELOADING`, one reload into the new version, old cache deleted.
 6. Failure: `UPDATE_FAILED` with Try again; the current version keeps working.
@@ -66,7 +66,7 @@ Tests: `test/platform-pwa.test.js` (static) and `test/platform-pwa-browser.test.
 | Status-bar theme | PASS in Chrome, NOT TESTED on iOS | top bar colour equals `theme-color` in light and dark (browser test) |
 | Manifest and installability | PASS statically, NOT TESTED in an install flow | manifest fields and real PNG sizes (static test); browser install prompt not exercised |
 | Service Worker versioning | PASS | cache `os-platform-v1`, then only `os-platform-v2` after the update (browser test) |
-| Update notification | PASS | banner text and no reload for 1.5 s after the new version is found (browser test) |
+| Update notification | PASS | top bar button (desktop and 390 px, 44 px target) and banner; no reload for 1.5 s after the new version is found (browser test) |
 | Update loader | PASS | loader seen with the page inert and one navigation, even after a double click (browser test) |
 | Offline contract | PASS | OFFLINE state, cold offline launch shows the offline page, no `/api/` in the cache (browser test) |
 | Accessibility | PARTIAL | `role=status` regions for the banner and loader, `aria-hidden` SVG icons, 44 px targets, native buttons (keyboard operable by construction, not separately tested for the new controls). Screen reader use and contrast ratios NOT TESTED. |
