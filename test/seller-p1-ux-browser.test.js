@@ -1,9 +1,11 @@
-import test from 'node:test';
+import nodeTest from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { sellerFixture } from './helpers/seller-app.js';
 const modulePath = process.env.QA_PLAYWRIGHT_MODULE;
+// Match the existing optional browser-suite contract; configured runners still fail closed.
+const test = modulePath ? nodeTest : nodeTest.skip;
 async function fixture(t, width = 375) {
   assert.ok(modulePath, 'QA_PLAYWRIGHT_MODULE is required');
   const { chromium } = await import(modulePath);
