@@ -1523,13 +1523,13 @@ for (const [locale, values] of Object.entries(sellerGalleryMessages)) Object.ass
 const sellerAddVariantMessages = {"en": {"addVariant": "Add variant"}, "ms": {"addVariant": "Tambah varian"}, "zh-Hans": {"addVariant": "添加规格"}, "vi": {"addVariant": "Thêm biến thể"}, "th": {"addVariant": "เพิ่มตัวเลือก"}, "ja": {"addVariant": "バリエーションを追加"}, "ko": {"addVariant": "옵션 추가"}};
 for (const [locale, values] of Object.entries(sellerAddVariantMessages)) Object.assign(messages[locale], values);
 const sellerLoginFooterMessages = {
-  en: { signedOutTitle: 'Signed out successfully', signedOutHint: 'Sign in to continue.', loginUpToDate: 'Up to date', loginCheckFailed: 'Check failed', loginUpdateTo: 'Update to' },
-  ms: { signedOutTitle: 'Berjaya log keluar', signedOutHint: 'Log masuk untuk meneruskan.', loginUpToDate: 'Terkini', loginCheckFailed: 'Semakan gagal', loginUpdateTo: 'Kemas kini ke' },
-  'zh-Hans': { signedOutTitle: '已成功退出登录', signedOutHint: '请重新登录以继续。', loginUpToDate: '已是最新', loginCheckFailed: '检查失败', loginUpdateTo: '更新到' },
-  vi: { signedOutTitle: 'Đã đăng xuất thành công', signedOutHint: 'Đăng nhập để tiếp tục.', loginUpToDate: 'Đã cập nhật', loginCheckFailed: 'Kiểm tra thất bại', loginUpdateTo: 'Cập nhật lên' },
-  th: { signedOutTitle: 'ออกจากระบบเรียบร้อยแล้ว', signedOutHint: 'เข้าสู่ระบบเพื่อดำเนินการต่อ', loginUpToDate: 'เป็นเวอร์ชันล่าสุด', loginCheckFailed: 'ตรวจสอบไม่สำเร็จ', loginUpdateTo: 'อัปเดตเป็น' },
-  ja: { signedOutTitle: 'ログアウトしました', signedOutHint: '続けるにはサインインしてください。', loginUpToDate: '最新です', loginCheckFailed: '確認できませんでした', loginUpdateTo: '更新:' },
-  ko: { signedOutTitle: '로그아웃되었습니다', signedOutHint: '계속하려면 로그인하세요.', loginUpToDate: '최신 버전', loginCheckFailed: '확인 실패', loginUpdateTo: '업데이트:' },
+  en: { variantConfigTitle: 'Variant setup', signedOutTitle: 'Signed out successfully', signedOutHint: 'Sign in to continue.', loginUpToDate: 'Up to date', loginCheckFailed: 'Check failed', loginUpdateTo: 'Update to' },
+  ms: { variantConfigTitle: 'Tetapan varian', signedOutTitle: 'Berjaya log keluar', signedOutHint: 'Log masuk untuk meneruskan.', loginUpToDate: 'Terkini', loginCheckFailed: 'Semakan gagal', loginUpdateTo: 'Kemas kini ke' },
+  'zh-Hans': { variantConfigTitle: '规格设置', signedOutTitle: '已成功退出登录', signedOutHint: '请重新登录以继续。', loginUpToDate: '已是最新', loginCheckFailed: '检查失败', loginUpdateTo: '更新到' },
+  vi: { variantConfigTitle: 'Thiết lập biến thể', signedOutTitle: 'Đã đăng xuất thành công', signedOutHint: 'Đăng nhập để tiếp tục.', loginUpToDate: 'Đã cập nhật', loginCheckFailed: 'Kiểm tra thất bại', loginUpdateTo: 'Cập nhật lên' },
+  th: { variantConfigTitle: 'ตั้งค่าตัวเลือกสินค้า', signedOutTitle: 'ออกจากระบบเรียบร้อยแล้ว', signedOutHint: 'เข้าสู่ระบบเพื่อดำเนินการต่อ', loginUpToDate: 'เป็นเวอร์ชันล่าสุด', loginCheckFailed: 'ตรวจสอบไม่สำเร็จ', loginUpdateTo: 'อัปเดตเป็น' },
+  ja: { variantConfigTitle: 'バリエーション設定', signedOutTitle: 'ログアウトしました', signedOutHint: '続けるにはサインインしてください。', loginUpToDate: '最新です', loginCheckFailed: '確認できませんでした', loginUpdateTo: '更新:' },
+  ko: { variantConfigTitle: '옵션 설정', signedOutTitle: '로그아웃되었습니다', signedOutHint: '계속하려면 로그인하세요.', loginUpToDate: '최신 버전', loginCheckFailed: '확인 실패', loginUpdateTo: '업데이트:' },
 };
 for (const [locale, values] of Object.entries(sellerLoginFooterMessages)) Object.assign(messages[locale], values);
 export function locale() { return current; }

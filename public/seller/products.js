@@ -1,4 +1,5 @@
 import { apiUrl } from '../shared/base-path.js';
+import { icon } from '../shared/icons.js';
 import { formatMoney, t, translate } from '../shared/i18n.js';
 import { beginMutation } from '../shared/update-guard.js';
 import { revealImage } from '../shared/image-reveal.js';
@@ -87,7 +88,10 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   const back = button(t('backToProducts'), () => onNavigate('products'));
   back.id = 'product-back';
   back.className = 'text-button product-back';
-  back.dataset.i18n = 'backToProducts';
+  const backText = document.createElement('span');
+  backText.dataset.i18n = 'backToProducts';
+  backText.textContent = t('backToProducts');
+  back.replaceChildren(icon('left'), backText);
   const editorStatus = document.createElement('p');
   editorStatus.id = 'product-editor-status';
   editorStatus.className = 'message';
@@ -128,7 +132,8 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   const pricing = group('pricingAvailability', 'product-pricing-card');
   const priceFields = document.createElement('div');
   priceFields.className = 'product-fields';
-  priceFields.append(form.elements.price.closest('label'), form.elements.currency.closest('label'), form.elements.active.closest('label'));
+  // Stock is availability: it sits with price and the shop switch, so the details card keeps only descriptive fields.
+  priceFields.append(form.elements.price.closest('label'), form.elements.currency.closest('label'), form.elements.stockQuantity.closest('label'), form.elements.active.closest('label'));
   pricing.append(priceFields);
   const imageColumn = group('productImages', 'product-image-column');
   imageColumn.className = 'product-image-column';
@@ -141,12 +146,32 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   const nameLabel = form.elements.name.closest('label');
   nameLabel.classList.add('full');
   formFields.prepend(nameLabel, form.elements.sku.closest('label'), form.elements.category.closest('label'), form.elements.description.closest('label'));
+  // Variant group and option label belong together: one section, side by side, with their explanation directly below.
+  const variantConfig = document.createElement('section');
+  variantConfig.className = 'product-variant-config full';
+  variantConfig.setAttribute('aria-labelledby', 'product-variant-config-title');
+  const variantTitle = document.createElement('h3');
+  variantTitle.id = 'product-variant-config-title';
+  variantTitle.dataset.i18n = 'variantConfigTitle';
+  variantTitle.textContent = t('variantConfigTitle');
+  const variantPair = document.createElement('div');
+  variantPair.className = 'product-variant-pair';
+  const variantInputs = [form.elements.variantGroup, form.elements.variantLabel];
+  variantPair.append(...variantInputs.map((input) => input.closest('label')));
+  const variantHelp = formFields.querySelector('[data-i18n="variantHelp"]');
+  variantHelp.id = 'product-variant-help';
+  variantHelp.classList.remove('full');
+  for (const input of variantInputs) input.setAttribute('aria-describedby', 'product-variant-help');
+  variantConfig.append(variantTitle, variantPair, variantHelp, find('#product-options'));
+  formFields.append(variantConfig);
   const editorActions = document.createElement('div');
   editorActions.className = 'product-editor-actions';
   editorActions.append(find('#product-cancel'), find('#product-save'));
   form.append(editorActions);
   find('.product-form-heading').remove();
   listView.append(find('.product-toolbar'), status, listRecovery, listHeading, list, more);
+  // Change history is secondary: a compact disclosure after the cards, not a full-width bar above them.
+  editorActions.before(find('#product-history'));
   editorView.append(back, editorStatus, form);
   root.replaceChildren(listView, editorView);
   const isCurrent = () => editorView.isConnected && root.contains(editorView);
