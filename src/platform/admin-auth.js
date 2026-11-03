@@ -30,7 +30,7 @@ export function requirePlatformCsrf(request, csrf) {
 
 export function createAdminAuth({ platform, secretBox, clock = Date.now }) {
   const stamp = () => iso(clock());
-  const audit = (actor, action) => recordAudit(platform, { actor, action });
+  const audit = (actor, action, detail) => recordAudit(platform, { actor, action, ...(detail ? { detail } : {}) });
   async function createSession(adminId, stage, trustedMs = 0) {
     const sessionToken = token(), csrfToken = token(), now = clock();
     const absolute = stage === 'FULL' ? trustedMs || ABSOLUTE_MS : RESTRICTED_MS;
@@ -160,7 +160,8 @@ export function createAdminAuth({ platform, secretBox, clock = Date.now }) {
         await platform.run('UPDATE platform_admin SET failed_attempts = 0, locked_until = NULL, updated_at = ? WHERE id = ?', stamp(), admin.id);
         await platform.run('DELETE FROM platform_session WHERE token_hash = ?', s.token_hash);
         const codes = action === 'TOTP_ENROLLED' ? await recoveryCodes(admin.id) : null;
-        await audit(admin.username, action);
+        // A year-long bearer session must be visible in the trail: the duration is recorded, never the token.
+        await audit(admin.username, action, trustedMs ? `trusted device, ${TRUSTED_DAYS[selectedDuration]} days` : undefined);
         return { ...await createSession(admin.id, 'FULL', trustedMs), ...(codes ? { recoveryCodes: codes } : {}) };
       });
       if (!result) throw denied();
