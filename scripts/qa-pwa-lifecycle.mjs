@@ -11,6 +11,8 @@ import { serveStatic } from '../src/static.js';
 import worker from '../src/worker.js';
 import { shopObjectName } from '../src/shop-setup.js';
 import { errorResponse } from '../src/http.js';
+// Move and Remove sit in each photo's More menu (image-first gallery cards).
+const openGalleryMenu = async (card) => { await card.locator('.product-gallery-more').click(); return card; };
 
 const out = resolve(process.env.QA_OUTPUT_DIR || 'output/qa/pwa-lifecycle');mkdirSync(out, { recursive: true });
 const head = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
@@ -160,7 +162,7 @@ try {
     await addTwo();initialCart = await cartBytes(customer);
     await customer.evaluate(() => {location.hash = '#profile';});await customer.locator('#profile-form [name=fullName]').fill('Fictional PWA buyer');await customer.locator('#profile-form [name=email]').fill('pwa-buyer@example.invalid');
     await seller.locator('[name=name]').fill('Fictional PWA saved draft');await seller.locator('[name=description]').fill('Fictional unsaved description');
-    await seller.locator('.product-gallery-item').last().locator('[data-gallery-action=remove]').click();assert.equal(await seller.locator('.product-gallery-item').count(), 5);
+    await (await openGalleryMenu(seller.locator('.product-gallery-item').last())).locator('[data-gallery-action=remove]').click();assert.equal(await seller.locator('.product-gallery-item').count(), 5);
     phase.sourceHead = targetHead;await shopCheck();await sellerCheck();
     await customer.waitForFunction((expectedVersions) => [...document.querySelectorAll('.shop-update-settings .primary-button')].some((x) => !x.hidden && x.textContent.includes(`${expectedVersions.v110}`)), { v110: currentApp.shop, v85: currentApp.seller, v109: oldWorkers.shop, v84: oldWorkers.seller });
     await seller.waitForFunction(expected => document.querySelector('#install-update-button')?.textContent.includes(expected), currentApp.seller);

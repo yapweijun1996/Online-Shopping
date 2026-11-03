@@ -11,6 +11,8 @@ import { serveStatic } from '../src/static.js';
 import worker from '../src/worker.js';
 import { shopObjectName } from '../src/shop-setup.js';
 import { errorResponse } from '../src/http.js';
+// Move and Remove sit in each photo's More menu (image-first gallery cards).
+const openGalleryMenu = async (card) => { await card.locator('.product-gallery-more').click(); return card; };
 
 const out = resolve(process.env.QA_OUTPUT_DIR || 'output/qa/pwa-seller-followup');mkdirSync(out, { recursive: true });
 const head = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
@@ -153,7 +155,7 @@ try {
   await checked('Normal predecessor gallery Save commits exactly the initiating product; Customer cart/Profile/preferences persist', async () => {
     await addTwo();initialCart = await cartBytes(customer);await customer.evaluate(() => location.hash = '#profile');await customer.locator('#profile-form [name=fullName]').fill('Fictional PWA buyer');await customer.locator('#profile-form [name=email]').fill('pwa-buyer@example.invalid');await customer.locator('#profile-form [type=submit]').click();await customer.waitForFunction(() => Boolean(document.querySelector('#profile-status').textContent));
     await customer.evaluate(async () => {await (await caches.open('qa-unrelated')).put('/qa-unrelated-marker', new Response('Fictional QA marker'));localStorage.setItem('qa-preserved-preference', 'fictional-keep');});
-    await seller.locator('.product-gallery-item').last().locator('[data-gallery-action=remove]').click();await sellerSave('Fictional normal85 saved');savedGallery = await galleryIDs();assert.equal(savedGallery.length, 5);savedSellerName = (await productRow()).name;return { savedImages: 5, cartQuantity: 2, normalSaveCommitted: true };
+    await (await openGalleryMenu(seller.locator('.product-gallery-item').last())).locator('[data-gallery-action=remove]').click();await sellerSave('Fictional normal85 saved');savedGallery = await galleryIDs();assert.equal(savedGallery.length, 5);savedSellerName = (await productRow()).name;return { savedImages: 5, cartQuantity: 2, normalSaveCommitted: true };
   });
   await checked('Genuine target waiting label preserves predecessor draft; unchanged Shop110 advertises no update', async () => {
     await seller.locator('[name=name]').fill('Fictional waiting draft');phase.sourceHead = targetHead;await sellerCheck();await shopCheck();

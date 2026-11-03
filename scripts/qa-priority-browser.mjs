@@ -5,6 +5,8 @@ import { pathToFileURL } from 'node:url';
 import { createApp } from '../src/server.js';
 import { listProducts } from '../src/products.js';
 import { chromium } from '/Users/yapweijun/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
+// Move and Remove sit in each photo's More menu (image-first gallery cards).
+const openGalleryMenu = async (card) => { await card.locator('.product-gallery-more').click(); return card; };
 
 // One browser, fresh in-memory stores, fictional contacts and no provider calls.
 const out = resolve('output/qa/priority-fix');mkdirSync(out, { recursive: true });
@@ -56,14 +58,14 @@ try {
     await seller.locator('[name="gallery"]').setInputFiles([files[4]]);
     await seller.waitForFunction(() => document.querySelector('#product-form-error').textContent.includes('ten images'));
     assert.equal(await seller.locator('.product-gallery-item').count(), 10);
-    await seller.locator('.product-gallery-item').last().locator('[data-gallery-action="remove"]').click();
+    await (await openGalleryMenu(seller.locator('.product-gallery-item').last())).locator('[data-gallery-action="remove"]').click();
     await seller.locator('[name="gallery"]').setInputFiles({ name: 'invalid.txt', mimeType: 'text/plain', buffer: Buffer.from('synthetic invalid upload') });
     await seller.waitForFunction(() => Boolean(document.querySelector('#product-form-error').textContent));
     assert.equal(await seller.locator('.product-gallery-item').count(), 9);
     await seller.locator('[name="gallery"]').setInputFiles([files[3]]);await seller.waitForFunction(() => document.querySelectorAll('.product-gallery-item').length === 10);
   });
   await checked('Reorder and set static primary; keyboard controls retain focus; repeated Save sends one atomic patch', async () => {
-    const move = seller.locator('.product-gallery-item').last().locator('[data-gallery-action="earlier"]');await move.focus();await seller.keyboard.press('Enter');
+    const move = (await openGalleryMenu(seller.locator('.product-gallery-item').last())).locator('[data-gallery-action="earlier"]');await move.focus();await seller.keyboard.press('Enter');
     assert.equal(await seller.evaluate(() => document.activeElement?.closest('.product-gallery-item') !== null), true);
     await seller.locator('.product-gallery-item').nth(2).locator('[data-gallery-action="primary"]').click();
     const first = await seller.locator('.product-gallery-item').first().getAttribute('data-image-id');
@@ -84,13 +86,13 @@ try {
     await noDemo(customer);await customer.screenshot({ path: out + '/customer-ten-images-mobile.png', fullPage: true });
   });
   await checked('Cancel an image removal preserves all saved images after reopen', async () => {
-    const before = await ids();await seller.locator('.product-gallery-item').last().locator('[data-gallery-action="remove"]').click();
+    const before = await ids();await (await openGalleryMenu(seller.locator('.product-gallery-item').last())).locator('[data-gallery-action="remove"]').click();
     seller.once('dialog', (dialog) => dialog.accept());await seller.locator('#product-cancel').click();
     await seller.locator('#product-list-view').waitFor({ state: 'visible' });await openEditor();assert.deepEqual(await ids(), before);
     assert.equal(await seller.locator('.product-gallery-item').count(), 10);
   });
   await checked('Save failure keeps the nine-image draft and server ten-image state; retry persists removal', async () => {
-    await seller.locator('.product-gallery-item').last().locator('[data-gallery-action="remove"]').click();
+    await (await openGalleryMenu(seller.locator('.product-gallery-item').last())).locator('[data-gallery-action="remove"]').click();
     await seller.route(origin + path, async (route) => route.request().method() === 'PATCH' ? route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":{"code":"UNAVAILABLE"}}' }) : route.continue());
     await seller.locator('#product-save').click();await seller.waitForFunction(() => Boolean(document.querySelector('#product-form-error').textContent));
     assert.equal(await seller.locator('.product-gallery-item').count(), 9);assert.equal((await ids()).length, 10);

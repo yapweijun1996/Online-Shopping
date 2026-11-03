@@ -3,6 +3,8 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from '/Users/yapweijun/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
+// Move and Remove sit in each photo's More menu (image-first gallery cards).
+const openGalleryMenu = async (card) => { await card.locator('.product-gallery-more').click(); return card; };
 
 const source = resolve(process.env.QA_SOURCE_ROOT || '.');
 const { createApp } = await import(pathToFileURL(source + '/src/server.js'));
@@ -30,7 +32,7 @@ const stay = async () => {
 try {
   await page.goto(origin + '/seller/');await page.locator('#username').fill('draft_qa');await page.locator('#password').fill('SyntheticDraftOnly48125');await page.locator('#login-form').evaluate((f) => f.requestSubmit());await page.locator('#workspace').waitFor({ state: 'visible' });
   await checked('400 image rejection preserves full metadata/gallery draft, dirty guard and intended fields on retry', async () => {
-    await open(draft.id);await page.locator('.product-gallery-item').last().locator('[data-gallery-action="remove"]').click();await page.locator('#product-remove-image').click();
+    await open(draft.id);await (await openGalleryMenu(page.locator('.product-gallery-item').last())).locator('[data-gallery-action="remove"]').click();await page.locator('#product-remove-image').click();
     await page.locator('[name="name"]').fill('Fictional intended name');await page.locator('[name="description"]').fill('Fictional intended description');await page.locator('[name="price"]').fill('45.67');await page.locator('[name="active"]').uncheck();
     const before = await signature(),url = origin + '/api/v1/seller/products/' + draft.id;
     await page.route(url, (route) => route.request().method() === 'PATCH' ? route.fulfill({ status: 400, contentType: 'application/json', body: '{"error":{"code":"VALIDATION_ERROR","field":"imageDataUrl"}}' }) : route.continue());
