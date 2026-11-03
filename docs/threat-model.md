@@ -500,3 +500,8 @@ outcomes only; prompts, transcripts and generated suggestions are not persisted
 by this feature. Existing chat retention remains unchanged. See
 [AI_ASSISTANT_DESIGN.md](AI_ASSISTANT_DESIGN.md) for limits and operational gates.
 
+
+
+## SuperAdmin trusted-device session option
+
+`src/platform/admin-auth.js` and `public/platform/app.js` provide an explicit post-MFA persistent session choice (1/7/30/365 days, selector default 7 days). Opt-in is unchecked on a new form. The server allowlists the choice and sets both existing expiry columns to one fixed deadline; normal sessions retain their idle/absolute limits. No schema or seller/customer authentication behavior changes. The cookie remains Secure, HttpOnly, SameSite=Strict, host-only and API-path-scoped; only its hash is stored server-side. Logout revokes the current token, password change revokes other sessions, and host reset revokes all. Origin, CSRF, TOTP replay, recovery single-use and lockout checks remain mandatory. Long-lived bearer-cookie theft is an explicit increased risk, especially at one year; this is not hardware binding or per-action MFA step-up. See [PLATFORM_TRUSTED_DEVICE.md](PLATFORM_TRUSTED_DEVICE.md) for the contract and verification boundary.

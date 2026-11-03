@@ -8,6 +8,7 @@ import { matchingTotpStep, newTotpSecret } from './totp.js';
 const hash = (text) => createHash('sha256').update(text).digest('hex');
 const DUMMY_HASH = encodePassword(randomBytes(32).toString('base64url'));
 const RESTRICTED_MS = 5 * 60_000, IDLE_MS = 30 * 60_000, ABSOLUTE_MS = 4 * 60 * 60_000;
+const TRUSTED_DAYS = Object.freeze({ '1d': 1, '1w': 7, '1m': 30, '1y': 365 });
 const denied = () => new ApiError(401, 'UNAUTHORIZED', 'Sign-in failed.');
 const token = () => randomBytes(32).toString('base64url');
 const iso = (stamp) => new Date(stamp).toISOString();
@@ -30,13 +31,14 @@ export function requirePlatformCsrf(request, csrf) {
 export function createAdminAuth({ platform, secretBox, clock = Date.now }) {
   const stamp = () => iso(clock());
   const audit = (actor, action) => recordAudit(platform, { actor, action });
-  async function createSession(adminId, stage) {
+  async function createSession(adminId, stage, trustedMs = 0) {
     const sessionToken = token(), csrfToken = token(), now = clock();
-    const duration = stage === 'FULL' ? IDLE_MS : RESTRICTED_MS;
+    const absolute = stage === 'FULL' ? trustedMs || ABSOLUTE_MS : RESTRICTED_MS;
+    const duration = stage === 'FULL' ? trustedMs || IDLE_MS : RESTRICTED_MS;
     await platform.run('DELETE FROM platform_session WHERE expires_at <= ? OR absolute_expires_at <= ?', iso(now), iso(now));
     await platform.run(`INSERT INTO platform_session(token_hash, admin_id, csrf_token, stage, expires_at, absolute_expires_at, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`, hash(sessionToken), adminId, csrfToken, stage, iso(now + duration), iso(now + (stage === 'FULL' ? ABSOLUTE_MS : duration)), iso(now));
-    return { token: sessionToken, csrfToken, stage, maxAge: stage === 'FULL' ? ABSOLUTE_MS / 1000 : duration / 1000 };
+      VALUES (?, ?, ?, ?, ?, ?, ?)`, hash(sessionToken), adminId, csrfToken, stage, iso(now + duration), iso(now + absolute), iso(now));
+    return { token: sessionToken, csrfToken, stage, maxAge: absolute / 1000 };
   }
   async function session(sessionToken, full = false) {
     if (!sessionToken || !/^[A-Za-z0-9_-]{43}$/.test(sessionToken)) throw denied();
@@ -44,7 +46,11 @@ export function createAdminAuth({ platform, secretBox, clock = Date.now }) {
       JOIN platform_admin a ON a.id = s.admin_id WHERE s.token_hash = ?`, hash(sessionToken));
     if (!row || row.expires_at <= stamp() || row.absolute_expires_at <= stamp() || (row.locked_until && row.locked_until > stamp())) throw denied();
     if (full && row.stage !== 'FULL') throw new ApiError(403, 'TOTP_REQUIRED', 'Confirm your authenticator first.');
-    if (row.stage === 'FULL') await platform.run('UPDATE platform_session SET expires_at = ? WHERE token_hash = ?', iso(Math.min(clock() + IDLE_MS, Date.parse(row.absolute_expires_at))), row.token_hash);
+    // Server-issued sessions longer than the normal absolute limit are trusted-device sessions.
+    // Their existing expiry columns hold one fixed deadline; activity must never extend it.
+    if (row.stage === 'FULL' && Date.parse(row.absolute_expires_at) - Date.parse(row.created_at) <= ABSOLUTE_MS) {
+      await platform.run('UPDATE platform_session SET expires_at = ? WHERE token_hash = ?', iso(Math.min(clock() + IDLE_MS, Date.parse(row.absolute_expires_at))), row.token_hash);
+    }
     return row;
   }
   async function fail(admin) {
@@ -126,6 +132,13 @@ export function createAdminAuth({ platform, secretBox, clock = Date.now }) {
       });
     },
     async confirm(sessionToken, input) {
+      const selectedDuration = input.trustedDeviceDuration === undefined ? '1w' : input.trustedDeviceDuration;
+      if ((input.trustedDevice !== undefined && typeof input.trustedDevice !== 'boolean') ||
+          (input.trustedDeviceDuration !== undefined && input.trustedDevice !== true) ||
+          (input.trustedDevice === true && (typeof selectedDuration !== 'string' || !Object.hasOwn(TRUSTED_DAYS, selectedDuration)))) {
+        throw new ApiError(400, 'INVALID_INPUT', 'Choose a valid trusted-device duration.');
+      }
+      const trustedMs = input.trustedDevice === true ? TRUSTED_DAYS[selectedDuration] * 24 * 60 * 60_000 : 0;
       const result = await platform.transaction(async () => {
         const s = await session(sessionToken), admin = await platform.get('SELECT * FROM platform_admin WHERE id = ?', s.admin_id);
         if (s.stage !== 'PASSWORD') throw new ApiError(409, 'INVALID_STAGE', 'Start a new sign-in.');
@@ -148,7 +161,7 @@ export function createAdminAuth({ platform, secretBox, clock = Date.now }) {
         await platform.run('DELETE FROM platform_session WHERE token_hash = ?', s.token_hash);
         const codes = action === 'TOTP_ENROLLED' ? await recoveryCodes(admin.id) : null;
         await audit(admin.username, action);
-        return { ...await createSession(admin.id, 'FULL'), ...(codes ? { recoveryCodes: codes } : {}) };
+        return { ...await createSession(admin.id, 'FULL', trustedMs), ...(codes ? { recoveryCodes: codes } : {}) };
       });
       if (!result) throw denied();
       return result;

@@ -140,3 +140,8 @@ body.auth button[type=submit] svg{width:18px;height:18px}
 @media(max-width:719px){.url-row{grid-template-columns:minmax(0,1fr) 44px;padding-left:14px}.url-label{grid-column:1/-1;padding-top:8px}.detail-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}.detail-head .actions{display:contents}.detail-tools .link-button{justify-content:center;padding:0 10px}}
 .link-button{white-space:nowrap}
 #content button.link-button{font-size:16px}
+
+/* The entire trusted-device label is a touch target; the checkbox stays compact. */
+.trusted-device-choice{min-height:44px;margin-block:12px}
+
+.trusted-device-duration select{display:block;width:100%;margin-top:7px}
