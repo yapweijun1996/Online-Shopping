@@ -159,13 +159,27 @@ function renderUpdateUI() {
   byId('install-update-button').textContent = `${t('installUpdate')}${updateState?.available ? ` · ${updateState.available}` : ''}`;
   byId('install-update-button').disabled = applying || busy;
   byId('later-update-button').disabled = applying;
-  byId('login-version').textContent = `${t('appVersion')}: Seller ${APP_VERSION}`;
-  byId('login-check-updates').disabled = check.disabled;
-  byId('login-update-status').textContent = byId('check-updates-status').textContent;
-  const loginInstall = byId('login-install-update');
-  loginInstall.hidden = !updateState?.ready;
-  loginInstall.textContent = `${t('installUpdate')}${updateState?.available ? ` · ${updateState.available}` : ''}`;
-  loginInstall.disabled = applying;
+  renderLoginFooter(applying);
+}
+// Sign-in footer: system metadata, kept apart from the sign-in action. One state at a time: idle, checking, current,
+// ready, updating or failed; the check and update flow itself is the shared one (Settings uses the same actions).
+function renderLoginFooter(applying) {
+  const key = updateState?.statusKey;
+  const state = applying ? 'updating' : updateState?.ready ? 'ready' : key === 'checkingUpdates' ? 'checking'
+    : key === 'updateFailed' ? 'failed' : key === 'appUpToDate' ? 'current' : 'idle';
+  byId('login-footer').dataset.state = state;
+  byId('login-version').textContent = `Seller Studio · ${APP_VERSION}`;
+  const status = byId('login-update-status'), check = byId('login-check-updates'), install = byId('login-install-update');
+  status.replaceChildren();
+  if (state === 'current') status.append(icon('checkCircle'), document.createTextNode(t('loginUpToDate')));
+  else if (state === 'failed') status.textContent = t('loginCheckFailed');
+  else if (state === 'checking' || state === 'updating') status.textContent = t(state === 'checking' ? 'checkingUpdates' : 'appUpdating');
+  check.hidden = !(state === 'idle' || state === 'failed');
+  check.textContent = t(state === 'failed' ? 'retry' : 'checkUpdates');
+  // A background check is running: wait for it rather than dropping the click.
+  check.disabled = !updateActions || updateState?.checking === true;
+  install.hidden = state !== 'ready';
+  install.textContent = `${t('loginUpdateTo')} ${updateState?.available || ''}`.trim();
 }
 document.addEventListener('updateguardchange', renderUpdateUI);
 
@@ -681,7 +695,7 @@ byId('check-updates-button').addEventListener('click', () => {
   renderUpdateUI();
   updateActions?.check();
 });
-byId('login-check-updates').addEventListener('click', () => byId('check-updates-button').click());
+byId('login-check-updates').addEventListener('click', () => { updateDismissed = false; updateActions?.check(); });
 byId('login-install-update').addEventListener('click', () => updateActions?.update());
 byId('install-update-button').addEventListener('click', () => updateActions?.update());
 byId('later-update-button').addEventListener('click', () => {

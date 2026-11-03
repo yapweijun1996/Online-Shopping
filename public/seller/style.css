@@ -465,10 +465,20 @@
 .demo-role-link{align-self:center;border:0;background:none;color:var(--ui-muted);font:inherit;font-size:13px;text-decoration:underline;cursor:pointer;min-height:32px}
 .demo-role-link:disabled,.demo-role-primary:disabled{opacity:.6;cursor:default}
 
-.login-update{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:14px;font-size:12px;color:var(--ui-muted)}
-.login-update p{margin:0}
-.login-update .text-button{min-height:36px}
-.login-update .secondary-button{width:100%}
+/* Sign-in footer: system metadata below a divider, quieter than the sign-in action (12px minimum, muted, no brand colour). */
+.login-footer{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;margin-top:24px;padding-top:14px;border-top:1px solid var(--ui-border);font-size:13px;line-height:1.4;color:var(--ui-muted)}
+.login-footer-update{display:inline-flex;align-items:center;gap:8px;margin-left:auto}
+.login-footer-status{display:inline-flex;align-items:center;gap:5px}
+.login-footer-status:empty{display:none}
+.login-footer-status svg{width:15px;height:15px}
+.login-footer[data-state="current"] .login-footer-status svg{color:var(--shop-success)}
+.login-footer[data-state="failed"] .login-footer-status{color:var(--shop-error)}
+.login-footer-action{min-height:36px;padding:0 4px;border:0;background:transparent;color:var(--ui-secondary-text);font:inherit;font-weight:600;text-decoration:underline;text-decoration-color:color-mix(in srgb,currentColor 35%,transparent);text-underline-offset:3px;cursor:pointer}
+.login-footer-action:hover{color:var(--ui-text);text-decoration-color:currentColor}
+.login-footer-action:focus-visible{outline:2px solid var(--ui-focus);outline-offset:2px;border-radius:4px}
+.login-footer-action:disabled{opacity:.6;cursor:default}
+#login-install-update{padding:0 10px;border:1px solid var(--ui-control-border);border-radius:7px;text-decoration:none;color:var(--ui-text)}
+.login-input-wrap input:-webkit-autofill,.login-input-wrap input:-webkit-autofill:hover,.login-input-wrap input:-webkit-autofill:focus{-webkit-box-shadow:0 0 0 1000px var(--ui-surface) inset;-webkit-text-fill-color:var(--ui-text);caret-color:var(--ui-text);transition:background-color 9999s}
 
 .nav-badge{margin-left:auto;min-width:20px;padding:1px 6px;border-radius:999px;background:var(--shop-error);color:#fff;font-size:12px;font-weight:700;line-height:18px;text-align:center}
 .nav-badge[hidden]{display:none}
