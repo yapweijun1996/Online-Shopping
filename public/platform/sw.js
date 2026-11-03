@@ -6,7 +6,7 @@ const asset = (path) => new URL(path, self.registration.scope).pathname;
 // so shop data, sessions and every change go to the network and fail visibly when offline.
 self.setupOfflineWorker({
   cachePrefix: 'os-platform',
-  version: 'v2',
+  version: 'v3',
   scopePath,
   offlinePage: asset('./offline.html'),
   assets: [

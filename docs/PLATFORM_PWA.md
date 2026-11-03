@@ -91,3 +91,7 @@ Tests: `test/platform-pwa.test.js` (static) and `test/platform-pwa-browser.test.
 | A deferred activation left the loader and inert page up | Medium | `reduceWorkerState` clears `reloading` when activation is deferred (unit test) |
 | Dismissing the update banner hid the offline warning | Medium | `bannerState` shows OFFLINE regardless (unit and browser test) |
 | The privacy claim inspected cache request URLs only | Low | The test now reads cached response bodies too |
+
+## Account screen (Security)
+
+`Account` is one Security group: Change password (shows the server rules, asks for the new password twice, checks locally before sending, never sends the confirmation field) and Recovery codes (a confirmation names the consequence first; the codes are then shown once and must be saved). Details sit in a second column from 1100 px: who is signed in, appearance, app version. Phones get one column with security first (no overflow at 320, 390 and 430 px, browser test). Each action keeps its own "Current password" field on purpose: both endpoints re-check it, and re-authenticating per sensitive action is the safer design. Not tested: the on-screen keyboard.
