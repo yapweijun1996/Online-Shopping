@@ -357,3 +357,45 @@ body{background:var(--ui-canvas)}
 .product-pricing-card .check-help{display:block;margin:-8px 0 0 34px;font-size:13px;line-height:1.5;color:var(--ui-secondary-text)}
 .input-affix:has(input[aria-invalid=true]),.product-fields input[aria-invalid=true]{border-color:var(--shop-error)}
 .login-input-wrap:has(input:focus-visible){outline:3px solid var(--ui-focus);outline-offset:2px}
+/* Product gallery: full-width section, image-first cards, one main action plus a More menu. Columns follow the gallery's
+   own width (container query), so a collapsed sidebar or a narrow editor never squeezes the cards. */
+/* The pricing card no longer sticks: its sticky range is the whole grid, so it would slide over the full-width gallery. */
+@media(min-width:1051px){.product-editor-layout{grid-template-areas:"info pricing" "images images"}.product-pricing-card{position:static}}
+.product-gallery-panel{container-type:inline-size}
+.product-gallery-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.product-gallery-panel .product-gallery-count{margin:0;font-size:13px;color:var(--ui-secondary-text)}
+.product-gallery-panel .product-gallery-list{grid-template-columns:minmax(0,1fr);gap:16px}
+@container (min-width:340px){.product-gallery-panel .product-gallery-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container (min-width:600px){.product-gallery-panel .product-gallery-list{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@container (min-width:800px){.product-gallery-panel .product-gallery-list{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@container (min-width:1000px){.product-gallery-panel .product-gallery-list{grid-template-columns:repeat(5,minmax(0,1fr))}}
+.product-gallery-panel .product-gallery-item{padding:8px;gap:8px;box-shadow:none}
+.product-gallery-panel .product-gallery-item:first-child{border-color:var(--ui-primary);box-shadow:none}
+.product-gallery-view{display:block;width:100%;aspect-ratio:1;padding:0;border:0;border-radius:8px;background:var(--ui-canvas);cursor:zoom-in}
+.product-gallery-panel .product-gallery-view img{width:100%;height:100%;aspect-ratio:auto;object-fit:contain;background:transparent}
+.product-gallery-panel .product-gallery-item .product-gallery-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:24px;margin:0 2px;font-size:13px;font-weight:650;color:var(--ui-secondary-text);text-align:left}
+.product-gallery-panel .product-gallery-item:first-child .product-gallery-meta{color:var(--ui-secondary-text)}
+.product-gallery-badge{padding:2px 9px;border-radius:999px;background:color-mix(in srgb,var(--shop-success) 12%,var(--ui-surface));color:var(--shop-success);font-size:12px;font-weight:700}
+.product-gallery-panel .product-gallery-actions{display:flex;align-items:center;gap:8px;margin-top:auto}
+.product-gallery-panel .product-gallery-actions [data-gallery-action=primary]{flex:1;min-width:0;min-height:44px;font-size:13px}
+.product-gallery-menu{position:relative;margin-left:auto}
+.product-gallery-more{width:44px;height:44px;border:1px solid var(--ui-control-border);border-radius:9px;background:var(--ui-surface);color:var(--ui-text)}
+.product-gallery-more svg{width:20px;height:20px}
+.product-gallery-menu-list{position:absolute;right:0;bottom:calc(100% + 6px);z-index:30;display:grid;gap:2px;min-width:180px;padding:6px;border:1px solid var(--ui-border);border-radius:10px;background:var(--ui-surface);box-shadow:0 12px 32px color-mix(in srgb,var(--ui-text) 16%,transparent)}
+.product-gallery-menu-list[hidden]{display:none}
+.product-gallery-panel .product-gallery-menu-list [role=menuitem]{min-height:40px;padding:8px 12px;border:0;border-radius:7px;background:transparent;font:inherit;font-size:14px;font-weight:600;text-align:left;color:var(--ui-text);cursor:pointer}
+.product-gallery-panel .product-gallery-menu-list [role=menuitem]:hover:not(:disabled),.product-gallery-panel .product-gallery-menu-list [role=menuitem]:focus-visible{background:var(--ui-hover-surface)}
+.product-gallery-panel .product-gallery-menu-list [data-gallery-action=remove]{color:var(--shop-error)}
+.product-gallery-panel .product-gallery-menu-list [role=menuitem]:disabled{color:var(--ui-muted);cursor:not-allowed}
+.photo-preview{width:min(900px,calc(100% - 32px));max-height:calc(100dvh - 32px);padding:16px;border:0;border-radius:14px;background:var(--ui-surface);color:var(--ui-text)}
+.photo-preview::backdrop{background:color-mix(in srgb,#000 55%,transparent)}
+.photo-preview-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.photo-preview-head h3{margin:0;font-size:16px}
+.photo-preview img{display:block;width:100%;max-height:calc(100dvh - 140px);object-fit:contain;border-radius:8px;background:var(--ui-canvas)}
+/* Narrow gallery (phones): compact rows, thumbnail beside its position and badge, actions underneath, so eight photos do
+   not become eight full-screen squares. */
+@container (max-width:339px){
+ .product-gallery-panel .product-gallery-item{display:grid;grid-template-columns:112px minmax(0,1fr);align-items:start;justify-items:stretch;gap:10px 12px}
+ .product-gallery-panel .product-gallery-item .product-gallery-meta{flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:6px;margin:4px 0 0}
+ .product-gallery-panel .product-gallery-actions{grid-column:1/-1}
+}

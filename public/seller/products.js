@@ -77,6 +77,10 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   const imageStatus = find('#product-image-status');
   const galleryPanel = find('#product-gallery-panel');
   const galleryList = find('#product-gallery-list');
+  const galleryStatus = find('#product-gallery-status');
+  const format = (text, values) => text.replace(/\{(\w+)\}/g, (match, key) => String(values[key] ?? match));
+  find('#product-photo-preview .photo-preview-close').addEventListener('click', () => find('#product-photo-preview').close());
+  find('#product-photo-preview').addEventListener('click', (event) => { if (event.target === event.currentTarget) event.currentTarget.close(); });
   const removeImage = find('#product-remove-image');
   const restoreImage = find('#product-restore-image');
   const imageRemovalHelp = find('#product-image-removal-help');
@@ -262,6 +266,44 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     restoreImage.hidden = state !== 'removed' || !originalImageUrl;
   }
 
+  // A small accessible menu: Enter/Space/ArrowDown open it, arrows move, Escape or Tab closes it and returns focus.
+  function createMenu(label, items) {
+    const wrap = document.createElement('div'); wrap.className = 'product-gallery-menu';
+    const toggle = document.createElement('button');
+    toggle.type = 'button'; toggle.className = 'product-gallery-more icon-button';
+    toggle.setAttribute('aria-label', label); toggle.setAttribute('aria-haspopup', 'menu'); toggle.setAttribute('aria-expanded', 'false');
+    toggle.append(icon('more'));
+    const list = document.createElement('div'); list.className = 'product-gallery-menu-list'; list.setAttribute('role', 'menu'); list.hidden = true;
+    list.setAttribute('aria-label', label); list.append(...items);
+    const enabled = () => items.filter((node) => !node.disabled);
+    const close = (refocus) => { list.hidden = true; toggle.setAttribute('aria-expanded', 'false'); document.removeEventListener('pointerdown', outside, true); if (refocus) toggle.focus(); };
+    const outside = (event) => { if (!wrap.contains(event.target)) close(false); };
+    const open = (focusLast = false) => {
+      galleryList.querySelectorAll('.product-gallery-menu-list:not([hidden])').forEach((other) => other.closest('.product-gallery-menu').closeMenu(false));
+      list.hidden = false; toggle.setAttribute('aria-expanded', 'true');
+      document.addEventListener('pointerdown', outside, true);
+      const choices = enabled(); (focusLast ? choices.at(-1) : choices[0])?.focus();
+    };
+    wrap.closeMenu = close;
+    toggle.addEventListener('click', () => (list.hidden ? open() : close(true)));
+    toggle.addEventListener('keydown', (event) => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); open(event.key === 'ArrowUp'); } });
+    list.addEventListener('keydown', (event) => {
+      const choices = enabled(), at = choices.indexOf(document.activeElement);
+      if (event.key === 'Escape') { event.preventDefault(); close(true); }
+      else if (event.key === 'Tab') close(false);
+      else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); choices[(at + (event.key === 'ArrowDown' ? 1 : -1) + choices.length) % choices.length]?.focus(); }
+      else if (event.key === 'Home' || event.key === 'End') { event.preventDefault(); (event.key === 'Home' ? choices[0] : choices.at(-1))?.focus(); }
+    });
+    wrap.append(toggle, list);
+    return wrap;
+  }
+  function openPhotoPreview(src, position) {
+    const dialog = find('#product-photo-preview');
+    dialog.querySelector('img').src = src;
+    dialog.querySelector('img').alt = `${form.elements.name.value}: ${t('gallery')} ${position}`;
+    dialog.querySelector('h3').textContent = format(t('viewPhotoFormat'), { number: position });
+    dialog.showModal();
+  }
   function renderGallery() {
     galleryPanel.hidden = !editingId;
     form.elements.gallery.disabled = saving || readingGallery || !galleryLoaded || !originalImageUrl || pendingRemove || galleryImages.length >= 10;
@@ -280,30 +322,56 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     }
     const preview = (state, source) => { if (!sharedGallery) showImage(state, source); };
     galleryList.replaceChildren();
+    const count = find('#product-gallery-count');
+    count.textContent = galleryLoaded ? format(t('galleryCountFormat'), { count: galleryImages.length, max: 10 }) : '';
+    const locked = !galleryEditable || saving || readingGallery;
     galleryImages.forEach((entry, index) => {
+      // Image first: the photo, its position and Primary badge, then one main action and a More menu for the rest.
       const item = document.createElement('div');
       item.className = 'product-gallery-item'; item.dataset.imageId = entry.id || 'new';
+      const position = index + 1;
+      const view = document.createElement('button');
+      view.type = 'button'; view.className = 'product-gallery-view';
+      view.setAttribute('aria-label', format(t('viewPhotoFormat'), { number: position }));
+      view.addEventListener('click', () => openPhotoPreview(entry.src, position));
       const photo = document.createElement('img');
       revealImage(photo);
       photo.src = entry.src;
-      photo.alt = `${form.elements.name.value}: ${t('gallery')} ${index + 1}`;
-      const label = document.createElement('p'); label.textContent = `${index + 1} · ${t(index === 0 ? 'primaryPhoto' : 'gallery')}`;
+      photo.alt = `${form.elements.name.value}: ${t('gallery')} ${position}`;
+      view.append(photo);
+      const meta = document.createElement('p'); meta.className = 'product-gallery-meta';
+      const number = document.createElement('span'); number.textContent = String(position).padStart(2, '0');
+      meta.append(number);
+      if (index === 0) { const badge = document.createElement('span'); badge.className = 'product-gallery-badge'; badge.textContent = t('primaryPhoto'); meta.append(badge); }
       const actions = document.createElement('div'); actions.className = 'product-gallery-actions';
-      const change = fn => {
+      // Staged edits: nothing is sent until Save. Focus follows the moved photo and the result is announced.
+      const change = (fn, nextIndex, messageKey) => {
         if (saving || readingGallery || !item.isConnected) return;
         fn(); renderGallery();
-        galleryList.children[Math.min(index, galleryImages.length - 1)]?.querySelector('button:not([disabled])')?.focus({ preventScroll: true });
+        const target = galleryList.children[Math.max(0, Math.min(nextIndex, galleryImages.length - 1))];
+        (target?.querySelector('.product-gallery-more') || find('#product-gallery-panel input[name=gallery]'))?.focus({ preventScroll: true });
+        galleryStatus.textContent = format(t(messageKey), { number: nextIndex + 1 });
         document.dispatchEvent(new Event('updateguardchange'));
       };
-      const primary = button(t('setPrimaryPhoto'), () => change(() => { galleryImages.splice(index, 1); galleryImages.unshift(entry); preview('current', entry.src); }), `${t('setPrimaryPhoto')} ${index + 1}`);
-      primary.dataset.galleryAction = 'primary'; primary.disabled = !galleryEditable || saving || readingGallery || index === 0;
-      const earlier = button(t('movePhotoEarlier'), () => change(() => { [galleryImages[index - 1], galleryImages[index]] = [entry, galleryImages[index - 1]]; preview('current', galleryImages[0]?.src); }), `${t('movePhotoEarlier')} ${index + 1}`);
-      earlier.dataset.galleryAction = 'earlier'; earlier.disabled = !galleryEditable || saving || readingGallery || index === 0;
-      const later = button(t('movePhotoLater'), () => change(() => { [galleryImages[index + 1], galleryImages[index]] = [entry, galleryImages[index + 1]]; preview('current', galleryImages[0]?.src); }), `${t('movePhotoLater')} ${index + 1}`);
-      later.dataset.galleryAction = 'later'; later.disabled = !galleryEditable || saving || readingGallery || index === galleryImages.length - 1;
-      const remove = button(t('removePhoto'), () => change(() => { galleryImages.splice(index, 1); preview(galleryImages.length ? 'current' : 'none', galleryImages[0]?.src); }), `${t('removePhoto')} ${index + 1}`);
-      remove.dataset.galleryAction = 'remove'; remove.disabled = !galleryEditable || saving || readingGallery;
-      actions.append(primary, earlier, later, remove); item.append(photo, label, actions); galleryList.append(item);
+      if (index > 0) {
+        const primary = button(t('setPrimaryPhoto'), () => change(() => { galleryImages.splice(index, 1); galleryImages.unshift(entry); preview('current', entry.src); }, 0, 'photoNowPrimary'), `${t('setPrimaryPhoto')} ${position}`);
+        primary.dataset.galleryAction = 'primary'; primary.disabled = locked;
+        actions.append(primary);
+      }
+      const menuItem = (key, action, disabled, run) => {
+        const node = document.createElement('button');
+        node.type = 'button'; node.setAttribute('role', 'menuitem'); node.dataset.galleryAction = action;
+        node.textContent = t(key); node.setAttribute('aria-label', `${t(key)} ${position}`);
+        node.disabled = disabled; node.addEventListener('click', run);
+        return node;
+      };
+      const more = createMenu(format(t('photoActionsFormat'), { number: position }), [
+        menuItem('movePhotoEarlier', 'earlier', locked || index === 0, () => change(() => { [galleryImages[index - 1], galleryImages[index]] = [entry, galleryImages[index - 1]]; preview('current', galleryImages[0]?.src); }, index - 1, 'photoMovedFormat')),
+        menuItem('movePhotoLater', 'later', locked || index === galleryImages.length - 1, () => change(() => { [galleryImages[index + 1], galleryImages[index]] = [entry, galleryImages[index + 1]]; preview('current', galleryImages[0]?.src); }, index + 1, 'photoMovedFormat')),
+        menuItem('removePhoto', 'remove', locked, () => change(() => { galleryImages.splice(index, 1); preview(galleryImages.length ? 'current' : 'none', galleryImages[0]?.src); }, index, 'photoRemovedFormat')),
+      ]);
+      actions.append(more);
+      item.append(view, meta, actions); galleryList.append(item);
     });
     const available = !galleryEditable ? [] : galleryReferences.filter(reference => !galleryImages.some(item => item.id === reference.id));
     if (available.length) {
