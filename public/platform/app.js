@@ -471,18 +471,21 @@ async function renderDetail(id) {
     const tile = element('div', undefined, 'kpi'), dd = element('dd', String(value)); tile.append(element('dt', title), dd); kpis.append(tile);
   }
   content.append(kpis);
-  const overview = element('div', undefined, 'detail-info'), info = element('section'), storeLinks = element('section');
+  // Overview: two cards of the same kind (heading, then label-above-value items with dividers), equal height side by side.
+  const overview = element('div', undefined, 'detail-info'), info = element('section', undefined, 'info-card'), storeLinks = element('section', undefined, 'info-card');
   info.append(element('h2', 'Shop information', 'group-title')); storeLinks.append(element('h2', 'Store links', 'group-title'));
-  const rows = element('dl', undefined, 'info-rows');
-  for (const [title, value] of [['Seller', shop.sellerUsername || 'Managed on host'], ['Deletion date', shop.deleteAfter ? new Date(shop.deleteAfter).toLocaleDateString() : 'Not scheduled']]) {
-    const row = element('div', undefined, 'info-row'); row.append(element('dt', title), element('dd', value)); rows.append(row);
-  }
-  info.append(rows);
-  const links = element('div', undefined, 'url-rows');
+  const facts = element('dl', undefined, 'info-list');
+  const item = (title, value) => { const row = element('div', undefined, 'info-item'), dd = element('dd'); dd.append(value); row.append(element('dt', title), dd); facts.append(row); };
+  item('Seller', element('span', shop.sellerUsername || 'Managed on host', 'info-value'));
+  const deletion = element('span', undefined, `status-line ${shop.deleteAfter ? 'status-warning' : 'status-ok'}`);
+  deletion.append(icon(shop.deleteAfter ? 'clock' : 'checkCircle'), element('span', shop.deleteAfter ? `Scheduled for ${day(shop.deleteAfter)}` : 'Not scheduled'));
+  item('Deletion status', deletion);
+  info.append(facts);
+  const links = element('dl', undefined, 'info-list');
   for (const [label, value] of [['Buyer storefront', shop.shopUrl], ['Seller portal', shop.sellerUrl]]) if (value) {
-    const row = element('div', undefined, 'url-row'), copyButton = button('', () => copy(value));
+    const row = element('div', undefined, 'info-item link-item'), dd = element('dd'), copyButton = button('', () => copy(value, `${label} link copied.`));
     copyButton.className = 'icon-button'; copyButton.setAttribute('aria-label', `Copy ${label} URL`); copyButton.title = `Copy ${label} URL`; copyButton.append(icon('copy'));
-    row.append(element('span', label, 'url-label'), externalLink(value), copyButton); links.append(row);
+    dd.append(externalLink(value)); row.append(element('dt', label), dd, copyButton); links.append(row);
   }
   storeLinks.append(links); overview.append(info, storeLinks); content.append(overview);
   // Open links and the edit shortcut sit in the header; they are shown only for links on this platform's own domain.
@@ -491,9 +494,10 @@ async function renderDetail(id) {
   }
   // Groups keep security, settings, integrations and destructive actions apart; empty groups are removed at the end.
   const groups = {}, sections = element('div', undefined, 'detail-groups'); content.append(sections);
-  for (const [key, title] of [['seller', 'Seller account & security'], ['shop', 'Shop settings'], ['integrations', 'Integrations'], ['danger', 'Danger zone']]) {
+  for (const [key, title, about] of [['seller', 'Seller account & security', 'Manage seller credentials and account access.'], ['shop', 'Shop settings', 'What buyers see as this shop.'],
+    ['integrations', 'Integrations', 'Services connected to this shop.'], ['danger', 'Danger zone', 'Actions that remove or stop this shop.']]) {
     const section = element('section', undefined, `detail-group group-${key}`), grid = element('div', undefined, 'group-grid');
-    section.append(element('h2', title, 'group-title'), grid); sections.append(section); groups[key] = grid;
+    section.append(element('h2', title, 'group-title'), element('p', about, 'group-about'), grid); sections.append(section); groups[key] = grid;
   }
   taskHost = groups;
   const edit = button('Edit shop', async () => { const target = content.querySelector('.group-shop input'); target?.scrollIntoView({ block: 'center' }); target?.focus(); });
@@ -544,6 +548,7 @@ async function renderDetail(id) {
   const describe = (input, helpId) => input.setAttribute('aria-describedby', helpId);
   const resetCard = () => {
     const { card } = taskCard('Reset seller password', 'Resetting creates a temporary password and signs the Owner out of all sessions and connector sign-ins. The temporary password is shown once.');
+    card.querySelector('h3').append(element('span', 'Sensitive action', 'chip sensitive-chip'));
     const reset = button('Reset seller password', async () => {
       if (!await confirmModal(`A new temporary password is created for ${shop.sellerUsername}. Their open sessions and connector sign-ins end, and they must choose a new password at the next sign-in. The password is shown once.`,
         { title: 'Reset seller password?', confirmLabel: 'Reset and show password' })) return;

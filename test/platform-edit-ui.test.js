@@ -46,7 +46,15 @@ test('SuperAdmin can edit the default shop name and the seller username of every
     assert.equal(await page.locator('.detail-state .chip').first().innerText(), 'ACTIVE'); assert.match(await page.locator('.detail-code').innerText(), /Shop code: (default|alpha)/);
     assert.equal(await page.getByRole('link', { name: /^Open shop/ }).count(), 1); assert.equal(await page.getByRole('link', { name: /^Open seller/ }).count(), 1);
     assert.equal(await page.locator('.kpi').count(), 3); assert.match(await page.locator('.kpis').innerText(), /Orders\s+3/); assert.match(await page.locator('.kpis').innerText(), /Products\s+12/);
-    assert.match(await page.locator('.detail-info').innerText(), /Deletion date\s+Not scheduled/);
+    assert.match(await page.locator('.detail-info').innerText(), /Deletion status\s+Not scheduled/);
+    // Overview cards share one pattern and height; each group explains itself; the reset card is marked sensitive.
+    const cards = await page.locator('.detail-info > .info-card').evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().height)));
+    assert.equal(cards.length, 2); assert.equal(cards[0], cards[1], 'Shop information and Store links are equally tall');
+    assert.equal(await page.locator('.detail-info .status-ok svg').count(), 1);
+    assert.equal(await page.locator('.group-seller .group-about').innerText(), 'Manage seller credentials and account access.');
+    assert.equal(await page.locator('.sensitive-chip').innerText(), 'Sensitive action');
+    const overviewBottom = await page.locator('.detail-info').evaluate((node) => node.getBoundingClientRect().bottom), groupsTop = await page.locator('.detail-groups').evaluate((node) => node.getBoundingClientRect().top);
+    assert.ok(groupsTop - overviewBottom >= 8, 'the security groups start clearly below the overview');
     const copy = page.getByRole('button', { name: 'Copy Buyer storefront URL', exact: true }); assert.equal((await copy.innerText()).trim(), ''); assert.equal(await copy.locator('svg').count(), 1);
     assert.deepEqual(await page.locator('.group-title').allInnerTexts(), ['Shop information', 'Store links', 'Seller account & security', 'Shop settings', 'Integrations']);
     const security = (await page.locator('.group-seller').boundingBox()).y, settings = (await page.locator('.group-shop').boundingBox()).y, integrations = (await page.locator('.group-integrations').boundingBox()).y;
