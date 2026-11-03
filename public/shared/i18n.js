@@ -1522,6 +1522,16 @@ const sellerGalleryMessages = {"en": {"sharedGalleryNote": "These photos are sha
 for (const [locale, values] of Object.entries(sellerGalleryMessages)) Object.assign(messages[locale], values);
 const sellerAddVariantMessages = {"en": {"addVariant": "Add variant"}, "ms": {"addVariant": "Tambah varian"}, "zh-Hans": {"addVariant": "添加规格"}, "vi": {"addVariant": "Thêm biến thể"}, "th": {"addVariant": "เพิ่มตัวเลือก"}, "ja": {"addVariant": "バリエーションを追加"}, "ko": {"addVariant": "옵션 추가"}};
 for (const [locale, values] of Object.entries(sellerAddVariantMessages)) Object.assign(messages[locale], values);
+const sellerLoginFooterMessages = {
+  en: { loginUpToDate: 'Up to date', loginCheckFailed: 'Check failed', loginUpdateTo: 'Update to' },
+  ms: { loginUpToDate: 'Terkini', loginCheckFailed: 'Semakan gagal', loginUpdateTo: 'Kemas kini ke' },
+  'zh-Hans': { loginUpToDate: '已是最新', loginCheckFailed: '检查失败', loginUpdateTo: '更新到' },
+  vi: { loginUpToDate: 'Đã cập nhật', loginCheckFailed: 'Kiểm tra thất bại', loginUpdateTo: 'Cập nhật lên' },
+  th: { loginUpToDate: 'เป็นเวอร์ชันล่าสุด', loginCheckFailed: 'ตรวจสอบไม่สำเร็จ', loginUpdateTo: 'อัปเดตเป็น' },
+  ja: { loginUpToDate: '最新です', loginCheckFailed: '確認できませんでした', loginUpdateTo: '更新:' },
+  ko: { loginUpToDate: '최신 버전', loginCheckFailed: '확인 실패', loginUpdateTo: '업데이트:' },
+};
+for (const [locale, values] of Object.entries(sellerLoginFooterMessages)) Object.assign(messages[locale], values);
 export function locale() { return current; }
 export function t(key) { return messages[current]?.[key] || messages.en[key] || key; }
 export function formatMoney(minor, currency) {
