@@ -239,13 +239,29 @@ async function authenticator() {
     manual.append(key, button('Copy setup key', () => copy(key.textContent.replaceAll(' ', '')))); panel.append(manual); content.append(panel);
   }
   const node = form(async (data) => {
-    const result = await api('/totp/confirm', { method: 'POST', body: data }); node.reset(); csrf = result.csrfToken; session = { ...result, username: session.username, totpEnabled: true }; nav();
+    const body = { ...data, trustedDevice: trust.checked };
+    if (trust.checked) body.trustedDeviceDuration = duration.value; else delete body.trustedDeviceDuration;
+    const result = await api('/totp/confirm', { method: 'POST', body }); node.reset(); csrf = result.csrfToken; session = { ...result, username: session.username, totpEnabled: true }; nav();
     // Recovery codes have only one response; preserve them before the next read can fail.
     if (result.recoveryCodes) { recovery(result.recoveryCodes); return; }
     await listShops();
   });
   const input = field(node, 'code', 'Six-digit authenticator code', { autocomplete: 'one-time-code', maxLength: 6, required: !session.totpEnabled, icon: 'key' }); input.inputMode = 'numeric'; input.pattern = '[0-9]{6}';
   if (session.totpEnabled) field(node, 'recoveryCode', 'Or a recovery code', { required: false, maxLength: 11, icon: 'key' });
+  const trustLabel = element('label', undefined, 'check-label trusted-device-choice'), trust = element('input');
+  trust.type = 'checkbox'; trust.name = 'trustedDevice'; trust.checked = false;
+  trustLabel.append(trust, document.createTextNode('Trust this device and keep me signed in')); node.append(trustLabel);
+  const durationLabel = element('label', 'Keep me signed in for'), duration = element('select');
+  duration.id = `platform-field-${++fieldId}`; duration.name = 'trustedDeviceDuration'; durationLabel.htmlFor = duration.id;
+  for (const [value, title] of [['1d', '1 day'], ['1w', '1 week'], ['1m', '1 month (30 days)'], ['1y', '1 year (365 days)']]) {
+    const option = element('option', title); option.value = value; duration.append(option);
+  }
+  duration.value = '1w'; duration.disabled = true;
+  trust.addEventListener('change', () => { duration.disabled = !trust.checked; });
+  const help = element('p', 'Only use this on a personal device. Sign out to end this device’s session. A longer period increases the risk if your device is lost.', 'field-hint');
+  help.id = 'platform-trusted-device-help'; trust.setAttribute('aria-describedby', help.id); duration.setAttribute('aria-describedby', help.id);
+  const durationGroup = element('div', undefined, 'field-group trusted-device-duration');
+  durationGroup.append(durationLabel, duration); node.append(durationGroup, help);
   submit(node, 'Confirm');
 }
 function externalLink(value, label) {
