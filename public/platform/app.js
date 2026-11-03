@@ -77,7 +77,7 @@ function screen(title) {
   for (const node of content.querySelectorAll('[data-secret]')) node.replaceChildren();
   document.body.classList.toggle('auth', session?.stage !== 'FULL');
   document.body.classList.remove('saving-recovery');
-  content.replaceChildren(); document.querySelector('.page-heading .eyebrow').textContent = 'SuperAdmin portal'; document.querySelector('#page-title').textContent = title; notice.textContent = ''; errorBox.hidden = true; errorBox.textContent = '';
+  content.replaceChildren(); document.querySelector('#page-actions').replaceChildren(); document.querySelector('.page-heading .eyebrow').textContent = 'SuperAdmin portal'; document.querySelector('#page-title').textContent = title; notice.textContent = ''; errorBox.hidden = true; errorBox.textContent = '';
   const current = ({ 'Add shop': 'Add shop', 'Audit trail': 'Activity', Account: 'Account' })[title] || 'Shops';
   for (const node of navigation.querySelectorAll('button')) {
     if (node.textContent === current) node.setAttribute('aria-current', 'page'); else node.removeAttribute('aria-current');
@@ -132,9 +132,9 @@ async function run(action, { onError } = {}) {
     else { errorBox.textContent = error.name === 'TimeoutError' ? 'The request timed out. Refresh the shop list before retrying a change.' : error.message; errorBox.hidden = false; errorBox.focus(); }
   } finally { busy = false; content.removeAttribute('aria-busy'); for (const node of document.querySelectorAll('button')) node.disabled = node.dataset.unavailable === 'true' || (node.dataset.requiresSaved === 'true' && !content.querySelector('.check-label input')?.checked); }
 }
-async function copy(value) {
+async function copy(value, message = 'Copied. Keep these details private.') {
   const feedback = dialog.open ? document.querySelector('#secret-notice') : notice;
-  try { await navigator.clipboard.writeText(value); feedback.textContent = 'Copied. Keep these details private.'; }
+  try { await navigator.clipboard.writeText(value); feedback.textContent = message; }
   catch { feedback.textContent = 'Clipboard unavailable. Select and copy the details manually.'; }
 }
 function download(value, filename) {
@@ -273,17 +273,24 @@ function externalLink(value, label) {
   link.setAttribute('aria-label', `${label || value} · Opens in a new tab`); return link;
 }
 const tableSizes = { shops: 25, activity: 25 };
-function dataTable(items, columns, { activity = false } = {}) {
+function dataTable(items, columns, { activity = false, title = '' } = {}) {
   const kind = activity ? 'activity' : 'shops';
   const state = { query: '', status: '', sort: activity ? 'created_at' : 'createdAt', direction: 'descending', page: 1, size: tableSizes[kind] };
   const panel = element('section', undefined, activity ? 'panel activity-table' : 'panel shops-table'), tools = element('div', undefined, 'table-tools');
-  const search = element('input'); search.type = 'search'; search.placeholder = activity ? 'Search activity' : 'Search shops'; search.setAttribute('aria-label', search.placeholder);
+  const search = element('input'); search.type = 'search'; search.placeholder = activity ? 'Search activity' : 'Search name or code'; search.setAttribute('aria-label', activity ? 'Search activity' : 'Search shops');
+  const searchField = element('div', undefined, 'search-field'); searchField.append(icon('search'), search);
   const filter = element('select'); filter.setAttribute('aria-label', activity ? 'Action filter' : 'Status filter');
-  for (const value of ['', ...(activity ? [...new Set(items.map(row => row.action))] : ['ACTIVE', 'SUSPENDED', 'PROVISIONING', 'FAILED'])]) { const option = element('option', value || 'All'); option.value = value; filter.append(option); }
+  for (const value of ['', ...(activity ? [...new Set(items.map(row => row.action))] : ['ACTIVE', 'SUSPENDED', 'PROVISIONING', 'FAILED'])]) { const option = element('option', value ? (activity ? value : statusLabel(value)) : (activity ? 'All actions' : 'All statuses')); option.value = value; filter.append(option); }
+  const filterField = element('label', undefined, 'filter-field'); filterField.append(element('span', activity ? 'Action' : 'Status'), filter);
   const size = element('select'); size.setAttribute('aria-label', 'Rows per page');
   for (const count of [10, 25, 50, 100]) { const option = element('option', String(count)); option.value = count; option.selected = count === state.size; size.append(option); }
-  const count = element('p'), output = element('div', undefined, 'table-output'), paging = element('div', undefined, 'table-paging'), live = element('p'); live.setAttribute('role', 'status');
-  tools.append(search, button('Clear search', () => { search.value = ''; state.query = ''; state.page = 1; draw(); search.focus(); }), filter, element('span', 'Rows per page'), size);
+  const rowsField = element('label', undefined, 'rows-field'); rowsField.append(element('span', 'Rows per page'), size);
+  const heading = element('div', undefined, 'table-header'), count = element('p', undefined, 'table-count');
+  heading.append(element('h2', title || (activity ? 'All events' : 'All shops')), count);
+  const output = element('div', undefined, 'table-output'), paging = element('div', undefined, 'table-paging'), live = element('p', undefined, 'sr-only'); live.setAttribute('role', 'status');
+  const footer = element('div', undefined, 'table-footer'), range = element('p', undefined, 'table-range');
+  const clear = button('Clear search', () => { search.value = ''; state.query = ''; state.page = 1; draw(); search.focus(); }); clear.hidden = true;
+  tools.append(searchField, clear, filterField);
   const mobileSort = element('div', undefined, 'mobile-sort');
   const sortSelect = element('select'); sortSelect.setAttribute('aria-label', 'Sort by');
   for (const column of columns.filter(column => column.key)) {
@@ -296,15 +303,17 @@ function dataTable(items, columns, { activity = false } = {}) {
   direction.setAttribute('aria-label', 'Sort direction');
   sortSelect.addEventListener('change', () => { state.sort = sortSelect.value; state.direction = 'ascending'; state.page = 1; draw(); });
   mobileSort.append(element('span', 'Sort by'), sortSelect, direction);
-  tools.append(mobileSort); panel.append(tools, count, output, live, paging); content.append(panel);
+  tools.append(mobileSort); footer.append(range, rowsField, paging); panel.append(tools, heading, output, footer, live); content.append(panel);
   let timer;
-  search.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { state.query = search.value; state.page = 1; draw(); }, 180); });
+  search.addEventListener('input', () => { clear.hidden = !search.value; clearTimeout(timer); timer = setTimeout(() => { state.query = search.value; state.page = 1; draw(); }, 180); });
   filter.addEventListener('change', () => { state.status = filter.value; state.page = 1; draw(); });
   size.addEventListener('change', () => { state.size = tableSizes[kind] = Number(size.value); state.page = 1; draw(); });
   function draw(focusKey) {
     const source = activity && state.status ? items.filter(row => row.action === state.status) : items;
     const result = tableRows(source, { ...state, status: activity ? '' : state.status }); state.page = result.page;
-    count.textContent = `${result.total} of ${items.length} ${activity ? 'events' : 'shops'}`;
+    const noun = (n) => `${n} ${activity ? (n === 1 ? 'event' : 'events') : (n === 1 ? 'shop' : 'shops')}`;
+    count.textContent = result.total === items.length ? noun(items.length) : `${result.total} of ${noun(items.length)}`;
+    clear.hidden = !search.value;
     sortSelect.value = state.sort;
     direction.textContent = state.direction === 'ascending' ? 'Ascending' : state.direction === 'descending' ? 'Descending' : 'Unsorted';
     if (state.direction) direction.append(icon(state.direction === 'ascending' ? 'up' : 'down'));
@@ -325,12 +334,16 @@ function dataTable(items, columns, { activity = false } = {}) {
     head.append(header); table.append(head, body);
     for (const row of result.rows) {
       const tr = element('tr');
-      for (const column of columns) { const td = element('td'); td.dataset.label = column.label; const value = column.render ? column.render(row) : element('span', String(row[column.key] ?? '—')); td.append(value); tr.append(td); }
+      for (const column of columns) { const td = element('td'); td.dataset.label = column.label; td.dataset.column = column.key || column.label.toLowerCase(); const value = column.render ? column.render(row) : element('span', String(row[column.key] ?? '—')); td.append(value); tr.append(td); }
       body.append(tr);
     }
     output.replaceChildren(table);
     if (!result.total) output.append(element('p', 'No results.'), button('Reset filters', () => { search.value = ''; filter.value = ''; state.query = state.status = ''; state.page = 1; draw(); }));
     live.textContent = `Showing ${result.start}-${result.end} of ${result.total}`;
+    // One page: no pager, no range line; rows-per-page only when there are more rows than the smallest page.
+    range.textContent = result.pages > 1 ? `Showing ${result.start}–${result.end} of ${result.total}` : '';
+    rowsField.hidden = items.length <= 10; paging.hidden = result.pages <= 1; range.hidden = result.pages <= 1;
+    footer.hidden = rowsField.hidden && paging.hidden;
     paging.replaceChildren();
     const pageButton = (label, page, disabled = false) => { const control = button(label, () => { state.page = page; draw(); paging.querySelector(`[data-page="${label}"]`)?.focus(); }); control.disabled = disabled; control.dataset.unavailable = String(disabled); control.dataset.page = label; paging.append(control); return control; };
     pageButton('Previous', state.page - 1, state.page === 1);
@@ -351,18 +364,60 @@ function loadingRows(label) {
   for (let index = 0; index < 5; index++) rows.append(element('div', '\u00a0', 'skeleton-row'));
   panel.append(rows); return panel;
 }
+const statusLabel = (status) => ({ ACTIVE: 'Active', SUSPENDED: 'Suspended', PROVISIONING: 'Setting up', FAILED: 'Failed', DELETING: 'Deleting' })[status] || status;
+const day = (iso) => iso ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(iso)) : '—';
+// "More actions" for one shop row: open and copy its links. A small menu: Escape or a click elsewhere closes it, arrows move between items.
+function rowMenu(shop) {
+  const wrap = element('div', undefined, 'row-menu'), toggle = element('button', undefined, 'row-menu-toggle'), menu = element('div', undefined, 'row-menu-list');
+  toggle.type = 'button'; toggle.append(icon('more')); toggle.setAttribute('aria-label', `More actions for ${shop.name}`); toggle.title = 'More actions';
+  menu.id = `row-menu-${++fieldId}`; menu.setAttribute('role', 'menu'); menu.hidden = true;
+  toggle.setAttribute('aria-haspopup', 'menu'); toggle.setAttribute('aria-expanded', 'false'); toggle.setAttribute('aria-controls', menu.id);
+  const close = (focus) => { menu.hidden = true; toggle.setAttribute('aria-expanded', 'false'); if (focus) toggle.focus(); };
+  const items = [];
+  for (const [label, url] of [['Open shop', shop.shopUrl], ['Open seller', shop.sellerUrl]]) if (url && safeLink(url)) {
+    const link = externalLink(url, label); link.setAttribute('role', 'menuitem'); link.append(icon('external')); link.addEventListener('click', () => close(false)); items.push(link);
+  }
+  for (const [label, url, done] of [['Copy shop link', shop.shopUrl, 'Shop link copied.'], ['Copy seller link', shop.sellerUrl, 'Seller link copied.']]) if (url) {
+    const item = element('button', label); item.type = 'button'; item.setAttribute('role', 'menuitem'); item.prepend(icon('copy'));
+    item.addEventListener('click', async () => { await copy(url, done); close(true); }); items.push(item);
+  }
+  menu.append(...items);
+  toggle.addEventListener('click', () => {
+    const opening = menu.hidden;
+    for (const other of document.querySelectorAll('.row-menu-list:not([hidden])')) other.closest('.row-menu').querySelector('.row-menu-toggle').click();
+    if (opening) { menu.hidden = false; toggle.setAttribute('aria-expanded', 'true'); items[0]?.focus(); }
+  });
+  menu.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(true); }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); const index = items.indexOf(document.activeElement); items[(index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus(); }
+    if (event.key === 'Tab') close(false);
+  });
+  wrap.append(toggle, menu); return wrap;
+}
+document.addEventListener('click', (event) => { for (const menu of document.querySelectorAll('.row-menu-list:not([hidden])')) if (!menu.closest('.row-menu').contains(event.target)) { menu.hidden = true; menu.closest('.row-menu').querySelector('.row-menu-toggle').setAttribute('aria-expanded', 'false'); } });
 async function listShops() {
-  screen('Shops'); content.append(element('p', 'Your shops, at a glance.'), button('Add shop', createShop));
+  screen('Shops');
+  const lead = element('p', 'Manage your shops and seller access.', 'page-lead'); content.append(lead);
+  const add = button('Add shop', createShop); add.className = 'primary-button'; add.prepend(icon('plus')); document.querySelector('#page-actions').append(add);
   const loading = loadingRows('Loading shops…'); content.append(loading);
   try {
     const result = await api('/shops'); loading.remove();
-    const urlCell = (shop, key, label) => { const row = element('div', undefined, 'table-links'); const copyButton = button('', () => copy(shop[key])); copyButton.setAttribute('aria-label', `Copy ${label} URL`); copyButton.append(icon('copy')); row.append(externalLink(shop[key], `Open ${label}`), copyButton); return row; };
+    const active = result.items.filter(shop => shop.status === 'ACTIVE').length, suspended = result.items.filter(shop => shop.status === 'SUSPENDED').length;
+    lead.textContent = `${result.items.length} ${result.items.length === 1 ? 'shop' : 'shops'} · ${active} active${suspended ? ` · ${suspended} suspended` : ''}`;
+    if (!result.items.length) {
+      const empty = element('section', undefined, 'panel empty-state'); empty.append(element('h2', 'No shops yet'), element('p', 'Create the first shop. You choose its code and Owner username, and get a one-time password to send to the seller.'));
+      const first = button('Add shop', createShop); first.className = 'primary-button'; empty.append(first); content.append(empty); return;
+    }
     dataTable(result.items, [
-      { key: 'name', label: 'Name', render: shop => { const name = element('span', shop.name, 'shop-name'); name.title = shop.name; if (shop.isDefault) name.append(element('small', ' default', 'chip')); return name; } },
-      { key: 'code', label: 'Code' }, { key: 'status', label: 'Status', render: shop => element('span', shop.status, `chip status-${shop.status.toLowerCase()}`) },
-      { key: 'currency', label: 'Currency' }, { key: 'createdAt', label: 'Created', render: shop => element('time', shop.createdAt ? new Date(shop.createdAt).toLocaleDateString() : '—') },
-      { label: 'Shop', render: shop => urlCell(shop, 'shopUrl', 'shop') }, { label: 'Seller', render: shop => urlCell(shop, 'sellerUrl', 'seller') },
-      { label: 'Actions', render: shop => button('Manage', () => detail(shop.id)) }
+      { key: 'name', label: 'Shop', render: shop => {
+        const cell = element('div', undefined, 'shop-cell'), line = element('div', undefined, 'shop-line'), name = element('span', shop.name, 'shop-name'); name.title = shop.name; line.append(name);
+        if (shop.isDefault) line.append(element('span', 'Default shop', 'chip'));
+        const meta = element('span', `Code ${shop.code}`, 'shop-meta'); meta.append(element('span', ` · ${shop.currency} · ${day(shop.createdAt)}`, 'mobile-meta'));
+        cell.append(line, meta); return cell;
+      } },
+      { key: 'status', label: 'Status', render: shop => element('span', statusLabel(shop.status), `chip status-${shop.status.toLowerCase()}`) },
+      { key: 'currency', label: 'Currency' }, { key: 'createdAt', label: 'Created', render: shop => element('time', day(shop.createdAt)) },
+      { label: 'Actions', render: shop => { const group = element('div', undefined, 'row-actions'); group.append(button('Manage', () => detail(shop.id)), rowMenu(shop)); return group; } }
     ]);
   } catch (error) { if (error.status === 401) throw error; loading.className = 'panel'; loading.setAttribute('role', 'alert'); loading.replaceChildren(element('p', error.message), button('Retry', listShops)); }
 }
