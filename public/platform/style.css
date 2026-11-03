@@ -73,3 +73,18 @@ body.auth #main{margin-inline:auto}
  .mobile-sort>select,.mobile-sort>button{grid-row:3}
 }
 #secret-tools label{display:block;flex:1 0 100%;font-weight:600}#secret-tools textarea{display:block;width:100%;margin-top:6px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical}
+
+/* Shop detail: one card per task (reset, username, name, deletion). */
+:root{--platform-danger:#a4262c}
+@media(prefers-color-scheme:dark){:root:root{--platform-danger:#ffb4ab}}
+.edit-card{max-width:620px;display:grid;gap:10px;margin-block:16px;padding:20px 24px;background:var(--ui-surface);border:1px solid var(--ui-border);border-radius:12px}
+.edit-card h3{margin:0;font-size:18px}
+.edit-card .edit-help{margin:0;max-width:60ch;color:var(--ui-muted)}
+.edit-card form{display:grid;gap:14px;margin-top:4px}
+.edit-card input{box-sizing:border-box;width:100%;padding:10px 12px;font:inherit;color:var(--ui-text);background:var(--ui-surface);border:1px solid var(--ui-control-border);border-radius:9px}
+.edit-card button[type=submit]{justify-self:start;min-width:160px}
+.edit-card button[type=submit]:disabled{opacity:.55;cursor:not-allowed}
+.form-status{margin:0;color:var(--ui-primary);font-weight:650}.form-status:empty{display:none}
+.form-error{margin:0;padding:10px 12px;color:var(--platform-danger);border:1px solid var(--platform-danger);border-radius:8px;font-weight:650}
+#content button.danger-button{justify-self:start;background:transparent;color:var(--platform-danger);border:1px solid var(--platform-danger);font-weight:700}
+@media(max-width:719px){.edit-card{padding:16px}.edit-card button[type=submit],#content button.danger-button{justify-self:stretch}}

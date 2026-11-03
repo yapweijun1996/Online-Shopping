@@ -75,11 +75,34 @@ function screen(title) {
   }
   document.querySelector('#main').focus();
 }
-function form(action) {
-  const node = element('form'); node.addEventListener('submit', (event) => { event.preventDefault(); if (node.reportValidity()) run(() => action(Object.fromEntries(new FormData(node)), node)); });
-  content.append(node); return node;
+let flash = null;
+function form(action, { parent = content, key } = {}) {
+  const node = element('form'), status = element('p', undefined, 'form-status'), problem = element('p', undefined, 'form-error');
+  status.setAttribute('role', 'status'); status.tabIndex = -1; problem.setAttribute('role', 'alert'); problem.tabIndex = -1; problem.hidden = true;
+  if (key && flash?.key === key) { status.textContent = flash.text; node.dataset.saved = 'true'; flash = null; }
+  node.feedback = { status, problem };
+  node.addEventListener('submit', (event) => {
+    event.preventDefault(); if (!node.reportValidity()) return;
+    problem.hidden = true; status.textContent = '';
+    run(() => action(Object.fromEntries(new FormData(node)), node), { onError: (error) => { problem.textContent = error.message; problem.hidden = false; problem.focus(); } });
+  });
+  parent.append(node); return node;
 }
-function submit(node, text) { const value = element('button', text, 'primary-button'); value.type = 'submit'; node.append(value); }
+// A save button that stays off until a field differs from what the shop has now.
+function submit(node, text, { needsChange = false } = {}) {
+  const value = element('button', text, 'primary-button'); value.type = 'submit'; node.append(value);
+  if (needsChange) {
+    const inputs = [...node.querySelectorAll('input')], initial = inputs.map((input) => input.value.trim());
+    const update = () => { const same = inputs.every((input, index) => input.value.trim() === initial[index]); value.dataset.unavailable = String(same); value.disabled = same; };
+    node.addEventListener('input', update); update();
+  }
+  if (node.feedback) { node.append(node.feedback.status, node.feedback.problem); if (node.dataset.saved) node.feedback.status.focus(); }
+}
+// One task per card: heading, what it does to the seller, then the controls.
+function taskCard(title, description) {
+  const card = element('section', undefined, 'edit-card'), help = element('p', description, 'edit-help'); help.id = `edit-help-${++fieldId}`;
+  card.append(element('h3', title), help); content.append(card); return { card, helpId: help.id };
+}
 async function api(path, { method = 'GET', body } = {}) {
   const response = await fetch(`../api/v1/platform${path}`, { method, credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(60_000),
     headers: { ...(method !== 'GET' ? { 'x-csrf-token': csrf } : {}), ...(body ? { 'content-type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
@@ -87,14 +110,14 @@ async function api(path, { method = 'GET', body } = {}) {
   if (!response.ok) { const error = new Error(value.error?.message || 'Request failed.'); error.status = response.status; error.code = value.error?.code; throw error; }
   return value;
 }
-async function run(action) {
+async function run(action, { onError } = {}) {
   if (busy) return; busy = true; errorBox.hidden = true; content.setAttribute('aria-busy', 'true');
   for (const node of document.querySelectorAll('button')) node.disabled = true;
   try { await action(); }
   catch (error) {
     if (error.status === 401 && session?.stage === 'FULL') { csrf = null; session = null; await signIn(); }
-    errorBox.textContent = error.name === 'TimeoutError' ? 'The request timed out. Refresh the shop list before retrying a change.' : error.message;
-    errorBox.hidden = false; errorBox.focus();
+    if (onError && error.status !== 401 && error.name !== 'TimeoutError') onError(error);
+    else { errorBox.textContent = error.name === 'TimeoutError' ? 'The request timed out. Refresh the shop list before retrying a change.' : error.message; errorBox.hidden = false; errorBox.focus(); }
   } finally { busy = false; content.removeAttribute('aria-busy'); for (const node of document.querySelectorAll('button')) node.disabled = node.dataset.unavailable === 'true' || (node.dataset.requiresSaved === 'true' && !content.querySelector('.check-label input')?.checked); }
 }
 async function copy(value) {
@@ -367,32 +390,37 @@ async function detail(id) {
       control.disabled = control.dataset.unavailable === 'true'; qrPanel.append(control);
     }
   } catch (error) { qrPanel.append(element('p', error.message)); }
-  const action = async (name, body = {}) => {
+  const action = async (name, body = {}, done) => {
     const result = await mutateShop(shop, name, body);
+    if (done) flash = done;
     await detail(id); return result;
   };
-  const resetSeller = button('Reset seller password', async () => {
-    if (!await confirmModal(`A new temporary password is created for ${shop.sellerUsername}. Their open sessions and connector sign-ins end, and they must choose a new password at the next sign-in. The password is shown once.`,
-      { title: 'Reset seller password?', confirmLabel: 'Reset and show password' })) return;
-    await action('reset-seller-password');
-  });
-  const sellerUsernameForm = () => {
-    content.append(element('h3', 'Change seller username'), element('p', 'The seller is signed out everywhere and signs in with the new username. Their password does not change.'));
+  const describe = (input, helpId) => input.setAttribute('aria-describedby', helpId);
+  const resetCard = () => {
+    const { card } = taskCard('Reset seller password', 'Resetting creates a temporary password and signs the Owner out of all sessions and connector sign-ins. The temporary password is shown once.');
+    const reset = button('Reset seller password', async () => {
+      if (!await confirmModal(`A new temporary password is created for ${shop.sellerUsername}. Their open sessions and connector sign-ins end, and they must choose a new password at the next sign-in. The password is shown once.`,
+        { title: 'Reset seller password?', confirmLabel: 'Reset and show password' })) return;
+      await action('reset-seller-password');
+    });
+    reset.classList.add('danger-button'); card.append(reset);
+  };
+  const usernameCard = () => {
+    const { card, helpId } = taskCard('Change seller username', 'Changing the username signs the Owner out of all sessions and connector sign-ins. Their password stays the same.');
     const node = form(async (body) => {
       if (!await confirmModal(`Change the Owner username from ${shop.sellerUsername} to ${body.username}? Their open sessions and connector sign-ins end.`, { title: 'Change seller username?', confirmLabel: 'Change username' })) return;
-      await action('change-seller-username', body);
-    });
-    field(node, 'username', 'New seller username', { value: shop.sellerUsername || '', maxLength: 64, autocomplete: 'off' }); submit(node, 'Save username');
+      await action('change-seller-username', body, { key: 'username', text: 'Seller username updated. The Owner must sign in with the new username.' });
+    }, { parent: card, key: 'username' });
+    describe(field(node, 'username', 'New seller username', { value: shop.sellerUsername || '', maxLength: 64, autocomplete: 'off' }), helpId); submit(node, 'Save username', { needsChange: true });
   };
+  const canReset = shop.status === 'ACTIVE' && shop.sellerUsername && shop.canResetSeller !== false;
   if (shop.isDefault) {
-    // The default shop is otherwise managed on the host; only its Owner account can be reset from here.
-    if (shop.status === 'ACTIVE' && shop.sellerUsername && shop.canResetSeller !== false) {
-      content.append(element('h3', 'Seller account'), element('p', `The Owner account is ${shop.sellerUsername}. After a reset you get the sign-in details and an email you can send to the seller.`), resetSeller);
-      sellerUsernameForm();
-    }
+    // The default shop is otherwise managed on the host; only its Owner account and its name are edited from here.
+    if (canReset) { resetCard(); usernameCard(); }
     if (shop.status === 'ACTIVE') {
-      content.append(element('h3', 'Shop name'), element('p', 'The default shop keeps its code, so its shop and seller links never change.'));
-      const node = form(async (body) => action('rename', body)); field(node, 'name', 'Shop name', { value: shop.name }); submit(node, 'Save name');
+      const { card, helpId } = taskCard('Shop name', 'Changing the name does not change the shop code or its buyer and seller links.');
+      const node = form(async (body) => action('rename', body, { key: 'name', text: 'Shop name updated.' }), { parent: card, key: 'name' });
+      describe(field(node, 'name', 'Shop name', { value: shop.name }), helpId); submit(node, 'Save name', { needsChange: true });
     }
     return;
   }
@@ -400,16 +428,18 @@ async function detail(id) {
   if (shop.status === 'ACTIVE') actions.append(button('Suspend shop', () => action('suspend')));
   if (shop.status === 'SUSPENDED') actions.append(button('Resume shop', () => action('resume')));
   if (shop.status === 'DELETING') actions.append(button('Cancel deletion', () => action('cancel-deletion')));
+  if (actions.children.length) content.append(actions);
   if (['ACTIVE', 'SUSPENDED'].includes(shop.status)) {
-    actions.append(resetSeller);
-    content.append(actions);
-    if (shop.sellerUsername) sellerUsernameForm();
-    content.append(element('h3', 'Rename shop'));
-    const node = form(async (body) => action('rename', body)); field(node, 'code', 'Shop code', { value: shop.code, maxLength: 30 }); field(node, 'name', 'Shop name', { value: shop.name }); submit(node, 'Save name and code');
-  } else content.append(actions);
+    resetCard();
+    if (shop.sellerUsername) usernameCard();
+    const { card, helpId } = taskCard('Rename shop', 'The name is shown to buyers. Changing the code changes this shop’s links.');
+    const node = form(async (body) => action('rename', body, { key: 'name', text: 'Shop name and code updated.' }), { parent: card, key: 'name' });
+    describe(field(node, 'code', 'Shop code', { value: shop.code, maxLength: 30 }), helpId); field(node, 'name', 'Shop name', { value: shop.name }); submit(node, 'Save name and code', { needsChange: true });
+  }
   if (shop.status === 'SUSPENDED') {
-    content.append(element('h3', 'Request deletion'), element('p', 'Data is retained for 30 days. A host operator must take a verified final backup before purging.'));
-    const node = form(async (body) => action('request-deletion', body)); field(node, 'code', `Type ${shop.code} to confirm`, { maxLength: 30 }); submit(node, 'Request deletion');
+    const { card, helpId } = taskCard('Request deletion', 'Data is retained for 30 days. A host operator must take a verified final backup before purging.');
+    const node = form(async (body) => action('request-deletion', body), { parent: card });
+    describe(field(node, 'code', `Type ${shop.code} to confirm`, { maxLength: 30 }), helpId); submit(node, 'Request deletion'); node.querySelector('button[type=submit]').classList.add('danger-button');
   }
   if (shop.status === 'FAILED') content.append(element('p', 'Provisioning failed. Retry Create shop with this code to recover the unfinished setup.'));
 }
