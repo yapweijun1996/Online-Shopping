@@ -78,7 +78,7 @@ Tests: `test/platform-pwa.test.js` (static) and `test/platform-pwa-browser.test.
 
 ## Exceptions and open items
 
-- The Seller console registers its worker with `autoUpdate: true`, which applies a ready update without a click when nothing would be lost. That is outside this scope and was left unchanged, but it is not "never silently refresh". The platform console does not use `autoUpdate`.
+- Resolved: Seller and Shop no longer use `autoUpdate`; all three consoles apply an update only on a tap. The stand-alone recovery page `/shared/shop-update.html` (opened on purpose to rescue an old installed shop) still activates the waiting version by itself, because opening it is the user's choice.
 - One manifest `theme_color` cannot follow the colour scheme; the manifest carries the light colour and the page `theme-color` meta tags carry both.
 - Real iPhone standalone behaviour (Dynamic Island, home indicator, status bar icon contrast) must be checked on a device before it is called verified.
 
@@ -99,3 +99,11 @@ Tests: `test/platform-pwa.test.js` (static) and `test/platform-pwa-browser.test.
 ## Shops list
 
 Header: title with a live summary ("30 shops · 24 active · 6 suspended") and **Add shop** on the same row. Toolbar: a search field capped at 480 px with an icon, a Clear button only while there is a query, and a labelled Status filter. The table card shows one result count; its footer (range, rows per page, pager) appears only when there is more than one page, and rows-per-page only above ten shops; a visually hidden status line keeps the count announced for screen readers. Rows: name with a "Default shop" chip, code underneath, readable status chip, unambiguous dates (02 Nov 2026), then **Manage** plus a "More actions" menu (open shop, open seller, copy either link, with a "copied" message). Phones get cards. Covered by `test/platform-shops-list-ui.test.js`: menu keyboard use, copy to clipboard, search and no-results, paging with 30 shops, empty and error states, long names, no overflow at 320, 390, 430, 768 px and at 200% zoom, touch targets, focus visibility, and the Activity page that shares the table. Not changed: the sidebar keeps its own "Add shop" entry (navigation), and the visual polish items for the sidebar and top bar.
+
+## Shared top bar Update button and the version guard (all consoles)
+
+`public/shared/topbar-update.js` is the one Update control for Platform, Seller and Shop (styles in `public/shared/base.css`): visible while an update waits (dot), installs (disabled) or failed (Retry), icon-only on phones, 44 px. `test/console-update-browser.test.js` runs Seller and Shop with a real Service Worker: the button appears for a new version, the page does not reload by itself for 3 s, and one tap reloads once into the new version with a single new cache.
+
+The version guard covers all three: `test/platform-shell.fingerprint.json` records, per surface, the hash of every file its worker caches next to its version; CI fails when a cached file changes and the version did not. After bumping `version.js` and the worker `version`, run `node scripts/platform-shell-fingerprint.mjs`.
+
+Sidebar polish (shared with Seller): one selected-state signal (background, no extra bar), readable group labels, tighter rhythm, one icon gap. Platform top bar: the role appears once as a "SuperAdmin" chip (the "SuperAdmin portal" eyebrow is gone; the eyebrow slot now only carries breadcrumbs), and the avatar and "Account" form one control.

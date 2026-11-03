@@ -34,11 +34,16 @@ export function shellAssets({ root = new URL('../../public/', import.meta.url), 
   return [...seen].sort();
 }
 
-// A fingerprint of the cached platform shell. sw.js and version.js are left out: they carry the version that the fingerprint guards.
-export function shellFingerprint(options = {}) {
-  const root = options.root || new URL('../../public/', import.meta.url), hash = createHash('sha256');
-  for (const path of shellAssets({ root, extra: ['/platform/offline.html'] }).filter((item) => !item.endsWith('/') && !/\/platform\/(?:sw|version)\.js$/.test(item))) {
-    hash.update(path); hash.update('\0'); hash.update(readFileSync(new URL(`.${path}`, root))); hash.update('\0');
-  }
+// A fingerprint of everything a surface's Service Worker caches (its `assets` list), except the worker and version files, which
+// carry the version this fingerprint guards. If any cached file changes, the fingerprint changes.
+export function workerFingerprint(surface, root = new URL('../../public/', import.meta.url)) {
+  const worker = readFileSync(new URL(`./${surface}/sw.js`, root), 'utf8');
+  const list = worker.slice(worker.indexOf('assets: ['), worker.indexOf('].map(asset)'));
+  const paths = [...new Set([...list.matchAll(/'([^']+)'/g)].map((match) => new URL(match[1], `https://example.test/${surface}/sw.js`).pathname))]
+    .filter((path) => !path.endsWith('/') && !/\/(?:sw|version)\.js$/.test(path)).sort();
+  const hash = createHash('sha256');
+  for (const path of paths) { hash.update(path); hash.update('\0'); hash.update(readFileSync(new URL(`.${path}`, root))); hash.update('\0'); }
   return hash.digest('hex');
 }
+export const workerVersion = (surface, root = new URL('../../public/', import.meta.url)) => readFileSync(new URL(`./${surface}/version.js`, root), 'utf8').match(/APP_VERSION\s*=\s*'([^']+)'/)?.[1];
+export const SURFACES = ['platform', 'seller', 'shop'];

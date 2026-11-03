@@ -77,7 +77,7 @@ function screen(title) {
   for (const node of content.querySelectorAll('[data-secret]')) node.replaceChildren();
   document.body.classList.toggle('auth', session?.stage !== 'FULL');
   document.body.classList.remove('saving-recovery');
-  content.replaceChildren(); document.querySelector('#page-actions').replaceChildren(); document.querySelector('.page-heading .eyebrow').textContent = 'SuperAdmin portal'; document.querySelector('#page-title').textContent = title; notice.textContent = ''; errorBox.hidden = true; errorBox.textContent = '';
+  content.replaceChildren(); document.querySelector('#page-actions').replaceChildren(); document.querySelector('.page-heading .eyebrow').textContent = ''; document.querySelector('#page-title').textContent = title; notice.textContent = ''; errorBox.hidden = true; errorBox.textContent = '';
   const current = ({ 'Add shop': 'Add shop', 'Audit trail': 'Activity', Account: 'Account' })[title] || 'Shops';
   for (const node of navigation.querySelectorAll('button')) {
     if (node.textContent === current) node.setAttribute('aria-current', 'page'); else node.removeAttribute('aria-current');
@@ -198,7 +198,7 @@ function nav() {
   document.querySelector('#drawer-backdrop').hidden = true;
   document.querySelector('#account-menu').hidden = true;
   document.querySelector('#account-button').setAttribute('aria-expanded', 'false');
-  const identity = document.querySelector('#identity'); identity.hidden = !full; identity.textContent = 'SuperAdmin';
+  const identity = document.querySelector('#identity'); identity.hidden = !full; identity.replaceChildren(icon('lock'), element('span', 'SuperAdmin'));
   navigation.replaceChildren(button('Shops', listShops), button('Add shop', createShop), button('Activity', audit), button('Account', account));
   const icons = ['M4 21V7l8-4 8 4v14M2 21h20M9 21v-6h6v6', 'M12 4v16M4 12h16', 'M12 8v5l3 2M3 12a9 9 0 1 0 3-6.7M3 4v4h4', 'M5 21v-2a7 7 0 0 1 14 0v2M8 7a4 4 0 1 0 8 0 4 4 0 0 0-8 0'];
   for (const [index, node] of [...navigation.children].entries()) {

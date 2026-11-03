@@ -27,13 +27,14 @@ body{background:var(--ui-canvas)}
 .sidebar-head{margin-inline:-15px;padding-inline:20px;border-color:#ffffff26;min-height:76px}
 .sidebar-brand,.sidebar-brand-static{color:#fff;font-size:16px;letter-spacing:-.025em}
 .sidebar-brand:hover{background:#ffffff12}
-.sidebar nav{gap:5px;padding-top:24px}
+.sidebar nav{gap:4px;padding-top:12px}
 .nav-item{min-height:48px;color:#fff;font-weight:550;padding:11px 13px;border-radius:8px}
 .nav-item:hover{background:#ffffff16}
 .nav-item.active{background:#ffffff20;color:#fff;font-weight:750}
 .seller-signed-in .sidebar [aria-current="page"]{color:#fff}
-.nav-item.active::before{background:#fff;top:13px;bottom:13px}
-.nav-group{color:#fff;opacity:.85;font-size:10px;letter-spacing:.12em;padding-top:27px}
+.nav-item.active::before{display:none}
+.nav-group{color:#fff;opacity:.75;font-size:11px;letter-spacing:.06em;padding-top:20px;padding-bottom:6px}
+.nav-item{gap:12px}
 .sidebar .icon-button{color:#fff}
 .sidebar .icon-button:hover{background:#ffffff16}
 .sidebar :focus-visible{outline:2px solid #fff;outline-offset:3px}

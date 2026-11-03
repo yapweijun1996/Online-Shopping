@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { shellAssets, shellFingerprint } from './helpers/shell-assets.js';
+import { shellAssets, SURFACES, workerFingerprint, workerVersion } from './helpers/shell-assets.js';
 
 const file = (path) => readFileSync(new URL(`../public/${path}`, import.meta.url), 'utf8');
 const manifest = JSON.parse(file('platform/manifest.webmanifest'));
@@ -70,10 +70,12 @@ test('every cached platform module imports through the symlinked shared files, w
   }
 });
 
-test('the platform shell cannot change without a new version: installed browsers would keep the old cached files', () => {
-  const version = file('platform/version.js').match(/APP_VERSION\s*=\s*'([^']+)'/)?.[1];
+test('no cached file of the platform, seller or shop shell can change without a new version (installed browsers would keep the old files)', () => {
   const record = JSON.parse(readFileSync(new URL('./platform-shell.fingerprint.json', import.meta.url), 'utf8'));
-  const advice = 'Bump APP_VERSION in public/platform/version.js and `version` in public/platform/sw.js, then run: node scripts/platform-shell-fingerprint.mjs';
-  if (record.version === version) assert.equal(record.fingerprint, shellFingerprint(), `A cached platform file changed but the version is still ${version}. ${advice}`);
-  else assert.fail(`The version is ${version} but the recorded fingerprint belongs to ${record.version}. ${advice}`);
+  for (const surface of SURFACES) {
+    const version = workerVersion(surface), advice = `Bump APP_VERSION in public/${surface}/version.js and \`version\` in public/${surface}/sw.js, then run: node scripts/platform-shell-fingerprint.mjs`;
+    assert.ok(record[surface], `${surface} has no recorded fingerprint. ${advice}`);
+    if (record[surface].version === version) assert.equal(record[surface].fingerprint, workerFingerprint(surface), `A cached ${surface} file changed but the version is still ${version}. ${advice}`);
+    else assert.fail(`${surface} is at ${version} but the recorded fingerprint belongs to ${record[surface].version}. ${advice}`);
+  }
 });

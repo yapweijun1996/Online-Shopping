@@ -53,3 +53,10 @@ h1{font-size:clamp(29px,3vw,40px);letter-spacing:-.035em;line-height:1.14;margin
 @media(max-width:760px){.app-modal{width:100%;max-width:none;height:100dvh;max-height:100dvh;margin:0;border-radius:0}.app-modal header{padding-top:calc(12px + env(safe-area-inset-top))}.modal-content{padding-bottom:calc(16px + env(safe-area-inset-bottom))}}
 @media(max-width:760px){.app-modal-confirm{width:calc(100vw - 32px);max-width:460px;height:fit-content;max-height:calc(100dvh - 32px);margin:auto;border-radius:16px}.app-modal-confirm header{padding-top:12px}.app-modal-confirm .modal-content{padding-bottom:20px}.modal-confirm-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.modal-confirm-actions button{min-width:0}}
 @media(prefers-reduced-motion:reduce){.app-modal[open],.app-modal.closing{animation:none}}
+/* Top bar update button (shared/topbar-update.js), the same in every console: visible while an update waits, installs or failed. */
+.topbar-update{position:relative;display:inline-flex;flex:none;align-items:center;justify-content:center;gap:8px;min-width:44px;min-height:44px;padding:0 12px;color:var(--ui-primary);background:var(--ui-surface);border:1px solid var(--ui-primary);border-radius:var(--ui-radius-sm, 8px);font-weight:650;cursor:pointer}
+.topbar-update .ui-icon{width:20px;height:20px}
+.topbar-update[data-state=ready]::after{content:"";position:absolute;top:-4px;right:-4px;width:9px;height:9px;background:var(--ui-warning-text, var(--shop-warning-text, #715314));border:2px solid var(--ui-surface);border-radius:50%}
+.topbar-update[data-state=failed]{color:var(--ui-danger, var(--shop-error, #aa3946));border-color:var(--ui-danger, var(--shop-error, #aa3946))}
+.topbar-update:disabled{opacity:.7;cursor:progress}
+@media(max-width:719px){.topbar-update-label{display:none}.topbar-update{padding:0}}
