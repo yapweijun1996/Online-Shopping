@@ -5,6 +5,7 @@ import { revealImage } from '../shared/image-reveal.js';
 import { makeThumbnail, thumbUrl } from '../shared/image-thumb.js';
 import { inputFailure, priceToMinor, stockFromInput } from './product-fields.js';
 import './ops-copy.js';
+import './p1-copy.js';
 import { openImportDialog } from './product-import.js';
 
 function readImage(file) {
@@ -136,18 +137,29 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   const editorLayout = document.createElement('div');
   editorLayout.className = 'product-editor-layout';
   formFields.before(editorLayout);
-  details.append(formFields);
+  const variantFields = group('variantsPanelTitle', 'product-variant-fields');
+  const variantHelp = find('[data-i18n="variantHelp"]');
+  const example = document.createElement('p'); example.className = 'shop-note full'; example.dataset.i18n = 'p1VariantExample'; example.textContent = t('p1VariantExample');
+  variantFields.append(variantHelp, example, form.elements.variantGroup.closest('label'), form.elements.variantLabel.closest('label'), form.elements.sku.closest('label'), optionsBox);
+  details.append(formFields, variantFields);
   editorLayout.append(details, pricing, imageColumn);
   const nameLabel = form.elements.name.closest('label');
   nameLabel.classList.add('full');
-  formFields.prepend(nameLabel, form.elements.sku.closest('label'), form.elements.category.closest('label'), form.elements.description.closest('label'));
+  formFields.prepend(nameLabel, form.elements.category.closest('label'), form.elements.description.closest('label'));
+  const stockFields = document.createElement('div'); stockFields.className = 'product-stock-fields';
+  stockFields.append(form.elements.unlimitedStock.closest('label'), form.elements.stockQuantity.closest('label'));
+  priceFields.append(stockFields);
+  form.elements.description.rows = 6;
+  const priceCurrency = document.createElement('small'); priceCurrency.className = 'product-price-currency';
+  form.elements.price.before(priceCurrency);
   const editorActions = document.createElement('div');
   editorActions.className = 'product-editor-actions';
-  editorActions.append(find('#product-cancel'), find('#product-save'));
-  form.append(editorActions);
+  const saveState = document.createElement('p'); saveState.id = 'product-save-state'; saveState.setAttribute('role', 'status'); saveState.setAttribute('aria-live', 'polite');
+  editorActions.append(saveState, back, find('#product-cancel'), find('#product-save'));
+  form.append(find('#product-history'), editorActions);
   find('.product-form-heading').remove();
   listView.append(find('.product-toolbar'), status, listRecovery, listHeading, list, more);
-  editorView.append(back, editorStatus, form);
+  editorView.append(editorStatus, form);
   root.replaceChildren(listView, editorView);
   const isCurrent = () => editorView.isConnected && root.contains(editorView);
   let originalImageUrl = null;
@@ -189,14 +201,38 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     status.classList.toggle('sr-only', ['productActivatedInline', 'productDeactivatedInline', 'productUndoRestored'].includes(key));
     status.textContent = key ? `${productName ? `${productName}: ` : ''}${t(key)}` : '';
   }
-  function setError(key) { formErrorKey = key; error.textContent = key ? t(key) : ''; }
-  function setFormSuccess(key) { formSuccessKey = key; formSuccess.textContent = key ? t(key) : ''; }
+  function setError(key) { formErrorKey = key; error.textContent = key ? t(key) : ''; refreshSaveState(); }
+  function setFormSuccess(key) { formSuccessKey = key; formSuccess.textContent = key ? t(key) : ''; refreshSaveState(); }
   function setEditorStatus(key) { editorStatusKey = key; editorStatus.textContent = key ? t(key) : ''; }
+  function stockValue() {
+    if (form.elements.unlimitedStock.checked) return null;
+    const value = stockFromInput(form.elements.stockQuantity.value);
+    if (value === null) throw inputFailure('stockQuantity');
+    return value;
+  }
+  function syncStockMode() {
+    form.elements.stockQuantity.disabled = form.elements.unlimitedStock.checked;
+    const invalid = !form.elements.unlimitedStock.checked && (() => { try { stockValue(); return false; } catch { return true; } })();
+    if (!invalid) {
+      find('#product-stock-error').hidden = true;
+      form.elements.stockQuantity.removeAttribute('aria-invalid');
+    }
+  }
+  form.elements.unlimitedStock.addEventListener('change', syncStockMode);
+  form.elements.stockQuantity.addEventListener('input', syncStockMode);
+  function refreshSaveState() {
+    const busy = readingGallery || (editingId && !galleryLoaded);
+    const key = saving ? 'p1Saving' : formErrorKey ? 'p1SaveError' : busy ? 'loading' : hasUnsavedChanges() ? 'p1Unsaved' : formSuccessKey ? 'p1Saved' : 'p1Unchanged';
+    saveState.textContent = t(key); saveState.dataset.state = key;
+    find('#product-save').disabled = saving || busy;
+    priceCurrency.textContent = form.elements.currency.value;
+  }
   function formState() {
     const fields = ['sku', 'name', 'description', 'category', 'price', 'currency', 'variantGroup', 'variantLabel', 'stockQuantity'];
     const image = form.elements.image.files[0];
     return {
-      values: Object.fromEntries(fields.map((field) => [field, form.elements[field].value])),
+      values: Object.fromEntries(fields.map((field) => [field, field === 'stockQuantity' && form.elements.stockQuantity.disabled ? '' : form.elements[field].value])),
+      unlimitedStock: form.elements.stockQuantity.disabled === true,
       options: selectedOptions(),
       active: form.elements.active.checked,
       image: image ? [image.name, image.size, image.lastModified] : null,
@@ -221,6 +257,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   }
 
   function renderGallery() {
+    refreshSaveState();
     galleryPanel.hidden = !editingId;
     form.elements.gallery.disabled = saving || readingGallery || !galleryLoaded || !originalImageUrl || pendingRemove || galleryImages.length >= 10;
     removeImage.disabled = Boolean(editingId && (!galleryLoaded || galleryImages.length > 1));
@@ -290,12 +327,13 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     expectedUpdatedAt = detail.updatedAt;
     galleryLoaded = true;
     renderGallery();
-    if (capture) captureBaseline();
+    if (capture) { captureBaseline(); refreshSaveState(); }
     else if (formBaseline) {
       // Only the fetched gallery joins the confirmed baseline. Metadata typed
       // while the request was pending must remain dirty.
       const baseline = JSON.parse(formBaseline); baseline.gallery = formState().gallery;
       formBaseline = JSON.stringify(baseline);
+      refreshSaveState();
     }
   }
 
@@ -650,6 +688,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     find('#product-save').disabled = saving;
     editingId = null;
     form.reset();
+    syncStockMode();
     renderOptionPickers([]);
     form.hidden = true;
     formBaseline = null;
@@ -683,6 +722,8 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     currencyHelp.textContent = t(currencyHelp.dataset.i18n);
     form.elements.active.checked = product.active;
     form.elements.stockQuantity.value = product.stockQuantity ?? '';
+    form.elements.unlimitedStock.checked = product.stockQuantity === null;
+    syncStockMode();
     form.elements.variantGroup.value = product.variantGroup || '';
     form.elements.variantLabel.value = product.variantLabel || '';
     renderOptionPickers(product.options || []);
@@ -696,7 +737,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     renderGallery();
     setError('');
     setFormSuccess('');
-    captureBaseline();
+    captureBaseline(); refreshSaveState();
     if (!detailLoaded) {
       form.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
       form.elements.sku.focus();
@@ -753,7 +794,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       const currencyHelp = find('#product-currency-help');
       currencyHelp.dataset.i18n = 'currencyInherited';
       currencyHelp.textContent = t('currencyInherited');
-      captureBaseline();
+      captureBaseline(); refreshSaveState();
       return;
     }
     const id = route.slice('products/'.length);
@@ -843,8 +884,8 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   find('#product-add-variant').addEventListener('click', () => { if (editingId) onNavigate(`products/new/${editingId}`); });
   find('#product-open-main').addEventListener('click', () => { if (galleryHolderId) onNavigate(`products/${galleryHolderId}`); });
   find('#product-cancel').addEventListener('click', () => onNavigate('products'));
-  form.addEventListener('input', () => { if (formSuccessKey) setFormSuccess(''); });
-  form.addEventListener('change', () => { if (formSuccessKey) setFormSuccess(''); });
+  form.addEventListener('input', () => { setFormSuccess(''); setError(''); refreshSaveState(); });
+  form.addEventListener('change', () => { setFormSuccess(''); setError(''); refreshSaveState(); });
   find('#product-search-form').addEventListener('submit', (event) => { event.preventDefault(); load(); });
   more.addEventListener('click', () => load(false));
   removeImage.addEventListener('click', () => {
@@ -919,6 +960,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     renderGallery();
     setError('');
     try {
+      stockValue(); // Finite blank/invalid is rejected before constructing the existing API payload.
       const payload = {
         sku: form.elements.sku.value,
         name: form.elements.name.value,
@@ -929,7 +971,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
         active: form.elements.active.checked,
         variantGroup: form.elements.variantGroup.value,
         variantLabel: form.elements.variantLabel.value,
-        stockQuantity: stockFromInput(form.elements.stockQuantity.value),
+        stockQuantity: stockFromInput(form.elements.stockQuantity.disabled ? '' : form.elements.stockQuantity.value),
         ...(optionTypes.length ? { options: selectedOptions() } : {}),
       };
       if (productId && formBaseline) {
@@ -968,6 +1010,10 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       formSuccess.focus({ preventScroll: true });
     } catch (failure) {
       if (!ownsRoute()) return;
+      if (failure.field === 'stockQuantity') {
+        const stockError = find('#product-stock-error'); stockError.hidden = false; stockError.textContent = t('p1StockInvalid');
+        form.elements.stockQuantity.setAttribute('aria-invalid', 'true');
+      }
       const galleryConflict = pendingRemove && failure.field === 'imageDataUrl';
       const optionKey = failure.field === 'options' ? (optionErrorKey[failure.code] || 'productError') : null;
       if (optionKey) { optionsError.textContent = t(optionKey); optionsError.hidden = false; }
@@ -994,6 +1040,8 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       renderGallery();
       populateCategories(form.elements.category.value);
       renderOptionPickers();
+      refreshSaveState();
+      if (!find('#product-stock-error').hidden) find('#product-stock-error').textContent = t('p1StockInvalid');
       search.placeholder = t('searchNameOrSkuHint');
       status.textContent = statusKey ? `${statusProductName ? `${statusProductName}: ` : ''}${t(statusKey)}` : '';
       error.textContent = formErrorKey ? t(formErrorKey) : '';

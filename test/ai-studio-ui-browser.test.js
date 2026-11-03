@@ -53,7 +53,9 @@ test('AI Studio page: key, photo to draft, independent styled images, phone widt
   await page.locator('.nav-item[data-view=aistudio]').click();
   await page.locator('.ai-studio').waitFor();
   assert.equal(await page.locator('#page-title').innerText(), 'AI Studio');
-  assert.equal(await page.locator('.ai-studio-card').nth(1).isHidden(), true, 'photo card stays hidden until a key exists');
+  assert.equal(await page.getByRole('button', { name: 'Analyze product photo', exact: true }).isDisabled(), true, 'analysis stays unavailable until a key exists');
+  await page.locator('#ai-photo-reason', { hasText: 'Add your OpenAI key first.' }).waitFor();
+  await page.locator('.ai-studio-settings > summary').click();
   assert.equal(await page.locator('input[name=apiKey]').getAttribute('type'), 'password');
   await shot('1-no-key-375');
   // Save the key
@@ -78,7 +80,7 @@ test('AI Studio page: key, photo to draft, independent styled images, phone widt
   // Photo to draft
   await page.locator('.ai-studio-file').setInputFiles({ name: 'tote.png', mimeType: 'image/png', buffer: png(900, 700) });
   await page.locator('.ai-studio-preview').waitFor();
-  await page.getByRole('button', { name: /Read photo/ }).click();
+  await page.getByRole('button', { name: 'Analyze product photo', exact: true }).click();
   await page.locator('input[name=name]').waitFor();
   assert.match(await page.locator('input[name=name]').inputValue(), /^<img src=x onerror=window\.__xss=1>Canvas tote$/);
   assert.equal(await page.evaluate(() => window.__xss), undefined, 'AI text is never rendered as HTML');
@@ -96,6 +98,7 @@ test('AI Studio page: key, photo to draft, independent styled images, phone widt
   assert.equal(list.items.length, 1); assert.equal(list.items[0].active, false, 'the new product is an unpublished draft');
   assert.ok(await overflow() <= 0);
   await shot('3-draft-375');
+  await page.getByRole('button', { name: 'Create images for this draft', exact: true }).click();
   // Styled images: one succeeds with a warning, the next times out and stops the batch
   await page.getByText('Selected: Canvas tote').waitFor();
   await page.locator('.ai-studio-style input[value=hero]').check();

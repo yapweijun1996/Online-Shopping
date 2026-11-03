@@ -15,6 +15,7 @@
   <script type="module" src="./bootstrap.js"></script>
   <link rel="stylesheet" href="./order-print.css">
   <link rel="stylesheet" href="./commerce.css">
+  <link rel="stylesheet" href="./p1.css">
 </head>
 <body>
   <header class="topbar">
@@ -146,7 +147,8 @@
         <label class="full"><span data-i18n="description">Description</span><textarea name="description" maxlength="2000" rows="3" required></textarea></label>
         <label><span data-i18n="category">Category</span><select name="category" required></select></label>
         <label><span data-i18n="price">Price</span><input name="price" inputmode="decimal" required></label>
-        <label><span data-i18n="stockQuantity">Stock quantity</span><input name="stockQuantity" inputmode="numeric" autocomplete="off" aria-describedby="product-stock-help"><small id="product-stock-help" data-i18n="stockHelp"></small></label>
+        <label class="check-row full"><input name="unlimitedStock" type="checkbox" checked><span data-i18n="unlimitedStock">Unlimited stock</span></label>
+        <label><span data-i18n="stockQuantity">Stock quantity</span><input name="stockQuantity" inputmode="numeric" autocomplete="off" aria-describedby="product-stock-help product-stock-error"><small id="product-stock-help" data-i18n="p1StockHelp"></small><small id="product-stock-error" role="alert" hidden></small></label>
         <label><span data-i18n="currency">Currency</span><input name="currency" readonly aria-describedby="product-currency-help"><small id="product-currency-help" data-i18n="currencyInherited"></small></label>
         <label><span data-i18n="variantGroup">Variant group</span><input name="variantGroup" maxlength="40" autocomplete="off" placeholder="PET-BOWL"></label>
         <label><span data-i18n="variantOption">Option label</span><input name="variantLabel" maxlength="80" autocomplete="off" placeholder="Small"></label>

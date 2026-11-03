@@ -1,0 +1,25 @@
+/* P1 editor: one shared save/dirty state, reachable at every viewport. */
+#product-editor-view .product-editor-layout{grid-template-columns:minmax(0,1.55fr) minmax(280px,1fr)}
+.product-variant-fields{display:grid;grid-template-columns:1fr 1fr;gap:16px;min-inline-size:0;border:1px solid var(--ui-border);border-radius:10px;padding:16px;margin:24px 0 0}
+.product-variant-fields legend{font-weight:700;padding:0 6px}.product-variant-fields .full{grid-column:1/-1}
+.product-stock-fields{display:grid;gap:12px}.product-price-currency{font-weight:700;color:var(--ui-text)}
+.product-pricing-card input[readonly]{background:var(--ui-canvas);color:var(--ui-muted);border-style:dashed}
+#product-editor-view .product-editor-actions{position:sticky;bottom:0;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:12px 16px calc(12px + env(safe-area-inset-bottom));margin-top:20px;border:1px solid var(--ui-border);border-radius:12px;background:var(--ui-surface);box-shadow:var(--ui-shadow-raised)}
+#product-save-state{flex:1 1 180px;margin:0;font-size:14px}#product-editor-view .product-back{margin:0;min-width:0}
+#product-form :is(input,textarea,select,button){scroll-margin-block:120px 160px}
+@media(max-width:1050px){#product-editor-view .product-editor-layout{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:900px){#product-editor-view .product-editor-actions button{width:auto;min-width:0}#product-save-state{flex-basis:100%}}
+@media(max-width:480px){.product-variant-fields{grid-template-columns:1fr}#product-editor-view .product-editor-actions{gap:8px;padding-inline:10px}#product-editor-view .product-editor-actions button{flex:1;font-size:13px;padding-inline:8px}}
+
+/* Seller P1 task workspaces. Both panels stay mounted; hidden panels remain inert. */
+.ai-studio{max-width:none;min-width:0}.ai-studio-tabs{display:flex;flex-wrap:wrap;gap:8px}.ai-studio-tabs [aria-selected=true]{background:var(--ui-action);color:var(--ui-on-action);border-color:var(--ui-action)}
+.ai-studio-card[role=tabpanel]{width:100%;max-width:none;box-sizing:border-box;grid-template-columns:minmax(0,1fr);align-items:start;padding:20px}
+.ai-studio-card>h2,.ai-studio-steps{grid-column:1/-1}.ai-studio-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;list-style:none;padding:0;margin:0 0 8px;font-size:13px;color:var(--ui-muted)}
+.ai-studio-steps li{padding:10px;border-bottom:2px solid var(--ui-border);overflow-wrap:anywhere}.ai-studio-steps [aria-current=step]{font-weight:700;color:var(--ui-action);border-color:var(--ui-action)}
+.ai-studio-pane{min-width:0;display:grid;align-content:start;gap:16px;padding:18px;border:1px solid var(--ui-border);border-radius:12px;background:var(--ui-surface)}
+.ai-studio-pane h3{margin:0;font-size:17px}.ai-studio-pane .primary-button{justify-self:start}.ai-studio-settings{border:1px solid var(--ui-border);border-radius:12px;padding:16px}.ai-studio-settings>summary{cursor:pointer;font-weight:600;min-height:32px}.ai-studio-key-card{margin-top:16px}
+.ai-studio-pane .ai-studio-actions{align-items:center;gap:12px}.ai-studio-selected{overflow-wrap:anywhere}
+@media(min-width:1024px){.ai-studio-card[role=tabpanel]{width:100%;max-width:none;box-sizing:border-box;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+@media(max-width:480px){.ai-studio-card[role=tabpanel]{padding:12px}.ai-studio-pane{padding:12px}.ai-studio-steps{font-size:12px;gap:4px}.ai-studio-steps li{padding:6px}}
+
+.ai-studio-drop{display:grid;gap:16px;justify-items:start;padding:24px 18px;border:2px dashed var(--ui-border);border-radius:12px;background:var(--ui-canvas)}.ai-studio-drop.is-dragging{border-color:var(--ui-action);background:var(--ui-surface-2)}
