@@ -283,3 +283,15 @@ body.auth .page-heading{display:block}
 /* Platform top bar: the shared update button sits just before the account control. */
 .topbar>.topbar-update{margin-left:auto}
 .topbar-update:not([hidden])+.account-wrap{margin-left:0}
+
+/* Account menu: app version and the update check, separated from the account actions. */
+.menu-update{display:grid;gap:4px;margin-top:6px;padding-top:8px;border-top:1px solid var(--ui-border)}
+.menu-update-version{margin:0;padding:0 12px;color:var(--ui-muted);font-size:13px}
+.menu-update-status{margin:0;padding:0 12px 4px;color:var(--ui-muted);font-size:13px}
+.menu-update-status:empty{display:none}
+.account-menu .menu-update-button{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:0 12px;color:var(--ui-text);background:transparent;border:0;border-radius:var(--ui-radius-sm);font:inherit;font-weight:650;text-align:left;cursor:pointer}
+.account-menu .menu-update-button:hover{background:var(--ui-hover-surface)}
+.account-menu .menu-update-button:disabled{opacity:.6;cursor:progress}
+.menu-update-button .ui-icon{width:18px;height:18px;flex:none}
+.account-menu{min-width:230px}
+.account-menu .menu-update-button{font-size:14px;font-weight:700;white-space:nowrap}

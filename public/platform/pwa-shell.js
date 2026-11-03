@@ -7,7 +7,7 @@ import { APP_STATES, appState, bannerState, initialFlags, reduceWorkerState } fr
 export { APP_STATES, appState };
 const root = document.documentElement;
 const flags = initialFlags(navigator.onLine === false);
-let actions = null, statusLine = null, versionLine = null, checkButton = null, updateButton = null, barUpdate = null, region = null, loader = null, lastState = '';
+let actions = null, statusLine = null, versionLine = null, checkButton = null, updateButton = null, barUpdate = null, menuStatus = null, menuButton = null, menuVersion = null, region = null, loader = null, lastState = '';
 const state = () => appState(flags);
 
 const make = (tag, text, className) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; };
@@ -48,6 +48,13 @@ function render() {
     barUpdate.render(mode, mode === 'failed' ? { short: 'Retry', full: 'Update failed, try again' } : busy ? { short: 'Updating…', full: 'Updating' } : { short: 'Update', full: `Update available${flags.available ? ` (${flags.available})` : ''}` });
     // A new update must be seen: bring the (smart) top bar back.
     if (mode === 'ready' && lastState !== current) document.querySelector('.topbar')?.classList.remove('topbar-hidden');
+  }
+  if (menuButton) {
+    // Account menu: version, a one-line result, and one action that checks or, when a version is waiting, updates.
+    menuVersion.textContent = `App version ${APP_VERSION}`;
+    menuButton.disabled = busy || flags.checking || !actions;
+    menuButton.querySelector('.menu-update-label').textContent = current === 'UPDATE_AVAILABLE' ? `Update now${flags.available ? ` (${flags.available})` : ''}` : flags.checking ? 'Checking…' : 'Check for updates';
+    menuStatus.textContent = flags.checking ? 'Checking for a new version…' : current === 'UPDATE_AVAILABLE' ? 'A new version is ready.' : current === 'UPDATE_FAILED' ? 'The check failed. Try again.' : flags.checked ? 'This is the latest version.' : '';
   }
   lastState = current;
   if (statusLine) statusLine.textContent = current === 'UPDATE_AVAILABLE' ? 'A new version is ready to install.' : current === 'UPDATE_FAILED' ? 'The update check failed. Try again.' : flags.checked ? 'This is the latest version.' : '';
@@ -113,6 +120,15 @@ export function initPwaShell({ guard, confirmUpdate } = {}) {
 
 // First screen rendered (sign-in or the shop list): STARTING becomes READY.
 export function markReady() { flags.booted = true; render(); }
+
+// "Check for updates" in the top bar Account menu. The menu stays open so the result can be read where the action was taken.
+export function mountMenuUpdate(menu) {
+  const box = make('div', undefined, 'menu-update'); box.dataset.keepOpen = 'true';
+  menuVersion = make('p', undefined, 'menu-update-version'); menuStatus = make('p', undefined, 'menu-update-status'); menuStatus.setAttribute('role', 'status');
+  menuButton = action('Check for updates', async () => { if (appState(flags) === 'UPDATE_AVAILABLE') { actions?.update(); return; } flags.checked = false; render(); await actions?.check(); }, 'menu-update-button');
+  menuButton.replaceChildren(icon('download'), make('span', 'Check for updates', 'menu-update-label'));
+  box.append(menuVersion, menuButton, menuStatus); menu.append(box); render();
+}
 
 // "App version" row for the Account screen: version, status and a manual update check.
 export function mountAppSection(parent) {

@@ -34,4 +34,5 @@ test('failed updates and clean checks are reported', () => {
   assert.equal(failed.failed, true); assert.equal(failed.applying, false); assert.equal(failed.reloading, false); assert.equal(appState(failed), 'UPDATE_FAILED');
   const clean = reduceWorkerState(failed, { applying: false, statusKey: 'appUpToDate' });
   assert.equal(clean.failed, false); assert.equal(clean.checked, true);
+  assert.equal(reduceWorkerState(clean, { checking: true }).checking, true); assert.equal(reduceWorkerState(clean, {}).checking, false);
 });
