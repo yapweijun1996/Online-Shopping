@@ -165,7 +165,8 @@ function renderUpdateUI() {
 // ready, updating or failed; the check and update flow itself is the shared one (Settings uses the same actions).
 function renderLoginFooter(applying) {
   const key = updateState?.statusKey;
-  const state = applying ? 'updating' : updateState?.ready ? 'ready' : key === 'checkingUpdates' ? 'checking'
+  // No Service Worker (unsupported or blocked): there is nothing to check, so only the version is shown.
+  const state = !updateActions ? 'unavailable' : applying ? 'updating' : updateState?.ready ? 'ready' : key === 'checkingUpdates' ? 'checking'
     : key === 'updateFailed' ? 'failed' : key === 'appUpToDate' ? 'current' : 'idle';
   byId('login-footer').dataset.state = state;
   byId('login-version').textContent = `Seller Studio · ${APP_VERSION}`;
@@ -175,6 +176,7 @@ function renderLoginFooter(applying) {
   else if (state === 'failed') status.textContent = t('loginCheckFailed');
   else if (state === 'checking' || state === 'updating') status.textContent = t(state === 'checking' ? 'checkingUpdates' : 'appUpdating');
   check.hidden = !(state === 'idle' || state === 'failed');
+  check.closest('.login-footer-update').hidden = state === 'unavailable';
   check.textContent = t(state === 'failed' ? 'retry' : 'checkUpdates');
   // A background check is running: wait for it rather than dropping the click.
   check.disabled = !updateActions || updateState?.checking === true;
@@ -183,9 +185,21 @@ function renderLoginFooter(applying) {
 }
 document.addEventListener('updateguardchange', renderUpdateUI);
 
+// Status (signed out) is a confirmation above the form, never red text beside the password; loading is neutral; only
+// real problems use the error slot next to the Sign in button.
 function setLoginMessage(key) {
   loginMessageKey = key;
-  byId('login-message').textContent = key ? t(key) : '';
+  const notice = byId('login-notice'), message = byId('login-message');
+  notice.hidden = key !== 'signedOut';
+  notice.replaceChildren();
+  if (key === 'signedOut') {
+    const text = document.createElement('span');
+    const title = document.createElement('strong'); title.textContent = t('signedOutTitle');
+    const hint = document.createElement('small'); hint.textContent = t('signedOutHint');
+    text.append(title, hint); notice.append(icon('checkCircle'), text);
+  }
+  message.classList.toggle('is-info', key === 'loading');
+  message.textContent = key && key !== 'signedOut' ? t(key) : '';
 }
 
 function setWorkspaceMessage(key) {
