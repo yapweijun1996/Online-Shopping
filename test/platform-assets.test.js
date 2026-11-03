@@ -92,3 +92,9 @@ test('platform symlinks and relative stylesheet assets resolve inside public', a
   }
   await walk(path.join(publicRoot, 'platform'));
 });
+test('platform page declares the shared favicon and every declared icon file exists', async () => {
+  const html = await readFile(path.join(publicRoot, 'platform/index.html'), 'utf8');
+  const icons = [...html.matchAll(/<link rel="(?:icon|apple-touch-icon)" href="([^"]+)"/g)].map(match => match[1]);
+  assert.ok(icons.includes('/favicon.svg'), 'platform page needs <link rel="icon" href="/favicon.svg">');
+  for (const href of icons) await access(path.join(publicRoot, href));
+});
