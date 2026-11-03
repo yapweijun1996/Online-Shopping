@@ -106,3 +106,32 @@ test('default shop cannot be changed and all statuses count toward the host limi
   const error = await shops.create({ code: 'overflow', name: 'Fictional', currency: 'MYR', sellerUsername: 'new.owner' }, 'owner').catch((e) => e);
   assert.equal(error.code, 'TENANT_LIMIT'); assert.equal((await f.platform.get('SELECT COUNT(*) AS n FROM tenant')).n, 20);
 });
+
+test('SuperAdmin can rename the default shop (name only) and change any Owner username without touching the password', { skip: !platformTestUrl }, async (t) => {
+  const f = await platformFixture(t), stamp = new Date().toISOString(), { createHash } = await import('node:crypto');
+  const { openDatabase } = await import('../src/db.js');
+  const { ensureAdmin } = await import('../src/auth.js');
+  const defaultStore = await openDatabase(':memory:'); t.after(() => defaultStore.close());
+  await ensureAdmin(defaultStore, 'seller', 'Original-password-1');
+  const owner = await authenticate(defaultStore, 'seller', 'Original-password-1'), session = await createSession(defaultStore, owner.id);
+  const shops = createShopManagement({ ...f, defaultStore, registry: { invalidate() {} }, publicOrigin: 'https://shop.example.test', sellerOrigin: 'https://seller.example.test' });
+  const id = '00000000-0000-4000-8000-000000000000';
+  await f.platform.run("INSERT INTO tenant(id,code,name,status,currency,is_default,created_at,updated_at) VALUES (?,'default','Current','ACTIVE','MYR',1,?,?)", id, stamp, stamp);
+  let revision = 0;
+  const renamed = (await shops.mutate(id, 'rename', { expectedRevision: revision++, name: 'Fictional Mart' }, 'superadmin')).tenant;
+  assert.equal(renamed.name, 'Fictional Mart'); assert.equal(renamed.code, 'default');
+  await assert.rejects(shops.mutate(id, 'rename', { expectedRevision: revision, code: 'other', name: 'x' }, 'superadmin'), /host/);
+  await assert.rejects(shops.mutate(id, 'change-seller-username', { expectedRevision: revision, username: 'a b' }, 'superadmin'), /Use 3 to 64/);
+  await ensureAdmin(defaultStore, 'taken.name', 'Another-password-1').catch(() => {});
+  const changed = await shops.mutate(id, 'change-seller-username', { expectedRevision: revision++, username: 'Fictional.Owner' }, 'superadmin');
+  assert.equal(changed.tenant.revision, revision); assert.equal((await shops.detail(id)).sellerUsername, 'Fictional.Owner');
+  assert.ok(await authenticate(defaultStore, 'Fictional.Owner', 'Original-password-1'), 'password is unchanged');
+  assert.equal(await authenticate(defaultStore, 'seller', 'Original-password-1'), null);
+  assert.equal((await defaultStore.get('SELECT COUNT(*) AS n FROM session WHERE token_hash = ?', createHash('sha256').update(session.token).digest('hex'))).n, 0);
+  const audit = JSON.stringify(await f.platform.all('SELECT action, detail FROM platform_audit'));
+  assert.ok(audit.includes('seller to Fictional.Owner')); assert.ok(!audit.includes('Original-password-1'));
+  await assert.rejects(shops.mutate(id, 'change-seller-username', { expectedRevision: revision - 2, username: 'Other.Name' }, 'superadmin'), /changed/);
+  await defaultStore.run("INSERT INTO seller_account(id, username, username_key, password_hash, role, active, must_change_password, created_at, updated_at) VALUES ('11111111-1111-4111-8111-111111111111','Staff.One','staff.one','x','STAFF',1,0,?,?)", stamp, stamp);
+  await assert.rejects(shops.mutate(id, 'change-seller-username', { expectedRevision: revision, username: 'staff.ONE' }, 'superadmin'), /already used/);
+  assert.equal((await f.platform.get('SELECT revision FROM tenant WHERE id = ?', id)).revision, revision);
+});

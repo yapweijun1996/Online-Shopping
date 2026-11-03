@@ -376,9 +376,24 @@ async function detail(id) {
       { title: 'Reset seller password?', confirmLabel: 'Reset and show password' })) return;
     await action('reset-seller-password');
   });
+  const sellerUsernameForm = () => {
+    content.append(element('h3', 'Change seller username'), element('p', 'The seller is signed out everywhere and signs in with the new username. Their password does not change.'));
+    const node = form(async (body) => {
+      if (!await confirmModal(`Change the Owner username from ${shop.sellerUsername} to ${body.username}? Their open sessions and connector sign-ins end.`, { title: 'Change seller username?', confirmLabel: 'Change username' })) return;
+      await action('change-seller-username', body);
+    });
+    field(node, 'username', 'New seller username', { value: shop.sellerUsername || '', maxLength: 64, autocomplete: 'off' }); submit(node, 'Save username');
+  };
   if (shop.isDefault) {
     // The default shop is otherwise managed on the host; only its Owner account can be reset from here.
-    if (shop.status === 'ACTIVE' && shop.sellerUsername && shop.canResetSeller !== false) content.append(element('h3', 'Seller account'), element('p', `The Owner account is ${shop.sellerUsername}. After a reset you get the sign-in details and an email you can send to the seller.`), resetSeller);
+    if (shop.status === 'ACTIVE' && shop.sellerUsername && shop.canResetSeller !== false) {
+      content.append(element('h3', 'Seller account'), element('p', `The Owner account is ${shop.sellerUsername}. After a reset you get the sign-in details and an email you can send to the seller.`), resetSeller);
+      sellerUsernameForm();
+    }
+    if (shop.status === 'ACTIVE') {
+      content.append(element('h3', 'Shop name'), element('p', 'The default shop keeps its code, so its shop and seller links never change.'));
+      const node = form(async (body) => action('rename', body)); field(node, 'name', 'Shop name', { value: shop.name }); submit(node, 'Save name');
+    }
     return;
   }
   const actions = element('div', undefined, 'actions');
@@ -387,7 +402,9 @@ async function detail(id) {
   if (shop.status === 'DELETING') actions.append(button('Cancel deletion', () => action('cancel-deletion')));
   if (['ACTIVE', 'SUSPENDED'].includes(shop.status)) {
     actions.append(resetSeller);
-    content.append(actions, element('h3', 'Rename shop'));
+    content.append(actions);
+    if (shop.sellerUsername) sellerUsernameForm();
+    content.append(element('h3', 'Rename shop'));
     const node = form(async (body) => action('rename', body)); field(node, 'code', 'Shop code', { value: shop.code, maxLength: 30 }); field(node, 'name', 'Shop name', { value: shop.name }); submit(node, 'Save name and code');
   } else content.append(actions);
   if (shop.status === 'SUSPENDED') {
