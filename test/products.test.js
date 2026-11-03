@@ -9,7 +9,7 @@ import { createApp } from '../src/server.js';
 import { createCategory } from '../src/settings.js';
 import { setupShop } from '../src/shop-setup.js';
 import { openDatabase } from '../src/db.js';
-import { createProduct, listProducts } from '../src/products.js';
+import { createProduct, getProduct, listProducts, updateProduct } from '../src/products.js';
 
 const username = 'product_owner';
 const password = 'LocalProductPass123!';
@@ -311,4 +311,27 @@ test('the public list shows one card per variant group (cheapest in-stock varian
     const page = await listProducts(store, new URLSearchParams('limit=2'), false);
     assert.notEqual(page.nextOffset, null);
   } finally { await store.close(); }
+});
+
+test('a variant group keeps one category: joining with another category is refused instead of silently changed', async () => {
+  const store = await openDatabase(':memory:');
+  try {
+    await createCategory(store, { code: 'PET', label: 'Pet Care' });
+    await createCategory(store, { code: 'HOME', label: 'Home' });
+    const base = { name: 'Bowl', description: 'x', currency: 'MYR', active: true, priceMinor: 900 };
+    const small = await createProduct(store, { ...base, sku: 'BOWL-S', category: 'PET', variantGroup: 'PET-BOWL', variantLabel: 'Small' });
+    await assert.rejects(createProduct(store, { ...base, sku: 'BOWL-M', category: 'HOME', variantGroup: 'PET-BOWL', variantLabel: 'Medium' }),
+      (error) => error.code === 'VARIANT_CATEGORY_MISMATCH' && error.status === 409 && error.field === 'category');
+    await createProduct(store, { ...base, sku: 'BOWL-L', category: 'PET', variantGroup: 'PET-BOWL', variantLabel: 'Large' });
+    // An existing product moving into the group with another category is refused too.
+    const lamp = await createProduct(store, { ...base, sku: 'LAMP', name: 'Lamp', category: 'HOME' });
+    await assert.rejects(updateProduct(store, lamp.id, { variantGroup: 'PET-BOWL', variantLabel: 'Lamp' }), (error) => error.code === 'VARIANT_CATEGORY_MISMATCH');
+    assert.equal((await getProduct(store, lamp.id, true)).variantGroup, null, 'nothing changed');
+    // ...but changing the category of the whole group from one of its variants stays allowed (all variants follow).
+    await updateProduct(store, small.id, { category: 'HOME' });
+    const variants = (await listProducts(store, new URLSearchParams('limit=50'), true)).items;
+    assert.ok(variants.filter((item) => item.variantGroup === 'PET-BOWL').every((item) => item.categoryCode === 'HOME' || item.category === 'Home'));
+    // A new group code is always fine.
+    await createProduct(store, { ...base, sku: 'BOWL-X', category: 'PET', variantGroup: 'PET-BOWL-2', variantLabel: 'Small' });
+  } finally { await store.close?.(); }
 });
