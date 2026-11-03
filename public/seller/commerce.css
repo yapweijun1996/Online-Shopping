@@ -321,3 +321,29 @@ body{background:var(--ui-canvas)}
 .msg-filter input{width:20px;height:20px;flex-shrink:0;accent-color:var(--ui-primary)}
 @media(max-width:900px){.msg-page{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:440px){.msg-actions button{width:100%}}
+/* Product editor layout. The page title receives focus after navigation so screen readers announce it; it is not a
+   control, so it shows no focus ring. */
+.page-heading h1:focus{outline:none}
+#product-editor-view{max-width:1240px}
+.product-back{display:inline-flex;align-items:center;gap:6px;min-height:36px;margin:-10px 0 14px;font-size:14px}
+.product-back svg{width:18px;height:18px}
+.product-fields small,.product-fields .shop-note,.product-image-column small,.product-image-column .shop-note{font-size:13px;line-height:1.5;color:var(--ui-secondary-text)}
+.product-variant-config{grid-column:1/-1;display:grid;gap:12px;margin-top:4px;padding-top:20px;border-top:1px solid var(--ui-border)}
+.product-variant-config h3{margin:0;font-size:15px;font-weight:750;color:var(--ui-text)}
+.product-variant-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.product-variant-pair label{display:grid;gap:8px;align-content:start}
+.product-variant-config>.shop-note{margin:-4px 0 0}
+.product-variant-config .product-options-fieldset[hidden]{display:none}
+.product-history{margin:20px 0 0;padding:2px 14px}
+.product-history summary{min-height:40px;font-size:14px}
+.product-editor-actions{gap:12px}
+.product-editor-actions #product-cancel{border:1px solid var(--ui-control-border);border-radius:9px;background:var(--ui-surface);color:var(--ui-text);padding-inline:18px}
+/* Save and Cancel stay in reach on every width (earlier rules made them static below 1051 px): a sticky bar at the bottom
+   of the viewport that never covers a field, because it sits in the flow after the form. */
+.product-editor-actions{position:sticky;bottom:0;z-index:5;padding:12px 0 calc(12px + env(safe-area-inset-bottom));margin-top:20px;border-top:1px solid var(--ui-border);background:var(--ui-canvas)}
+@media(min-width:1051px){
+ .product-editor-layout{grid-template-columns:minmax(0,1fr) minmax(300px,340px);gap:24px}
+ .product-details-card,.product-pricing-card,.product-image-column{padding:24px}
+}
+@media(max-width:1050px){#product-editor-view{max-width:none}}
+@media(max-width:560px){.product-variant-pair{grid-template-columns:1fr}}
