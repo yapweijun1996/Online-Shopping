@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { ApiError } from '../http.js';
 import { boundedText, FieldError } from '../validation.js';
-import { resetPasswordFromHost } from '../accounts.js';
+import { renameAccountFromHost, resetPasswordFromHost } from '../accounts.js';
 import { normalizeTenantCode } from './tenant-code.js';
 import { createTenant } from './provisioner.js';
 import { recordAudit } from './platform-db.js';
@@ -50,15 +50,17 @@ export function createShopManagement({ platform, pool, deps, registry, defaultSt
     },
     async mutate(id, action, input, actor) {
       if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new FieldError('expectedRevision', 'Send the current shop revision.');
-      const allowed = { suspend: [], resume: [], rename: ['code', 'name'], 'request-deletion': ['code'], 'cancel-deletion': [], 'reset-seller-password': [] };
+      const allowed = { suspend: [], resume: [], rename: ['code', 'name'], 'request-deletion': ['code'], 'cancel-deletion': [], 'reset-seller-password': [], 'change-seller-username': ['username'] };
       if (!Object.hasOwn(allowed, action)) throw unknown();
       if (Object.keys(input).some((key) => !['expectedRevision', ...allowed[action]].includes(key))) throw new FieldError('shop', 'Unexpected shop field.');
       const result = await platform.transaction(async () => {
         await lockQrPolicy(platform);
         const row = await rowFor(id);
-        if (row.is_default === 1 && action !== 'reset-seller-password') throw new ApiError(403, 'DEFAULT_SHOP', 'The default shop is managed on the host.');
+        // The default shop keeps its code (it owns the /shop/ and /seller/ URLs); only its name, Owner username and Owner password are editable here.
+        const defaultAllowed = row.is_default === 1 && (['reset-seller-password', 'change-seller-username'].includes(action) || (action === 'rename' && input.code === undefined));
+        if (row.is_default === 1 && !defaultAllowed) throw new ApiError(403, 'DEFAULT_SHOP', 'The default shop is managed on the host.');
         if (row.revision !== input.expectedRevision) throw conflict();
-        let status = row.status, code = row.code, name = row.name, deleteAfter = row.delete_after, event, password, username, applyReset;
+        let status = row.status, code = row.code, name = row.name, deleteAfter = row.delete_after, event, password, username, applyReset, applyRename, detail;
         if (action === 'suspend') { if (status !== 'ACTIVE') throw conflict(); status = 'SUSPENDED'; event = 'TENANT_SUSPEND'; }
         if (action === 'resume') { if (status !== 'SUSPENDED') throw conflict(); status = 'ACTIVE'; event = 'TENANT_RESUME'; }
         if (action === 'rename') {
@@ -70,6 +72,17 @@ export function createShopManagement({ platform, pool, deps, registry, defaultSt
             await platform.run('INSERT INTO tenant_code_alias(code, tenant_id, created_at) VALUES (?, ?, ?)', row.code, row.id, stamp());
           }
           event = 'CODE_RENAME';
+        }
+        let sellerUsername = row.seller_username;
+        if (action === 'change-seller-username') {
+          if (!['ACTIVE', 'SUSPENDED'].includes(status)) throw conflict();
+          if (row.is_default === 1 && quickLogin) throw new ApiError(409, 'SAMPLE_SHOP', 'Usernames cannot be changed on a sample shop.');
+          const store = row.is_default === 1 ? defaultStore : await pool.get(row);
+          const current = row.is_default === 1 ? await ownerOf(store) : row.seller_username;
+          if (!current) throw new ApiError(404, 'NOT_FOUND', 'This shop has no Owner account.');
+          event = 'CODE_RENAME'; detail = `seller username changed: ${current} to ${String(input.username).slice(0, 64)}`;
+          applyRename = async () => { sellerUsername = (await renameAccountFromHost(store, current, input.username, { source: 'superadmin', note: 'renamed by the platform administrator' })).username; };
+          await applyRename();
         }
         if (action === 'request-deletion') {
           if (status !== 'SUSPENDED') throw conflict();
@@ -90,9 +103,9 @@ export function createShopManagement({ platform, pool, deps, registry, defaultSt
           applyReset = () => resetPasswordFromHost(store, username, password, { source: 'superadmin', note: 'reset by the platform administrator' });
         }
         if (action === 'suspend' || action === 'request-deletion') await disableQrBinding(platform, row.id, actor, stamp());
-        await platform.run(`UPDATE tenant SET status = ?, code = ?, name = ?, delete_after = ?, revision = revision + 1, updated_at = ?
-          WHERE id = ? AND status = ? AND revision = ?`, status, code, name, deleteAfter, stamp(), row.id, row.status, row.revision);
-        await recordAudit(platform, { actor, action: event, tenantId: row.id, detail: code });
+        await platform.run(`UPDATE tenant SET status = ?, code = ?, name = ?, delete_after = ?, seller_username = ?, revision = revision + 1, updated_at = ?
+          WHERE id = ? AND status = ? AND revision = ?`, status, code, name, deleteAfter, row.is_default === 1 ? row.seller_username : sellerUsername, stamp(), row.id, row.status, row.revision);
+        await recordAudit(platform, { actor, action: event, tenantId: row.id, detail: detail ?? code });
         const view = shopView(await rowFor(row.id));
         await applyReset?.();
         return { tenant: view, ...(password ? { sellerPassword: password, sellerUsername: username } : {}) };

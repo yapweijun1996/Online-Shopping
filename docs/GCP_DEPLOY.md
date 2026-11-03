@@ -542,3 +542,7 @@ Manual release by `release29.py` (kept with the operator notes), update timer st
 7. Save the accepted release with no image-only rollback target, restart the timer; the next poll reported `deployed`.
 
 The same migration was rehearsed first on a restore of the live database (28 to 29, grants, idempotent). Tenant databases did not need upgrading (none existed).
+
+## Editing shops from the SuperAdmin console
+
+Shops > Manage now also edits: the default shop's **name** (its code stays `default`, so `/shop/` and `/seller/` never move), and the **Owner username** of the default shop and of every tenant shop. A username change keeps the password, ends the Owner's sessions and connector sign-ins, and is refused on a sample shop or when the new name is taken. The platform audit records it as `CODE_RENAME` with the old and new username in `detail` (the audit action list is a fixed database CHECK, so a dedicated action would need a platform schema release).

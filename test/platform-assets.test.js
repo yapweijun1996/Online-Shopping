@@ -96,5 +96,5 @@ test('platform page declares the shared favicon and every declared icon file exi
   const html = await readFile(path.join(publicRoot, 'platform/index.html'), 'utf8');
   const icons = [...html.matchAll(/<link rel="(?:icon|apple-touch-icon)" href="([^"]+)"/g)].map(match => match[1]);
   assert.ok(icons.includes('/favicon.svg'), 'platform page needs <link rel="icon" href="/favicon.svg">');
-  for (const href of icons) await access(path.join(publicRoot, href));
+  for (const href of icons) await access(href.startsWith('/') ? path.join(publicRoot, href) : path.join(publicRoot, 'platform', href));
 });

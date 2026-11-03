@@ -55,7 +55,7 @@ export function createPlatformRoutes({ platform, secretBox, config, pool, regist
     const qrShop = /^\/shops\/([0-9a-f-]{36})\/qr(?:\/(enable|disable))?$/.exec(path);
     if (qrShop && method === 'GET' && !qrShop[2]) return json(200, await qr.view(qrShop[1]));
     if (qrShop && method === 'POST' && qrShop[2]) return json(200, await qr.mutate(qrShop[1], qrShop[2] === 'enable', await readJson(request, 1024), session.username));
-    const shop = /^\/shops\/([0-9a-f-]{36})(?:\/(suspend|resume|rename|request-deletion|cancel-deletion|reset-seller-password))?$/.exec(path);
+    const shop = /^\/shops\/([0-9a-f-]{36})(?:\/(suspend|resume|rename|request-deletion|cancel-deletion|reset-seller-password|change-seller-username))?$/.exec(path);
     if (shop && method === 'GET' && !shop[2]) return json(200, await shops.detail(shop[1]));
     if (shop && method === 'POST' && shop[2]) return json(200, await shops.mutate(shop[1], shop[2], await readJson(request, 2048), session.username));
     if (path === '/audit' && method === 'GET') return json(200, await shops.audit(url.searchParams));

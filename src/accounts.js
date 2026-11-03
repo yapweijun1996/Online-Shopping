@@ -134,3 +134,20 @@ export async function resetPasswordFromHost(database, username, password, { forc
     return account.username;
   });
 }
+
+/* Server-side username change for the Owner or any account. Sessions and connector sign-ins end so nobody keeps using the old name. */
+export async function renameAccountFromHost(database, currentUsername, newUsername, {} = {}) {
+  // account_event has a fixed action list; the platform audit records who renamed whom.
+  if (typeof newUsername !== 'string' || !USERNAME.test(newUsername)) throw new FieldError('username', 'Use 3 to 64 letters, digits, dots, dashes or underscores.');
+  return database.transaction(async () => {
+    const account = await database.get('SELECT id, username FROM seller_account WHERE username_key = ?', currentUsername.toLowerCase());
+    if (!account) throw new ApiError(404, 'NOT_FOUND', 'No account has this username.');
+    const taken = await database.get('SELECT id FROM seller_account WHERE username_key = ?', newUsername.toLowerCase());
+    if (taken && taken.id !== account.id) throw new ApiError(409, 'USERNAME_TAKEN', 'This username is already used.');
+    if (account.username === newUsername) return { id: account.id, username: account.username, changed: false };
+    await database.run('UPDATE seller_account SET username = ?, username_key = ?, updated_at = ? WHERE id = ?', newUsername, newUsername.toLowerCase(), now(), account.id);
+    await revokeSessions(database, account.id);
+    await invalidateOAuth(database, account.id);
+    return { id: account.id, username: newUsername, changed: true };
+  });
+}
