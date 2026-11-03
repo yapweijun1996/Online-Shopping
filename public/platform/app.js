@@ -75,7 +75,7 @@ function screen(title) {
   for (const node of content.querySelectorAll('[data-secret]')) node.replaceChildren();
   document.body.classList.toggle('auth', session?.stage !== 'FULL');
   document.body.classList.remove('saving-recovery');
-  content.replaceChildren(); document.querySelector('#page-title').textContent = title; notice.textContent = ''; errorBox.hidden = true; errorBox.textContent = '';
+  content.replaceChildren(); document.querySelector('.page-heading .eyebrow').textContent = 'SuperAdmin portal'; document.querySelector('#page-title').textContent = title; notice.textContent = ''; errorBox.hidden = true; errorBox.textContent = '';
   const current = ({ 'Add shop': 'Add shop', 'Audit trail': 'Activity', Account: 'Account' })[title] || 'Shops';
   for (const node of navigation.querySelectorAll('button')) {
     if (node.textContent === current) node.setAttribute('aria-current', 'page'); else node.removeAttribute('aria-current');
@@ -108,9 +108,10 @@ function submit(node, text, { needsChange = false } = {}) {
   if (node.feedback) { node.append(node.feedback.status, node.feedback.problem); if (node.dataset.saved) node.feedback.status.focus(); }
 }
 // One task per card: heading, what it does to the seller, then the controls.
-function taskCard(title, description) {
+let taskHost = null;
+function taskCard(title, description, group = 'seller') {
   const card = element('section', undefined, 'edit-card'), help = element('p', description, 'edit-help'); help.id = `edit-help-${++fieldId}`;
-  card.append(element('h3', title), help); content.append(card); return { card, helpId: help.id };
+  card.append(element('h3', title), help); (taskHost?.[group] || content).append(card); return { card, helpId: help.id };
 }
 async function api(path, { method = 'GET', body } = {}) {
   const response = await fetch(`../api/v1/platform${path}`, { method, credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(60_000),
@@ -370,18 +371,69 @@ async function createShop() {
   for (const currency of ['MYR', 'SGD']) { const option = element('option', currency); option.value = currency; select.append(option); } label.append(select); node.append(label);
   field(node, 'sellerUsername', 'Seller username', { maxLength: 64 }); submit(node, 'Create shop');
 }
+// Render, then drop the groups that ended up with no cards for this shop's status.
 async function detail(id) {
-  const shop = await api(`/shops/${id}`); screen(shop.name); const data = element('dl');
-  for (const [title, value] of [['Code', shop.code], ['Status', shop.status], ['Currency', shop.currency], ['Seller', shop.sellerUsername || 'Managed on host'], ['Orders', shop.orderCount ?? 'Unavailable'], ['Products', shop.productCount ?? 'Unavailable'], ['Deletion date', shop.deleteAfter || 'None']]) {
-    const dd = element('dd'); dd.append(title === 'Code' && shop.shopUrl ? externalLink(shop.shopUrl, String(value)) : document.createTextNode(String(value))); data.append(element('dt', title), dd);
+  await renderDetail(id);
+  for (const grid of Object.values(taskHost || {})) if (!grid.children.length) grid.parentElement.remove();
+}
+async function renderDetail(id) {
+  const shop = await api(`/shops/${id}`); screen(shop.name);
+  // Breadcrumb in the eyebrow slot: where am I, and the way back.
+  const crumbs = element('nav', undefined, 'breadcrumb'), trail = element('ol'), back = button('Shops', listShops); back.className = 'text-button breadcrumb-link';
+  for (const part of [element('span', 'Platform'), back, element('span', shop.name)]) { const item = element('li'); item.append(part); trail.append(item); }
+  trail.lastChild.setAttribute('aria-current', 'page');
+  crumbs.setAttribute('aria-label', 'Breadcrumb'); crumbs.append(trail); document.querySelector('.page-heading .eyebrow').replaceChildren(crumbs);
+  // Header: what state is it in, and the next things an administrator does.
+  const head = element('div', undefined, 'detail-head'), state = element('div', undefined, 'detail-state'), tools = element('div', undefined, 'detail-tools');
+  state.append(element('span', shop.status, `chip status-${shop.status.toLowerCase()}`), element('span', `Shop code: ${shop.code}`, 'detail-code'));
+  if (shop.isDefault) state.append(element('span', 'default shop', 'chip'));
+  head.append(state, tools); content.append(head);
+  const statusNote = ({ ACTIVE: 'Live and serving buyers.', SUSPENDED: 'Suspended: the shop answers “unavailable” and sends no WhatsApp messages. Data is kept.',
+    DELETING: `Scheduled for deletion${shop.deleteAfter ? ` after ${new Date(shop.deleteAfter).toLocaleDateString()}` : ''}. Cancel it before then to keep the shop.`,
+    PROVISIONING: 'Being set up. This takes a moment.', FAILED: 'Setup failed.' })[shop.status];
+  if (statusNote) content.append(element('p', statusNote, 'detail-note'));
+  const kpis = element('dl', undefined, 'kpis');
+  for (const [title, value] of [['Products', shop.productCount ?? 'Unavailable'], ['Orders', shop.orderCount ?? 'Unavailable'], ['Currency', shop.currency]]) {
+    const tile = element('div', undefined, 'kpi'), dd = element('dd', String(value)); tile.append(element('dt', title), dd); kpis.append(tile);
   }
-  for (const [label, value] of [['Buyer URL', shop.shopUrl], ['Seller URL', shop.sellerUrl]]) if (value) { const dd = element('dd'); dd.append(externalLink(value), button(`Copy ${label}`, () => copy(value))); data.append(element('dt', label), dd); }
-  content.append(data);
-  const qrPanel = element('section', undefined, 'panel'); qrPanel.setAttribute('aria-label', 'WhatsApp QR policy'); content.append(qrPanel);
+  content.append(kpis);
+  const overview = element('div', undefined, 'detail-info'), info = element('section'), storeLinks = element('section');
+  info.append(element('h2', 'Shop information', 'group-title')); storeLinks.append(element('h2', 'Store links', 'group-title'));
+  const rows = element('dl', undefined, 'info-rows');
+  for (const [title, value] of [['Seller', shop.sellerUsername || 'Managed on host'], ['Deletion date', shop.deleteAfter ? new Date(shop.deleteAfter).toLocaleDateString() : 'Not scheduled']]) {
+    const row = element('div', undefined, 'info-row'); row.append(element('dt', title), element('dd', value)); rows.append(row);
+  }
+  info.append(rows);
+  const links = element('div', undefined, 'url-rows');
+  for (const [label, value] of [['Buyer storefront', shop.shopUrl], ['Seller portal', shop.sellerUrl]]) if (value) {
+    const row = element('div', undefined, 'url-row'), copyButton = button('', () => copy(value));
+    copyButton.className = 'icon-button'; copyButton.setAttribute('aria-label', `Copy ${label} URL`); copyButton.title = `Copy ${label} URL`; copyButton.append(icon('copy'));
+    row.append(element('span', label, 'url-label'), externalLink(value), copyButton); links.append(row);
+  }
+  storeLinks.append(links); overview.append(info, storeLinks); content.append(overview);
+  // Open links and the edit shortcut sit in the header; they are shown only for links on this platform's own domain.
+  for (const [label, value] of [['Open shop', shop.shopUrl], ['Open seller', shop.sellerUrl]]) if (value && safeLink(value)) {
+    const link = externalLink(value, label); link.className = 'link-button'; tools.append(link);
+  }
+  // Groups keep security, settings, integrations and destructive actions apart; empty groups are removed at the end.
+  const groups = {}, sections = element('div', undefined, 'detail-groups'); content.append(sections);
+  for (const [key, title] of [['seller', 'Seller account & security'], ['shop', 'Shop settings'], ['integrations', 'Integrations'], ['danger', 'Danger zone']]) {
+    const section = element('section', undefined, `detail-group group-${key}`), grid = element('div', undefined, 'group-grid');
+    section.append(element('h2', title, 'group-title'), grid); sections.append(section); groups[key] = grid;
+  }
+  taskHost = groups;
+  const edit = button('Edit shop', async () => { const target = content.querySelector('.group-shop input'); target?.scrollIntoView({ block: 'center' }); target?.focus(); });
+  edit.className = 'link-button'; edit.prepend(icon('edit')); if (['ACTIVE', 'SUSPENDED'].includes(shop.status)) tools.prepend(edit);
+  const qrPanel = element('section', undefined, 'panel'); qrPanel.setAttribute('aria-label', 'WhatsApp QR policy'); groups.integrations.append(qrPanel);
   try {
     const policy = await api(`/shops/${id}/qr`);
     qrPanel.append(element('h3', 'WhatsApp QR'));
-    if (!policy) qrPanel.append(element('p', 'Unavailable: ask the host operator to upgrade the platform QR schema.'));
+    if (!policy) {
+      const notice = element('div', undefined, 'qr-unavailable');
+      notice.append(element('span', 'Not set up', 'chip'), element('p', 'WhatsApp QR is not available on this platform yet. Nothing is wrong with this shop; a host operator has to finish the platform setup first.'));
+      const more = element('details'); more.append(element('summary', 'Technical details'), element('p', 'The platform database has not been upgraded to the WhatsApp QR schema. A host operator runs the platform upgrade; then Enable QR appears here.'));
+      notice.append(more); qrPanel.append(notice);
+    }
     else {
       const binding = policy.binding, enabled = Boolean(binding?.enabled);
       const status = element('p', `${shop.isDefault ? 'Default slot 0 (host managed)' : policy.provisioned ? 'Worker provisioned' : 'Worker not provisioned'} · ${enabled ? 'Enabled' : 'Disabled'} · Tenant slots reserved: ${policy.occupiedTenantSlots} / ${policy.tenantSlots} · Slot: ${binding?.slot_id ?? 'None'} · Cleanup: ${binding?.cleanup_pending ? 'Pending' : 'None'}`);
@@ -427,7 +479,7 @@ async function detail(id) {
     // The default shop is otherwise managed on the host; only its Owner account and its name are edited from here.
     if (canReset) { resetCard(); usernameCard(); }
     if (shop.status === 'ACTIVE') {
-      const { card, helpId } = taskCard('Shop name', 'Changing the name does not change the shop code or its buyer and seller links.');
+      const { card, helpId } = taskCard('Shop name', 'Changing the name does not change the shop code or its buyer and seller links.', 'shop');
       const node = form(async (body) => action('rename', body, { key: 'name', text: 'Shop name updated.' }), { parent: card, key: 'name' });
       describe(field(node, 'name', 'Shop name', { value: shop.name }), helpId); submit(node, 'Save name', { needsChange: true });
     }
@@ -437,16 +489,17 @@ async function detail(id) {
   if (shop.status === 'ACTIVE') actions.append(button('Suspend shop', () => action('suspend')));
   if (shop.status === 'SUSPENDED') actions.append(button('Resume shop', () => action('resume')));
   if (shop.status === 'DELETING') actions.append(button('Cancel deletion', () => action('cancel-deletion')));
-  if (actions.children.length) content.append(actions);
+  for (const control of actions.querySelectorAll('button')) control.classList.add('link-button');
+  if (actions.children.length) tools.append(actions);
   if (['ACTIVE', 'SUSPENDED'].includes(shop.status)) {
     resetCard();
     if (shop.sellerUsername) usernameCard();
-    const { card, helpId } = taskCard('Rename shop', 'The name is shown to buyers. Changing the code changes this shop’s links.');
+    const { card, helpId } = taskCard('Rename shop', 'The name is shown to buyers. Changing the code changes this shop’s links.', 'shop');
     const node = form(async (body) => action('rename', body, { key: 'name', text: 'Shop name and code updated.' }), { parent: card, key: 'name' });
     describe(field(node, 'code', 'Shop code', { value: shop.code, maxLength: 30 }), helpId); field(node, 'name', 'Shop name', { value: shop.name }); submit(node, 'Save name and code', { needsChange: true });
   }
   if (shop.status === 'SUSPENDED') {
-    const { card, helpId } = taskCard('Request deletion', 'Data is retained for 30 days. A host operator must take a verified final backup before purging.');
+    const { card, helpId } = taskCard('Request deletion', 'Data is retained for 30 days. A host operator must take a verified final backup before purging.', 'danger');
     const node = form(async (body) => action('request-deletion', body), { parent: card });
     describe(field(node, 'code', `Type ${shop.code} to confirm`, { maxLength: 30 }), helpId); submit(node, 'Request deletion'); node.querySelector('button[type=submit]').classList.add('danger-button');
   }

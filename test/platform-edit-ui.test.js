@@ -20,7 +20,7 @@ test('SuperAdmin can edit the default shop name and the seller username of every
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
   const origin = `http://127.0.0.1:${server.address().port}`;
   const shop = { id: '12345678-1234-4234-8234-123456789abc', code: 'default', name: 'Synthetic Mart', currency: 'MYR', status: 'ACTIVE', revision: 4, isDefault: true,
-    sellerUsername: 'owner', sellerUrl: 'https://seller.example.test/seller/', shopUrl: 'https://shop.example.test/shop/' };
+    sellerUsername: 'owner', orderCount: 3, productCount: 12, sellerUrl: 'http://127.0.0.1:9/seller/', shopUrl: 'http://127.0.0.1:9/shop/' };
   const writes = []; let failNext = null;
   await page.route('**/api/v1/platform/**', async route => {
     const request = route.request(), url = new URL(request.url());
@@ -40,6 +40,21 @@ test('SuperAdmin can edit the default shop name and the seller username of every
     await page.goto(`${origin}/platform/index.html`);
     await page.getByRole('button', { name: 'Manage', exact: true }).click();
     await page.getByRole('button', { name: 'Save username', exact: true }).waitFor();
+    // Overview first: breadcrumb, state, KPI tiles, links with icon-only copy buttons; then grouped cards in a fixed order.
+    assert.match(await page.locator('.breadcrumb').innerText(), /Platform\s*\/?\s*Shops\s*\/?\s*Synthetic Mart/);
+    assert.equal(await page.locator('.breadcrumb [aria-current=page]').count(), 1);
+    assert.equal(await page.locator('.detail-state .chip').first().innerText(), 'ACTIVE'); assert.match(await page.locator('.detail-code').innerText(), /Shop code: (default|alpha)/);
+    assert.equal(await page.getByRole('link', { name: /^Open shop/ }).count(), 1); assert.equal(await page.getByRole('link', { name: /^Open seller/ }).count(), 1);
+    assert.equal(await page.locator('.kpi').count(), 3); assert.match(await page.locator('.kpis').innerText(), /Orders\s+3/); assert.match(await page.locator('.kpis').innerText(), /Products\s+12/);
+    assert.match(await page.locator('.detail-info').innerText(), /Deletion date\s+Not scheduled/);
+    const copy = page.getByRole('button', { name: 'Copy Buyer storefront URL', exact: true }); assert.equal((await copy.innerText()).trim(), ''); assert.equal(await copy.locator('svg').count(), 1);
+    assert.deepEqual(await page.locator('.group-title').allInnerTexts(), ['Shop information', 'Store links', 'Seller account & security', 'Shop settings', 'Integrations']);
+    const security = (await page.locator('.group-seller').boundingBox()).y, settings = (await page.locator('.group-shop').boundingBox()).y, integrations = (await page.locator('.group-integrations').boundingBox()).y;
+    assert.ok(security < settings && settings <= integrations, 'security first; settings and integrations may sit side by side on wide screens');
+    assert.match(await page.locator('.qr-unavailable, .group-integrations').first().innerText(), /WhatsApp QR|Worker/);
+    // The header Edit shop shortcut lands on the name field.
+    await page.getByRole('button', { name: 'Edit shop', exact: true }).click();
+    assert.equal(await page.evaluate(() => document.activeElement?.closest('.group-shop') !== null), true);
     // The default shop shows no code field: its code is fixed. Other shops can still change code and name.
     assert.equal(await page.getByLabel('Shop code').count(), isDefault ? 0 : 1);
     await page.getByLabel('Shop name').fill('Fictional Renamed');
