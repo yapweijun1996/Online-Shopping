@@ -92,3 +92,27 @@
   --shop-accent-soft: #f0f1f3; --shop-selected-surface: #f0f1f3;
   --shop-selected-strong: #e3e5e9; --shop-selected-text: #364152; --shop-price-standard: #202a33;
 }
+
+/* Layout, layering, motion and safe-area tokens shared by every console (the single source for these values). */
+:root {
+  --ui-radius-sm: 8px;
+  --ui-radius-md: 12px;
+  --ui-shadow-raised: 0 8px 28px #1d465a14;
+  --ui-on-action: #fff;
+  --ui-overlay: #0c294080;
+  --ui-overlay-strong: #10251bc0;
+  --ui-shadow-auth: 0 12px 40px #15354c12;
+  --ui-z-sticky: 1;
+  --ui-z-topbar: 20;
+  --ui-z-scroll-top: 40;
+  --ui-z-drawer-backdrop: 50;
+  --ui-z-sidebar: 60;
+  --ui-z-banner: 70;
+  --ui-z-skip: 100;
+  --ui-z-loader: 90;
+  --ui-motion-fast: .15s;
+  --ui-safe-top: env(safe-area-inset-top, 0px);
+  --ui-safe-right: env(safe-area-inset-right, 0px);
+  --ui-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --ui-safe-left: env(safe-area-inset-left, 0px);
+}

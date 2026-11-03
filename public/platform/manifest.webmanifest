@@ -1,0 +1,15 @@
+{
+  "id": "/platform/",
+  "name": "Shop Platform Admin",
+  "short_name": "Platform",
+  "description": "SuperAdmin console for the shop platform.",
+  "start_url": "/platform/",
+  "scope": "/platform/",
+  "display": "standalone",
+  "background_color": "#f6f3eb",
+  "theme_color": "#ffffff",
+  "icons": [
+    { "src": "/platform/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/platform/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

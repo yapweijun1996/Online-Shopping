@@ -1,4 +1,6 @@
 import { icon } from './shared/icons.js';
+import { initPwaShell, markReady, mountAppSection } from './pwa-shell.js';
+import { draftSignature } from './shared/update-guard.js';
 import { tableRows, safeLink } from './table.js';
 import { mountAppearance, paletteChoices } from './shared/appearance.js';
 import { containDialogFocus, confirmModal } from './shared/modal.js';
@@ -553,11 +555,18 @@ async function account() {
   const recoveryForm = form(async (data, node) => { const result = await api('/account/recovery-codes', { method: 'POST', body: data }); node.reset(); recovery(result.recoveryCodes); });
   field(recoveryForm, 'password', 'Current password', { type: 'password', autocomplete: 'current-password', maxLength: 256 }); submit(recoveryForm, 'Regenerate recovery codes');
   const appearance = element('section'); content.append(appearance); mountAppearance(appearance, 'seller');
+  mountAppSection(content);
 }
+// Update guard: unsaved edits or a request in flight defer the reload; nothing is applied without "Update now".
+const unsavedEdits = () => [...content.querySelectorAll('form input, form select, form textarea')].some((input) => input.type === 'password' ? input.value !== '' : input.type === 'checkbox' ? input.checked !== input.defaultChecked : input.value !== input.defaultValue);
+// One-time secrets (recovery codes, new seller credentials) exist only on screen; reloading would destroy them.
+const oneTimeSecretsShown = () => document.body.classList.contains('saving-recovery') || document.querySelector('#secret-dialog')?.open === true;
+initPwaShell({ guard: () => ({ dirty: unsavedEdits() || oneTimeSecretsShown(), busy, signature: draftSignature(content) }), confirmUpdate: (text) => confirmModal(text, { title: 'Update now?', confirmLabel: 'Update' }) });
 await run(async () => {
   try { session = await api('/session'); csrf = session.csrfToken; nav(); if (session.stage === 'FULL') await listShops(); else await authenticator(); }
   catch (error) { if (error.status === 401) await signIn(); else throw error; }
 });
+markReady();
 addEventListener('pagehide', () => {
   for (const canvas of content.querySelectorAll('canvas')) canvas.width = canvas.height = 0;
   for (const node of content.querySelectorAll('[data-secret]')) node.replaceChildren();
