@@ -168,7 +168,7 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
   photoCard.hidden = true; genCard.hidden = true;   // shown only once the server reports a saved key
   keyForm.hidden = true; capForm.hidden = true; removeKey.hidden = true;
   page.append(intro, unavailable, usageCard, photoCard, genCard);
-  root.append(page);
+  root.replaceChildren(page);
 
   function paintCost() { cost.textContent = studioText('cost', (() => { const n = styleInputs.filter((input) => input.checked).length; return { n, calls: n * 2, left: Math.max(0, state.dailyCallCap - state.usedToday) }; })()); generate.disabled = running || !state.configured || !chosenProduct; }
   function paintState() {
