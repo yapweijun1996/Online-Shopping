@@ -79,3 +79,96 @@ test('seller product editor groups related fields and keeps Save in reach at eve
     await context.close();
   }
 });
+
+test('seller product editor: unsaved changes, invalid price and stock, double Save, and a failed save keep the draft', { skip: !browserModule, timeout: 60000 }, async (t) => {
+  const server = createServer((request, response) => {
+    let pathname = new URL(request.url, 'http://local').pathname;
+    if (pathname.endsWith('/')) pathname += 'index.html';
+    const file = path.join(publicRoot, pathname);
+    if (!existsSync(file) || !statSync(file).isFile()) { response.writeHead(404).end(); return; }
+    response.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream' }); response.end(readFileSync(file));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const { chromium } = await import(browserModule);
+  const browser = await chromium.launch({ headless: true, channel: 'chrome' }); t.after(() => browser.close());
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: 'block', reducedMotion: 'reduce' });
+  const session = { username: 'synthetic', role: 'owner', csrfToken: 'synthetic-csrf', capabilities: ['catalog.write'], quickLogin: false, mustChangePassword: false };
+  let posts = 0, failNext = false;
+  await context.route('**/api/**', async (route) => {
+    const pathname = new URL(route.request().url()).pathname, method = route.request().method();
+    if (pathname.endsWith('/v1/seller/session')) return route.fulfill({ json: session });
+    if (pathname.endsWith('/v1/shop')) return route.fulfill({ json: { name: 'Synthetic Shop', currency: 'MYR', storageScope: '' } });
+    if (pathname.endsWith('/categories')) return route.fulfill({ json: { items: [{ code: 'PET', name: 'Pet Care', active: true }] } });
+    if (pathname.endsWith('/company-settings')) return route.fulfill({ json: { defaultCurrency: 'MYR' } });
+    if (pathname.endsWith('/v1/seller/products') && method === 'POST') {
+      posts++;
+      if (failNext) return route.abort('failed');
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      return route.fulfill({ status: 409, json: { error: { code: 'DUPLICATE_SKU', field: 'sku', message: 'duplicate' } } });
+    }
+    return route.fulfill({ json: { items: [], nextOffset: null } });
+  });
+  const page = await context.newPage();
+  const errors = []; page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto(`http://127.0.0.1:${server.address().port}/seller/`);
+  await page.locator('#username').fill('synthetic'); await page.locator('#password').fill('Synthetic-pass-1'); await page.locator('#login-submit').click();
+  await page.locator('#workspace').waitFor();
+  await page.evaluate(() => document.querySelector('[data-view=products]').click());
+  await page.locator('#product-new').click();
+  await page.locator('#product-editor-view').waitFor();
+  const form = page.locator('#product-form'), message = page.locator('#product-form-error');
+  // Price shows its currency, blank stock says Unlimited, the shop switch explains itself.
+  assert.equal((await page.locator('.input-prefix').innerText()).trim(), 'MYR');
+  assert.equal(await form.locator('[name=stockQuantity]').getAttribute('placeholder'), 'Unlimited');
+  assert.equal(await form.locator('[name=active]').getAttribute('aria-describedby'), 'product-active-help');
+  assert.match(await page.locator('#product-active-help').innerText(), /hidden from the shop/);
+  assert.equal(await form.locator('[name=currency]').getAttribute('readonly'), '');
+
+  await form.locator('[name=name]').fill('Synthetic bowl'); await form.locator('[name=sku]').fill('SYN-001');
+  await form.locator('[name=description]').fill('Synthetic description.'); await form.locator('[name=category]').selectOption('PET');
+  // Leaving with unsaved changes asks first; staying keeps the draft.
+  let dialogMessage = '';
+  page.once('dialog', (dialog) => { dialogMessage = dialog.message(); dialog.dismiss(); });
+  await page.locator('#product-back').click();
+  assert.match(dialogMessage, /unsaved|changes/i);
+  assert.equal(await page.locator('#product-editor-view').isVisible(), true);
+  assert.equal(await form.locator('[name=name]').inputValue(), 'Synthetic bowl');
+
+  // Invalid price and stock: nothing is sent, a specific message, the field is marked and focused.
+  for (const [field, value, text] of [['price', 'abc', /price above 0/], ['price', '-5', /price above 0/], ['price', '0', /price above 0/]]) {
+    await form.locator(`[name=${field}]`).fill(value);
+    await page.locator('#product-save').click();
+    await page.waitForFunction(() => document.querySelector('#product-form-error').textContent.trim() !== '');
+    assert.match(await message.innerText(), text, `${field}=${value}`);
+    assert.equal(await page.evaluate(() => document.activeElement.name), field);
+    assert.equal(await form.locator(`[name=${field}]`).getAttribute('aria-invalid'), 'true');
+  }
+  await form.locator('[name=price]').fill('17.90');
+  assert.equal(await form.locator('[name=price]').getAttribute('aria-invalid'), null, 'typing clears the error mark');
+  for (const value of ['-1', '2.5', '9999999']) {
+    await form.locator('[name=stockQuantity]').fill(value);
+    await page.locator('#product-save').click();
+    await page.waitForFunction(() => /whole number/.test(document.querySelector('#product-form-error').textContent));
+    assert.equal(await page.evaluate(() => document.activeElement.name), 'stockQuantity', `stock=${value}`);
+  }
+  await form.locator('[name=stockQuantity]').fill('');
+  assert.equal(posts, 0, 'invalid input never reaches the server');
+
+  // Double Save sends one request; a duplicate SKU points at the SKU field.
+  await page.locator('#product-save').dblclick();
+  await page.waitForFunction(() => /SKU/i.test(document.querySelector('#product-form-error').textContent));
+  assert.equal(posts, 1);
+  assert.equal(await page.evaluate(() => document.activeElement.name), 'sku');
+
+  // A failed request keeps every entered value.
+  failNext = true;
+  await page.evaluate(() => { document.querySelector('#product-form-error').textContent = ''; });
+  await page.locator('#product-save').click();
+  await page.waitForFunction(() => document.querySelector('#product-form-error').textContent.trim() !== '');
+  assert.equal(posts, 2);
+  assert.deepEqual(await form.evaluate((node) => ['name', 'sku', 'description', 'price', 'category'].map((name) => node.elements[name].value)),
+    ['Synthetic bowl', 'SYN-001', 'Synthetic description.', '17.90', 'PET']);
+  assert.equal(await page.locator('#product-save').isEnabled(), true);
+  assert.deepEqual(errors, []);
+});

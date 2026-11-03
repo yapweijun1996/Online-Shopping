@@ -347,3 +347,12 @@ body{background:var(--ui-canvas)}
 }
 @media(max-width:1050px){#product-editor-view{max-width:none}}
 @media(max-width:560px){.product-variant-pair{grid-template-columns:1fr}}
+/* Price with its currency inside the field; the read-only currency reads as information, not as an input. */
+.input-affix{display:flex;align-items:center;border:1px solid var(--ui-control-border);border-radius:7px;background:var(--ui-surface);min-height:44px}
+.input-affix:focus-within{outline:3px solid var(--ui-focus);outline-offset:2px}
+.input-prefix{flex:none;padding:0 2px 0 12px;color:var(--ui-secondary-text);font-weight:650}
+.product-fields .input-affix input:not([type=checkbox]){border:0;min-height:42px;padding-left:8px}
+.product-fields .input-affix input:focus-visible{outline:0}
+.product-fields input[name=currency][readonly]{border-color:transparent;background:transparent;padding-inline:0;min-height:0;padding-block:2px;font-weight:700}
+.product-pricing-card .check-help{display:block;margin:-8px 0 0 34px;font-size:13px;line-height:1.5;color:var(--ui-secondary-text)}
+.input-affix:has(input[aria-invalid=true]),.product-fields input[aria-invalid=true]{border-color:var(--shop-error)}
