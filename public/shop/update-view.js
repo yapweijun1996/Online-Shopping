@@ -2,6 +2,7 @@ import { t } from '../shared/i18n.js';
 import { registerWorker } from '../shared/pwa.js';
 import { confirmModal } from '../shared/modal.js';
 import { APP_VERSION } from './version.js';
+import { createTopbarUpdate, topbarMode } from '../shared/topbar-update.js';
 
 export function mountShopUpdates(guard, productBanner) {
   const settings = document.getElementById('settings-view');
@@ -24,7 +25,13 @@ export function mountShopUpdates(guard, productBanner) {
   const banners = [prepareBanner(catalogBanner)];
   if (productBanner) banners.push(prepareBanner(productBanner));
   let state = {}, actions;
+  const topbarUpdate = createTopbarUpdate({ update: () => actions?.update(), retry: () => actions?.check() });
+  topbarUpdate.element.id = 'topbar-update';
+  document.querySelector('.shop-topbar #language')?.before(topbarUpdate.element);
   function render() {
+    const mode = topbarMode(state);
+    topbarUpdate.render(mode, mode === 'failed' ? { short: t('retry'), full: t('updateFailed') } : mode === 'busy' ? { short: t('appUpdating'), full: t('appUpdating') }
+      : { short: t('updateApp'), full: `${t('updateAvailable')}${state.available ? ` · ${state.available}` : ''}` });
     const blocked = Boolean(guard().busy);
     title.textContent = t('appUpdate');
     version.textContent = `${t('appVersion')}: Shop ${APP_VERSION}`;
@@ -50,7 +57,7 @@ export function mountShopUpdates(guard, productBanner) {
   async function connect() {
     state.checking = true; render();
     try {
-      return await registerWorker('./sw.js', './', { currentVersion: APP_VERSION, autoUpdate: true, guard, confirmUpdate: confirmModal, onState(next, commands) { state = next; actions = commands; render(); } });
+      return await registerWorker('./sw.js', './', { currentVersion: APP_VERSION, guard, confirmUpdate: confirmModal, onState(next, commands) { state = next; actions = commands; render(); } });
     } catch { state.statusKey = 'updateFailed'; }
     finally { state.checking = false; render(); }
   }

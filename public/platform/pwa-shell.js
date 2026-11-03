@@ -1,5 +1,6 @@
 import { registerWorker } from './shared/pwa.js';
 import { icon } from './shared/icons.js';
+import { createTopbarUpdate } from './shared/topbar-update.js';
 import { APP_VERSION } from './version.js';
 import { APP_STATES, appState, bannerState, initialFlags, reduceWorkerState } from './app-state.js';
 
@@ -43,13 +44,10 @@ function render() {
   if (checkButton) checkButton.disabled = busy || !actions;
   if (updateButton) updateButton.hidden = current !== 'UPDATE_AVAILABLE';
   if (barUpdate) {
-    // The top bar always carries the way to update: visible while an update is waiting, installing or has failed.
-    const show = ['UPDATE_AVAILABLE', 'UPDATING', 'RELOADING', 'UPDATE_FAILED'].includes(current);
-    barUpdate.hidden = !show; barUpdate.dataset.state = current; barUpdate.disabled = busy;
-    const label = current === 'UPDATE_FAILED' ? 'Update failed, try again' : busy ? 'Updating' : `Update available${flags.available ? ` (${flags.available})` : ''}`;
-    barUpdate.setAttribute('aria-label', label); barUpdate.title = label; barUpdate.querySelector('.topbar-update-label').textContent = current === 'UPDATE_FAILED' ? 'Retry' : busy ? 'Updating…' : 'Update';
+    const mode = current === 'UPDATE_FAILED' ? 'failed' : busy ? 'busy' : current === 'UPDATE_AVAILABLE' ? 'ready' : 'idle';
+    barUpdate.render(mode, mode === 'failed' ? { short: 'Retry', full: 'Update failed, try again' } : busy ? { short: 'Updating…', full: 'Updating' } : { short: 'Update', full: `Update available${flags.available ? ` (${flags.available})` : ''}` });
     // A new update must be seen: bring the (smart) top bar back.
-    if (show && lastState !== current && current === 'UPDATE_AVAILABLE') document.querySelector('.topbar')?.classList.remove('topbar-hidden');
+    if (mode === 'ready' && lastState !== current) document.querySelector('.topbar')?.classList.remove('topbar-hidden');
   }
   lastState = current;
   if (statusLine) statusLine.textContent = current === 'UPDATE_AVAILABLE' ? 'A new version is ready to install.' : current === 'UPDATE_FAILED' ? 'The update check failed. Try again.' : flags.checked ? 'This is the latest version.' : '';
@@ -65,10 +63,8 @@ function buildChrome() {
   document.body.append(region, loader);
   const account = document.querySelector('.topbar .account-wrap');
   if (account) {
-    barUpdate = make('button', undefined, 'topbar-update'); barUpdate.type = 'button'; barUpdate.id = 'topbar-update'; barUpdate.hidden = true;
-    barUpdate.append(icon('download'), make('span', undefined, 'topbar-update-label'));
-    barUpdate.addEventListener('click', () => { if (flags.failed) { flags.failed = false; render(); actions?.check(); } else actions?.update(); });
-    account.before(barUpdate);
+    barUpdate = createTopbarUpdate({ update: () => actions?.update(), retry: () => { flags.failed = false; render(); actions?.check(); } });
+    barUpdate.element.id = 'topbar-update'; account.before(barUpdate.element);
   }
 }
 

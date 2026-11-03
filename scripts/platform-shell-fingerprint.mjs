@@ -1,8 +1,8 @@
-// Records the fingerprint of the cached platform shell next to the version it belongs to. Run after bumping the version.
-import { readFileSync, writeFileSync } from 'node:fs';
-import { shellFingerprint } from '../test/helpers/shell-assets.js';
+// Records, per surface (platform, seller, shop), the fingerprint of the files its Service Worker caches next to the version they
+// belong to. Run after bumping a version (version.js and the worker's `version`).
+import { writeFileSync } from 'node:fs';
+import { SURFACES, workerFingerprint, workerVersion } from '../test/helpers/shell-assets.js';
 
-const version = readFileSync(new URL('../public/platform/version.js', import.meta.url), 'utf8').match(/APP_VERSION\s*=\s*'([^']+)'/)?.[1];
-if (!version) throw new Error('APP_VERSION not found');
-writeFileSync(new URL('../test/platform-shell.fingerprint.json', import.meta.url), `${JSON.stringify({ version, fingerprint: shellFingerprint() }, null, 2)}\n`);
-console.log(`recorded ${version}`);
+const record = Object.fromEntries(SURFACES.map((surface) => [surface, { version: workerVersion(surface), fingerprint: workerFingerprint(surface) }]));
+writeFileSync(new URL('../test/platform-shell.fingerprint.json', import.meta.url), `${JSON.stringify(record, null, 2)}\n`);
+for (const [surface, { version }] of Object.entries(record)) console.log(`recorded ${surface} ${version}`);

@@ -3,6 +3,7 @@ import { storageKey } from '../shared/storage-scope.js';
 import { apiUrl } from '../shared/base-path.js';
 import { formatDate, formatMoney, locale, setupLanguageMenu, t } from '../shared/i18n.js';
 import { registerWorker } from '../shared/pwa.js';
+import { createTopbarUpdate, topbarMode } from '../shared/topbar-update.js';
 import { revealImage } from '../shared/image-reveal.js';
 import { thumbUrl } from '../shared/image-thumb.js';
 import { confirmModal, containDialogFocus } from '../shared/modal.js';
@@ -122,7 +123,8 @@ const orderAlerts = createOrderAlerts({ badge: byId('pending-badge'), button: by
 document.title = baseTitle();
 document.addEventListener('ordersdecided', () => orderAlerts.poll());
 registerWorker('./sw.js', './', {
-  currentVersion: APP_VERSION, autoUpdate: true,
+  // Updates are applied only when the seller taps Update (top bar, notice or Settings); never silently (pwa:product-standard §5).
+  currentVersion: APP_VERSION,
   guard: () => ({ dirty: hasUnsavedChanges(), busy: mutationsBusy() || activePage()?.isBusy?.() === true, signature: JSON.stringify([currentRoute, draftSignature(), activePage()?.draftSignature?.()]) }),
   confirmUpdate: confirmModal,
   onState(state, actions) {
@@ -138,7 +140,13 @@ registerWorker('./sw.js', './', {
   renderUpdateUI();
 });
 
+const topbarUpdate = createTopbarUpdate({ update: () => updateActions?.update(), retry: () => updateActions?.check() });
+topbarUpdate.element.id = 'topbar-update';
+document.querySelector('.topbar .top-actions')?.prepend(topbarUpdate.element);
 function renderUpdateUI() {
+  const mode = topbarMode(updateState);
+  topbarUpdate.render(mode, mode === 'failed' ? { short: t('retry'), full: t('updateFailed') } : mode === 'busy' ? { short: t('appUpdating'), full: t('appUpdating') }
+    : { short: t('updateApp'), full: `${t('updateAvailable')}${updateState?.available ? ` · ${updateState.available}` : ''}` });
   const check = byId('check-updates-button');
   const notice = byId('seller-update-notice');
   const applying = updateState?.applying === true;
