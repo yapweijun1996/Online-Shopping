@@ -295,3 +295,26 @@ body.auth .page-heading{display:block}
 .menu-update-button .ui-icon{width:18px;height:18px;flex:none}
 .account-menu{min-width:230px}
 .account-menu .menu-update-button{font-size:14px;font-weight:700;white-space:nowrap}
+
+/* Shop detail overview: Shop information and Store links are one card pattern, equal height; groups start after a divider with a one-line purpose. */
+.detail-info{gap:16px;align-items:stretch}
+.info-card{display:grid;align-content:start;gap:4px;min-width:0;padding:20px 24px;background:var(--ui-surface);border:1px solid var(--ui-border);border-radius:var(--ui-radius-md)}
+.info-card .group-title{margin:0 0 8px}
+.info-list{display:grid;grid-template-columns:minmax(0,1fr);gap:0;margin:0}
+.info-item{display:grid;gap:4px;padding:12px 0;border-top:1px solid var(--ui-border)}
+.info-item dt{color:var(--ui-muted);font-size:13px}
+.info-item dd{margin:0;min-width:0;font-weight:700;overflow-wrap:anywhere}
+.link-item{grid-template-columns:minmax(0,1fr) 44px;align-items:center;column-gap:8px}
+.link-item dt,.link-item dd{grid-column:1}
+.link-item dd{font-weight:600}
+.link-item>button{grid-column:2;grid-row:1/span 2}
+#content .link-item button.icon-button{display:grid;place-items:center;width:44px;height:44px;padding:0;border:0;background:transparent;color:var(--ui-muted)}
+#content .link-item button.icon-button:hover{background:var(--ui-hover-surface);color:var(--ui-primary)}
+.link-item .ui-icon{width:20px;height:20px}
+.status-line{display:inline-flex;align-items:center;gap:8px}
+.status-line .ui-icon{width:18px;height:18px;flex:none}
+.status-ok .ui-icon{color:var(--shop-success)}
+.status-warning .ui-icon{color:var(--ui-warning-text)}
+.detail-groups{margin-top:8px;padding-top:24px;border-top:1px solid var(--ui-border)}
+.group-title+.group-about{margin:-6px 0 12px;color:var(--ui-muted)}
+.sensitive-chip{margin-left:10px;padding:2px 8px;color:var(--ui-danger);background:color-mix(in srgb,var(--ui-danger) 12%,var(--ui-surface));font-size:12px;font-weight:700;vertical-align:middle}
