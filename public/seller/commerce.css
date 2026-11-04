@@ -48,17 +48,8 @@ body{background:var(--ui-canvas)}
 .account-button{min-height:44px}
 .language-trigger{border-color:var(--ui-control-border);color:var(--ui-primary)}
 .language-trigger:hover,.language-trigger[aria-expanded=true]{border-color:var(--ui-primary);background:var(--ui-hover-surface)}
-.login-layout{max-width:1240px;min-height:650px;margin:26px auto;border-radius:16px;border-color:var(--ui-border);box-shadow:0 16px 48px #25372a09;grid-template-columns:minmax(0,1.1fr) minmax(380px,1fr)}
-.login-intro{min-height:650px;background:var(--ui-canvas)}
-.login-photo{object-position:68% center}
-.login-intro::after{background:linear-gradient(180deg,var(--ui-canvas) 3%,color-mix(in srgb,var(--ui-canvas) 94%,transparent) 38%,color-mix(in srgb,var(--ui-canvas) 24%,transparent) 74%)}
-.login-intro-content{max-width:510px;padding:44px 40px}
 .login-intro-content>.brand-mark{display:none}
-.login-intro .eyebrow{margin:0 0 20px}
-.login-intro h1{font-size:clamp(36px,3.4vw,49px);line-height:1.13;color:var(--ui-primary);letter-spacing:-.04em;max-width:430px}
-.login-intro-lead{font-size:15px;line-height:1.6;max-width:340px}
 .login-features{display:none}
-.login-area{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:36px 38px;background:var(--ui-surface);gap:20px}
 .login-card{border:0;box-shadow:none;padding:10px;min-height:0;max-width:360px;border-radius:0}
 .studio-login-brand{display:flex;align-items:center;gap:10px;font-weight:750;font-size:19px;margin-bottom:32px;letter-spacing:-.04em;color:var(--ui-primary)}
 .studio-login-brand img{flex:none}
@@ -179,11 +170,6 @@ body{background:var(--ui-canvas)}
  .main{padding:24px 22px 45px}
  .shop-context{max-width:45%;font-size:13px}
  .seller-signed-in .topbar .brand>span{display:none}
- .login-layout{grid-template-columns:1fr 1fr;min-height:590px}
- .login-intro{min-height:590px}
- .login-intro-content{padding:36px 28px}
- .login-intro h1{font-size:38px}
- .login-area{padding:30px 24px}
 }
 @media(max-width:760px){
  .main{padding:20px 16px 36px}
@@ -193,14 +179,6 @@ body{background:var(--ui-canvas)}
  .top-actions{gap:7px}
  .account-button{gap:6px;padding:4px}
  .account-button>span[data-i18n]{display:none}
- .login-layout{margin:0 auto;grid-template-columns:1fr;border-radius:12px;min-height:0}
- .login-intro{min-height:190px}
- .login-intro-content{padding:25px 24px;max-width:100%}
- .login-intro::after{background:linear-gradient(90deg,var(--ui-canvas) 0%,color-mix(in srgb,var(--ui-canvas) 94%,transparent) 56%,color-mix(in srgb,var(--ui-canvas) 60%,transparent) 100%)}
- .login-intro .eyebrow{margin:0 0 13px;font-size:9px}
- .login-intro h1{max-width:340px;font-size:32px;margin:0 0 12px}
- .login-intro-lead{font-size:12px;max-width:280px}
- .login-area{padding:26px 22px;gap:20px}
  .login-card{padding:0;max-width:390px}
  .studio-login-brand{font-size:17px;margin-bottom:23px}
  .studio-login-brand img{width:34px;height:34px}
@@ -238,9 +216,6 @@ body{background:var(--ui-canvas)}
 @media(max-width:360px){
  .main{padding-inline:12px}
  .shop-context{max-width:36%}
- .login-intro-content{padding:23px 20px}
- .login-intro h1{font-size:29px}
- .login-area{padding:24px 20px}
  .product-card{padding:12px;gap:9px;grid-template-columns:44px minmax(0,1fr)}
  .product-card>img,.product-placeholder{width:44px;height:44px}
  .product-card-main{column-gap:6px}

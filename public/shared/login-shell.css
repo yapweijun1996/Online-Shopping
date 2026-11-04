@@ -1,0 +1,32 @@
+/* Canonical layout for Seller and Platform sign-in shells. */
+.login-layout{max-width:1240px;min-height:650px;margin:26px auto;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(380px,1fr);overflow:hidden;border:1px solid var(--ui-border);border-radius:16px;background:var(--ui-surface);box-shadow:0 16px 48px #25372a09}
+.login-intro{position:relative;min-width:0;min-height:650px;overflow:hidden;background:var(--ui-canvas)}
+.login-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:68% center}
+.login-intro::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,var(--ui-canvas) 3%,color-mix(in srgb,var(--ui-canvas) 94%,transparent) 38%,color-mix(in srgb,var(--ui-canvas) 24%,transparent) 74%);pointer-events:none}
+.login-intro-content{position:relative;z-index:1;max-width:510px;padding:44px 40px}
+.login-intro .eyebrow{margin:0 0 20px;letter-spacing:.16em}
+.login-intro .login-hero-title{margin:13px 0;max-width:430px;color:var(--ui-primary);font-size:clamp(36px,3.4vw,49px);font-weight:700;line-height:1.13;letter-spacing:-.04em}
+.login-intro-lead{max-width:340px;margin:0;color:var(--ui-secondary-text);font-size:15px;line-height:1.6}
+.login-area{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;padding:36px 38px;background:var(--ui-surface);gap:20px}
+@media(max-width:900px){
+ .login-layout{grid-template-columns:1fr 1fr;min-height:590px}
+ .login-intro{min-height:590px}
+ .login-intro-content{max-width:540px;padding:36px 28px}
+ .login-intro .login-hero-title{font-size:38px}
+ .login-area{padding:30px 24px}
+}
+@media(max-width:760px){
+ .login-layout{margin:0 auto;grid-template-columns:1fr;border-radius:12px;min-height:0}
+ .login-intro{min-height:190px}
+ .login-intro-content{padding:25px 24px;max-width:100%}
+ .login-intro::after{background:linear-gradient(90deg,var(--ui-canvas) 0%,color-mix(in srgb,var(--ui-canvas) 94%,transparent) 56%,color-mix(in srgb,var(--ui-canvas) 60%,transparent) 100%)}
+ .login-intro .eyebrow{margin:0 0 13px;font-size:9px}
+ .login-intro .login-hero-title{max-width:340px;font-size:32px;margin:0 0 12px}
+ .login-intro-lead{font-size:12px;max-width:280px}
+ .login-area{padding:26px 22px;gap:20px}
+}
+@media(max-width:360px){
+ .login-intro-content{padding:23px 20px}
+ .login-intro .login-hero-title{font-size:29px}
+ .login-area{padding:24px 20px}
+}

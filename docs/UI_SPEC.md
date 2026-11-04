@@ -10,6 +10,10 @@ At wide widths, category filtering sits above a four-column catalog. At 761–10
 
 ## Approved visual direction
 
+### Shared Seller and Platform sign-in shell
+
+The login card layout, image geometry and responsive breakpoints have one source in [LOGIN_DESIGN_SYSTEM.md](LOGIN_DESIGN_SYSTEM.md) and `public/shared/login-shell.css`, consumed by Seller and Platform. The card is inside each page’s outer safe-area spacing. Seller and SuperAdmin authentication, copy and platform-specific error states remain separate. Local evidence and production-release status are tracked in [TASK.md](TASK.md).
+
 ### Seller sign-in
 
 The seller login uses the owner-supplied image and standalone HTML as visual references. A wide screen shows a photo introduction beside a raised sign-in card; a narrow screen puts a short introduction above the form so the primary action remains reachable. The original decorative WebP contains no credentials or customer data. The three capability notes describe implemented access control, product management and order review. The username/password labels remain visible, the password visibility button exposes its state and translated accessible name, and native required-field validation keeps focus on the missing field. The attached HTML's demo submit handler and unsupported security or sales claims are not part of the application; the existing server session API remains authoritative.

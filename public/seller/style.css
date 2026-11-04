@@ -1,6 +1,7 @@
 @import url('../shop/tokens.css');
 @import url('../shared/appearance.css');
 @import url('../shared/base.css');
+@import url('../shared/login-shell.css');
 .topbar{padding-inline:clamp(18px,3vw,38px);transition:margin-left .18s ease}
 .seller-signed-in .topbar{margin-left:248px}
 .seller-signed-in.seller-nav-collapsed .topbar{margin-left:74px}
@@ -94,14 +95,6 @@
 .dashboard-empty,.dashboard-error{margin:0;line-height:1.45}
 .dashboard-panel-body>.secondary-button{margin-top:10px;min-height:44px}
 .dashboard-simulation-note{margin:0;color:var(--ui-muted);font-size:12px;line-height:1.45}
-.login-layout{max-width:1240px;min-height:640px;margin:clamp(16px,4vh,42px) auto;display:grid;grid-template-columns:minmax(0,1.52fr) minmax(380px,1fr);overflow:hidden;border:1px solid #dce9ed;border-radius:24px;background:var(--ui-surface);box-shadow:0 24px 65px #1d465a12}
-.login-intro{position:relative;min-width:0;min-height:640px;overflow:hidden;background:#f4fbfd}
-.login-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:58% center}
-.login-intro::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,#f7fcfd 0%,#f7fcfdf2 30%,#f7fcfdbb 57%,#f7fcfd22 100%);pointer-events:none}
-.login-intro-content{position:relative;z-index:1;max-width:530px;padding:clamp(32px,4vw,54px)}
-.login-intro .eyebrow{margin-top:18px;letter-spacing:.16em}
-.login-intro h1{margin:13px 0;color:var(--ui-text);font-size:clamp(37px,4.2vw,58px);line-height:1.08}
-.login-intro-lead{max-width:420px;margin:0;color:var(--ui-secondary-text);font-size:17px;line-height:1.5}
 .login-features{display:grid;gap:22px;margin:35px 0 0;padding:0;list-style:none}
 .login-features li{display:grid;grid-template-columns:52px minmax(0,1fr);align-items:center;gap:14px}
 .login-feature-icon{display:grid;place-items:center;width:52px;height:52px;border-radius:50%;background:#dff6f5;color:var(--ui-primary)}
@@ -109,7 +102,6 @@
 .login-features strong,.login-features small{display:block}
 .login-features strong{color:var(--ui-text);font-size:15px}
 .login-features small{max-width:300px;margin-top:3px;color:var(--ui-secondary-text);font-size:13px;line-height:1.45}
-.login-area{display:grid;place-items:center;min-width:0;padding:clamp(20px,3vw,42px);background:linear-gradient(135deg,var(--ui-surface),#f9fcfd)}
 .login-card{width:100%;max-width:445px;min-height:510px;padding:clamp(24px,2.8vw,38px);display:flex;flex-direction:column;justify-content:center;gap:0;box-shadow:0 16px 42px #1d465a12}
 .login-card h2{margin:0;color:var(--ui-text);font-size:clamp(24px,2.3vw,29px);line-height:1.2;letter-spacing:-.025em}
 .login-card-lead{margin:9px 0 26px;color:var(--ui-muted);font-size:14px;line-height:1.5}
@@ -337,10 +329,6 @@
 .product-image-column{padding:20px 0 0;border-left:0;border-top:1px solid #e5edef}
 #product-editor-view .product-form{padding-bottom:105px}
 .product-editor-actions{position:fixed;z-index:20;right:0;bottom:0;left:0;margin:0;padding:10px 28px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--ui-border);background:var(--ui-surface);box-shadow:0 -5px 20px #17395012}
-.login-layout{grid-template-columns:1fr;min-height:0;max-width:620px}
-.login-intro{min-height:350px}
-.login-intro-content{max-width:540px}
-.login-area{padding:20px}
 .login-card{max-width:none;min-height:0}
 .topbar,.seller-signed-in .topbar,.seller-signed-in.seller-nav-collapsed .topbar{margin-left:0;padding-inline:12px}
 .seller-signed-in .topbar .brand{display:flex}
@@ -382,16 +370,8 @@
 .account-button>span:not(.avatar){display:none}
 .account-button{padding:4px}
 .main,.sidebar.collapsed+.main{margin-left:0;padding:20px 16px calc(35px + env(safe-area-inset-bottom))}
-.login-layout{margin:4px auto;border-radius:18px}
-.login-intro{min-height:215px}
-.login-intro-content{padding:24px}
-.login-intro h1{font-size:clamp(27px,7vw,36px);margin:8px 0}
-.login-intro-lead{max-width:330px;font-size:14px}
 .login-intro .brand-mark{display:none}
-.login-intro .eyebrow{margin-top:0}
-.login-intro::after{background:linear-gradient(90deg,#f7fcfd 0%,#f7fcfdef 52%,#f7fcfd70 100%)}
 .login-features{display:none}
-.login-area{padding:15px}
 .login-card{padding:25px 22px}
 .login-card-lead{margin-bottom:22px}
 .page-heading{margin-bottom:12px}
@@ -426,8 +406,6 @@
 }
 @media(max-width:355px){
 .brand>span:not(.brand-mark){display:none}
-.login-intro{min-height:165px}
-.login-intro-content{padding:18px 20px}
 .login-card{padding:20px}
 }
 @media(max-width:390px){

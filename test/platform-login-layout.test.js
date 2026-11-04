@@ -1,10 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { readFileSync, realpathSync } from 'node:fs';
 import { createServer } from 'node:http';
 import path from 'node:path';
 
 const browserModule = process.env.QA_PLAYWRIGHT_MODULE;
+
+test('both login shells share one layout source and cache it', () => {
+  const shared = path.resolve('public/shared/login-shell.css');
+  assert.equal(realpathSync('public/platform/shared/login-shell.css'), shared);
+  const styles = readFileSync('public/seller/style.css', 'utf8');
+  assert.match(styles, /@import url\('\.\.\/shared\/login-shell\.css'\)/);
+  for (const file of ['public/seller/style.css', 'public/seller/commerce.css', 'public/platform/style.css']) {
+    assert.doesNotMatch(readFileSync(file, 'utf8'), /^\s*\.login-layout\s*\{/m, `${file} must not own a second login shell`);
+  }
+  assert.match(readFileSync('public/seller/sw.js', 'utf8'), /'\.\.\/shared\/login-shell\.css'/);
+  assert.match(readFileSync('public/platform/sw.js', 'utf8'), /'\.\/shared\/login-shell\.css'/);
+});
 
 test('platform sign-in uses a responsive seller-style layout without changing the authenticator flow', { skip: !browserModule }, async t => {
   const root = path.resolve('public');
@@ -63,13 +76,45 @@ test('platform sign-in uses a responsive seller-style layout without changing th
   assert.ok(Math.abs(sellerMetrics.input.width - platformMetrics.input.width) < 2, 'form fields use the same width');
   assert.equal(platformMetrics.button.height, sellerMetrics.button.height);
   assert.equal(await page.locator('#content .login-footer-action').count(), 2);
-  await seller.close();
-  for (const width of [768, 390, 320]) {
-    await page.setViewportSize({ width, height: 900 });
-    a = await intro.boundingBox(); b = await form.boundingBox();
-    assert.ok(a.y + a.height <= b.y, `intro stacks above form at ${width}px`);
-    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  for (const width of [1920, 1440, 1024, 768, 390, 320]) {
+    if (width === 768) { await seller.setViewportSize({ width, height: 900 }); assert.ok((await seller.locator('#login-view').boundingBox()).width > 700, 'tablet shell preserves the existing Seller width'); }
+    for (const tab of [seller, page]) await tab.setViewportSize({ width, height: 900 });
+    for (const [tab, shellSelector, introSelector, areaSelector] of [
+      [seller, '#login-view', '.login-intro', '#login-view .login-area'],
+      [page, '.platform-login-shell', '.platform-login-intro', '.platform-login-panel']
+    ]) {
+      const geometry = await tab.evaluate(([shellSelector, introSelector, areaSelector]) => {
+        const shell = document.querySelector(shellSelector), intro = document.querySelector(introSelector), area = document.querySelector(areaSelector);
+        const card = shell.getBoundingClientRect(), image = intro.getBoundingClientRect(), panel = area.getBoundingClientRect(), css = getComputedStyle(shell);
+        return { card: { top: card.top, bottom: card.bottom }, image: { top: image.top, bottom: image.bottom, right: image.right }, panel: { top: panel.top, bottom: panel.bottom, left: panel.left }, borderTop: parseFloat(css.borderTopWidth), borderBottom: parseFloat(css.borderBottomWidth), overflow: document.documentElement.scrollWidth > innerWidth };
+      }, [shellSelector, introSelector, areaSelector]);
+      assert.equal(geometry.overflow, false, `no overflow at ${width}px`);
+      assert.ok(Math.abs(geometry.image.top - geometry.card.top - geometry.borderTop) < 1.1, `image meets card top at ${width}px`);
+      assert.ok(Math.abs(geometry.panel.bottom - geometry.card.bottom + geometry.borderBottom) < 1.1, `panel meets card bottom at ${width}px`);
+      if (width > 760) {
+        assert.ok(Math.abs(geometry.image.bottom - geometry.card.bottom + geometry.borderBottom) < 1.1, `image meets card bottom at ${width}px`);
+        assert.ok(Math.abs(geometry.image.right - geometry.panel.left) < 1.1, `columns meet at ${width}px`);
+      } else assert.ok(Math.abs(geometry.image.bottom - geometry.panel.top) < 1.1, `stacked sections meet at ${width}px`);
+    }
   }
+  await seller.setViewportSize({ width: 320, height: 900 });
+  for (const locale of ['en', 'ms', 'zh-Hans', 'vi', 'th', 'ja', 'ko']) {
+    await seller.evaluate(async locale => { const { setLocale } = await import('/shared/i18n.js'); setLocale(locale); }, locale);
+    assert.equal(await seller.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `Seller ${locale} has no horizontal overflow`);
+  }
+  await seller.close();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.evaluate(() => document.documentElement.style.setProperty('--ui-safe-bottom', '34px'));
+  const darkGeometry = await page.evaluate(() => {
+    const card = document.querySelector('.platform-login-shell').getBoundingClientRect();
+    const image = document.querySelector('.platform-login-intro').getBoundingClientRect();
+    return { gap: card.bottom - image.bottom, mainPadding: getComputedStyle(document.querySelector('#main')).paddingBottom };
+  });
+  assert.ok(darkGeometry.gap <= 1.1, 'safe-area padding must remain outside the dark-mode card');
+  assert.ok(parseFloat(darkGeometry.mainPadding) >= 34);
+  await page.evaluate(() => document.documentElement.style.removeProperty('--ui-safe-bottom'));
+  await page.emulateMedia({ colorScheme: 'light' });
   await page.setViewportSize({ width: 320, height: 568 });
   const actionBox = await page.getByRole('button', { name: 'Continue', exact: true }).boundingBox();
   assert.ok(actionBox.y + actionBox.height <= 568, 'primary action is visible on a short phone screen: ' + JSON.stringify(actionBox));

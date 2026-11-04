@@ -183,3 +183,13 @@ test('cold same-code readers share lookup while every unknown attempt remains ra
   assert.equal(unknown.filter((result) => result.status === 'fulfilled' && result.value === null).length, 30);
   assert.equal(unknown.filter((result) => result.status === 'rejected' && /Too many/.test(result.reason.message)).length, 10);
 });
+
+test('shared login shell is served for active tenant seller and platform scoped assets', async (t) => {
+  const f = await fixture(t);
+  const seller = await f.handle(request('/active/shared/login-shell.css', 'seller.example.test'));
+  const platform = await serveStatic(request('/platform/shared/login-shell.css', 'admin.example.test'), '/platform/shared/login-shell.css');
+  assert.equal(seller.status, 200);
+  assert.equal(platform.status, 200);
+  assert.match(seller.headers.get('content-type'), /^text\/css/);
+  assert.equal(await seller.text(), await platform.text());
+});

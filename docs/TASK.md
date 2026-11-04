@@ -6,6 +6,18 @@
 
 **Scope: the new Online Shopping MVP unless marked `SAMPLE`.** This file supersedes the former [TASKS.md](TASKS.md) checklist and retains its task IDs. `Recorded` means a planning decision exists, not that software implements it. `Verified` requires the stated evidence; `Released` requires deployed proof. Acceptance progress is counted from the 18 `AC` items in [SPEC.md](SPEC.md), not from task rows.
 
+## Shared login design system (2026-11-04)
+
+**Status: implemented and verified locally; production release requires separate live evidence.** See [LOGIN_DESIGN_SYSTEM.md](LOGIN_DESIGN_SYSTEM.md) for the ownership contract, migration sequence, security boundaries, PWA requirements, acceptance matrix and release/rollback plan. This corrects the Platform v16 bottom gap and removes duplicated Seller/Platform shell layout rules.
+
+| ID | Priority / status | Depends on | Done condition and evidence needed |
+| --- | --- | --- | --- |
+| LOGIN-SSOT-01 | P1 / Verified locally | Seller and Platform login | One shared shell stylesheet owns geometry and responsive rules; both pages use its layout contract. No copied Platform shell dimensions. Platform safe-area spacing stays outside the card; screenshot and edge geometry must show no bottom strip. |
+| LOGIN-SSOT-02 | P1 / Synthetic verification passed; real-device verification open | LOGIN-SSOT-01 | Preserve separate Seller and SuperAdmin authentication, CSRF, MFA/recovery, trusted devices and language behavior; test with synthetic data and include failure/retry and keyboard coverage. |
+| LOGIN-SSOT-03 | P1 / Verified locally; live installed update open | LOGIN-SSOT-01 | Update both PWA cache lists, identities and fingerprints; test platform-only asset loading, tenant-prefixed Seller paths, offline contract and user-controlled update with draft protection. |
+| LOGIN-SSOT-04 | P1 / Verified locally; skipped surfaces open | LOGIN-SSOT-01–03 | Browser-compare desktop/tablet/phone edge alignment, responsive behavior, overflow and focus; run syntax, focused tests and full suite. Report untested real-device, screen-reader, contrast and production-login cases. |
+| LOGIN-SSOT-05 | P1 / Open | LOGIN-SSOT-04 | Follow authorized exact-SHA CI, image publication and GCP updater release; verify production health, both login screens, shared asset identity, version and rollback availability without touching DB data. |
+
 ## Platform administrator sign-in review (2026-11-04)
 
 **Status:** Implementation and review in progress. The Seller-style Platform sign-in layout and targeted refinements exist only as an uncommitted draft in the `platform-login-design-20261104` workspace; at the time of review it had not been released. The supplied live Platform screenshot showed the original single-column card. These tasks do not authorize a release or changes to authentication policy.
