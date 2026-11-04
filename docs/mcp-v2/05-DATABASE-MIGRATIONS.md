@@ -1,0 +1,27 @@
+# Database migration proposal
+
+Status: **PROPOSED**. No application database migration has been added. Baseline SQLite and PostgreSQL schema version: **29**. An unregistered experimental DDL helper, `src/mcp/operation-schema.js`, has isolated SQLite/PostgreSQL constraint tests; it is not a completed migration or authorization system. Its schema remains subject to review and may change.
+
+The likely next additive version is 30, but reserve the actual number only when implementation begins and after rechecking main. One shop has one tenant store; bind operation rows to its server-resolved tenant and grant even though the store itself is isolated.
+
+## Proposed operation tables
+
+- `mcp_operation`: operation ID, tenant/account/client/grant/resource binding, server policy and scope/capability, resource type/ID, expected revision, canonical proposal, preview digest, risk, creation/expiry, idempotency hash, correlation ID and state. Limit proposal size, use constraints and an indexed unique tenant/account/client/idempotency binding.
+- `mcp_operation_approval`: operation and exact digest, authenticated human account/session proof, approval and expiry timestamps, decision and one-use consumption. Constrain foreign keys and valid state. Do not store passwords, bearer values or raw personal data.
+- `mcp_operation_event` or a compatible audited extension: actor/client/tenant/tool/resource/operation/approval identity/time/outcome/correlation, without raw text or secrets. Resolve the existing `mcp_audit` event/tool CHECK constraints and preserve the current 90-day MCP audit policy. A retention rule for proposal and upload staging must be explicitly selected; do not silently extend existing retention.
+- `mcp_upload_stage`: only if the image phase is implemented; tenant/product/client binding, bounded binary, checksum, expiry and status, with bounded cleanup and no remote path/URL.
+- `stock_movement`: only in inventory phase; product, variant where applicable, before/after or signed delta, reason, actor, operation/correlation and occurred time. Every existing stock writer must record a movement atomically before claiming complete coverage. State coverage start and do not fabricate historical events.
+
+## Revision and concurrency
+
+Company settings currently expose no revision, and product `updatedAt` must be checked across every writer. Add a monotonic revision or an equally robust conditional token advanced by *all* portal, order, import and MCP writers as appropriate. Order already has a numeric revision. Changes and corresponding audits/ledger must commit atomically. Both stores' `run` omit affected counts; use `UPDATE ... RETURNING` with `get` to prove a conditional update succeeded.
+
+## Compatibility work required
+
+- SQLite: versioned upgrade from 29, fresh install path, readiness inventory, schema constraints and rollback-on-failure tests.
+- PostgreSQL: fresh `src/postgres/schema.sql`, explicit v29 upgrade path and every older supported path in `src/postgres/upgrade.js`, tenant owner and restricted role grants, compatibility comparison, readiness and rollback tests. Inspect the existing early-return branches: merely adding `if (version===29)` is insufficient if older paths set the latest version without applying the new DDL.
+- SQLite-to-PostgreSQL import and restore: existing `src/sqlite-import.js` imports sessions, OAuth grants and tokens. Do not import active v2 consent, pending operations, approval challenges or approvals in a way that can reactivate them; require fresh authorization. Preserve historical audit evidence under the agreed retention policy and test this explicitly using synthetic databases. The exact audit-import and token-revocation policy remains a release gate.
+- A whole-database restore can roll back both a consumed approval and its database-stored revocation. The isolated prototype requires a 32-byte epoch supplied from outside the database and binds its hash to v2 consent and the operation; a synthetic test changes the epoch and denies the old pending commit. This is not an operational restore guarantee: the epoch must live **outside the restored database and backup domain**, remain consistent across active instances, and be rotated while all old instances are disabled/drained before traffic resumes. No config provisioning, real restore rehearsal or multi-instance rollout test exists. Do not integrate the schema or claim restore safety until those dependencies are tested. Do not change production credentials while resolving this locally.
+- Proposal retention and idempotency must be designed together: deleting the only operation record too early permits an old key to create the same business action again, while retaining the full proposal can retain seller-entered personal data. Define a bounded, non-sensitive replay tombstone/receipt and a documented retention horizon before enabling cleanup. The current prototype keeps proposal and result data and has no cleanup; it is not release-ready.
+- Test with a disposable UTF-8 PostgreSQL 16 cluster and SQLite using synthetic records, including existing rows, foreign keys, constraints, failure injection, concurrent writers and migration repeatability.
+- Old v29 binaries reject a newer schema. Feature disablement is not a database downgrade. Back up and rehearse coordinated restore before any future migration; no production migration is authorized here.

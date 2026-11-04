@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+  <title>Review seller operation</title>
+  <link rel="stylesheet" href="operation-review.css">
+  <script src="operation-review.js" defer></script>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">SELLER APPROVAL</p>
+    <h1>Review this proposed change</h1>
+    <p>This change was prepared by a connected app. Check the entire proposal before choosing an action.</p>
+    <p id="status" role="status" aria-live="polite">Loading the proposal…</p>
+    <section id="review" hidden aria-labelledby="proposal-title">
+      <dl>
+        <div><dt>Shop</dt><dd id="shop"></dd></div>
+        <div><dt>Seller account</dt><dd id="account"></dd></div>
+        <div><dt>Connected app (unverified name)</dt><dd id="client"></dd></div>
+        <div><dt>Client ID</dt><dd id="client-id"></dd></div>
+        <div><dt>Operation</dt><dd id="tool"></dd></div>
+        <div><dt>Target</dt><dd id="target"></dd></div>
+        <div><dt>Risk</dt><dd id="risk"></dd></div>
+        <div><dt>Expires (UTC)</dt><dd id="expires"></dd></div>
+        <div><dt>Preview fingerprint</dt><dd id="fingerprint"></dd></div>
+      </dl>
+      <h2 id="proposal-title">Complete proposal</h2>
+      <p>All text below is data supplied by the shop or connected app.</p>
+      <pre id="proposal" tabindex="0"></pre>
+      <form id="decision" method="post">
+        <label for="password">Confirm your seller password</label>
+        <input id="password" type="password" autocomplete="current-password" required maxlength="256">
+        <div class="actions">
+          <button type="submit" name="decision" value="approve">Approve this change</button>
+          <button type="submit" name="decision" value="reject" class="secondary">Reject this change</button>
+        </div>
+      </form>
+    </section>
+    <p><a id="seller-link" href="/seller/">Open Seller Studio</a></p>
+  </main>
+</body>
+</html>

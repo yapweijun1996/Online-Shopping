@@ -1,0 +1,2772 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:online-shopping:mcp-v2:proposed",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "instant": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "format": "date-time"
+    },
+    "date": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "format": "date"
+    },
+    "revision": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0
+        },
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      ]
+    },
+    "idem": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._~-]{16,128}$"
+    },
+    "currency": {
+      "enum": [
+        "MYR",
+        "SGD"
+      ]
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "enum": [
+                "NOT_FOUND",
+                "INVALID_INPUT",
+                "INSUFFICIENT_SCOPE",
+                "FORBIDDEN",
+                "CONFLICT",
+                "STALE_REVISION",
+                "EXPIRED",
+                "INVALID_APPROVAL",
+                "IDEMPOTENCY_CONFLICT",
+                "RESULT_TOO_LARGE",
+                "TEMPORARILY_UNAVAILABLE"
+              ]
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "error"
+      ],
+      "additionalProperties": false
+    },
+    "company": {
+      "type": "object",
+      "properties": {
+        "revision": {
+          "$ref": "#/$defs/revision"
+        },
+        "defaultCurrency": {
+          "$ref": "#/$defs/currency"
+        },
+        "sellerWhatsAppPhone": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mobileHideBarsOnScroll": {
+          "type": "boolean"
+        },
+        "availabilityText": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 1000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "shippingText": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 1000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "returnsText": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 1000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "senderName": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 120
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "senderPhone": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 15
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "senderAddressLine1": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 240
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "senderAddressLine2": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 240
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "senderCity": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 120
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "senderState": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 120
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "senderPostcode": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 20
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "senderCountry": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 2
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "revision",
+        "defaultCurrency",
+        "sellerWhatsAppPhone",
+        "mobileHideBarsOnScroll",
+        "availabilityText",
+        "shippingText",
+        "returnsText",
+        "senderName",
+        "senderPhone",
+        "senderAddressLine1",
+        "senderAddressLine2",
+        "senderCity",
+        "senderState",
+        "senderPostcode",
+        "senderCountry"
+      ],
+      "additionalProperties": false
+    },
+    "companyChanges": {
+      "type": "object",
+      "properties": {
+        "defaultCurrency": {
+          "$ref": "#/$defs/currency"
+        },
+        "sellerWhatsAppPhone": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mobileHideBarsOnScroll": {
+          "type": "boolean"
+        },
+        "availabilityText": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 1000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "shippingText": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 1000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "returnsText": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 1000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "senderName": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 120
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "senderPhone": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 15
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "senderAddressLine1": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 240
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "senderAddressLine2": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 240
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "senderCity": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 120
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "senderState": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 120
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "senderPostcode": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 20
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "senderCountry": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 2
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "minProperties": 1
+    },
+    "productCreate": {
+      "type": "object",
+      "properties": {
+        "sku": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "priceMinor": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000000
+        },
+        "currency": {
+          "$ref": "#/$defs/currency"
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "variantGroup": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 40
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "variantLabel": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 80
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stockQuantity": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "typeId": {
+                "$ref": "#/$defs/uuid"
+              },
+              "valueId": {
+                "$ref": "#/$defs/uuid"
+              }
+            },
+            "required": [
+              "typeId",
+              "valueId"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0,
+          "maxItems": 6
+        }
+      },
+      "required": [
+        "sku",
+        "name",
+        "description",
+        "category",
+        "priceMinor",
+        "currency",
+        "active"
+      ],
+      "additionalProperties": false
+    },
+    "productChanges": {
+      "type": "object",
+      "properties": {
+        "sku": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "priceMinor": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000000
+        },
+        "currency": {
+          "$ref": "#/$defs/currency"
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "variantGroup": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 40
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "variantLabel": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 80
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stockQuantity": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "typeId": {
+                "$ref": "#/$defs/uuid"
+              },
+              "valueId": {
+                "$ref": "#/$defs/uuid"
+              }
+            },
+            "required": [
+              "typeId",
+              "valueId"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0,
+          "maxItems": 6
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "minProperties": 1
+    },
+    "product": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "revision": {
+          "$ref": "#/$defs/revision"
+        },
+        "sku": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "priceMinor": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000000
+        },
+        "currency": {
+          "$ref": "#/$defs/currency"
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "variantGroup": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 40
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "variantLabel": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 80
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stockQuantity": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "typeId": {
+                "$ref": "#/$defs/uuid"
+              },
+              "valueId": {
+                "$ref": "#/$defs/uuid"
+              }
+            },
+            "required": [
+              "typeId",
+              "valueId"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0,
+          "maxItems": 6
+        },
+        "categoryCode": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        }
+      },
+      "required": [
+        "id",
+        "revision",
+        "sku",
+        "name",
+        "description",
+        "category",
+        "priceMinor",
+        "currency",
+        "active",
+        "variantGroup",
+        "variantLabel",
+        "stockQuantity",
+        "options",
+        "categoryCode"
+      ],
+      "additionalProperties": false
+    },
+    "layout": {
+      "type": "object",
+      "properties": {
+        "productId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "revision": {
+          "$ref": "#/$defs/revision"
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "sha256": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/hash"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "previewPath": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512,
+                "pattern": "^/"
+              }
+            },
+            "required": [
+              "id",
+              "sha256",
+              "previewPath"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0,
+          "maxItems": 10
+        },
+        "primaryId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "productId",
+        "revision",
+        "images",
+        "primaryId"
+      ],
+      "additionalProperties": false
+    },
+    "inventory": {
+      "type": "object",
+      "properties": {
+        "productId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "revision": {
+          "$ref": "#/$defs/revision"
+        },
+        "stockQuantity": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reservedQuantity": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "availableQuantity": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reservationShortfall": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "productId",
+        "revision",
+        "stockQuantity",
+        "reservedQuantity",
+        "availableQuantity",
+        "reservationShortfall"
+      ],
+      "additionalProperties": false
+    },
+    "order": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "status": {
+          "enum": [
+            "SUBMITTED",
+            "CONFIRMED",
+            "REJECTED",
+            "SHIPPED",
+            "DELIVERED",
+            "CANCELLED"
+          ]
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "currency": {
+          "$ref": "#/$defs/currency"
+        },
+        "totalMinor": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "revision",
+        "currency",
+        "totalMinor"
+      ],
+      "additionalProperties": false
+    },
+    "movement": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "productId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "delta": {
+          "type": "integer",
+          "minimum": -1000000,
+          "maximum": 1000000
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "occurredAt": {
+          "$ref": "#/$defs/instant"
+        }
+      },
+      "required": [
+        "id",
+        "productId",
+        "delta",
+        "reason",
+        "occurredAt"
+      ],
+      "additionalProperties": false
+    },
+    "operation": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "toolName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "resourceType": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "resourceId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "PREPARED",
+            "PENDING_APPROVAL",
+            "APPROVED",
+            "COMMITTED",
+            "REJECTED",
+            "EXPIRED",
+            "CANCELLED",
+            "CONFLICT",
+            "FAILED"
+          ]
+        },
+        "previewHash": {
+          "$ref": "#/$defs/hash"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/instant"
+        },
+        "correlationId": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "operationId",
+        "toolName",
+        "resourceType",
+        "resourceId",
+        "status",
+        "previewHash",
+        "expiresAt",
+        "correlationId"
+      ],
+      "additionalProperties": false
+    },
+    "auditEvent": {
+      "type": "object",
+      "properties": {
+        "at": {
+          "$ref": "#/$defs/instant"
+        },
+        "operationId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "tenantId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "accountId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "clientId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "toolName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "resourceId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approverId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "correlationId": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "at",
+        "operationId",
+        "tenantId",
+        "accountId",
+        "clientId",
+        "toolName",
+        "resourceId",
+        "approverId",
+        "outcome",
+        "correlationId"
+      ],
+      "additionalProperties": false
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "metricName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "definitionVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "currency": {
+          "$ref": "#/$defs/currency"
+        },
+        "timeZone": {
+          "const": "UTC+8"
+        },
+        "dateRange": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "$ref": "#/$defs/date"
+            },
+            "toExclusive": {
+              "$ref": "#/$defs/date"
+            }
+          },
+          "required": [
+            "from",
+            "toExclusive"
+          ],
+          "additionalProperties": false
+        },
+        "filters": {
+          "type": "object",
+          "properties": {
+            "groupBy": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "dataPoints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              },
+              "quantity": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "totalMinor": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "key",
+              "label",
+              "quantity",
+              "totalMinor"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0,
+          "maxItems": 366
+        },
+        "totals": {
+          "type": "object",
+          "properties": {
+            "quantity": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "totalMinor": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "quantity",
+            "totalMinor"
+          ],
+          "additionalProperties": false
+        },
+        "coverage": {
+          "type": "object",
+          "properties": {
+            "complete": {
+              "type": "boolean"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "complete",
+            "note"
+          ],
+          "additionalProperties": false
+        },
+        "comparison": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "dateRange": {
+                  "type": "object",
+                  "properties": {
+                    "from": {
+                      "$ref": "#/$defs/date"
+                    },
+                    "toExclusive": {
+                      "$ref": "#/$defs/date"
+                    }
+                  },
+                  "required": [
+                    "from",
+                    "toExclusive"
+                  ],
+                  "additionalProperties": false
+                },
+                "quantity": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "totalMinor": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "changeMinor": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "dateRange",
+                "quantity",
+                "totalMinor",
+                "changeMinor"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "metricName",
+        "definitionVersion",
+        "currency",
+        "timeZone",
+        "dateRange",
+        "filters",
+        "dataPoints",
+        "totals",
+        "coverage",
+        "comparison"
+      ],
+      "additionalProperties": false
+    },
+    "metricsResult": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/metrics"
+          },
+          "minItems": 0,
+          "maxItems": 50
+        },
+        "nextOffset": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "paginationCapped": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "items",
+        "nextOffset",
+        "paginationCapped"
+      ],
+      "additionalProperties": false
+    },
+    "inventoryRisk": {
+      "type": "object",
+      "properties": {
+        "inventory": {
+          "$ref": "#/$defs/inventory"
+        },
+        "lowStock": {
+          "type": "boolean"
+        },
+        "slowMoving": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "acceptedQuantityInPeriod": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "inventory",
+        "lowStock",
+        "slowMoving",
+        "acceptedQuantityInPeriod"
+      ],
+      "additionalProperties": false
+    },
+    "inventoryRiskResult": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/inventoryRisk"
+          },
+          "minItems": 0,
+          "maxItems": 50
+        },
+        "nextOffset": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "paginationCapped": {
+          "type": "boolean"
+        },
+        "metricName": {
+          "const": "inventory_risk"
+        },
+        "definitionVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "currency": {
+          "type": "null"
+        },
+        "timeZone": {
+          "const": "UTC+8"
+        },
+        "asOf": {
+          "$ref": "#/$defs/instant"
+        },
+        "slowDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 366
+        },
+        "threshold": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "coverage": {
+          "type": "object",
+          "properties": {
+            "complete": {
+              "type": "boolean"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "complete",
+            "note"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "items",
+        "nextOffset",
+        "paginationCapped",
+        "metricName",
+        "definitionVersion",
+        "currency",
+        "timeZone",
+        "asOf",
+        "slowDays",
+        "threshold",
+        "coverage"
+      ],
+      "additionalProperties": false
+    },
+    "stage": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "status": {
+          "const": "PREPARED"
+        },
+        "stageId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "uploadPath": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^/"
+        },
+        "expectedSha256": {
+          "$ref": "#/$defs/hash"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/instant"
+        }
+      },
+      "required": [
+        "operationId",
+        "status",
+        "stageId",
+        "uploadPath",
+        "expectedSha256",
+        "expiresAt"
+      ],
+      "additionalProperties": false
+    },
+    "company.get.input": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "company.get.output": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/company"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "company.preview_update.input": {
+      "type": "object",
+      "properties": {
+        "expectedRevision": {
+          "$ref": "#/$defs/revision"
+        },
+        "changes": {
+          "$ref": "#/$defs/companyChanges"
+        },
+        "idempotencyKey": {
+          "$ref": "#/$defs/idem"
+        }
+      },
+      "required": [
+        "expectedRevision",
+        "changes",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "company.preview_update.output": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operationId": {
+              "$ref": "#/$defs/uuid"
+            },
+            "status": {
+              "const": "PENDING_APPROVAL"
+            },
+            "previewHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "expiresAt": {
+              "$ref": "#/$defs/instant"
+            },
+            "approvalUrl": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048,
+              "format": "uri"
+            },
+            "before": {
+              "$ref": "#/$defs/company"
+            },
+            "after": {
+              "$ref": "#/$defs/company"
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240
+              },
+              "minItems": 0,
+              "maxItems": 20
+            }
+          },
+          "required": [
+            "operationId",
+            "status",
+            "previewHash",
+            "expiresAt",
+            "approvalUrl",
+            "before",
+            "after",
+            "warnings"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "company.commit_update.input": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "company.commit_update.output": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operationId": {
+              "$ref": "#/$defs/uuid"
+            },
+            "status": {
+              "const": "COMMITTED"
+            },
+            "result": {
+              "$ref": "#/$defs/company"
+            }
+          },
+          "required": [
+            "operationId",
+            "status",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "catalog.preview_create.input": {
+      "type": "object",
+      "properties": {
+        "product": {
+          "$ref": "#/$defs/productCreate"
+        },
+        "idempotencyKey": {
+          "$ref": "#/$defs/idem"
+        }
+      },
+      "required": [
+        "product",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "catalog.preview_create.output": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operationId": {
+              "$ref": "#/$defs/uuid"
+            },
+            "status": {
+              "const": "PENDING_APPROVAL"
+            },
+            "previewHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "expiresAt": {
+              "$ref": "#/$defs/instant"
+            },
+            "approvalUrl": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048,
+              "format": "uri"
+            },
+            "before": {
+              "type": "null"
+            },
+            "after": {
+              "$ref": "#/$defs/product"
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240
+              },
+              "minItems": 0,
+              "maxItems": 20
+            }
+          },
+          "required": [
+            "operationId",
+            "status",
+            "previewHash",
+            "expiresAt",
+            "approvalUrl",
+            "before",
+            "after",
+            "warnings"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "catalog.commit_create.input": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "catalog.commit_create.output": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operationId": {
+              "$ref": "#/$defs/uuid"
+            },
+            "status": {
+              "const": "COMMITTED"
+            },
+            "result": {
+              "$ref": "#/$defs/product"
+            }
+          },
+          "required": [
+            "operationId",
+            "status",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "catalog.preview_update.input": {
+      "type": "object",
+      "properties": {
+        "productId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "expectedRevision": {
+          "$ref": "#/$defs/revision"
+        },
+        "changes": {
+          "$ref": "#/$defs/productChanges"
+        },
+        "idempotencyKey": {
+          "$ref": "#/$defs/idem"
+        }
+      },
+      "required": [
+        "productId",
+        "expectedRevision",
+        "changes",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "catalog.preview_update.output": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operationId": {
+              "$ref": "#/$defs/uuid"
+            },
+            "status": {
+              "const": "PENDING_APPROVAL"
+            },
+            "previewHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "expiresAt": {
+              "$ref": "#/$defs/instant"
+            },
+            "approvalUrl": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048,
+              "format": "uri"
+            },
+            "before": {
+              "$ref": "#/$defs/product"
+            },
+            "after": {
+              "$ref": "#/$defs/product"
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240
+              },
+              "minItems": 0,
+              "maxItems": 20
+            }
+          },
+          "required": [
+            "operationId",
+            "status",
+            "previewHash",
+            "expiresAt",
+            "approvalUrl",
+            "before",
+            "after",
+            "warnings"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "catalog.commit_update.input": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "catalog.commit_update.output": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operationId": {
+              "$ref": "#/$defs/uuid"
+            },
+            "status": {
+              "const": "COMMITTED"
+            },
+            "result": {
+              "$ref": "#/$defs/product"
+            }
+          },
+          "required": [
+            "operationId",
+            "status",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "media.list.input": {
+      "type": "object",
+      "properties": {
+        "productId": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "productId"
+      ],
+      "additionalProperties": false
+    },
+    "media.list.output": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/layout"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "media.prepare_upload.input": {
+      "type": "object",
+      "properties": {
+        "productId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "expectedRevision": {
+          "$ref": "#/$defs/revision"
+        },
+        "mime": {
+          "enum": [
+            "image/png",
+            "image/jpeg",
+            "image/webp"
+          ]
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 524288
+        },
+        "sha256": {
+          "$ref": "#/$defs/hash"
+        },
+        "idempotencyKey": {
+          "$ref": "#/$defs/idem"
+        }
+      },
+      "required": [
+        "productId",
+        "expectedRevision",
+        "mime",
+        "sizeBytes",
+        "sha256",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "media.prepare_upload.output": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/stage"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "media.commit_upload.input": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "media.commit_upload.output": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operationId": {
+              "$ref": "#/$defs/uuid"
+            },
+            "status": {
+              "const": "COMMITTED"
+            },
+            "result": {
+              "$ref": "#/$defs/layout"
+            }
+          },
+          "required": [
+            "operationId",
+            "status",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "media.preview_layout.input": {
+      "type": "object",
+      "properties": {
+        "productId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "expectedRevision": {
+          "$ref": "#/$defs/revision"
+        },
+        "imageIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "minItems": 0,
+          "maxItems": 10
+        },
+        "idempotencyKey": {
+          "$ref": "#/$defs/idem"
+        }
+      },
+      "required": [
+        "productId",
+        "expectedRevision",
+        "imageIds",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "media.preview_layout.output": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operationId": {
+              "$ref": "#/$defs/uuid"
+            },
+            "status": {
+              "const": "PENDING_APPROVAL"
+            },
+            "previewHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "expiresAt": {
+              "$ref": "#/$defs/instant"
+            },
+            "approvalUrl": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048,
+              "format": "uri"
+            },
+            "before": {
+              "$ref": "#/$defs/layout"
+            },
+            "after": {
+              "$ref": "#/$defs/layout"
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240
+              },
+              "minItems": 0,
+              "maxItems": 20
+            }
+          },
+          "required": [
+            "operationId",
+            "status",
+            "previewHash",
+            "expiresAt",
+            "approvalUrl",
+            "before",
+            "after",
+            "warnings"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "media.commit_layout.input": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "media.commit_layout.output": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operationId": {
+              "$ref": "#/$defs/uuid"
+            },
+            "status": {
+              "const": "COMMITTED"
+            },
+            "result": {
+              "$ref": "#/$defs/layout"
+            }
+          },
+          "required": [
+            "operationId",
+            "status",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "inventory.summary.input": {
+      "type": "object",
+      "properties": {
+        "productId": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "productId"
+      ],
+      "additionalProperties": false
+    },
+    "inventory.summary.output": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/inventory"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "inventory.movements.input": {
+      "type": "object",
+      "properties": {
+        "productId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        }
+      },
+      "required": [
+        "productId"
+      ],
+      "additionalProperties": false
+    },
+    "inventory.movements.output": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/movement"
+              },
+              "minItems": 0,
+              "maxItems": 50
+            },
+            "nextOffset": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "paginationCapped": {
+              "type": "boolean"
+            },
+            "coverageStart": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/instant"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "items",
+            "nextOffset",
+            "paginationCapped",
+            "coverageStart"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "inventory.preview_adjustment.input": {
+      "type": "object",
+      "properties": {
+        "productId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "expectedRevision": {
+          "$ref": "#/$defs/revision"
+        },
+        "quantity": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "idempotencyKey": {
+          "$ref": "#/$defs/idem"
+        }
+      },
+      "required": [
+        "productId",
+        "expectedRevision",
+        "quantity",
+        "reason",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "inventory.preview_adjustment.output": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operationId": {
+              "$ref": "#/$defs/uuid"
+            },
+            "status": {
+              "const": "PENDING_APPROVAL"
+            },
+            "previewHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "expiresAt": {
+              "$ref": "#/$defs/instant"
+            },
+            "approvalUrl": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048,
+              "format": "uri"
+            },
+            "before": {
+              "$ref": "#/$defs/inventory"
+            },
+            "after": {
+              "$ref": "#/$defs/inventory"
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240
+              },
+              "minItems": 0,
+              "maxItems": 20
+            }
+          },
+          "required": [
+            "operationId",
+            "status",
+            "previewHash",
+            "expiresAt",
+            "approvalUrl",
+            "before",
+            "after",
+            "warnings"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "inventory.commit_adjustment.input": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "inventory.commit_adjustment.output": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operationId": {
+              "$ref": "#/$defs/uuid"
+            },
+            "status": {
+              "const": "COMMITTED"
+            },
+            "result": {
+              "$ref": "#/$defs/inventory"
+            }
+          },
+          "required": [
+            "operationId",
+            "status",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "orders.preview_decision.input": {
+      "type": "object",
+      "properties": {
+        "orderId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "expectedRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "decision": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "enum": [
+                "confirm",
+                "reject",
+                "ship",
+                "deliver",
+                "cancel"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "carrier": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "trackingNo": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 60
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        "idempotencyKey": {
+          "$ref": "#/$defs/idem"
+        }
+      },
+      "required": [
+        "orderId",
+        "expectedRevision",
+        "decision",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "orders.preview_decision.output": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operationId": {
+              "$ref": "#/$defs/uuid"
+            },
+            "status": {
+              "const": "PENDING_APPROVAL"
+            },
+            "previewHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "expiresAt": {
+              "$ref": "#/$defs/instant"
+            },
+            "approvalUrl": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048,
+              "format": "uri"
+            },
+            "before": {
+              "$ref": "#/$defs/order"
+            },
+            "after": {
+              "$ref": "#/$defs/order"
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240
+              },
+              "minItems": 0,
+              "maxItems": 20
+            }
+          },
+          "required": [
+            "operationId",
+            "status",
+            "previewHash",
+            "expiresAt",
+            "approvalUrl",
+            "before",
+            "after",
+            "warnings"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "orders.commit_decision.input": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "orders.commit_decision.output": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operationId": {
+              "$ref": "#/$defs/uuid"
+            },
+            "status": {
+              "const": "COMMITTED"
+            },
+            "result": {
+              "$ref": "#/$defs/order"
+            }
+          },
+          "required": [
+            "operationId",
+            "status",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "analytics.sales_trend.input": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/date"
+        },
+        "toExclusive": {
+          "$ref": "#/$defs/date"
+        },
+        "groupBy": {
+          "enum": [
+            "day",
+            "week",
+            "month"
+          ]
+        },
+        "compare": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "from",
+        "toExclusive",
+        "groupBy"
+      ],
+      "additionalProperties": false
+    },
+    "analytics.sales_trend.output": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/metricsResult"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "analytics.top_products.input": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/date"
+        },
+        "toExclusive": {
+          "$ref": "#/$defs/date"
+        },
+        "groupBy": {
+          "enum": [
+            "product",
+            "category"
+          ]
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        }
+      },
+      "required": [
+        "from",
+        "toExclusive",
+        "groupBy"
+      ],
+      "additionalProperties": false
+    },
+    "analytics.top_products.output": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/metricsResult"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "analytics.inventory_risk.input": {
+      "type": "object",
+      "properties": {
+        "threshold": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "slowDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 366
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        }
+      },
+      "required": [
+        "threshold",
+        "slowDays"
+      ],
+      "additionalProperties": false
+    },
+    "analytics.inventory_risk.output": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/inventoryRiskResult"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "operations.get.input": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "operations.get.output": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/operation"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "operations.cancel.input": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "operations.cancel.output": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/operation"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "operations.audit.input": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        }
+      },
+      "required": [
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "operations.audit.output": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/auditEvent"
+              },
+              "minItems": 0,
+              "maxItems": 50
+            },
+            "nextOffset": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "paginationCapped": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "items",
+            "nextOffset",
+            "paginationCapped"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    }
+  },
+  "x-toolPolicies": {
+    "company.get": {
+      "scope": "company.read",
+      "capability": "settings.write"
+    },
+    "company.preview_update": {
+      "scope": "company.write",
+      "capability": "settings.write"
+    },
+    "company.commit_update": {
+      "scope": "company.write",
+      "capability": "settings.write"
+    },
+    "catalog.preview_create": {
+      "scope": "catalog.write",
+      "capability": "catalog.write"
+    },
+    "catalog.commit_create": {
+      "scope": "catalog.write",
+      "capability": "catalog.write"
+    },
+    "catalog.preview_update": {
+      "scope": "catalog.write",
+      "capability": "catalog.write"
+    },
+    "catalog.commit_update": {
+      "scope": "catalog.write",
+      "capability": "catalog.write"
+    },
+    "media.list": {
+      "scope": "media.read",
+      "capability": "catalog.write"
+    },
+    "media.prepare_upload": {
+      "scope": "media.write",
+      "capability": "catalog.write"
+    },
+    "media.commit_upload": {
+      "scope": "media.write",
+      "capability": "catalog.write"
+    },
+    "media.preview_layout": {
+      "scope": "media.write",
+      "capability": "catalog.write"
+    },
+    "media.commit_layout": {
+      "scope": "media.write",
+      "capability": "catalog.write"
+    },
+    "inventory.summary": {
+      "scope": "inventory.read",
+      "capability": "catalog.write"
+    },
+    "inventory.movements": {
+      "scope": "inventory.read",
+      "capability": "catalog.write"
+    },
+    "inventory.preview_adjustment": {
+      "scope": "inventory.adjust",
+      "capability": "catalog.write"
+    },
+    "inventory.commit_adjustment": {
+      "scope": "inventory.adjust",
+      "capability": "catalog.write"
+    },
+    "orders.preview_decision": {
+      "scope": "orders.decide",
+      "capability": "orders.decide"
+    },
+    "orders.commit_decision": {
+      "scope": "orders.decide",
+      "capability": "orders.decide"
+    },
+    "analytics.sales_trend": {
+      "scope": "analytics.extended",
+      "capability": "figures.read"
+    },
+    "analytics.top_products": {
+      "scope": "analytics.extended",
+      "capability": "figures.read"
+    },
+    "analytics.inventory_risk": {
+      "scope": "analytics.extended",
+      "capability": "figures.read"
+    },
+    "operations.get": {
+      "scope": "operations.read",
+      "capability": "underlying operation capability"
+    },
+    "operations.cancel": {
+      "scope": "operations.cancel",
+      "capability": "underlying operation capability"
+    },
+    "operations.audit": {
+      "scope": "operations.read",
+      "capability": "underlying operation capability"
+    }
+  }
+}
