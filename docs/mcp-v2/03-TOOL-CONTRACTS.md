@@ -1,0 +1,375 @@
+# Proposed MCP v2 tool contracts
+
+Generated from `generate-contracts.py`; change that source and regenerate both this document and its JSON Schema bundle together.
+
+**PROPOSED, NOT IMPLEMENTED OR DEPLOYED.** The contract bundle and examples are design candidates, not evidence that a tool, scope, approval flow, migration or endpoint exists. Resolve every open issue and validate against existing services before exposing a tool.
+
+Machine-readable complete JSON Schemas: [03-TOOL-CONTRACTS.proposed.json](03-TOOL-CONTRACTS.proposed.json). Each input and output below refers to a definition in that bundle; output schemas include the common error object. Existing eight v1 schemas are authoritative in `src/mcp/tools.js` and remain unchanged.
+
+All tool calls bind tenant, account, OAuth client and resource from authenticated server context; no input field selects an authority. A preview accepts an idempotency key and captures immutable server-validated changes; same key plus same intent replays the result, different intent conflicts. Commit takes only the server operation ID, rechecks authorization/approval/revision and executes stored values once. Read operations have no side effects. All operation/audit output excludes secrets, raw personal data and raw images. Approval URL is server-generated, constrained to the seller origin and must be opened by a human through the first-party Seller Portal.
+
+Common proposed errors: `NOT_FOUND`, `INVALID_INPUT`, `INSUFFICIENT_SCOPE`, `FORBIDDEN`, `CONFLICT`, `STALE_REVISION`, `EXPIRED`, `INVALID_APPROVAL`, `IDEMPOTENCY_CONFLICT`, `RESULT_TOO_LARGE`, `TEMPORARILY_UNAVAILABLE`. OAuth/protocol failures may use the existing transport errors instead.
+
+Common acceptance tests for each tool: valid input, malformed input, missing auth, scope and role denial, cross-tenant/unknown resource, bounded/schema-valid response and metadata-only audit. Every mutation additionally needs stale revision, approval mismatch/expiry/replay, idempotency/concurrency, failure/rollback and audit atomicity on both databases. Phase-specific tests are in [07-TEST-PLAN.md](07-TEST-PLAN.md).
+
+**Open contract issues:** metric pagination/comparison, exact before/after field projections, image-byte staging protocol and authenticated image preview, exact TTL/retention and company/product revision design require implementation-level review. For tracked stock the proposed inventory projection reports available units as `max(0, stockQuantity - reservedQuantity)` and separately reports `reservationShortfall=max(0, reservedQuantity - stockQuantity)`; null stock remains unlimited. These are display projections, not a change to existing hold or confirmation rules. In particular, `media.prepare_upload` only stages: binary bytes must arrive through its same-origin bounded upload path, be fully decoded and checksum-verified before a first-party approval can be granted. Uploaded data is never a path or remote URL supplied by the model. A `PREPARED` stage is not approval.
+
+## `company.get`
+
+Read supported settings.
+
+- Input JSON Schema: `#/$defs/company.get.input`.
+- Output JSON Schema: `#/$defs/company.get.output`.
+- OAuth scope: `company.read`; RBAC: `settings.write`.
+- Classification: read; risk: LOW; approval: None.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: Snapshot read.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{}`
+
+Example structured result: `{"revision":1,"defaultCurrency":"MYR","sellerWhatsAppPhone":null,"mobileHideBarsOnScroll":false,"availabilityText":null,"shippingText":null,"returnsText":null,"senderName":null,"senderPhone":null,"senderAddressLine1":null,"senderAddressLine2":null,"senderCity":null,"senderState":null,"senderPostcode":null,"senderCountry":null}`
+
+## `company.preview_update`
+
+Prepare current settings changes.
+
+- Input JSON Schema: `#/$defs/company.preview_update.input`.
+- Output JSON Schema: `#/$defs/company.preview_update.output`.
+- OAuth scope: `company.write`; RBAC: `settings.write`.
+- Classification: write; risk: HIGH if currency changes; otherwise MEDIUM; approval: First-party human.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: Company revision compared at prepare and commit.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{"expectedRevision":1,"changes":{"shippingText":"Synthetic policy"},"idempotencyKey":"synthetic-key-1234"}`
+
+Example structured result: `{"operationId":"00000000-0000-4000-8000-000000000001","status":"PENDING_APPROVAL","previewHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","expiresAt":"2026-11-04T00:10:00.000Z","approvalUrl":"https://seller.example.test/operations/00000000-0000-4000-8000-000000000001","before":{"revision":1,"defaultCurrency":"MYR","sellerWhatsAppPhone":null,"mobileHideBarsOnScroll":false,"availabilityText":null,"shippingText":null,"returnsText":null,"senderName":null,"senderPhone":null,"senderAddressLine1":null,"senderAddressLine2":null,"senderCity":null,"senderState":null,"senderPostcode":null,"senderCountry":null},"after":{"revision":1,"defaultCurrency":"MYR","sellerWhatsAppPhone":null,"mobileHideBarsOnScroll":false,"availabilityText":null,"shippingText":"Synthetic policy","returnsText":null,"senderName":null,"senderPhone":null,"senderAddressLine1":null,"senderAddressLine2":null,"senderCity":null,"senderState":null,"senderPostcode":null,"senderCountry":null},"warnings":[]}`
+
+## `company.commit_update`
+
+Apply approved stored company proposal.
+
+- Input JSON Schema: `#/$defs/company.commit_update.input`.
+- Output JSON Schema: `#/$defs/company.commit_update.output`.
+- OAuth scope: `company.write`; RBAC: `settings.write`.
+- Classification: write; risk: HIGH if currency changes; otherwise MEDIUM; approval: Required.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: CAS and current currency policy.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{"operationId":"00000000-0000-4000-8000-000000000001"}`
+
+Example structured result: `{"operationId":"00000000-0000-4000-8000-000000000001","status":"COMMITTED","result":{"revision":1,"defaultCurrency":"MYR","sellerWhatsAppPhone":null,"mobileHideBarsOnScroll":false,"availabilityText":null,"shippingText":"Synthetic policy","returnsText":null,"senderName":null,"senderPhone":null,"senderAddressLine1":null,"senderAddressLine2":null,"senderCity":null,"senderState":null,"senderPostcode":null,"senderCountry":null}}`
+
+## `catalog.preview_create`
+
+Prepare one SKU using existing variant/options rules.
+
+- Input JSON Schema: `#/$defs/catalog.preview_create.input`.
+- Output JSON Schema: `#/$defs/catalog.preview_create.output`.
+- OAuth scope: `catalog.write`; RBAC: `catalog.write`.
+- Classification: write; risk: MEDIUM; approval: First-party human.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: Recheck SKU, category and company currency.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{"product":{"sku":"SYN-01","name":"Synthetic product","description":"Sample","priceMinor":1200,"currency":"MYR","active":false,"category":"SYNTHETIC"},"idempotencyKey":"synthetic-key-1234"}`
+
+Example structured result: `{"operationId":"00000000-0000-4000-8000-000000000001","status":"PENDING_APPROVAL","previewHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","expiresAt":"2026-11-04T00:10:00.000Z","approvalUrl":"https://seller.example.test/operations/00000000-0000-4000-8000-000000000001","before":null,"after":{"id":"00000000-0000-4000-8000-000000000001","revision":1,"sku":"SYN-01","name":"Synthetic product","description":"Sample","category":"Synthetic category","categoryCode":"SYNTHETIC","priceMinor":1200,"currency":"MYR","active":false,"variantGroup":null,"variantLabel":null,"stockQuantity":4,"options":[]},"warnings":[]}`
+
+## `catalog.commit_create`
+
+Apply approved stored create proposal.
+
+- Input JSON Schema: `#/$defs/catalog.commit_create.input`.
+- Output JSON Schema: `#/$defs/catalog.commit_create.output`.
+- OAuth scope: `catalog.write`; RBAC: `catalog.write`.
+- Classification: write; risk: MEDIUM; approval: Required.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: Unique SKU and idempotent single commit.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{"operationId":"00000000-0000-4000-8000-000000000001"}`
+
+Example structured result: `{"operationId":"00000000-0000-4000-8000-000000000001","status":"COMMITTED","result":{"id":"00000000-0000-4000-8000-000000000001","revision":1,"sku":"SYN-01","name":"Synthetic product","description":"Sample","category":"Synthetic category","categoryCode":"SYNTHETIC","priceMinor":1200,"currency":"MYR","active":false,"variantGroup":null,"variantLabel":null,"stockQuantity":4,"options":[]}}`
+
+## `catalog.preview_update`
+
+Prepare a product patch and before/after review.
+
+- Input JSON Schema: `#/$defs/catalog.preview_update.input`.
+- Output JSON Schema: `#/$defs/catalog.preview_update.output`.
+- OAuth scope: `catalog.write`; RBAC: `catalog.write`.
+- Classification: write; risk: MEDIUM; approval: First-party human.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: Revision compared across Portal and MCP.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{"productId":"00000000-0000-4000-8000-000000000001","expectedRevision":1,"changes":{"name":"New name"},"idempotencyKey":"synthetic-key-1234"}`
+
+Example structured result: `{"operationId":"00000000-0000-4000-8000-000000000001","status":"PENDING_APPROVAL","previewHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","expiresAt":"2026-11-04T00:10:00.000Z","approvalUrl":"https://seller.example.test/operations/00000000-0000-4000-8000-000000000001","before":{"id":"00000000-0000-4000-8000-000000000001","revision":1,"sku":"SYN-01","name":"Synthetic product","description":"Sample","category":"Synthetic category","categoryCode":"SYNTHETIC","priceMinor":1200,"currency":"MYR","active":false,"variantGroup":null,"variantLabel":null,"stockQuantity":4,"options":[]},"after":{"id":"00000000-0000-4000-8000-000000000001","revision":1,"sku":"SYN-01","name":"New name","description":"Sample","category":"Synthetic category","categoryCode":"SYNTHETIC","priceMinor":1200,"currency":"MYR","active":false,"variantGroup":null,"variantLabel":null,"stockQuantity":4,"options":[]},"warnings":[]}`
+
+## `catalog.commit_update`
+
+Apply approved stored product proposal.
+
+- Input JSON Schema: `#/$defs/catalog.commit_update.input`.
+- Output JSON Schema: `#/$defs/catalog.commit_update.output`.
+- OAuth scope: `catalog.write`; RBAC: `catalog.write`.
+- Classification: write; risk: MEDIUM; approval: Required.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: CAS and product history in same transaction.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{"operationId":"00000000-0000-4000-8000-000000000001"}`
+
+Example structured result: `{"operationId":"00000000-0000-4000-8000-000000000001","status":"COMMITTED","result":{"id":"00000000-0000-4000-8000-000000000001","revision":1,"sku":"SYN-01","name":"New name","description":"Sample","category":"Synthetic category","categoryCode":"SYNTHETIC","priceMinor":1200,"currency":"MYR","active":false,"variantGroup":null,"variantLabel":null,"stockQuantity":4,"options":[]}}`
+
+## `media.list`
+
+Read a product's owned gallery.
+
+- Input JSON Schema: `#/$defs/media.list.input`.
+- Output JSON Schema: `#/$defs/media.list.output`.
+- OAuth scope: `media.read`; RBAC: `catalog.write`.
+- Classification: read; risk: LOW; approval: None.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: Snapshot read.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{"productId":"00000000-0000-4000-8000-000000000001"}`
+
+Example structured result: `{"productId":"00000000-0000-4000-8000-000000000001","revision":1,"images":[],"primaryId":null}`
+
+## `media.prepare_upload`
+
+Prepare a bounded same-origin binary staging session.
+
+- Input JSON Schema: `#/$defs/media.prepare_upload.input`.
+- Output JSON Schema: `#/$defs/media.prepare_upload.output`.
+- OAuth scope: `media.write`; RBAC: `catalog.write`.
+- Classification: write (staging); risk: MEDIUM; approval: Image review before commit.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: Bound stage expires; checksum and revision rechecked.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{"productId":"00000000-0000-4000-8000-000000000001","expectedRevision":1,"mime":"image/png","sizeBytes":100,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","idempotencyKey":"synthetic-key-1234"}`
+
+Example structured result: `{"operationId":"00000000-0000-4000-8000-000000000001","status":"PREPARED","stageId":"00000000-0000-4000-8000-000000000002","uploadPath":"/api/v1/seller/mcp/upload/00000000-0000-4000-8000-000000000002","expectedSha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","expiresAt":"2026-11-04T00:10:00.000Z"}`
+
+## `media.commit_upload`
+
+Attach only an approved staged upload.
+
+- Input JSON Schema: `#/$defs/media.commit_upload.input`.
+- Output JSON Schema: `#/$defs/media.commit_upload.output`.
+- OAuth scope: `media.write`; RBAC: `catalog.write`.
+- Classification: write; risk: MEDIUM; approval: Old/new image in first-party UI.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: Atomic gallery layout and blob association.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{"operationId":"00000000-0000-4000-8000-000000000001"}`
+
+Example structured result: `{"operationId":"00000000-0000-4000-8000-000000000001","status":"COMMITTED","result":{"productId":"00000000-0000-4000-8000-000000000001","revision":1,"images":[],"primaryId":null}}`
+
+## `media.preview_layout`
+
+Prepare reorder, removal or primary image selection.
+
+- Input JSON Schema: `#/$defs/media.preview_layout.input`.
+- Output JSON Schema: `#/$defs/media.preview_layout.output`.
+- OAuth scope: `media.write`; RBAC: `catalog.write`.
+- Classification: write; risk: MEDIUM; approval: First-party human.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: Validate ownership and shared-variant gallery.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{"productId":"00000000-0000-4000-8000-000000000001","expectedRevision":1,"imageIds":[],"idempotencyKey":"synthetic-key-1234"}`
+
+Example structured result: `{"operationId":"00000000-0000-4000-8000-000000000001","status":"PENDING_APPROVAL","previewHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","expiresAt":"2026-11-04T00:10:00.000Z","approvalUrl":"https://seller.example.test/operations/00000000-0000-4000-8000-000000000001","before":{"productId":"00000000-0000-4000-8000-000000000001","revision":1,"images":[],"primaryId":null},"after":{"productId":"00000000-0000-4000-8000-000000000001","revision":1,"images":[],"primaryId":null},"warnings":[]}`
+
+## `media.commit_layout`
+
+Apply approved stored gallery layout.
+
+- Input JSON Schema: `#/$defs/media.commit_layout.input`.
+- Output JSON Schema: `#/$defs/media.commit_layout.output`.
+- OAuth scope: `media.write`; RBAC: `catalog.write`.
+- Classification: write; risk: MEDIUM; approval: Required.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: CAS and atomic association rollback.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{"operationId":"00000000-0000-4000-8000-000000000001"}`
+
+Example structured result: `{"operationId":"00000000-0000-4000-8000-000000000001","status":"COMMITTED","result":{"productId":"00000000-0000-4000-8000-000000000001","revision":1,"images":[],"primaryId":null}}`
+
+## `inventory.summary`
+
+Read stock and computed 48-hour holds.
+
+- Input JSON Schema: `#/$defs/inventory.summary.input`.
+- Output JSON Schema: `#/$defs/inventory.summary.output`.
+- OAuth scope: `inventory.read`; RBAC: `catalog.write`.
+- Classification: read; risk: LOW; approval: None.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: Snapshot; null stock means unlimited.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{"productId":"00000000-0000-4000-8000-000000000001"}`
+
+Example structured result: `{"productId":"00000000-0000-4000-8000-000000000001","revision":1,"stockQuantity":4,"reservedQuantity":1,"availableQuantity":3,"reservationShortfall":0}`
+
+## `inventory.movements`
+
+Read bounded ledger and coverage.
+
+- Input JSON Schema: `#/$defs/inventory.movements.input`.
+- Output JSON Schema: `#/$defs/inventory.movements.output`.
+- OAuth scope: `inventory.read`; RBAC: `catalog.write`.
+- Classification: read; risk: LOW; approval: None.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: No invented pre-ledger history.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{"productId":"00000000-0000-4000-8000-000000000001"}`
+
+Example structured result: `{"items":[],"nextOffset":null,"paginationCapped":false,"coverageStart":null}`
+
+## `inventory.preview_adjustment`
+
+Prepare a stock quantity and reason.
+
+- Input JSON Schema: `#/$defs/inventory.preview_adjustment.input`.
+- Output JSON Schema: `#/$defs/inventory.preview_adjustment.output`.
+- OAuth scope: `inventory.adjust`; RBAC: `catalog.write`.
+- Classification: write; risk: HIGH; approval: First-party human.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: CAS; preserve active submitted holds and tracking rules.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{"productId":"00000000-0000-4000-8000-000000000001","expectedRevision":1,"quantity":5,"reason":"Synthetic stocktake","idempotencyKey":"synthetic-key-1234"}`
+
+Example structured result: `{"operationId":"00000000-0000-4000-8000-000000000001","status":"PENDING_APPROVAL","previewHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","expiresAt":"2026-11-04T00:10:00.000Z","approvalUrl":"https://seller.example.test/operations/00000000-0000-4000-8000-000000000001","before":{"productId":"00000000-0000-4000-8000-000000000001","revision":1,"stockQuantity":4,"reservedQuantity":1,"availableQuantity":3,"reservationShortfall":0},"after":{"productId":"00000000-0000-4000-8000-000000000001","revision":1,"stockQuantity":5,"reservedQuantity":1,"availableQuantity":4,"reservationShortfall":0},"warnings":[]}`
+
+## `inventory.commit_adjustment`
+
+Apply approved stock change and ledger atomically.
+
+- Input JSON Schema: `#/$defs/inventory.commit_adjustment.input`.
+- Output JSON Schema: `#/$defs/inventory.commit_adjustment.output`.
+- OAuth scope: `inventory.adjust`; RBAC: `catalog.write`.
+- Classification: write; risk: HIGH; approval: Required.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: CAS and movement audit in same transaction.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{"operationId":"00000000-0000-4000-8000-000000000001"}`
+
+Example structured result: `{"operationId":"00000000-0000-4000-8000-000000000001","status":"COMMITTED","result":{"productId":"00000000-0000-4000-8000-000000000001","revision":1,"stockQuantity":5,"reservedQuantity":1,"availableQuantity":4,"reservationShortfall":0}}`
+
+## `orders.preview_decision`
+
+Prepare a permitted seller decision.
+
+- Input JSON Schema: `#/$defs/orders.preview_decision.input`.
+- Output JSON Schema: `#/$defs/orders.preview_decision.output`.
+- OAuth scope: `orders.decide`; RBAC: `orders.decide`.
+- Classification: write; risk: HIGH; approval: First-party human.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: Validate action-specific fields and current transition.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{"orderId":"00000000-0000-4000-8000-000000000001","expectedRevision":1,"decision":{"action":"confirm"},"idempotencyKey":"synthetic-key-1234"}`
+
+Example structured result: `{"operationId":"00000000-0000-4000-8000-000000000001","status":"PENDING_APPROVAL","previewHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","expiresAt":"2026-11-04T00:10:00.000Z","approvalUrl":"https://seller.example.test/operations/00000000-0000-4000-8000-000000000001","before":{"id":"00000000-0000-4000-8000-000000000001","status":"SUBMITTED","revision":1,"currency":"MYR","totalMinor":1200},"after":{"id":"00000000-0000-4000-8000-000000000001","status":"CONFIRMED","revision":2,"currency":"MYR","totalMinor":1200},"warnings":[]}`
+
+## `orders.commit_decision`
+
+Apply approved stored order decision once.
+
+- Input JSON Schema: `#/$defs/orders.commit_decision.input`.
+- Output JSON Schema: `#/$defs/orders.commit_decision.output`.
+- OAuth scope: `orders.decide`; RBAC: `orders.decide`.
+- Classification: write; risk: HIGH; approval: Required.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: CAS, stock, order event and operation audit atomic.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{"operationId":"00000000-0000-4000-8000-000000000001"}`
+
+Example structured result: `{"operationId":"00000000-0000-4000-8000-000000000001","status":"COMMITTED","result":{"id":"00000000-0000-4000-8000-000000000001","status":"CONFIRMED","revision":2,"currency":"MYR","totalMinor":1200}}`
+
+## `analytics.sales_trend`
+
+Read bounded accepted-order trends, by currency.
+
+- Input JSON Schema: `#/$defs/analytics.sales_trend.input`.
+- Output JSON Schema: `#/$defs/analytics.sales_trend.output`.
+- OAuth scope: `analytics.extended`; RBAC: `figures.read`.
+- Classification: read; risk: LOW; approval: None.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: Bound range; UTC+8 and accepted statuses.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{"from":"2026-11-01","toExclusive":"2026-11-02","groupBy":"day"}`
+
+Example structured result: `{"items":[{"metricName":"accepted_order_value","definitionVersion":"proposed-1","currency":"MYR","timeZone":"UTC+8","dateRange":{"from":"2026-11-01","toExclusive":"2026-11-02"},"filters":{},"dataPoints":[],"totals":{"quantity":0,"totalMinor":0},"coverage":{"complete":true,"note":null},"comparison":null}],"nextOffset":null,"paginationCapped":false}`
+
+## `analytics.top_products`
+
+Read bounded product or category performance.
+
+- Input JSON Schema: `#/$defs/analytics.top_products.input`.
+- Output JSON Schema: `#/$defs/analytics.top_products.output`.
+- OAuth scope: `analytics.extended`; RBAC: `figures.read`.
+- Classification: read; risk: LOW; approval: None.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: Currency separate; totals are not cash or profit.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{"from":"2026-11-01","toExclusive":"2026-11-02","groupBy":"product"}`
+
+Example structured result: `{"items":[{"metricName":"accepted_order_value","definitionVersion":"proposed-1","currency":"MYR","timeZone":"UTC+8","dateRange":{"from":"2026-11-01","toExclusive":"2026-11-02"},"filters":{},"dataPoints":[],"totals":{"quantity":0,"totalMinor":0},"coverage":{"complete":true,"note":null},"comparison":null}],"nextOffset":null,"paginationCapped":false}`
+
+## `analytics.inventory_risk`
+
+Read low stock and slow-movement risk.
+
+- Input JSON Schema: `#/$defs/analytics.inventory_risk.input`.
+- Output JSON Schema: `#/$defs/analytics.inventory_risk.output`.
+- OAuth scope: `analytics.extended`; RBAC: `figures.read`.
+- Classification: read; risk: LOW; approval: None.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: Bounded indexed query; indicate incomplete history.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{"threshold":5,"slowDays":30}`
+
+Example structured result: `{"items":[{"inventory":{"productId":"00000000-0000-4000-8000-000000000001","revision":1,"stockQuantity":4,"reservedQuantity":1,"availableQuantity":3,"reservationShortfall":0},"lowStock":true,"slowMoving":null,"acceptedQuantityInPeriod":null}],"nextOffset":null,"paginationCapped":false,"metricName":"inventory_risk","definitionVersion":"proposed-1","currency":null,"timeZone":"UTC+8","asOf":"2026-11-04T00:10:00.000Z","slowDays":30,"threshold":5,"coverage":{"complete":false,"note":"Synthetic coverage only."}}`
+
+## `operations.get`
+
+Read one operation bound to the authenticated grant/client.
+
+- Input JSON Schema: `#/$defs/operations.get.input`.
+- Output JSON Schema: `#/$defs/operations.get.output`.
+- OAuth scope: `operations.read`; RBAC: `underlying operation capability`.
+- Classification: read; risk: LOW; approval: None.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: Revalidate live binding.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{"operationId":"00000000-0000-4000-8000-000000000001"}`
+
+Example structured result: `{"operationId":"00000000-0000-4000-8000-000000000001","toolName":"catalog.preview_update","resourceType":"product","resourceId":"00000000-0000-4000-8000-000000000001","status":"PENDING_APPROVAL","previewHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","expiresAt":"2026-11-04T00:10:00.000Z","correlationId":"00000000-0000-4000-8000-000000000002"}`
+
+## `operations.cancel`
+
+Cancel a nonterminal operation; cannot undo a commit.
+
+- Input JSON Schema: `#/$defs/operations.cancel.input`.
+- Output JSON Schema: `#/$defs/operations.cancel.output`.
+- OAuth scope: `operations.cancel`; RBAC: `underlying operation capability`.
+- Classification: write; risk: MEDIUM; approval: No business mutation.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: CAS against approval/commit.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{"operationId":"00000000-0000-4000-8000-000000000001"}`
+
+Example structured result: `{"operationId":"00000000-0000-4000-8000-000000000001","toolName":"catalog.preview_update","resourceType":"product","resourceId":"00000000-0000-4000-8000-000000000001","status":"CANCELLED","previewHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","expiresAt":"2026-11-04T00:10:00.000Z","correlationId":"00000000-0000-4000-8000-000000000002"}`
+
+## `operations.audit`
+
+Read redacted operation audit for this grant/client.
+
+- Input JSON Schema: `#/$defs/operations.audit.input`.
+- Output JSON Schema: `#/$defs/operations.audit.output`.
+- OAuth scope: `operations.read`; RBAC: `underlying operation capability`.
+- Classification: read; risk: LOW; approval: None.
+- Tenant binding, idempotency and audit: common rules above. Concurrency: Bounded and tenant/client scoped.
+- Acceptance: common matrix above plus the matching phase test plan.
+
+Example arguments: `{"operationId":"00000000-0000-4000-8000-000000000001"}`
+
+Example structured result: `{"items":[{"at":"2026-11-04T00:00:00.000Z","operationId":"00000000-0000-4000-8000-000000000001","tenantId":"synthetic-shop","accountId":"00000000-0000-4000-8000-000000000002","clientId":"synthetic-client","toolName":"catalog.preview_update","resourceId":"00000000-0000-4000-8000-000000000001","approverId":null,"outcome":"PREPARED","correlationId":"00000000-0000-4000-8000-000000000002"}],"nextOffset":null,"paginationCapped":false}`
