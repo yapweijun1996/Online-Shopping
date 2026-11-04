@@ -1,5 +1,5 @@
 import { icon } from './shared/icons.js';
-import { initPwaShell, markReady, mountAppSection, mountMenuUpdate } from './pwa-shell.js';
+import { initPwaShell, markReady, mountAppSection, mountMenuUpdate, mountSignInUpdate } from './pwa-shell.js';
 import { draftSignature } from './shared/update-guard.js';
 import { tableRows, safeLink } from './table.js';
 import { mountAppearance, paletteChoices } from './shared/appearance.js';
@@ -222,7 +222,7 @@ function nav() {
   mountMenuUpdate(document.querySelector('#account-menu'));
 }
 async function signIn() {
-  session = null; nav(); screen('Platform administrator sign in'); document.body.classList.add('platform-sign-in');
+  session = null; nav(); screen('Sign in to your account'); document.body.classList.add('platform-sign-in');
   content.append(element('p', 'Use your SuperAdmin account. You will confirm your identity with your authenticator next.'));
   const loading = element('p', 'Preparing secure sign-in…'); loading.setAttribute('role', 'status'); content.append(loading);
   let challenge;
@@ -232,7 +232,7 @@ async function signIn() {
     errorBox.textContent = 'Unable to prepare sign-in. Check your connection and try again.';
     errorBox.hidden = false; errorBox.focus();
     content.append(button('Try again', signIn));
-    mountAppSection(content);
+    mountSignInUpdate(content);
     return;
   }
   loading.remove(); csrf = challenge.csrfToken;
@@ -241,7 +241,8 @@ async function signIn() {
   });
   field(node, 'username', 'SuperAdmin username', { autocomplete: 'username', maxLength: 64, icon: 'user' });
   field(node, 'password', 'Password', { type: 'password', autocomplete: 'current-password', maxLength: 256 }); submit(node, 'Continue');
-  mountAppSection(content);
+  const privacy = element('p', undefined, 'privacy-note'); privacy.append(icon('lock'), document.createTextNode('Administrator access requires verification.')); content.append(privacy);
+  mountSignInUpdate(content);
 }
 async function authenticator() {
   screen(session.totpEnabled ? 'Confirm authenticator' : 'Set up authenticator'); nav();
@@ -677,9 +678,9 @@ async function initialize() {
   try { session = await api('/session'); }
   catch (error) {
     if (error.status === 401) { await signIn(); return; }
-    session = null; nav(); screen('Platform administrator sign in'); document.body.classList.add('platform-sign-in');
+    session = null; nav(); screen('Sign in to your account'); document.body.classList.add('platform-sign-in');
     errorBox.textContent = 'Unable to connect to the platform. Check your connection and try again.';
-    errorBox.hidden = false; errorBox.focus(); content.append(button('Try again', initialize)); mountAppSection(content);
+    errorBox.hidden = false; errorBox.focus(); content.append(button('Try again', initialize)); mountSignInUpdate(content);
     return;
   }
   csrf = session.csrfToken; nav(); if (session.stage === 'FULL') await listShops(); else await authenticator();

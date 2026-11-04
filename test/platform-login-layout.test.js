@@ -42,6 +42,28 @@ test('platform sign-in uses a responsive seller-style layout without changing th
   assert.equal(await intro.locator('img').evaluate(img => img.complete && img.naturalWidth > 0), true);
   let a = await intro.boundingBox(), b = await form.boundingBox();
   assert.ok(a.x + a.width <= b.x, 'desktop intro sits beside the sign-in form');
+  const seller = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await seller.route('**/api/v1/**', route => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/seller/session')) return route.fulfill({ status: 401, json: { error: { message: 'Sign in required' } } });
+    return route.fulfill({ json: { mode: 'demo', shopName: 'Example', currency: 'MYR' } });
+  });
+  await seller.goto(`http://127.0.0.1:${server.address().port}/seller/index.html`);
+  await seller.locator('#login-view:not([hidden]) #username').waitFor();
+  const metrics = async (tab, selectors) => tab.evaluate(selectors => Object.fromEntries(Object.entries(selectors).map(([key, selector]) => {
+    const node = document.querySelector(selector), rect = node.getBoundingClientRect(), css = getComputedStyle(node);
+    return [key, { width: rect.width, height: rect.height, fontSize: css.fontSize, fontWeight: css.fontWeight, color: css.color }];
+  })), selectors);
+  const sellerMetrics = await metrics(seller, { intro: '.login-intro', title: '.login-intro h1', input: '#login-form .login-input-wrap', button: '#login-submit' });
+  const platformMetrics = await metrics(page, { intro: '.platform-login-intro', title: '.platform-login-title', input: '#content .login-input-wrap', button: '#content form button[type=submit]' });
+  assert.ok(Math.abs(sellerMetrics.intro.width - platformMetrics.intro.width) < 2, 'two pages use the same desktop column proportions');
+  assert.equal(platformMetrics.title.fontSize, sellerMetrics.title.fontSize);
+  assert.equal(platformMetrics.title.fontWeight, sellerMetrics.title.fontWeight);
+  assert.equal(platformMetrics.title.color, sellerMetrics.title.color);
+  assert.ok(Math.abs(sellerMetrics.input.width - platformMetrics.input.width) < 2, 'form fields use the same width');
+  assert.equal(platformMetrics.button.height, sellerMetrics.button.height);
+  assert.equal(await page.locator('#content .login-footer-action').count(), 2);
+  await seller.close();
   for (const width of [768, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
     a = await intro.boundingBox(); b = await form.boundingBox();

@@ -73,7 +73,7 @@ test('platform PWA: install, offline contract, version N to N+1 update with load
   await guest.getByLabel('Password', { exact: true }).fill('synthetic-password');
   const check = guest.getByRole('button', { name: 'Check for updates', exact: true });
   await check.waitFor();
-  await guest.waitForFunction(() => !document.querySelector('#content .edit-card button')?.disabled);
+  await guest.waitForFunction(() => !document.querySelector('#content .login-footer button')?.disabled);
   await check.click();
   await guest.locator('#content').getByText('This is the latest version.').waitFor();
   assert.equal(await guest.getByLabel('Password', { exact: true }).inputValue(), 'synthetic-password');

@@ -140,3 +140,14 @@ export function mountAppSection(parent) {
   updateButton = action('Update now', () => actions?.update(), 'primary-button'); updateButton.hidden = true;
   section.append(make('h3', 'App version'), versionLine, checkButton, updateButton, statusLine); parent.append(section); render();
 }
+
+// Compact signed-out footer uses the same update state and guarded activation as the Account page.
+export function mountSignInUpdate(parent) {
+  const footer = make('footer', undefined, 'login-footer');
+  versionLine = make('span', undefined, 'login-footer-version');
+  statusLine = make('span', undefined, 'login-footer-status'); statusLine.setAttribute('role', 'status');
+  const controls = make('span', undefined, 'login-footer-update');
+  checkButton = action('Check for updates', async () => { flags.checked = false; render(); await actions?.check(); }, 'login-footer-action');
+  updateButton = action('Update now', () => actions?.update(), 'login-footer-action'); updateButton.hidden = true;
+  controls.append(statusLine, checkButton, updateButton); footer.append(versionLine, controls); parent.append(footer); render();
+}
