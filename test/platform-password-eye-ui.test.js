@@ -24,7 +24,7 @@ test('platform password fields use an SVG eye button that toggles visibility wit
     return route.fulfill({ json: { csrfToken: 'synthetic-csrf' } });
   });
   await page.goto(`http://127.0.0.1:${server.address().port}/platform/index.html`);
-  const input = page.getByLabel('Password', { exact: true }), eye = page.getByRole('button', { name: 'Show password', exact: true });
+  const input = page.getByLabel('Password', { exact: true }), eye = page.locator('#content .password-toggle');
   await eye.waitFor();
   // An icon, not words: one SVG, no visible text, and the field keeps its own name.
   assert.equal(await eye.locator('svg').count(), 1); assert.equal((await eye.innerText()).trim(), '');
@@ -39,10 +39,10 @@ test('platform password fields use an SVG eye button that toggles visibility wit
   assert.equal(await page.locator('.login-input-wrap input').first().evaluate(node => getComputedStyle(node).borderTopWidth), '0px');
   await input.fill('Synthetic-password-1');
   await eye.click();
-  assert.equal(await input.getAttribute('type'), 'text'); assert.equal(await eye.getAttribute('aria-pressed'), 'true');
+  assert.equal(await input.getAttribute('type'), 'text'); assert.equal(await eye.getAttribute('aria-pressed'), 'true'); assert.equal(await eye.getAttribute('aria-label'), 'Hide password'); assert.equal(await eye.getAttribute('title'), 'Hide password');
   assert.doesNotMatch(await shape(), /M3 3l18 18$/);
   assert.equal(await input.inputValue(), 'Synthetic-password-1');
-  await eye.press('Enter'); assert.equal(await input.getAttribute('type'), 'password'); assert.equal(await shape(), hiddenShape);
+  await eye.press('Enter'); assert.equal(await input.getAttribute('type'), 'password'); assert.equal(await eye.getAttribute('aria-label'), 'Show password'); assert.equal(await shape(), hiddenShape);
   await eye.focus(); await page.keyboard.press('Space'); assert.equal(await input.getAttribute('type'), 'text');
   // The eye sits inside the input's right edge and nothing overflows on a phone.
   const box = await page.locator('.login-input-wrap').nth(1).boundingBox(), eyeBox = await eye.boundingBox();

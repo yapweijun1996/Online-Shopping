@@ -41,7 +41,7 @@ function render() {
   document.querySelector('#main')?.toggleAttribute('inert', busy);
   document.querySelector('#sidebar')?.toggleAttribute('inert', busy);
   if (versionLine) versionLine.textContent = `App version: ${APP_VERSION}`;
-  if (checkButton) checkButton.disabled = busy || !actions;
+  if (checkButton) checkButton.disabled = busy || flags.checking || !actions;
   if (updateButton) updateButton.hidden = current !== 'UPDATE_AVAILABLE';
   if (barUpdate) {
     const mode = current === 'UPDATE_FAILED' ? 'failed' : busy ? 'busy' : current === 'UPDATE_AVAILABLE' ? 'ready' : 'idle';

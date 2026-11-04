@@ -66,7 +66,7 @@ function field(form, name, title, { type = 'text', value = '', required = true, 
   if (type === 'password') {
     const toggle = element('button', undefined, 'password-toggle'); toggle.type = 'button'; toggle.append(icon('eyeOff'));
     toggle.setAttribute('aria-label', 'Show password'); toggle.title = 'Show password'; toggle.setAttribute('aria-controls', input.id); toggle.setAttribute('aria-pressed', 'false');
-    toggle.addEventListener('click', () => { input.type = input.type === 'password' ? 'text' : 'password'; toggle.setAttribute('aria-pressed', String(input.type === 'text')); toggle.replaceChildren(icon(input.type === 'text' ? 'eye' : 'eyeOff')); });
+    toggle.addEventListener('click', () => { input.type = input.type === 'password' ? 'text' : 'password'; const visible = input.type === 'text'; toggle.setAttribute('aria-pressed', String(visible)); toggle.setAttribute('aria-label', visible ? 'Hide password' : 'Show password'); toggle.title = visible ? 'Hide password' : 'Show password'; toggle.replaceChildren(icon(visible ? 'eye' : 'eyeOff')); });
     wrap.append(toggle);
   }
   group.append(label, wrap); form.append(group);
@@ -76,7 +76,7 @@ function screen(title) {
   for (const canvas of content.querySelectorAll('canvas')) { canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height); canvas.width = 0; }
   for (const node of content.querySelectorAll('[data-secret]')) node.replaceChildren();
   document.body.classList.toggle('auth', session?.stage !== 'FULL');
-  document.body.classList.remove('saving-recovery');
+  document.body.classList.remove('saving-recovery', 'platform-sign-in');
   content.replaceChildren(); document.querySelector('#page-actions').replaceChildren(); document.querySelector('.page-heading .eyebrow').textContent = ''; document.querySelector('#page-title').textContent = title; notice.textContent = ''; errorBox.hidden = true; errorBox.textContent = '';
   const current = ({ 'Add shop': 'Add shop', 'Audit trail': 'Activity', Account: 'Account' })[title] || 'Shops';
   for (const node of navigation.querySelectorAll('button')) {
@@ -128,8 +128,15 @@ async function run(action, { onError } = {}) {
   try { await action(); }
   catch (error) {
     if (error.status === 401 && session?.stage === 'FULL') { csrf = null; session = null; await signIn(); }
-    if (onError && error.status !== 401 && error.name !== 'TimeoutError') onError(error);
-    else { errorBox.textContent = error.name === 'TimeoutError' ? 'The request timed out. Refresh the shop list before retrying a change.' : error.message; errorBox.hidden = false; errorBox.focus(); }
+    const authScreen = document.body.classList.contains('auth');
+    let message = error.message;
+    if (authScreen && error.name === 'TimeoutError') message = 'The request timed out. Check your connection and try again.';
+    else if (authScreen && error.name === 'TypeError') message = 'Unable to connect. Check your connection and try again.';
+    else if (authScreen && error.status === 401) message = document.body.classList.contains('platform-sign-in') ? 'The sign-in details could not be verified. Please try again.' : 'The verification details could not be confirmed. Please try again.';
+    else if (authScreen && error.status === 429) message = 'Too many attempts. Please wait and try again.';
+    else if (error.name === 'TimeoutError') message = 'The request timed out. Refresh the shop list before retrying a change.';
+    if (onError && error.status !== 401 && error.name !== 'TimeoutError' && (!authScreen || error.name !== 'TypeError')) onError(Object.assign(error, { message }));
+    else { errorBox.textContent = message; errorBox.hidden = false; errorBox.focus(); }
   } finally { busy = false; content.removeAttribute('aria-busy'); for (const node of document.querySelectorAll('button')) node.disabled = node.dataset.unavailable === 'true' || (node.dataset.requiresSaved === 'true' && !content.querySelector('.check-label input')?.checked); }
 }
 async function copy(value, message = 'Copied. Keep these details private.') {
@@ -215,14 +222,26 @@ function nav() {
   mountMenuUpdate(document.querySelector('#account-menu'));
 }
 async function signIn() {
-  session = null; nav(); screen('Sign in');
-  content.append(element('p', 'Welcome back. Manage your shops securely from one place.'));
-  const challenge = await api('/csrf'); csrf = challenge.csrfToken;
+  session = null; nav(); screen('Platform administrator sign in'); document.body.classList.add('platform-sign-in');
+  content.append(element('p', 'Use your SuperAdmin account. You will confirm your identity with your authenticator next.'));
+  const loading = element('p', 'Preparing secure sign-in…'); loading.setAttribute('role', 'status'); content.append(loading);
+  let challenge;
+  try { challenge = await api('/csrf'); }
+  catch {
+    loading.remove();
+    errorBox.textContent = 'Unable to prepare sign-in. Check your connection and try again.';
+    errorBox.hidden = false; errorBox.focus();
+    content.append(button('Try again', signIn));
+    mountAppSection(content);
+    return;
+  }
+  loading.remove(); csrf = challenge.csrfToken;
   const node = form(async (data) => {
     const result = await api('/session', { method: 'POST', body: data }); node.reset(); session = { ...result, username: data.username }; csrf = result.csrfToken; await authenticator();
   });
   field(node, 'username', 'SuperAdmin username', { autocomplete: 'username', maxLength: 64, icon: 'user' });
   field(node, 'password', 'Password', { type: 'password', autocomplete: 'current-password', maxLength: 256 }); submit(node, 'Continue');
+  mountAppSection(content);
 }
 async function authenticator() {
   screen(session.totpEnabled ? 'Confirm authenticator' : 'Set up authenticator'); nav();
@@ -654,10 +673,18 @@ const unsavedEdits = () => [...content.querySelectorAll('form input, form select
 // One-time secrets (recovery codes, new seller credentials) exist only on screen; reloading would destroy them.
 const oneTimeSecretsShown = () => document.body.classList.contains('saving-recovery') || document.querySelector('#secret-dialog')?.open === true;
 initPwaShell({ guard: () => ({ dirty: unsavedEdits() || oneTimeSecretsShown(), busy, signature: draftSignature(content) }), confirmUpdate: (text) => confirmModal(text, { title: 'Update now?', confirmLabel: 'Update' }) });
-await run(async () => {
-  try { session = await api('/session'); csrf = session.csrfToken; nav(); if (session.stage === 'FULL') await listShops(); else await authenticator(); }
-  catch (error) { if (error.status === 401) await signIn(); else throw error; }
-});
+async function initialize() {
+  try { session = await api('/session'); }
+  catch (error) {
+    if (error.status === 401) { await signIn(); return; }
+    session = null; nav(); screen('Platform administrator sign in'); document.body.classList.add('platform-sign-in');
+    errorBox.textContent = 'Unable to connect to the platform. Check your connection and try again.';
+    errorBox.hidden = false; errorBox.focus(); content.append(button('Try again', initialize)); mountAppSection(content);
+    return;
+  }
+  csrf = session.csrfToken; nav(); if (session.stage === 'FULL') await listShops(); else await authenticator();
+}
+await run(initialize);
 markReady();
 addEventListener('pagehide', () => {
   for (const canvas of content.querySelectorAll('canvas')) canvas.width = canvas.height = 0;
