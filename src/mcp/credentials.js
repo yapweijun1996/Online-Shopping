@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { can } from '../roles.js';
-import { OPERATION_SCOPE_CAPABILITIES } from './operation-policy.js';
+import { OPERATION_SCOPE_CAPABILITIES, OPERATION_RESOURCE_SCOPES } from './operation-policy.js';
 import { operationEpochHash } from './operation-epoch.js';
 
 export const hash = (value) => createHash('sha256').update(value).digest('hex');
@@ -8,7 +8,8 @@ export const secret = () => randomBytes(32).toString('base64url');
 export const stamp = (offset = 0) => new Date(Date.now() + offset).toISOString();
 export const SCOPES = Object.freeze(['catalog.read', 'orders.read', 'analytics.read']);
 // Resource-specific operation policies are not implemented and confer no scope.
-export const V2_SCOPES = Object.freeze(Object.keys(OPERATION_SCOPE_CAPABILITIES).filter((scope) => OPERATION_SCOPE_CAPABILITIES[scope] !== null));
+export const V2_SCOPES = Object.freeze(Object.keys(OPERATION_SCOPE_CAPABILITIES).filter((scope) =>
+  OPERATION_SCOPE_CAPABILITIES[scope] !== null || OPERATION_RESOURCE_SCOPES.includes(scope)));
 export function v2Epoch(config) {
   if (config?.mcpV2?.enabled !== true || !/^[0-9a-f]{64}$/.test(config.mcpV2.buildDigest || '')) return null;
   try { return operationEpochHash(config.mcpV2.epoch); } catch { return null; }
@@ -17,7 +18,8 @@ export const supportedScopes = (config) => v2Epoch(config) ? [...SCOPES, ...V2_S
 const capability = { 'catalog.read': 'catalog.write', 'orders.read': 'orders.fulfil', 'analytics.read': 'figures.read' };
 export const eligible = (account) => account && account.active === 1 && account.must_change_password === 0 && ['OWNER', 'MANAGER'].includes(account.role);
 export const effective = (account, scopes, config) => eligible(account) && typeof scopes === 'string'
-  ? scopes.split(' ').filter((scope) => supportedScopes(config).includes(scope) && can(account.role, capability[scope] ?? OPERATION_SCOPE_CAPABILITIES[scope])) : [];
+  ? scopes.split(' ').filter((scope) => supportedScopes(config).includes(scope) &&
+    (OPERATION_RESOURCE_SCOPES.includes(scope) || can(account.role, capability[scope] ?? OPERATION_SCOPE_CAPABILITIES[scope]))) : [];
 
 export async function audit(store, tenantId, event, context = {}, outcome = 'OK', tool = null, count = 0) {
   await store.run('DELETE FROM mcp_audit WHERE id IN (SELECT id FROM mcp_audit WHERE at < ? ORDER BY at LIMIT 100)', stamp(-90 * 86400000));

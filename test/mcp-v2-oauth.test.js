@@ -141,7 +141,7 @@ for (const engine of ['sqlite', 'postgres']) {
   });
   test(`${engine}: v2 rejects unrequested, duplicate, ambiguous and impersonation fields`, options, async (t) => {
     const f = await fixture(t, engine), clientId = await f.register();
-    for (const scope of ['operations.read', 'operations.cancel', 'catalog.write catalog.write', 'unknown.read']) assert.equal((await f.stage(clientId, scope)).data.error, 'invalid_scope');
+    for (const scope of ['operations.write', 'operations.admin', 'catalog.write catalog.write', 'unknown.read']) assert.equal((await f.stage(clientId, scope)).data.error, 'invalid_scope');
     assert.equal((await f.stage(clientId, 'catalog.write', '&scope=catalog.read')).data.error, 'invalid_request');
     const staged = await f.stage(clientId), signed = await f.login(staged);
     for (const selected of [['catalog.write', 'catalog.write'], ['catalog.read catalog.write'], [null], ['company.write']]) assert.equal((await f.approve(staged, signed, selected)).response.status, 400);

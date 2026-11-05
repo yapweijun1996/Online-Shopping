@@ -1,8 +1,7 @@
 import { mediaPolicyForTool } from './media-policy.js';
 
-// Server-owned draft policy. Nothing here registers tools, issues scopes, or
-// grants authority. Operations inspection/cancellation need an additional
-// per-resource policy and are deliberately absent from the tool map.
+// Source-owned policy metadata. Resource-control scopes have no static domain
+// capability; their target operation supplies the independently checked policy.
 export const OPERATION_SCOPE_CAPABILITIES = Object.freeze({
   'company.read': 'settings.write',
   'company.write': 'settings.write',
@@ -17,6 +16,14 @@ export const OPERATION_SCOPE_CAPABILITIES = Object.freeze({
   'operations.cancel': null,
 });
 export const OPERATION_SCOPES = Object.freeze(Object.keys(OPERATION_SCOPE_CAPABILITIES));
+// These scopes authorize only resource controls; each call additionally requires
+// the original operation's source-owned domain scopes and current capability.
+export const OPERATION_RESOURCE_CONTROLS = Object.freeze({
+  'operations.get': Object.freeze({ scope: 'operations.read', capability: 'underlying operation capability' }),
+  'operations.audit': Object.freeze({ scope: 'operations.read', capability: 'underlying operation capability' }),
+  'operations.cancel': Object.freeze({ scope: 'operations.cancel', capability: 'underlying operation capability' }),
+});
+export const OPERATION_RESOURCE_SCOPES = Object.freeze(['operations.read', 'operations.cancel']);
 const scopeByTool = {
   'company.get': 'company.read', 'company.preview_update': 'company.write', 'company.commit_update': 'company.write',
   'catalog.preview_create': 'catalog.write', 'catalog.commit_create': 'catalog.write',
@@ -30,7 +37,8 @@ const scopeByTool = {
   'analytics.inventory_risk': 'analytics.extended',
 };
 export const OPERATION_SCOPE_POLICIES = Object.freeze(Object.fromEntries(
-  Object.entries(scopeByTool).map(([name, scope]) => [name, Object.freeze({ scope, capability: OPERATION_SCOPE_CAPABILITIES[scope] })]),
+  [...Object.entries(scopeByTool).map(([name, scope]) => [name, Object.freeze({ scope, capability: OPERATION_SCOPE_CAPABILITIES[scope] })]),
+    ...Object.entries(OPERATION_RESOURCE_CONTROLS)],
 ));
 
 // Media stays ineligible until staged bytes and old/new image review exist.
@@ -57,6 +65,7 @@ export const OPERATION_APPROVAL_MS = 5 * 60 * 1000;
 // The optional marker is source-owned stored metadata, never an MCP scope argument.
 // Describing a reserved catalog policy does not enable its write path.
 export function operationAuthorityPolicy(toolName, mediaPolicyId = null) {
+  if (Object.hasOwn(OPERATION_RESOURCE_CONTROLS, toolName)) throw new TypeError('Operation control requires a verified resource binding.');
   if (typeof toolName !== 'string' || !Object.hasOwn(OPERATION_SCOPE_POLICIES, toolName)) {
     throw new TypeError('Unknown operation policy.');
   }

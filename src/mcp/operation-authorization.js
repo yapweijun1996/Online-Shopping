@@ -1,8 +1,9 @@
 import { ApiError } from '../http.js';
 import { can } from '../roles.js';
 import { hash, liveGrant, stamp, SCOPES, V2_SCOPES } from './credentials.js';
-import { operationAuthorityPolicy } from './operation-policy.js';
+import { operationAuthorityPolicy, OPERATION_RESOURCE_CONTROLS } from './operation-policy.js';
 import { mediaInstant } from './media-policy.js';
+import { operationResourceBinding, readOperationRecord } from './operation-record.js';
 const deny = () => { throw new ApiError(403, 'FORBIDDEN', 'Operation authorization failed.'); };
 const knownScopes = new Set([...SCOPES, ...V2_SCOPES]);
 function scopes(value) {
@@ -16,13 +17,11 @@ function scopes(value) {
 // repeat immediately before commit. The caller must also verify the separate,
 // explicit human approval, stored proposal, resource ownership, revision,
 // policy and audit. Never derive binding from model-controlled input.
-export async function verifyOperationAuthority(store, { bearer, binding, toolName, epochHash, mediaPolicyId = null }) {
+async function authorizePolicy(store, { bearer, binding, epochHash, policy, consentCutoff }) {
   if (typeof bearer !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(bearer)) deny();
   if (typeof epochHash !== 'string' || !/^[0-9a-f]{64}$/.test(epochHash) ||
       !binding || typeof binding.tenantId !== 'string' || typeof binding.issuer !== 'string' ||
       typeof binding.resource !== 'string') deny();
-  let policy;
-  try { policy = operationAuthorityPolicy(toolName, mediaPolicyId); } catch { deny(); }
   const { scope, capability, requiredScopes } = policy;
 
   // Deployment mode is not the shop's persisted setup choice. Require a real
@@ -40,18 +39,49 @@ export async function verifyOperationAuthority(store, { bearer, binding, toolNam
       !requiredScopes.every(required => scopes(token.scopes).includes(required) && scopes(grant.scopes).includes(required)) ||
       !can(grant.account.role, capability)) deny();
 
-  // A string present in an older grant is insufficient: this separate record
-  // must be written by a future explicit, authenticated v2 consent flow.
+  const cutoff = consentCutoff === undefined ? token.issued_at : consentCutoff < token.issued_at ? consentCutoff : token.issued_at;
+  if (!mediaInstant(cutoff)) deny();
+  // Scope strings alone never replace explicit, identity-bound consent evidence.
   for (const required of requiredScopes) {
   const consent = await store.get(`SELECT grant_id, consented_at FROM mcp_v2_scope_consent
     WHERE grant_id = ? AND tenant_id = ? AND account_id = ? AND client_id = ?
       AND scope = ? AND account_auth_version = ? AND epoch_hash = ? AND consented_at >= ? AND consented_at <= ?`,
-  grant.id, binding.tenantId, grant.account_id, grant.client_id, required, grant.account_auth_version, epochHash, grant.created_at, token.issued_at);
+  grant.id, binding.tenantId, grant.account_id, grant.client_id, required, grant.account_auth_version, epochHash, grant.created_at, cutoff);
   if (!consent || !mediaInstant(consent.consented_at)) deny();
   }
-  return Object.freeze({ tenantId: binding.tenantId, accountId: grant.account_id, clientId: grant.client_id, grantId: grant.id,
+  return { grant, authority: Object.freeze({ tenantId: binding.tenantId, accountId: grant.account_id, clientId: grant.client_id, grantId: grant.id,
     accountAuthVersion: grant.account_auth_version, grantExpiresAt: grant.absolute_expires_at, tokenIssuedAt: token.issued_at,
-    scope, requiredScopes });
+    scope, requiredScopes }) };
+}
+
+export async function verifyOperationAuthority(store, { bearer, binding, toolName, epochHash, mediaPolicyId = null }) {
+  let policy;
+  try { policy = operationAuthorityPolicy(toolName, mediaPolicyId); } catch { deny(); }
+  return (await authorizePolicy(store, { bearer, binding, epochHash, policy })).authority;
+}
+
+// Fixed control names and an operation ID only. The caller holds the current
+// platform->tenant writer fence; no scope, identity or record comes from args.
+export async function verifyOperationControlAuthority(store, { bearer, binding, toolName, epochHash, buildDigest, tenantRevision, operationId }) {
+  if (!Object.hasOwn(OPERATION_RESOURCE_CONTROLS, toolName) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(operationId || '') ||
+      !Number.isSafeInteger(tenantRevision) || tenantRevision < 0 || !/^[0-9a-f]{64}$/.test(buildDigest || '')) deny();
+  const row = await store.get('SELECT * FROM mcp_v2_operation WHERE id=?', operationId);
+  const resourceBinding = operationResourceBinding(row);
+  if (!resourceBinding || !mediaInstant(row.created_at)) deny();
+  let underlying;
+  try { underlying = operationAuthorityPolicy(row.tool_name, row.media_policy_id ?? null); } catch { deny(); }
+  if (underlying.flow === 'RESERVED') deny();
+  const scope = OPERATION_RESOURCE_CONTROLS[toolName].scope;
+  const policy = Object.freeze({ ...underlying, scope, requiredScopes: Object.freeze([scope, ...underlying.requiredScopes]) });
+  const { authority, grant } = await authorizePolicy(store, { bearer, binding, epochHash, policy, consentCutoff: row.created_at });
+  if (row.grant_id !== authority.grantId || row.account_id !== authority.accountId || row.client_id !== authority.clientId) deny();
+  const context = Object.freeze({ tenantId: authority.tenantId, tenantRevision, accountId: authority.accountId, clientId: authority.clientId,
+    grantId: authority.grantId, accountAuthVersion: authority.accountAuthVersion, epochHash, buildDigest, issuer: binding.issuer,
+    resource: binding.resource, grantExpiresAt: authority.grantExpiresAt });
+  const record = await readOperationRecord(store, row, { binding, tenantRevision, epochHash, buildDigest, grant, context,
+    expected: { resourceType: resourceBinding.resourceType, mediaPolicyId: underlying.mediaPolicyId } });
+  if (!record) deny();
+  return Object.freeze({ authority, record });
 }
 
 // Already inside the caller's platform->tenant writer fence. Never selects a store.

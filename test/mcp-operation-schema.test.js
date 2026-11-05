@@ -183,7 +183,7 @@ test('draft policy matches proposed contracts and does not change the active rea
     assert.ok(OPERATION_SCOPES.includes(policy.scope));
   }
   for (const name of ['operations.get', 'operations.cancel', 'operations.audit']) {
-    assert.equal(Object.hasOwn(OPERATION_SCOPE_POLICIES, name), false); // requires target-specific RBAC design
+    assert.equal(Object.hasOwn(OPERATION_SCOPE_POLICIES, name), true); // every call additionally requires its verified target policy
   }
   assert.ok(OPERATION_SCOPES.every((scope) => !SCOPES.includes(scope)));
   assert.deepEqual(catalogue.map((tool) => tool.name).sort(), [
