@@ -22,7 +22,7 @@ for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: gated default an
       const result = await client.call(name, args); assert.equal(result.response.status, 200, JSON.stringify(result.data));
       const value = result.data.result.structuredContent; assert.equal(value.timeZone, 'UTC+8'); assert.equal(value.coverage.historyComplete, false);
       assert.ok(value.dateRange); assert.ok(value.filters); assert.ok(value.totals);
-      assert.equal((await f.store.get("SELECT COUNT(*) AS n FROM mcp_audit WHERE event = 'READ' AND outcome = ?", name)).n, 1);
+      assert.equal((await f.store.get("SELECT COUNT(*) AS n FROM mcp_audit WHERE event = 'READ' AND tool_name = ? AND outcome = 'OK'", name)).n, 1);
     }
     const all = await freshCatalogAccess(f, legacyCatalogScopes + ' company.read company.write catalog.write analytics.extended');
     assert.equal((await all.rpc('tools/list', {})).data.result.tools.length, 18);

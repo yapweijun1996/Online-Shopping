@@ -72,6 +72,13 @@ No raw arguments or domain notes enter MCP audit. `duration_ms=0` means unmeasur
 it is not a latency claim. Invalid requests/denials before a durable operation are
 not represented as a complete operation-linked invocation history.
 
+Upload begin/append/discard and their authorized retries also write typed CALL
+inside the existing coordinator writer transaction, using fixed `STAGE_*` outcomes,
+the server stage correlation ID and product/actor/client/grant bindings. Their
+operation link stays null, so they remain outside `operations.audit`; existing
+media-event proofs are retained. Audit failure rolls back stage/quota/chunk/proof
+changes, while the already committed rate reservation remains charged.
+
 ## Retention, errors and rollback
 
 Both audit sources retain90days. Trusted maintenance removes at most100 rows and

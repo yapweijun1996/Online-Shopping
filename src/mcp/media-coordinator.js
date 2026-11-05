@@ -11,6 +11,7 @@ import { createMediaNativeSession } from './media-native.js';
 import { isMediaHash, isMediaUuid, mediaObject } from './media-policy.js';
 import { makeUploadAdapter } from './media-upload-adapter.js';
 import { assertUploadThumbnail } from './media-upload-policy.js';
+import { recordMcpAudit } from './audit.js';
 
 const invalid = () => { throw new ApiError(400, 'MEDIA_INPUT', 'Invalid media upload input.'); };
 const changed = () => { throw new ApiError(409, 'MEDIA_RESOURCE_CHANGED', 'Media resource changed. Reopen its review.'); };
@@ -76,6 +77,13 @@ export function createMediaCoordinator({ store, binding, tenantGuard, epoch, bui
     return withMediaWriter(store, context, writer => work(writer, context, read));
   });
   const shape = (value, fields) => { try { mediaObject(value, fields); } catch { invalid(); } };
+  const auditStage = async (writer,context,stage,action) => {
+    const stored=await writer.inspect(stage.stageId);
+    await recordMcpAudit(store,{tenantId:context.tenantId,accountId:context.accountId,clientId:context.clientId,grantId:context.grantId,
+      toolName:'media.prepare_upload',resourceId:stored.productId,operationId:null,correlationId:stored.correlationId,event:'CALL',
+      outcome:`STAGE_${action}${stage.replayed?'_REPLAY':''}`,durationMs:0,resultCount:1});
+    return stage;
+  };
   const inspectTarget = async (reader, productId, slot, expectedRevision) => {
     const snapshot = await readMediaSnapshot(reader, productId);
     if (snapshot.revision !== expectedRevision) changed();
@@ -91,13 +99,12 @@ export function createMediaCoordinator({ store, binding, tenantGuard, epoch, bui
     shape(input, ['productId','targetSlot','expectedRevision','sourceSha256','sourceMime','declaredBytes','idempotencyKey']);
     input = { ...input };
     if (!isMediaUuid(input.productId) || !['MAIN','GALLERY'].includes(input.targetSlot) || !isMediaHash(input.expectedRevision)) invalid();
-    return write(bearer, async (writer, _context, reader) => {
+    return write(bearer, async (writer, context, reader) => {
       const stage = await writer.begin({ ...input, codecDigest: codec.digest });
-      if (stage.replayed) return stage;
       // Invalid new targets roll back their stage/quota/audit atomically. Existing
       // immutable begin intent remains replayable after later portal changes.
-      await inspectTarget(reader, input.productId, input.targetSlot, input.expectedRevision);
-      return stage;
+      if(!stage.replayed)await inspectTarget(reader, input.productId, input.targetSlot, input.expectedRevision);
+      return auditStage(writer,context,stage,'BEGIN');
     });
   };
   const append = async (bearer, input) => {
@@ -108,13 +115,13 @@ export function createMediaCoordinator({ store, binding, tenantGuard, epoch, bui
     await reserve(bearer, exact);
     if (!exact) invalid();
     const stageId = input.stageId, offset = input.offset, bytes = decodeMediaParts(input.dataParts);
-    return write(bearer, writer => writer.append(stageId, offset, bytes));
+    return write(bearer, async (writer,context) => auditStage(writer,context,await writer.append(stageId,offset,bytes),'APPEND'));
   };
   const discard = async (bearer, input) => {
     await reserve(bearer, false);
     shape(input, ['stageId']); if (!isMediaUuid(input.stageId)) invalid();
     const id = input.stageId;
-    return write(bearer, writer => writer.discard(id));
+    return write(bearer, async (writer,context) => auditStage(writer,context,await writer.discard(id),'DISCARD'));
   };
   const hooks = Object.freeze({
     policyId: 'media-upload-v1', codecDigest: codec.digest,

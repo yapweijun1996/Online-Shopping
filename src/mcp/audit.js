@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { OPERATION_SCOPE_POLICIES, OPERATION_MUTATION_PAIRS } from './operation-policy.js';
 import { mediaPolicyForTool } from './media-policy.js';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-export const MCP_AUDIT_OUTCOMES = Object.freeze(['OK','PENDING_APPROVAL','PREPARED','APPROVED','COMMITTED','REPLAY','REJECTED','CANCELLED','EXPIRED','STALE_REVISION','CONFLICT','FAILED','STAGE_BEGIN','STAGE_APPEND','STAGE_DISCARD']);
+export const MCP_AUDIT_OUTCOMES = Object.freeze(['OK','PENDING_APPROVAL','PREPARED','APPROVED','COMMITTED','REPLAY','REJECTED','CANCELLED','EXPIRED','STALE_REVISION','CONFLICT','FAILED',
+  'STAGE_BEGIN','STAGE_APPEND','STAGE_DISCARD','STAGE_BEGIN_REPLAY','STAGE_APPEND_REPLAY','STAGE_DISCARD_REPLAY']);
 const outcomes = new Set(MCP_AUDIT_OUTCOMES);
 const readNames = new Set(['company.get','analytics.sales_trend','analytics.top_products','analytics.inventory_risk','inventory.summary','inventory.movements','media.list','operations.get','operations.audit']);
 const invalid = () => { throw new TypeError('Invalid typed MCP audit record.'); };

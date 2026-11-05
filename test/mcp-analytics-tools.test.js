@@ -51,8 +51,8 @@ for (const dialect of ['sqlite', 'postgres']) {
       assert.equal(result.coverage.databaseComplete, true); assert.equal(result.coverage.historyComplete, false);
       assert.ok(Object.hasOwn(result, 'dateRange')); assert.ok(Object.hasOwn(result, 'filters')); assert.ok(Object.hasOwn(result, 'currency'));
       assert.doesNotMatch(JSON.stringify(result), /Synthetic private|buyer|recipient|address|phone|imageData/i);
-      const audit = await f.store.get("SELECT tool_name, outcome FROM mcp_audit WHERE event = 'READ' AND outcome = ?", name);
-      assert.deepEqual({ ...audit }, { tool_name: null, outcome: name });
+      const audit = await f.store.get("SELECT tool_name, outcome FROM mcp_audit WHERE event = 'READ' AND tool_name = ? AND outcome = 'OK'", name);
+      assert.deepEqual({ ...audit }, { tool_name: name, outcome: 'OK' });
     }
     assert.equal(Number((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_operation')).n), 0);
     assert.equal(Number((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_event')).n), 0);
