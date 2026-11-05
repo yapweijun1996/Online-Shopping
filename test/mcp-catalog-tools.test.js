@@ -226,6 +226,23 @@ for (const dialect of ['sqlite', 'postgres']) {
     assert.equal((await f.store.get("SELECT COUNT(*) AS n FROM mcp_v2_event WHERE operation_id = ? AND event = 'COMMIT'", op.operationId)).n, 1);
   });
 
+  test(`${dialect}: full option review supports existing 60-character codes and generated type suffixes`, options, async t => {
+    const f = await fixture(t, dialect);
+    await createOptionType(f.store, { name: 'A'.repeat(40) });
+    const type = await createOptionType(f.store, { name: 'A'.repeat(40) + ' B' });
+    assert.ok(type.code.length > 40);
+    const first = await createOptionValue(f.store, type.id, { label: 'First synthetic value', code: 'x'.repeat(60) });
+    const second = await createOptionValue(f.store, type.id, { label: 'Second synthetic value', code: 'y'.repeat(60) });
+    const target = await createProduct(f.store, f.draft({ sku: 'LONG-CODES', variantGroup: 'LONG-CODES', options: [{ typeId: type.id, valueId: first.id }] }));
+    const op = dto(await f.previewUpdate(target.id, { options: [{ typeId: type.id, valueId: second.id }] }));
+    const review = await f.call('/api/v1/seller/mcp/operations/' + op.operationId, 'GET', undefined, f.headers);
+    assert.equal(review.response.status, 200);
+    assert.equal(review.data.proposal.optionReview.before[0].valueCode, 'x'.repeat(60));
+    assert.equal(review.data.proposal.optionReview.after[0].valueCode, 'y'.repeat(60));
+    assert.equal(review.data.proposal.optionReview.after[0].typeCode, type.code);
+    await f.approve(op); assert.equal(dto(await f.commit('update', op)).status, 'COMMITTED');
+  });
+
   test(`${dialect}: default wiring exposes no staged catalog mutations and leaves the eight v1 definitions unchanged`, options, async t => {
     const f = await fixture(t, dialect), api = await createApi({ store: f.store, config: f.config });
     const call = (method, params) => api(new Request(f.binding.resource, { method: 'POST', headers: {

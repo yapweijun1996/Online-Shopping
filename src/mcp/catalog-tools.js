@@ -26,7 +26,7 @@ const metadataSchema = object({ id: nullable(uuid), listingId: nullable(uuid), s
   categoryCode: text(80), priceMinor: fields.priceMinor, currency: fields.currency, active: fields.active, stockQuantity: initialStock,
   variantGroup: nullable(text(40)), variantLabel: nullable(text(80)), options: choices });
 const optionReviewSchema = { type: 'array', minItems: 0, maxItems: 6, items: object({ typeId: uuid, valueId: uuid,
-  typeName: text(60), typeCode: text(40), valueLabel: text(80), valueCode: text(40), typeActive: { type: 'boolean' }, valueActive: { type: 'boolean' } }) };
+  typeName: text(60), typeCode: text(60), valueLabel: text(80), valueCode: text(60), typeActive: { type: 'boolean' }, valueActive: { type: 'boolean' } }) };
 const sharedSchema = object({ name: text(120), description: text(2000), category: text(80) });
 const effectSchema = object({ before: sharedSchema, after: sharedSchema, members: {
   type: 'array', minItems: 1, maxItems: CATALOG_LIMITS.members, items: object({ id: uuid, sku: text(40) }),
