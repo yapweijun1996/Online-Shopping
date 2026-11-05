@@ -1,6 +1,6 @@
 # Implementation progress
 
-Baseline `17bc1de65a83838e0332f2c2cc5271beac6a109b`; local branch `codex/mcp-v2-isolated`. Status is limited to the isolated working tree, not a release.
+The original prototype was developed from `17bc1de65a83838e0332f2c2cc5271beac6a109b` and merged in `1634735aa70090dcdf54b8d09e2cc09b33cd8a77`. The next isolated phase-0 branch, `codex/mcp-v2-phase0`, starts at that merge. The expiry helper below is new local development work and is not part of that release.
 
 | Phase | Status | Evidence / remaining acceptance |
 | --- | --- | --- |
@@ -26,6 +26,14 @@ Baseline `17bc1de65a83838e0332f2c2cc5271beac6a109b`; local branch `codex/mcp-v2-
 Separate-process synthetic PostgreSQL tests observe the existing application advisory lock while a competing transaction revokes a grant, disables or downgrades an account, or deletes a session. A commit already holding the lock completes first; a revocation holding it first makes the later commit fail. This relies on **every writer using the application store lock** and does not prove safety against privileged direct SQL, other paths or an actual HTTP deployment.
 
 `src/platform/tenant-operation-guard.js` is an unregistered PostgreSQL prototype that holds a fresh ACTIVE tenant-row lock around the tenant operation and binds the platform tenant revision into the proposal. A synthetic two-database test observes another OS process wait on the row lock during a tenant commit, and checks that suspension/resumption invalidates an earlier approval. It still needs application integration, a single-tenant guard, wider lock-order/deadlock and multi-instance/restore review.
+
+`src/mcp/operation-expiry.js` adds an unregistered, explicitly invoked bounded expiry batch. Under a supplied tenant guard and tenant-store transaction it marks expired pending operations or approvals `EXPIRED`, consumes any approval and writes a metadata-only audit event atomically. It preserves the operation, proposal and idempotency evidence. Synthetic SQLite and PostgreSQL tests cover tenant isolation, batch bounds, replay evidence, concurrent calls and rollback on audit failure. It does not delete sensitive proposals, establish a retention horizon, run automatically, integrate with the app, or establish multi-instance safety independently of the supplied guard and store lock.
+
+### Expiry prototype verification — 2026-11-05
+
+The branch began at merge `1634735aa70090dcdf54b8d09e2cc09b33cd8a77`. Tests used Node 24.22.0, in-memory SQLite and a newly initialized password-protected UTF-8 PostgreSQL 16 cluster on loopback, with synthetic data. `npm run check` exited 0. `NODE_ENV=test SHOP_TEST_DATABASE_URL=<disposable cluster> npm test` exited 0: **908 tests, 885 passed, 0 failed, 23 skipped**. The 23 skipped tests are browser opt-ins. After a final additional uniqueness assertion, `NODE_ENV=test SHOP_TEST_DATABASE_URL=<another disposable cluster> node --test --test-concurrency=1 test/mcp-operation-expiry.test.js` exited 0: **2 passed, 0 failed, 0 skipped**. Both new clusters were stopped afterward; the full suite started before the last assertion was added. No browser or restore rehearsal was performed for this helper.
+
+The helper has no application caller, migration, scheduler or deployed state. Local rollback consists of removing this unregistered helper and its tests; transaction rollback on injected audit failure was exercised on both databases. This is not evidence of production restore or rollback readiness. Full proposal-data cleanup, idempotency retention policy, denial auditing, real integration and cross-process multi-instance verification remain open.
 
 ## Blockers before a write-capable foundation can be accepted
 

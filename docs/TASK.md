@@ -1,5 +1,29 @@
 # Executable task ledger
 
+## MCP v2 isolated delivery (2026-11-05)
+
+Scope: implement the Seller Operations Engine in dependency order, beginning with the unaccepted security foundation. Active workspace: `codex/mcp-v2-phase0`, based on `1634735aa70090dcdf54b8d09e2cc09b33cd8a77`. Preserve the eight v1 tools and current business rules. This task permits isolated development and synthetic verification; production activation remains a separate release gate.
+
+| ID | State | Acceptance and dependency |
+| --- | --- | --- |
+| MCP0-01 | In progress | Default-off configuration, external restore epoch, source-derived build identity; reject unsafe/demo/production activation. |
+| MCP0-02 | In progress | Durable opt-in extension storage on both databases, fail-closed schema checks, rollback, no v2 authority imported by SQLite import. Explain base-schema and migration compatibility. |
+| MCP0-03 | In progress | Explicit OAuth consent for new scopes, writes unchecked, current RBAC, no elevation of old grants/tokens, epoch/revocation checks and v1 regression coverage. |
+| MCP0-04 | In progress | Actual review/approval application routes with session, fresh password, Origin/CSRF, bounded input, immutable proposal, tenant lifecycle fence and no-store/CSP. |
+| MCP0-05 | Partial | Bounded expiry prototype tested; proposal retention, replay tombstones and denial auditing remain open. |
+| MCP0-06 | Open | Integrated lifecycle/replay/rollback/security tests and independent review; resolve critical failures before business tools. |
+| MCP1 | Depends on MCP0 | Company tools via settings services and all-writer revision/currency policy. |
+| MCP2 | Depends on MCP0 | Product tools via existing services, including shared listing revision, SKU, snapshots and history. |
+| MCP3 | Depends on MCP0 | Bounded image staging, decoding, old/new review and atomic gallery layout. |
+| MCP4 | Depends on MCP0 | Atomic stock ledger across writers; preserve 48-hour computed SUBMITTED holds. |
+| MCP5 | Depends on MCP0 | Existing order decisions only; approval, revision checks and stock deduction exactly once. |
+| MCP6 | Depends on MCP0 | Extended analytics with independent fixtures, currencies, UTC+8 and coverage definitions. |
+| MCP7 | Depends on MCP0 | Resource-authorized operations inspection/cancellation/audit and existing retention policy. |
+| MCP8 | Designed only | KB supplies untrusted knowledge; commerce state and authorization stay in this app. |
+| MCP-VERIFY | Required per phase | Record commands, environment, revision, actual test counts, security and rollback evidence; finish with independent acceptance. |
+
+Detailed evidence: [MCP v2 progress](mcp-v2/09-IMPLEMENTATION-PROGRESS.md). No completion percentage is assigned to this mixed implementation/verification backlog.
+
 **Customer workflow update (2026-09-26):** Browser-local Profile is required before checkout; buyer details are read-only there. Cart checkboxes select one order with one delivery address. This supersedes earlier customer multi-destination UI requirements; the existing API/history stays compatible. See UI_SPEC.md.
 
 **Updated direction (2026-09-26):** Cloudflare Worker + SQLite Durable Object is the public Demo for simulated transactions with sample pet products. Future Production will use Docker + PostgreSQL on the owner’s server behind Cloudflare Tunnel. This supersedes earlier DEC-04 production-host wording below; the current Docker SQLite adapter has not yet been migrated to PostgreSQL.
