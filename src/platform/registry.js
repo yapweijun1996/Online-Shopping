@@ -4,6 +4,7 @@ import { singleTenantRegistry } from '../tenants.js';
 import { RESERVED_CODES } from './tenant-code.js';
 import { connectorPath } from '../mcp/routes.js';
 import { createQrPolicy } from './whatsapp-qr.js';
+import { createPlatformTenantOperationGuard } from './tenant-operation-guard.js';
 
 const codePattern = /^[a-z0-9]{3,30}$/;
 export function rewriteTenantRequest(request, basePath) {
@@ -36,6 +37,17 @@ export function createPlatformRegistry({ store, config, platform, pool, clock = 
     throw new ApiError(503, 'SHOP_UNAVAILABLE', 'This shop is not available right now.');
   }
   return {
+    operationGuard(identity) {
+      return Object.freeze({ withActiveTenant: async (id, work) => {
+        if (id !== identity.id || (id !== 'default' && identities.get(id) !== identity)) {
+          throw new ApiError(503, 'SHOP_UNAVAILABLE', 'This shop is not available right now.');
+        }
+        const guard = createPlatformTenantOperationGuard(await db(), {
+          expectedTenantId: identity.id, ...(id === 'default' ? {} : { expectedCode: identity.code }),
+        });
+        return guard.withActiveTenant(id, work);
+      } });
+    },
     invalidate() {
       generation++;
       // Retain bounded known-code hints for the probe limiter; every routing decision must read fresh state.

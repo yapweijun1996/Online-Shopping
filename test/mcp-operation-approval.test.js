@@ -76,7 +76,10 @@ async function fixture(t, engine) {
       value.resourceId, String(value.expectedRevision), canonicalOperationJson(value), previewHash, hash('synthetic-request'),
       value.idempotencyHash, 'PENDING_APPROVAL', value.createdAt, value.expiresAt, value.correlationId];
     await store.run(`INSERT INTO mcp_v2_operation(${columns.join(',')}) VALUES (${columns.map(() => '?').join(',')})`, ...values);
-    return { value, previewHash, input: { operationId: value.operationId, previewHash, decision: 'approve', password } };
+    const challenge = secret();
+    await store.run(`INSERT INTO mcp_v2_approval_challenge(id, operation_id, nonce_hash, created_at, expires_at, account_id, session_hash, account_auth_version, bound_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, randomUUID(), value.operationId, hash(challenge + ':' + previewHash), now, later, account.id, hash(session.token), account.oauth_auth_version, now);
+    return { value, previewHash, input: { operationId: value.operationId, previewHash, challenge, decision: 'approve', password } };
   }
   return { store, account, session, binding, grantId, epoch, buildDigest, tenantGuard, request, operation };
 }
@@ -101,7 +104,9 @@ for (const engine of ['sqlite', 'postgres']) {
       const op = await f.operation(false, 'catalog.preview_update', injection);
       const reviewRequest = new Request('https://seller.example.test/api/v1/seller/mcp/operations/' + op.value.operationId,
         { method: 'GET', headers: { cookie: `seller_session=${f.session.token}` } });
-      assert.equal((await review(reviewRequest, op.value.operationId)).proposal.after.name, injection);
+      const reviewed = await review(reviewRequest, op.value.operationId);
+      assert.equal(reviewed.proposal.after.name, injection);
+      op.input.challenge = reviewed.challenge;
       await denied(review(new Request(reviewRequest.url), op.value.operationId));
       await denied(review(new Request(reviewRequest.url, { headers: { origin: 'https://other.example.test',
         cookie: `seller_session=${f.session.token}` } }), op.value.operationId));

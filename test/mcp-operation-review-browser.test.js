@@ -26,7 +26,7 @@ test('first-party review prototype renders all untrusted data as text and requir
       if (path === `/api/v1/seller/mcp/operations/${id}` && request.method === 'GET') {
         send({ operationId: id, shopName: 'Synthetic shop', accountName: 'synthetic_owner', clientName: injection, clientId: 'synthetic-client',
           toolName: 'catalog.preview_update', resourceType: 'product', resourceId: id, risk: 'MEDIUM', expiresAt: '2026-11-04T00:10:00.000Z',
-          previewHash: digest, proposal: { before: { name: 'Old synthetic' },
+          previewHash: digest, challenge: 'a'.repeat(43), proposal: { before: { name: 'Old synthetic' },
             after: { name: injection, bidi: 'A\u202eB', tail: 'Full proposal visible' } } }); return;
       }
       if (path === `/api/v1/seller/mcp/operations/${id}/approval` && request.method === 'POST') {
@@ -74,7 +74,7 @@ test('first-party review prototype renders all untrusted data as text and requir
       const call = calls.at(-1);
       assert.equal(call.path, `${base}/api/v1/seller/mcp/operations/${id}/approval`);
       assert.equal(call.csrf, 'synthetic-csrf');
-      assert.deepEqual(call.body, { operationId: id, previewHash: digest, decision, password: 'Synthetic-password-only' });
+      assert.deepEqual(call.body, { operationId: id, previewHash: digest, challenge: 'a'.repeat(43), decision, password: 'Synthetic-password-only' });
       assert.equal(await page.locator('#password').inputValue(), '');
       await context.close();
     }

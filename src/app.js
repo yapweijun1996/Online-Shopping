@@ -76,7 +76,7 @@ function requireCsrf(request, session) {
  * the client address it trusts and, optionally, a handler for non-API paths.
  */
 /* Routes for one tenant (one shop, one store). Built once per tenant by createApi. */
-async function createTenantApi({ store, config, tenantId, serveStatic = null, whatsappTransport = createWhatsAppTransport(), aiProvider, aiFetchImpl, studioProvider }) {
+async function createTenantApi({ store, config, tenantId, tenantGuard, serveStatic = null, whatsappTransport = createWhatsAppTransport(), aiProvider, aiFetchImpl, studioProvider }) {
   const demoEnabled = config.shopMode === 'public-demo' && (await getShopSetup(store)).mode === 'demo';
   // Explicit opt-in: passwordless seller sign-in for a sample site. Never enable it for a real tenant.
   const quickLogin = demoEnabled || config.sellerQuickLogin === true;
@@ -96,7 +96,8 @@ async function createTenantApi({ store, config, tenantId, serveStatic = null, wh
   const qrAvailable = config.whatsappQr?.enabled && !quickLogin && config.shopMode !== 'public-demo' && secretBox &&
     (tenantId === 'default' ? !basePath : config.whatsappQr?.bindings?.some(binding => binding.shopId === tenantId));
   const qrSeller = qrAvailable ? createQrSellerApi({ store, secretBox, shopId: tenantId, ai: config.ai, provider: aiProvider ?? createAnthropicProvider({ ...config.ai, fetchImpl: aiFetchImpl }) }) : null;
-  const connector = createConnector({ store, config, tenantId, quickLogin });
+  const connector = createConnector({ store, config, tenantId, tenantGuard, quickLogin });
+  await connector.initialize();
   const sellerCookie = (token, maxAge) => cookieFor(token, maxAge, config.production, `${basePath}/api/v1/seller`);
   const prefix = (value) => typeof value === 'string' && /^\/(?:api|shop|seller|shared)\//.test(value) ? basePath + value : value;
   const urlFields = new Set(['imageUrl', 'thumbnailUrl', 'src', 'thumbnail', 'full', 'url', 'productUrl']);
@@ -121,7 +122,7 @@ async function createTenantApi({ store, config, tenantId, serveStatic = null, wh
     if (demoResponse) return demoResponse;
     if (method === 'GET' && pathname === '/health') return json(200, { status: 'alive', ...(config.appRevision ? { revision: config.appRevision } : {}) });
     if (method === 'GET' && pathname === '/ready') {
-      const healthy = await ready(store);
+      const healthy = await ready(store, { mcpV2: config.mcpV2 });
       return json(healthy ? 200 : 503, { status: healthy ? 'ready' : 'unavailable', ...(config.appRevision ? { revision: config.appRevision } : {}) });
     }
     // WhatsApp Cloud webhook: called by Meta, so no session, origin or CSRF check; the signature over the raw body is the
@@ -621,7 +622,8 @@ async function createTenantApi({ store, config, tenantId, serveStatic = null, wh
   return async function handle(request, { clientAddress = 'unknown' } = {}) {
     try {
       const result = await route(request, clientAddress);
-      if (!basePath || !result.headers.get('content-type')?.startsWith('application/json')) return result;
+      if (!basePath || /^\/api\/v1\/seller\/mcp\/operations(?:\/|$)/.test(new URL(request.url).pathname) ||
+          !result.headers.get('content-type')?.startsWith('application/json')) return result;
       return new Response(JSON.stringify(prefixUrls(await result.json())), { status: result.status, headers: result.headers });
     } catch (error) {
       return errorResponse(error);
@@ -639,7 +641,8 @@ export async function createApi({ store, config, registry = null, platformHandle
   const handlers = new WeakMap();
   const handlerFor = (tenant) => {
     if (!handlers.has(tenant)) {
-      handlers.set(tenant, createTenantApi({ store: tenant.store, config: tenant.config, tenantId: tenant.id, serveStatic, whatsappTransport, aiProvider, aiFetchImpl, studioProvider })
+      handlers.set(tenant, createTenantApi({ store: tenant.store, config: tenant.config, tenantId: tenant.id,
+        tenantGuard: tenants.operationGuard?.(tenant), serveStatic, whatsappTransport, aiProvider, aiFetchImpl, studioProvider })
         .catch((error) => { handlers.delete(tenant); throw error; }));
     }
     return handlers.get(tenant);

@@ -1,6 +1,6 @@
 'use strict';
 
-// Prototype first-party UI; not registered by the application. All proposal
+// First-party seller UI. All proposal
 // content is untrusted and is rendered only as text.
 const statusNode = document.querySelector('#status');
 const reviewSection = document.querySelector('#review');
@@ -14,11 +14,12 @@ const hashPattern = /^[0-9a-f]{64}$/;
 document.querySelector('#seller-link').href = `${base}/seller/`;
 let csrf = null;
 let previewHash = null;
+let challenge = null;
 const visible = (value) => value.replace(/[\u061c\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/g,
   (character) => `\\u${character.codePointAt(0).toString(16).padStart(4, '0')}`);
 
 async function load() {
-  if (!path || !idPattern.test(id || '')) throw new Error('Invalid operation.');
+  if (!path || [...new URL(location.href).searchParams.keys()].length !== 1 || !idPattern.test(id || '')) throw new Error('Invalid operation.');
   const sessionResponse = await fetch(`${base}/api/v1/seller/session`, { credentials: 'same-origin', cache: 'no-store' });
   if (!sessionResponse.ok) throw new Error('Sign in required.');
   const session = await sessionResponse.json();
@@ -26,7 +27,7 @@ async function load() {
   const response = await fetch(`${base}/api/v1/seller/mcp/operations/${id}`, { credentials: 'same-origin', cache: 'no-store' });
   if (!response.ok) throw new Error('Proposal unavailable.');
   const value = await response.json();
-  if (value.operationId !== id || typeof value.previewHash !== 'string' || !hashPattern.test(value.previewHash) ||
+  if (typeof value.challenge !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(value.challenge) || value.operationId !== id || typeof value.previewHash !== 'string' || !hashPattern.test(value.previewHash) ||
       typeof value.shopName !== 'string' || typeof value.accountName !== 'string' || typeof value.clientName !== 'string' ||
       typeof value.clientId !== 'string' ||
       typeof value.toolName !== 'string' || typeof value.resourceType !== 'string' ||
@@ -36,6 +37,7 @@ async function load() {
   }
   csrf = session.csrfToken;
   previewHash = value.previewHash;
+  challenge = value.challenge;
   document.querySelector('#shop').textContent = visible(value.shopName);
   document.querySelector('#account').textContent = visible(value.accountName);
   document.querySelector('#client').textContent = visible(value.clientName);
@@ -53,19 +55,19 @@ async function load() {
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   const decision = event.submitter?.value;
-  if (!csrf || !previewHash || !['approve', 'reject'].includes(decision) || !password.value) return;
+  if (!csrf || !previewHash || !challenge || !['approve', 'reject'].includes(decision) || !password.value) return;
   const buttons = [...form.querySelectorAll('button')];
   buttons.forEach((button) => { button.disabled = true; });
   try {
     const response = await fetch(`${base}/api/v1/seller/mcp/operations/${id}/approval`, {
       method: 'POST', credentials: 'same-origin', cache: 'no-store',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-      body: JSON.stringify({ operationId: id, previewHash, decision, password: password.value }),
+      body: JSON.stringify({ operationId: id, previewHash, challenge, decision, password: password.value }),
     });
     if (!response.ok) throw new Error('Approval failed.');
     const result = await response.json();
     if (result.operationId !== id || result.status !== (decision === 'approve' ? 'APPROVED' : 'REJECTED')) throw new Error('Invalid result.');
-    csrf = null; previewHash = null; form.hidden = true;
+    csrf = null; previewHash = null; challenge = null; form.hidden = true;
     statusNode.textContent = decision === 'approve' ? 'Approved. The connected app must still commit this change.' : 'Rejected. The change was not applied.';
   } catch {
     statusNode.textContent = 'The decision could not be verified. Reload the proposal and try again.';

@@ -12,7 +12,7 @@ import { createPlatformTenantOperationGuard } from '../src/platform/tenant-opera
 import { hash, secret } from '../src/mcp/credentials.js';
 import { operationSchema } from '../src/mcp/operation-schema.js';
 import { operationEpochHash } from '../src/mcp/operation-epoch.js';
-import { createOperationApproval } from '../src/mcp/operation-approval.js';
+import { createOperationApproval, createOperationReview } from '../src/mcp/operation-approval.js';
 import { createOperationEngine } from '../src/mcp/operation-engine.js';
 
 const base = process.env.SHOP_TEST_DATABASE_URL;
@@ -52,7 +52,11 @@ test('postgres: platform suspension is serialized with a tenant operation commit
     args: { id: f.productId, expectedRevision: 1, name: 'Guarded synthetic update' }, idempotencyKey: 'synthetic-guarded-operation' });
   const request = new Request('https://seller.example.test/api/v1/seller/mcp/approval', { method: 'POST',
     headers: { origin: f.binding.issuer, cookie: `seller_session=${f.session.token}`, 'x-csrf-token': f.session.csrfToken } });
-  await approve(request, { operationId: op.operationId, previewHash: op.previewHash, decision: 'approve', password }, 'guard-ip');
+  const review = createOperationReview({ store: f.store, binding: f.binding, sellerOrigin: f.binding.issuer,
+    quickLogin: false, epoch: f.options.epoch, buildDigest: f.options.buildDigest, tenantGuard, enabled: true });
+  const reviewOp = (value) => review(new Request(f.binding.issuer + '/api/v1/seller/mcp/operations/' + value.operationId,
+    { headers: { cookie: `seller_session=${f.session.token}` } }), value.operationId);
+  await approve(request, { challenge: (await reviewOp(op)).challenge, operationId: op.operationId, previewHash: op.previewHash, decision: 'approve', password }, 'guard-ip');
   const worker = concurrentWorker(t, { databaseUrl: url.href }, 'tenant');
   await worker.event('ready');
   const committing = engine.commit({ bearer: f.bearer, toolName: 'catalog.commit_update', operationId: op.operationId });
@@ -72,7 +76,7 @@ test('postgres: platform suspension is serialized with a tenant operation commit
   await other.query("UPDATE tenant SET status = 'ACTIVE', revision = revision + 1 WHERE id = $1", [f.binding.tenantId]);
   const pending = await engine.prepare({ bearer: f.bearer, toolName: 'catalog.preview_update',
     args: { id: f.productId, expectedRevision: 2, name: 'Must not survive suspension' }, idempotencyKey: 'synthetic-resumed-operation' });
-  await approve(request, { operationId: pending.operationId, previewHash: pending.previewHash, decision: 'approve', password }, 'guard-ip-2');
+  await approve(request, { challenge: (await reviewOp(pending)).challenge, operationId: pending.operationId, previewHash: pending.previewHash, decision: 'approve', password }, 'guard-ip-2');
   await other.query("UPDATE tenant SET status = 'SUSPENDED', revision = revision + 1 WHERE id = $1", [f.binding.tenantId]);
   await other.query("UPDATE tenant SET status = 'ACTIVE', revision = revision + 1 WHERE id = $1", [f.binding.tenantId]);
   await assert.rejects(engine.commit({ bearer: f.bearer, toolName: 'catalog.commit_update', operationId: pending.operationId }), { status: 403 });
@@ -138,6 +142,9 @@ async function fixture(t, dialect) {
       await database.run('UPDATE synthetic_product SET name = ?, revision = revision + 1 WHERE id = ?', proposal.after, proposal.id);
       return database.get('SELECT id, name, revision FROM synthetic_product WHERE id = ?', proposal.id);
     },
+    toReceipt: (value) => ({ id: value.id, revision: value.revision }),
+    validReceipt: (value) => Boolean(value && Object.keys(value).sort().join(',') === 'id,revision' &&
+      typeof value.id === 'string' && Number.isSafeInteger(value.revision)),
     validResult: (value) => Boolean(value && Object.keys(value).sort().join(',') === 'id,name,revision' &&
       typeof value.id === 'string' && typeof value.name === 'string' && Number.isSafeInteger(value.revision)),
   };
@@ -154,7 +161,12 @@ async function fixture(t, dialect) {
     const op = await engine.prepare({ bearer, toolName: 'catalog.preview_update', args, idempotencyKey });
     return { ...op, args, idempotencyKey };
   }
-  const approveOp = (op, ip) => approve(request(), { operationId: op.operationId, previewHash: op.previewHash, decision: 'approve', password }, ip);
+  const review = createOperationReview({ store, binding, sellerOrigin: binding.issuer, quickLogin: false, epoch, buildDigest, tenantGuard, enabled: true });
+  const approveOp = async (op, ip) => {
+    const reviewed = await review(new Request(binding.issuer + '/api/v1/seller/mcp/operations/' + op.operationId,
+      { headers: { cookie: `seller_session=${session.token}` } }), op.operationId);
+    return approve(request(), { operationId: op.operationId, previewHash: op.previewHash, challenge: reviewed.challenge, decision: 'approve', password }, ip);
+  };
   const commit = (op) => engine.commit({ bearer, toolName: 'catalog.commit_update', operationId: op.operationId });
   return { store, productId, account, session, grantId, bearer, binding, adapter, options, engine, prepare, approveOp, commit,
     databaseUrl, applicationName };

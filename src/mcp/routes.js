@@ -1,13 +1,19 @@
 import { readFile } from 'node:fs/promises';
-import { ApiError, json } from '../http.js';
+import { ApiError, json, readBody } from '../http.js';
 import { SqlLimiter } from '../limiter.js';
 import { createOAuth, fail, OAuthError } from './oauth.js';
 import { createProtocol } from './protocol.js';
-import { audit, SCOPES } from './credentials.js';
+import { audit, supportedScopes } from './credentials.js';
 import { cleanupOAuth } from './cleanup.js';
+import { parseJson } from './json.js';
+import { createOperationApproval, createOperationReview } from './operation-approval.js';
+import { initializeOperationStorage } from './operation-runtime.js';
 
-export const connectorPath = (path) => /^\/(?:mcp$|oauth\/(?:register|authorize|token|revoke|consent\.js|consent\.css)$|\.well-known\/oauth-(?:protected-resource|authorization-server)(?:\/|$)|api\/v1\/seller\/mcp(?:\/|$))/.test(path);
-export function createConnector({ store, config, tenantId, quickLogin }) {
+export const connectorPath = (path) => /^\/(?:mcp$|oauth\/(?:register|authorize|token|revoke|consent\.js|consent\.css|operation|operation-review\.(?:js|css))$|\.well-known\/oauth-(?:protected-resource|authorization-server)(?:\/|$)|api\/v1\/seller\/mcp(?:\/|$))/.test(path);
+const operationPath = (path) => path === '/oauth/operation' || /^\/oauth\/operation-review\.(?:js|css)$/.test(path) || /^\/api\/v1\/seller\/mcp\/(?:operations(?:\/|$)|approval(?:\/|$))/.test(path);
+const reviewCsp = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export function createConnector({ store, config, tenantId, tenantGuard, quickLogin }) {
   const enabled = config.mcpEnabled === true && !quickLogin && Boolean(config.sellerOrigin) && new URL(config.sellerOrigin).protocol === 'https:';
   const limiters = new Map();
   const limit = async (bucket, key, count) => {
@@ -16,22 +22,64 @@ export function createConnector({ store, config, tenantId, quickLogin }) {
   };
   const oauth = createOAuth({ store, config, tenantId, limit });
   const protocol = createProtocol({ store, config, binding: oauth.binding, limit });
+  let operations;
+  const operationHandlers = () => {
+    if (!operations) {
+      operations = (async () => {
+        const options = { store, binding: { ...oauth.binding, mcpV2: config.mcpV2 }, sellerOrigin: config.sellerOrigin,
+          quickLogin, ...config.mcpV2, tenantGuard };
+        const review = createOperationReview(options), approve = createOperationApproval(options);
+        await tenantGuard.withActiveTenant(tenantId, () => initializeOperationStorage(store, { enabled: true }));
+        return { review, approve };
+      })().catch((error) => { operations = null; throw error; });
+    }
+    return operations;
+  };
   async function handle(request, ip) {
+    const url = new URL(request.url), path = url.pathname, operation = operationPath(path);
+    if (operation && (!enabled || config.mcpV2?.enabled !== true || config.production === true ||
+        config.shopMode === 'public-demo' || !tenantGuard)) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
     if (!config.mcpEnabled) return null;
-    const url = new URL(request.url), path = url.pathname;
     if (!connectorPath(path)) return null;
     if (!enabled || url.host !== new URL(config.sellerOrigin).host) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
     const origin = request.headers.get('origin');
     const approved = origin === config.sellerOrigin || (config.mcpBrowserOrigins || []).includes(origin);
     let response;
     try {
+      if (operation && origin !== null && origin !== config.sellerOrigin) fail('access_denied', 403);
       if (origin !== null) {
         let canonical = false;
         try { canonical = new URL(origin).origin === origin; } catch { /* Reject malformed Origin below. */ }
         if (!approved || !canonical || origin === 'null') fail('access_denied', 403);
       }
       if (request.url.length > 8192) fail('invalid_request', 414);
-      if (request.method === 'OPTIONS') {
+      if (operation) {
+        const match = /^\/api\/v1\/seller\/mcp\/operations\/([0-9a-f-]+)(\/approval)?$/.exec(path);
+        const page = path === '/oauth/operation', asset = /^\/oauth\/operation-review\.(js|css)$/.exec(path);
+        if (!page && !asset && (!match || !uuid.test(match[1]))) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+        const method = match?.[2] ? 'POST' : 'GET';
+        if (request.method !== method) fail('invalid_request', 405, { Allow: method });
+        if (page ? [...url.searchParams.keys()].length !== 1 || !uuid.test(url.searchParams.get('operationId') || '') : Boolean(url.search)) fail('invalid_request', 400);
+        if (page || asset) {
+          // This public shell carries no proposal or proof. Session cookies keep
+          // the existing narrow authenticated API path.
+          const extension = page ? 'html' : asset[1];
+          response = new Response(await readFile(new URL(`./operation-review.${extension}`, import.meta.url)), {
+            headers: { 'Content-Type': ({ html: 'text/html', js: 'text/javascript', css: 'text/css' })[extension] + '; charset=utf-8' },
+          });
+        } else {
+          const handlers = await operationHandlers();
+          if (match[2]) {
+            if (origin !== config.sellerOrigin) fail('access_denied', 403);
+            if (request.headers.get('content-type')?.split(';')[0].trim().toLowerCase() !== 'application/json') fail('invalid_request', 415);
+            const bytes = await readBody(request, 4096, 5000);
+            let input;
+            try { input = parseJson(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); } catch { fail('invalid_request', 400); }
+            if (input?.operationId !== match[1]) fail('invalid_request', 400);
+            response = json(200, await handlers.approve(request, input, ip));
+          } else response = json(200, await handlers.review(request, match[1]));
+        }
+      } else if (request.method === 'OPTIONS') {
         const requested = (request.headers.get('access-control-request-headers') || '').toLowerCase().split(',').map((s) => s.trim()).filter(Boolean);
         if (!origin || !approved || !['GET', 'POST'].includes(request.headers.get('access-control-request-method')) || requested.some((s) => !['authorization', 'content-type', 'mcp-protocol-version'].includes(s))) fail('access_denied', 403);
         response = new Response(null, { status: 204, headers: { 'Access-Control-Allow-Methods': 'GET, POST', 'Access-Control-Allow-Headers': 'Authorization, Content-Type, MCP-Protocol-Version', 'Cache-Control': 'no-store' } });
@@ -45,7 +93,7 @@ export function createConnector({ store, config, tenantId, quickLogin }) {
         if (request.method !== 'GET') fail('invalid_request', 405, { Allow: 'GET' });
         await limit('mcp-discovery', ip, 120);
         const { issuer, resource } = oauth.binding;
-        response = path.includes('protected-resource') ? json(200, { resource, authorization_servers: [issuer], scopes_supported: SCOPES, bearer_methods_supported: ['header'] }) : json(200, { issuer, authorization_endpoint: issuer + '/oauth/authorize', token_endpoint: issuer + '/oauth/token', registration_endpoint: issuer + '/oauth/register', revocation_endpoint: issuer + '/oauth/revoke', response_types_supported: ['code'], grant_types_supported: ['authorization_code', 'refresh_token'], code_challenge_methods_supported: ['S256'], token_endpoint_auth_methods_supported: ['none'], scopes_supported: SCOPES, authorization_response_iss_parameter_supported: true });
+        response = path.includes('protected-resource') ? json(200, { resource, authorization_servers: [issuer], scopes_supported: supportedScopes(config), bearer_methods_supported: ['header'] }) : json(200, { issuer, authorization_endpoint: issuer + '/oauth/authorize', token_endpoint: issuer + '/oauth/token', registration_endpoint: issuer + '/oauth/register', revocation_endpoint: issuer + '/oauth/revoke', response_types_supported: ['code'], grant_types_supported: ['authorization_code', 'refresh_token'], code_challenge_methods_supported: ['S256'], token_endpoint_auth_methods_supported: ['none'], scopes_supported: supportedScopes(config), authorization_response_iss_parameter_supported: true });
       } else {
         const handlers = { '/oauth/register': ['POST', oauth.register], '/oauth/authorize': ['GET', oauth.authorize], '/oauth/token': ['POST', oauth.token], '/oauth/revoke': ['POST', oauth.revoke], '/mcp': ['POST', protocol], '/api/v1/seller/mcp/consent': ['POST', oauth.consent] };
         const handler = handlers[path];
@@ -56,7 +104,14 @@ export function createConnector({ store, config, tenantId, quickLogin }) {
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) throw e;
-      if (e instanceof OAuthError && [400, 401, 403].includes(e.status)) {
+      if (operation && [400, 401, 403].includes(e.status)) {
+        try {
+          await tenantGuard.withActiveTenant(tenantId, async () => {
+            await limit('mcp-v2-deny-audit', 'global', 120);
+            await store.transaction(() => audit(store, tenantId, 'DENY', {}, 'operation_review_denied'));
+          });
+        } catch { /* Lifecycle denial or unavailable audit must remain a denial. */ }
+      } else if (e instanceof OAuthError && [400, 401, 403].includes(e.status)) {
         try {
           await limit('mcp-deny-audit', ip, 120);
           await store.transaction(() => audit(store, tenantId, 'DENY', {}, e.error));
@@ -65,10 +120,13 @@ export function createConnector({ store, config, tenantId, quickLogin }) {
       response = json(e instanceof OAuthError ? e.status : e instanceof ApiError ? e.status : 503, { error: e instanceof OAuthError ? e.error : 'temporarily_unavailable' }, e.headers || {});
     }
     response.headers.set('Referrer-Policy', 'no-referrer'); response.headers.set('X-Content-Type-Options', 'nosniff'); response.headers.set('Cache-Control', 'no-store');
-    if (origin && approved) { response.headers.set('Access-Control-Allow-Origin', origin); response.headers.set('Vary', 'Origin'); response.headers.set('Access-Control-Expose-Headers', 'WWW-Authenticate, MCP-Protocol-Version'); }
+    if (operation) { response.headers.set('Content-Security-Policy', reviewCsp); response.headers.set('X-Frame-Options', 'DENY'); response.headers.set('X-Robots-Tag', 'noindex'); }
+    if (!operation && origin && approved) { response.headers.set('Access-Control-Allow-Origin', origin); response.headers.set('Vary', 'Origin'); response.headers.set('Access-Control-Expose-Headers', 'WWW-Authenticate, MCP-Protocol-Version'); }
     return response;
   }
-  return { handle, bindLogin: async (...args) => {
+  return { handle, initialize: async () => {
+    if (enabled && config.mcpV2?.enabled === true && config.production !== true && config.shopMode !== 'public-demo' && tenantGuard) await operationHandlers();
+  }, bindLogin: async (...args) => {
     if (!enabled) return;
     try { await oauth.bindLogin(...args); }
     catch (e) { if (e instanceof OAuthError) throw new ApiError(e.status, 'FORBIDDEN', 'Authorization proof is invalid.'); throw e; }
