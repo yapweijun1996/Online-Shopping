@@ -1,0 +1,339 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:online-shopping:mcp-v2:catalog-media-update:implemented",
+  "$comment": "Generated from the actual full UPDATE factory and registry. Independent default-off development/test profile; production and full CREATE activation remain blocked. Examples are synthetic schema demonstrations, never live credentials, approvals or resource identities.",
+  "$defs": {
+    "catalog.preview_update.input": {
+      "type": "object",
+      "properties": {
+        "input": {
+          "additionalProperties": false,
+          "properties": {
+            "changes": {
+              "additionalProperties": false,
+              "properties": {
+                "active": {
+                  "type": "boolean"
+                },
+                "category": {
+                  "maxLength": 4096,
+                  "minLength": 0,
+                  "type": "string"
+                },
+                "currency": {
+                  "enum": [
+                    "MYR",
+                    "SGD"
+                  ],
+                  "maxLength": 3,
+                  "minLength": 3,
+                  "type": "string"
+                },
+                "description": {
+                  "maxLength": 4096,
+                  "minLength": 0,
+                  "type": "string"
+                },
+                "name": {
+                  "maxLength": 4096,
+                  "minLength": 0,
+                  "type": "string"
+                },
+                "options": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "typeId": {
+                        "maxLength": 36,
+                        "minLength": 36,
+                        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                        "type": "string"
+                      },
+                      "valueId": {
+                        "maxLength": 36,
+                        "minLength": 36,
+                        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "typeId",
+                      "valueId"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 6,
+                  "minItems": 0,
+                  "type": "array"
+                },
+                "priceMinor": {
+                  "maximum": 1000000000,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "sku": {
+                  "maxLength": 4096,
+                  "minLength": 0,
+                  "type": "string"
+                },
+                "variantGroup": {
+                  "anyOf": [
+                    {
+                      "maxLength": 4096,
+                      "minLength": 0,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "variantLabel": {
+                  "anyOf": [
+                    {
+                      "maxLength": 4096,
+                      "minLength": 0,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "id": {
+              "maxLength": 36,
+              "minLength": 36,
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "changes"
+          ],
+          "type": "object"
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._~-]+$"
+        }
+      },
+      "required": [
+        "input",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "catalog.preview_update.output": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "status": {
+          "enum": [
+            "PREPARED",
+            "PENDING_APPROVAL",
+            "APPROVED",
+            "REJECTED",
+            "COMMITTED",
+            "EXPIRED",
+            "CANCELLED",
+            "CONFLICT",
+            "FAILED"
+          ]
+        },
+        "previewHash": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "expiresAt": {
+          "type": "string",
+          "minLength": 24,
+          "maxLength": 24
+        },
+        "replayed": {
+          "type": "boolean"
+        },
+        "reviewUrl": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
+        }
+      },
+      "required": [
+        "operationId",
+        "status",
+        "previewHash",
+        "expiresAt",
+        "replayed",
+        "reviewUrl"
+      ],
+      "additionalProperties": false
+    },
+    "catalog.commit_update.input": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        }
+      },
+      "required": [
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "catalog.commit_update.output": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operationId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36,
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "status": {
+              "const": "COMMITTED"
+            },
+            "result": {
+              "additionalProperties": false,
+              "properties": {
+                "listingId": {
+                  "maxLength": 36,
+                  "minLength": 36,
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                  "type": "string"
+                },
+                "productId": {
+                  "maxLength": 36,
+                  "minLength": 36,
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                  "type": "string"
+                },
+                "revision": {
+                  "maxLength": 64,
+                  "minLength": 64,
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "productId",
+                "listingId",
+                "revision"
+              ],
+              "type": "object"
+            },
+            "replayed": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "operationId",
+            "status",
+            "result",
+            "replayed"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operationId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36,
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "error": {
+              "enum": [
+                "EXPIRED",
+                "STALE_REVISION"
+              ]
+            }
+          },
+          "required": [
+            "operationId",
+            "error"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "x-toolPolicies": {
+    "catalog.preview_update": {
+      "scope": "catalog.write",
+      "requiredScopes": [
+        "catalog.write",
+        "media.write"
+      ],
+      "capability": "catalog.write",
+      "risk": "HIGH",
+      "mediaPolicyId": "catalog-media-v1"
+    },
+    "catalog.commit_update": {
+      "scope": "catalog.write",
+      "requiredScopes": [
+        "catalog.write",
+        "media.write"
+      ],
+      "capability": "catalog.write",
+      "risk": "HIGH",
+      "mediaPolicyId": "catalog-media-v1"
+    }
+  },
+  "x-examples": {
+    "catalog.preview_update": {
+      "input": {
+        "input": {
+          "id": "10000000-0000-4000-8000-000000000002",
+          "changes": {
+            "variantGroup": "TARGET",
+            "variantLabel": "Blue"
+          }
+        },
+        "idempotencyKey": "synthetic-catalog-media-update"
+      },
+      "output": {
+        "operationId": "10000000-0000-4000-8000-000000000001",
+        "status": "PENDING_APPROVAL",
+        "previewHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expiresAt": "2099-01-01T00:10:00.000Z",
+        "replayed": false,
+        "reviewUrl": "https://synthetic.example/oauth/operation?operationId=10000000-0000-4000-8000-000000000001"
+      }
+    },
+    "catalog.commit_update": {
+      "input": {
+        "operationId": "10000000-0000-4000-8000-000000000001"
+      },
+      "output": {
+        "operationId": "10000000-0000-4000-8000-000000000001",
+        "status": "COMMITTED",
+        "result": {
+          "productId": "10000000-0000-4000-8000-000000000002",
+          "listingId": "10000000-0000-4000-8000-000000000003",
+          "revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "replayed": false
+      }
+    }
+  }
+}

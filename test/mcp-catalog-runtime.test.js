@@ -9,11 +9,26 @@ import {reviewPassword} from './helpers/mcp-review-fixture.js';
 import {freshCatalogAccess,legacyCatalogScopes} from './helpers/mcp-catalog-default-grant.js';
 import {canonicalOperationJson,operationPreviewHash} from '../src/mcp/operation-envelope.js';
 import {ApiError} from '../src/http.js';
+import {createApi} from '../src/app.js';
+import {catalogue} from '../src/mcp/tools.js';
 const dto=value=>value.data.result?.structuredContent;
 async function commerce(store){const result={};for(const table of ['product','listing','product_gallery_image','product_option','product_event','inventory_state','inventory_movement']){
  const order=table==='product_option'?'product_id,option_type_id':table==='inventory_state'?'product_id':'id';result[table]=rowsDigest(await store.all('SELECT * FROM '+table+' ORDER BY '+order));}return result;}
 for(const dialect of ['sqlite','postgres']){
  const options={skip:dialect==='postgres'&&!process.env.SHOP_TEST_DATABASE_URL};
+ test(`${dialect}: explicit empty C registrations preserve v1 while a missing default worker cannot fall back to safe UPDATE`,options,async t=>{
+  const f=await catalogRuntimeFixture(t,dialect),empty=await createApi({store:f.store,config:f.config,operationTools:[]});
+  const request=()=>new Request(f.binding.resource,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+f.client.bearer,
+   accept:'application/json, text/event-stream','mcp-protocol-version':'2025-06-18'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list',params:{}})});
+  const listed=await empty(request(),{clientAddress:'synthetic-empty-c-runtime'});assert.equal(listed.status,200);
+  assert.deepEqual((await listed.json()).result.tools,catalogue.map(({scope:_scope,...tool})=>tool));
+  await assert.rejects(createApi({store:f.store,config:f.config,operationTools:null}),TypeError);
+  // This fixture has no codec socket/token paths. The actual default factory
+  // must fail construction instead of advertising a legacy MEDIUM fallback.
+  const missing=await createApi({store:f.store,config:f.config}),response=await missing(request(),{clientAddress:'synthetic-missing-c-worker'});
+  assert.equal(response.status,500);assert.equal((await response.json()).error.code,'INTERNAL_ERROR');
+  assert.equal(f.decodes(),0);assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_operation')).n,0);
+ });
  test(`${dialect}: actual RPC and password/ACK handlers apply C once; decoder is SYNTHETIC and outside the real tenant guard`,options,async t=>{
   const f=await catalogRuntimeFixture(t,dialect),a=await f.product({variantGroup:'SOURCE',variantLabel:'A'}),b=await f.product({variantGroup:'TARGET',variantLabel:'B'}),
    op=await f.prepare(a.id,{variantGroup:'TARGET',variantLabel:'Moved'},'runtime-exact-once');

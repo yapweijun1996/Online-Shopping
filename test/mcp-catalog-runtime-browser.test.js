@@ -94,7 +94,13 @@ test('default C UPDATE factory actual native/OAuth/MCP/browser gate preserves fu
     assert.equal((await client.call('catalog.commit_update',{operationId:leave.operationId})).response.status,403);
     assert.equal((await client.call('operations.get',{operationId:leave.operationId})).response.status,403);
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?',leave.operationId)).state,'PENDING_APPROVAL');
-    await f.configure({mcpCatalogMediaUpdate:{enabled:true}});await approveCatalogInBrowser(f,page,leave);
+    const oldSafe=await client.call('catalog.preview_update',{input:{id:variant.id,changes:{priceMinor:1300}},idempotencyKey:'legacy-safe-before-c-profile'});
+    assert.equal(oldSafe.response.status,200);const safeOperation=content(oldSafe);assert.ok(safeOperation?.operationId);
+    assert.equal((await f.store.get('SELECT risk FROM mcp_v2_operation WHERE id=?',safeOperation.operationId)).risk,'MEDIUM');
+    await f.configure({mcpCatalogMediaUpdate:{enabled:true}});
+    assert.equal((await f.call('/api/v1/seller/mcp/operations/'+safeOperation.operationId,'GET',undefined,client.headers)).response.status,403);
+    assert.equal((await client.call('catalog.commit_update',{operationId:safeOperation.operationId})).response.status,403);
+    await approveCatalogInBrowser(f,page,leave);
     assert.match(await page.locator('#media-effects').textContent(),/Did not exist before this change/);
     assert.equal((await commit(client,leave)).result.listingId,planned.newListingId);await assertStorefront(f,leave,variant.id);assert.ok(await f.store.get('SELECT id FROM listing WHERE id=?',holder.listingId));
     const pending=await prepare(f,client,variant.id,{name:'Cancelled literal'},'actual-catalog-runtime-cancel'),before=await getProduct(f.store,variant.id,true);
