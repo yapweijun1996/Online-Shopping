@@ -89,6 +89,7 @@ export function createOperationControls({store,binding,config,tenantGuard,quickL
         WHERE operation_id=? AND tenant_id=? AND account_id=? AND client_id=? AND grant_id=? AND correlation_id=? AND sequence<=? AND at>=? AND at<=? AND event IN ('READ','CALL')
         ${positionSql(1)} ORDER BY at,sequence LIMIT ?) calls
       ) records ORDER BY at,source_rank,sequence LIMIT ?`,...keys,cursor.anchors[0],cutoff,cursor.at,...argsPosition,limit+1,...keys,cursor.anchors[1],cutoff,cursor.at,...argsPosition,limit+1,limit+1);
+    if(rows.some(item=>!operationInstant(item.at)))corrupt();
     const items=rows.slice(0,limit).map(item=>({id:item.id,at:item.at,source:item.source_rank===0?'LIFECYCLE':'MCP',sequence:item.sequence,toolName:item.tool_name,
       event:item.event,outcome:historicalOutcomes.has(item.outcome)?item.outcome:'HISTORICAL_UNCLASSIFIED',actorAccount:item.account_id,actorClient:item.client_id,
       actorGrant:item.grant_id,humanAccount:item.approver_id,correlationId:item.correlation_id}));

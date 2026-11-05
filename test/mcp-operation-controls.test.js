@@ -90,6 +90,13 @@ for(const dialect of ['sqlite','postgres']) {
   await f.store.run("DELETE FROM mcp_v2_scope_consent WHERE grant_id=(SELECT grant_id FROM oauth_token WHERE token_hash=?) AND scope='operations.read'",hash(f.client.bearer));
   assert.equal((await audit(f,op,{limit:2,cursor:first.nextCursor})).response.status,403);
  });
+ test(`${dialect}: malformed historical timestamps fail closed instead of becoming free-form audit metadata`,options,async t=>{
+  const f=await orderToolFixture(t,dialect,{scopes}),{op}=await prepare(f);
+  const yesterday=new Date(Date.now()-86400000).toISOString().slice(0,10),invalidAt=yesterday+'PRIVATE'.padEnd(14,'!');assert.equal(invalidAt.length,24);
+  await f.store.run('UPDATE mcp_v2_event SET at=? WHERE operation_id=?',invalidAt,op.operationId);
+  const result=await audit(f,op);assert.equal(result.response.status,503);assert.doesNotMatch(JSON.stringify(result.data),/PRIVATE/);
+  assert.equal((await state(f,op)).state,'PENDING_APPROVAL');
+ });
  test(`${dialect}: controls require all independently consented scopes and current dynamic underlying capability`,options,async t=>{
   const f=await orderToolFixture(t,dialect,{scopes}),{op}=await prepare(f);
   const company=orderDto(await f.client.call('company.preview_update',{input:{expectedRevision:orderDto(await f.client.call('company.get',{})).company.revision,changes:{availabilityText:'Synthetic private availability'}},idempotencyKey:'synthetic-company-control-test'}));
