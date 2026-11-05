@@ -16,7 +16,9 @@ import { assertUploadThumbnail } from './media-upload-policy.js';
 import { operationReceiptExpiry } from './operation-maintenance.js';
 import { readOperationRecord } from './operation-record.js';
 import { recordOperationCall } from './audit.js';
-import { catalogMediaUpdateAllowed } from './catalog-media-config.js';
+import { catalogMediaAllowed, catalogMediaCreateAllowed } from './catalog-media-config.js';
+import { parseCatalogMediaCreateProposal } from './catalog-media-create-adapter.js';
+import { catalogCreateEffects } from './catalog-media-review-wire.js';
 import { recordOperationEvent as event } from './operation-events.js';
 import { OPERATION_APPROVAL_MS, OPERATION_MUTATION_PAIRS, OPERATION_SCOPE_POLICIES, operationAuthorityPolicy } from './operation-policy.js';
 
@@ -98,7 +100,7 @@ function publicState(row, replayed = false) {
 
 // Explicit enablement and server-constructed adapters are required. Internal
 // media hooks do not register public tools or create human-review evidence.
-export function createOperationEngine({ store, binding, adapters, epoch, buildDigest, tenantGuard, enabled = false, quickLogin, catalogUpdateEnabled = false }) {
+export function createOperationEngine({ store, binding, adapters, epoch, buildDigest, tenantGuard, enabled = false, quickLogin, catalogUpdateEnabled = false, catalogCreateEnabled = false }) {
   if (enabled !== true || quickLogin !== false || !store || !binding || typeof buildDigest !== 'string' ||
       !/^[0-9a-f]{64}$/.test(buildDigest) || !tenantGuard || typeof tenantGuard.withActiveTenant !== 'function' ||
       !adapters || typeof adapters !== 'object' || Array.isArray(adapters)) {
@@ -125,9 +127,9 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
       const value = adapter.media, keys = ['policyId', 'codecDigest', 'capture', 'resolve', 'persistResources', 'consumeResources'];
       const policy = mediaPolicyForTool(name);
       if (!value || Object.keys(value).sort().join(',') !== [...keys].sort().join(',') ||
-          (policy.flow !== 'DIRECT' && !catalogMediaUpdateAllowed(catalogUpdateEnabled,{toolName:name,mediaPolicyId:value.policyId,resourceType:adapter.resourceType})) ||
+          (policy.flow !== 'DIRECT' && !catalogMediaAllowed({catalogUpdateEnabled,catalogCreateEnabled},{toolName:name,mediaPolicyId:value.policyId,resourceType:adapter.resourceType})) ||
           policy.previewTool !== name || value.policyId !== policy.policyId || !/^[a-f0-9]{64}$/.test(value.codecDigest || '') ||
-          adapter.resourceType !== 'product' || keys.slice(2).some(key => typeof value[key] !== 'function')) throw new TypeError('Invalid trusted media hooks.');
+          (adapter.resourceType !== 'product' && !catalogMediaCreateAllowed(catalogCreateEnabled,{toolName:name,mediaPolicyId:value.policyId,resourceType:adapter.resourceType})) || keys.slice(2).some(key => typeof value[key] !== 'function')) throw new TypeError('Invalid trusted media hooks.');
       media = Object.freeze({ ...value });
     }
     const commitTool = OPERATION_MUTATION_PAIRS[name] ?? (media ? mediaPolicyForTool(name).commitTool : null), previewPolicy = OPERATION_SCOPE_POLICIES[name];
@@ -173,8 +175,16 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
 
   async function mediaResources(row, adapter, envelope, context) {
     const manifest = await readMediaFrame(store, context, row.id, envelope.proposal.media);
+    let targetMatches;
+    if (catalogMediaCreateAllowed(catalogCreateEnabled,{toolName:row.tool_name,mediaPolicyId:row.media_policy_id,resourceType:row.resource_type})) {
+      try {
+        const value = parseCatalogMediaCreateProposal(envelope.proposal);
+        catalogCreateEffects(manifest.effects,value.creationIdentity);
+        targetMatches = row.resource_id === 'catalog' && manifest.stages.length === 0;
+      } catch { denied(); }
+    } else targetMatches = manifest.effects.some(effect => effect.kind === 'PRODUCT' && effect.productId === row.resource_id);
     if (manifest.descriptor.codecDigest !== adapter.media.codecDigest || manifest.descriptor.graphRevision !== row.expected_revision ||
-        !manifest.effects.some(effect => effect.kind === 'PRODUCT' && effect.productId === row.resource_id) ||
+        !targetMatches ||
         (adapter.media.policyId === 'media-upload-v1' ? manifest.stages.length !== 1 : manifest.stages.length !== 0)) denied();
     await withMediaWriter(store, context, async writer => {
       for (const expected of manifest.stages) {
@@ -242,7 +252,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
     const { bearer, toolName, args, idempotencyKey } = input;
     const adapter = typeof toolName === 'string' && Object.hasOwn(registered, toolName) && registered[toolName];
     if (!adapter || !args || typeof args !== 'object' || Array.isArray(args) ||
-        ['tenantId', 'shopId', 'accountId', 'approved', 'mediaReviewed', 'requiredScopes', 'mediaPolicyId', 'catalogUpdateEnabled', 'mcpCatalogMediaUpdate'].some((key) => Object.hasOwn(args, key)) ||
+        ['tenantId', 'shopId', 'accountId', 'approved', 'mediaReviewed', 'requiredScopes', 'mediaPolicyId', 'catalogUpdateEnabled', 'mcpCatalogMediaUpdate', 'catalogCreateEnabled', 'mcpCatalogMediaCreate'].some((key) => Object.hasOwn(args, key)) ||
         typeof idempotencyKey !== 'string' || !keyPattern.test(idempotencyKey)) {
       fail(400, 'INVALID_INPUT', 'Invalid operation request.');
     }
@@ -255,7 +265,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
     let captured = null, resolved = null;
     if (adapter.media) {
       const initial = await withTenant(tenant => store.transaction(async () => {
-        const authority = await verifyOperationAuthority(store, { bearer, binding, toolName, epochHash, mediaPolicyId: adapter.media.policyId, resourceType: adapter.resourceType, catalogUpdateEnabled });
+        const authority = await verifyOperationAuthority(store, { bearer, binding, toolName, epochHash, mediaPolicyId: adapter.media.policyId, resourceType: adapter.resourceType, catalogUpdateEnabled, catalogCreateEnabled });
         const originalGrant = await store.get('SELECT absolute_expires_at FROM oauth_grant WHERE id=?', authority.grantId);
         const replayed = await existingState({ authority, originalGrant, toolName, requestHash, idempotencyKey, adapter, tenant });
         if (replayed) return { replayed };
@@ -264,7 +274,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
         const packet = privatePacket(await withMediaWriter(store, context,
           writer => withRead(read => adapter.media.capture(read, safeArgs, context, writer))));
         if (!packet || Object.keys(packet).sort().join(',') !== 'expectedRevision,resourceId,resources' ||
-            !uuid.test(packet.resourceId || '') || !/^[a-f0-9]{64}$/.test(packet.expectedRevision || '')) throw new TypeError('Invalid media capture.');
+            !(catalogMediaCreateAllowed(catalogCreateEnabled,{toolName,mediaPolicyId:adapter.media.policyId,resourceType:adapter.resourceType}) ? packet.resourceId === 'catalog' : uuid.test(packet.resourceId || '')) || !/^[a-f0-9]{64}$/.test(packet.expectedRevision || '')) throw new TypeError('Invalid media capture.');
         return { captured: Object.freeze({ ...packet, context }) };
       }));
       if (initial.replayed) return initial.replayed;
@@ -272,7 +282,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
       resolved = await resolveOutside(adapter, captured.resources);
     }
     return withTenant((tenant) => store.transaction(async () => {
-      const authority = await verifyOperationAuthority(store, { bearer, binding, toolName, epochHash, mediaPolicyId: adapter.media?.policyId ?? null, resourceType: adapter.resourceType, catalogUpdateEnabled });
+      const authority = await verifyOperationAuthority(store, { bearer, binding, toolName, epochHash, mediaPolicyId: adapter.media?.policyId ?? null, resourceType: adapter.resourceType, catalogUpdateEnabled, catalogCreateEnabled });
       const originalGrant = await store.get('SELECT absolute_expires_at FROM oauth_grant WHERE id = ?', authority.grantId);
       const receiptExpiry = operationReceiptExpiry(originalGrant.absolute_expires_at), idem = hash(idempotencyKey);
       const context = contextFor(authority, tenant.revision);
@@ -328,7 +338,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
       envelope.resourceType, envelope.resourceId, envelope.expectedRevision === null ? null : String(envelope.expectedRevision),
       serialized, previewHash, requestHash, idem, now, envelope.expiresAt, envelope.correlationId, receiptExpiry);
       if (adapter.media) {
-        await storeMediaPolicy(store, context, envelope.operationId, immutableEnvelope.proposal.media, {catalogUpdateEnabled});
+        await storeMediaPolicy(store, context, envelope.operationId, immutableEnvelope.proposal.media, {catalogUpdateEnabled,catalogCreateEnabled});
         await withMediaWriter(store, context, writer => adapter.media.persistResources(writer, immutableEnvelope, resolved, context));
         await persistMediaFrame(store, context, envelope.operationId, draft.mediaManifest);
       }
@@ -336,7 +346,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
       if (!await metadata(row, adapter, tenant.revision, originalGrant, authority)) denied();
       if (adapter.media) {
         await mediaResources(row, adapter, immutableEnvelope, context);
-        const finalAuthority = await verifyOperationAuthority(store, { bearer, binding, toolName, epochHash, mediaPolicyId: adapter.media.policyId, resourceType: adapter.resourceType, catalogUpdateEnabled });
+        const finalAuthority = await verifyOperationAuthority(store, { bearer, binding, toolName, epochHash, mediaPolicyId: adapter.media.policyId, resourceType: adapter.resourceType, catalogUpdateEnabled, catalogCreateEnabled });
         if (mediaJson(contextFor(finalAuthority, tenant.revision)) !== mediaJson(context)) denied();
         const current = await withRead(read => adapter.currentRevision(read, immutableEnvelope));
         if (!current || current.exists !== true || current.revision !== captured.expectedRevision) fail(409, 'STALE_REVISION', 'The resource changed.');
@@ -366,7 +376,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
         let authority = await verifyOperationAuthority(store, { bearer, binding, toolName, epochHash });
         const row = await store.get('SELECT * FROM mcp_v2_operation WHERE id = ?', operationId);
         const adapter = row && Object.hasOwn(registered, row.tool_name) && registered[row.tool_name];
-        if (row?.media_policy_id) authority = await verifyOperationAuthority(store, { bearer, binding, toolName, epochHash, mediaPolicyId: row.media_policy_id, resourceType: row.resource_type, catalogUpdateEnabled });
+        if (row?.media_policy_id) authority = await verifyOperationAuthority(store, { bearer, binding, toolName, epochHash, mediaPolicyId: row.media_policy_id, resourceType: row.resource_type, catalogUpdateEnabled, catalogCreateEnabled });
         const originalGrant = await store.get('SELECT absolute_expires_at FROM oauth_grant WHERE id = ?', authority.grantId);
         const stored = row?.redacted_at === null && readStoredOperation(row, binding);
         const envelope = stored && freezeJson(stored);
@@ -468,7 +478,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
         });
         // Long-running adapters cannot turn an expired token or approval into
         // a successful commit. An error here rolls all domain changes back.
-        const finalAuthority = await verifyOperationAuthority(store, { bearer, binding, toolName, epochHash, mediaPolicyId: adapter.media?.policyId ?? null, resourceType: adapter.resourceType, catalogUpdateEnabled });
+        const finalAuthority = await verifyOperationAuthority(store, { bearer, binding, toolName, epochHash, mediaPolicyId: adapter.media?.policyId ?? null, resourceType: adapter.resourceType, catalogUpdateEnabled, catalogCreateEnabled });
         if (finalAuthority.grantId !== authority.grantId || finalAuthority.accountId !== authority.accountId ||
             finalAuthority.clientId !== authority.clientId) denied();
         if (approval.expires_at <= stamp() || row.expires_at <= stamp()) {

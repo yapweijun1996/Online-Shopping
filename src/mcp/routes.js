@@ -17,8 +17,9 @@ import { companyReadTool, companyMutationTool } from './company-tools.js';
 import { catalogCreateTool, catalogUpdateTool } from './catalog-tools.js';
 import { analyticsSalesTrendTool, analyticsTopProductsTool, analyticsInventoryRiskTool } from './analytics-tools.js';
 import { MEDIA_TOOLS_ACCEPTED, mediaTools } from './media-tools.js';
-import { catalogMediaUpdateEnabled } from './catalog-media-config.js';
+import { catalogMediaUpdateEnabled, catalogMediaCreateEnabled } from './catalog-media-config.js';
 import { catalogMediaUpdateTool } from './catalog-media-adapter.js';
+import { catalogMediaCreateTool } from './catalog-media-create-adapter.js';
 import { createMediaRuntime } from './media-runtime.js';
 
 export const connectorPath = (path) => /^\/(?:mcp$|oauth\/(?:register|authorize|token|revoke|consent\.js|consent\.css|operation|operation-review\.(?:js|css))$|\.well-known\/oauth-(?:protected-resource|authorization-server)(?:\/|$)|api\/v1\/seller\/mcp(?:\/|$))/.test(path);
@@ -36,14 +37,16 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
   const safeV2 = enabled && config.mcpV2?.enabled === true && config.production !== true &&
     config.shopMode !== 'public-demo' && quickLogin === false && typeof tenantGuard?.withActiveTenant === 'function';
   const catalogUpdateEnabled = catalogMediaUpdateEnabled(config,{quickLogin,tenantGuard});
+  const catalogCreateEnabled = catalogMediaCreateEnabled(config,{quickLogin,tenantGuard});
+  if (config.mcpCatalogMediaCreate?.enabled === true && !catalogCreateEnabled) throw new TypeError('Safe catalog media CREATE configuration required.');
   if (config.mcpCatalogMediaUpdate?.enabled === true && !catalogUpdateEnabled) throw new TypeError('Safe catalog media UPDATE configuration required.');
   let registrations = operationTools;
   if (registrations === undefined) {
     if (!safeV2) registrations = [];
     else {
       const mediaOptions = {store,binding:oauth.binding,config,tenantGuard,quickLogin};
-      const runtime = (MEDIA_TOOLS_ACCEPTED && config.mcpMedia?.enabled === true) || catalogUpdateEnabled ? createMediaRuntime(mediaOptions) : null;
-      registrations = [companyReadTool(),companyMutationTool(),catalogCreateTool(),
+      const runtime = (MEDIA_TOOLS_ACCEPTED && config.mcpMedia?.enabled === true) || catalogUpdateEnabled || catalogCreateEnabled ? createMediaRuntime(mediaOptions) : null;
+      registrations = [companyReadTool(),companyMutationTool(),catalogCreateEnabled ? catalogMediaCreateTool(runtime) : catalogCreateTool(),
         catalogUpdateEnabled ? catalogMediaUpdateTool(runtime) : catalogUpdateTool(),
         analyticsSalesTrendTool(),analyticsTopProductsTool(),analyticsInventoryRiskTool(),inventorySummaryTool(),inventoryMovementsTool(),inventoryAdjustmentTool(),orderDecisionTool(),...operationControlTools(),
         ...(MEDIA_TOOLS_ACCEPTED && config.mcpMedia?.enabled === true ? mediaTools(mediaOptions,runtime) : [])];
@@ -61,7 +64,7 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
     if (!operations) {
       operations = (async () => {
         const options = { store, binding: { ...oauth.binding, mcpV2: config.mcpV2 }, sellerOrigin: config.sellerOrigin,
-          quickLogin, ...config.mcpV2, tenantGuard, mcpMedia: config.mcpMedia, catalogUpdateEnabled };
+          quickLogin, ...config.mcpV2, tenantGuard, mcpMedia: config.mcpMedia, catalogUpdateEnabled, catalogCreateEnabled };
         const review = createOperationReview(options), approve = createOperationApproval(options), media = createMediaReviewDelivery(options);
         await tenantGuard.withActiveTenant(tenantId, () => initializeOperationStorage(store, { enabled: true }));
         return { review, approve, media };

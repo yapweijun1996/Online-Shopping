@@ -11,11 +11,11 @@ import { isMediaCoordinator, decodeMediaParts } from './media-coordinator.js';
 import { MEDIA_TOOL_CONTRACTS, mediaStageInput, mediaStageOutput, mediaReceiptSchema, mediaLayoutInput, mediaListInput, mediaListOutput } from './media-contracts.js';
 import { OPERATION_CONTROL_CONTRACTS } from './operation-control-contracts.js';
 import { createOperationControls } from './operation-controls.js';
-import { catalogMediaUpdateEnabled,catalogMediaUpdateAllowed } from './catalog-media-config.js';
+import { catalogMediaUpdateEnabled,catalogMediaCreateEnabled,catalogMediaAllowed } from './catalog-media-config.js';
 
 const uuid = { type: 'string', minLength: 36, maxLength: 36, pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' };
 const object = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
-const reserved = new Set(['tenantId', 'shopId', 'accountId', 'bearer', 'config', 'adapter', 'approved', 'password', 'challenge', 'scope', 'capability', 'currencyAcknowledged', 'catalogUpdateEnabled', 'mcpCatalogMediaUpdate']);
+const reserved = new Set(['tenantId', 'shopId', 'accountId', 'bearer', 'config', 'adapter', 'approved', 'password', 'challenge', 'scope', 'capability', 'currencyAcknowledged', 'catalogUpdateEnabled', 'mcpCatalogMediaUpdate', 'catalogCreateEnabled', 'mcpCatalogMediaCreate']);
 const invalid = () => { throw new TypeError('Invalid server operation tool registration.'); };
 function freeze(value) {
   if (value && typeof value === 'object') { for (const item of Object.values(value)) freeze(item); Object.freeze(value); }
@@ -98,6 +98,7 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
   if (!Array.isArray(entries) || entries.length > Object.keys(OPERATION_MUTATION_PAIRS).length + readNames.size + 5) invalid();
   const mediaEnabled = config.mcpMedia?.enabled === true && config.production === false && config.shopMode === 'manual';
   const catalogUpdateEnabled = catalogMediaUpdateEnabled(config,{quickLogin,tenantGuard});
+  const catalogCreateEnabled = catalogMediaCreateEnabled(config,{quickLogin,tenantGuard});
   const tools = [], byName = new Map(), adapters = Object.create(null), skipped = new Set();
   // Scope requirements belong to the constructor's trusted adapter policy, not
   // the public tool schema or any caller-supplied scope/marker argument.
@@ -167,7 +168,7 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
     if (inputSchema.type !== 'object' || receiptSchema.type !== 'object' || !entry.adapter ||
         typeof entry.adapter.resourceType !== 'string' || !/^[a-z][a-z0-9_]{0,39}$/.test(entry.adapter.resourceType) ||
         ['preview', 'currentRevision', 'apply', 'validResult', 'toReceipt', 'validReceipt'].some(key => typeof entry.adapter[key] !== 'function')) invalid();
-    if (entry.adapter.media?.policyId === 'catalog-media-v1' && !catalogMediaUpdateAllowed(catalogUpdateEnabled,
+    if (entry.adapter.media?.policyId === 'catalog-media-v1' && !catalogMediaAllowed({catalogUpdateEnabled,catalogCreateEnabled},
       {toolName:entry.previewName,mediaPolicyId:entry.adapter.media.policyId,resourceType:entry.adapter.resourceType})) invalid();
     if (mediaLayout) {
       if (entry.adapter.media?.policyId !== 'media-layout-v1') invalid();
@@ -198,7 +199,7 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
   const enabled = config.mcpEnabled === true && config.mcpV2?.enabled === true && config.production !== true &&
     config.shopMode !== 'public-demo' && quickLogin === false && Boolean(tenantGuard);
   if (!enabled || !tools.length) return Object.freeze({ catalogue: Object.freeze([]), find: () => null, requiredScopes: () => null, call: () => { throw new ApiError(404, 'NOT_FOUND', 'Not found.'); } });
-  const engine = Object.keys(adapters).length ? createOperationEngine({ store, binding, adapters, tenantGuard, quickLogin, ...config.mcpV2, catalogUpdateEnabled }) : null;
+  const engine = Object.keys(adapters).length ? createOperationEngine({ store, binding, adapters, tenantGuard, quickLogin, ...config.mcpV2, catalogUpdateEnabled, catalogCreateEnabled }) : null;
   const epochHash = operationEpochHash(config.mcpV2.epoch), read = selectOnly(store);
   const controls=tools.some(tool=>Object.hasOwn(OPERATION_CONTROL_CONTRACTS,tool.name))?createOperationControls({store,binding,config,tenantGuard,quickLogin}):null;
   return Object.freeze({ catalogue: Object.freeze(tools), find: name => byName.get(name)?.tool || null,

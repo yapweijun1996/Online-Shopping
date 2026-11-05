@@ -3,7 +3,7 @@ import { ApiError } from '../http.js';
 import { canonicalOperationJson } from './operation-envelope.js';
 import { operationInstant, operationReceiptExpiry } from './operation-maintenance.js';
 import { MEDIA_LIMITS, MEDIA_POLICY_DESCRIPTOR_FIELDS } from './media-schema.js';
-import { catalogMediaUpdateAllowed } from './catalog-media-config.js';
+import { catalogMediaAllowed, catalogMediaCreateAllowed } from './catalog-media-config.js';
 export const mediaHash = value => createHash('sha256').update(value).digest('hex');
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const sha = /^[0-9a-f]{64}$/;
@@ -199,10 +199,10 @@ export async function withMediaWriter(store, trustedContext, work, { now: suppli
 
 // Retained minimal descriptor storage. This is not a scope/approval checker and
 // does not make the reserved catalog-media policy eligible for any runtime tool.
-export async function storeMediaPolicy(store, trustedContext, operationId, descriptor, {catalogUpdateEnabled=false}={}) {
+export async function storeMediaPolicy(store, trustedContext, operationId, descriptor, {catalogUpdateEnabled=false,catalogCreateEnabled=false}={}) {
   const context=mediaContext(trustedContext);
   keys(descriptor,MEDIA_POLICY_DESCRIPTOR_FIELDS);
-  if(!isUuid(operationId)||!(['media-upload-v1','media-layout-v1'].includes(descriptor.policyId)||catalogUpdateEnabled===true&&descriptor.policyId==='catalog-media-v1')||!isSha(descriptor.manifestRoot)||!isSha(descriptor.graphRevision)||!isSha(descriptor.codecDigest)||
+  if(!isUuid(operationId)||!(['media-upload-v1','media-layout-v1'].includes(descriptor.policyId)||(catalogUpdateEnabled===true||catalogCreateEnabled===true)&&descriptor.policyId==='catalog-media-v1')||!isSha(descriptor.manifestRoot)||!isSha(descriptor.graphRevision)||!isSha(descriptor.codecDigest)||
       !integer(descriptor.pageCount,1,MEDIA_LIMITS.pages)||!integer(descriptor.assetCount,0,MEDIA_LIMITS.assets)||!integer(descriptor.effectCount,1,MEDIA_LIMITS.records))invalid();
   descriptor=Object.freeze({...descriptor});
   return store.transaction(async () => {
@@ -210,7 +210,7 @@ export async function storeMediaPolicy(store, trustedContext, operationId, descr
   const tools={'media-upload-v1':['media.prepare_upload'],'media-layout-v1':['media.preview_layout'],'catalog-media-v1':['catalog.preview_create','catalog.preview_update']};
   const catalog=descriptor.policyId==='catalog-media-v1';
   if(!operation||!matchesOperation(operation,context)||operation.media_policy_id!==null||!['PREPARED','PENDING_APPROVAL'].includes(operation.state)||!tools[descriptor.policyId].includes(operation.tool_name)||operation.required_scope!==(catalog?'catalog.write':'media.write')||operation.required_capability!=='catalog.write'||
-    catalog&&(!catalogMediaUpdateAllowed(catalogUpdateEnabled,{toolName:operation.tool_name,mediaPolicyId:descriptor.policyId,resourceType:operation.resource_type})||!isUuid(operation.resource_id)||operation.risk!=='HIGH'))conflict();
+    catalog&&(!catalogMediaAllowed({catalogUpdateEnabled,catalogCreateEnabled},{toolName:operation.tool_name,mediaPolicyId:descriptor.policyId,resourceType:operation.resource_type})||!(catalogMediaCreateAllowed(catalogCreateEnabled,{toolName:operation.tool_name,mediaPolicyId:descriptor.policyId,resourceType:operation.resource_type})?operation.resource_id==='catalog':isUuid(operation.resource_id))||operation.risk!=='HIGH'))conflict();
   const digest=mediaHash(canonicalOperationJson(descriptor)),scopes=descriptor.policyId==='catalog-media-v1'?'catalog.write media.write':'media.write';
   await store.run(`INSERT INTO mcp_v2_operation_media_policy(operation_id,policy_id,required_scopes,descriptor_hash,manifest_root,graph_revision,codec_digest,page_count,asset_count,effect_count,created_at,expires_at)VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
     operationId,descriptor.policyId,scopes,digest,descriptor.manifestRoot,descriptor.graphRevision,descriptor.codecDigest,descriptor.pageCount,descriptor.assetCount,descriptor.effectCount,operation.created_at,operation.expires_at);

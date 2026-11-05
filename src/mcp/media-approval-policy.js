@@ -8,17 +8,20 @@ import { readMediaSnapshot, loadOldMediaAsset } from './media-resources.js';
 import { withMediaWriter, mediaHash } from './media-storage.js';
 import { canonicalOperationJson } from './operation-envelope.js';
 import { assertUploadThumbnail } from './media-upload-policy.js';
-import { catalogMediaUpdateAllowed } from './catalog-media-config.js';
+import { catalogMediaAllowed, catalogMediaCreateAllowed } from './catalog-media-config.js';
 import { parseCatalogMediaUpdateProposal, readCatalogMediaUpdateReview } from './catalog-media-adapter.js';
+import { parseCatalogMediaCreateProposal, readCatalogMediaCreateReview } from './catalog-media-create-adapter.js';
 const deny = () => { throw new ApiError(403, 'FORBIDDEN', 'Image review could not be verified.'); };
 
 // Metadata only: callers supply current human authority inside the same fence/transaction.
 // The content revision binds literal labels and all physical images, not timestamps.
-export async function readMediaReviewState(store, operation, envelope, context, {catalogUpdateEnabled=false,codecDigest}={}) {
+export async function readMediaReviewState(store, operation, envelope, context, {catalogUpdateEnabled=false,catalogCreateEnabled=false,codecDigest}={}) {
   if (operation.media_policy_id === 'catalog-media-v1') {
-    if (!catalogMediaUpdateAllowed(catalogUpdateEnabled,
+    if (!catalogMediaAllowed({catalogUpdateEnabled,catalogCreateEnabled},
       {toolName:operation.tool_name,mediaPolicyId:operation.media_policy_id,resourceType:operation.resource_type}) || !isMediaHash(codecDigest)) deny();
-    return readCatalogReviewState(store,operation,envelope,context,codecDigest);
+    return catalogMediaCreateAllowed(catalogCreateEnabled,{toolName:operation.tool_name,mediaPolicyId:operation.media_policy_id,resourceType:operation.resource_type})
+      ? readCatalogCreateReviewState(store,operation,envelope,context,codecDigest)
+      : readCatalogReviewState(store,operation,envelope,context,codecDigest);
   }
   const manifest = await readMediaFrame(store, context, operation.id, envelope.proposal.media);
   const snapshot = await readMediaSnapshot(store, operation.resource_id);
@@ -67,6 +70,29 @@ async function readCatalogReviewState(store,operation,envelope,context,codecDige
   }
 }
 
+async function readCatalogCreateReviewState(store,operation,envelope,context,codecDigest) {
+  const manifest = await readMediaFrame(store,context,operation.id,envelope.proposal.media);
+  try {
+    const value = parseCatalogMediaCreateProposal(envelope.proposal);
+    if (operation.risk !== 'HIGH' || operation.resource_id !== 'catalog' || operation.resource_type !== 'catalog') deny();
+    const fresh = await readCatalogMediaCreateReview(store,{normalizedInput:value.normalizedInput,
+      creationIdentity:value.creationIdentity},codecDigest,value.sourceRevision);
+    if (fresh.revision !== operation.expected_revision || manifest.descriptor.graphRevision !== fresh.revision || manifest.stages.length !== 0 ||
+        canonicalOperationJson(fresh.proposal) !== canonicalOperationJson(value) ||
+        canonicalOperationJson(fresh.manifest.descriptor) !== canonicalOperationJson(manifest.descriptor) ||
+        fresh.manifest.pages.length !== manifest.pages.length || fresh.manifest.pages.some((page,n) => page.page_json !== manifest.pages[n].page_json)) deny();
+    const source = fresh.state.source;
+    const labels = value.reviewLabels.map(({productId,after}) => ({productId,sku:after.sku,name:after.name}));
+    if (source.kind === 'EXISTING_TARGET') return {manifest,snapshot:source.snapshot,labels};
+    // EMPTY_BEFORE is not a database capture. Its PAGE proof is still mandatory.
+    if (source.kind !== 'EMPTY_BEFORE' || manifest.assets.length !== 0 || manifest.stages.length !== 0 || manifest.pages.length < 1) deny();
+    return {manifest,snapshot:null,labels};
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 503) throw error;
+    deny();
+  }
+}
+
 // Exact SSOT loader only; never accepts a URL, path, user thumbnail or caller source identity.
 export async function loadMediaReviewAsset(store, operation, state, context, assetKey) {
   const asset = state.manifest.assets.find(value => value.asset_key === assetKey);
@@ -77,6 +103,7 @@ export async function loadMediaReviewAsset(store, operation, state, context, ass
     if (result.mime !== asset.mime || result.canonicalSha256 !== asset.byte_sha256) deny();
     data = result.image;
   } else {
+    if (!state.snapshot) deny();
     const source = Object.fromEntries(['source_kind','source_id','source_product_id','stage_id','byte_sha256','mime','byte_length'].map(key => [key, asset[key]]));
     data = (await loadOldMediaAsset(store, state.snapshot, source)).data;
   }

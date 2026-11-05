@@ -9,7 +9,7 @@ import { expireOperationRecord } from './operation-expiry.js';
 import { operationInstant } from './operation-maintenance.js';
 import { OPERATION_CONTROL_CONTRACTS } from './operation-control-contracts.js';
 import { valid } from './tools.js';
-import { catalogMediaUpdateEnabled } from './catalog-media-config.js';
+import { catalogMediaUpdateEnabled, catalogMediaCreateEnabled } from './catalog-media-config.js';
 const denied=()=>{throw new ApiError(403,'FORBIDDEN','Operation authorization failed.');};
 const invalid=()=>{throw new ApiError(400,'INVALID_INPUT','Invalid operation control arguments.');};
 const corrupt=()=>{throw new ApiError(503,'AUDIT_UNAVAILABLE','Operation audit metadata is unavailable.');};
@@ -21,6 +21,7 @@ export function createOperationControls({store,binding,config,tenantGuard,quickL
   if(config.mcpEnabled!==true||config.mcpV2?.enabled!==true||config.production===true||config.shopMode==='public-demo'||quickLogin!==false||!tenantGuard?.withActiveTenant)denied();
   const {epoch,buildDigest}=config.mcpV2,epochHash=operationEpochHash(epoch);
   const catalogUpdateEnabled=catalogMediaUpdateEnabled(config,{quickLogin,tenantGuard});
+  const catalogCreateEnabled=catalogMediaCreateEnabled(config,{quickLogin,tenantGuard});
   const key=createHmac('sha256',Buffer.from(epoch,'base64url')).update('mcp-v2/operation-audit-cursor/v1\0').digest();
   const mac=text=>createHmac('sha256',key).update(text).digest('base64url');
   function encode(value){const text=Buffer.from(canonicalOperationJson(value)).toString('base64url');return text+'.'+mac(text);}
@@ -103,7 +104,7 @@ export function createOperationControls({store,binding,config,tenantGuard,quickL
     if(!Object.hasOwn(OPERATION_CONTROL_CONTRACTS,name)||!valid(args,OPERATION_CONTROL_CONTRACTS[name].inputSchema))invalid();
     return tenantGuard.withActiveTenant(binding.tenantId,tenant=>store.transaction(async()=>{
       if(!tenant||!Number.isSafeInteger(tenant.revision)||tenant.revision<0)denied();
-      const options={bearer,binding,toolName:name,epochHash,buildDigest,tenantRevision:tenant.revision,operationId:args.operationId,catalogUpdateEnabled};
+      const options={bearer,binding,toolName:name,epochHash,buildDigest,tenantRevision:tenant.revision,operationId:args.operationId,catalogUpdateEnabled,catalogCreateEnabled};
       const {record,authority}=await verifyOperationControlAuthority(store,options),row=record.row;
       const dto=name==='operations.get'?await get(row):name==='operations.cancel'?await cancel(row):await audit(row,args,tenant.revision,authority);
       if(!valid(dto,OPERATION_CONTROL_CONTRACTS[name].outputSchema)||Buffer.byteLength(canonicalOperationJson(dto))>65536)corrupt();
