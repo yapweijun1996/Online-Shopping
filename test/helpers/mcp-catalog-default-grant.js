@@ -5,7 +5,7 @@ import { reviewPassword } from './mcp-review-fixture.js';
 
 export const legacyCatalogScopes = 'catalog.read orders.read analytics.read';
 // Uses actual authorization/password/consent/token handlers, never seeded grants.
-export async function freshCatalogAccess(f, scopes = legacyCatalogScopes + ' catalog.write', call = f.call) {
+export async function freshCatalogAccess(f, scopes = legacyCatalogScopes + ' catalog.write', call = f.call, { username = 'synthetic_owner', password = reviewPassword } = {}) {
   const redirect = 'https://client.example.com/catalog-callback';
   const registered = await call('/oauth/register', 'POST', { client_name: 'Synthetic catalog client', redirect_uris: [redirect],
     grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], token_endpoint_auth_method: 'none' });
@@ -17,7 +17,7 @@ export async function freshCatalogAccess(f, scopes = legacyCatalogScopes + ' cat
   assert.equal(staged.response.status, 200, JSON.stringify(staged.data));
   const authorizationRequestId = /data-request="([^"]+)"/.exec(staged.data)?.[1], proof = /data-proof="([^"]+)"/.exec(staged.data)?.[1];
   assert.ok(authorizationRequestId); assert.ok(proof);
-  const login = await call('/api/v1/seller/session', 'POST', { username: 'synthetic_owner', password: reviewPassword,
+  const login = await call('/api/v1/seller/session', 'POST', { username, password,
     mcpAuthorization: { authorizationRequestId, proof } }, { origin: f.config.sellerOrigin });
   assert.equal(login.response.status, 200, JSON.stringify(login.data));
   const headers = { origin: f.config.sellerOrigin, cookie: login.response.headers.get('set-cookie').split(';')[0], 'x-csrf-token': login.data.csrfToken };

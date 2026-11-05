@@ -28,7 +28,7 @@ async function fixture(t, { keys = true, validate = async () => true } = {}) {
 }
 
 test('current schema and ready covers the AI Studio tables', async (t) => {
-  assert.equal(SCHEMA_VERSION, 32);
+  assert.equal(SCHEMA_VERSION, 33);
   const store = await openDatabase(':memory:'); t.after(() => store.close());
   await ensureAdmin(store, 'fixture_owner', 'FictionalPassword123!');
   assert.equal(await ready(store), true);

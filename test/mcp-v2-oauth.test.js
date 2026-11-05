@@ -1,3 +1,4 @@
+import { inventoryAdjustmentTool } from '../src/mcp/inventory-tools.js';
 import { setupShop } from '../src/shop-setup.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -111,13 +112,13 @@ for (const engine of ['sqlite', 'postgres']) {
     assert.match(grant.staged.data, /Scope consent is not approval of an individual change/);
     const listed = (await f.rpc(grant.access_token, 'tools/list')).data.result.tools;
     assert.deepEqual(listed.map((tool) => tool.name), ['catalog.list', 'catalog.get', 'catalog.categories', 'catalog.history', 'catalog.low_stock',
-      'orders.list', 'orders.get', 'analytics.summary', 'company.get', 'catalog.preview_create', 'catalog.commit_create', 'catalog.preview_update', 'catalog.commit_update']);
+      'orders.list', 'orders.get', 'analytics.summary', 'company.get', 'catalog.preview_create', 'catalog.commit_create', 'catalog.preview_update', 'catalog.commit_update', 'inventory.preview_adjustment', 'inventory.commit_adjustment']);
     assert.deepEqual(listed.slice(0, 8), legacyTools);
     assert.deepEqual(listed[8].inputSchema, companyReadContract.inputSchema);
     assert.deepEqual(listed[8].outputSchema, companyReadContract.outputSchema);
     const object = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
     const uuid = { type: 'string', minLength: 36, maxLength: 36, pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' };
-    for (const [index, entry] of [[9, catalogCreateTool()], [11, catalogUpdateTool()]]) {
+    for (const [index, entry] of [[9, catalogCreateTool()], [11, catalogUpdateTool()], [13, inventoryAdjustmentTool()]]) {
       assert.deepEqual(listed[index].inputSchema, object({ input: entry.inputSchema,
         idempotencyKey: { type: 'string', minLength: 16, maxLength: 128, pattern: '^[A-Za-z0-9._~-]+$' } }));
       assert.deepEqual(listed[index].outputSchema, object({ operationId: uuid,

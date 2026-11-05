@@ -113,7 +113,7 @@ export const operationStorageDdl = dialect => operationSchema(dialect) + mediaSc
 const ddlDigest = (store) => sha256(operationStorageDdl(store.dialect));
 
 async function assertStorage(store) {
-  if (![29, 30, 31, 32].includes(await store.schemaVersion())) throw new Error('MCP v2 storage requires base schema 29, 30, 31 or 32.');
+  if (![29, 30, 31, 32, 33].includes(await store.schemaVersion())) throw new Error('MCP v2 storage requires base schema 29, 30, 31, 32 or 33.');
   const meta = await store.get('SELECT version, ddl_digest, manifest_digest FROM mcp_v2_schema WHERE id = 1');
   if (!meta || meta.version !== OPERATION_STORAGE_VERSION || meta.ddl_digest !== ddlDigest(store) ||
       meta.manifest_digest !== await manifestDigest(store)) throw new Error('Incompatible MCP v2 storage extension.');
@@ -123,7 +123,7 @@ async function assertStorage(store) {
 export const assertOperationStorage = store => assertStorage(store);
 
 export async function operationStorageReady(store) {
-  try { if (await store.schemaVersion() !== 32) return false; await assertStorage(store); return true; } catch { return false; }
+  try { if (await store.schemaVersion() !== 33) return false; await assertStorage(store); return true; } catch { return false; }
 }
 
 export function operationStorageMetaSchema(dialect) {
@@ -149,7 +149,7 @@ async function writeStorageMetadata(store) {
 // The fresh SQL baseline initializes its metadata itself so direct SQL bootstrap
 // and the JS loader have identical behavior. The loader verifies before commit.
 export async function initializeFreshOperationStorage(store) {
-  if (store.dialect !== 'postgres' || await store.schemaVersion() !== 32) throw new Error('Expected a fresh PostgreSQL schema 32.');
+  if (store.dialect !== 'postgres' || await store.schemaVersion() !== 33) throw new Error('Expected a fresh PostgreSQL schema 33.');
   await assertStorage(store);
 }
 
@@ -159,7 +159,7 @@ export async function initializeOperationStorage(store, options) {
   if (options === undefined || options?.enabled === false) return false;
   if (options?.enabled !== true) throw new TypeError('Explicit MCP v2 storage opt-in is required.');
   return store.transaction(async () => {
-    if (![29, 30, 31, 32].includes(await store.schemaVersion())) throw new Error('MCP v2 storage requires base schema 29, 30, 31 or 32.');
+    if (![29, 30, 31, 32, 33].includes(await store.schemaVersion())) throw new Error('MCP v2 storage requires base schema 29, 30, 31, 32 or 33.');
     const exists = store.dialect === 'sqlite'
       ? Boolean(await store.get("SELECT name FROM sqlite_schema WHERE name = 'mcp_v2_schema'"))
       : store.dialect === 'postgres' && Boolean((await store.get("SELECT to_regclass('public.mcp_v2_schema') AS name")).name);

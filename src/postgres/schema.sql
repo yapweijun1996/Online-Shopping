@@ -1,4 +1,4 @@
--- PostgreSQL baseline matching SQLite schema 32. Timestamps stay ISO text to preserve API snapshots.
+-- PostgreSQL baseline matching SQLite schema 33. Timestamps stay ISO text to preserve API snapshots.
 CREATE TABLE admin (
         id BIGINT PRIMARY KEY CHECK (id = 1),
         username TEXT NOT NULL UNIQUE,
@@ -327,7 +327,7 @@ CREATE TABLE ai_studio_image (
  created_by TEXT NOT NULL, created_at TEXT NOT NULL
 );
 CREATE INDEX ai_studio_image_product ON ai_studio_image(product_id);
-INSERT INTO schema_meta VALUES (1, 32);
+INSERT INTO schema_meta VALUES (1, 33);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 INSERT INTO shop_setup(id, mode, shop_name) VALUES (1, NULL, 'Online Shopping');
@@ -735,3 +735,6 @@ INSERT INTO inventory_schema VALUES(1,1,'c90eabcdd202fccdb3790a23748c61f0b8b6ae6
     'constraints', COALESCE((SELECT jsonb_agg(to_jsonb(c) ORDER BY table_name,conname) FROM (SELECT r.relname AS table_name,c.conname,pg_get_constraintdef(c.oid) AS definition FROM pg_constraint c JOIN pg_class r ON r.oid=c.conrelid JOIN pg_namespace n ON n.oid=r.relnamespace WHERE n.nspname='public' AND r.relname LIKE 'inventory!_%' ESCAPE '!') c),'[]'::jsonb),
     'indexes', COALESCE((SELECT jsonb_agg(to_jsonb(i) ORDER BY tablename,indexname) FROM (SELECT tablename,indexname,indexdef FROM pg_indexes WHERE schemaname='public' AND tablename LIKE 'inventory!_%' ESCAPE '!') i),'[]'::jsonb)
   )::text,'UTF8')),'hex') AS digest));
+
+-- Inventory33 bounded per-product order source lookup.
+CREATE INDEX order_item_inventory ON order_item(product_id, id, delivery_id);

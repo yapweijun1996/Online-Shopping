@@ -39,7 +39,7 @@ for(const dialect of ['sqlite','postgres']) {
 }
 test('PostgreSQL fresh32 embeds exact generated inventoryDDL and actual frozen31 baseline upgrades identically',{skip:!process.env.SHOP_TEST_DATABASE_URL},async t=>{
  const f=await inventoryFixture(t,'postgres',{seed:false}),fresh=(await f.store.get('SELECT * FROM inventory_schema'));
- const baseline=await readFile(new URL('../src/postgres/schema.sql',import.meta.url),'utf8');assert.ok(baseline.endsWith(inventorySchema('postgres')+inventorySeedSql()+'\n'));
+ const baseline=await readFile(new URL('../src/postgres/schema.sql',import.meta.url),'utf8');assert.ok(baseline.includes(inventorySchema('postgres')+inventorySeedSql()+'\n'));
  // Independent checked-in pre-inventory baseline from immutable source5eba37b.
  const old=await readFile(new URL('./fixtures/postgres-schema31.sql',import.meta.url),'utf8');assert.doesNotMatch(old,/CREATE TABLE inventory_/);assert.match(old,/INSERT INTO schema_meta VALUES \(1, 31\)/);
  // Explicit fixture dependency drops; no CASCADE hides unknown dependencies.

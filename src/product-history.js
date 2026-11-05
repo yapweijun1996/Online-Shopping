@@ -51,6 +51,21 @@ export async function trackCreate(database, actor, work) {
   });
 }
 
+// Stock-only operations share the existing diff/append history format without
+// loading product descriptions, variants or media. Other editor history stays
+// on the full product wrapper above.
+export async function trackStockUpdate(database, id, actor, work) {
+  return database.transaction(async () => {
+    const before = await database.get('SELECT stock_quantity FROM product WHERE id = ?', id);
+    if (!before) return null;
+    const result = await withInventorySeller(database, actor, work);
+    if (!result) return result;
+    const after = await database.get('SELECT stock_quantity FROM product WHERE id = ?', id);
+    await append(database, id, actor, 'UPDATED', diff({ stockQuantity: before.stock_quantity }, { stockQuantity: after.stock_quantity }));
+    return result;
+  });
+}
+
 export async function listProductHistory(database, productId, params, fieldsOnly = false) {
   const limit = Number(params.get('limit') ?? 50), offset = Number(params.get('offset') ?? 0);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0 || offset > 10_000) throw new FieldError('limit', 'Enter a valid list range.');

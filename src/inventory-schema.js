@@ -71,12 +71,42 @@ const manifest = async store => store.dialect === 'postgres' ? (await store.get(
 export function inventorySeedSql() {
   return `INSERT INTO inventory_schema VALUES(1,1,'${hash(inventorySchema('postgres'))}',(${inventoryManifestSql()}));`;
 }
-export async function inventoryStorageReady(store) {
+// The frozen32 table manifest remains unchanged by the separate33 index.
+export async function assertInventoryStorage(store) {
+  if (![32,33].includes(await store.schemaVersion())) throw new Error('Inventory tables require schema32 or33.');
+  const row = await store.get('SELECT version,ddl_digest,manifest_digest FROM inventory_schema WHERE id=1');
+  if (row?.version !== INVENTORY_SCHEMA_VERSION || row.ddl_digest !== hash(inventorySchema(store.dialect)) || row.manifest_digest !== await manifest(store)) throw new Error('Incompatible inventory storage.');
+}
+export const INVENTORY_ORDER_INDEX_SQL = 'CREATE INDEX order_item_inventory ON order_item(product_id, id, delivery_id);';
+// SELECT-only definition check is also used before bounded per-product reads.
+export async function inventoryOrderIndexDefinitionReady(store) {
   try {
-    if (await store.schemaVersion() !== 32) return false;
-    const row = await store.get('SELECT version,ddl_digest,manifest_digest FROM inventory_schema WHERE id=1');
-    return row?.version === INVENTORY_SCHEMA_VERSION && row.ddl_digest === hash(inventorySchema(store.dialect)) && row.manifest_digest === await manifest(store);
+    if (store.dialect === 'sqlite') {
+      const row = await store.get("SELECT sql FROM sqlite_schema WHERE type='index' AND name='order_item_inventory' AND tbl_name='order_item'");
+      return row?.sql === INVENTORY_ORDER_INDEX_SQL.slice(0,-1);
+    }
+    const row = await store.get("SELECT pg_get_indexdef(i.indexrelid) AS definition,i.indisvalid,i.indisready FROM pg_index i WHERE i.indexrelid=to_regclass('public.order_item_inventory') AND i.indrelid='public.order_item'::regclass");
+    return row?.definition === 'CREATE INDEX order_item_inventory ON public.order_item USING btree (product_id, id, delivery_id)' && row.indisvalid === true && row.indisready === true;
   } catch { return false; }
+}
+export async function inventoryOrderIndexReady(store) {
+  if (!await inventoryOrderIndexDefinitionReady(store)) return false;
+  if (store.dialect !== 'sqlite') return true;
+  const columns = (await store.all("SELECT name, \"desc\", coll, \"key\" FROM pragma_index_xinfo('order_item_inventory') WHERE \"key\"=1 ORDER BY seqno")).filter(row=>row.key===1);
+  return columns.map(row=>row.name).join(',') === 'product_id,id,delivery_id' && columns.every(row=>row.desc===0&&row.coll==='BINARY');
+}
+export async function inventoryStorageReady(store) {
+  try { if (await store.schemaVersion() !== 33) return false; await assertInventoryStorage(store); return await inventoryOrderIndexReady(store); } catch { return false; }
+}
+export async function migrateInventoryOrderIndex(store) {
+  if (await store.schemaVersion() !== 32) throw new Error('Inventory index migration requires schema32.');
+  await assertInventoryStorage(store);
+  const existing = store.dialect === 'sqlite'
+    ? await store.all("SELECT name FROM sqlite_schema WHERE name GLOB 'order_item_inventory*'")
+    : await store.all("SELECT relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname LIKE 'order!_item!_inventory%' ESCAPE '!'");
+  if (existing.length) throw new Error('Unversioned inventory index prototype.');
+  await store.exec(INVENTORY_ORDER_INDEX_SQL);
+  if (!await inventoryOrderIndexReady(store)) throw new Error('Incompatible inventory order index.');
 }
 // Called only from the explicit schema migration transaction; never adopt prototypes.
 export async function migrateInventory(store) {

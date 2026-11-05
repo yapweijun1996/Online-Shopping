@@ -27,5 +27,5 @@ export async function inventoryFixture(t, dialect, { seed = true } = {}) {
   };
   return { store, location, product, order };
 }
-export const legacyInventoryDropSql = 'DROP TABLE IF EXISTS inventory_movement; DROP TABLE IF EXISTS inventory_state; DROP TABLE IF EXISTS inventory_coverage; DROP TABLE IF EXISTS inventory_schema;';
+export const legacyInventoryDropSql = 'DROP INDEX IF EXISTS order_item_inventory; DROP TABLE IF EXISTS inventory_movement; DROP TABLE IF EXISTS inventory_state; DROP TABLE IF EXISTS inventory_coverage; DROP TABLE IF EXISTS inventory_schema;';
 export const dropInventoryForLegacyFixture = store => store.exec(legacyInventoryDropSql);
