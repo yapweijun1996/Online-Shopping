@@ -60,6 +60,27 @@ for (const dialect of ['sqlite', 'postgres']) {
     assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_media_manifest_page')).n, 0);
     assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_media_asset_ref')).n, 0);
   });
+  test(`${dialect}: canonical metadata cannot substitute the actual stage MIME or byte length`, options, async t => {
+    for (const change of [{ mime: 'image/jpeg' }, { byte_length: 29 }]) {
+      const f = await prepared(t, dialect);
+      await f.bind();
+      const records = f.manifest.pages.flatMap(page => JSON.parse(page.page_json).records);
+      const record = records.find(value => value.kind === 'ASSET');
+      const asset = Object.fromEntries(['source_kind','source_id','source_product_id','stage_id','byte_sha256','mime','byte_length'].map(key => [key, record[key]]));
+      Object.assign(asset, change);
+      const key = mediaAssetKey(asset.mime, asset.byte_sha256);
+      const effects = records.filter(value => value.kind !== 'ASSET');
+      effects.find(value => value.kind === 'PRODUCT').after.mainAssetKey = key;
+      const forged = buildMediaManifest({ toolName: 'media.prepare_upload', graphRevision: f.args.expectedRevision,
+        codecDigest: f.args.codecDigest, graphBytes: { oldBytes: 0, newBytes: asset.byte_length }, assets: [asset], effects });
+      const row = mediaManifestRows(forged, { operationId: f.op, toolName: 'media.prepare_upload', createdAt: f.now,
+        expiresAt: new Date(Date.parse(f.now) + 600000).toISOString() }).policy;
+      await f.store.run('UPDATE mcp_v2_operation_media_policy SET descriptor_hash=?,manifest_root=? WHERE operation_id=?', row.descriptor_hash, row.manifest_root, f.op);
+      await assert.rejects(persistMediaFrame(f.store, f.context, f.op, forged), { code: 'MEDIA_FRAME_INTEGRITY' });
+      assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_media_manifest_page')).n, 0);
+      assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_media_asset_ref')).n, 0);
+    }
+  });
   test(`${dialect}: frame write failure and outer rollback leave no partial pages/assets/pin`, options, async t => {
     const f = await prepared(t, dialect), original = f.store.run;
     await assert.rejects(f.store.transaction(async () => {

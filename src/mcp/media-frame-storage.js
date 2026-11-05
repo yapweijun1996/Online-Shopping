@@ -18,16 +18,21 @@ async function parent(store, context, operationId) {
   return { operation, policy };
 }
 async function pins(store, context, operation, manifest) {
+  const stageAssets = new Map();
+  for (const page of manifest.pages) for (const record of JSON.parse(page.page_json).records) {
+    if (record.kind === 'ASSET') for (const ref of record.stage_refs) stageAssets.set(ref.stage_id, record);
+  }
   const rows = await store.all('SELECT stage_id,canonical_sha256,codec_digest,created_at,expires_at FROM mcp_v2_media_pin WHERE operation_id=? ORDER BY stage_id LIMIT 11', operation.id);
   if (rows.length !== manifest.stages.length || rows.length > MEDIA_LIMITS.newAssets) integrity();
   await withMediaWriter(store, context, async writer => {
     for (const [index, expected] of manifest.stages.entries()) {
-      const pin = rows[index], stage = await writer.inspect(expected.stage_id);
+      const pin = rows[index], stage = await writer.inspect(expected.stage_id), asset = stageAssets.get(expected.stage_id);
       if (pin.stage_id !== expected.stage_id || pin.canonical_sha256 !== expected.canonical_sha256 ||
           pin.codec_digest !== expected.codec_digest || pin.expires_at !== operation.expires_at ||
           pin.created_at < operation.created_at || pin.created_at >= operation.expires_at ||
           stage.state !== 'BOUND' || stage.operationId !== operation.id || stage.productId !== expected.source_product_id ||
           stage.canonicalSha256 !== expected.canonical_sha256 || stage.codecDigest !== expected.codec_digest ||
+          !asset || stage.canonicalMime !== asset.mime || stage.canonicalBytes !== asset.byte_length ||
           stage.boundExpiresAt !== operation.expires_at || stage.correlationId !== operation.correlation_id) integrity();
     }
   });
