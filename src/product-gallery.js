@@ -201,31 +201,46 @@ export function requireGalleryRevision(current, expected) {
  * Called when a listing has several products: makes the holder's gallery explicit and moves its main photo out of it
  * (as an uploaded copy), so the shared gallery no longer depends on any variant's main photo. Idempotent.
  */
-export async function shareListingGallery(store, listingId) {
+// Private binary plan: planning performs SELECTs only; new IDs/times are allocated
+// by the existing service inside its caller's transaction, never by a client.
+export async function planListingGallerySharing(store, listingId) {
   const holderId = await listingHolder(store, listingId);
-  if (!holderId) return false;
+  if (!holderId) return null;
   const holder = await store.get('SELECT id, image_mime, image_data, thumb_mime, thumb_data, gallery_layout_json FROM product WHERE id = ?', holderId);
   const uploads = await store.all('SELECT id, data FROM product_gallery_image WHERE product_id = ? ORDER BY position', holderId);
   const layout = holder.gallery_layout_json === null ? [...(holder.image_data ? ['main'] : []), ...uploads.map((row) => row.id)]
     : JSON.parse(holder.gallery_layout_json);
-  if (!layout.includes('main')) {
-    if (holder.gallery_layout_json === null) await store.run('UPDATE product SET gallery_layout_json = ? WHERE id = ?', JSON.stringify(layout), holderId);
-    return true;
-  }
+  if (!layout.includes('main')) return { holderId, selected: layout, pending: null, writeLayout: holder.gallery_layout_json === null };
   const twin = holder.image_data && uploads.find((row) => hash(row.data) === hash(holder.image_data));
-  let replacement = twin?.id;
+  let replacement = twin?.id, pending = null;
   if (!replacement && holder.image_data && uploads.length < 10) {
-    replacement = randomUUID();
+    const base = `shared-main:sha256:${hash(holder.image_data)}`;
+    replacement = base;
+    for (let n = 1; layout.includes(replacement) || uploads.some(row => row.id === replacement); n++) replacement = `${base}:${n}`;
     const position = Number((await store.get('SELECT COALESCE(MAX(position), 0) AS last FROM product_gallery_image WHERE product_id = ?', holderId)).last) + 1;
-    await store.run('INSERT INTO product_gallery_image(id, product_id, position, mime, data, created_at, thumb_mime, thumb_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      replacement, holderId, position, holder.image_mime, holder.image_data, new Date().toISOString(), holder.thumb_mime ?? null, holder.thumb_data ?? null);
+    pending = { ref: replacement, position, mime: holder.image_mime, data: holder.image_data,
+      thumb_mime: holder.thumb_mime ?? null, thumb_data: holder.thumb_data ?? null };
   }
-  const next = [];
+  const selected = [];
   for (const id of layout) {
     const mapped = id === 'main' ? replacement : id;
-    if (mapped && !next.includes(mapped)) next.push(mapped);
+    if (mapped && !selected.includes(mapped)) selected.push(mapped);
   }
-  await store.run('UPDATE product SET gallery_layout_json = ? WHERE id = ?', JSON.stringify(next), holderId);
+  return { holderId, selected, pending, writeLayout: true };
+}
+
+export async function shareListingGallery(store, listingId) {
+  const plan = await planListingGallerySharing(store, listingId);
+  if (!plan) return false;
+  let replacement;
+  if (plan.pending) {
+    replacement = randomUUID();
+    const image = plan.pending;
+    await store.run('INSERT INTO product_gallery_image(id, product_id, position, mime, data, created_at, thumb_mime, thumb_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      replacement, plan.holderId, image.position, image.mime, image.data, new Date().toISOString(), image.thumb_mime, image.thumb_data);
+  }
+  if (plan.writeLayout) await store.run('UPDATE product SET gallery_layout_json = ? WHERE id = ?',
+    JSON.stringify(plan.selected.map(ref => plan.pending && ref === plan.pending.ref ? replacement : ref)), plan.holderId);
   return true;
 }
 
