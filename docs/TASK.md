@@ -13,11 +13,11 @@ Scope: finish the Seller Operations Engine in dependency order with independent 
 | MCP0-05 | Verified locally | Bounded expiry, terminal proposal redaction, minimal replay receipts, audit90d, authenticated request maintenance and feature-off CLI hygiene are tested. |
 | MCP0-06 | Verified locally | Foundation source25ec84f:1015 tests,991 passed,0 failed,24 browser opt-ins skipped; targeted actual browser/restore and timing regression passed separately. |
 | MCP1 | Verified locally | Company3tools at08136e6, full1051tests/1027pass/0fail/24skip; actual defaults/approval/browser11/11. Production remains disabled. |
-| MCP2 | In progress, staged subset | Product tools via existing services, including shared listing revision, SKU, snapshots and history. |
-| MCP3 | Design audited; codec implementation delegated | Bounded image staging, decoding, old/new review and atomic gallery layout. First batch is a separately memory-capped, credential-free development codec; application media tools remain unavailable. See [media delivery plan](mcp-v2/MEDIA-DELIVERY-PLAN.md). |
-| MCP4 | Depends on MCP0 | Atomic stock ledger across writers; preserve 48-hour computed SUBMITTED holds. |
+| MCP2 | Safe subset verified; full variants deferred | Four gated built-ins; source707052c full1094/1069pass/0fail/25skip, actual browser/default7/7. Group/media/stock dependencies remain. |
+| MCP3 | Isolated codec verified; application media incomplete | Independent codec11/11 unit+4/4 real ARM64 container tests; filesystem sealing follow-up in progress. Staging/review/commit tools remain unavailable. See [media delivery plan](mcp-v2/MEDIA-DELIVERY-PLAN.md). |
+| MCP4 | Source audited; implementation pending | [Inventory delivery plan](mcp-v2/INVENTORY-DELIVERY-PLAN.md); all-writer ledger, preserve48-hour computed holds, controlled cancellation overflow. |
 | MCP5 | Depends on MCP0 | Existing order decisions only; approval, revision checks and stock deduction exactly once. |
-| MCP6 | Depends on MCP0 | Extended analytics with independent fixtures, currencies, UTC+8 and coverage definitions. |
+| MCP6 | Read-only core implementation in progress | Shared dashboard definitions, independent fixtures, currencies, UTC+8 and bounded coverage; default registration pending. |
 | MCP7 | Depends on MCP0 | Resource-authorized operations inspection/cancellation/audit and existing retention policy. |
 | MCP8 | Designed only | KB supplies untrusted knowledge; commerce state and authorization stay in this app. |
 | MCP-VERIFY | Required per phase | Record commands, environment, revision, actual test counts, security and rollback evidence; finish with independent acceptance. |

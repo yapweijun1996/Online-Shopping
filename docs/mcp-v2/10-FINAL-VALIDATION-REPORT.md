@@ -1,4 +1,18 @@
-# MCP v2 validation snapshots — Phase 0 and Phase 1
+# MCP v2 validation snapshots — foundation, company and catalog subset
+
+## Latest catalog safe-subset acceptance — source707052c
+
+Independent root Node24.22.0 full command with private disposable PostgreSQL: `NODE_ENV=test SHOP_TEST_DATABASE_URL=<synthetic URL> env -u QA_PLAYWRIGHT_MODULE node --test --test-concurrency=1 'test/*.test.js'`. Exit0: **1094 total,1069 passed,0 failed,25 browser opt-ins skipped**,206.247s; log.local/manager-phase2-catalog-final-full.tap. Actual loopback HTTPS Chromium approval plus catalog/company default-registration tests with QA_PLAYWRIGHT_MODULE: **7/7**,0skip,5.307s; log.local/manager-phase2-catalog-browser.tap. Final core/contracts after option-code bound fix: **39/39**,SQLite+PG,0skip,9.876s; log.local/manager-phase2-catalog-safe-final.tap.
+
+Historical full core1ec14ad passed1087/1063/0failed/24skipped,189.006s. Default70fd75c full run exited1:1094/1067passed/2failed/25skipped,154.876s (log.local/manager-phase2-catalog-default-full.tap). Both failures were stale OAuth expectations9 versus correct13 for explicit catalog.write+company.read. Fix698c71c/root707052c asserts exact names/schemas and unchanged legacy8; the complete rerun above passed. Passing broad tests did not prove later edge cases absent: review also fixed unknown-resource transport, per-dialect label uniqueness, full resolved option labels despite80-character clipping, legal60-character option codes and historical per-member text review.
+
+Four catalog tools are gated built-ins alongside company tools, using shared validation/current services/history, bounded affected-set revision and minimal receipts. Actual browser paths exercise fresh PKCE/password/consent handlers, first-party password approval, inert untrusted description, commit/replay once and synthetic storefront rendering. Existing-stock/media/group/holder paths remain rejected. Full Phase2 and the complete project remain incomplete; production v2 stays blocked.
+
+## Separate isolated codec experiment — source842d39b / rootf585896
+
+Root independently installed only the separate codec package with ignore-scripts, audited it (0 reported vulnerabilities), ran11/11unit and rebuilt pinned Node24.20Alpine ARM64. Actual Docker4/4passed,0skip,12.474s; log.local/manager-media-codec-container.tap. Root imagefc70305cfa111319bf01ae067fb008848357f435247f04cbf10daef1e32aa071. Kernel201326592bytes/swap0/pids32/cpu50000of100000; measured peak168161280bytes includes instrumentation and is not a worst-case capacity guarantee. Max4Mi-pixel PNG/JPEG/WebP decoded; genuine controlled OOM137/true, separate crash137/false, wall watchdog70 after5231ms; distinct synthetic parent API stayed alive and returned503. All owned containers removed.
+
+This experiment has no app staging, media MCP registration, visual approval, DB credentials or network. Same-UID writable socket directory is a documented limitation being strengthened in a separate follow-up. Media/production remain NOT READY. Root package/lock and production manifests unchanged. Accessed local worktrees, synthetic DBs, loopback HTTPS/browser, owned local Docker images/containers and KB context. No production commerce data, service/tunnel/timer, push/merge/deploy changes. The following sections are named earlier snapshots, not current whole-project completion.
 
 Date: 2026-11-05. **The complete Seller Operations Engine is not finished.** The Phase 0 sections below are a named historical snapshot; the subsequent Phase 1 section records the integrated company tools at08136e6. New authority is default-off and production v2 activation is rejected.
 
