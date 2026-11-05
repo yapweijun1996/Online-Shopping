@@ -1,6 +1,6 @@
 # Authorization and human approval
 
-Current status, 2026-11-05: accepted isolated functionality includes the security foundation, three company tools, four restricted catalog tools, four inventory tools and three analytics tools. Schema 31 media staging, bounded cleanup, complete resource snapshots, shared gallery planning and the portable codec have named verification evidence. No media application tool is eligible yet. Upload coordination, central media policy and trusted image review are being integrated. Order decisions, operations tools, five public media tools and full catalog expansion remain incomplete. New authority stays disabled by default, and production activation is rejected. See [current progress](09-IMPLEMENTATION-PROGRESS.md) and [validation](10-FINAL-VALIDATION-REPORT.md). Synthetic restore tests do not establish production recovery readiness. The original design below is historical.
+Current verified implementation and remaining work are maintained in [progress](09-IMPLEMENTATION-PROGRESS.md); exact source, commands, failures and proof limits are maintained in [validation](10-FINAL-VALIDATION-REPORT.md). New write features remain disabled by default and production activation is rejected. The original design below is historical; a planned capability is not authorization or evidence of implementation.
 
 ## Historical design snapshot
 

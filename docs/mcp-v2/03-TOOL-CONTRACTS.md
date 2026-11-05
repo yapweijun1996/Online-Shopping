@@ -20,7 +20,15 @@ The safe development factory registers these four tools after explicit opt-in; i
 
 `inventory.summary`, `inventory.movements`, `inventory.preview_adjustment` and `inventory.commit_adjustment` use [03-INVENTORY-IMPLEMENTED.json](03-INVENTORY-IMPLEMENTED.json), exported from actual descriptors by `node scripts/export-inventory-contracts.js`. [INVENTORY-TOOLS.md](INVENTORY-TOOLS.md) defines all inputs, outputs, scopes, capability, tenant binding, risk, errors, examples, idempotency, complete revision, audit and acceptance evidence. Reads require fresh inventory.read; HIGH-risk adjustments require inventory.adjust, current catalog.write and separate first-party password approval. The client supplies a complete expected revision and absolute nullable stock, plus a fixed reason; notes stay only in the expiring proposal. Commit accepts operationId only and returns a minimal receipt. Old read grants and eight v1 schemas remain unchanged.
 
-## Remaining 10 tools: proposed
+## Implemented order and media tools (isolated, default-off)
+
+Orders.preview_decision/commit_decision use [actual schemas](03-ORDERS-IMPLEMENTED.json) and [order contracts](ORDERS-TOOLS.md): existing five transitions, HIGH approval, fresh orders.decide/current capability, complete revision, bounded safe fields, atomic history/stock and minimal receipts.
+
+The five media descriptors use [actual schemas](03-MEDIA-IMPLEMENTED.json) and [media contracts](MEDIA-TOOLS.md): closed upload commands, fresh media scopes, HIGH full graph/image review, quotas, concurrency and rollback. Root111f1eb has actual default-constructor/native/MCP/browser proof. Separate media enablement remains off by default and requires a sealed development codec; production activation is rejected. The original eight descriptors stay unchanged.
+
+## Remaining 3 operation tools: proposed
+
+Operations.get/cancel/audit remain in development. The proposed bundle below is historical for implemented subsets.
 
 The historical JSON bundle retains superseded company, catalog and analytics candidates for traceability; separate implemented bundles are authoritative within their documented supported subset.
 

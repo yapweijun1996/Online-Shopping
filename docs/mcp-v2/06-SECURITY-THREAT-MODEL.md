@@ -1,6 +1,6 @@
 # Security threat model
 
-Status: **Mixed implemented controls and future-phase requirements.** Accepted company, restricted catalog, inventory and analytics tools, schema33 storage, the bounded native coordinator and real first-party image review have independent evidence in [validation](10-FINAL-VALIDATION-REPORT.md). The full public five-tool media workflow, order decisions, operation controls and full catalog expansion remain incomplete. Component hashes, native limits and synthetic approval fixtures cannot substitute for actual OAuth/browser/commit integration. New authority stays disabled by default, and production activation is rejected.
+Status: **Mixed implemented controls and future-phase requirements.** [Progress](09-IMPLEMENTATION-PROGRESS.md) is the current acceptance ledger; [validation](10-FINAL-VALIDATION-REPORT.md) records exact source, executed checks and proof limits. Public media now has actual default-constructor/native/browser evidence, and order decisions have an integrated full-suite snapshot. Operations/schema34 and full catalog expansion remain incomplete. Component hashes and synthetic approval fixtures never substitute for actual OAuth/browser/commit proof. New write flags stay off by default; production activation is rejected.
 
 | Threat | Required control | Evidence required before enabling |
 | --- | --- | --- |
