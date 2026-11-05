@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:online-shopping:mcp-v2:analytics:implemented",
-  "$comment": "Actual isolated analytics descriptor contracts. No default registration in this checkpoint; configuration remains default-off and production is blocked. Arguments below are synthetic examples.",
+  "$comment": "Actual isolated analytics descriptor contracts. Included only behind the existing nonproduction safe-v2 gate; configuration remains default-off and production is blocked. Arguments below are synthetic examples.",
   "$defs": {
     "analytics.sales_trend.input": {
       "additionalProperties": false,

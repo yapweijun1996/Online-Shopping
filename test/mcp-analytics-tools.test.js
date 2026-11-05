@@ -94,7 +94,7 @@ for (const dialect of ['sqlite', 'postgres']) {
   });
 }
 
-test('analytics registry stays fixed, bounded and unregistered by default', () => {
+test('analytics registry stays fixed, bounded and disabled with MCP off', () => {
   const entry = analyticsSalesTrendTool(), build = value => createOperationTools({ config: { mcpEnabled: false }, entries: [value] });
   assert.doesNotThrow(() => build(entry));
   for (const patch of [{ name: 'analytics.profit' }, { scope: 'analytics.read' }, { capability: 'catalog.write' }]) assert.throws(() => build({ ...entry, ...patch }), TypeError);

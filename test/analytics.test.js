@@ -99,3 +99,15 @@ test('analytics caps source rows and bytes before exposing partial aggregates; s
   assert.throws(() => stockAvailability(-1, 0), TypeError); assert.throws(() => stockAvailability(0, Number.MAX_SAFE_INTEGER + 1), TypeError);
   assert.equal(ANALYTICS_LIMITS.page, 100);
 });
+
+
+test('top-product offset cap declares incomplete page coverage while preserving complete currency totals', async () => {
+  const orderId = '10000000-0000-4000-8000-000000000001';
+  const rows = Array.from({ length: 10102 }, (_, n) => ({ order_id: orderId, product_id: '20000000-0000-4000-8000-' + String(n).padStart(12, '0'),
+    currency: 'MYR', quantity: '1', line_total_minor: '100', sku: 'SYNTHETIC', name: 'Synthetic', category: 'SYNTHETIC' }));
+  const read = { all: async sql => sql.includes('FROM shop_order WHERE') ? [{ id: orderId, submitted_at: '2026-10-09T16:00:00.000Z', currency: 'MYR' }] : rows };
+  const result = await topProducts(read, { ...period, offset: 10000, limit: 100 }, analyticsNow);
+  assert.equal(result.items.length, 100); assert.equal(result.nextOffset, null); assert.equal(result.paginationCapped, true);
+  assert.equal(result.coverage.pageComplete, false); assert.equal(result.coverage.databaseComplete, true);
+  assert.deepEqual(result.totals, [{ currency: 'MYR', quantity: 10102, totalMinor: 1010200 }, { currency: 'SGD', quantity: 0, totalMinor: 0 }]);
+});

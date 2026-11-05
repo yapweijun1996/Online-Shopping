@@ -1,6 +1,6 @@
 # Extended analytics: isolated read implementation
 
-Status: core implemented locally, default registration is a separate checkpoint. Configuration remains default-off, production activation remains blocked, and no migration is introduced. Three server-owned descriptors require fresh `analytics.extended` consent and current `figures.read` permission; they use the existing platform-first lifecycle fence, shared tenant transaction and metadata-only read audit. Returned product text is untrusted data and seller-entered names/SKUs can themselves contain personal data; this is not a PII-free-output claim. The eight v1 descriptors and dashboard DTO remain unchanged.
+Status: core and gated default registration implemented in separate local checkpoints; independent integrated acceptance remains a parent task. The existing safe-v2 factory includes these three analytics reads alongside company/catalog tools only after its nonproduction gate passes. Explicit empty overrides stay empty; null remains invalid. Configuration remains default-off, production activation remains blocked, and no migration is introduced. Three server-owned descriptors require fresh `analytics.extended` consent and current `figures.read` permission; they use the existing platform-first lifecycle fence, shared tenant transaction and metadata-only read audit. Returned product text is untrusted data and seller-entered names/SKUs can themselves contain personal data; this is not a PII-free-output claim. The eight v1 descriptors and dashboard DTO remain unchanged.
 
 ## Definitions and contracts
 

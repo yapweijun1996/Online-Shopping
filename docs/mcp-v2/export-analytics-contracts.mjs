@@ -10,7 +10,7 @@ const registry = createOperationTools({ store: {}, config: { mcpEnabled: true, p
   tenantGuard: { withActiveTenant() { throw new Error('Schema export cannot execute a read.'); } },
   entries: [analyticsSalesTrendTool(), analyticsTopProductsTool(), analyticsInventoryRiskTool()] });
 const bundle = { $schema: 'https://json-schema.org/draft/2020-12/schema', $id: 'urn:online-shopping:mcp-v2:analytics:implemented',
-  $comment: 'Actual isolated analytics descriptor contracts. No default registration in this checkpoint; configuration remains default-off and production is blocked. Arguments below are synthetic examples.',
+  $comment: 'Actual isolated analytics descriptor contracts. Included only behind the existing nonproduction safe-v2 gate; configuration remains default-off and production is blocked. Arguments below are synthetic examples.',
   $defs: Object.fromEntries(registry.catalogue.flatMap(tool => [[tool.name + '.input', tool.inputSchema], [tool.name + '.output', tool.outputSchema]])),
   'x-toolPolicies': Object.fromEntries(registry.catalogue.map(tool => [tool.name, { ...OPERATION_SCOPE_POLICIES[tool.name], risk: 'LOW' }])),
   'x-syntheticArguments': {
