@@ -38,6 +38,11 @@ const listingColumns = 'id, code, name, description, category, translations_json
 const typeColumns = 'id, code, name, translations_json, display, position, active, created_at, updated_at';
 const valueColumns = 'id, option_type_id, code, label, translations_json, swatch_color, position, active, created_at, updated_at';
 const categoryColumns = 'code, label, active, created_at, updated_at';
+// Independent readers share fixed field/schema contracts without changing the
+// existing safe component, draft, hash framing or operation definitions.
+export const catalogMetadataColumns = () => Object.freeze({ product: productColumns, listing: listingColumns,
+  option_type: typeColumns, option_value: valueColumns, general_code: categoryColumns });
+export const catalogUpdateChangesSchema = () => JSON.parse(JSON.stringify(patchSchema));
 const tooLarge = () => { throw new ApiError(503, 'CATALOG_REVIEW_TOO_LARGE', 'The catalog review exceeds its safe metadata limit.'); };
 const unsupported = () => { throw new ApiError(400, 'CATALOG_PHASE_DEPENDENCY', 'This change requires the separately reviewed media or inventory operation.'); };
 const notFound = () => { throw new ApiError(404, 'NOT_FOUND', 'Product not found.'); };

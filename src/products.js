@@ -100,8 +100,12 @@ export async function prepareProductCreate(database, input) {
   return product;
 }
 
+export async function hasProductSkuConflict(database, sku, excludeId = null) {
+  return Boolean(await database.get('SELECT id FROM product WHERE sku = ? AND (? IS NULL OR id <> ?) LIMIT 1', sku, excludeId, excludeId));
+}
+
 export async function requireUniqueProductSku(database, sku, excludeId = null) {
-  if (await database.get('SELECT id FROM product WHERE sku = ? AND (? IS NULL OR id <> ?) LIMIT 1', sku, excludeId, excludeId)) {
+  if (await hasProductSkuConflict(database, sku, excludeId)) {
     throw new ApiError(409, 'DUPLICATE_SKU', 'This SKU is already in use.');
   }
 }
