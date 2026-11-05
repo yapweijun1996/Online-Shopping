@@ -1,4 +1,4 @@
-# Database migration proposal
+# Database migrations and compatibility
 
 Current verified implementation and remaining work are maintained in [progress](09-IMPLEMENTATION-PROGRESS.md); exact source, commands, failures and proof limits are maintained in [validation](10-FINAL-VALIDATION-REPORT.md). New write features remain disabled by default and production activation is rejected. The original design below is historical; a planned capability is not authorization or evidence of implementation.
 
@@ -8,7 +8,7 @@ Versions30–34 are implemented in both adapters; no production migration was ru
 
 Version34 requires the exact known historical audit33 source before DDL, rejects mixed/unknown audit structures without repair, preserves UUID audit IDs and historical fields, and uses SQLite AUTOINCREMENT / PostgreSQL GENERATED ALWAYS identity. SQLite import explicitly preserves historical sequences, resets their generators, and excludes active v2 consent/operation/approval authority. Audit pages use operation/sequence covering indexes and fixed per-source limits; read [operation controls](OPERATIONS.md) for cursor binding and retention.
 
-Independent root migration/storage/restore/import/inventory/union checks passed139/139 at379b405. The later rootce1e13c full passed1661/1661 including browser/native opt-ins; [validation](10-FINAL-VALIDATION-REPORT.md) retains failed artificial-downgrade fixtures and their test-only corrections. A schema33 binary cannot open34. Flags do not downgrade a schema: use a compatible tested binary or an explicitly authorized coordinated restore with an external epoch. Real production backup-domain separation and multi-instance epoch rotation remain unverified.
+Independent root migration/storage/restore/import/inventory/union checks passed139/139 at379b405. Final rootb8614b4 full passed2012/2012,0failures/0skips including every browser/native opt-in; [validation](10-FINAL-VALIDATION-REPORT.md) retains failed artificial-downgrade fixtures and their test-only corrections. A schema33 binary cannot open34. Flags do not downgrade a schema: use a compatible tested binary or an explicitly authorized coordinated restore with an external epoch. Real production backup-domain separation and multi-instance epoch rotation remain unverified.
 
 ## Historical design snapshot
 

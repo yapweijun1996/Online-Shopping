@@ -1,4 +1,80 @@
-# MCP v2 validation snapshots
+# MCP v2 final validation report
+
+Completed in isolation on2026-11-06 (UTC+8). This is verified development delivery, not production deployment authorization.
+
+## A. Baseline
+
+- Repository: `yapweijun1996/Online-Shopping`; branch `codex/mcp-v2-seller-engine`.
+- Baseline/main: `1634735aa70090dcdf54b8d09e2cc09b33cd8a77`; read-only remote main rechecked2026-11-05 15:57UTC and unchanged.
+- Final tested source: `b8614b46e6061ce06b5bbcc7cc616f228a2bfa7e`. Subsequent changes in this final report commit are documentation/evidence only.
+- Environment: persistent Ubuntu24.04 ARM64 host `yapvmmcp`, Node24.22.0, SQLite3.53.4 and separately owned PostgreSQL16.15/UTF8 on loopback59025. Only synthetic fixtures were used.
+
+## B. Implementation
+
+Phases0–8 are complete within the authorized isolated scope. The existing MCP server and protocol2025-06-18 are extended; original8 names/schemas/behavior remain covered. The24 additions bring the total to32:
+
+| Family | Implemented additions |
+| --- | --- |
+| Company | company.get, company.preview_update, company.commit_update |
+| Catalog | catalog.preview_create, catalog.commit_create, catalog.preview_update, catalog.commit_update |
+| Media | media.list, media.prepare_upload, media.commit_upload, media.preview_layout, media.commit_layout |
+| Inventory | inventory.summary, inventory.movements, inventory.preview_adjustment, inventory.commit_adjustment |
+| Orders | orders.preview_decision, orders.commit_decision |
+| Analytics | analytics.sales_trend, analytics.top_products, analytics.inventory_risk |
+| Operations | operations.get, operations.cancel, operations.audit |
+
+The single operation engine binds immutable proposals/revisions to current token, original grant, explicit consent, RBAC and tenant identity. It enforces fresh first-party password/page/image approval, expiry/replay/CAS, atomic business/history/ledger/audit and minimal retained receipts. Full catalog CREATE and UPDATE have independent default-off development/test-only HIGH dual-scope profiles; all production activation is blocked. No model identity/policy/approval argument grants authority.
+
+Both adapters implement migrations30–34: operation authority, media staging/proof, all-writer stock ledger/coverage, covering index and database-owned typed audit sequences. No production migration ran; later catalog expansion adds no schema version. Existing null/unlimited stock, computed48-hour SUBMITTED holds, confirmation deduction, order snapshots/currencies and90-day audit retention remain authoritative. No physical reservation, payment/refund/courier/WhatsApp automation or R2/S3 storage is introduced.
+
+The tested source changes360 tracked paths relative to baseline; [complete path inventory](11-CHANGED-FILES.txt) makes the change reviewable. Principal areas are `src/mcp/`, shared product/listing/options/gallery/inventory/order/settings services, both schema adapters, protected first-party review assets, the isolated `media-codec/`, tests and documentation. The stale Seller Gallery save defect was fixed by advancing holder.updated_at only after real copy/layout changes, in the same transaction; no-op sharing stays unchanged. Newborn uploads follow a separately approved product creation.
+
+## C. Verification
+
+**Final integrated result:2012/2012 passed,0 failed,0 skipped,0 cancelled; exit0;589.123s.** Sourceb8614b4, Node24.22.0, synthetic SQLite/owned PostgreSQL16.15. Exact command:
+
+```sh
+NODE_ENV=test SHOP_TEST_DATABASE_URL=<private-owned-test-url> \
+QA_PLAYWRIGHT_MODULE=<cached-playwright-module> \
+MEDIA_COORDINATOR_CONTAINER_TEST=1 MEDIA_TOOLS_NATIVE_BROWSER_TEST=1 \
+CATALOG_MEDIA_NATIVE_BROWSER_TEST=1 CATALOG_MEDIA_CREATE_NATIVE_BROWSER_TEST=1 \
+MCP_CROSS_DOMAIN_NATIVE_BROWSER_TEST=1 npm test
+```
+
+Private paths/credentials are omitted above. Actual raw result: `.local/manager-final-full-all-native-browsers-rerun.tap`; source pin: `.local/manager-final-full-rerun-source.sha`. Full execution included every root browser/native opt-in and both databases. Syntax atd288267 passed via npm run check (`.local/manager-final-check.log`,exit0). Private codec unit/runtime at the same source passed18/18,0skips,1.590s via media-codec/npm test (`.local/manager-final-codec-unit-current.tap`,exit0); root+codec dependency audits reported0 vulnerabilities with unchanged lockfiles; offline integration50/50 and auto-updater39/39 passed. Separate actual private codec container4/4 verified ARM64 memory192MiB/swap0/pids32/0.5CPU/non-root/read-only/no-network limits, genuine OOM/crash and watchdog containment. Detailed commands and exact snapshot logs remain below; component counts overlap and must not be summed.
+
+The genuine default OAuth/native/HTTPS CREATE+UPDATE gate passed10/10 and cross-domain gate15/15 independently before the full run. On each database, the latter validates all24 actual successful output schemas,24 missing-bearer,24 closed-input,24 read-only-scope and10 unknown-operation requests. It exercises create/upload/publish, main-pixel replacement/restoration and layout, same-client stock adjustment→MCP order confirmation with both replays and exact-once ledger identities, actual analytics RPC versus Seller dashboard HTTP, company consistency and operation controls. Actual services, fresh OAuth/PKCE, sessions/passwords and protected SHA/decode/PAGE/image ACKs are used without injected registrations, decoder, grant, guard or human evidence. Explicitly synthetic component fixtures remain labelled separately.
+
+The first full atd288267 exited1:2012 total/2010passed/2failed/0skipped,674.748s (`.local/manager-final-full-all-native-browsers.tap`). Both failures were the old `listing-gallery-sharing-plan.test.js:38` timestamp-equality assertion on SQLite/PostgreSQL, incompatible with the approved monotonic sharing-version fix. Test-onlyf4293a8→b8614b4 strictly asserts forward progression and preserves every copy-fault rollback/gallery/ledger assertion. Root correction regression32/32 bothDB,0skips,7.213s passed (`.local/manager-gallery-revision-corrected.tap`), followed by the fully green rerun above. Runtime source was unchanged between these full attempts.
+
+Independent bounded source reviews found no confirmed P0/P1/P2; the D3 reviewer additionally executed19 new-file cases and4 independent real-RPC integrity/cancel/redacted-replay probes. No external security certification is claimed. Bounded-query/index-plan and synthetic restore/import/external-epoch/transaction-failure checks are included in the recorded acceptance. Whole-suite elapsed time is not a production throughput or capacity result. A dedicated external SAST/certification service was not invoked; static checks, source review, dependency audit and security regression tests are the executed evidence.
+
+## D. Risks
+
+- P0/P1: no confirmed unresolved defect in the accepted isolated scope. This is a bounded finding, not exhaustive proof.
+- P2 improvement: pg concurrent-query deprecation and generic database-unavailable messages occur in recorded fault/cleanup scenarios. Execution is not warning-free; query serialization must be reviewed before a future pg9 upgrade.
+- Unverified operational gates: real vendor OAuth/proxy/TLS, physical devices, production capacity, external epoch/backup-domain separation and coordinated multi-instance drain/restore. Database-owner/backend compromise remains outside application append-only/tenant guarantees. Browser ACK/password bind protocol and identity, not physical eyesight.
+
+## E. Deployment readiness
+
+- Development: verified complete in isolation at the tested source.
+- Staging: not deployed; configuration/schema/backup/epoch review and explicit environment authorization remain required. Production-mode v2 activation is intentionally rejected by current code.
+- Production: not authorized or activated. Existing installations may automatically deploy/migrate on main merge, so merge is a production-affecting release step.
+- Rollback: transaction and synthetic restore/import checks passed. Use a schema34-compatible disabled binary or an explicitly authorized coordinated restore with external epoch invalidation. Flags cannot downgrade schemas or undo committed commerce. Image restoration is a new reviewed business operation; production multi-instance restore remains unverified.
+
+## F. Production safety
+
+Commerce writes occurred only in isolated worktrees and temporary synthetic SQLite/owned PostgreSQL databases. No production commerce database, credentials, live tenant records, deployed application, main branch or infrastructure was modified. No push, main merge or deployment occurred. Authorized KB-MCP additions contain non-sensitive version/evidence knowledge and do not overwrite existing records; KB is not live commerce state or approval authority and its database was never used for these tests.
+
+Final resource check found0 other test clients. The specifically owned PostgreSQL cluster `/tmp/shopping-mcp-manager-test.TZwN5Kgu/data` on59025 was stopped after verification; its PID/data path/port/OS ownership were checked first. Owned codec-container label query was empty after cleanup. Unrelated PostgreSQL5432, KB, tunnels and persistent services were not stopped. Source worktrees, commits and local evidence are retained for review.
+
+## G. Next actions
+
+No required isolated implementation or verification work remains. Review the local candidate and its changed-path inventory. The smallest separate next step is a staging/schema34/backup/epoch/vendor release-gate review with appropriate authorization; this completed implementation is not production deployment authorization.
+
+## Historical validation records
+
+The following entries are dated snapshots. Earlier pending/failure statements apply to their named source and do not supersede the final result above. Failed runs and synthetic-versus-real evidence boundaries are intentionally retained.
 
 ## Complete isolated candidate62c43c6 — final integrated gate pending
 
