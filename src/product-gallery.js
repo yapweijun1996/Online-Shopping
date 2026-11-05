@@ -168,6 +168,14 @@ export async function saveProductGallery(store, productId, requested, current) {
   await applyProductGalleryPlan(store, await planProductGallery(store, productId, requested, current));
 }
 
+// Image-only replacement restores a hidden single main at the end, preserving
+// the selected primary/order. Preview and portal share the same overflow guard.
+export async function planProductMainRestoration(store, productId, imageDataUrl, current) {
+  if (!imageDataUrl || current.galleryShared || current.galleryItems.some(item => item.id === 'main')) return null;
+  return planProductGallery(store, productId, [...current.galleryItems.map(item => ({ id: item.id })), { id: 'main' }],
+    current, { mainImageDataUrl: imageDataUrl });
+}
+
 // Preserve the upload endpoint's early image validation and optional-preview
 // truthiness. Thumbnail validation remains in planning only for a new digest.
 export function prepareGalleryUploadEntry(imageDataUrl, thumbDataUrl = null) {

@@ -9,7 +9,7 @@ import { presentCatalogCopy } from './catalog-copy.js';
 import { hasVariantLabel, loadProductOptions, optionAxes, optionError, requireGroupOptions, setProductOptions } from './options.js';
 import { listingFor, moveToListing, syncListing } from './listings.js';
 import { reservedQuantitySql } from './stock-reservation.js';
-import { galleryRole, productCover, productGallery, requireGalleryRevision, saveProductGallery, planProductGallery, applyProductGalleryPlan, prepareGalleryUploadEntry, requireMainImageRemoval, shareListingGallery } from './product-gallery.js';
+import { galleryRole, productCover, productGallery, requireGalleryRevision, saveProductGallery, planProductGallery, planProductMainRestoration, applyProductGalleryPlan, prepareGalleryUploadEntry, requireMainImageRemoval, shareListingGallery } from './product-gallery.js';
 
 const columns = () => `p.id, p.sku, p.name, p.description, p.category AS category_code,
   c.label AS category, p.price_minor, p.currency, p.active, p.image_mime, p.variant_group, p.variant_label, p.stock_quantity, p.listing_id,
@@ -174,12 +174,10 @@ export async function updateProduct(database, id, input, mode = 'manual') {
       if (!Object.keys(patch).length) patch = { name: existing.name };
     }
     await patchProduct(database, id, patch, { galleryChanging: hasGallery });
-    if (hasGallery) await saveProductGallery(database, id, input.gallery, existing);else
-    if (role === 'single' && input.imageDataUrl && !existing.galleryItems.some((item) => item.id === 'main')) {
-      // A legacy image-only replacement must become visible. Keep any explicitly
-      // selected primary/order, append the restored main, and reject overflow
-      // atomically rather than accepting an invisible replacement.
-      await saveProductGallery(database, id, [...existing.galleryItems.map((item) => ({ id: item.id })), { id: 'main' }], existing);
+    if (hasGallery) await saveProductGallery(database, id, input.gallery, existing);
+    else {
+      const restoration = await planProductMainRestoration(database, id, input.imageDataUrl, existing);
+      if (restoration) await applyProductGalleryPlan(database, restoration);
     }
     return await getProduct(database, id, true, mode);
   });

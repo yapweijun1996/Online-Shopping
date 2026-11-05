@@ -1,6 +1,7 @@
 import { ApiError } from '../http.js';
+import { FieldError } from '../validation.js';
 import { updateProduct, addGalleryImage, planGalleryImageAddition } from '../products.js';
-import { planProductGallery, prepareGalleryUploadEntry } from '../product-gallery.js';
+import { planProductGallery, planProductMainRestoration, prepareGalleryUploadEntry } from '../product-gallery.js';
 import { trackUpdate } from '../product-history.js';
 import { canonicalOperationJson } from './operation-envelope.js';
 import { mediaContext, mediaHash, withMediaWriter } from './media-storage.js';
@@ -8,13 +9,14 @@ import { readMediaSnapshot } from './media-resources.js';
 import { readMediaFrame } from './media-frame-storage.js';
 import { buildMediaManifest, mediaAssetKey } from './media-manifest.js';
 import { isMediaHash, isMediaUuid, mediaObject, validateMediaDescriptor } from './media-policy.js';
+import { uploadThumbnail, assertUploadThumbnail } from './media-upload-policy.js';
 
 const changed = () => { throw new ApiError(409, 'MEDIA_RESOURCE_CHANGED', 'Media resource changed. Reopen its review.'); };
 const invalid = () => { throw new TypeError('Invalid stored media upload.'); };
 const dataUrl = (mime, data) => 'data:' + mime + ';base64,' + Buffer.from(data).toString('base64');
 const sourceFields = ['source_kind','source_id','source_product_id','stage_id','byte_sha256','mime','byte_length'];
 
-async function plan(read, stage, result) {
+async function planState(read, stage, result) {
   const snapshot = await readMediaSnapshot(read, stage.productId);
   if (snapshot.revision !== stage.expectedRevision || result.codecDigest !== stage.codecDigest ||
       result.sourceSha256 !== stage.sourceSha256 || result.mime !== stage.sourceMime) changed();
@@ -33,9 +35,9 @@ async function plan(read, stage, result) {
   } else if (stage.targetSlot === 'MAIN') {
     after.products.find(value => value.productId === stage.productId).mainAssetKey = key;
     if (view.role === 'single') {
-      const requested = view.current.galleryItems.map(({ id }) => ({ id }));
-      if (product.layout === null && !requested.some(value => value.id === 'main')) requested.unshift({ id: 'main' });
-      galleryPlan = await planProductGallery(read, stage.productId, requested, view.current, { mainImageDataUrl: mainUrl });
+      galleryPlan = await planProductMainRestoration(read, stage.productId, mainUrl, view.current) ||
+        await planProductGallery(read, stage.productId, view.current.galleryItems.map(({ id }) => ({ id })), view.current,
+          { mainImageDataUrl: mainUrl });
     }
   } else invalid();
   if (galleryPlan) {
@@ -62,11 +64,18 @@ async function plan(read, stage, result) {
     .map(value => Object.fromEntries(sourceFields.map(field => [field, value[field]])));
   assets.push(asset);
   const manifest = buildMediaManifest({ toolName: 'media.prepare_upload', graphRevision: snapshot.revision,
-    codecDigest: stage.codecDigest, graphBytes: { oldBytes: snapshot.graphReadBytes.oldBytes, newBytes: result.image.length }, assets, effects });
+    codecDigest: stage.codecDigest, graphBytes: { oldBytes: snapshot.graphReadBytes.oldBytes, newBytes: result.image.length + result.thumbnail.length }, assets, effects });
   return { snapshot, manifest, mainUrl, thumbUrl, product };
 }
+async function plan(read, stage, result) {
+  try { return await planState(read, stage, result); }
+  catch (error) {
+    if (error instanceof FieldError) throw new ApiError(400, 'MEDIA_LAYOUT_INPUT', 'The image selection cannot be applied.');
+    throw error;
+  }
+}
 function checkedProposal(value) {
-  mediaObject(value, ['productId','stageId','targetSlot','product','media']);
+  mediaObject(value, ['productId','stageId','targetSlot','product','thumbnail','media']);
   mediaObject(value.product, ['sku','name']);
   if (!isMediaUuid(value.productId) || !isMediaUuid(value.stageId) || !['MAIN','GALLERY'].includes(value.targetSlot) ||
       typeof value.product.sku !== 'string' || value.product.sku.length > 40 || typeof value.product.name !== 'string' || value.product.name.length > 120) invalid();
@@ -86,7 +95,7 @@ export function makeUploadAdapter({ hooks }) {
       const prepared = await plan(read, resources.stage, resources.result);
       return { resourceId: resources.stage.productId, expectedRevision: prepared.snapshot.revision,
         proposal: { productId: resources.stage.productId, stageId: resources.stage.stageId, targetSlot: resources.stage.targetSlot,
-          product: { sku: prepared.product.sku, name: prepared.product.name } }, mediaManifest: prepared.manifest };
+          product: { sku: prepared.product.sku, name: prepared.product.name }, thumbnail: uploadThumbnail(resources.result.thumbnail) }, mediaManifest: prepared.manifest };
     },
     async currentRevision(read, envelope) {
       checkedProposal(envelope.proposal);
@@ -100,6 +109,7 @@ export function makeUploadAdapter({ hooks }) {
       if (identity.accountId !== context.accountId || identity.clientId !== context.clientId || identity.grantId !== context.grantId) invalid();
       const actual = await withMediaWriter(store, identity, async writer => ({ stage: await writer.inspect(proposal.stageId),
         result: await writer.boundBytes(proposal.stageId, context.operationId) }));
+      assertUploadThumbnail(proposal.thumbnail, actual.result.thumbnail);
       if (actual.stage.productId !== proposal.productId || actual.stage.targetSlot !== proposal.targetSlot ||
           actual.stage.correlationId !== context.correlationId) invalid();
       const retained = await readMediaFrame(store, identity, context.operationId, proposal.media);
@@ -112,6 +122,16 @@ export function makeUploadAdapter({ hooks }) {
         : addGalleryImage(store, proposal.productId, prepared.mainUrl, 'manual', prepared.thumbUrl));
       if (!product) changed();
       const after = await readMediaSnapshot(store, proposal.productId);
+      const identityOf = source => source.source_kind + ':' + source.source_product_id + ':' + source.source_id;
+      const oldSources = new Map(prepared.snapshot.sources.map(source => [identityOf(source), source]));
+      for (const source of after.sources) {
+        const replacedMain = proposal.targetSlot === 'MAIN' && source.source_kind === 'PRODUCT_MAIN' && source.source_product_id === proposal.productId;
+        const old = oldSources.get(identityOf(source));
+        if (replacedMain || !old) {
+          if (!source.thumbnail || source.thumbnail.mime !== proposal.thumbnail.mime ||
+              source.thumbnail.byte_sha256 !== proposal.thumbnail.sha256 || source.thumbnail.byte_length !== proposal.thumbnail.byteLength) changed();
+        } else if (canonicalOperationJson(source.thumbnail) !== canonicalOperationJson(old.thumbnail)) changed();
+      }
       for (const kind of ['PRODUCT','LISTING']) {
         const rows = kind === 'PRODUCT' ? after.before.products : after.before.listings;
         const id = kind === 'PRODUCT' ? 'productId' : 'listingId';

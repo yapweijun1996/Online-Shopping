@@ -10,6 +10,7 @@ import { decodeViaSocket } from './media-codec-client.js';
 import { decodeOutput, encodeOutput } from './media-codec-wire.js';
 import { isMediaHash, isMediaUuid, mediaObject } from './media-policy.js';
 import { makeUploadAdapter } from './media-upload-adapter.js';
+import { assertUploadThumbnail } from './media-upload-policy.js';
 
 const invalid = () => { throw new ApiError(400, 'MEDIA_INPUT', 'Invalid media upload input.'); };
 const changed = () => { throw new ApiError(409, 'MEDIA_RESOURCE_CHANGED', 'Media resource changed. Reopen its review.'); };
@@ -165,6 +166,8 @@ export function createMediaCoordinator({ store, binding, tenantGuard, epoch, bui
           envelope.expectedRevision !== resources.stage.expectedRevision || envelope.correlationId !== resources.lease.correlationId) denied();
       await inspectTarget(read, resources.stage.productId, resources.stage.targetSlot, resources.stage.expectedRevision);
       await writer.bind(resources.stage.stageId, resources.lease.leaseToken, resources.lease.version, resources.result, envelope.operationId);
+      const bound = await writer.boundBytes(resources.stage.stageId, envelope.operationId);
+      assertUploadThumbnail(envelope.proposal.thumbnail, bound.thumbnail);
     },
     async consumeResources(writer, envelope, context) {
       mediaContext(context);
