@@ -7,6 +7,7 @@ import { getShopSetup } from '../shop-setup.js';
 import { readStoredOperation } from './operation-envelope.js';
 import { operationEpochHash } from './operation-epoch.js';
 import { hash, secret, liveGrant, stamp } from './credentials.js';
+import { COMPANY_CURRENCY_ACKNOWLEDGED, COMPANY_CURRENCY_WARNING, requiresCompanyCurrencyAcknowledgement } from './company-approval-policy.js';
 import { OPERATION_APPROVAL_TOOLS, OPERATION_SCOPE_POLICIES } from './operation-policy.js';
 
 const APPROVAL_MS = 5 * 60 * 1000;
@@ -58,7 +59,10 @@ async function humanContext(store, binding, tenantRevision, epochHash, buildDige
     WHERE grant_id = ? AND tenant_id = ? AND account_id = ? AND client_id = ? AND scope = ?
       AND account_auth_version = ? AND epoch_hash = ? AND consented_at <= ?`,
   grant.id, binding.tenantId, grant.account_id, grant.client_id, policy.scope, grant.account_auth_version, epochHash, stamp());
-  return consent ? { envelope, grant, policy, shop } : null;
+  if (!consent) return null;
+  let currencyAcknowledgementRequired;
+  try { currencyAcknowledgementRequired = requiresCompanyCurrencyAcknowledgement(envelope); } catch { return null; }
+  return { envelope, grant, policy, shop, currencyAcknowledgementRequired };
 }
 
 // An authenticated seller can review the complete stored proposal. This
@@ -93,7 +97,8 @@ export function createOperationReview({ store, binding, sellerOrigin, quickLogin
         await store.run(`INSERT INTO mcp_v2_approval_challenge(id, operation_id, nonce_hash, created_at, expires_at, account_id, session_hash, account_auth_version, bound_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, randomUUID(), row.id, hash(challenge + ':' + row.preview_hash), now, expires,
         session.account.id, session.token_hash, account.oauth_auth_version, now);
-        return { challenge, operationId: row.id, shopName: shop.shopName, accountName: session.account.username,
+        return { currencyAcknowledgementRequired: context.currencyAcknowledgementRequired,
+          currencyWarning: context.currencyAcknowledgementRequired ? COMPANY_CURRENCY_WARNING : null, challenge, operationId: row.id, shopName: shop.shopName, accountName: session.account.username,
           clientName: client.client_name, clientId: row.client_id, toolName: row.tool_name, resourceType: row.resource_type, resourceId: row.resource_id,
           risk: row.risk, expiresAt: row.expires_at, previewHash: row.preview_hash, proposal: context.envelope.proposal };
       });
@@ -111,7 +116,9 @@ export function createOperationApproval({ store, binding, sellerOrigin, quickLog
   return async function approve(request, input, clientAddress) {
     if (request.method !== 'POST' || new URL(request.url).origin !== sellerOrigin || request.headers.get('origin') !== sellerOrigin ||
         !input || typeof input !== 'object' || Array.isArray(input) ||
-        Object.keys(input).length !== 5 || !['operationId', 'previewHash', 'challenge', 'decision', 'password'].every((key) => Object.hasOwn(input, key)) ||
+        Object.keys(input).some(key => !['operationId', 'previewHash', 'challenge', 'decision', 'password', 'currencyAcknowledged'].includes(key)) ||
+        !['operationId', 'previewHash', 'challenge', 'decision', 'password'].every((key) => Object.hasOwn(input, key)) ||
+        (Object.hasOwn(input, 'currencyAcknowledged') && input.currencyAcknowledged !== true) ||
         typeof input.operationId !== 'string' || !uuid.test(input.operationId) ||
         typeof input.previewHash !== 'string' || !digest.test(input.previewHash) ||
         typeof input.challenge !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(input.challenge) ||
@@ -131,8 +138,9 @@ export function createOperationApproval({ store, binding, sellerOrigin, quickLog
         const session = await readSession(store, token);
         if (!session || !sameSecret(request.headers.get('x-csrf-token'), session.csrf_token)) forbidden();
         const row = await store.get('SELECT * FROM mcp_v2_operation WHERE id = ?', input.operationId);
-        if (!await humanContext(store, binding, tenant.revision, epochHash, buildDigest, session, row) ||
-            !sameSecret(row.preview_hash, input.previewHash)) forbidden();
+        const context = await humanContext(store, binding, tenant.revision, epochHash, buildDigest, session, row);
+        if (!context || !sameSecret(row.preview_hash, input.previewHash) ||
+            (context.currencyAcknowledgementRequired && input.decision === 'approve') !== Object.hasOwn(input, 'currencyAcknowledged')) forbidden();
         const account = await store.get('SELECT password_hash, oauth_auth_version FROM seller_account WHERE id = ?', session.account.id);
         if (!account || !Number.isSafeInteger(account.oauth_auth_version)) forbidden();
         const challenge = await store.get(`SELECT id FROM mcp_v2_approval_challenge WHERE operation_id = ? AND nonce_hash = ?
@@ -152,8 +160,9 @@ export function createOperationApproval({ store, binding, sellerOrigin, quickLog
       const account = await store.get('SELECT password_hash, oauth_auth_version FROM seller_account WHERE id = ?', session.account.id);
       if (!account || account.oauth_auth_version !== snapshot.authVersion || !sameSecret(account.password_hash, snapshot.passwordHash)) forbidden();
       const row = await store.get('SELECT * FROM mcp_v2_operation WHERE id = ?', input.operationId);
-      if (!await humanContext(store, binding, tenant.revision, epochHash, buildDigest, session, row) ||
-          !sameSecret(row.preview_hash, input.previewHash)) forbidden();
+      const context = await humanContext(store, binding, tenant.revision, epochHash, buildDigest, session, row);
+      if (!context || !sameSecret(row.preview_hash, input.previewHash) ||
+          (context.currencyAcknowledgementRequired && input.decision === 'approve') !== Object.hasOwn(input, 'currencyAcknowledged')) forbidden();
       const now = stamp(), expires = new Date(Math.min(Date.parse(now) + APPROVAL_MS, Date.parse(row.expires_at))).toISOString();
       if (expires <= now) forbidden();
       const consumed = await store.get(`UPDATE mcp_v2_approval_challenge SET consumed_at = ? WHERE id = ? AND operation_id = ?
@@ -170,7 +179,8 @@ export function createOperationApproval({ store, binding, sellerOrigin, quickLog
         operation_id, approver_id, event, outcome, correlation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       randomUUID(), now, binding.tenantId, row.account_id, row.client_id, row.grant_id, row.tool_name,
       typeof row.resource_id === 'string' && uuid.test(row.resource_id) ? row.resource_id : null,
-      row.id, snapshot.accountId, state === 'APPROVED' ? 'APPROVE' : 'REJECT', state, row.correlation_id);
+      row.id, snapshot.accountId, state === 'APPROVED' ? 'APPROVE' : 'REJECT',
+      state === 'APPROVED' && context.currencyAcknowledgementRequired ? COMPANY_CURRENCY_ACKNOWLEDGED : state, row.correlation_id);
       return { operationId: row.id, status: state, expiresAt: expires };
     }));
   };

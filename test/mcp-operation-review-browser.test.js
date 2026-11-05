@@ -24,7 +24,7 @@ test('first-party review prototype renders all untrusted data as text and requir
       const send = (value) => { response.writeHead(200, { 'Content-Type': 'application/json' }); response.end(JSON.stringify(value)); };
       if (path === '/api/v1/seller/session' && request.method === 'GET') { send({ csrfToken: 'synthetic-csrf' }); return; }
       if (path === `/api/v1/seller/mcp/operations/${id}` && request.method === 'GET') {
-        send({ operationId: id, shopName: 'Synthetic shop', accountName: 'synthetic_owner', clientName: injection, clientId: 'synthetic-client',
+        send({ currencyAcknowledgementRequired: false, currencyWarning: null, operationId: id, shopName: 'Synthetic shop', accountName: 'synthetic_owner', clientName: injection, clientId: 'synthetic-client',
           toolName: 'catalog.preview_update', resourceType: 'product', resourceId: id, risk: 'MEDIUM', expiresAt: '2026-11-04T00:10:00.000Z',
           previewHash: digest, challenge: 'a'.repeat(43), proposal: { before: { name: 'Old synthetic' },
             after: { name: injection, bidi: 'A\u202eB', tail: 'Full proposal visible' } } }); return;

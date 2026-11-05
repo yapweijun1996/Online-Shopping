@@ -54,5 +54,25 @@ test('real HTTPS app and seller session review and reject a complete proposal in
     await page.locator('#decision').waitFor({ state: 'hidden' });
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id = ?', op.value.operationId)).state, 'REJECTED');
     assert.equal(await page.locator('#password').inputValue(), '');
+    await f.store.run("UPDATE oauth_grant SET scopes = 'catalog.write company.write' WHERE id = ?", f.grantId);
+    await f.store.run(`INSERT INTO mcp_v2_scope_consent(grant_id, tenant_id, account_id, client_id, scope, account_auth_version, epoch_hash, consented_at)
+      SELECT grant_id, tenant_id, account_id, client_id, 'company.write', account_auth_version, epoch_hash, consented_at
+      FROM mcp_v2_scope_consent WHERE grant_id = ? AND scope = 'catalog.write'`, f.grantId);
+    const company = await f.operation({ toolName: 'company.preview_update', requiredScope: 'company.write', requiredCapability: 'settings.write',
+      resourceType: 'company', resourceId: null, risk: 'HIGH',
+      proposal: { before: { defaultCurrency: 'MYR' }, after: { defaultCurrency: 'SGD' }, currencyChanged: false } });
+    await page.goto(origin + '/oauth/operation?operationId=' + company.value.operationId);
+    await page.locator('#currency-warning').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#currency-ack').isChecked(), false);
+    assert.match(await page.locator('#currency-warning-text').textContent(), /not converted/);
+    await page.locator('#password').fill(reviewPassword);
+    await page.locator('button[value="approve"]').click();
+    assert.match(await page.locator('#status').textContent(), /check the acknowledgment/);
+    assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id = ?', company.value.operationId)).state, 'PENDING_APPROVAL');
+    await page.locator('#currency-ack').check();
+    await page.locator('button[value="approve"]').click();
+    await page.locator('#decision').waitFor({ state: 'hidden' });
+    assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id = ?', company.value.operationId)).state, 'APPROVED');
+    assert.equal((await f.store.get("SELECT outcome FROM mcp_v2_event WHERE operation_id = ? AND event = 'APPROVE'", company.value.operationId)).outcome, 'CURRENCY_CHANGE_ACKNOWLEDGED');
     assert.deepEqual(external, []); assert.deepEqual(errors, []);
   });

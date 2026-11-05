@@ -31,6 +31,11 @@
       <p>All text below is data supplied by the shop or connected app.</p>
       <pre id="proposal" tabindex="0"></pre>
       <form id="decision" method="post">
+        <div id="currency-warning" class="currency-warning" hidden role="group" aria-label="Company currency change">
+          <strong>Company currency change</strong>
+          <p id="currency-warning-text"></p>
+          <label class="currency-acknowledgement" for="currency-ack"><input id="currency-ack" type="checkbox">I understand that existing prices and historical orders will not be converted.</label>
+        </div>
         <label for="password">Confirm your seller password</label>
         <input id="password" type="password" autocomplete="current-password" required maxlength="256">
         <div class="actions">

@@ -15,6 +15,8 @@ document.querySelector('#seller-link').href = `${base}/seller/`;
 let csrf = null;
 let previewHash = null;
 let challenge = null;
+let currencyAcknowledgementRequired = false;
+const currencyAck = document.querySelector('#currency-ack');
 const visible = (value) => value.replace(/[\u061c\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/g,
   (character) => `\\u${character.codePointAt(0).toString(16).padStart(4, '0')}`);
 
@@ -27,7 +29,9 @@ async function load() {
   const response = await fetch(`${base}/api/v1/seller/mcp/operations/${id}`, { credentials: 'same-origin', cache: 'no-store' });
   if (!response.ok) throw new Error('Proposal unavailable.');
   const value = await response.json();
-  if (typeof value.challenge !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(value.challenge) || value.operationId !== id || typeof value.previewHash !== 'string' || !hashPattern.test(value.previewHash) ||
+  if (typeof value.currencyAcknowledgementRequired !== 'boolean' ||
+      (value.currencyAcknowledgementRequired ? typeof value.currencyWarning !== 'string' || !value.currencyWarning : value.currencyWarning !== null) ||
+      typeof value.challenge !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(value.challenge) || value.operationId !== id || typeof value.previewHash !== 'string' || !hashPattern.test(value.previewHash) ||
       typeof value.shopName !== 'string' || typeof value.accountName !== 'string' || typeof value.clientName !== 'string' ||
       typeof value.clientId !== 'string' ||
       typeof value.toolName !== 'string' || typeof value.resourceType !== 'string' ||
@@ -38,6 +42,10 @@ async function load() {
   csrf = session.csrfToken;
   previewHash = value.previewHash;
   challenge = value.challenge;
+  currencyAcknowledgementRequired = value.currencyAcknowledgementRequired;
+  currencyAck.checked = false;
+  document.querySelector('#currency-warning').hidden = !currencyAcknowledgementRequired;
+  document.querySelector('#currency-warning-text').textContent = value.currencyWarning || '';
   document.querySelector('#shop').textContent = visible(value.shopName);
   document.querySelector('#account').textContent = visible(value.accountName);
   document.querySelector('#client').textContent = visible(value.clientName);
@@ -56,13 +64,19 @@ form.addEventListener('submit', async (event) => {
   event.preventDefault();
   const decision = event.submitter?.value;
   if (!csrf || !previewHash || !challenge || !['approve', 'reject'].includes(decision) || !password.value) return;
+  if (decision === 'approve' && currencyAcknowledgementRequired && !currencyAck.checked) {
+    statusNode.textContent = 'Read the currency warning and check the acknowledgment before approving.';
+    currencyAck.focus(); return;
+  }
   const buttons = [...form.querySelectorAll('button')];
   buttons.forEach((button) => { button.disabled = true; });
   try {
     const response = await fetch(`${base}/api/v1/seller/mcp/operations/${id}/approval`, {
       method: 'POST', credentials: 'same-origin', cache: 'no-store',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-      body: JSON.stringify({ operationId: id, previewHash, challenge, decision, password: password.value }),
+      body: JSON.stringify({ operationId: id, previewHash, challenge, decision, password: password.value,
+        ...(currencyAcknowledgementRequired && decision === 'approve' ? { currencyAcknowledged: true } : {}),
+      }),
     });
     if (!response.ok) throw new Error('Approval failed.');
     const result = await response.json();
