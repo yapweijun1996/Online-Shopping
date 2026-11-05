@@ -7,7 +7,7 @@ import { decodeThumbnail } from './product-image.js';
 import { getCompanySettings, requireActiveCategory } from './settings.js';
 import { presentCatalogCopy } from './catalog-copy.js';
 import { hasVariantLabel, loadProductOptions, optionAxes, optionError, requireGroupOptions, setProductOptions } from './options.js';
-import { listingFor, moveToListing, syncListing } from './listings.js';
+import { listingFor, moveToListing, syncListing, plannedListingIdentity } from './listings.js';
 import { reservedQuantitySql } from './stock-reservation.js';
 import { galleryRole, productCover, productGallery, requireGalleryRevision, saveProductGallery, planProductGallery, planProductMainRestoration, applyProductGalleryPlan, prepareGalleryUploadEntry, requireMainImageRemoval, shareListingGallery } from './product-gallery.js';
 
@@ -169,12 +169,34 @@ export async function updateProductGallery(database, id, input, mode = 'manual')
 }
 
 export async function updateProduct(database, id, input, mode = 'manual') {
+  return updateProductInternal(database, id, input, mode);
+}
+
+// Internal commit entry; authority, immutable approval and history remain the
+// caller's responsibility. No route/model field supplies the context argument.
+export async function applyPlannedProductUpdate(database, input, context, mode = 'manual') {
+  const identity = plannedListingIdentity(context), keys = ['id', 'changes'];
+  if (!input || ![Object.prototype, null].includes(Object.getPrototypeOf(input)) ||
+      Reflect.ownKeys(input).length !== keys.length || keys.some(key => {
+        const descriptor = Object.getOwnPropertyDescriptor(input, key);
+        return !descriptor?.enumerable || !Object.hasOwn(descriptor, 'value');
+      }) || input.id !== identity.productId || !input.changes ||
+      ['stockQuantity', 'imageDataUrl', 'thumbDataUrl', 'gallery'].some(key => Object.hasOwn(input.changes, key))) {
+    throw new ApiError(409, 'LISTING_PLAN_CONFLICT', 'The planned listing creation changed.');
+  }
+  return updateProductInternal(database, input.id, input.changes, mode, identity);
+}
+
+async function updateProductInternal(database, id, input, mode, listingIdentity = null) {
   if (input && Object.hasOwn(input, 'gallery') && Object.keys(input).every(key => ['gallery','expectedUpdatedAt'].includes(key))) {
     return updateProductGallery(database, id, input, mode);
   }
   return await database.transaction(async () => {
     const existing = await getProduct(database, id, true, mode);
-    if (!existing) return null;
+    if (!existing) {
+      if (listingIdentity) throw new ApiError(409, 'LISTING_PLAN_CONFLICT', 'The planned listing creation changed.');
+      return null;
+    }
     const hasRevision = input && Object.hasOwn(input, 'expectedUpdatedAt');
     if (hasRevision) requireGalleryRevision(existing, input.expectedUpdatedAt);
     if (hasRevision && !Object.hasOwn(input, 'gallery')) {
@@ -197,7 +219,7 @@ export async function updateProduct(database, id, input, mode = 'manual') {
       // Gallery-only edits still advance the shared product revision.
       if (!Object.keys(patch).length) patch = { name: existing.name };
     }
-    await patchProduct(database, id, patch, { galleryChanging: hasGallery });
+    await patchProduct(database, id, patch, { galleryChanging: hasGallery, listingIdentity });
     if (hasGallery) await saveProductGallery(database, id, input.gallery, existing);
     else {
       const restoration = await planProductMainRestoration(database, id, input.imageDataUrl, existing);
@@ -229,10 +251,15 @@ export async function prepareProductUpdate(database, existing, input) {
   return patch;
 }
 
-async function patchProduct(database, id, input, { galleryChanging = false } = {}) {
+async function patchProduct(database, id, input, { galleryChanging = false, listingIdentity = null } = {}) {
   const existing = await getProduct(database, id, true);
   if (!existing) return null;
   const patch = await prepareProductUpdate(database, existing, input);
+  if (listingIdentity && (listingIdentity.productId !== id || listingIdentity.previousListingId !== existing.listingId ||
+      !Object.hasOwn(patch, 'variantGroup') || (patch.variantGroup || null) === (existing.variantGroup || null) ||
+      (patch.variantGroup || null) !== listingIdentity.targetCode)) {
+    throw new ApiError(409, 'LISTING_PLAN_CONFLICT', 'The planned listing creation changed.');
+  }
   requireMainImageRemoval(existing, patch.image, galleryChanging);
   const mapping = { sku: 'sku', name: 'name', description: 'description', category: 'category', priceMinor: 'price_minor', currency: 'currency', active: 'active', variantGroup: 'variant_group', variantLabel: 'variant_label' };
   const assignments = [];
@@ -263,7 +290,7 @@ async function patchProduct(database, id, input, { galleryChanging = false } = {
   const now = new Date().toISOString();
   if (Object.hasOwn(patch, 'variantGroup') && (patch.variantGroup || null) !== (existing.variantGroup || null)) {
     const merged = { ...existing, ...patch, category: patch.category || existing.categoryCode };
-    const listing = await moveToListing(database, id, existing.listingId, merged, now);
+    const listing = await moveToListing(database, id, existing.listingId, merged, now, listingIdentity);
     await shareListingGallery(database, listing.id);
   } else {
     await syncListing(database, existing.listingId, patch, now);

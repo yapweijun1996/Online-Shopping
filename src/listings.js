@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { ApiError } from './http.js';
 
 /*
  * A listing is what a shopper sees as one product: shared title, description and category. Its variants are
@@ -9,6 +10,23 @@ import { randomUUID } from 'node:crypto';
  * order snapshots read them; they are rewritten here, inside the caller's transaction, whenever the listing changes.
  */
 const SHARED = ['name', 'description', 'category'];
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const plannedConflict = () => { throw new ApiError(409, 'LISTING_PLAN_CONFLICT', 'The planned listing creation changed.'); };
+
+// Trusted service metadata only, never an input field or authorization proof.
+export function plannedListingIdentity(value) {
+  const keys = ['productId', 'previousListingId', 'targetCode', 'newListingId'];
+  if (!value || ![Object.prototype, null].includes(Object.getPrototypeOf(value)) ||
+      Reflect.ownKeys(value).length !== keys.length || keys.some(key => {
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        return !descriptor?.enumerable || !Object.hasOwn(descriptor, 'value');
+      })) plannedConflict();
+  const identity = Object.fromEntries(keys.map(key => [key, value[key]]));
+  if (![identity.productId, identity.previousListingId, identity.newListingId].every(id => typeof id === 'string' && uuid.test(id)) ||
+      identity.newListingId === identity.previousListingId ||
+      !(identity.targetCode === null || typeof identity.targetCode === 'string' && /^[A-Z0-9][A-Z0-9._-]{0,39}$/.test(identity.targetCode))) plannedConflict();
+  return Object.freeze(identity);
+}
 
 /* Backfills listings for products that have none: one per variant group, one per ungrouped product. */
 export async function migrateListings(store) {
@@ -49,11 +67,16 @@ export async function planListingFor(database, fields) {
   return { create: !existing, code, listing: existing || { id: null, ...projectListingFields({}, fields) } };
 }
 
-async function applyListingForPlan(database, plan, now) {
+async function applyListingForPlan(database, plan, now, newListingId = null) {
   if (!plan.create) return plan.listing;
-  const listing = { ...plan.listing, id: randomUUID() };
-  await database.run(`INSERT INTO listing (id, code, name, description, category, translations_json, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, '{}', ?, ?)`, listing.id, plan.code, listing.name, listing.description, listing.category, now, now);
+  const listing = { ...plan.listing, id: newListingId ?? randomUUID() };
+  try {
+    await database.run(`INSERT INTO listing (id, code, name, description, category, translations_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, '{}', ?, ?)`, listing.id, plan.code, listing.name, listing.description, listing.category, now, now);
+  } catch (error) {
+    if (newListingId !== null && (error?.code === '23505' || /UNIQUE constraint failed: listing\.(?:id|code)/.test(error?.message || ''))) plannedConflict();
+    throw error;
+  }
   return listing;
 }
 
@@ -82,9 +105,16 @@ export async function syncListing(database, listingId, patch, now) {
 }
 
 /* Moves a product row to the listing of `group` (or a private one when empty) and removes a listing left without variants. */
-export async function moveToListing(database, productId, previousListingId, fields, now) {
+export async function moveToListing(database, productId, previousListingId, fields, now, identity = null) {
   const plan = await planMoveToListing(database, productId, previousListingId, fields);
-  const listing = await applyListingForPlan(database, plan.target, now);
+  if (identity !== null) {
+    identity = plannedListingIdentity(identity);
+    const current = await database.get('SELECT listing_id FROM product WHERE id = ?', productId);
+    if (identity.productId !== productId || identity.previousListingId !== previousListingId || current?.listing_id !== previousListingId ||
+        identity.targetCode !== plan.target.code || !plan.target.create || plan.target.listing.id !== null ||
+        await database.get('SELECT id FROM listing WHERE id = ?', identity.newListingId)) plannedConflict();
+  }
+  const listing = await applyListingForPlan(database, plan.target, now, identity?.newListingId ?? null);
   const product = { ...plan.productAfter, listingId: listing.id };
   await database.run('UPDATE product SET listing_id = ?, name = ?, description = ?, category = ? WHERE id = ?',
     product.listingId, product.name, product.description, product.category, productId);
