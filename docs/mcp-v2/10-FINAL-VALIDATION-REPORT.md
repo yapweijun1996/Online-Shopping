@@ -1,5 +1,16 @@
 # MCP v2 validation snapshots
 
+## Final UPDATE components and private CREATE — successor224e8a7
+
+At root2c61dd189e542a5baa9c95e027a1565b128d32ee (workerbd9e9c7), Node24.22.0 with synthetic SQLite and owned PostgreSQL16:
+
+- `NODE_ENV=test SHOP_TEST_DATABASE_URL=<private synthetic URL> node --test --test-concurrency=1 test/mcp-catalog-runtime.test.js test/mcp-catalog-runtime-platform.test.js test/mcp-catalog-media-contracts.test.js`: exit0,42/42,0skips,20.006s (`.local/manager-catalog-update-final-contracts.tap`). Adds real default explicit-empty registrations, missing-worker fail-closed construction and source-generated full UPDATE artifact/schema-drift checks to the security/concurrency matrix. Safe schemas and original8 remain unchanged.
+- `NODE_ENV=test SHOP_TEST_DATABASE_URL=<private synthetic URL> QA_PLAYWRIGHT_MODULE=<cached module> CATALOG_MEDIA_NATIVE_BROWSER_TEST=1 node --test --test-concurrency=1 test/mcp-catalog-runtime-browser.test.js`: exit0,5/5,0skips,13.468s (`.local/manager-catalog-update-final-native-browser.tap`). Genuine default native/OAuth/HTTPS-browser path now also proves a legacy MEDIUM pending UPDATE cannot gain full-profile authority when the flag changes. No registration/grant/guard/approval injection; owned container label query empty after cleanup.
+
+Root accepted private CREATE3b7c025→224e8a714817a0095576eccd6c800bf2df5d9c46 after source review and `NODE_ENV=test SHOP_TEST_DATABASE_URL=<private synthetic URL> node --test --test-concurrency=1 test/catalog-media-create-adapter.test.js test/catalog-media-adapter.test.js test/gallery-sharing-revision.test.js test/catalog-create-label-contract.test.js test/mcp-catalog-create-review-manifest.test.js`: exit0,59/59,0skips,13.532s (`.local/manager-create-adapter-compatibility.tap`); `npm run check`: exit0. Tests use actual two-store D0/product/history/inventory services and an explicitly synthetic decoder/retained frame, without human approval rows. Independent/private, fresh-group, existing-group main-copy and physical11 legacy cases, canonical versus clipped derived labels, raw-first stale code/ID/currency/media, closed inputs/context, metadata/settings preflight, deadline/frame integrity and six injected atomic faults are covered. Complete old metadata/physical state and exact new stock/history/ledger are checked before the minimal actual-after receipt. Direct second apply stales; engine replay acceptance remains a separate runtime requirement.
+
+Actual full CREATE runtime, human proof/default native-browser acceptance and the final integrated full suite remain incomplete. The UPDATE flag cannot authorize CREATE. These overlapping snapshots must not be summed into a unique test count; neither component success nor the source review authorizes deployment.
+
 ## Additional repository gates — source9007cda
 
 Node24.22.0 on persistent ARM64 Ubuntu24.04, isolated workspace and synthetic fixtures only. Commands were discovered from repository/package definitions. All exited0:
