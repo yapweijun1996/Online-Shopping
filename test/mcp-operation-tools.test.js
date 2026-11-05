@@ -86,6 +86,10 @@ for (const dialect of ['sqlite', 'postgres']) {
       };
       let committed;
       try { committed = await Promise.all([commit(), commit()]); } finally { f.store.run = originalRun; }
+      for (const value of committed) {
+        assert.equal(value.response.status, 200, JSON.stringify(value.data));
+        assert.ok(value.data.result?.structuredContent, JSON.stringify(value.data));
+      }
       assert.deepEqual(committed.map(value => value.data.result.structuredContent.replayed).sort(), [false, true]);
       for (const response of committed) assert.deepEqual(response.data.result.structuredContent.result, { id: f.productId, revision: 2 });
       assert.equal((await f.store.get('SELECT revision FROM synthetic_protocol_product WHERE id = ?', f.productId)).revision, 2);
