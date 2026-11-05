@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { companyMutationTool, companyReadTool, companyRevision, getCompanyToolSnapshot, COMPANY_FIELDS } from '../src/mcp/company-tools.js';
 import { getCompanySettings, prepareCompanySettings, updateCompanySettings, createCategory } from '../src/settings.js';
+import { createOrder } from '../src/orders.js';
 import { createProduct } from '../src/products.js';
 import { hash, secret, stamp } from '../src/mcp/credentials.js';
+import { COMPANY_CURRENCY_ACKNOWLEDGED } from '../src/mcp/company-approval-policy.js';
 import { operationEpochHash } from '../src/mcp/operation-epoch.js';
 import { reviewFixture, reviewPassword } from './helpers/mcp-review-fixture.js';
 
@@ -99,6 +101,20 @@ for (const dialect of ['sqlite', 'postgres']) {
     else { assert.equal(outcome.error, 'STALE_REVISION'); assert.equal(settings.senderName, null); }
     assert.equal((await f.store.get("SELECT COUNT(*) AS n FROM mcp_v2_event WHERE operation_id = ? AND event = 'COMMIT'", op.operationId)).n, outcome.status === 'COMMITTED' ? 1 : 0);
   });
+  test(`${dialect}: existing currency conflicts preserve historical orders and order-item snapshots`, options, async (t) => {
+    const f = await fixture(t, dialect);
+    await createCategory(f.store, { code: 'HISTORY', label: 'Synthetic history' });
+    const product = await createProduct(f.store, { sku: 'COMPANY-HISTORY', name: 'Synthetic archived-order item', description: 'Synthetic item', category: 'HISTORY', priceMinor: 750, active: true });
+    await createOrder(f.store, secret(), { buyer: { fullName: 'Synthetic Buyer', whatsappPhone: '+6581234567' }, whatsappOrderContactOptIn: true,
+      deliveries: [{ recipient: { fullName: 'Synthetic Recipient', phone: '+60123456789' }, address: { line1: 'Synthetic Street', postcode: '50000', city: 'Kuala Lumpur', region: 'Kuala Lumpur', country: 'MY' },
+        items: [{ productId: product.id, quantity: 1, expectedPriceMinor: 750, expectedCurrency: 'MYR' }] }] });
+    const beforeOrders = await f.store.all('SELECT * FROM shop_order'), beforeItems = await f.store.all('SELECT * FROM order_item');
+    assert.equal((await f.preview({ defaultCurrency: 'SGD' })).data.error.code, -32009);
+    const op = dto(await f.preview({ shippingText: 'Synthetic updated dispatch terms' })); await f.approve(op);
+    assert.equal(dto(await f.commit(op)).status, 'COMMITTED');
+    assert.deepEqual(await f.store.all('SELECT * FROM shop_order'), beforeOrders); assert.deepEqual(await f.store.all('SELECT * FROM order_item'), beforeItems);
+    assert.equal(beforeOrders[0].currency, 'MYR'); assert.equal(beforeItems[0].currency, 'MYR'); assert.equal(beforeItems[0].price_minor, 750);
+  });
   test(`${dialect}: scope, role, tenant, unknown fields and revoked grants fail before company mutation`, options, async (t) => {
     const f = await fixture(t, dialect), expectedRevision = (await f.snapshot()).company.revision;
     for (const input of [{ expectedRevision, changes: { senderName: 'x' }, id: 'other' }, { expectedRevision, changes: { id: 'other' } }, { expectedRevision, changes: { currencyAcknowledged: true } }]) {
@@ -116,6 +132,30 @@ for (const dialect of ['sqlite', 'postgres']) {
     assert.equal((await f.preview({ senderName: 'Revoked' })).response.status, 401);
     assert.equal((await getCompanySettings(f.store)).senderName, null);
     assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_operation')).n, 0);
+  });
+  test(`${dialect}: company currency commit rejects bare or incorrectly bound acknowledgment evidence`, options, async (t) => {
+    const f = await fixture(t, dialect), op = dto(await f.preview({ defaultCurrency: 'SGD' }));
+    const row = await f.store.get('SELECT * FROM mcp_v2_operation WHERE id = ?', op.operationId);
+    const proposal = JSON.parse(row.envelope_json).proposal;
+    assert.equal(proposal.currencyChanged, true); assert.equal(proposal.before.defaultCurrency, 'MYR'); assert.equal(proposal.after.defaultCurrency, 'SGD'); assert.equal(proposal.warnings.length, 1);
+    // Synthetic legacy-proof fixture tests the engine independently of the new
+    // first-party checkbox. It must never be enough to authorize currency change.
+    const session = await f.store.get('SELECT token_hash FROM session WHERE account_id = ?', f.account.id), at = stamp();
+    await f.store.run("UPDATE mcp_v2_operation SET state = 'APPROVED' WHERE id = ?", op.operationId);
+    await f.store.run(`INSERT INTO mcp_v2_approval(operation_id,approver_id,session_hash,preview_hash,decision,approved_at,expires_at)
+      VALUES (?, ?, ?, ?, 'APPROVED', ?, ?)`, op.operationId, f.account.id, session.token_hash, row.preview_hash, at, new Date(Date.parse(at) + 300000).toISOString());
+    assert.equal((await f.commit(op)).response.status, 403);
+    const evidence = { id: randomUUID(), at, tenant_id: row.tenant_id, account_id: row.account_id, client_id: row.client_id, grant_id: row.grant_id,
+      tool_name: row.tool_name, resource_id: null, operation_id: row.id, approver_id: f.account.id, event: 'APPROVE', outcome: COMPANY_CURRENCY_ACKNOWLEDGED, correlation_id: row.correlation_id };
+    const keys = Object.keys(evidence);
+    await f.store.run(`INSERT INTO mcp_v2_event (${keys.join(',')}) VALUES (${keys.map(() => '?').join(',')})`, ...keys.map((key) => evidence[key]));
+    for (const [field, value] of [['tenant_id', 'another'], ['account_id', randomUUID()], ['client_id', 'another'], ['grant_id', randomUUID()], ['tool_name', 'catalog.preview_update'], ['operation_id', randomUUID()], ['approver_id', randomUUID()], ['correlation_id', randomUUID()], ['at', new Date(Date.parse(at) + 1).toISOString()], ['outcome', 'APPROVED']]) {
+      await f.store.run(`UPDATE mcp_v2_event SET ${field} = ? WHERE id = ?`, value, evidence.id);
+      assert.equal((await f.commit(op)).response.status, 403, field);
+      await f.store.run(`UPDATE mcp_v2_event SET ${field} = ? WHERE id = ?`, evidence[field], evidence.id);
+    }
+    assert.equal((await getCompanySettings(f.store)).defaultCurrency, 'MYR');
+    assert.equal((await f.store.get("SELECT COUNT(*) AS n FROM mcp_v2_event WHERE operation_id = ? AND event = 'COMMIT'", row.id)).n, 0);
   });
   test(`${dialect}: company commit and its audit roll back atomically on storage failure`, options, async (t) => {
     const f = await fixture(t, dialect), op = dto(await f.preview({ senderAddressLine1: 'PRIVATE Should Roll Back' })); await f.approve(op);
