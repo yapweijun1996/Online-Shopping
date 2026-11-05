@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { inventoryFixture } from './helpers/inventory-fixture.js';
+import { restoreLegacyAuditFixture } from './helpers/legacy-audit-fixture.js';
 import { migrateStore,SCHEMA_VERSION } from '../src/db.js';
 import { upgradePostgres } from '../src/postgres/upgrade.js';
 import { openPostgresStore } from '../src/postgres-store.js';
@@ -13,16 +14,16 @@ for(const dialect of ['sqlite','postgres']){
  const options={skip:dialect==='postgres'&&!process.env.SHOP_TEST_DATABASE_URL};
  test(`${dialect}: exact32 index-only migration preserves frozen ledger metadata and rolls back index/version atomically`,options,async t=>{
   const f=await inventoryFixture(t,dialect),p=await f.product({stockQuantity:8}),meta=await f.store.get('SELECT * FROM inventory_schema'),movement=await f.store.get('SELECT * FROM inventory_movement');
-  await f.store.exec('DROP INDEX order_item_inventory');await f.store.setSchemaVersion(32);const exec=f.store.exec;
+  await restoreLegacyAuditFixture(f.store);await f.store.exec('DROP INDEX order_item_inventory');await f.store.setSchemaVersion(32);const exec=f.store.exec;
   f.store.exec=async sql=>{await exec(sql);if(sql===INVENTORY_ORDER_INDEX_SQL)throw new Error('Synthetic33 index interruption');};
   await assert.rejects(migrate(f.store),/Synthetic33/);f.store.exec=exec;assert.equal(await f.store.schemaVersion(),32);assert.equal(await inventoryOrderIndexReady(f.store),false);
   await migrate(f.store);assert.equal(await f.store.schemaVersion(),SCHEMA_VERSION);assert.equal(await inventoryStorageReady(f.store),true);assert.deepEqual(await f.store.get('SELECT * FROM inventory_schema'),meta);assert.deepEqual(await f.store.get('SELECT * FROM inventory_movement'),movement);assert.equal((await f.store.get('SELECT stock_quantity FROM product WHERE id=?',p.id)).stock_quantity,8);
   await f.store.exec('DROP INDEX order_item_inventory');await f.store.exec('CREATE INDEX order_item_inventory ON order_item(delivery_id,product_id,id)');assert.equal(await inventoryStorageReady(f.store),false);
  });
  test(`${dialect}: malformed source32 ledger and preexisting index prototypes refuse version advancement`,options,async t=>{
-  const f=await inventoryFixture(t,dialect);await f.store.exec('DROP INDEX order_item_inventory');await f.store.setSchemaVersion(32);await f.store.exec('DROP INDEX inventory_movement_order');
+  const f=await inventoryFixture(t,dialect);await restoreLegacyAuditFixture(f.store);await f.store.exec('DROP INDEX order_item_inventory');await f.store.setSchemaVersion(32);await f.store.exec('DROP INDEX inventory_movement_order');
   await assert.rejects(migrate(f.store),/Incompatible inventory/);assert.equal(await f.store.schemaVersion(),32);assert.equal(await inventoryOrderIndexReady(f.store),false);
-  const prototype=await inventoryFixture(t,dialect);await prototype.store.setSchemaVersion(32);await assert.rejects(migrate(prototype.store),/Unversioned inventory index prototype/);assert.equal(await prototype.store.schemaVersion(),32);
+  const prototype=await inventoryFixture(t,dialect);await restoreLegacyAuditFixture(prototype.store);await prototype.store.setSchemaVersion(32);await assert.rejects(migrate(prototype.store),/Unversioned inventory index prototype/);assert.equal(await prototype.store.schemaVersion(),32);
  });
  test(`${dialect}: covering per-product source lookup and movement revision pages use actual selective indexes`,options,async t=>{
   const f=await inventoryFixture(t,dialect),p=await f.product({stockQuantity:null}),other=await f.product({stockQuantity:null}),order=await f.order([p]),delivery=await f.store.get('SELECT id FROM delivery WHERE order_id=?',order.id);

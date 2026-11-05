@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { restoreLegacyAuditFixture } from './helpers/legacy-audit-fixture.js';
 import assert from 'node:assert/strict';
 import { mkdtemp, chmod, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -38,7 +39,7 @@ for(const dialect of ['sqlite','postgres'])test(`${dialect}: actual snapshot res
  await restored.exec('DROP INDEX inventory_movement_product');assert.equal(await inventoryStorageReady(restored),false);
 });
 test('SQLite import preserves exact migrated/created coverage, state and movements in FK order and rolls back late failure',{skip:!process.env.SHOP_TEST_DATABASE_URL},async t=>{
- const f=await inventoryFixture(t,'sqlite'),p=await f.product({stockQuantity:9});await dropInventoryForLegacyFixture(f.store);await f.store.setSchemaVersion(31);await migrateStore(f.store);
+ const f=await inventoryFixture(t,'sqlite'),p=await f.product({stockQuantity:9});await restoreLegacyAuditFixture(f.store);await dropInventoryForLegacyFixture(f.store);await f.store.setSchemaVersion(31);await migrateStore(f.store);
  await updateProduct(f.store,p.id,{stockQuantity:7});const created=await f.product({stockQuantity:null}),order=await f.order([p],2);await decideSellerOrder(f.store,order.id,'confirm',{expectedRevision:1},'synthetic_owner');
  const target=await inventoryFixture(t,'postgres',{seed:false}),before=await evidence(f.store),run=target.store.run;
  assert.ok(importTables.indexOf('inventory_coverage')>importTables.indexOf('shop_order'));assert.ok(importTables.indexOf('inventory_state')>importTables.indexOf('inventory_coverage'));assert.ok(excludedImportTables.includes('inventory_schema'));
