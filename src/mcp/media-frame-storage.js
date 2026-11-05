@@ -3,11 +3,19 @@ import { MEDIA_LIMITS } from './media-schema.js';
 import { isMediaUuid, mediaJson } from './media-policy.js';
 import { mediaManifestRows, readMediaManifest } from './media-manifest.js';
 import { mediaContext, readMediaPolicy, withMediaWriter } from './media-storage.js';
+import { readStoredOperation } from './operation-envelope.js';
+import { assertCatalogReviewBinding } from './catalog-media-review-wire.js';
 
 const conflict = () => { throw new ApiError(409, 'MEDIA_FRAME_CONFLICT', 'Media frame changed.'); };
 const integrity = () => { throw new ApiError(503, 'MEDIA_FRAME_INTEGRITY', 'Media frame is inconsistent.'); };
 const pageColumns = 'operation_id,page_index,page_json,page_hash,record_count,created_at';
 const assetColumns = 'operation_id,asset_key,source_kind,source_id,source_product_id,stage_id,byte_sha256,mime,byte_length,before_needed,after_needed';
+function catalogBinding(operation, context, manifest) {
+  if (operation.tool_name !== 'catalog.preview_update' || operation.media_policy_id !== 'catalog-media-v1') return;
+  const envelope = readStoredOperation(operation, { tenantId: context.tenantId, issuer: context.issuer, resource: context.resource });
+  if (!envelope) integrity();
+  try { assertCatalogReviewBinding(envelope, manifest); } catch { integrity(); }
+}
 
 async function parent(store, context, operationId) {
   if (!isMediaUuid(operationId)) conflict();
@@ -43,6 +51,7 @@ async function readFrame(store, context, operationId, proposalDescriptor) {
   const assets = await store.all(`SELECT ${assetColumns} FROM mcp_v2_media_asset_ref WHERE operation_id=? ORDER BY asset_key LIMIT 43`, operationId);
   let manifest;
   try { manifest = readMediaManifest({ policy, pages, assets }, operation, proposalDescriptor); } catch { integrity(); }
+  catalogBinding(operation, context, manifest);
   await pins(store, context, operation, manifest);
   return manifest;
 }
@@ -55,6 +64,7 @@ export async function persistMediaFrame(store, trustedContext, operationId, mani
     if (!['PREPARED', 'PENDING_APPROVAL'].includes(operation.state)) conflict();
     const frame = mediaManifestRows(manifest, { operationId, toolName: operation.tool_name,
       createdAt: operation.created_at, expiresAt: operation.expires_at });
+    catalogBinding(operation, context, manifest);
     if (mediaJson(frame.policy) !== mediaJson(policy)) conflict();
     await pins(store, context, operation, manifest);
     if ((await store.get('SELECT COUNT(*) AS n FROM mcp_v2_media_manifest_page WHERE operation_id=?', operationId)).n ||

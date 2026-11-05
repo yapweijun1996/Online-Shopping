@@ -202,10 +202,12 @@ test('membership-changing catalog graph derives both scopes and cannot masquerad
   const value = fixture(); value.toolName = 'catalog.preview_update'; value.assets = [];
   value.graphBytes = { oldBytes: 0, newBytes: 0 };
   value.effects = [
-    { kind: 'PRODUCT', productId: first, before: { listingId: sourceList, role: 'single', mainAssetKey: null },
-      after: { listingId: targetList, role: 'variant', mainAssetKey: null } },
-    { kind: 'PRODUCT', productId: second, before: { listingId: targetList, role: 'single', mainAssetKey: null },
-      after: { listingId: targetList, role: 'holder', mainAssetKey: null } },
+    { kind: 'PRODUCT', productId: first, before: { listingId: sourceList, role: 'single', mainAssetKey: null, ownMainVisible: false },
+      after: { listingId: targetList, role: 'variant', mainAssetKey: null, ownMainVisible: false },
+      labels: { before: { sku: 'FIRST', name: 'First' }, after: { sku: 'FIRST', name: 'Second' } } },
+    { kind: 'PRODUCT', productId: second, before: { listingId: targetList, role: 'single', mainAssetKey: null, ownMainVisible: false },
+      after: { listingId: targetList, role: 'holder', mainAssetKey: null, ownMainVisible: false },
+      labels: { before: { sku: 'SECOND', name: 'Second' }, after: { sku: 'SECOND', name: 'Second' } } },
     { kind: 'LISTING', listingId: sourceList, before: { holderId: null, galleryAssetKeys: [] }, after: null },
     { kind: 'LISTING', listingId: targetList, before: { holderId: null, galleryAssetKeys: [] },
       after: { holderId: second, galleryAssetKeys: [] } },

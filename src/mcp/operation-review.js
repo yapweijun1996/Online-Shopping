@@ -68,7 +68,7 @@ async function load() {
     document.querySelector('#approve').disabled = true;
     document.querySelector('#media-review').hidden = false;
     document.querySelector('#media-warning').hidden = false; mediaAck.checked = false;
-    await loadMedia(value.toolName).catch(() => { statusNode.textContent = 'Image verification failed. Reload this review or reject the proposal.'; });
+    await loadMedia(value.toolName, value.proposal, value.resourceId).catch(() => { statusNode.textContent = 'Image verification failed. Reload this review or reject the proposal.'; });
   }
 }
 
@@ -95,9 +95,18 @@ async function acknowledgeMedia(item, nonce) {
   const result = await response.json();
   if (result.operationId !== id || result.itemKey !== item.itemKey || result.kind !== item.kind || result.acknowledged !== true) throw new Error('Image confirmation failed.');
 }
-async function loadMedia(toolName) {
+async function loadMedia(toolName, proposal, resourceId) {
   const { descriptor, items, labels } = mediaReview;
-  if (!descriptor || !['media-upload-v1', 'media-layout-v1'].includes(descriptor.policyId) ||
+  const catalog = descriptor?.policyId === 'catalog-media-v1';
+  if (catalog) {
+    const binding = proposal.reviewBinding;
+    if (!exactKeys(binding, ['version','baseRevision','reviewProjectionHash']) || binding.version !== 1 ||
+        !idPattern.test(resourceId || '') || ![binding.baseRevision,binding.reviewProjectionHash].every(value => hashPattern.test(value || '')) ||
+        new TextEncoder().encode(canonical(proposal)).length > 49152 ||
+        await sha256(new TextEncoder().encode(canonical({version:2,kind:'catalog-media-update',productId:resourceId,
+          baseRevision:binding.baseRevision,reviewProjectionHash:binding.reviewProjectionHash}))) !== descriptor.graphRevision) throw new Error('Invalid catalog revision binding.');
+  }
+  if (!descriptor || (catalog ? toolName !== 'catalog.preview_update' : !['media-upload-v1', 'media-layout-v1'].includes(descriptor.policyId)) ||
       ![descriptor.manifestRoot, descriptor.graphRevision, descriptor.codecDigest].every(value => hashPattern.test(value || '')) ||
       !Number.isInteger(descriptor.pageCount) || descriptor.pageCount < 1 || descriptor.pageCount > 16 ||
       !Number.isInteger(descriptor.assetCount) || descriptor.assetCount < 0 || descriptor.assetCount > 42 ||
@@ -129,6 +138,8 @@ async function loadMedia(toolName) {
   if (await sha256(new TextEncoder().encode(canonical(root))) !== descriptor.manifestRoot) throw new Error('Image manifest root failed.');
   const assets = records.filter(value => value.kind === 'ASSET'), effects = records.filter(value => ['PRODUCT', 'LISTING'].includes(value.kind));
   if (assets.length !== descriptor.assetCount || effects.length !== descriptor.effectCount || assets.length + effects.length !== records.length) throw new Error('Incomplete image effects.');
+  if (catalog && (common.graphBytes?.newBytes !== 0 || assets.some(asset => !['PRODUCT_MAIN','GALLERY'].includes(asset.source_kind) ||
+      !Array.isArray(asset.stage_refs) || asset.stage_refs.length !== 0))) throw new Error('Invalid catalog image source.');
   mediaReview.assets = new Map(assets.map(value => [value.asset_key, value]));
   mediaReview.assetItems = items.filter(value => value.kind === 'ASSET');
   if (mediaReview.assets.size !== assets.length || mediaReview.assetItems.length !== assets.length) throw new Error('Duplicate image.');
@@ -138,7 +149,8 @@ async function loadMedia(toolName) {
         !Number.isInteger(asset.byte_length) || asset.byte_length < 1 || asset.byte_length > 524288 ||
         await sha256(new TextEncoder().encode(canonical({ mime: asset.mime, byteSha256: asset.byte_sha256 }))) !== item.assetKey) throw new Error('Invalid image asset.');
   }
-  renderMediaEffects(effects, labels);
+  if (catalog) renderCatalogMediaEffects(effects, proposal.reviewLabels);
+  else renderMediaEffects(effects, labels);
   updateMediaProgress();
   if (mediaReview.assetItems.length) await showMediaImage(mediaReview.assetItems[0]);
 }
@@ -191,6 +203,94 @@ function renderMediaEffects(effects, labels) {
         const ordered = document.createElement('ol');
         for (const key of state.galleryAssetKeys) { const item = document.createElement('li'); item.append(reference(key)); ordered.append(item); }
         detail.append(ordered); if (!state.galleryAssetKeys.length) detail.append(document.createTextNode('Empty gallery'));
+      }
+      line.append(detail); article.append(line);
+    }
+    root.append(article);
+  }
+}
+
+const exactKeys = (value, keys) => value && !Array.isArray(value) && typeof value === 'object' &&
+  Object.keys(value).sort().join(',') === [...keys].sort().join(',');
+function catalogLabels(rows) {
+  if (!Array.isArray(rows) || rows.length < 1 || rows.length > 300 || new TextEncoder().encode(canonical(rows)).length > 49152) throw new Error('Invalid catalog labels.');
+  const names = new Map(); let last = '';
+  for (const row of rows) {
+    if (!exactKeys(row, ['productId','before','after']) || !idPattern.test(row.productId || '') || row.productId <= last) throw new Error('Invalid catalog label identity.');
+    for (const side of ['before','after']) {
+      const label = row[side];
+      if (!exactKeys(label,['sku','name']) || typeof label.sku !== 'string' || !label.sku.isWellFormed() || label.sku.length > 40 ||
+          typeof label.name !== 'string' || !label.name.isWellFormed() || label.name.length > 120) throw new Error('Invalid literal label.');
+    }
+    names.set(row.productId, row); last = row.productId;
+  }
+  return names;
+}
+function renderCatalogMediaEffects(effects, labels) {
+  const names = catalogLabels(labels), listings = new Map(), seen = new Set();
+  for (const effect of effects) {
+    if (!idPattern.test(effect.productId || effect.listingId || '')) throw new Error('Invalid catalog image identity.');
+    if (effect.kind === 'LISTING') {
+      if (!exactKeys(effect,['kind','listingId','before','after']) || listings.has(effect.listingId) || effect.before === null && effect.after === null) throw new Error('Invalid listing effect.');
+      for (const side of ['before','after']) {
+        const state = effect[side]; if (state === null) continue;
+        if (!exactKeys(state,['holderId','galleryAssetKeys']) || !(state.holderId === null || idPattern.test(state.holderId || '')) ||
+            !Array.isArray(state.galleryAssetKeys) || state.galleryAssetKeys.length > 10 || !state.galleryAssetKeys.every(key => hashPattern.test(key || ''))) throw new Error('Invalid listing state.');
+      }
+      listings.set(effect.listingId,effect);
+    } else {
+      if (!exactKeys(effect,['kind','productId','before','after','labels']) || seen.has(effect.productId) || !names.has(effect.productId) ||
+          canonical(effect.labels) !== canonical({before:names.get(effect.productId).before,after:names.get(effect.productId).after})) throw new Error('Mismatched catalog labels.');
+      for (const side of ['before','after']) {
+        const state = effect[side];
+        if (!exactKeys(state,['listingId','role','mainAssetKey','ownMainVisible']) || !idPattern.test(state.listingId || '') ||
+            !['single','holder','variant'].includes(state.role) || !(state.mainAssetKey === null || hashPattern.test(state.mainAssetKey || '')) ||
+            typeof state.ownMainVisible !== 'boolean' || state.mainAssetKey === null && state.ownMainVisible) throw new Error('Invalid catalog product state.');
+      }
+      seen.add(effect.productId);
+    }
+  }
+  if (seen.size !== names.size) throw new Error('Incomplete catalog labels.');
+  renderCatalogStates(effects,names,listings);
+}
+function renderCatalogStates(effects, names, listings) {
+  const root = document.querySelector('#media-effects'); root.replaceChildren();
+  const labelText = label => visible(`${label.sku} · ${label.name}`);
+  function reference(key) {
+    const item = mediaReview.assetItems.find(value => value.assetKey === key);
+    if (!item) throw new Error('Missing catalog image reference.');
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'media-reference'; button.textContent = key;
+    button.addEventListener('click', () => showMediaImage(item).catch(() => { statusNode.textContent = 'Image unavailable. Reload the review.'; })); return button;
+  }
+  function ordered(keys) {
+    if (keys.length > 11) throw new Error('Catalog visible gallery too large.');
+    const list = document.createElement('ol'); list.className = 'media-visible-gallery';
+    for (const key of keys) { const item = document.createElement('li'); item.append(reference(key)); list.append(item); }
+    return list;
+  }
+  for (const effect of effects) {
+    const article = document.createElement('article'), heading = document.createElement('h3');
+    heading.textContent = effect.kind === 'PRODUCT' ? `Product ${effect.productId}` : `Shared listing ${effect.listingId}`; article.append(heading);
+    for (const side of ['before','after']) {
+      const state = effect[side], line = document.createElement('div'); line.className = 'media-state';
+      const title = document.createElement('strong'); title.textContent = side === 'before' ? 'Before' : 'After'; line.append(title);
+      const detail = document.createElement('div');
+      if (state === null) {
+        if (effect.kind !== 'LISTING') throw new Error('Invalid absent product.');
+        detail.textContent = side === 'before' ? 'Did not exist before this change.' : 'Removed by this change.';
+      } else if (effect.kind === 'PRODUCT') {
+        const literal = document.createElement('p'); literal.textContent = labelText(names.get(effect.productId)[side]); detail.append(literal);
+        const role = document.createElement('p'); role.textContent = `Role: ${state.role}; listing: ${state.listingId}`; detail.append(role);
+        const stored = document.createElement('p'); stored.textContent = state.mainAssetKey === null ? 'No stored own main image.' : 'Stored own main image: '; if (state.mainAssetKey !== null) stored.append(reference(state.mainAssetKey)); detail.append(stored);
+        const visibility = document.createElement('p'); visibility.textContent = state.ownMainVisible ? 'Own main is visible in the shopper gallery.' : state.mainAssetKey === null ? 'Own main is absent.' : 'Stored own main is hidden in the shopper gallery.'; detail.append(visibility);
+        const listing = listings.get(state.listingId)?.[side]; if (!listing) throw new Error('Missing catalog listing state.');
+        if (state.role === 'single' && state.ownMainVisible && !listing.galleryAssetKeys.includes(state.mainAssetKey)) throw new Error('Missing visible own main.');
+        detail.append(document.createTextNode('Shopper gallery in order:'),ordered(state.role === 'single' ? listing.galleryAssetKeys : [...(state.ownMainVisible ? [state.mainAssetKey] : []),...listing.galleryAssetKeys]));
+      } else {
+        const holder = document.createElement('p');
+        if (state.holderId !== null && !names.has(state.holderId)) throw new Error('Missing holder label.');
+        holder.textContent = state.holderId === null ? 'Single-product gallery' : `Gallery holder: ${labelText(names.get(state.holderId)[side])} (${state.holderId})`;
+        detail.append(holder,ordered(state.galleryAssetKeys)); if (!state.galleryAssetKeys.length) detail.append(document.createTextNode('Empty gallery'));
       }
       line.append(detail); article.append(line);
     }
