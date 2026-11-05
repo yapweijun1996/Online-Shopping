@@ -266,6 +266,12 @@ export async function shareListingGallery(store, listingId) {
   }
   if (plan.writeLayout) await store.run('UPDATE product SET gallery_layout_json = ? WHERE id = ?',
     JSON.stringify(plan.selected.map(ref => plan.pending && ref === plan.pending.ref ? replacement : ref)), plan.holderId);
+  if (plan.pending || plan.writeLayout) {
+    // Invalidate portal selections captured before this sharing conversion.
+    const current = await store.get('SELECT updated_at FROM product WHERE id = ?', plan.holderId);
+    await store.run('UPDATE product SET updated_at = ? WHERE id = ?',
+      new Date(Math.max(Date.now(), Date.parse(current.updated_at) + 1)).toISOString(), plan.holderId);
+  }
   return true;
 }
 
