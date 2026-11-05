@@ -67,3 +67,35 @@ ledger/history/receipt/audit sink rollback. The replay spy denies all business
 reads and this operation's frame reads; bounded global request-time hygiene after
 the cached result remains permitted. These tests fabricate neither human evidence
 nor native validation claims.
+
+The public request/response schemas, fixed policies and schema-valid synthetic
+examples are exported from the actual CREATE factory and registry in
+[03-CATALOG-MEDIA-CREATE-IMPLEMENTED.json](03-CATALOG-MEDIA-CREATE-IMPLEMENTED.json).
+Run `node docs/mcp-v2/export-catalog-media-create-contracts.mjs --check` to reject
+schema drift. The artifact does not execute an operation/native session or enter a
+tenant; it supplies no live credentials, owned IDs or approval. Public input/output
+schemas match the older safe pair; internal policy is HIGH/dual-scope under the new
+flag. The eight original read tools retain their exact schemas.
+
+The channel fails closed rather than truncating a large valid business catalog.
+Its separate budgets are10000 source catalog products and8MiB raw catalog metadata,
+64KiB normalization settings,300 affected products including the newborn, at most2
+listings,32 distinct old `{MIME,SHA}` assets and16MiB physical old/copy/thumbnail
+budget. Frame limits are512 records,16 pages of at most16KiB; the whole public
+proposal is at most48KiB. These are channel bounds, not new portal business rules.
+The graph's `oldBytes=max(before,after)` is a conservative budget, not a claim of
+bytes actually read. Physical hidden originals/thumbnails and literal membership,
+ordering and review labels remain bound even when native proof uses fewer assets.
+Stages and new graph bytes are zero for CREATE; new media upload uses its separate
+first-party image approval flow.
+
+Existing-target creation explicitly warns that the target's shared name,
+description and category are adopted and that shared gallery/holder effects may
+copy the old main image. The source service alone plans and applies these rules.
+Initial stock is shown in the immutable proposal; no preexisting SKU quantity is
+changed. An older real MEDIUM pending CREATE cannot be approved or committed under
+the full CREATE factory. Explicit empty registration continues to expose only the
+legacy read tools, null registration is rejected, and missing sealed-worker
+configuration makes the actual connector constructor fail without a safe fallback.
+The outer multi-tenant API constructs tenant handlers lazily on their first request;
+this constructor check is not a claim that `createApi()` eagerly starts every tenant.
