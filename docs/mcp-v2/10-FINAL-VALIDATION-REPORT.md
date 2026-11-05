@@ -1,4 +1,12 @@
-# MCP v2 validation snapshots — foundation, company and catalog subset
+# MCP v2 validation snapshots
+
+## Latest storage and resource acceptance — sources5eba37b and3f4c1e9
+
+Root full Node24.22.0, SQLite and owned disposable PostgreSQL command below, exit0: **1190 total/1165 passed/0 failed/25 browser opt-ins skipped**,200.437s (`.local/manager-media-storage-full.tap`). This accepts atomic stage quotas/append/lease/pin/consume and bounded cleanup, dataful synthetic SQLite snapshot/PostgreSQL dump restore, feature-off suspended-tenant CLI, import exclusion and legacy regressions. Storage fixture bytes are deliberately synthetic; these storage tests do not claim native decoding or real human approval.
+
+At successor3f4c1e9, root `node --test --test-concurrency=1 test/mcp-media-resources.test.js test/mcp-media-storage.test.js test/mcp-media-manifest.test.js test/mcp-media-policy.test.js` with the same Node/test PostgreSQL environment: exit0,**46/46**,0skip,18.780s (`.local/manager-media-resource-storage.tap`). Resource snapshots bind complete physical ownership, membership, labels and full/thumbnail SHA; count/byte preflight precedes BLOB reads. Exactly300 members/3300 physical identities and32 content keys are covered; loader does not independently rehash every other image per delivery. Coordinator must recheck complete revision and authority.
+
+Actual browser regression at3f4c1e9: `QA_PLAYWRIGHT_MODULE=<cached Playwright module> node --test --test-concurrency=1 test/mcp-operation-review-app-browser.test.js test/mcp-operation-review-browser.test.js test/mcp-catalog-app-browser.test.js`, same Node/test database environment, exit0,**3/3**,0skip,4.724s (`.local/manager-media-foundation-browser.tap`). Actual synthetic HTTPS password/PKCE/consent/review and Chromium paths are exercised, without injected approval. This tests existing reviews; new media delivery/ACK/approval has not yet been implemented or tested.
 
 ## Latest media foundation acceptance — source5ecf145, metadata successor edda35c
 
