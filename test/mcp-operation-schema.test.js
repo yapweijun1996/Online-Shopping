@@ -134,7 +134,9 @@ for (const engine of ['sqlite', 'postgres']) {
     await denied(verify('catalog.commit_update', { bearer: 'invalid' }));
     await store.run(`INSERT INTO mcp_v2_scope_consent(grant_id, tenant_id, account_id, client_id, scope, account_auth_version, epoch_hash, consented_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, grantId, binding.tenantId, account.id, clientId, 'catalog.write', account.oauth_auth_version, digest, now);
-    assert.deepEqual(await verify(), { tenantId: binding.tenantId, accountId: account.id, clientId, grantId, scope: 'catalog.write' });
+    assert.deepEqual(await verify(), { tenantId: binding.tenantId, accountId: account.id, clientId, grantId,
+      accountAuthVersion: account.oauth_auth_version, grantExpiresAt: expiry, tokenIssuedAt: now,
+      scope: 'catalog.write', requiredScopes: ['catalog.write'] });
     await denied(verify('catalog.commit_update', { epochHash: 'b'.repeat(64) }));
     await denied(verify('catalog.commit_update', { binding: { ...binding, tenantId: 'another-tenant' } }));
     await denied(verify('catalog.commit_update', { binding: { ...binding, resource: binding.resource + '/other' } }));
