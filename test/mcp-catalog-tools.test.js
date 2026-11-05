@@ -243,8 +243,8 @@ for (const dialect of ['sqlite', 'postgres']) {
     await f.approve(op); assert.equal(dto(await f.commit('update', op)).status, 'COMMITTED');
   });
 
-  test(`${dialect}: default wiring exposes no staged catalog mutations and leaves the eight v1 definitions unchanged`, options, async t => {
-    const f = await fixture(t, dialect), api = await createApi({ store: f.store, config: f.config });
+  test(`${dialect}: explicit empty registration exposes no staged catalog mutations and leaves the eight v1 definitions unchanged`, options, async t => {
+    const f = await fixture(t, dialect), api = await createApi({ store: f.store, config: f.config, operationTools: [] });
     const call = (method, params) => api(new Request(f.binding.resource, { method: 'POST', headers: {
       authorization: 'Bearer ' + f.bearer, 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18',
     }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) }), { clientAddress: 'synthetic-default-registry' });

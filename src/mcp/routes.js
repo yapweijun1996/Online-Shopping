@@ -11,6 +11,7 @@ import { initializeOperationStorage } from './operation-runtime.js';
 import { createOperationTools } from './operation-tools.js';
 import { maintainOperations } from './operation-maintenance.js';
 import { companyReadTool, companyMutationTool } from './company-tools.js';
+import { catalogCreateTool, catalogUpdateTool } from './catalog-tools.js';
 
 export const connectorPath = (path) => /^\/(?:mcp$|oauth\/(?:register|authorize|token|revoke|consent\.js|consent\.css|operation|operation-review\.(?:js|css))$|\.well-known\/oauth-(?:protected-resource|authorization-server)(?:\/|$)|api\/v1\/seller\/mcp(?:\/|$))/.test(path);
 const operationPath = (path) => path === '/oauth/operation' || /^\/oauth\/operation-review\.(?:js|css)$/.test(path) || /^\/api\/v1\/seller\/mcp\/(?:operations(?:\/|$)|approval(?:\/|$))/.test(path);
@@ -26,7 +27,7 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
   const oauth = createOAuth({ store, config, tenantId, limit });
   const safeV2 = enabled && config.mcpV2?.enabled === true && config.production !== true &&
     config.shopMode !== 'public-demo' && quickLogin === false && typeof tenantGuard?.withActiveTenant === 'function';
-  const registrations = operationTools === undefined ? (safeV2 ? [companyReadTool(), companyMutationTool()] : []) : operationTools;
+  const registrations = operationTools === undefined ? (safeV2 ? [companyReadTool(), companyMutationTool(), catalogCreateTool(), catalogUpdateTool()] : []) : operationTools;
   const extensions = createOperationTools({ store, binding: oauth.binding, config, tenantGuard, quickLogin, entries: registrations });
   const maintain = async () => {
     if (config.mcpV2?.enabled !== true || !enabled || config.production === true || !tenantGuard) return;

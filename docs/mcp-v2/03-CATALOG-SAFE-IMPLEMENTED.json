@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:online-shopping:mcp-v2:catalog:safe-subset:implemented",
-  "$comment": "Generated from the actual isolated catalog descriptors via createOperationTools. Phase2 staged safe subset, not registered by default. Synthetic examples are schema demonstrations, not live credentials, IDs or executable approvals.",
+  "$comment": "Generated from the actual isolated catalog descriptors via createOperationTools. Phase2 staged safe subset, included only behind the existing safe nonproduction v2 gate; configuration remains default-off. Synthetic examples are schema demonstrations, not live credentials, IDs or executable approvals.",
   "$defs": {
     "catalog.preview_create.input": {
       "type": "object",

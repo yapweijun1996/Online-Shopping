@@ -1,6 +1,6 @@
 # Catalog tools: staged safe subset
 
-Status: **Phase2 IN PROGRESS**, not full variant/media/inventory acceptance. `catalogCreateTool()` and `catalogUpdateTool()` export four server-owned preview/commit descriptors. Importing the module registers nothing. Default wiring remains the previously reviewed company tools; production v2 activation remains blocked. The eight v1 tool schemas are unchanged.
+Status: **Phase2 IN PROGRESS**, not full variant/media/inventory acceptance. `catalogCreateTool()` and `catalogUpdateTool()` export four server-owned preview/commit descriptors. Importing the module registers nothing. The safe-v2 factory includes these four catalog tools alongside the three reviewed company tools only when the existing nonproduction v2 gate passes. Explicit `operationTools: []` remains empty; `null` remains invalid. Configuration stays default-off and production v2 activation remains blocked. The eight v1 tool schemas are unchanged.
 
 ## Freshness and review
 
@@ -46,4 +46,4 @@ Order rules are untouched: SUBMITTED quantities reserve stock for48 hours, confi
 
 ## Validation scope
 
-Synthetic SQLite/PostgreSQL tests exercise real RPC and first-party approval, create/update/retry, full sibling review, timestamp-stable sibling and option changes, SKU phantoms, category/currency/import/portal races, scope/RBAC/tenant/revocation/configured-shop denial, unsupported paths, metadata byte-read spies, payload/scan caps, history/audit rollback and unchanged stock holds/order snapshots. Existing product/options/import/gallery tests remain compatibility checks. This document does not authorize default registration, production migration/deployment or any external provider action.
+Synthetic SQLite/PostgreSQL tests exercise real RPC and first-party approval, create/update/retry, full sibling review, timestamp-stable sibling and option changes, SKU phantoms, category/currency/import/portal races, scope/RBAC/tenant/revocation/configured-shop denial, unsupported paths, metadata byte-read spies, payload/scan caps, history/audit rollback and unchanged stock holds/order snapshots. Existing product/options/import/gallery tests remain compatibility checks. Fresh OAuth PKCE/password consent tests prove old grants still see the eight unchanged v1 definitions, catalog consent sees four additional catalog tools, company-only consent sees its three company tools, and combined consent sees all15. A real loopback HTTPS Chromium smoke uses the actual app, fresh OAuth grant, scoped seller session, untrusted proposal text, password approval, RPC commit/replay and storefront render; it does not establish edge/TLS-vendor production behavior. This document does not authorize production migration/deployment or any external provider action.
