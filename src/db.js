@@ -8,9 +8,9 @@ import { migrateLegacyVariants } from './options.js';
 import { migrateListings } from './listings.js';
 import { migrateSharedGalleries } from './product-gallery.js';
 import { migrateOAuth } from './mcp/schema.js';
-import { operationStorageReady } from './mcp/operation-runtime.js';
+import { initializeOperationStorage, operationStorageReady } from './mcp/operation-runtime.js';
 
-export const SCHEMA_VERSION = 29;
+export const SCHEMA_VERSION = 30;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -628,6 +628,13 @@ export async function migrateStore(store) {
     });
     version = 29;
   }
+  if (version === 29) {
+    await store.transaction(async () => {
+      await initializeOperationStorage(store, { enabled: true });
+      await store.setSchemaVersion(30);
+    });
+    version = 30;
+  }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }
 
@@ -639,9 +646,9 @@ async function addThumbnailColumns(store) {
   }
 }
 
-export async function ready(store, options) {
+export async function ready(store) {
   try {
-    return (options?.mcpV2?.enabled !== true || await operationStorageReady(store)) &&
+    return await operationStorageReady(store) &&
       await store.schemaVersion() === SCHEMA_VERSION &&
       Array.isArray(await store.all('SELECT stock_quantity, gallery_layout_json FROM product LIMIT 0')) &&
       Array.isArray(await store.all('SELECT tracking_carrier, tracking_no, contact_erased_at, contact_erased_by FROM shop_order LIMIT 0')) &&

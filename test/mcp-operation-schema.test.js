@@ -44,22 +44,22 @@ async function insertOperation(store, { id = randomUUID(), tenant = 'synthetic',
   await store.run(`INSERT INTO mcp_v2_operation
     (id, tenant_id, tenant_revision, account_id, client_id, grant_id, epoch_hash, build_digest, issuer, resource, tool_name, required_scope,
      required_capability, risk, resource_type, envelope_json, preview_hash, request_hash,
-     idempotency_hash, state, created_at, expires_at, correlation_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     idempotency_hash, state, created_at, expires_at, receipt_expires_at, correlation_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   id, tenant, 1, account, client, 'grant', digest, digest, 'https://seller.example.test', 'https://seller.example.test/mcp',
   'catalog.preview_update', scope, 'catalog.write', 'MEDIUM', 'product', envelope,
-  hash, digest, idem, state, start, end, randomUUID());
+  hash, digest, idem, state, start, end, '2027-03-01T00:00:00.000Z', randomUUID());
   return id;
 }
 
 for (const engine of ['sqlite', 'postgres']) {
-  test(`${engine}: experimental operation tables are opt-in and enforce bounded integrity`, { skip: engine === 'postgres' && !base }, async (t) => {
+  test(`${engine}: durable operation tables enforce bounded integrity`, { skip: engine === 'postgres' && !base }, async (t) => {
     const store = await fixture(t, engine);
     const hasTable = async () => engine === 'sqlite'
       ? Boolean(await store.get("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'mcp_v2_operation'"))
       : Boolean((await store.get("SELECT to_regclass('public.mcp_v2_operation') AS name")).name);
-    // Merely starting the existing app must not create or activate v2 tables.
-    assert.equal(await hasTable(), false);
+    // Schema30 creates durable storage without activating v2 tools.
+    assert.equal(await hasTable(), true);
     await store.transaction(() => store.exec(operationSchema(engine)));
     assert.equal(await hasTable(), true);
     const id = await insertOperation(store);
@@ -73,6 +73,15 @@ for (const engine of ['sqlite', 'postgres']) {
     await assert.rejects(insertOperation(store, { idem: 'b'.repeat(64), envelope: '[]' }));
     await assert.rejects(insertOperation(store)); // same tenant/account/client/idempotency key
     await insertOperation(store, { account: 'other-account' }); // binding is part of uniqueness
+
+    await assert.rejects(store.run('UPDATE mcp_v2_operation SET envelope_json = NULL WHERE id = ?', id));
+    await assert.rejects(store.run('UPDATE mcp_v2_operation SET receipt_expires_at = expires_at WHERE id = ?', id));
+    await assert.rejects(store.run('UPDATE mcp_v2_operation SET redacted_at = ?, envelope_json = NULL WHERE id = ?', end, id));
+    const receipt = await insertOperation(store, { idem: 'e'.repeat(64), state: 'COMMITTED' });
+    await assert.rejects(store.run('UPDATE mcp_v2_operation SET redacted_at = ?, envelope_json = NULL WHERE id = ?', start, receipt));
+    await store.run('UPDATE mcp_v2_operation SET redacted_at = ?, envelope_json = NULL, result_json = ? WHERE id = ?', end, '{"receipt":"synthetic-safe-receipt"}', receipt);
+    assert.equal((await store.get('SELECT envelope_json FROM mcp_v2_operation WHERE id = ?', receipt)).envelope_json, null);
+    await assert.rejects(store.run('UPDATE mcp_v2_operation SET redacted_at = NULL WHERE id = ?', receipt));
 
     const challenge = randomUUID();
     await store.run(`INSERT INTO mcp_v2_approval_challenge(id, operation_id, nonce_hash, created_at, expires_at)

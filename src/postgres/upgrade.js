@@ -8,6 +8,7 @@ import { migrateLegacyVariants } from '../options.js';
 import { migrateListings } from '../listings.js';
 import { migrateSharedGalleries } from '../product-gallery.js';
 import { migrateOAuth } from '../mcp/schema.js';
+import { initializeOperationStorage, OPERATION_STORAGE_META, OPERATION_STORAGE_TABLES } from '../mcp/operation-runtime.js';
 
 // Tenant upgrades use their own roles and must never grant the legacy application's role access.
 const legacyApplicationGrant = `current_database() !~ '^t_[a-z0-9]{3,30}_[0-9a-f]{8}$'
@@ -16,28 +17,40 @@ const legacyApplicationGrant = `current_database() !~ '^t_[a-z0-9]{3,30}_[0-9a-f
 
 // Called only by an explicit operator/test opt-in, inside the store-owned transaction.
 export async function upgradePostgres(store, version) {
+  if (![10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29].includes(version)) {
+    throw new Error(`Unsupported PostgreSQL schema version ${version}.`);
+  }
+  if (version < 29) await upgradeBase29(store, version);
+  await initializeOperationStorage(store, { enabled: true });
+  await store.exec(`DO $$ BEGIN IF ${legacyApplicationGrant} THEN
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ${[OPERATION_STORAGE_META, ...OPERATION_STORAGE_TABLES].join(', ')} TO online_shopping_app;
+    END IF; END $$;`);
+  await store.setSchemaVersion(SCHEMA_VERSION);
+}
+
+async function upgradeBase29(store, version) {
   await migrateAi(store);
   await migrateAiStudio(store);
   await store.exec(`DO $$ BEGIN IF ${legacyApplicationGrant} THEN
     GRANT SELECT, INSERT, UPDATE, DELETE ON ai_setting, ai_usage, ai_suggestion_audit, ai_studio_credential, ai_studio_setting, ai_studio_usage, ai_studio_image TO online_shopping_app;
     END IF; END $$;`);
   if (version === 28) {
-    await store.setSchemaVersion(SCHEMA_VERSION);
+    await store.setSchemaVersion(29);
     return;
   }
   if (version === 27) {
-    await store.setSchemaVersion(SCHEMA_VERSION);
+    await store.setSchemaVersion(29);
     return;
   }
   if (version === 26) {
     await migrateQr(store);
-    await store.setSchemaVersion(SCHEMA_VERSION);
+    await store.setSchemaVersion(29);
     return;
   }
   if (version === 25) {
     await migrateSenderSettings(store);
     await migrateQr(store);
-    await store.setSchemaVersion(SCHEMA_VERSION);
+    await store.setSchemaVersion(29);
     return;
   }
   if (version === 24) {
@@ -45,7 +58,7 @@ export async function upgradePostgres(store, version) {
     await grantOAuth(store);
     await migrateSenderSettings(store);
     await migrateQr(store);
-    await store.setSchemaVersion(SCHEMA_VERSION);
+    await store.setSchemaVersion(29);
     return;
   }
   if (![10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23].includes(version)) throw new Error(`Unsupported PostgreSQL schema version ${version}.`);
@@ -255,7 +268,7 @@ END $$;`);
   await grantOAuth(store);
   await migrateSenderSettings(store);
   await migrateQr(store);
-  await store.setSchemaVersion(SCHEMA_VERSION);
+  await store.setSchemaVersion(29);
 }
 
 async function grantOAuth(store) {

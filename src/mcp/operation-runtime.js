@@ -87,11 +87,31 @@ async function extensionObjects(store) {
   return { tables, constraints, indexes };
 }
 
-const manifestDigest = async (store) => sha256(JSON.stringify(await extensionObjects(store)));
+export function operationStorageManifestSql() {
+  return `SELECT encode(sha256(convert_to(jsonb_build_object(
+    'tables', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY table_name, ordinal_position) FROM (
+      SELECT table_name, column_name, ordinal_position, data_type, is_nullable, column_default
+      FROM information_schema.columns WHERE table_schema = 'public' AND table_name LIKE 'mcp!_v2!_%' ESCAPE '!'
+    ) t), '[]'::jsonb),
+    'constraints', COALESCE((SELECT jsonb_agg(to_jsonb(c) ORDER BY table_name, conname) FROM (
+      SELECT r.relname AS table_name, c.conname, pg_get_constraintdef(c.oid) AS definition
+      FROM pg_constraint c JOIN pg_class r ON r.oid = c.conrelid JOIN pg_namespace n ON n.oid = r.relnamespace
+      WHERE n.nspname = 'public' AND r.relname LIKE 'mcp!_v2!_%' ESCAPE '!'
+    ) c), '[]'::jsonb),
+    'indexes', COALESCE((SELECT jsonb_agg(to_jsonb(i) ORDER BY tablename, indexname) FROM (
+      SELECT tablename, indexname, indexdef FROM pg_indexes
+      WHERE schemaname = 'public' AND tablename LIKE 'mcp!_v2!_%' ESCAPE '!'
+    ) i), '[]'::jsonb)
+  )::text, 'UTF8')), 'hex') AS digest`;
+}
+
+const manifestDigest = async (store) => store.dialect === 'postgres'
+  ? (await store.get(operationStorageManifestSql())).digest
+  : sha256(JSON.stringify(await extensionObjects(store)));
 const ddlDigest = (store) => sha256(operationSchema(store.dialect));
 
 async function assertStorage(store) {
-  if (await store.schemaVersion() !== 29) throw new Error('MCP v2 storage requires base schema 29.');
+  if (![29, 30].includes(await store.schemaVersion())) throw new Error('MCP v2 storage requires base schema 29 or 30.');
   const meta = await store.get('SELECT version, ddl_digest, manifest_digest FROM mcp_v2_schema WHERE id = 1');
   if (!meta || meta.version !== OPERATION_STORAGE_VERSION || meta.ddl_digest !== ddlDigest(store) ||
       meta.manifest_digest !== await manifestDigest(store)) throw new Error('Incompatible MCP v2 storage extension.');
@@ -99,16 +119,43 @@ async function assertStorage(store) {
 }
 
 export async function operationStorageReady(store) {
-  try { await assertStorage(store); return true; } catch { return false; }
+  try { if (await store.schemaVersion() !== 30) return false; await assertStorage(store); return true; } catch { return false; }
 }
 
-// Explicit additive extension, never called by base migrations. Existing partial
-// or unversioned prototype tables are rejected, never adopted or silently repaired.
+export function operationStorageMetaSchema(dialect) {
+  if (!['sqlite', 'postgres'].includes(dialect)) throw new TypeError('Unsupported database dialect.');
+  return `CREATE TABLE mcp_v2_schema (
+      id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL CHECK (version = 1),
+      ddl_digest TEXT NOT NULL CHECK (length(ddl_digest) = 64),
+      manifest_digest TEXT NOT NULL CHECK (length(manifest_digest) = 64)
+    )${dialect === 'sqlite' ? ' STRICT' : ''};`;
+}
+
+export function operationStorageSeedSql() {
+  return `INSERT INTO mcp_v2_schema(id, version, ddl_digest, manifest_digest)
+    VALUES (1, ${OPERATION_STORAGE_VERSION}, '${sha256(operationSchema('postgres'))}', (${operationStorageManifestSql()}));`;
+}
+
+async function writeStorageMetadata(store) {
+  await store.run('INSERT INTO mcp_v2_schema(id, version, ddl_digest, manifest_digest) VALUES (1, ?, ?, ?)',
+    OPERATION_STORAGE_VERSION, ddlDigest(store), await manifestDigest(store));
+  await assertStorage(store);
+}
+
+// The fresh SQL baseline initializes its metadata itself so direct SQL bootstrap
+// and the JS loader have identical behavior. The loader verifies before commit.
+export async function initializeFreshOperationStorage(store) {
+  if (store.dialect !== 'postgres' || await store.schemaVersion() !== 30) throw new Error('Expected a fresh PostgreSQL schema 30.');
+  await assertStorage(store);
+}
+
+// Base migration29 calls this inside its transaction. Existing partial or
+// unversioned prototypes are rejected, never adopted or silently repaired.
 export async function initializeOperationStorage(store, options) {
   if (options === undefined || options?.enabled === false) return false;
   if (options?.enabled !== true) throw new TypeError('Explicit MCP v2 storage opt-in is required.');
   return store.transaction(async () => {
-    if (await store.schemaVersion() !== 29) throw new Error('MCP v2 storage requires base schema 29.');
+    if (![29, 30].includes(await store.schemaVersion())) throw new Error('MCP v2 storage requires base schema 29 or 30.');
     const exists = store.dialect === 'sqlite'
       ? Boolean(await store.get("SELECT name FROM sqlite_schema WHERE name = 'mcp_v2_schema'"))
       : store.dialect === 'postgres' && Boolean((await store.get("SELECT to_regclass('public.mcp_v2_schema') AS name")).name);
@@ -118,14 +165,8 @@ export async function initializeOperationStorage(store, options) {
       throw new Error('Unversioned MCP v2 storage must be reviewed before initialization.');
     }
     await store.exec(operationSchema(store.dialect));
-    await store.exec(`CREATE TABLE mcp_v2_schema (
-      id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL CHECK (version = 1),
-      ddl_digest TEXT NOT NULL CHECK (length(ddl_digest) = 64),
-      manifest_digest TEXT NOT NULL CHECK (length(manifest_digest) = 64)
-    )${store.dialect === 'sqlite' ? ' STRICT' : ''}`);
-    await store.run('INSERT INTO mcp_v2_schema(id, version, ddl_digest, manifest_digest) VALUES (1, ?, ?, ?)',
-      OPERATION_STORAGE_VERSION, ddlDigest(store), await manifestDigest(store));
-    await assertStorage(store);
+    await store.exec(operationStorageMetaSchema(store.dialect));
+    await writeStorageMetadata(store);
     return true;
   });
 }

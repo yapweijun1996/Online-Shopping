@@ -1,4 +1,4 @@
--- PostgreSQL baseline matching SQLite schema 29. Timestamps stay ISO text to preserve API snapshots.
+-- PostgreSQL baseline matching SQLite schema 30. Timestamps stay ISO text to preserve API snapshots.
 CREATE TABLE admin (
         id BIGINT PRIMARY KEY CHECK (id = 1),
         username TEXT NOT NULL UNIQUE,
@@ -327,7 +327,7 @@ CREATE TABLE ai_studio_image (
  created_by TEXT NOT NULL, created_at TEXT NOT NULL
 );
 CREATE INDEX ai_studio_image_product ON ai_studio_image(product_id);
-INSERT INTO schema_meta VALUES (1, 29);
+INSERT INTO schema_meta VALUES (1, 30);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 INSERT INTO shop_setup(id, mode, shop_name) VALUES (1, NULL, 'Online Shopping');
@@ -459,3 +459,95 @@ CREATE TABLE ai_suggestion_audit (
  id TEXT PRIMARY KEY, actor TEXT NOT NULL, thread_id TEXT NOT NULL, created_at TEXT NOT NULL,
  action TEXT NOT NULL DEFAULT 'SUGGEST' CHECK (action IN ('SUGGEST','SETTINGS_UPDATED'))
 );
+
+-- MCP v2 durable operation storage, including self-contained compatibility metadata.
+
+CREATE TABLE IF NOT EXISTS mcp_v2_authorization_request (
+  request_id TEXT PRIMARY KEY REFERENCES oauth_authorization_request(id) ON DELETE CASCADE,
+  epoch_hash TEXT NOT NULL CHECK (length(epoch_hash) = 64 AND epoch_hash ~ '^[0-9a-f]{64}$'),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS mcp_v2_scope_consent (
+  grant_id TEXT NOT NULL REFERENCES oauth_grant(id) ON DELETE CASCADE,
+  tenant_id TEXT NOT NULL, account_id TEXT NOT NULL, client_id TEXT NOT NULL,
+  scope TEXT NOT NULL CHECK (scope IN ('company.read','company.write','catalog.write','media.read','media.write','inventory.read','inventory.adjust','orders.decide','analytics.extended','operations.read','operations.cancel')),
+  account_auth_version BIGINT NOT NULL CHECK (account_auth_version >= 0),
+  epoch_hash TEXT NOT NULL CHECK (length(epoch_hash) = 64 AND epoch_hash ~ '^[0-9a-f]{64}$'),
+  consented_at TEXT NOT NULL,
+  PRIMARY KEY (grant_id, scope)
+);
+CREATE TABLE IF NOT EXISTS mcp_v2_operation (
+  id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, tenant_revision BIGINT NOT NULL CHECK (tenant_revision >= 0), account_id TEXT NOT NULL,
+  client_id TEXT NOT NULL, grant_id TEXT NOT NULL, epoch_hash TEXT NOT NULL CHECK (length(epoch_hash) = 64 AND epoch_hash ~ '^[0-9a-f]{64}$'),
+  build_digest TEXT NOT NULL CHECK (length(build_digest) = 64 AND build_digest ~ '^[0-9a-f]{64}$'),
+  issuer TEXT NOT NULL, resource TEXT NOT NULL,
+  tool_name TEXT NOT NULL, required_scope TEXT NOT NULL CHECK (required_scope IN ('company.read','company.write','catalog.write','media.read','media.write','inventory.read','inventory.adjust','orders.decide','analytics.extended','operations.read','operations.cancel')),
+  required_capability TEXT NOT NULL, risk TEXT NOT NULL CHECK (risk IN ('LOW','MEDIUM','HIGH')),
+  resource_type TEXT NOT NULL, resource_id TEXT, expected_revision TEXT,
+  envelope_json TEXT CHECK (envelope_json IS NULL OR (length(envelope_json) BETWEEN 2 AND 65536 AND jsonb_typeof(envelope_json::jsonb) = 'object')),
+  preview_hash TEXT NOT NULL CHECK (length(preview_hash) = 64 AND preview_hash ~ '^[0-9a-f]{64}$'),
+  request_hash TEXT NOT NULL CHECK (length(request_hash) = 64 AND request_hash ~ '^[0-9a-f]{64}$'),
+  idempotency_hash TEXT NOT NULL CHECK (length(idempotency_hash) = 64 AND idempotency_hash ~ '^[0-9a-f]{64}$'),
+  state TEXT NOT NULL CHECK (state IN ('PREPARED','PENDING_APPROVAL','APPROVED','COMMITTED','REJECTED','EXPIRED','CANCELLED','CONFLICT','FAILED')),
+  created_at TEXT NOT NULL, expires_at TEXT NOT NULL CHECK (expires_at > created_at), correlation_id TEXT NOT NULL,
+  receipt_expires_at TEXT NOT NULL CHECK (receipt_expires_at > expires_at),
+  redacted_at TEXT CHECK (redacted_at IS NULL OR redacted_at >= expires_at),
+  result_json TEXT CHECK (result_json IS NULL OR (length(result_json) <= 65536 AND jsonb_typeof(result_json::jsonb) = 'object')),
+  CHECK ((redacted_at IS NULL AND envelope_json IS NOT NULL) OR
+    (redacted_at IS NOT NULL AND envelope_json IS NULL AND state IN ('COMMITTED','REJECTED','EXPIRED','CANCELLED','CONFLICT','FAILED'))),
+  UNIQUE (tenant_id, account_id, client_id, idempotency_hash)
+);
+CREATE INDEX IF NOT EXISTS mcp_v2_operation_expiry ON mcp_v2_operation(expires_at, state);
+CREATE INDEX IF NOT EXISTS mcp_v2_operation_receipt_expiry ON mcp_v2_operation(receipt_expires_at, id);
+CREATE INDEX IF NOT EXISTS mcp_v2_operation_grant ON mcp_v2_operation(grant_id, state);
+CREATE INDEX IF NOT EXISTS mcp_v2_operation_tenant_active ON mcp_v2_operation(tenant_id, state, expires_at);
+CREATE INDEX IF NOT EXISTS mcp_v2_operation_client_active ON mcp_v2_operation(tenant_id, client_id, state, expires_at);
+CREATE TABLE IF NOT EXISTS mcp_v2_approval_challenge (
+  id TEXT PRIMARY KEY, operation_id TEXT NOT NULL REFERENCES mcp_v2_operation(id) ON DELETE CASCADE,
+  nonce_hash TEXT NOT NULL UNIQUE CHECK (length(nonce_hash) = 64 AND nonce_hash ~ '^[0-9a-f]{64}$'),
+  created_at TEXT NOT NULL, expires_at TEXT NOT NULL CHECK (expires_at > created_at), account_id TEXT,
+  session_hash TEXT, account_auth_version BIGINT, bound_at TEXT, consumed_at TEXT,
+  CHECK ((account_id IS NULL AND session_hash IS NULL AND account_auth_version IS NULL AND bound_at IS NULL)
+    OR (account_id IS NOT NULL AND session_hash IS NOT NULL AND length(session_hash) = 64 AND session_hash ~ '^[0-9a-f]{64}$'
+      AND account_auth_version IS NOT NULL AND account_auth_version >= 0 AND bound_at IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS mcp_v2_challenge_expiry ON mcp_v2_approval_challenge(expires_at);
+CREATE INDEX IF NOT EXISTS mcp_v2_challenge_operation ON mcp_v2_approval_challenge(operation_id);
+CREATE TABLE IF NOT EXISTS mcp_v2_approval (
+  operation_id TEXT PRIMARY KEY REFERENCES mcp_v2_operation(id) ON DELETE CASCADE,
+  approver_id TEXT NOT NULL, session_hash TEXT NOT NULL CHECK (length(session_hash) = 64 AND session_hash ~ '^[0-9a-f]{64}$'),
+  preview_hash TEXT NOT NULL CHECK (length(preview_hash) = 64 AND preview_hash ~ '^[0-9a-f]{64}$'),
+  decision TEXT NOT NULL CHECK (decision IN ('APPROVED','REJECTED')),
+  approved_at TEXT NOT NULL, expires_at TEXT NOT NULL CHECK (expires_at > approved_at), consumed_at TEXT
+);
+CREATE TABLE IF NOT EXISTS mcp_v2_event (
+  id TEXT PRIMARY KEY, at TEXT NOT NULL, tenant_id TEXT NOT NULL, account_id TEXT,
+  client_id TEXT, grant_id TEXT, tool_name TEXT NOT NULL CHECK (length(tool_name) BETWEEN 1 AND 128), resource_id TEXT,
+  operation_id TEXT NOT NULL, approver_id TEXT,
+  event TEXT NOT NULL CHECK (event IN ('PREPARE','REQUEST_APPROVAL','APPROVE','REJECT','COMMIT','CANCEL','EXPIRE','CONFLICT','FAIL','DENY')),
+  outcome TEXT NOT NULL CHECK (length(outcome) BETWEEN 1 AND 80), correlation_id TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS mcp_v2_event_time ON mcp_v2_event(at);
+CREATE INDEX IF NOT EXISTS mcp_v2_event_operation ON mcp_v2_event(operation_id, at);
+
+CREATE TABLE mcp_v2_schema (
+      id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL CHECK (version = 1),
+      ddl_digest TEXT NOT NULL CHECK (length(ddl_digest) = 64),
+      manifest_digest TEXT NOT NULL CHECK (length(manifest_digest) = 64)
+    );
+INSERT INTO mcp_v2_schema(id, version, ddl_digest, manifest_digest)
+    VALUES (1, 1, 'a210699d0996ba197d48d72a9c34cc01d79a5a304cb0656f10829df3fd4002dc', (SELECT encode(sha256(convert_to(jsonb_build_object(
+    'tables', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY table_name, ordinal_position) FROM (
+      SELECT table_name, column_name, ordinal_position, data_type, is_nullable, column_default
+      FROM information_schema.columns WHERE table_schema = 'public' AND table_name LIKE 'mcp!_v2!_%' ESCAPE '!'
+    ) t), '[]'::jsonb),
+    'constraints', COALESCE((SELECT jsonb_agg(to_jsonb(c) ORDER BY table_name, conname) FROM (
+      SELECT r.relname AS table_name, c.conname, pg_get_constraintdef(c.oid) AS definition
+      FROM pg_constraint c JOIN pg_class r ON r.oid = c.conrelid JOIN pg_namespace n ON n.oid = r.relnamespace
+      WHERE n.nspname = 'public' AND r.relname LIKE 'mcp!_v2!_%' ESCAPE '!'
+    ) c), '[]'::jsonb),
+    'indexes', COALESCE((SELECT jsonb_agg(to_jsonb(i) ORDER BY tablename, indexname) FROM (
+      SELECT tablename, indexname, indexdef FROM pg_indexes
+      WHERE schemaname = 'public' AND tablename LIKE 'mcp!_v2!_%' ESCAPE '!'
+    ) i), '[]'::jsonb)
+  )::text, 'UTF8')), 'hex') AS digest));

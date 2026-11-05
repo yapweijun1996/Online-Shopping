@@ -27,8 +27,8 @@ async function fixture(t, { keys = true, validate = async () => true } = {}) {
   return { store, request, seen, config, cookie, headers: { cookie, origin: ORIGIN, 'x-csrf-token': csrf } };
 }
 
-test('schema 29 is current and ready covers the AI Studio tables', async (t) => {
-  assert.equal(SCHEMA_VERSION, 29);
+test('current schema and ready covers the AI Studio tables', async (t) => {
+  assert.equal(SCHEMA_VERSION, 30);
   const store = await openDatabase(':memory:'); t.after(() => store.close());
   await ensureAdmin(store, 'fixture_owner', 'FictionalPassword123!');
   assert.equal(await ready(store), true);

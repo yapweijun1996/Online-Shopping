@@ -13,6 +13,7 @@ import { hash, secret } from '../src/mcp/credentials.js';
 import { operationEpochHash } from '../src/mcp/operation-epoch.js';
 import { createOperationEngine } from '../src/mcp/operation-engine.js';
 import { operationSchema } from '../src/mcp/operation-schema.js';
+import { canonicalOperationJson, operationPreviewHash } from '../src/mcp/operation-envelope.js';
 import { initializeOperationStorage, operationStorageReady, OPERATION_STORAGE_TABLES, OPERATION_STORAGE_META } from '../src/mcp/operation-runtime.js';
 import { importSqlite, importTables, excludedImportTables, excludedOperationImportTables, rowsDigest } from '../src/sqlite-import.js';
 
@@ -66,18 +67,42 @@ function engineOptions(store, authority, apply = () => { throw new Error('Synthe
     adapters: { 'catalog.preview_create': { resourceType: 'product',
       preview: () => ({ resourceId: null, expectedRevision: null, proposal: { name: 'Synthetic item' } }),
       currentRevision: () => ({ exists: false, revision: null }), apply, validResult: () => true,
+      toReceipt: (result) => result, validReceipt: () => true,
     } } };
 }
 async function pendingOperation(store, authority) {
-  const engine = createOperationEngine(engineOptions(store, authority));
-  const operation = await engine.prepare({ bearer: authority.bearer, toolName: 'catalog.preview_create', args: {}, idempotencyKey: 'synthetic-storage-operation-0001' });
-  await store.run("UPDATE mcp_v2_operation SET state = 'APPROVED' WHERE id = ?", operation.operationId);
   const now = new Date().toISOString(), expiry = new Date(Date.now() + 60000).toISOString();
+  const envelope = {
+    version: 1, operationId: randomUUID(), tenantId: authority.binding.tenantId, tenantRevision: 1,
+    accountId: authority.account.id, clientId: authority.clientId, grantId: authority.grantId,
+    epochHash: operationEpochHash(authority.epoch), buildDigest: 'e'.repeat(64),
+    issuer: authority.binding.issuer, resource: authority.binding.resource,
+    toolName: 'catalog.preview_create', resourceType: 'product', resourceId: null, expectedRevision: null,
+    requiredScope: 'catalog.write', requiredCapability: 'catalog.write', risk: 'MEDIUM',
+    createdAt: now, expiresAt: expiry, idempotencyHash: hash('synthetic-storage-idempotency'),
+    correlationId: randomUUID(), proposal: { name: 'Synthetic item' },
+  };
+  const previewHash = operationPreviewHash(envelope);
+  await store.run(`INSERT INTO mcp_v2_operation(id, tenant_id, tenant_revision, account_id, client_id, grant_id,
+    epoch_hash, build_digest, issuer, resource, tool_name, required_scope, required_capability, risk, resource_type,
+    envelope_json, preview_hash, request_hash, idempotency_hash, state, created_at, expires_at, receipt_expires_at, correlation_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'APPROVED', ?, ?, ?, ?)`,
+  envelope.operationId, envelope.tenantId, 1, envelope.accountId, envelope.clientId, envelope.grantId,
+  envelope.epochHash, envelope.buildDigest, envelope.issuer, envelope.resource, envelope.toolName,
+  envelope.requiredScope, envelope.requiredCapability, envelope.risk, envelope.resourceType,
+  canonicalOperationJson(envelope), previewHash, hash('{}'), envelope.idempotencyHash, now, expiry,
+  new Date(Date.now() + 91 * 86400000).toISOString(), envelope.correlationId);
   await store.run(`INSERT INTO mcp_v2_approval(operation_id, approver_id, session_hash, preview_hash, decision, approved_at, expires_at)
-    VALUES (?, ?, ?, ?, 'APPROVED', ?, ?)`, operation.operationId, authority.account.id, hash(authority.session.token), operation.previewHash, now, expiry);
+    VALUES (?, ?, ?, ?, 'APPROVED', ?, ?)`, envelope.operationId, authority.account.id, hash(authority.session.token), previewHash, now, expiry);
   await store.run(`INSERT INTO mcp_v2_approval_challenge(id, operation_id, nonce_hash, created_at, expires_at)
-    VALUES (?, ?, ?, ?, ?)`, randomUUID(), operation.operationId, hash(secret()), now, expiry);
-  return operation;
+    VALUES (?, ?, ?, ?, ?)`, randomUUID(), envelope.operationId, hash(secret()), now, expiry);
+  await store.run(`INSERT INTO mcp_v2_event(id, at, tenant_id, tool_name, operation_id, event, outcome, correlation_id)
+    VALUES (?, ?, ?, ?, ?, 'PREPARE', 'PREPARED', ?)`, randomUUID(), now, envelope.tenantId, envelope.toolName, envelope.operationId, envelope.correlationId);
+  return { operationId: envelope.operationId, previewHash };
+}
+async function downgradeOperationStore(store) {
+  for (const table of ['mcp_v2_authorization_request', 'mcp_v2_scope_consent', 'mcp_v2_approval_challenge', 'mcp_v2_approval', 'mcp_v2_event', 'mcp_v2_operation', 'mcp_v2_schema']) await store.exec(`DROP TABLE ${table}`);
+  await store.setSchemaVersion(29);
 }
 
 for (const dialect of ['sqlite', 'postgres']) {
@@ -85,13 +110,13 @@ for (const dialect of ['sqlite', 'postgres']) {
   test(`${dialect}: extension initialization is explicit, repeatable, base-compatible and readiness checks physical schema`, options, async (t) => {
     const store = await fixture(t, dialect);
     await ensureAdmin(store, 'synthetic_owner', ownerPassword);
-    assert.equal(SCHEMA_VERSION, 29);
+    assert.equal(SCHEMA_VERSION, 30);
     assert.equal(await ready(store), true);
     assert.equal(await initializeOperationStorage(store), false);
     assert.equal(await initializeOperationStorage(store, { enabled: false }), false);
     for (const enabled of [undefined, null, 'true', 1]) await assert.rejects(initializeOperationStorage(store, { enabled }), TypeError);
-    assert.deepEqual(await extensionNames(store), []);
-    assert.equal(await ready(store, { mcpV2: { enabled: true } }), false);
+    assert.deepEqual(await extensionNames(store), [...OPERATION_STORAGE_TABLES, OPERATION_STORAGE_META].sort());
+    assert.equal(await ready(store, { mcpV2: { enabled: true } }), true);
     assert.equal(await initializeOperationStorage(store, { enabled: true }), true);
     assert.equal(await operationStorageReady(store), true);
     assert.equal(await ready(store, { mcpV2: { enabled: true } }), true);
@@ -103,19 +128,21 @@ for (const dialect of ['sqlite', 'postgres']) {
     assert.equal((await store.get('SELECT COUNT(*) AS n FROM mcp_v2_event')).n, 1);
     await store.exec('DROP INDEX mcp_v2_operation_expiry');
     assert.equal(await operationStorageReady(store), false);
-    assert.equal(await ready(store), true, 'Disabled extension does not affect baseline readiness');
+    assert.equal(await ready(store), false, 'Global schema readiness covers operation storage even when v2 tools are disabled');
     await assert.rejects(initializeOperationStorage(store, { enabled: true }), /Incompatible/);
   });
 
   test(`${dialect}: partial initialization and post-DDL failure roll back atomically`, options, async (t) => {
     const store = await fixture(t, dialect);
+    await downgradeOperationStore(store);
     const exec = store.exec;
     store.exec = async (sql) => { await exec(sql); if (sql.includes('CREATE TABLE mcp_v2_schema')) throw new Error('Synthetic initialization failure'); };
     await assert.rejects(initializeOperationStorage(store, { enabled: true }), /Synthetic initialization failure/);
     assert.deepEqual(await extensionNames(store), []);
-    assert.equal(await store.schemaVersion(), SCHEMA_VERSION);
+    assert.equal(await store.schemaVersion(), 29);
     store.exec = exec;
     await initializeOperationStorage(store, { enabled: true });
+    await store.setSchemaVersion(30);
     assert.equal(await operationStorageReady(store), true);
     await store.run('UPDATE mcp_v2_schema SET ddl_digest = ? WHERE id = 1', '0'.repeat(64));
     assert.equal(await operationStorageReady(store), false);
@@ -131,12 +158,13 @@ for (const dialect of ['sqlite', 'postgres']) {
 
   test(`${dialect}: unversioned prototypes and wrong base versions are rejected without adoption`, options, async (t) => {
     const store = await fixture(t, dialect);
+    await downgradeOperationStore(store);
     await store.exec(operationSchema(dialect));
     await assert.rejects(initializeOperationStorage(store, { enabled: true }), /Unversioned/);
     assert.equal(await operationStorageReady(store), false);
     assert.equal((await extensionNames(store)).includes(OPERATION_STORAGE_META), false);
     await store.setSchemaVersion(28);
-    await assert.rejects(initializeOperationStorage(store, { enabled: true }), /base schema 29/);
+    await assert.rejects(initializeOperationStorage(store, { enabled: true }), /base schema 29 or 30/);
     assert.equal(await store.schemaVersion(), 28);
   });
 
@@ -217,9 +245,8 @@ test('SQLite-to-PostgreSQL import excludes all v2 authority, preserves historica
   await initializeOperationStorage(source, { enabled: true });
   const authority = await seedAuthority(source);
   await pendingOperation(source, authority);
-  assert.deepEqual([...importTables, ...excludedImportTables, ...excludedOperationImportTables, 'mcp_v2_event'].sort(),
+  assert.deepEqual([...importTables, ...excludedImportTables].sort(),
     (await source.all("SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")).map((row) => row.name).sort());
-  await assert.rejects(importSqlite(source, target), /Initialize the destination/);
   await initializeOperationStorage(target, { enabled: true });
   const run = target.run;
   target.run = async (sql, ...values) => { if (sql.startsWith('INSERT INTO mcp_v2_event')) throw new Error('Synthetic audit import failure'); return run(sql, ...values); };

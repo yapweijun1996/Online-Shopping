@@ -1,6 +1,6 @@
 import { OPERATION_SCOPES } from './operation-policy.js';
 
-// Tenant-local opt-in extension DDL. The base application schema remains unchanged.
+// Shared schema30 operation DDL for SQLite migration and the PostgreSQL baseline.
 // Initialization and compatibility checks live in operation-runtime.js.
 // Do not enable a write tool until those integrations and the first-party
 // human approval flow have been reviewed and tested together.
@@ -38,16 +38,21 @@ CREATE TABLE IF NOT EXISTS mcp_v2_operation (
   tool_name TEXT NOT NULL, required_scope TEXT NOT NULL CHECK (required_scope IN (${scopes})),
   required_capability TEXT NOT NULL, risk TEXT NOT NULL CHECK (risk IN ('LOW','MEDIUM','HIGH')),
   resource_type TEXT NOT NULL, resource_id TEXT, expected_revision TEXT,
-  envelope_json TEXT NOT NULL CHECK (length(envelope_json) BETWEEN 2 AND 65536 AND ${validObject('envelope_json')}),
+  envelope_json TEXT CHECK (envelope_json IS NULL OR (length(envelope_json) BETWEEN 2 AND 65536 AND ${validObject('envelope_json')})),
   preview_hash TEXT NOT NULL CHECK (${validHash('preview_hash')}),
   request_hash TEXT NOT NULL CHECK (${validHash('request_hash')}),
   idempotency_hash TEXT NOT NULL CHECK (${validHash('idempotency_hash')}),
   state TEXT NOT NULL CHECK (state IN ('PREPARED','PENDING_APPROVAL','APPROVED','COMMITTED','REJECTED','EXPIRED','CANCELLED','CONFLICT','FAILED')),
   created_at TEXT NOT NULL, expires_at TEXT NOT NULL CHECK (expires_at > created_at), correlation_id TEXT NOT NULL,
+  receipt_expires_at TEXT NOT NULL CHECK (receipt_expires_at > expires_at),
+  redacted_at TEXT CHECK (redacted_at IS NULL OR redacted_at >= expires_at),
   result_json TEXT CHECK (result_json IS NULL OR (length(result_json) <= 65536 AND ${validObject('result_json')})),
+  CHECK ((redacted_at IS NULL AND envelope_json IS NOT NULL) OR
+    (redacted_at IS NOT NULL AND envelope_json IS NULL AND state IN ('COMMITTED','REJECTED','EXPIRED','CANCELLED','CONFLICT','FAILED'))),
   UNIQUE (tenant_id, account_id, client_id, idempotency_hash)
 )${strict};
 CREATE INDEX IF NOT EXISTS mcp_v2_operation_expiry ON mcp_v2_operation(expires_at, state);
+CREATE INDEX IF NOT EXISTS mcp_v2_operation_receipt_expiry ON mcp_v2_operation(receipt_expires_at, id);
 CREATE INDEX IF NOT EXISTS mcp_v2_operation_grant ON mcp_v2_operation(grant_id, state);
 CREATE INDEX IF NOT EXISTS mcp_v2_operation_tenant_active ON mcp_v2_operation(tenant_id, state, expires_at);
 CREATE INDEX IF NOT EXISTS mcp_v2_operation_client_active ON mcp_v2_operation(tenant_id, client_id, state, expires_at);
