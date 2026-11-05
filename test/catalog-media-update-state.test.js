@@ -6,7 +6,7 @@ import { inventoryFixture } from './helpers/inventory-fixture.js';
 import { createOptionType, createOptionValue } from '../src/options.js';
 import { getProduct, updateProduct, applyPlannedProductUpdate } from '../src/products.js';
 import { trackUpdate } from '../src/product-history.js';
-import { prepareCatalogMediaUpdate, readCatalogMediaUpdateState } from '../src/mcp/catalog-media-update-state.js';
+import { prepareCatalogMediaUpdate, readCatalogMediaUpdateState, readCatalogMediaUpdateAfter } from '../src/mcp/catalog-media-update-state.js';
 import { rowsDigest } from '../src/sqlite-import.js';
 import { readMediaUnionSnapshot } from '../src/mcp/media-resources.js';
 import { readCatalogMediaBeforeGraph } from '../src/mcp/catalog-media-projection.js';
@@ -74,6 +74,7 @@ async function apply(store, state) {
     for (const key of ['mime', 'byte_length', 'byte_sha256', 'thumbnail']) assert.deepEqual(actual[key], before[key]);
   }
   assert.equal(snapshot.graphReadBytes.oldBytes, state.projection.graphReadBytes.afterOldBytes);
+  assert.match((await readCatalogMediaUpdateAfter(store, state)).revision, /^[a-f0-9]{64}$/);
 }
 for (const dialect of ['sqlite', 'postgres']) {
   const options = { skip: dialect === 'postgres' && !process.env.SHOP_TEST_DATABASE_URL };
@@ -91,6 +92,9 @@ for (const dialect of ['sqlite', 'postgres']) {
     assert.ok(state.catalog.products.some(row => row.productId === sibling.id));
     assert.equal(state.beforeGraph.beforeViews.length, state.catalog.products.length);
     if (mode === 'existing-target') assert.equal(state.review.products.find(row => row.productId === source.id).after.name, 'Synthetic stock item');
+    if (mode === 'existing-target') assert.ok(state.review.warnings.includes('TARGET_LISTING_SHARED_FIELDS_ADOPTED'));
+    if (mode !== 'metadata') assert.ok(state.review.warnings.includes('HOLDER_OR_VISIBLE_GALLERY_CHANGES'));
+    if (mode === 'metadata') assert.deepEqual(state.review.warnings, []);
     if (mode === 'private-leave') assert.equal(state.normalizedPatch.variantLabel, null);
     await apply(f.store, state);
   });
@@ -162,6 +166,16 @@ for (const dialect of ['sqlite', 'postgres']) {
     await f.store.run("UPDATE company_setting SET default_currency='SGD' WHERE id=1");
     await assert.rejects(planned(f.store, source, { priceMinor: 700 }), { code: 'COMPANY_CURRENCY_CONFLICT' });
     await assert.rejects(planned(f.store, source, { category: 'MISSING' }), { field: 'category' });
+  });
+  test(`${dialect}: group option loss has a fixed warning and cannot be supplied by a model`, options, async t => {
+    const f = await fixture(t, dialect), type = await createOptionType(f.store, { name: 'Colour' });
+    const red = await createOptionValue(f.store, type.id, { label: 'Red' });
+    const source = await f.make('GROUP', { options: [{ typeId: type.id, valueId: red.id }] });
+    const state = await planned(f.store, source, { variantGroup: '' });
+    assert.ok(state.review.warnings.includes('GROUP_CHANGE_CLEARS_OPTIONS'));
+    assert.deepEqual(state.review.products[0].after.options, []);
+    await assert.rejects(prepareCatalogMediaUpdate(f.store, { productId: source.id, changes: { warnings: ['APPROVED'] } }), { code: 'CATALOG_UPDATE_INPUT' });
+    await apply(f.store, state);
   });
   test(`${dialect}: changed-only review retains complete affected metadata and fails size gates before BLOBs`, options, async t => {
     const f = await fixture(t, dialect), source = await f.make('LARGE', { description: 'D'.repeat(2000) });

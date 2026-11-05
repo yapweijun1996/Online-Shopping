@@ -4,12 +4,14 @@ import { prepareProductUpdate, prepareProductOptionsAfter, requireUniqueProductS
 import { planMoveToListing, projectListingFields, plannedListingIdentity } from '../listings.js';
 import { senderFields } from '../sender-settings.js';
 import { canonicalOperationJson } from './operation-envelope.js';
-import { readCatalogMediaMetadata, readCatalogMediaState } from './catalog-media-state.js';
+import { readCatalogMediaMetadata, readCatalogMediaState, readBoundedCatalogMetadata, CATALOG_STATE_LIMITS } from './catalog-media-state.js';
 import { readCatalogMediaBeforeGraph, projectCatalogMediaMove } from './catalog-media-projection.js';
-import { catalogUpdateChangesSchema, describeOptions as describeProductOptions } from './catalog-tools.js';
+import { catalogUpdateChangesSchema, catalogMetadataColumns, describeOptions as describeProductOptions } from './catalog-tools.js';
+import { readMediaUnionSnapshot } from './media-resources.js';
 import { valid } from './tools.js';
 
 export const CATALOG_UPDATE_LIMITS = Object.freeze({ reviewBytes: 48 * 1024, privateBytes: 8 * 1024 * 1024, normalizationSettingsBytes: 64 * 1024 });
+export const CATALOG_UPDATE_WARNING_CODES = Object.freeze(['TARGET_LISTING_SHARED_FIELDS_ADOPTED', 'GROUP_CHANGE_CLEARS_OPTIONS', 'HOLDER_OR_VISIBLE_GALLERY_CHANGES']);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const invalid = () => { throw new ApiError(400, 'CATALOG_UPDATE_INPUT', 'Invalid catalog update.'); };
 const changed = () => { throw new ApiError(409, 'CATALOG_DEPENDENCY_CHANGED', 'The catalog dependencies changed.'); };
@@ -20,6 +22,7 @@ const sameRows = (a, b) => equal(Object.keys(a), Object.keys(b)) && Object.keys(
   a[table].length === b[table].length && a[table].every((row, index) => equal(row, b[table][index])));
 function boundedReview(value, cap) {
   let bytes = Buffer.byteLength('{"products":[],"listings":[]}');
+  if (Object.hasOwn(value, 'warnings')) bytes += Buffer.byteLength(',"warnings":') + Buffer.byteLength(json(value.warnings));
   for (const key of ['products', 'listings']) for (const [index, row] of value[key].entries()) {
     bytes += Buffer.byteLength(json(row)) + (index ? 1 : 0);
     if (bytes > cap) large();
@@ -41,7 +44,7 @@ function input(value, identity = false) {
 
 // The shared normalizer reads the complete settings row for defaultCurrency.
 // Bound that legacy read before it materializes unrelated seller-entered text.
-async function normalizationPreflight(read) {
+export async function catalogNormalizationPreflight(read) {
   const columns = ['default_currency', 'seller_whatsapp_phone', 'mobile_hide_bars_on_scroll',
     'availability_text', 'shipping_text', 'returns_text', ...Object.values(senderFields).map(([column]) => column)];
   const size = column => read.dialect === 'postgres' ? `octet_length(CAST(${column} AS TEXT))` : `length(CAST(${column} AS BLOB))`;
@@ -79,7 +82,7 @@ export async function prepareCatalogMediaUpdate(read, value) {
   const source = originalRows.product.find(row => row.id === args.productId);
   if (!source) changed();
   const existing = existingProduct(source);
-  await normalizationPreflight(read);
+  await catalogNormalizationPreflight(read);
   const patch = await prepareProductUpdate(read, existing, args.changes);
   if (Object.hasOwn(patch, 'sku')) await requireUniqueProductSku(read, patch.sku, args.productId);
   // Shared preparation preserves provisional-label checks, KEEP and strict
@@ -127,8 +130,12 @@ export async function prepareCatalogMediaUpdate(read, value) {
   const catalog = { products: before.map(row => ({ productId: row.id, before: row, after: after.find(value => value.id === row.id) })),
     listings: [...listingsBefore.map(row => row.id), ...(targetPlan?.create ? [null] : [])].map(id => ({ listingId: id,
       before: listingsBefore.find(row => row.id === id) ?? null, after: listingsAfter.find(row => row.id === id) ?? null })) };
+  const warnings = [];
+  if (move && !targetPlan.create) warnings.push(CATALOG_UPDATE_WARNING_CODES[0]);
+  if (optionsAfter.groupAfter !== existing.variantGroup && before.find(row => row.id === existing.id).options.length > 0 &&
+      optionsAfter.optionsAfter.length === 0) warnings.push(CATALOG_UPDATE_WARNING_CODES[1]);
   const review = { products: catalog.products.filter(row => row.productId === args.productId || !equal(row.before, row.after)),
-    listings: catalog.listings.filter(row => !equal(row.before, row.after)) };
+    listings: catalog.listings.filter(row => !equal(row.before, row.after)), warnings };
   boundedReview(catalog, CATALOG_UPDATE_LIMITS.privateBytes);
   boundedReview(review, CATALOG_UPDATE_LIMITS.reviewBytes);
   return frozen({ version: 1, productId: args.productId, normalizedPatch: patch, metadata, targetPlan,
@@ -155,6 +162,9 @@ export async function readCatalogMediaUpdateState(read, value) {
   const projection = await projectCatalogMediaMove(read, state.mediaSnapshot,
     { productId: args.productId, targetPlan: prepared.targetPlan, patch: prepared.normalizedPatch });
   const catalog = structuredClone(prepared.catalog), review = structuredClone(prepared.review);
+  if (before.beforeViews.some(row => !equal(row, projection.afterViews.find(next => next.productId === row.productId)))) {
+    review.warnings.push(CATALOG_UPDATE_WARNING_CODES[2]);
+  }
   if (identity) for (const data of [catalog, review]) {
     for (const effect of data.products) if (effect.after.listingId === null) effect.after.listingId = identity.newListingId;
     for (const effect of data.listings) if (effect.listingId === null) {
@@ -165,4 +175,106 @@ export async function readCatalogMediaUpdateState(read, value) {
   boundedReview(review, CATALOG_UPDATE_LIMITS.reviewBytes);
   return frozen({ version: 1, productId: args.productId, baseRevision: state.revision, plannedIdentity: identity,
     normalizedPatch: prepared.normalizedPatch, targetPlan: prepared.targetPlan, catalog, review, state, beforeGraph: before, projection });
+}
+
+/** Assert the actual result, including the surviving old source closure. Never
+ * replan the stored intent against a deleted or already-moved source. */
+export async function readCatalogMediaUpdateAfter(read, prepared) {
+  const expected = prepared.catalog;
+  const listingIds = expected.listings.filter(row => row.after !== null).map(row => row.listingId).sort();
+  const allIds = expected.listings.map(row => row.listingId).sort();
+  if (!listingIds.length || listingIds.length > 2 || new Set(allIds).size !== allIds.length || !allIds.every(id => uuid.test(id))) changed();
+  const target = expected.products.find(row => row.productId === prepared.productId)?.after;
+  const actualTarget = await read.get('SELECT id,listing_id FROM product WHERE id=?', prepared.productId);
+  if (!target || actualTarget?.listing_id !== target.listingId) changed();
+  const marks = values => values.map(() => '?').join(','), scope = `listing_id IN (${marks(listingIds)})`;
+  const columns = catalogMetadataColumns(), oldRows = prepared.state.metadata.rows;
+  const fixed = (table, selection, key, cap) => {
+    const values = oldRows[table].map(row => row[key]);
+    return [table, selection, values.length ? `${key} IN (${marks(values)})` : '1=0', values, cap];
+  };
+  const definitions = [
+    ['product', columns.product, scope, listingIds, CATALOG_STATE_LIMITS.members],
+    ['listing', columns.listing, `id IN (${marks(allIds)})`, allIds, 2],
+    fixed('general_code', columns.general_code, 'code', CATALOG_STATE_LIMITS.categories),
+    ['product_option', 'product_id,option_type_id,option_value_id', `product_id IN (SELECT id FROM product WHERE ${scope})`, listingIds, CATALOG_STATE_LIMITS.mappings],
+    fixed('option_type', columns.option_type, 'id', CATALOG_STATE_LIMITS.types),
+    fixed('option_value', columns.option_value, 'id', CATALOG_STATE_LIMITS.values),
+    ['company_setting', 'default_currency', 'id=1', [], 1],
+  ];
+  definitions[2][2] = `type='PRODUCT_CATEGORY' AND (${definitions[2][2]})`;
+  const { rows } = await readBoundedCatalogMetadata(read, definitions);
+  for (const table of ['general_code', 'option_type', 'option_value', 'company_setting']) {
+    if (!sameRows({ [table]: rows[table] }, { [table]: oldRows[table] })) changed();
+  }
+  if (rows.product.length !== expected.products.length || rows.listing.length !== listingIds.length) changed();
+  for (const row of rows.product) {
+    const desired = expected.products.find(value => value.productId === row.id)?.after;
+    if (!desired || !equal(await productReview(read, rows, row), desired)) changed();
+  }
+  for (const row of rows.listing) {
+    const desired = expected.listings.find(value => value.listingId === row.id)?.after;
+    if (!desired || !equal(listingReview(row), desired)) changed();
+  }
+  const other = listingIds.find(id => id !== actualTarget.listing_id);
+  const snapshot = await readMediaUnionSnapshot(read, prepared.productId, other ? { targetListingId: other } : {});
+  await assertCatalogMediaPhysicalAfter(read, { before: prepared.state.mediaSnapshot,
+    projection: prepared.projection, plannedIdentity: prepared.plannedIdentity }, snapshot);
+  const current = await readCatalogMediaState(read, { productId: prepared.productId,
+    changes: prepared.normalizedPatch, plannedIdentity: null });
+  if (!current || !sameRows({ product: current.metadata.rows.product },
+    { product: rows.product.filter(row => row.listing_id === actualTarget.listing_id) })) changed();
+  return { snapshot, metadata: rows, revision: current.revision };
+}
+
+// Shared catalog physical after-check only. An absent CREATE before is actual
+// empty resource collections, never a pretend database snapshot or read anchor.
+export async function assertCatalogMediaPhysicalAfter(read, resources, snapshot) {
+  shape(resources, ['before', 'projection', 'plannedIdentity']);
+  const { before, projection, plannedIdentity } = resources;
+  if (!before || !['sources', 'galleries', 'products'].every(key => Array.isArray(before[key]))) changed();
+  const bind = id => id === null ? plannedIdentity?.newListingId : id;
+  const recordSet = (actual, expected, key) => {
+    if (actual.length !== expected.length || new Set(actual.map(row => row[key])).size !== expected.length) changed();
+    for (const row of expected) {
+      const found = actual.find(value => value[key] === row[key]);
+      if (!found || !equal(found, row)) changed();
+    }
+  };
+  recordSet(snapshot.before.products, projection.after.products.map(row => ({ ...row, listingId: bind(row.listingId) })), 'productId');
+  recordSet(snapshot.before.listings, projection.after.listings.map(row => ({ ...row, listingId: bind(row.listingId) })), 'listingId');
+  const sourceKey = row => `${row.source_kind}:${row.source_product_id}:${row.source_id}`;
+  const sources = new Map(snapshot.sources.map(row => [sourceKey(row), row]));
+  for (const row of before.sources) {
+    const actual = sources.get(sourceKey(row));
+    if (!actual) changed();
+    for (const field of ['source_kind', 'source_id', 'source_product_id', 'stage_id', 'mime', 'byte_length', 'byte_sha256', 'thumbnail']) {
+      if (!equal(actual[field], row[field])) changed();
+    }
+  }
+  for (const row of before.galleries) {
+    const actual = snapshot.galleries.find(value => value.galleryId === row.galleryId);
+    if (!actual || !equal(actual, row)) changed();
+  }
+  const aliases = new Map(), copies = projection.physicalEffects.filter(row => row.kind === 'COPY_MAIN');
+  if (snapshot.sources.length !== before.sources.length + copies.length || snapshot.galleries.length !== before.galleries.length + copies.length) changed();
+  for (const copy of copies) {
+    const gallery = snapshot.galleries.find(row => row.productId === copy.productId && row.position === copy.position);
+    if (!gallery || before.galleries.some(row => row.galleryId === gallery.galleryId) || aliases.has(copy.ref)) changed();
+    const actual = sources.get(`GALLERY:${copy.productId}:${gallery.galleryId}`);
+    if (!actual || actual.stage_id !== null) changed();
+    for (const field of ['mime', 'byte_length', 'byte_sha256']) if (actual[field] !== copy.source[field]) changed();
+    if (!equal(actual.thumbnail, copy.thumbnail)) changed();
+    aliases.set(copy.ref, gallery.galleryId);
+  }
+  const reference = id => aliases.get(id) ?? id;
+  for (const product of before.products) {
+    const actual = snapshot.products.find(row => row.productId === product.productId);
+    const effect = projection.physicalEffects.find(row => row.kind === 'SET_LAYOUT' && row.productId === product.productId);
+    const layout = effect ? effect.selected.map(reference) : product.layout;
+    if (!actual || !equal(actual.layout, layout)) changed();
+  }
+  const views = projection.afterViews.map(row => ({ ...row, visible: row.visible.map(item => ({ ...item, id: reference(item.id) })) }));
+  recordSet((await readCatalogMediaBeforeGraph(read, snapshot)).beforeViews, views, 'productId');
+  if (snapshot.graphReadBytes.oldBytes !== projection.graphReadBytes.afterOldBytes) changed();
 }
