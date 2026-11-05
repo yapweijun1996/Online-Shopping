@@ -18,6 +18,8 @@ import { catalogCreateTool, catalogUpdateTool } from './catalog-tools.js';
 import { analyticsSalesTrendTool, analyticsTopProductsTool, analyticsInventoryRiskTool } from './analytics-tools.js';
 import { MEDIA_TOOLS_ACCEPTED, mediaTools } from './media-tools.js';
 import { catalogMediaUpdateEnabled } from './catalog-media-config.js';
+import { catalogMediaUpdateTool } from './catalog-media-adapter.js';
+import { createMediaRuntime } from './media-runtime.js';
 
 export const connectorPath = (path) => /^\/(?:mcp$|oauth\/(?:register|authorize|token|revoke|consent\.js|consent\.css|operation|operation-review\.(?:js|css))$|\.well-known\/oauth-(?:protected-resource|authorization-server)(?:\/|$)|api\/v1\/seller\/mcp(?:\/|$))/.test(path);
 const operationPath = (path) => path === '/oauth/operation' || /^\/oauth\/operation-review\.(?:js|css)$/.test(path) || /^\/api\/v1\/seller\/mcp\/(?:operations(?:\/|$)|approval(?:\/|$))/.test(path);
@@ -34,9 +36,19 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
   const safeV2 = enabled && config.mcpV2?.enabled === true && config.production !== true &&
     config.shopMode !== 'public-demo' && quickLogin === false && typeof tenantGuard?.withActiveTenant === 'function';
   const catalogUpdateEnabled = catalogMediaUpdateEnabled(config,{quickLogin,tenantGuard});
-  const registrations = operationTools === undefined ? (safeV2 ? [companyReadTool(), companyMutationTool(), catalogCreateTool(), catalogUpdateTool(),
-    analyticsSalesTrendTool(), analyticsTopProductsTool(), analyticsInventoryRiskTool(), inventorySummaryTool(), inventoryMovementsTool(), inventoryAdjustmentTool(), orderDecisionTool(), ...operationControlTools(),
-    ...(MEDIA_TOOLS_ACCEPTED && config.mcpMedia?.enabled === true ? mediaTools({ store, binding: oauth.binding, config, tenantGuard, quickLogin }) : [])] : []) : operationTools;
+  if (config.mcpCatalogMediaUpdate?.enabled === true && !catalogUpdateEnabled) throw new TypeError('Safe catalog media UPDATE configuration required.');
+  let registrations = operationTools;
+  if (registrations === undefined) {
+    if (!safeV2) registrations = [];
+    else {
+      const mediaOptions = {store,binding:oauth.binding,config,tenantGuard,quickLogin};
+      const runtime = (MEDIA_TOOLS_ACCEPTED && config.mcpMedia?.enabled === true) || catalogUpdateEnabled ? createMediaRuntime(mediaOptions) : null;
+      registrations = [companyReadTool(),companyMutationTool(),catalogCreateTool(),
+        catalogUpdateEnabled ? catalogMediaUpdateTool(runtime) : catalogUpdateTool(),
+        analyticsSalesTrendTool(),analyticsTopProductsTool(),analyticsInventoryRiskTool(),inventorySummaryTool(),inventoryMovementsTool(),inventoryAdjustmentTool(),orderDecisionTool(),...operationControlTools(),
+        ...(MEDIA_TOOLS_ACCEPTED && config.mcpMedia?.enabled === true ? mediaTools(mediaOptions,runtime) : [])];
+    }
+  }
   const extensions = createOperationTools({ store, binding: oauth.binding, config, tenantGuard, quickLogin, entries: registrations });
   const maintain = async () => {
     if (config.mcpV2?.enabled !== true || !enabled || config.production === true || !tenantGuard) return;

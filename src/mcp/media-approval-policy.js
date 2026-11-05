@@ -9,13 +9,17 @@ import { withMediaWriter, mediaHash } from './media-storage.js';
 import { canonicalOperationJson } from './operation-envelope.js';
 import { assertUploadThumbnail } from './media-upload-policy.js';
 import { catalogMediaUpdateAllowed } from './catalog-media-config.js';
+import { parseCatalogMediaUpdateProposal, readCatalogMediaUpdateReview } from './catalog-media-adapter.js';
 const deny = () => { throw new ApiError(403, 'FORBIDDEN', 'Image review could not be verified.'); };
 
 // Metadata only: callers supply current human authority inside the same fence/transaction.
 // The content revision binds literal labels and all physical images, not timestamps.
 export async function readMediaReviewState(store, operation, envelope, context, {catalogUpdateEnabled=false,codecDigest}={}) {
-  if (operation.media_policy_id === 'catalog-media-v1' && !catalogMediaUpdateAllowed(catalogUpdateEnabled,
-    {toolName:operation.tool_name,mediaPolicyId:operation.media_policy_id,resourceType:operation.resource_type})) deny();
+  if (operation.media_policy_id === 'catalog-media-v1') {
+    if (!catalogMediaUpdateAllowed(catalogUpdateEnabled,
+      {toolName:operation.tool_name,mediaPolicyId:operation.media_policy_id,resourceType:operation.resource_type}) || !isMediaHash(codecDigest)) deny();
+    return readCatalogReviewState(store,operation,envelope,context,codecDigest);
+  }
   const manifest = await readMediaFrame(store, context, operation.id, envelope.proposal.media);
   const snapshot = await readMediaSnapshot(store, operation.resource_id);
   if (snapshot.revision !== operation.expected_revision || manifest.descriptor.graphRevision !== snapshot.revision ||
@@ -41,6 +45,26 @@ export async function readMediaReviewState(store, operation, envelope, context, 
     }
   });
   return { manifest, snapshot };
+}
+
+async function readCatalogReviewState(store,operation,envelope,context,codecDigest) {
+  const manifest = await readMediaFrame(store,context,operation.id,envelope.proposal.media);
+  try {
+    const value = parseCatalogMediaUpdateProposal(envelope.proposal);
+    if (operation.risk !== 'HIGH' || !isMediaUuid(operation.resource_id) || value.productId !== operation.resource_id) deny();
+    const fresh = await readCatalogMediaUpdateReview(store,{productId:operation.resource_id,
+      normalizedInput:value.normalizedInput,plannedIdentity:value.plannedIdentity},codecDigest);
+    if (fresh.revision !== operation.expected_revision || manifest.descriptor.graphRevision !== fresh.revision || manifest.stages.length !== 0 ||
+        canonicalOperationJson(fresh.proposal) !== canonicalOperationJson(value) ||
+        canonicalOperationJson(fresh.manifest.descriptor) !== canonicalOperationJson(manifest.descriptor) ||
+        fresh.manifest.pages.length !== manifest.pages.length || fresh.manifest.pages.some((page,n) => page.page_json !== manifest.pages[n].page_json)) deny();
+    // The byte loader must retain the raw B1 capture and its union selector.
+    // Never overwrite its revision with the final catalog composite.
+    return {manifest,snapshot:fresh.state.mediaSnapshot};
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 503) throw error;
+    deny();
+  }
 }
 
 // Exact SSOT loader only; never accepts a URL, path, user thumbnail or caller source identity.
