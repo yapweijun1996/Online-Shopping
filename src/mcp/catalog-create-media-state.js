@@ -18,6 +18,10 @@ const keys=['sku','name','description','category','priceMinor','currency','activ
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const pairSort=values=>[...values].sort((a,b)=>a.typeId<b.typeId?-1:a.typeId>b.typeId?1:0);
 const freeze=value=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
+// Shared digest of the unchanged D1a revision preimage, not an authority token.
+export function catalogCreateMediaRevision({catalogRevision,mediaRevision,identity,prepared,after,optionReview,order}){
+ return sha(json({version:1,kind:'catalog-media-create',catalogRevision,mediaRevision,identity,prepared,after,optionReview,order}));
+}
 function shape(value,allowed,exact=false){
  if(!value||![Object.prototype,null].includes(Object.getPrototypeOf(value))||Reflect.ownKeys(value).some(key=>{
   const field=Object.getOwnPropertyDescriptor(value,key);return !allowed.includes(key)||!field?.enumerable||!Object.hasOwn(field,'value');
@@ -46,23 +50,30 @@ function definitions(){
   ['company_setting','default_currency','id=1',[],1],
  ];
 }
+export function catalogCreateMetadataRevision({request,predicates,rows}){
+ shape(rows,definitions().map(([table])=>table),true);
+ const state=createHash('sha256');let used=0;
+ const add=value=>{const text=json(value),size=Buffer.byteLength(text);used+=size;if(used>CATALOG_STATE_LIMITS.metadataBytes)large();state.update(String(size)+':').update(text);};
+ add({kind:'CATALOG_CREATE_MEDIA_METADATA',version:1,request,predicates});
+ for(const [table,,,,cap] of definitions()){
+  const list=rows[table];if(!Array.isArray(list)||list.length>cap||Reflect.ownKeys(list).length!==list.length+1)large();
+  for(let n=0;n<list.length;n++){const field=Object.getOwnPropertyDescriptor(list,String(n));if(!field?.enumerable||!Object.hasOwn(field,'value'))invalid();add({kind:table,row:field.value});}
+ }
+ return state.digest('hex');
+}
 
 /** Raw current facts, not a new plan. Caller holds the platform -> tenant fence.
  * Appearing IDs/code and disabled dictionaries change the revision without
  * running preparation, adopting a target or swallowing validation errors. */
 export async function readCatalogCreateMediaMetadata(read,input){
  const request=intent(input),identity=request.creationIdentity;
- const {parts,rows}=await readBoundedCatalogMetadata(read,definitions(),Buffer.byteLength(json(request))+4096);
+ const {rows}=await readBoundedCatalogMetadata(read,definitions(),Buffer.byteLength(json(request))+4096);
  if(rows.company_setting.length!==1)changed();
  const predicates={identity,productId:rows.product.find(row=>row.id===identity.productId)?.id??null,
   newListingId:identity.newListingId===null?null:rows.listing.find(row=>row.id===identity.newListingId)?.id??null,
   targetByCodeId:identity.targetCode===null?null:rows.listing.find(row=>row.code===identity.targetCode)?.id??null,
   targetById:identity.targetListingId===null?null:rows.listing.find(row=>row.id===identity.targetListingId)?.id??null};
- const state=createHash('sha256');let used=0;
- const add=value=>{const text=json(value),size=Buffer.byteLength(text);used+=size;if(used>CATALOG_STATE_LIMITS.metadataBytes)large();state.update(String(size)+':').update(text);};
- add({kind:'CATALOG_CREATE_MEDIA_METADATA',version:1,request,predicates});
- for(const part of parts)for(const row of rows[part.table])add({kind:part.table,row});
- return freeze({version:1,request,predicates,revision:state.digest('hex'),rows});
+ return freeze({version:1,request,predicates,revision:catalogCreateMetadataRevision({request,predicates,rows}),rows});
 }
 
 /** Private metadata only. EMPTY_BEFORE explicitly is not a DB media snapshot. */
@@ -92,7 +103,7 @@ export async function readCatalogCreateMediaState(read,input){
   variantGroup:prepared.variantGroup??null,variantLabel:prepared.variantLabel??null,options};
  const optionReview={before:[],after:await describeOptions(read,options,{types:rows.option_type,values:rows.option_value})};
  const mediaRevision=existing?source.snapshot.revision:sha(json({kind:'EMPTY_BEFORE',identity}));
- const revision=sha(json({version:1,kind:'catalog-media-create',catalogRevision:metadata.revision,mediaRevision,identity,prepared,after,optionReview,order:source.order??[]}));
+ const revision=catalogCreateMediaRevision({catalogRevision:metadata.revision,mediaRevision,identity,prepared,after,optionReview,order:source.order??[]});
  return freeze({version:1,revision,catalogRevision:metadata.revision,mediaRevision,creationIdentity:identity,
   normalizedInput,preparedInput:prepared,after,optionReview,source,metadata});
 }
