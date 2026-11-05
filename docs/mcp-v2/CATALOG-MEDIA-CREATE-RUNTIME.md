@@ -47,3 +47,13 @@ Validation is recorded in the outside-repository worker summary. Synthetic decod
 fixtures test actual OAuth/RPC/password/ACK handlers but do not attest native image
 validation or a human browser. Genuine default-factory native/HTTPS browser gates
 are recorded separately when run.
+
+The initial default-factory gate passed5/5 cases across SQLite/PostgreSQL with a
+real development native worker, actual OAuth/PKCE/session/consent handlers and
+HTTPS Chromium. It covers independent and new-group zero/unlimited initial stock,
+PAGE-only review, existing-target native image proof, exact storefront image
+hash/order, initial ledger identity, history and commit/replay. It injects no tool
+registration, decoder, tenant guard, grant or human evidence. Configuration/root
+boundaries plus synthetic-decoder actual handler tests passed25/25 with no skips.
+These are bounded acceptance checks; the broader adversarial/concurrency matrix
+and root's independent combined/full verification remain separate requirements.
