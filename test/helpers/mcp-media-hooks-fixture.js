@@ -6,6 +6,7 @@ import { trackUpdate } from '../../src/product-history.js';
 import { readMediaSnapshot } from '../../src/mcp/media-resources.js';
 import { buildMediaManifest, mediaAssetKey } from '../../src/mcp/media-manifest.js';
 import { mediaHash } from '../../src/mcp/media-policy.js';
+import { uploadThumbnail } from '../../src/mcp/media-upload-policy.js';
 import { withMediaWriter } from '../../src/mcp/media-storage.js';
 import { createOperationEngine } from '../../src/mcp/operation-engine.js';
 import { mediaEngineFixture } from './mcp-media-engine-fixture.js';
@@ -65,7 +66,7 @@ export async function mediaHooksFixture(t, dialect) {
       ...snapshot.before.listings.map(l => ({ kind: 'LISTING', listingId: l.listingId,
         before: { holderId: l.holderId, galleryAssetKeys: l.galleryAssetKeys }, after: { holderId: l.holderId, galleryAssetKeys: [key] } }))];
       return { resourceId: resources.stage.productId, expectedRevision: snapshot.revision,
-        proposal: { id: resources.stage.productId, stageId: args.stageId },
+        proposal: { id: resources.stage.productId, stageId: args.stageId, thumbnail: uploadThumbnail(result.thumbnail) },
         mediaManifest: buildMediaManifest({ toolName: 'media.prepare_upload', graphRevision: snapshot.revision, codecDigest,
           graphBytes: { oldBytes: snapshot.graphReadBytes.oldBytes, newBytes: result.image.length + result.thumbnail.length },
           assets: [...snapshot.assets, asset], effects }) };

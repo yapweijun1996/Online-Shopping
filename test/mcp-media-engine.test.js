@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mediaHooksFixture } from './helpers/mcp-media-hooks-fixture.js';
+import { mediaHooksFixture, syntheticMediaPng } from './helpers/mcp-media-hooks-fixture.js';
 import { seedSyntheticMediaApproval } from './helpers/mcp-media-engine-fixture.js';
-import { withMediaWriter } from '../src/mcp/media-storage.js';
+import { withMediaWriter, mediaHash } from '../src/mcp/media-storage.js';
 import { updateProduct } from '../src/products.js';
 import { createOperationReview, createOperationApproval } from '../src/mcp/operation-approval.js';
 import { maintainOperations } from '../src/mcp/operation-maintenance.js';
@@ -190,5 +190,15 @@ for (const dialect of ['sqlite', 'postgres']) {
     }
     assert.equal((await withMediaWriter(f.store, f.context, w => w.inspect(stage.stageId))).state, 'VALIDATING');
     assert.ok(await f.store.get("SELECT * FROM mcp_v2_scope_consent WHERE grant_id=? AND scope='media.write'", f.context.grantId));
+  });
+  test(`${dialect}: self-consistent BOUND thumbnail substitution cannot change the approved proposal`, async t => {
+    const f = await mediaHooksFixture(t, dialect), stage = await f.startStage(), operation = await f.prepare(stage);
+    await seedSyntheticMediaApproval(f, operation);
+    const substituted = syntheticMediaPng(99);
+    await f.store.run('UPDATE mcp_v2_media_stage SET thumbnail_data=?,thumbnail_sha256=?,thumbnail_bytes=? WHERE id=?',
+      substituted, mediaHash(substituted), substituted.length, stage.stageId);
+    await assert.rejects(f.commit(operation), /Invalid bound upload thumbnail/);
+    assert.equal(f.counters.apply, 0);
+    assert.equal((await f.store.get('SELECT image_data FROM product WHERE id=?', f.productId)).image_data, null);
   });
 }

@@ -12,6 +12,7 @@ import { mediaManifestRows } from './media-manifest.js';
 import { readMediaPolicy, storeMediaPolicy, withMediaWriter } from './media-storage.js';
 import { persistMediaFrame, readMediaFrame } from './media-frame-storage.js';
 import { readMediaApprovalEvidence } from './media-approval-policy.js';
+import { assertUploadThumbnail } from './media-upload-policy.js';
 import { operationInstant, operationReceiptExpiry, OPERATION_TERMINAL_STATES } from './operation-maintenance.js';
 import { OPERATION_APPROVAL_MS, OPERATION_MUTATION_PAIRS, OPERATION_SCOPE_POLICIES, operationAuthorityPolicy } from './operation-policy.js';
 
@@ -207,6 +208,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
     await withMediaWriter(store, context, async writer => {
       for (const expected of manifest.stages) {
         const stage = await writer.inspect(expected.stage_id), bytes = await writer.boundBytes(expected.stage_id, row.id);
+        if (adapter.media.policyId === 'media-upload-v1') assertUploadThumbnail(envelope.proposal.thumbnail, bytes.thumbnail);
         if (stage.productId !== row.resource_id || stage.expectedRevision !== row.expected_revision ||
             stage.receiptExpiresAt !== row.receipt_expires_at || stage.correlationId !== row.correlation_id ||
             bytes.codecDigest !== adapter.media.codecDigest || bytes.canonicalSha256 !== expected.canonical_sha256) denied();
