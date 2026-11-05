@@ -15,6 +15,8 @@ export function operationSchema(dialect) {
     ? `length(${column}) = 64 AND ${column} ~ '^[0-9a-f]{64}$'`
     : `length(${column}) = 64 AND ${column} NOT GLOB '*[^0-9a-f]*'`;
   const scopes = OPERATION_SCOPES.map((scope) => `'${scope}'`).join(',');
+  // Keep the compound envelope length comparisons explicit: PostgreSQL restores
+  // flatten BETWEEN-generated AND nodes, changing catalog fingerprints.
   return `
 CREATE TABLE IF NOT EXISTS mcp_v2_authorization_request (
   request_id TEXT PRIMARY KEY REFERENCES oauth_authorization_request(id) ON DELETE CASCADE,
@@ -38,7 +40,7 @@ CREATE TABLE IF NOT EXISTS mcp_v2_operation (
   tool_name TEXT NOT NULL, required_scope TEXT NOT NULL CHECK (required_scope IN (${scopes})),
   required_capability TEXT NOT NULL, risk TEXT NOT NULL CHECK (risk IN ('LOW','MEDIUM','HIGH')),
   resource_type TEXT NOT NULL, resource_id TEXT, expected_revision TEXT,
-  envelope_json TEXT CHECK (envelope_json IS NULL OR (length(envelope_json) BETWEEN 2 AND 65536 AND ${validObject('envelope_json')})),
+  envelope_json TEXT CHECK (envelope_json IS NULL OR (length(envelope_json) >= 2 AND length(envelope_json) <= 65536 AND ${validObject('envelope_json')})),
   preview_hash TEXT NOT NULL CHECK (${validHash('preview_hash')}),
   request_hash TEXT NOT NULL CHECK (${validHash('request_hash')}),
   idempotency_hash TEXT NOT NULL CHECK (${validHash('idempotency_hash')}),

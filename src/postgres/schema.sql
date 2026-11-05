@@ -484,7 +484,7 @@ CREATE TABLE IF NOT EXISTS mcp_v2_operation (
   tool_name TEXT NOT NULL, required_scope TEXT NOT NULL CHECK (required_scope IN ('company.read','company.write','catalog.write','media.read','media.write','inventory.read','inventory.adjust','orders.decide','analytics.extended','operations.read','operations.cancel')),
   required_capability TEXT NOT NULL, risk TEXT NOT NULL CHECK (risk IN ('LOW','MEDIUM','HIGH')),
   resource_type TEXT NOT NULL, resource_id TEXT, expected_revision TEXT,
-  envelope_json TEXT CHECK (envelope_json IS NULL OR (length(envelope_json) BETWEEN 2 AND 65536 AND jsonb_typeof(envelope_json::jsonb) = 'object')),
+  envelope_json TEXT CHECK (envelope_json IS NULL OR (length(envelope_json) >= 2 AND length(envelope_json) <= 65536 AND jsonb_typeof(envelope_json::jsonb) = 'object')),
   preview_hash TEXT NOT NULL CHECK (length(preview_hash) = 64 AND preview_hash ~ '^[0-9a-f]{64}$'),
   request_hash TEXT NOT NULL CHECK (length(request_hash) = 64 AND request_hash ~ '^[0-9a-f]{64}$'),
   idempotency_hash TEXT NOT NULL CHECK (length(idempotency_hash) = 64 AND idempotency_hash ~ '^[0-9a-f]{64}$'),
@@ -536,7 +536,7 @@ CREATE TABLE mcp_v2_schema (
       manifest_digest TEXT NOT NULL CHECK (length(manifest_digest) = 64)
     );
 INSERT INTO mcp_v2_schema(id, version, ddl_digest, manifest_digest)
-    VALUES (1, 1, 'a210699d0996ba197d48d72a9c34cc01d79a5a304cb0656f10829df3fd4002dc', (SELECT encode(sha256(convert_to(jsonb_build_object(
+    VALUES (1, 1, '5deabb4f780c68580da9f23d85e2c80a33d1ce7ea194b39cf4567e6adc01ce6b', (SELECT encode(sha256(convert_to(jsonb_build_object(
     'tables', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY table_name, ordinal_position) FROM (
       SELECT table_name, column_name, ordinal_position, data_type, is_nullable, column_default
       FROM information_schema.columns WHERE table_schema = 'public' AND table_name LIKE 'mcp!_v2!_%' ESCAPE '!'
