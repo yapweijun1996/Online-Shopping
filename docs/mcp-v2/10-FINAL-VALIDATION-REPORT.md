@@ -1,5 +1,9 @@
 # MCP v2 validation snapshots
 
+## Current schema34 verification — not yet accepted
+
+Root74bf040 includes migration d717c7f and strict-source corrections630c6b6/841b8a9, plus retention fixture7bfd218. Independent Node24/SQLite/owned PostgreSQL16 migration, storage, retention, actual restore/import and inventory/schema command selected99 tests: **94 passed/5 failed/0 skipped**, exit1,63.780s (`.local/manager-audit34-migrations.tap`). Five artificially downgraded inventory fixtures retained audit34 while setting global31/32; the strict migration correctly rejects this partial source. A test-only historical-structure repair is in progress; guards are not relaxed. Source33 golden SHA is exactly b87df3c9706743c458bff7a9d73a978da640e4dbe1388dd512b5626dd43e13d7. Neither this migration nor public operation controls have final root acceptance yet.
+
 ## Latest full suite — order tools and gated media factory
 
 Root source95dbd91403d8c07a52982465a62e33d20213e5d6, Node24.22.0 with SQLite/owned UTF-8 PostgreSQL16: `NODE_ENV=test SHOP_TEST_DATABASE_URL=<private synthetic URL> env -u QA_PLAYWRIGHT_MODULE -u MEDIA_COORDINATOR_CONTAINER_TEST -u MEDIA_TOOLS_NATIVE_BROWSER_TEST node --test --test-concurrency=1 test/*.test.js`, exit0, **1456 total/1422 passed/0 failed/34 opt-in skips**,445.328s (`.local/manager-orders-media-factory-full.tap`).33 skips require browser opt-in; one requires the native coordinator flag. The order browsers below ran separately. At this snapshot the five-media-tool default acceptance gate was closed; this run excludes later test/default commits5c25dad and1024f78. Elapsed time under concurrent worker activity is a diagnostic, not a production capacity claim.
