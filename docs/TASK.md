@@ -6,13 +6,13 @@ Scope: implement the Seller Operations Engine in dependency order, beginning wit
 
 | ID | State | Acceptance and dependency |
 | --- | --- | --- |
-| MCP0-01 | In progress | Default-off configuration, external restore epoch, source-derived build identity; reject unsafe/demo/production activation. |
-| MCP0-02 | In progress | Durable opt-in extension storage on both databases, fail-closed schema checks, rollback, no v2 authority imported by SQLite import. Explain base-schema and migration compatibility. |
-| MCP0-03 | In progress | Explicit OAuth consent for new scopes, writes unchecked, current RBAC, no elevation of old grants/tokens, epoch/revocation checks and v1 regression coverage. |
-| MCP0-04 | In progress | Actual review/approval application routes with session, fresh password, Origin/CSRF, bounded input, immutable proposal, tenant lifecycle fence and no-store/CSP. |
-| MCP0-05 | Partial | Bounded expiry prototype tested; proposal retention, replay tombstones and denial auditing remain open. |
-| MCP0-06 | Open | Integrated lifecycle/replay/rollback/security tests and independent review; resolve critical failures before business tools. |
-| MCP1 | Depends on MCP0 | Company tools via settings services and all-writer revision/currency policy. |
+| MCP0-01 | Verified locally | Default-off configuration, external restore epoch, source-derived build identity; reject unsafe/demo/production activation. |
+| MCP0-02 | Verified locally | Durable opt-in extension storage on both databases, fail-closed schema checks, rollback, no v2 authority imported by SQLite import. Explain base-schema and migration compatibility. |
+| MCP0-03 | Verified locally | Explicit OAuth consent for new scopes, writes unchecked, current RBAC, no elevation of old grants/tokens, epoch/revocation checks and v1 regression coverage. |
+| MCP0-04 | Verified locally | Actual review/approval application routes with session, fresh password, Origin/CSRF, bounded input, immutable proposal, tenant lifecycle fence and no-store/CSP. |
+| MCP0-05 | Verified locally | Bounded expiry, terminal proposal redaction, minimal replay receipts, audit90d, authenticated request maintenance and feature-off CLI hygiene are tested. |
+| MCP0-06 | Verified locally | Foundation source25ec84f:1015 tests,991 passed,0 failed,24 browser opt-ins skipped; targeted actual browser/restore and timing regression passed separately. |
+| MCP1 | In progress, isolated | Company tools via settings services and all-writer revision/currency policy. |
 | MCP2 | Depends on MCP0 | Product tools via existing services, including shared listing revision, SKU, snapshots and history. |
 | MCP3 | Depends on MCP0 | Bounded image staging, decoding, old/new review and atomic gallery layout. |
 | MCP4 | Depends on MCP0 | Atomic stock ledger across writers; preserve 48-hour computed SUBMITTED holds. |

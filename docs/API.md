@@ -285,6 +285,20 @@ Frontends resolve the public shop-info storage scope before importing any state-
 
 ## Seller MCP connector (P1; default OFF)
 
+### MCP v2 foundation (isolated development)
+
+Schema 30 adds operation, consent and approval tables on both adapters; empty tables confer no authority. `MCP_V2_ENABLED` defaults OFF. Development activation requires MCP, HTTPS, password login and an external `MCP_V2_EPOCH_FILE`; production activation is explicitly rejected. No business write tool is registered by default. The eight existing read tools keep their contracts.
+
+New scopes require explicit consent bound to account, client, grant, epoch and issue time. Choices start unchecked; old grants/tokens never gain new rights. Scope consent does not approve an individual operation.
+
+| Method | Development path | Contract |
+| --- | --- | --- |
+| GET | `/oauth/operation?operationId=<uuid>` | First-party review shell; no proof in URL. Assets: `/oauth/operation-review.js` and `.css`. |
+| GET | `/api/v1/seller/mcp/operations/<uuid>` | Current seller session/live grant; returns immutable proposal and short-lived session/hash-bound challenge. |
+| POST | `/api/v1/seller/mcp/operations/<uuid>/approval` | JSON <=4096 bytes, exactly `operationId`, `previewHash`, `challenge`, `decision` (`approve`/`reject`), `password`. Exact Origin/CSRF, fresh password, tenant/account/grant and URL/body ID checks; consumes challenge atomically. Approval does not commit the operation. |
+
+Tenant prefixes apply. Demo shops, quick login, production configuration, wrong hosts/origins and flag-off requests cannot use review. Responses are no-store with strict CSP/frame denial and no AI-client CORS. Migration, restore, retention and acceptance evidence: [MCP v2 progress](mcp-v2/09-IMPLEMENTATION-PROGRESS.md). Production release is outside this development run.
+
 Enable explicitly with `MCP_ENABLED=1` and configured HTTPS `SELLER_ORIGIN`. Disabled/new paths return the same generic 404; public-demo/quick-login and non-seller hosts cannot use the connector. No new dependency, provider call, write tool or connected-app management API is included. **Claude.ai/ChatGPT callbacks, current protocol/spec support, CORS requirements and plan availability are UNVERIFIED.**
 
 Operator configuration:

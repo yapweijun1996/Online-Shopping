@@ -1,5 +1,9 @@
 # Target architecture and implementation plan
 
+Current status2026-11-05: Phase0 is independently verified at25ec84f. Real authenticated challenge/password review, explicit scope consent, transactional receipts and matching schema30 migrations are implemented. Default domain registry is empty; production activation is rejected. Actual synthetic snapshot restores and external epoch fencing passed; production multi-instance recovery remains unverified. API.md and10-FINAL-VALIDATION-REPORT.md give current paths, evidence and limits. The original design below is a historical snapshot, not current implementation status.
+
+## Historical design snapshot
+
 Status: **PROPOSED**, except the existing components identified in the audit and the isolated hash helper in the progress report. None of the proposed write tools is available. Baseline: `17bc1de65a83838e0332f2c2cc5271beac6a109b`.
 
 ```text

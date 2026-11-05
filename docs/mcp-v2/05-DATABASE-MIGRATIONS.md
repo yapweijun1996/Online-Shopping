@@ -1,5 +1,9 @@
 # Database migration proposal
 
+Current status2026-11-05: Phase0 is independently verified at25ec84f. Real authenticated challenge/password review, explicit scope consent, transactional receipts and matching schema30 migrations are implemented. Default domain registry is empty; production activation is rejected. Actual synthetic snapshot restores and external epoch fencing passed; production multi-instance recovery remains unverified. API.md and10-FINAL-VALIDATION-REPORT.md give current paths, evidence and limits. The original design below is a historical snapshot, not current implementation status.
+
+## Historical design snapshot
+
 Status: **PROPOSED**. No application database migration has been added. Baseline SQLite and PostgreSQL schema version: **29**. An unregistered experimental DDL helper, `src/mcp/operation-schema.js`, has isolated SQLite/PostgreSQL constraint tests; it is not a completed migration or authorization system. Its schema remains subject to review and may change.
 
 The likely next additive version is 30, but reserve the actual number only when implementation begins and after rechecking main. One shop has one tenant store; bind operation rows to its server-resolved tenant and grant even though the store itself is isolated.

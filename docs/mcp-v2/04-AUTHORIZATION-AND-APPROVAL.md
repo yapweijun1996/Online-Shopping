@@ -1,5 +1,9 @@
 # Authorization and human approval
 
+Current status2026-11-05: Phase0 is independently verified at25ec84f. Real authenticated challenge/password review, explicit scope consent, transactional receipts and matching schema30 migrations are implemented. Default domain registry is empty; production activation is rejected. Actual synthetic snapshot restores and external epoch fencing passed; production multi-instance recovery remains unverified. API.md and10-FINAL-VALIDATION-REPORT.md give current paths, evidence and limits. The original design below is a historical snapshot, not current implementation status.
+
+## Historical design snapshot
+
 Status: **PARTIAL ISOLATED PROTOTYPE**. The baseline provides read-only OAuth. Unregistered local helpers check explicit v2 consent, current scope/role and an operation-specific seller session, password and preview hash; an unregistered review page renders the complete proposal as text. A generic engine has only been exercised with a synthetic adapter. There is no application route, real business adapter, OAuth consent integration or application migration. The pieces do not yet prove a real human saw a real proposal and must not be exposed on their own. The flow below is not complete.
 
 ## Trusted inputs
