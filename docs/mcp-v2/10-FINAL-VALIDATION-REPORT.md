@@ -1,8 +1,21 @@
 # MCP v2 validation snapshots
 
-## Current schema34 verification — not yet accepted
+## Latest accepted integrated full run — all browser and native opt-ins
 
-Root74bf040 includes migration d717c7f and strict-source corrections630c6b6/841b8a9, plus retention fixture7bfd218. Independent Node24/SQLite/owned PostgreSQL16 migration, storage, retention, actual restore/import and inventory/schema command selected99 tests: **94 passed/5 failed/0 skipped**, exit1,63.780s (`.local/manager-audit34-migrations.tap`). Five artificially downgraded inventory fixtures retained audit34 while setting global31/32; the strict migration correctly rejects this partial source. A test-only historical-structure repair is in progress; guards are not relaxed. Source33 golden SHA is exactly b87df3c9706743c458bff7a9d73a978da640e4dbe1388dd512b5626dd43e13d7. Neither this migration nor public operation controls have final root acceptance yet.
+Rootce1e13c, Node24.22.0, SQLite and owned loopback UTF-8 PostgreSQL16: full `NODE_ENV=test SHOP_TEST_DATABASE_URL=<private synthetic URL> QA_PLAYWRIGHT_MODULE=<cached module> MEDIA_COORDINATOR_CONTAINER_TEST=1 MEDIA_TOOLS_NATIVE_BROWSER_TEST=1 node --test --test-concurrency=1 test/*.test.js` completed with exit0: **1661 tests/1661 passed/0 failed/0 skipped**,638.298s (`.local/manager-32-tools-full-native-browsers.tap`). Every browser and native opt-in ran. Owned native containers were cleaned; no production capacity claim follows from this synthetic elapsed time. This source includes all32 names, schema34 and restricted catalog tools; full catalog expansion remains incomplete.
+
+Independent completed successors:
+- Root379b405 migration/storage/retention/actual restore/import/inventory/schema/media-union:139/139 passed,0 skips,59.207s, exit0 (`.local/manager-audit34-union-fixed.tap`). Historical fixture corrections restore actual legacy audit DDL before lowering a version; strict migration guards remain intact.
+- Root01028af controls/stage/authority/registry/engine/retention:69/69 passed,0 skips,33.490s, exit0 (`.local/manager-controls-stage-core.tap`). Typed CALL/READ audit failures roll back their associated domain/stage changes. Sequence anchors use operation/sequence covering indexes and bounded endpoint queries; synthetic EXPLAIN checks are not production capacity evidence.
+- Rootc4c336b planned listing identity/pure gallery:28/28 passed,0 skips,6.713s, exit0 (`.local/manager-catalog-identity-pure.tap`).
+- Root19d2757 full browser-enabled run, native flags off:1595 total/1592 passed/1 failed/2 native skips,588.394s, exit1 (`.local/manager-schema34-union-full-browsers.tap`). Sole failure: AI Studio readiness test hardcoded schema33. Test-only correctionc9441a0 expects34 while retaining table/readiness checks; no runtime guard changed.
+- Rootce1e13c focused metadata/projector/Unicode-label/AI Studio/product-options/planned listing identity:82/82 passed,0 skips,22.052s, exit0 (`.local/manager-catalog-state-projector-label.tap`). Exact files: `mcp-catalog-media-state.test.js`, `catalog-media-projection.test.js`, `options-label-storage.test.js`, `ai-studio-credential.test.js`, `product-options.test.js`, `planned-listing-identity.test.js`.
+
+These overlapping snapshots must not be summed as a unique test count. Node24 can silently ignore a nonexistent explicit test filename: discover filenames first; the full command expands actual `test/*.test.js` files.
+
+### Historical failed migration-fixture run
+
+Root74bf040 includes migration d717c7f and strict-source corrections630c6b6/841b8a9, plus retention fixture7bfd218. Independent Node24/SQLite/owned PostgreSQL16 migration, storage, retention, actual restore/import and inventory/schema command selected99 tests: **94 passed/5 failed/0 skipped**, exit1,63.780s (`.local/manager-audit34-migrations.tap`). Five artificially downgraded inventory fixtures retained audit34 while setting global31/32; the strict migration correctly rejects this partial source. The later139/139 run above verifies the historical-structure repair; guards were not relaxed. Source33 golden SHA is exactly b87df3c9706743c458bff7a9d73a978da640e4dbe1388dd512b5626dd43e13d7. This failed historical run is retained for traceability; current integration and pending full verification are described above.
 
 ## Latest full suite — order tools and gated media factory
 

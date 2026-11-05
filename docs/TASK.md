@@ -2,7 +2,7 @@
 
 ## MCP v2 isolated delivery (2026-11-05)
 
-Scope: finish the Seller Operations Engine in dependency order with independent verification after each bounded change. Active integration branch: `codex/mcp-v2-seller-engine`, based on `1634735aa70090dcdf54b8d09e2cc09b33cd8a77`. Foundation and company tools have passed their named local acceptance snapshots; later phases remain incomplete. Preserve the eight v1 tools and current business rules. This task permits isolated development and synthetic verification; production activation remains a separate release gate.
+Scope: finish the Seller Operations Engine in dependency order with independent verification after each bounded change. Active integration branch: `codex/mcp-v2-seller-engine`, based on `1634735aa70090dcdf54b8d09e2cc09b33cd8a77`. All32 tool names are integrated; full catalog group/media expansion remains incomplete. Current restricted32-tool integrated sourcece1e13c passed1661/1661 with all browser/native opt-ins. Named acceptance snapshots are recorded below. Preserve the eight v1 tools and current business rules. This task permits isolated development and synthetic verification; production activation remains a separate release gate.
 
 | ID | State | Acceptance and dependency |
 | --- | --- | --- |
@@ -13,12 +13,12 @@ Scope: finish the Seller Operations Engine in dependency order with independent 
 | MCP0-05 | Verified locally | Bounded expiry, terminal proposal redaction, minimal replay receipts, audit90d, authenticated request maintenance and feature-off CLI hygiene are tested. |
 | MCP0-06 | Verified locally | Foundation source25ec84f:1015 tests,991 passed,0 failed,24 browser opt-ins skipped; targeted actual browser/restore and timing regression passed separately. |
 | MCP1 | Verified locally | Company3tools at08136e6, full1051tests/1027pass/0fail/24skip; actual defaults/approval/browser11/11. Production remains disabled. |
-| MCP2 | Safe subset verified; full variants deferred | Four gated built-ins; source707052c full1094/1069pass/0fail/25skip, actual browser/default7/7. Group/media/stock dependencies remain. |
-| MCP3 | Default workflow verified; successor full pending | Root111f1eb real default-constructor/native/MCP/browser5/5, boundaries/planning58/58. Five media tools require a separate default-off flag; production rejected. [Tools](mcp-v2/MEDIA-TOOLS.md). |
+| MCP2 | Safe subset verified; full variants in progress | Four gated built-ins; source707052c full1094/1069pass/0fail/25skip, actual browser/default7/7. Group/media/stock dependencies remain. |
+| MCP3 | Verified in integrated full/browser/native run | Root111f1eb real default-constructor/native/MCP/browser5/5, boundaries/planning58/58. Five media tools require a separate default-off flag; production rejected. [Tools](mcp-v2/MEDIA-TOOLS.md). |
 | MCP4 | Verified in isolated development | Rootc95e2b4: four gated built-ins, complete stock/hold revision, schema33 covering index and narrow history. Combined full1361/1333pass/0fail/28opt-in skips,249.055s; actual inventory browsers included in785cec6 seven-case run. [Tools](mcp-v2/INVENTORY-TOOLS.md). |
 | MCP5 | Verified in isolated development | Root95dbd91 full1456/1422pass/0fail/34skip,92/92 focused and4/4 actual two-store HTTPS browser tests; existing five decisions only, no migration. [Tools](mcp-v2/ORDERS-TOOLS.md). |
 | MCP6 | Verified locally, bounded read-only scope | Three gated tools atf7dc171; independent full1120/1095passed/0failed/25skipped,213.239s; response/default5/5, core29/29. Shared dashboard definitions, honest history/current-category/row/byte limits. |
-| MCP7 | Authority verified; tools/schema34 in progress | Root5961113 record/authority/OAuth/engine69/69; public controls, typed audit and monotonic pagination remain pending. Retention stays90days. |
+| MCP7 | Verified in integrated full/browser/native run | All three controls and schema34 integrated; rootce1e13c full1661/1661,0skip. Root379b405 migration/union139/139;01028af control/stage/engine69/69. Original-grant/domain authority, typed audit and bounded sequence pagination. Retention stays90days. |
 | MCP8 | Current-tool boundary verified | Sourcecc56449/root66d232c, independent8/8 bothDB. KB outage/stale claims/injection cannot replace live state or approval. No runtime KB dependency; future business and vendor acceptance remain separate. |
 | MCP-VERIFY | Required per phase | Record commands, environment, revision, actual test counts, security and rollback evidence; finish with independent acceptance. |
 
