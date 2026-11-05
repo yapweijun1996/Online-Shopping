@@ -514,3 +514,12 @@ Verified source25ec84f; production activation is rejected and the default truste
 Expired terminal proposals are redacted. Minimal receipts remain to original grant expiry plus90days; audit remains90days. Only successful authenticated operation data requests trigger bounded maintenance; public assets and denials cannot drive it. Maintenance failure cannot replace recorded success. The host-only cleanup CLI has a private ACTIVE/SUSPENDED hygiene fence, never business authority or database fallback; no scheduler/cron changed.
 
 Actual synthetic restores show a changed external epoch denies revived v2 authority. Operational credential invalidation, backup-domain separation, immutable deployment, multi-instance drain/rotation, real vendor OAuth and production capacity remain release gates. Domain adapters still need service/revision/privacy/concurrency/rollback acceptance. This is not production approval or external security certification.
+
+
+### Company tools and current shop mode (Phase1, source08136e6)
+
+Safe v2 development opt-in now has three company tools, filtered by fresh company scope consent and existing OWNER settings.write. The company service is reused through a shared pure normalizer. Complete company state plus bounded relevant product-currency counts fence concurrent edits; historical order currencies/prices are not rewritten. Business contacts may be returned only with authorized company scope and are excluded from receipts/audit payloads.
+
+Allv2read/prepare/commit/replay paths require current database shop modeproduction (ordinaryconfiguredshop), not demo/unconfigured. This is separate from NODE_ENVproduction, which still rejects v2 activation. V1 remains unchanged. Actual default-constructor RPC and mode-change negatives are tested.
+
+Currency changes additionally require an unchecked human-only first-party acknowledgment. A fixed source-owned ACK audit marker is recorded atomically and verified at commit against exact operation, actor/client/grant/tool/correlation and approval time. Model flags cannot provide this authority. Company read audit temporarily uses existing READ event with null legacy tool column and fixed company.get outcome; Phase7 must normalize the projection, never treat caller text as a tool identity.

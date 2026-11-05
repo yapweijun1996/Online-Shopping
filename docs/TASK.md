@@ -12,9 +12,9 @@ Scope: implement the Seller Operations Engine in dependency order, beginning wit
 | MCP0-04 | Verified locally | Actual review/approval application routes with session, fresh password, Origin/CSRF, bounded input, immutable proposal, tenant lifecycle fence and no-store/CSP. |
 | MCP0-05 | Verified locally | Bounded expiry, terminal proposal redaction, minimal replay receipts, audit90d, authenticated request maintenance and feature-off CLI hygiene are tested. |
 | MCP0-06 | Verified locally | Foundation source25ec84f:1015 tests,991 passed,0 failed,24 browser opt-ins skipped; targeted actual browser/restore and timing regression passed separately. |
-| MCP1 | In progress, isolated | Company tools via settings services and all-writer revision/currency policy. |
-| MCP2 | Depends on MCP0 | Product tools via existing services, including shared listing revision, SKU, snapshots and history. |
-| MCP3 | Depends on MCP0 | Bounded image staging, decoding, old/new review and atomic gallery layout. |
+| MCP1 | Verified locally | Company3tools at08136e6, full1051tests/1027pass/0fail/24skip; actual defaults/approval/browser11/11. Production remains disabled. |
+| MCP2 | In progress, staged subset | Product tools via existing services, including shared listing revision, SKU, snapshots and history. |
+| MCP3 | Read-only design audit | Bounded image staging, decoding, old/new review and atomic gallery layout. |
 | MCP4 | Depends on MCP0 | Atomic stock ledger across writers; preserve 48-hour computed SUBMITTED holds. |
 | MCP5 | Depends on MCP0 | Existing order decisions only; approval, revision checks and stock deduction exactly once. |
 | MCP6 | Depends on MCP0 | Extended analytics with independent fixtures, currencies, UTC+8 and coverage definitions. |

@@ -1,6 +1,6 @@
-# MCP v2 validation report — security foundation
+# MCP v2 validation snapshots — Phase 0 and Phase 1
 
-Date: 2026-11-05. **The complete Seller Operations Engine is not finished.** This report covers Phase 0. Company tools are in a separate development workspace; no domain tool is registered by default, and production v2 activation is rejected.
+Date: 2026-11-05. **The complete Seller Operations Engine is not finished.** The Phase 0 sections below are a named historical snapshot; the subsequent Phase 1 section records the integrated company tools at08136e6. New authority is default-off and production v2 activation is rejected.
 
 ## A. Baseline
 
@@ -57,3 +57,12 @@ Accessed: local source/worktrees, synthetic databases, GitHub read-only fetch an
 ## G. Next actions
 
 Continue the already authorized company tools and later phases after the verified foundation. Keep production disabled, preserve the eight v1 tools, and require phase acceptance before enabling business adapters. A development completion is not production release authorization.
+
+
+## Subsequent Phase1 company acceptance — 2026-11-05
+
+Source08136e6 oncodex/mcp-v2-seller-engine independently passed full **1051 tests,1027 passed,0 failed,24 browser opt-ins skipped**,133.989s, exit0 (`.local/manager-phase1-company-full.tap`). Separate actual browser/default registration/currency/mode tests passed **11/11**,0skipped,8.026s (`.local/manager-phase1-company-browser-final.tap`). Earlier company/default/OAuth/v1 targeted78/78 and core/service/browser45/45 passed.
+
+Three company tools are built into safe development opt-in, with existing-service normalization, bounded complete revision, strict OWNER/current scope, authentic human currency acknowledgment and minimal receipts. V1 grants remain8tools; appropriately consented new grants can see11. A current configured ordinary shop is required for allv2authority; deployment production mode remains blocked. Schema remains30. Actual machine schemas/examples are03-COMPANY-IMPLEMENTED.json; unsupported company fields are not fabricated.
+
+Development Phase1 is accepted. Staging/production readiness remainsNO. Catalog safe-subset implementation and media design continue; later inventory/order/analytics/operations tools are incomplete. No push/main merge/deploy/production-data or cron/service changes occurred. The earlier Phase0 sections remain evidence for their own named snapshots, not the current final project status.
