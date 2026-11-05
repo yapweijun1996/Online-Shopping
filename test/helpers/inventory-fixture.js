@@ -6,6 +6,7 @@ import { createCategory } from '../../src/settings.js';
 import { createProduct } from '../../src/products.js';
 import { createOrder } from '../../src/orders.js';
 import { ensureAdmin } from '../../src/auth.js';
+import { legacyMcpAuditFixtureSql } from './legacy-audit-fixture.js';
 export async function inventoryFixture(t, dialect, { seed = true } = {}) {
   let store, location;
   if (dialect === 'sqlite') { store = await openDatabase(':memory:'); t.after(() => store.close()); }
@@ -27,5 +28,14 @@ export async function inventoryFixture(t, dialect, { seed = true } = {}) {
   };
   return { store, location, product, order };
 }
-export const legacyInventoryDropSql = 'DROP INDEX IF EXISTS order_item_inventory; DROP TABLE IF EXISTS inventory_movement; DROP TABLE IF EXISTS inventory_state; DROP TABLE IF EXISTS inventory_coverage; DROP TABLE IF EXISTS inventory_schema;';
-export const dropInventoryForLegacyFixture = store => store.exec(legacyInventoryDropSql);
+const inventoryDropSql='DROP INDEX IF EXISTS order_item_inventory; DROP TABLE IF EXISTS inventory_movement; DROP TABLE IF EXISTS inventory_state; DROP TABLE IF EXISTS inventory_coverage; DROP TABLE IF EXISTS inventory_schema;';
+// Raw DatabaseSync downgrade fixtures always start with today's full baseline.
+export const legacyInventoryDropSql=legacyMcpAuditFixtureSql('sqlite')+inventoryDropSql;
+export async function dropInventoryForLegacyFixture(store) {
+  const exists=store.dialect==='sqlite'?await store.get("SELECT name FROM sqlite_schema WHERE name='mcp_audit'"):
+    (await store.get("SELECT to_regclass('public.mcp_audit') AS name")).name;
+  // Pre30 paths initialize the current operation extension themselves; restore
+  // only the old OAuth audit here. Exact31/32 fixtures separately restore v2.
+  if(exists)await store.exec(legacyMcpAuditFixtureSql(store.dialect));
+  await store.exec(inventoryDropSql);
+}

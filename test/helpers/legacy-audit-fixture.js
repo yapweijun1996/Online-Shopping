@@ -3,6 +3,12 @@ import { mcpAuditSchema } from '../../src/mcp/audit-schema.js';
 import { operationEventSchema } from '../../src/mcp/operation-schema.js';
 import { operationStorageDdl, operationStorageMetaSchema, operationStorageManifestSql } from '../../src/mcp/operation-runtime.js';
 const sha=value=>createHash('sha256').update(value).digest('hex');
+const auditColumns='id,at,tenant_id,account_id,client_id,grant_id,correlation_id,event,tool_name,resource_id,outcome,duration_ms,result_count';
+export const legacyMcpAuditFixtureSql=dialect=>`CREATE TEMP TABLE mcp_audit_fixture_rows AS SELECT ${auditColumns} FROM mcp_audit;
+DROP TABLE mcp_audit;
+${mcpAuditSchema(dialect,{version:33})}
+INSERT INTO mcp_audit(${auditColumns}) SELECT ${auditColumns} FROM mcp_audit_fixture_rows;
+DROP TABLE mcp_audit_fixture_rows;`;
 
 // Tests that start from today's fresh baseline must restore actual pre34 audit
 // DDL, not only lower schema_meta. All historical columns/UUIDs are preserved.
