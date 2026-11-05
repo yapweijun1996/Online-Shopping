@@ -5,12 +5,12 @@
  */
 export const RESERVATION_HOURS = 48;
 
-const cutoffIso = (now = Date.now()) => new Date(now - RESERVATION_HOURS * 3600 * 1000).toISOString();
+export const reservationCutoffIso = (now = Date.now()) => new Date(now - RESERVATION_HOURS * 3600 * 1000).toISOString();
 
 /* SQL expression: units of the product named by `productRef` held by pending orders (cutoff is a generated ISO literal). */
 export const reservedQuantitySql = (productRef, now) => `(SELECT COALESCE(SUM(i.quantity), 0) FROM order_item i
   JOIN delivery d ON d.id = i.delivery_id JOIN shop_order o ON o.id = d.order_id
-  WHERE i.product_id = ${productRef} AND o.status = 'SUBMITTED' AND o.submitted_at > '${cutoffIso(now)}')`;
+  WHERE i.product_id = ${productRef} AND o.status = 'SUBMITTED' AND o.submitted_at > '${reservationCutoffIso(now)}')`;
 
 export async function reservedQuantity(database, productId) {
   const row = await database.get(`SELECT ${reservedQuantitySql('?')} AS held`, productId);
@@ -26,3 +26,6 @@ export function stockAvailability(stockQuantity, reservedQuantity) {
   return { reservedQuantity, availableQuantity: stockQuantity === null ? null : Math.max(0, stockQuantity - reservedQuantity),
     reservationShortfall: stockQuantity === null ? 0 : Math.max(0, reservedQuantity - stockQuantity) };
 }
+
+// Compute the trusted phase cutoff once before projecting bounded row sets.
+export const isActiveReservation = (status, submittedAt, cutoff = reservationCutoffIso()) => status === 'SUBMITTED' && submittedAt > cutoff;

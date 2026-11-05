@@ -1,3 +1,4 @@
+import { orderDecisionTool } from './order-tools.js';
 import { inventorySummaryTool, inventoryMovementsTool, inventoryAdjustmentTool } from './inventory-tools.js';
 import { readFile } from 'node:fs/promises';
 import { ApiError, json, readBody } from '../http.js';
@@ -31,7 +32,7 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
   const safeV2 = enabled && config.mcpV2?.enabled === true && config.production !== true &&
     config.shopMode !== 'public-demo' && quickLogin === false && typeof tenantGuard?.withActiveTenant === 'function';
   const registrations = operationTools === undefined ? (safeV2 ? [companyReadTool(), companyMutationTool(), catalogCreateTool(), catalogUpdateTool(),
-    analyticsSalesTrendTool(), analyticsTopProductsTool(), analyticsInventoryRiskTool(), inventorySummaryTool(), inventoryMovementsTool(), inventoryAdjustmentTool(),
+    analyticsSalesTrendTool(), analyticsTopProductsTool(), analyticsInventoryRiskTool(), inventorySummaryTool(), inventoryMovementsTool(), inventoryAdjustmentTool(), orderDecisionTool(),
     ...(MEDIA_TOOLS_ACCEPTED && config.mcpMedia?.enabled === true ? mediaTools({ store, binding: oauth.binding, config, tenantGuard, quickLogin }) : [])] : []) : operationTools;
   const extensions = createOperationTools({ store, binding: oauth.binding, config, tenantGuard, quickLogin, entries: registrations });
   const maintain = async () => {

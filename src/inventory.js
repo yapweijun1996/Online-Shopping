@@ -51,18 +51,25 @@ const reasonFor = (ctx, initial) => initial ? ({ CSV: 'CSV_CREATE', DEMO: 'DEMO_
   : ({ CSV: 'CSV_SET', OPERATOR: 'OPERATOR_SET' }[ctx.source] || 'PRODUCT_SET');
 const quantity = value => value === null || Number.isInteger(value) && value >= 0 && value <= 1000000;
 
+// The same physical order-stock plan is used for preview and the actual writer.
+export function planOrderStock(before, delta, sku = '') {
+  if (!quantity(before) || !Number.isSafeInteger(delta) || delta === 0) throw new TypeError('Invalid internal order movement.');
+  if (before === null) return { after: null, changed: false, delta: null };
+  const after = before + delta;
+  if (after < 0) { const error = new ApiError(409, 'INSUFFICIENT_STOCK', `Not enough stock for ${sku}.`); error.field = 'stock'; throw error; }
+  if (after > 1000000) { const error = new ApiError(409, 'STOCK_LIMIT_CONFLICT', 'Returning this order would exceed the stock limit.'); error.field = 'stock'; throw error; }
+  return { after, ...planStockQuantity(before, after) };
+}
+
 async function write(store, productId, requested, { initialize = false, order = null, updatedAt = null, adjustmentReason = null } = {}) {
   return store.transaction(async () => {
     const current = await store.get('SELECT stock_quantity,updated_at,sku FROM product WHERE id=?', productId);
     if (!current) throw new ApiError(404, 'NOT_FOUND', 'Product not found.');
     const before = current.stock_quantity;
-    if (order && before === null) return null;
-    const after = order ? before + requested : requested;
-    if (!quantity(after)) {
-      if (order && after < 0) { const error = new ApiError(409, 'INSUFFICIENT_STOCK', `Not enough stock for ${current.sku}.`); error.field = 'stock'; throw error; }
-      if (order && after > 1000000) { const error = new ApiError(409, 'STOCK_LIMIT_CONFLICT', 'Returning this order would exceed the stock limit.'); error.field = 'stock'; throw error; }
-      throw new TypeError('Invalid internal stock quantity.');
-    }
+    const orderPlan = order ? planOrderStock(before, requested, current.sku) : null;
+    if (order && !orderPlan.changed) return null;
+    const after = order ? orderPlan.after : requested;
+    if (!quantity(after)) throw new TypeError('Invalid internal stock quantity.');
     const planned = initialize ? null : await assertStockTrackingChange(store, productId, before, after);
     const at = updatedAt || new Date(Math.max(Date.now(), Date.parse(current.updated_at) + 1)).toISOString();
     let revision;

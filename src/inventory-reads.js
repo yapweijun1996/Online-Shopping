@@ -2,7 +2,7 @@ import { inventoryOrderIndexDefinitionReady } from './inventory-schema.js';
 import { createHash } from 'node:crypto';
 import { ApiError } from './http.js';
 import { FieldError } from './validation.js';
-import { RESERVATION_HOURS, stockAvailability } from './stock-reservation.js';
+import { RESERVATION_HOURS, stockAvailability, isActiveReservation, reservationCutoffIso } from './stock-reservation.js';
 import { planStockQuantity, applyInventoryAdjustment, INVENTORY_ADJUSTMENT_REASONS } from './inventory.js';
 import { trackStockUpdate } from './product-history.js';
 
@@ -44,11 +44,11 @@ export async function inventorySnapshot(read,id,asOf=Date.now()) {
     WHERE i.product_id=? ORDER BY i.id LIMIT ${cap+1}`,id);
   if(rows.length!==Number(count.n)||rows.length>cap)unavailable();
   if(Buffer.byteLength(JSON.stringify(rows))>INVENTORY_READ_LIMITS.sourceBytes)limit();
-  const cutoff=new Date(asOf-RESERVATION_HOURS*3600000).toISOString(),facts=[],holds=new Set(),confirmed=new Set();let held=0;
+  const cutoff=reservationCutoffIso(asOf),facts=[],holds=new Set(),confirmed=new Set();let held=0;
   for(const row of rows){
     if(!uuid.test(row.id||'')||!uuid.test(row.delivery_id||'')||!uuid.test(row.order_id||'')||!integer(row.quantity,1,100)||!integer(row.revision,1)||
       !instant(row.submitted_at)||!['SUBMITTED','CONFIRMED','REJECTED','CANCELLED','SHIPPED','DELIVERED'].includes(row.status))unavailable();
-    const holding=row.status==='SUBMITTED'&&row.submitted_at>cutoff;
+    const holding=isActiveReservation(row.status,row.submitted_at,cutoff);
     if(holding||row.status==='CONFIRMED')facts.push([row.id,row.delivery_id,row.order_id,row.quantity,row.status,row.revision,row.submitted_at]);
     if(holding){held+=row.quantity;holds.add(row.order_id);}if(row.status==='CONFIRMED')confirmed.add(row.order_id);
   }

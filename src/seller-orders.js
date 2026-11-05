@@ -11,13 +11,15 @@ const orderColumns = `id, order_no, buyer_name, buyer_phone, buyer_email, whatsa
 const queueColumns = 'id, order_no, buyer_name, status, revision, currency, total_minor, submitted_at, updated_at, tracking_carrier, tracking_no, contact_erased_at';
 export const statuses = new Set(['SUBMITTED', 'CONFIRMED', 'REJECTED', 'SHIPPED', 'DELIVERED', 'CANCELLED']);
 // Each seller action moves an order from one status to the next; cancelling is possible until it ships.
-const transitions = {
+export const ORDER_TRANSITIONS = Object.freeze({
   confirm: { from: 'SUBMITTED', to: 'CONFIRMED' },
   reject: { from: 'SUBMITTED', to: 'REJECTED' },
   ship: { from: 'CONFIRMED', to: 'SHIPPED' },
   deliver: { from: 'SHIPPED', to: 'DELIVERED' },
   cancel: { from: 'CONFIRMED', to: 'CANCELLED' },
-};
+});
+for (const transition of Object.values(ORDER_TRANSITIONS)) Object.freeze(transition);
+const transitions = ORDER_TRANSITIONS;
 
 export function listNumber(params, key, fallback, maximum) {
   const value = params.get(key);
@@ -196,7 +198,8 @@ export async function getOrderReadProjection(database, id) {
   })) };
 }
 
-function validateDecision(action, input) {
+export function validateSellerDecision(action, input) {
+  if (!Object.hasOwn(transitions, action)) throw new TypeError('Invalid order action.');
   if (!input || typeof input !== 'object' || Array.isArray(input) ||
       !Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 1) {
     throw new FieldError('expectedRevision', 'Supply the current order revision.');
@@ -216,6 +219,14 @@ function validateDecision(action, input) {
   return { status: to, reason: null, tracking: null };
 }
 
+export function planSellerDecision(current, action, input) {
+  const decision = validateSellerDecision(action, input);
+  if (current.status !== transitions[action].from || current.revision !== input.expectedRevision) {
+    throw new ApiError(409, 'STALE_REVISION', 'The order changed. Reload and try again.');
+  }
+  return decision;
+}
+
 /* Confirming an order takes its quantities from tracked stock; the transaction rolls back if any product is short. */
 async function moveStock(database, orderId, revision, direction) {
   const lines = await database.all(`SELECT i.product_id, SUM(i.quantity) AS quantity
@@ -227,15 +238,13 @@ async function moveStock(database, orderId, revision, direction) {
 // Mutation-only helper joins an outer import transaction without loading order detail.
 export async function applySellerDecision(database, id, action, input, actorId, auditReason = null) {
   if (!Object.hasOwn(transitions, action)) throw new TypeError('Invalid order action.');
-  const decision = validateDecision(action, input);
+  validateSellerDecision(action, input);
   const now = new Date().toISOString();
   await database.transaction(async () => {
     const current = await database.get('SELECT status, revision FROM shop_order WHERE id = ?', id);
     if (!current) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
     const { from } = transitions[action];
-    if (current.status !== from || current.revision !== input.expectedRevision) {
-      throw new ApiError(409, 'STALE_REVISION', 'The order changed. Reload and try again.');
-    }
+    const decision = planSellerDecision(current, action, input);
     const tracking = decision.tracking;
     const changed = await database.get(`UPDATE shop_order SET status = ?, revision = revision + 1, updated_at = ?
       ${tracking ? ', tracking_carrier = ?, tracking_no = ?' : ''}
