@@ -16,7 +16,6 @@ export function mediaUploadTool(runtime) {
 }
 export const mediaLayoutTool = runtime => Object.freeze({ previewName: 'media.preview_layout', commitName: 'media.commit_layout',
   scope: 'media.write', capability: 'catalog.write', inputSchema: mediaLayoutInput, receiptSchema: mediaReceiptSchema, adapter: mediaLayoutAdapter(runtime) });
-export function mediaTools(options) {
-  const runtime = createMediaRuntime(options);
+export function mediaTools(options, runtime = createMediaRuntime(options)) {
   return Object.freeze([mediaListTool(),mediaUploadTool(runtime),mediaLayoutTool(runtime)]);
 }

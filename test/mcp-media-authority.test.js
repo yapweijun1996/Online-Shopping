@@ -7,10 +7,10 @@ import { mediaEngineFixture } from './helpers/mcp-media-engine-fixture.js';
 const base = process.env.SHOP_TEST_DATABASE_URL;
 for (const dialect of ['sqlite', 'postgres']) {
   const options = { skip: dialect === 'postgres' && !base };
-  test(`${dialect}: reserved catalog requires both live scopes and separately bound consent`, options, async t => {
+  test(`${dialect}: explicitly eligible catalog UPDATE requires both live scopes and separately bound consent`, options, async t => {
     const f = await mediaEngineFixture(t, dialect);
     const verify = extra => f.store.transaction(() => verifyOperationAuthority(f.store, { ...f.authorization,
-      toolName: 'catalog.preview_update', mediaPolicyId: 'catalog-media-v1', ...extra }));
+      toolName: 'catalog.preview_update', mediaPolicyId: 'catalog-media-v1', resourceType:'product', catalogUpdateEnabled:true, ...extra }));
     assert.deepEqual((await verify()).requiredScopes, ['catalog.write', 'media.write']);
     for (const scope of ['catalog.write', 'media.write']) {
       await f.store.run('DELETE FROM mcp_v2_scope_consent WHERE grant_id=? AND scope=?', f.context.grantId, scope);

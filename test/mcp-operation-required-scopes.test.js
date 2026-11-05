@@ -130,7 +130,7 @@ for (const dialect of ['sqlite', 'postgres']) {
           { name: 'TypeError', message: 'Invalid server operation scope requirements.' });
       }
     }
-    for (const authorityField of ['scope', 'requiredScopes', 'mediaPolicyId']) {
+    for (const authorityField of ['scope', 'requiredScopes', 'mediaPolicyId', 'catalogUpdateEnabled', 'mcpCatalogMediaUpdate']) {
       const response = await protocol(request(both, 'tools/call', { name: toolNames[1], arguments: { ...args(toolNames[1]),
         [authorityField]: authorityField === 'requiredScopes' ? ['catalog.write'] : 'catalog-media-v1' } }), 'synthetic-scope-boundary');
       assert.equal((await response.json()).error.code, -32602);

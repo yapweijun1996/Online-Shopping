@@ -5,6 +5,7 @@ import { checkPassword } from './accounts.js';
 import { safeRedirect } from './mcp/oauth.js';
 import { readMcpV2Config } from './mcp/operation-runtime.js';
 import { readMcpMediaConfig } from './mcp/media-config.js';
+import { readMcpCatalogMediaUpdateConfig } from './mcp/catalog-media-config.js';
 
 const weakPasswords = new Set(['password', 'password123', 'changeme', 'admin123', 'testpassword', 'replace-me']);
 
@@ -199,5 +200,6 @@ export function readConfig(env = process.env) {
   const mcpV2 = readMcpV2Config(env, { mcpEnabled, sellerOrigin, dbPath });
   const shopMode = readShopMode(env), sellerQuickLogin = env.SELLER_QUICK_LOGIN === '1';
   const mcpMedia = readMcpMediaConfig(env, { production, mcpEnabled, mcpV2, shopMode, sellerQuickLogin, dbPath });
-  return { mcpV2, mcpMedia, production, username, password, dbPath, databaseUrl, publicOrigin, sellerOrigin, appRevision, integrationKeys, whatsappQr, ai, mcpEnabled, mcpRedirectUris, mcpBrowserOrigins, platform: readPlatformConfig(env, integrationKeys), port, trustProxy, shopMode, sellerQuickLogin, demoRevision: readDemoRevision(env) };
+  const mcpCatalogMediaUpdate = readMcpCatalogMediaUpdateConfig(env, { production, mcpEnabled, mcpV2, mcpMedia, shopMode, sellerQuickLogin });
+  return { mcpV2, mcpMedia, mcpCatalogMediaUpdate, production, username, password, dbPath, databaseUrl, publicOrigin, sellerOrigin, appRevision, integrationKeys, whatsappQr, ai, mcpEnabled, mcpRedirectUris, mcpBrowserOrigins, platform: readPlatformConfig(env, integrationKeys), port, trustProxy, shopMode, sellerQuickLogin, demoRevision: readDemoRevision(env) };
 }

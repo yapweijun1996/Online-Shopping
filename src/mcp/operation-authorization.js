@@ -4,6 +4,7 @@ import { hash, liveGrant, stamp, SCOPES, V2_SCOPES } from './credentials.js';
 import { operationAuthorityPolicy, OPERATION_RESOURCE_CONTROLS } from './operation-policy.js';
 import { mediaInstant } from './media-policy.js';
 import { operationResourceBinding, readOperationRecord } from './operation-record.js';
+import { catalogMediaUpdateAllowed } from './catalog-media-config.js';
 const deny = () => { throw new ApiError(403, 'FORBIDDEN', 'Operation authorization failed.'); };
 const knownScopes = new Set([...SCOPES, ...V2_SCOPES]);
 function scopes(value) {
@@ -54,15 +55,16 @@ async function authorizePolicy(store, { bearer, binding, epochHash, policy, cons
     scope, requiredScopes }) };
 }
 
-export async function verifyOperationAuthority(store, { bearer, binding, toolName, epochHash, mediaPolicyId = null }) {
+export async function verifyOperationAuthority(store, { bearer, binding, toolName, epochHash, mediaPolicyId = null, resourceType = null, catalogUpdateEnabled = false }) {
   let policy;
   try { policy = operationAuthorityPolicy(toolName, mediaPolicyId); } catch { deny(); }
+  if (policy.flow === 'RESERVED' && !catalogMediaUpdateAllowed(catalogUpdateEnabled, {toolName,mediaPolicyId,resourceType})) deny();
   return (await authorizePolicy(store, { bearer, binding, epochHash, policy })).authority;
 }
 
 // Fixed control names and an operation ID only. The caller holds the current
 // platform->tenant writer fence; no scope, identity or record comes from args.
-export async function verifyOperationControlAuthority(store, { bearer, binding, toolName, epochHash, buildDigest, tenantRevision, operationId }) {
+export async function verifyOperationControlAuthority(store, { bearer, binding, toolName, epochHash, buildDigest, tenantRevision, operationId, catalogUpdateEnabled = false }) {
   if (!Object.hasOwn(OPERATION_RESOURCE_CONTROLS, toolName) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(operationId || '') ||
       !Number.isSafeInteger(tenantRevision) || tenantRevision < 0 || !/^[0-9a-f]{64}$/.test(buildDigest || '')) deny();
   const row = await store.get('SELECT * FROM mcp_v2_operation WHERE id=?', operationId);
@@ -70,7 +72,8 @@ export async function verifyOperationControlAuthority(store, { bearer, binding, 
   if (!resourceBinding || !mediaInstant(row.created_at)) deny();
   let underlying;
   try { underlying = operationAuthorityPolicy(row.tool_name, row.media_policy_id ?? null); } catch { deny(); }
-  if (underlying.flow === 'RESERVED') deny();
+  if (underlying.flow === 'RESERVED' && !catalogMediaUpdateAllowed(catalogUpdateEnabled,
+    {toolName:row.tool_name,mediaPolicyId:row.media_policy_id,resourceType:resourceBinding.resourceType})) deny();
   const scope = OPERATION_RESOURCE_CONTROLS[toolName].scope;
   const policy = Object.freeze({ ...underlying, scope, requiredScopes: Object.freeze([scope, ...underlying.requiredScopes]) });
   const { authority, grant } = await authorizePolicy(store, { bearer, binding, epochHash, policy, consentCutoff: row.created_at });

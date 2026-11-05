@@ -17,6 +17,7 @@ import { companyReadTool, companyMutationTool } from './company-tools.js';
 import { catalogCreateTool, catalogUpdateTool } from './catalog-tools.js';
 import { analyticsSalesTrendTool, analyticsTopProductsTool, analyticsInventoryRiskTool } from './analytics-tools.js';
 import { MEDIA_TOOLS_ACCEPTED, mediaTools } from './media-tools.js';
+import { catalogMediaUpdateEnabled } from './catalog-media-config.js';
 
 export const connectorPath = (path) => /^\/(?:mcp$|oauth\/(?:register|authorize|token|revoke|consent\.js|consent\.css|operation|operation-review\.(?:js|css))$|\.well-known\/oauth-(?:protected-resource|authorization-server)(?:\/|$)|api\/v1\/seller\/mcp(?:\/|$))/.test(path);
 const operationPath = (path) => path === '/oauth/operation' || /^\/oauth\/operation-review\.(?:js|css)$/.test(path) || /^\/api\/v1\/seller\/mcp\/(?:operations(?:\/|$)|approval(?:\/|$))/.test(path);
@@ -32,6 +33,7 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
   const oauth = createOAuth({ store, config, tenantId, limit });
   const safeV2 = enabled && config.mcpV2?.enabled === true && config.production !== true &&
     config.shopMode !== 'public-demo' && quickLogin === false && typeof tenantGuard?.withActiveTenant === 'function';
+  const catalogUpdateEnabled = catalogMediaUpdateEnabled(config,{quickLogin,tenantGuard});
   const registrations = operationTools === undefined ? (safeV2 ? [companyReadTool(), companyMutationTool(), catalogCreateTool(), catalogUpdateTool(),
     analyticsSalesTrendTool(), analyticsTopProductsTool(), analyticsInventoryRiskTool(), inventorySummaryTool(), inventoryMovementsTool(), inventoryAdjustmentTool(), orderDecisionTool(), ...operationControlTools(),
     ...(MEDIA_TOOLS_ACCEPTED && config.mcpMedia?.enabled === true ? mediaTools({ store, binding: oauth.binding, config, tenantGuard, quickLogin }) : [])] : []) : operationTools;
@@ -47,7 +49,7 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
     if (!operations) {
       operations = (async () => {
         const options = { store, binding: { ...oauth.binding, mcpV2: config.mcpV2 }, sellerOrigin: config.sellerOrigin,
-          quickLogin, ...config.mcpV2, tenantGuard, mcpMedia: config.mcpMedia };
+          quickLogin, ...config.mcpV2, tenantGuard, mcpMedia: config.mcpMedia, catalogUpdateEnabled };
         const review = createOperationReview(options), approve = createOperationApproval(options), media = createMediaReviewDelivery(options);
         await tenantGuard.withActiveTenant(tenantId, () => initializeOperationStorage(store, { enabled: true }));
         return { review, approve, media };

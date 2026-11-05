@@ -12,6 +12,7 @@ import { OPERATION_APPROVAL_TOOLS, operationAuthorityPolicy, MEDIA_REVIEW_ACKNOW
 import { mediaInstant, mediaHash } from './media-policy.js';
 import { clearMediaChallenge } from './media-maintenance.js';
 import { mediaReviewItems, readMediaReviewState, loadMediaReviewAsset, readMediaApprovalEvidence, readMediaAcknowledgements } from './media-approval-policy.js';
+import { catalogMediaUpdateAllowed } from './catalog-media-config.js';
 
 const APPROVAL_MS = 5 * 60 * 1000;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -46,7 +47,7 @@ function requireSafeConfig(binding, sellerOrigin, quickLogin, enabled, epoch, bu
   } catch { throw new TypeError('Operation approval requires explicit enablement, a secure seller binding and password login.'); }
 }
 
-async function humanContext(store, binding, tenantRevision, epochHash, buildDigest, session, row, mediaEnabled) {
+async function humanContext(store, binding, tenantRevision, epochHash, buildDigest, session, row, mediaEnabled, catalogUpdateEnabled, codecDigest) {
   if (session.account.mustChangePassword || !row || row.state !== 'PENDING_APPROVAL' || row.expires_at <= stamp() || row.created_at > stamp() ||
       row.account_id !== session.account.id || row.tenant_revision !== tenantRevision ||
       row.epoch_hash !== epochHash || row.build_digest !== buildDigest) return null;
@@ -55,11 +56,13 @@ async function humanContext(store, binding, tenantRevision, epochHash, buildDige
   const envelope = readStoredOperation(row, binding);
   let policy;
   try { policy = operationAuthorityPolicy(row.tool_name, row.media_policy_id ?? null); } catch { return null; }
-  const media = ['media.prepare_upload', 'media.preview_layout'].includes(row.tool_name);
+  const catalog = catalogMediaUpdateAllowed(catalogUpdateEnabled,{toolName:row.tool_name,mediaPolicyId:row.media_policy_id,resourceType:row.resource_type});
+  const media = ['media.prepare_upload', 'media.preview_layout'].includes(row.tool_name) || catalog;
+  if (catalogUpdateEnabled === true && row.tool_name === 'catalog.preview_update' && row.media_policy_id === null) return null;
   if (media && mediaEnabled !== true) return null;
   const grant = await liveGrant(store, row.grant_id, binding);
   const granted = typeof grant?.scopes === 'string' ? grant.scopes.split(' ') : [];
-  if (!envelope || !policy || (!OPERATION_APPROVAL_TOOLS.includes(row.tool_name) && !media) || policy.flow === 'RESERVED' || !grant ||
+  if (!envelope || !policy || (!OPERATION_APPROVAL_TOOLS.includes(row.tool_name) && !media) || (policy.flow === 'RESERVED' && !catalog) || !grant ||
       !mediaInstant(grant.created_at) || !mediaInstant(grant.absolute_expires_at) || !Number.isSafeInteger(grant.account_auth_version) ||
       new Set(granted).size !== granted.length || granted.some(scope => !knownScopes.has(scope)) ||
       row.required_scope !== policy.scope || row.required_capability !== policy.capability ||
@@ -76,7 +79,7 @@ async function humanContext(store, binding, tenantRevision, epochHash, buildDige
   const mediaContext = media ? Object.freeze({ tenantId: row.tenant_id, tenantRevision, accountId: row.account_id,
     clientId: row.client_id, grantId: row.grant_id, accountAuthVersion: grant.account_auth_version, epochHash, buildDigest,
     issuer: binding.issuer, resource: binding.resource, grantExpiresAt: grant.absolute_expires_at }) : null;
-  const mediaState = media ? await readMediaReviewState(store, row, envelope, mediaContext) : null;
+  const mediaState = media ? await readMediaReviewState(store, row, envelope, mediaContext, {catalogUpdateEnabled,codecDigest}) : null;
   let currencyAcknowledgementRequired;
   try { currencyAcknowledgementRequired = requiresCompanyCurrencyAcknowledgement(envelope); } catch { return null; }
   return { envelope, grant, policy, shop, currencyAcknowledgementRequired, mediaContext, mediaState };
@@ -84,7 +87,7 @@ async function humanContext(store, binding, tenantRevision, epochHash, buildDige
 
 // An authenticated seller can review the complete stored proposal. This
 // returns data and a session-bound review challenge, never HTML.
-export function createOperationReview({ store, binding, sellerOrigin, quickLogin, epoch, buildDigest, tenantGuard, mcpMedia, enabled = false }) {
+export function createOperationReview({ store, binding, sellerOrigin, quickLogin, epoch, buildDigest, tenantGuard, mcpMedia, enabled = false, catalogUpdateEnabled = false }) {
   const epochHash = requireSafeConfig(binding, sellerOrigin, quickLogin, enabled, epoch, buildDigest, tenantGuard);
   binding = Object.freeze({ tenantId: binding.tenantId, issuer: binding.issuer, resource: binding.resource, mcpV2: binding.mcpV2 });
   const reviewLimit = new SqlLimiter(store, 'mcp-v2-review-account', { limit: 30, windowMs: 900000 });
@@ -101,7 +104,7 @@ export function createOperationReview({ store, binding, sellerOrigin, quickLogin
         const session = await readSession(store, token);
         if (!session) forbidden();
         const row = await store.get('SELECT * FROM mcp_v2_operation WHERE id = ?', operationId);
-        const context = await humanContext(store, binding, tenant.revision, epochHash, buildDigest, session, row, mcpMedia?.enabled);
+        const context = await humanContext(store, binding, tenant.revision, epochHash, buildDigest, session, row, mcpMedia?.enabled, catalogUpdateEnabled, mcpMedia?.codecDigest);
         if (!context) forbidden();
         const client = await store.get('SELECT client_name FROM oauth_client WHERE id = ?', row.client_id);
         const shop = context.shop;
@@ -131,7 +134,7 @@ export function createOperationReview({ store, binding, sellerOrigin, quickLogin
 
 // Protected first-party delivery children; never accepts bearer credentials.
 export function createMediaReviewDelivery(options) {
-  const { store, binding, sellerOrigin, quickLogin, epoch, buildDigest, tenantGuard, mcpMedia, enabled = false } = options;
+  const { store, binding, sellerOrigin, quickLogin, epoch, buildDigest, tenantGuard, mcpMedia, enabled = false, catalogUpdateEnabled = false } = options;
   const epochHash = requireSafeConfig(binding, sellerOrigin, quickLogin, enabled, epoch, buildDigest, tenantGuard);
   const limiter = new SqlLimiter(store, 'mcp-v2-media-review-account', { limit: 240, windowMs: 900000 });
   async function child(request, input, acknowledge) {
@@ -151,7 +154,7 @@ export function createMediaReviewDelivery(options) {
         const session = await readSession(store, token);
         if (!session || !sameSecret(request.headers.get('x-csrf-token'), session.csrf_token)) forbidden();
         const row = await store.get('SELECT * FROM mcp_v2_operation WHERE id=?', input.operationId);
-        const context = await humanContext(store, binding, tenant.revision, epochHash, buildDigest, session, row, mcpMedia?.enabled);
+        const context = await humanContext(store, binding, tenant.revision, epochHash, buildDigest, session, row, mcpMedia?.enabled, catalogUpdateEnabled, mcpMedia?.codecDigest);
         if (!context?.mediaState || !sameSecret(row.preview_hash, input.previewHash)) forbidden();
         const now = stamp(), challenge = await store.get(`SELECT * FROM mcp_v2_approval_challenge WHERE operation_id=? AND nonce_hash=?
           AND account_id=? AND session_hash=? AND account_auth_version=? AND consumed_at IS NULL AND expires_at>?`,
@@ -193,7 +196,7 @@ export function createMediaReviewDelivery(options) {
 
 // First-party seller approval only. Password verification runs without a database
 // lock; a second platform fence and tenant transaction revalidate every snapshot.
-export function createOperationApproval({ store, binding, sellerOrigin, quickLogin, epoch, buildDigest, tenantGuard, mcpMedia, enabled = false }) {
+export function createOperationApproval({ store, binding, sellerOrigin, quickLogin, epoch, buildDigest, tenantGuard, mcpMedia, enabled = false, catalogUpdateEnabled = false }) {
   const epochHash = requireSafeConfig(binding, sellerOrigin, quickLogin, enabled, epoch, buildDigest, tenantGuard);
   binding = Object.freeze({ tenantId: binding.tenantId, issuer: binding.issuer, resource: binding.resource, mcpV2: binding.mcpV2 });
   const addressLimit = new SqlLimiter(store, 'mcp-v2-approval-address', { limit: 5, windowMs: 900000 });
@@ -224,7 +227,7 @@ export function createOperationApproval({ store, binding, sellerOrigin, quickLog
         const session = await readSession(store, token);
         if (!session || !sameSecret(request.headers.get('x-csrf-token'), session.csrf_token)) forbidden();
         const row = await store.get('SELECT * FROM mcp_v2_operation WHERE id = ?', input.operationId);
-        const context = await humanContext(store, binding, tenant.revision, epochHash, buildDigest, session, row, mcpMedia?.enabled);
+        const context = await humanContext(store, binding, tenant.revision, epochHash, buildDigest, session, row, mcpMedia?.enabled, catalogUpdateEnabled, mcpMedia?.codecDigest);
         if (!context || !sameSecret(row.preview_hash, input.previewHash) ||
             (Boolean(context.mediaState) && input.decision === 'approve') !== Object.hasOwn(input, 'mediaReviewed') ||
             (context.currencyAcknowledgementRequired && input.decision === 'approve') !== Object.hasOwn(input, 'currencyAcknowledged')) forbidden();
@@ -248,7 +251,7 @@ export function createOperationApproval({ store, binding, sellerOrigin, quickLog
       const account = await store.get('SELECT password_hash, oauth_auth_version FROM seller_account WHERE id = ?', session.account.id);
       if (!account || account.oauth_auth_version !== snapshot.authVersion || !sameSecret(account.password_hash, snapshot.passwordHash)) forbidden();
       const row = await store.get('SELECT * FROM mcp_v2_operation WHERE id = ?', input.operationId);
-      const context = await humanContext(store, binding, tenant.revision, epochHash, buildDigest, session, row, mcpMedia?.enabled);
+      const context = await humanContext(store, binding, tenant.revision, epochHash, buildDigest, session, row, mcpMedia?.enabled, catalogUpdateEnabled, mcpMedia?.codecDigest);
       if (!context || !sameSecret(row.preview_hash, input.previewHash) ||
           (Boolean(context.mediaState) && input.decision === 'approve') !== Object.hasOwn(input, 'mediaReviewed') ||
           (context.currencyAcknowledgementRequired && input.decision === 'approve') !== Object.hasOwn(input, 'currencyAcknowledged')) forbidden();

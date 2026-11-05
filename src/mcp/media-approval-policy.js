@@ -8,11 +8,14 @@ import { readMediaSnapshot, loadOldMediaAsset } from './media-resources.js';
 import { withMediaWriter, mediaHash } from './media-storage.js';
 import { canonicalOperationJson } from './operation-envelope.js';
 import { assertUploadThumbnail } from './media-upload-policy.js';
+import { catalogMediaUpdateAllowed } from './catalog-media-config.js';
 const deny = () => { throw new ApiError(403, 'FORBIDDEN', 'Image review could not be verified.'); };
 
 // Metadata only: callers supply current human authority inside the same fence/transaction.
 // The content revision binds literal labels and all physical images, not timestamps.
-export async function readMediaReviewState(store, operation, envelope, context) {
+export async function readMediaReviewState(store, operation, envelope, context, {catalogUpdateEnabled=false,codecDigest}={}) {
+  if (operation.media_policy_id === 'catalog-media-v1' && !catalogMediaUpdateAllowed(catalogUpdateEnabled,
+    {toolName:operation.tool_name,mediaPolicyId:operation.media_policy_id,resourceType:operation.resource_type})) deny();
   const manifest = await readMediaFrame(store, context, operation.id, envelope.proposal.media);
   const snapshot = await readMediaSnapshot(store, operation.resource_id);
   if (snapshot.revision !== operation.expected_revision || manifest.descriptor.graphRevision !== snapshot.revision ||
