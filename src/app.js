@@ -622,7 +622,7 @@ async function createTenantApi({ store, config, tenantId, tenantGuard, operation
   return async function handle(request, { clientAddress = 'unknown' } = {}) {
     try {
       const result = await route(request, clientAddress);
-      if (!basePath || /^\/api\/v1\/seller\/mcp\/operations(?:\/|$)/.test(new URL(request.url).pathname) ||
+      if (!basePath || new URL(request.url).pathname === '/mcp' || /^\/api\/v1\/seller\/mcp\/operations(?:\/|$)/.test(new URL(request.url).pathname) ||
           !result.headers.get('content-type')?.startsWith('application/json')) return result;
       return new Response(JSON.stringify(prefixUrls(await result.json())), { status: result.status, headers: result.headers });
     } catch (error) {

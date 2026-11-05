@@ -130,7 +130,7 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
       }
       response = json(e instanceof OAuthError ? e.status : e instanceof ApiError ? e.status : 503, { error: e instanceof OAuthError ? e.error : 'temporarily_unavailable' }, e.headers || {});
     }
-    if (operation && path.startsWith('/api/')) await maintain();
+    if (operation && response.ok && path.startsWith('/api/')) await maintain();
     response.headers.set('Referrer-Policy', 'no-referrer'); response.headers.set('X-Content-Type-Options', 'nosniff'); response.headers.set('Cache-Control', 'no-store');
     if (operation) { response.headers.set('Content-Security-Policy', reviewCsp); response.headers.set('X-Frame-Options', 'DENY'); response.headers.set('X-Robots-Tag', 'noindex'); }
     if (!operation && origin && approved) { response.headers.set('Access-Control-Allow-Origin', origin); response.headers.set('Vary', 'Origin'); response.headers.set('Access-Control-Expose-Headers', 'WWW-Authenticate, MCP-Protocol-Version'); }

@@ -16,6 +16,11 @@ function freeze(value) {
 // This closed schema dialect prevents valid() from accepting unknown keywords.
 function checkSchema(schema, depth = 0) {
   if (!schema || typeof schema !== 'object' || Array.isArray(schema) || depth > 8) invalid();
+  if (Object.hasOwn(schema, 'anyOf')) {
+    if (Object.keys(schema).length !== 1 || !Array.isArray(schema.anyOf) || schema.anyOf.length < 2 || schema.anyOf.length > 4) invalid();
+    for (const branch of schema.anyOf) checkSchema(branch, depth + 1);
+    return;
+  }
   const keys = {
     object: ['type', 'properties', 'required', 'additionalProperties'], array: ['type', 'items', 'minItems', 'maxItems'],
     string: ['type', 'minLength', 'maxLength', 'pattern', 'enum', 'const'], integer: ['type', 'minimum', 'maximum', 'enum', 'const'],

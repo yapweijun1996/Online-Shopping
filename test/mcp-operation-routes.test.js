@@ -238,3 +238,31 @@ for (const dialect of ['sqlite', 'postgres']) {
       assert.equal(await f.store.get("SELECT id FROM mcp_v2_event WHERE operation_id = ? AND event = 'COMMIT'", failed.value.operationId), undefined);
     });
 }
+
+for (const dialect of ['sqlite', 'postgres']) {
+  test(`${dialect}: public review assets and rejected authentication cannot drive operation maintenance`,
+    { skip: dialect === 'postgres' && !process.env.SHOP_TEST_DATABASE_URL }, async (t) => {
+      const f = await reviewFixture(t, dialect); await f.seedGrant();
+      const op = await f.reviewedOperation();
+      const expired = await f.operation({ createdAt: new Date(Date.now() - 120000).toISOString(), expiresAt: new Date(Date.now() - 60000).toISOString(),
+        proposal: { before: 'Synthetic expired private text', after: 'Synthetic replacement' } });
+      const before = await f.store.all('SELECT * FROM mcp_v2_operation ORDER BY id');
+      const originalAll = f.store.all; let maintenanceQueries = 0;
+      f.store.all = async (sql, ...values) => {
+        if (sql.includes('mcp_v2_operation') || sql.includes('mcp_v2_approval')) maintenanceQueries++;
+        return originalAll(sql, ...values);
+      };
+      try {
+        for (const path of ['/oauth/operation?operationId=' + op.value.operationId, '/oauth/operation-review.js', '/oauth/operation-review.css']) {
+          assert.equal((await f.call(path)).response.status, 200);
+        }
+        assert.equal((await f.call(op.path)).response.status, 403);
+        assert.equal((await f.call(op.path + '/approval', 'POST', { ...op.input, password: 'wrong' }, f.headers)).response.status, 403);
+      } finally { f.store.all = originalAll; }
+      assert.equal(maintenanceQueries, 0);
+      assert.deepEqual(await f.store.all('SELECT * FROM mcp_v2_operation ORDER BY id'), before);
+      assert.equal((await f.call(op.path, 'GET', undefined, f.headers)).response.status, 200);
+      const cleaned = await f.store.get('SELECT state, envelope_json FROM mcp_v2_operation WHERE id = ?', expired.value.operationId);
+      assert.equal(cleaned.state, 'EXPIRED'); assert.equal(cleaned.envelope_json, null);
+    });
+}

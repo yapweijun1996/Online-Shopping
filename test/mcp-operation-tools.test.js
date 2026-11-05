@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { createOperationTools } from '../src/mcp/operation-tools.js';
-import { catalogue } from '../src/mcp/tools.js';
+import { catalogue, valid } from '../src/mcp/tools.js';
 import { hash, secret } from '../src/mcp/credentials.js';
 import { reviewFixture, reviewPassword } from './helpers/mcp-review-fixture.js';
 import { syntheticOperationTool, objectSchema } from './helpers/mcp-operation-tool-fixture.js';
@@ -38,6 +38,15 @@ test('server registry rejects unknown policy pairs, open schemas and unbounded m
   bad({ inputSchema: objectSchema({ name: { type: 'string', minLength: 0, maxLength: 999999 } }) });
   bad({ inputSchema: objectSchema({ name: { type: 'string', minLength: 0, maxLength: 10, format: 'email' } }) });
   bad({ inputSchema: objectSchema({ bearer: { type: 'string', minLength: 0, maxLength: 43 } }) });
+  const nullable = { anyOf: [{ type: 'integer', minimum: 0, maximum: 1000000 }, { type: 'null' }] };
+  const nullableEntry = { ...syntheticOperationTool(), inputSchema: objectSchema({ stockQuantity: nullable }) };
+  assert.doesNotThrow(() => build([nullableEntry]));
+  assert.equal(valid({ stockQuantity: null }, nullableEntry.inputSchema), true);
+  assert.equal(valid({ stockQuantity: 0 }, nullableEntry.inputSchema), true);
+  assert.equal(valid({ stockQuantity: 'unlimited' }, nullableEntry.inputSchema), false);
+  bad({ inputSchema: objectSchema({ quantity: { anyOf: [nullable.anyOf[0], { type: 'null', default: null }] } }) });
+  bad({ inputSchema: objectSchema({ quantity: { anyOf: [nullable.anyOf[0]], type: 'integer' } }) });
+  bad({ inputSchema: objectSchema({ quantity: { anyOf: Array(5).fill({ type: 'null' }) } }) });
   bad({ receiptSchema: objectSchema({ name: { type: 'string', minLength: 0, maxLength: 10, default: 'unlisted' } }) });
   let deep = objectSchema({}); for (let i = 0; i < 10; i++) deep = objectSchema({ child: deep }); bad({ inputSchema: deep });
   assert.throws(() => build([syntheticOperationTool(), syntheticOperationTool()]), TypeError);
@@ -202,3 +211,21 @@ test('PostgreSQL v2 waiting on the platform fence leaves the tenant writer avail
     }
     assert.equal(prepared.response.status, 200); assert.equal(prepared.data.result.structuredContent.status, 'PENDING_APPROVAL');
   });
+
+test('tenant prefix transport preserves the validated minimal RPC receipt verbatim', async (t) => {
+  const entry = syntheticOperationTool();
+  entry.receiptSchema.properties.url = { type: 'string', minLength: 1, maxLength: 100 };
+  entry.receiptSchema.required.push('url');
+  entry.adapter.toReceipt = value => ({ id: value.id, revision: value.revision, url: '/api/synthetic-receipt' });
+  entry.adapter.validReceipt = value => Object.keys(value).sort().join(',') === 'id,revision,url';
+  const f = await rpcFixture(t, 'sqlite', { operationTools: [entry], config: { basePath: '/alpha' } });
+  const prepared = await f.tool('catalog.preview_update', { input: f.input, idempotencyKey: 'synthetic-prefix-0001' });
+  const op = prepared.data.result.structuredContent, path = '/api/v1/seller/mcp/operations/' + op.operationId;
+  const review = await f.call(path, 'GET', undefined, f.headers);
+  assert.equal((await f.call(path + '/approval', 'POST', { operationId: op.operationId, previewHash: op.previewHash,
+    challenge: review.data.challenge, decision: 'approve', password: reviewPassword }, f.headers)).response.status, 200);
+  const committed = await f.tool('catalog.commit_update', { operationId: op.operationId });
+  const stored = JSON.parse((await f.store.get('SELECT result_json FROM mcp_v2_operation WHERE id = ?', op.operationId)).result_json);
+  assert.deepEqual(committed.data.result.structuredContent.result, stored);
+  assert.equal(stored.url, '/api/synthetic-receipt');
+});
