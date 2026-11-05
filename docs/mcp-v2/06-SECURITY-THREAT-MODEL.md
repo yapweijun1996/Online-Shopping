@@ -1,6 +1,6 @@
 # Security threat model
 
-Status: **Mixed implemented controls and future-phase requirements.** Foundation source25ec84f and company source08136e6 have the independent evidence in [validation snapshots](10-FINAL-VALIDATION-REPORT.md). Catalog, media, inventory, order, extended analytics and operation inspection requirements below are not accepted merely because the framework passes. New authority remains default-off and production activation is rejected.
+Status: **Mixed implemented controls and future-phase requirements.** Accepted company, restricted catalog and analytics tools, schema 31 storage/cleanup, complete resource snapshots and the isolated native codec have independent evidence in [validation](10-FINAL-VALIDATION-REPORT.md). Metadata integrity and native limits do not establish safe image authorization or human review. Media coordination/approval, inventory, order decisions, operations tools and full catalog expansion remain incomplete. New authority stays disabled by default, and production activation is rejected.
 
 | Threat | Required control | Evidence required before enabling |
 | --- | --- | --- |
