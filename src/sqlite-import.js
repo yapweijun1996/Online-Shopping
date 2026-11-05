@@ -33,7 +33,7 @@ export async function importSqlite(source, target) {
   if (await source.schemaVersion() !== await target.schemaVersion()) throw new Error('Schema versions do not match.');
   return target.transaction(async () => {
     if (!await operationStorageReady(source) || !await operationStorageReady(target) || !await inventoryStorageReady(source) || !await inventoryStorageReady(target)) {
-      throw new Error('Import requires compatible operation/inventory schema 33 storage.');
+      throw new Error('Import requires compatible operation/inventory schema 34 storage.');
     }
     for (const table of OPERATION_STORAGE_TABLES) {
       if (await target.get(`SELECT 1 AS found FROM ${table} LIMIT 1`)) throw new Error('Import destination must have no MCP v2 history or authority.');
@@ -65,7 +65,8 @@ export async function importSqlite(source, target) {
       for (const row of rows) {
         const keys = Object.keys(row);
         if (keys.some(key => !/^[a-z_][a-z_0-9]*$/.test(key))) throw new Error('Unexpected import column.');
-        await target.run(`INSERT INTO ${table} (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`,
+        const identity = ['mcp_audit','mcp_v2_event'].includes(table) ? ' OVERRIDING SYSTEM VALUE' : '';
+        await target.run(`INSERT INTO ${table} (${keys.join(', ')})${identity} VALUES (${keys.map(() => '?').join(', ')})`,
           ...keys.map(key => ArrayBuffer.isView(row[key]) ? Buffer.from(row[key]) : row[key]));
       }
       const restored = await target.all(`SELECT * FROM ${table}`);
@@ -78,6 +79,8 @@ export async function importSqlite(source, target) {
       await target.get(`SELECT setval(pg_get_serial_sequence('${table}', 'id'),
         COALESCE((SELECT MAX(id) FROM ${table}), 1), EXISTS(SELECT 1 FROM ${table}))`);
     }
+    for (const table of ['mcp_audit','mcp_v2_event']) await target.get(`SELECT setval(pg_get_serial_sequence('${table}','sequence'),
+      COALESCE((SELECT MAX(sequence) FROM ${table}),1),EXISTS(SELECT 1 FROM ${table}))`);
     return { schemaVersion: await target.schemaVersion(), tables: evidence };
   });
 }

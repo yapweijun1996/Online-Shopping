@@ -3,10 +3,11 @@ import { lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { operationEpochHash } from './operation-epoch.js';
-import { operationSchema } from './operation-schema.js';
+import { operationSchema, operationEventSchema } from './operation-schema.js';
 import { mediaSchema, MEDIA_STORAGE_TABLES, mediaPolicyCheck } from './media-schema.js';
+import { assertMcpAuditStorage, assertMcpAuditUpgradeSource, migrateMcpAuditStorage, resetAuditSequence } from './audit-storage.js';
 
-export const OPERATION_STORAGE_VERSION = 2;
+export const OPERATION_STORAGE_VERSION = 3;
 export const OPERATION_STORAGE_TABLES = Object.freeze([
   'mcp_v2_authorization_request', 'mcp_v2_scope_consent', 'mcp_v2_operation',
   'mcp_v2_approval_challenge', 'mcp_v2_approval', 'mcp_v2_event', ...MEDIA_STORAGE_TABLES,
@@ -88,10 +89,10 @@ async function extensionObjects(store) {
   return { tables, constraints, indexes };
 }
 
-export function operationStorageManifestSql() {
+export function operationStorageManifestSql({ legacy = false } = {}) {
   return `SELECT encode(sha256(convert_to(jsonb_build_object(
     'tables', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY table_name, ordinal_position) FROM (
-      SELECT table_name, column_name, ordinal_position, data_type, is_nullable, column_default
+      SELECT table_name, column_name, ordinal_position, data_type, is_nullable, column_default${legacy ? '' : ', is_identity, identity_generation, identity_start, identity_increment, identity_maximum, identity_minimum, identity_cycle'}
       FROM information_schema.columns WHERE table_schema = 'public' AND table_name LIKE 'mcp!_v2!_%' ESCAPE '!'
     ) t), '[]'::jsonb),
     'constraints', COALESCE((SELECT jsonb_agg(to_jsonb(c) ORDER BY table_name, conname) FROM (
@@ -106,30 +107,38 @@ export function operationStorageManifestSql() {
   )::text, 'UTF8')), 'hex') AS digest`;
 }
 
-const manifestDigest = async (store) => store.dialect === 'postgres'
-  ? (await store.get(operationStorageManifestSql())).digest
+const manifestDigest = async (store, version = OPERATION_STORAGE_VERSION) => store.dialect === 'postgres'
+  ? (await store.get(operationStorageManifestSql({ legacy: version < 3 }))).digest
   : sha256(JSON.stringify(await extensionObjects(store)));
-export const operationStorageDdl = dialect => operationSchema(dialect) + mediaSchema(dialect);
-const ddlDigest = (store) => sha256(operationStorageDdl(store.dialect));
+export const operationStorageDdl = (dialect, { version = OPERATION_STORAGE_VERSION } = {}) => operationSchema(dialect, { auditSequence: version >= 3 }) + mediaSchema(dialect);
+const ddlDigest = (store, version = OPERATION_STORAGE_VERSION) => sha256(operationStorageDdl(store.dialect, { version }));
 
-async function assertStorage(store) {
-  if (![29, 30, 31, 32, 33].includes(await store.schemaVersion())) throw new Error('MCP v2 storage requires base schema 29, 30, 31, 32 or 33.');
+async function assertStorage(store, version = OPERATION_STORAGE_VERSION) {
+  if (![29, 30, 31, 32, 33, 34].includes(await store.schemaVersion())) throw new Error('MCP v2 storage requires base schema 29, 30, 31, 32, 33 or 34.');
   const meta = await store.get('SELECT version, ddl_digest, manifest_digest FROM mcp_v2_schema WHERE id = 1');
-  if (!meta || meta.version !== OPERATION_STORAGE_VERSION || meta.ddl_digest !== ddlDigest(store) ||
-      meta.manifest_digest !== await manifestDigest(store)) throw new Error('Incompatible MCP v2 storage extension.');
+  if (!meta || meta.version !== version || meta.ddl_digest !== ddlDigest(store, version) ||
+      meta.manifest_digest !== await manifestDigest(store, version)) throw new Error('Incompatible MCP v2 storage extension.');
   for (const table of OPERATION_STORAGE_TABLES) await store.all(`SELECT * FROM ${table} LIMIT 0`);
 }
 
-export const assertOperationStorage = store => assertStorage(store);
-
-export async function operationStorageReady(store) {
-  try { if (await store.schemaVersion() !== 33) return false; await assertStorage(store); return true; } catch { return false; }
+export async function assertOperationStorage(store) {
+  await assertStorage(store);
+  if (await store.schemaVersion() === 34) await assertMcpAuditStorage(store);
+}
+export async function assertOperationStorageForUpgrade(store) {
+  const meta = await store.get('SELECT version FROM mcp_v2_schema WHERE id=1');
+  if (![2,3].includes(meta?.version)) throw new Error('Incompatible operation storage upgrade.');
+  await assertStorage(store, meta.version);
 }
 
-export function operationStorageMetaSchema(dialect) {
-  if (!['sqlite', 'postgres'].includes(dialect)) throw new TypeError('Unsupported database dialect.');
+export async function operationStorageReady(store) {
+  try { if (await store.schemaVersion() !== 34) return false; await assertStorage(store); await assertMcpAuditStorage(store); return true; } catch { return false; }
+}
+
+export function operationStorageMetaSchema(dialect, { version = OPERATION_STORAGE_VERSION } = {}) {
+  if (!['sqlite', 'postgres'].includes(dialect) || ![2,3].includes(version)) throw new TypeError('Unsupported operation metadata schema.');
   return `CREATE TABLE mcp_v2_schema (
-      id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL CHECK (version = 2),
+      id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL CHECK (version = ${version}),
       ddl_digest TEXT NOT NULL CHECK (length(ddl_digest) = 64),
       manifest_digest TEXT NOT NULL CHECK (length(manifest_digest) = 64)
     )${dialect === 'sqlite' ? ' STRICT' : ''};`;
@@ -140,17 +149,18 @@ export function operationStorageSeedSql() {
     VALUES (1, ${OPERATION_STORAGE_VERSION}, '${sha256(operationStorageDdl('postgres'))}', (${operationStorageManifestSql()}));`;
 }
 
-async function writeStorageMetadata(store) {
+async function writeStorageMetadata(store, version = OPERATION_STORAGE_VERSION) {
   await store.run('INSERT INTO mcp_v2_schema(id, version, ddl_digest, manifest_digest) VALUES (1, ?, ?, ?)',
-    OPERATION_STORAGE_VERSION, ddlDigest(store), await manifestDigest(store));
-  await assertStorage(store);
+    version, ddlDigest(store, version), await manifestDigest(store, version));
+  await assertStorage(store, version);
 }
 
 // The fresh SQL baseline initializes its metadata itself so direct SQL bootstrap
 // and the JS loader have identical behavior. The loader verifies before commit.
 export async function initializeFreshOperationStorage(store) {
-  if (store.dialect !== 'postgres' || await store.schemaVersion() !== 33) throw new Error('Expected a fresh PostgreSQL schema 33.');
+  if (store.dialect !== 'postgres' || await store.schemaVersion() !== 34) throw new Error('Expected a fresh PostgreSQL schema 34.');
   await assertStorage(store);
+  await assertMcpAuditStorage(store);
 }
 
 // Base migration29 calls this inside its transaction. Existing partial or
@@ -159,11 +169,11 @@ export async function initializeOperationStorage(store, options) {
   if (options === undefined || options?.enabled === false) return false;
   if (options?.enabled !== true) throw new TypeError('Explicit MCP v2 storage opt-in is required.');
   return store.transaction(async () => {
-    if (![29, 30, 31, 32, 33].includes(await store.schemaVersion())) throw new Error('MCP v2 storage requires base schema 29, 30, 31, 32 or 33.');
+    if (![29, 30, 31, 32, 33, 34].includes(await store.schemaVersion())) throw new Error('MCP v2 storage requires base schema 29, 30, 31, 32, 33 or 34.');
     const exists = store.dialect === 'sqlite'
       ? Boolean(await store.get("SELECT name FROM sqlite_schema WHERE name = 'mcp_v2_schema'"))
       : store.dialect === 'postgres' && Boolean((await store.get("SELECT to_regclass('public.mcp_v2_schema') AS name")).name);
-    if (exists) { await assertStorage(store); return true; }
+    if (exists) { await assertOperationStorage(store); return true; }
     const objects = await extensionObjects(store);
     if (store.dialect === 'sqlite' ? objects.length : objects.tables.length || objects.constraints.length || objects.indexes.length) {
       throw new Error('Unversioned MCP v2 storage must be reviewed before initialization.');
@@ -180,11 +190,44 @@ export async function initializeOperationStorage(store, options) {
 export async function upgradeMediaStorage(store) {
   if (await store.schemaVersion() !== 30) throw new Error('Media storage migration requires schema30.');
   const meta = await store.get('SELECT version, ddl_digest, manifest_digest FROM mcp_v2_schema WHERE id = 1');
-  if (meta?.version === OPERATION_STORAGE_VERSION) { await assertStorage(store); return; }
+  if ([2,3].includes(meta?.version)) { await assertStorage(store, meta.version); return; }
   if (!meta || meta.version !== 1 || meta.ddl_digest !== sha256(operationSchema(store.dialect, { media: false })) ||
-      meta.manifest_digest !== await manifestDigest(store)) throw new Error('Incompatible schema30 operation storage.');
+      meta.manifest_digest !== await manifestDigest(store, 1)) throw new Error('Incompatible schema30 operation storage.');
   await store.exec(`ALTER TABLE mcp_v2_operation ADD COLUMN media_policy_id TEXT CHECK (media_policy_id IS NULL OR (${mediaPolicyCheck('media_policy_id')}))`);
   await store.exec(mediaSchema(store.dialect));
+  await store.exec('DROP TABLE mcp_v2_schema');
+  await store.exec(operationStorageMetaSchema(store.dialect, { version: 2 }));
+  await writeStorageMetadata(store, 2);
+}
+
+// Explicit schema33->34 only. Validate both known source stores before any DDL;
+// the caller's outer transaction also owns global version/inventory checks.
+export async function upgradeOperationAuditStorage(store) {
+  if (await store.schemaVersion() !== 33) throw new Error('Operation audit migration requires schema33.');
+  await assertMcpAuditUpgradeSource(store);
+  await assertOperationStorageForUpgrade(store);
+  const meta = await store.get('SELECT version FROM mcp_v2_schema WHERE id=1');
+  if (meta.version === 2) {
+    const columns = 'id,at,tenant_id,account_id,client_id,grant_id,tool_name,resource_id,operation_id,approver_id,event,outcome,correlation_id';
+    if (store.dialect === 'sqlite') {
+      if (await store.get("SELECT name FROM sqlite_schema WHERE name='mcp_v2_event_next34'")) throw new Error('Partial operation audit migration.');
+      await store.exec(operationEventSchema('sqlite', { table: 'mcp_v2_event_next34', indexes: false }));
+      await store.exec(`INSERT INTO mcp_v2_event_next34(${columns}) SELECT ${columns} FROM mcp_v2_event ORDER BY at,id;
+        DROP TABLE mcp_v2_event; ALTER TABLE mcp_v2_event_next34 RENAME TO mcp_v2_event;`);
+    } else {
+      await store.exec(`ALTER TABLE mcp_v2_event DROP CONSTRAINT mcp_v2_event_pkey;
+        ALTER TABLE mcp_v2_event ADD CONSTRAINT mcp_v2_event_id_key UNIQUE(id);
+        ALTER TABLE mcp_v2_event ADD COLUMN sequence BIGINT;
+        WITH ordered AS(SELECT id,ROW_NUMBER() OVER(ORDER BY at,id) AS n FROM mcp_v2_event)
+          UPDATE mcp_v2_event e SET sequence=o.n FROM ordered o WHERE e.id=o.id;
+        ALTER TABLE mcp_v2_event ALTER COLUMN sequence SET NOT NULL;
+        ALTER TABLE mcp_v2_event ALTER COLUMN sequence ADD GENERATED ALWAYS AS IDENTITY;
+        ALTER TABLE mcp_v2_event ADD CONSTRAINT mcp_v2_event_pkey PRIMARY KEY(sequence);`);
+      await resetAuditSequence(store, 'mcp_v2_event');
+    }
+    await store.exec(operationEventSchema(store.dialect));
+  }
+  await migrateMcpAuditStorage(store);
   await store.exec('DROP TABLE mcp_v2_schema');
   await store.exec(operationStorageMetaSchema(store.dialect));
   await writeStorageMetadata(store);

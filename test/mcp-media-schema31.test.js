@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import pg from 'pg';
-import { openDatabase, migrateStore } from '../src/db.js';
+import { openDatabase, migrateStore, SCHEMA_VERSION } from '../src/db.js';
 import { openPostgresDatabase } from '../src/postgres-db.js';
 import { upgradePostgres } from '../src/postgres/upgrade.js';
 import { operationSchema } from '../src/mcp/operation-schema.js';
@@ -28,7 +28,7 @@ async function legacy30(store) {
   for (const table of ['mcp_v2_authorization_request','mcp_v2_scope_consent','mcp_v2_approval_challenge','mcp_v2_approval','mcp_v2_event','mcp_v2_operation','mcp_v2_schema']) await store.exec(`DROP TABLE ${table}`);
   await store.exec(operationSchema(store.dialect, { media: false }));
   await store.exec(`CREATE TABLE mcp_v2_schema(id INTEGER PRIMARY KEY CHECK(id=1),version INTEGER NOT NULL CHECK(version=1),ddl_digest TEXT NOT NULL CHECK(length(ddl_digest)=64),manifest_digest TEXT NOT NULL CHECK(length(manifest_digest)=64))${store.dialect === 'sqlite' ? ' STRICT' : ''}`);
-  const digest = store.dialect === 'postgres' ? (await store.get(operationStorageManifestSql())).digest
+  const digest = store.dialect === 'postgres' ? (await store.get(operationStorageManifestSql({ legacy: true }))).digest
     : sha(JSON.stringify(await store.all("SELECT type, name, tbl_name, sql FROM sqlite_schema WHERE name GLOB 'mcp_v2_*' OR tbl_name GLOB 'mcp_v2_*' ORDER BY type, name")));
   await store.run('INSERT INTO mcp_v2_schema VALUES(1,1,?,?)', oldDigests[store.dialect], digest);
   await store.setSchemaVersion(30);
@@ -37,7 +37,7 @@ for (const dialect of ['sqlite','postgres']) {
   test(`${dialect}: schema31 validates the exact legacy30 fingerprint before transactional upgrade`, { skip: dialect === 'postgres' && !base }, async t => {
     assert.equal(sha(operationSchema(dialect, { media: false })), oldDigests[dialect]);
     const store = await fixture(t, dialect);
-    assert.equal(await store.schemaVersion(), 33); assert.equal(await operationStorageReady(store), true);
+    assert.equal(await store.schemaVersion(), SCHEMA_VERSION); assert.equal(await operationStorageReady(store), true);
     await legacy30(store);
     assert.equal(await operationStorageReady(store), false);
     await assert.rejects(initializeOperationStorage(store, { enabled: true }), /Incompatible/);
@@ -47,8 +47,8 @@ for (const dialect of ['sqlite','postgres']) {
     await assert.rejects(migrate(), /Synthetic media DDL interruption/); store.exec = exec;
     assert.equal(await store.schemaVersion(), 30);
     assert.equal((await store.get('SELECT version FROM mcp_v2_schema WHERE id=1')).version, 1);
-    await migrate(); assert.equal(await store.schemaVersion(), 33); assert.equal(await operationStorageReady(store), true);
-    assert.equal((await store.get('SELECT version FROM mcp_v2_schema WHERE id=1')).version, 2);
+    await migrate(); assert.equal(await store.schemaVersion(), SCHEMA_VERSION); assert.equal(await operationStorageReady(store), true);
+    assert.equal((await store.get('SELECT version FROM mcp_v2_schema WHERE id=1')).version, 3);
     for (const table of MEDIA_STORAGE_TABLES) assert.equal((await store.get(`SELECT COUNT(*) AS n FROM ${table}`)).n, 0);
     await store.exec('DROP INDEX mcp_v2_media_stage_lease'); assert.equal(await operationStorageReady(store), false);
   });

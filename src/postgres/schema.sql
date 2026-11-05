@@ -1,4 +1,4 @@
--- PostgreSQL baseline matching SQLite schema 33. Timestamps stay ISO text to preserve API snapshots.
+-- PostgreSQL baseline matching SQLite schema 34. Timestamps stay ISO text to preserve API snapshots.
 CREATE TABLE admin (
         id BIGINT PRIMARY KEY CHECK (id = 1),
         username TEXT NOT NULL UNIQUE,
@@ -327,7 +327,7 @@ CREATE TABLE ai_studio_image (
  created_by TEXT NOT NULL, created_at TEXT NOT NULL
 );
 CREATE INDEX ai_studio_image_product ON ai_studio_image(product_id);
-INSERT INTO schema_meta VALUES (1, 33);
+INSERT INTO schema_meta VALUES (1, 34);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 INSERT INTO shop_setup(id, mode, shop_name) VALUES (1, NULL, 'Online Shopping');
@@ -387,15 +387,17 @@ CREATE TABLE oauth_token (
 );
 CREATE INDEX oauth_token_grant_expiry ON oauth_token(grant_id, expires_at);
 CREATE INDEX oauth_token_predecessor ON oauth_token(predecessor_hash);
-CREATE TABLE mcp_audit (
- id TEXT PRIMARY KEY, at TEXT NOT NULL, tenant_id TEXT NOT NULL, account_id TEXT, client_id TEXT, grant_id TEXT,
+CREATE TABLE IF NOT EXISTS mcp_audit (
+ id TEXT NOT NULL UNIQUE, at TEXT NOT NULL, tenant_id TEXT NOT NULL, account_id TEXT, client_id TEXT, grant_id TEXT,
  correlation_id TEXT NOT NULL,
- event TEXT NOT NULL CHECK (event IN ('AUTHORIZE','ISSUE','REVOKE','READ','DENY','INVALIDATE')),
- tool_name TEXT CHECK (tool_name IS NULL OR tool_name IN ('catalog.list','catalog.get','catalog.history','catalog.categories','catalog.low_stock','orders.list','orders.get','analytics.summary')),
+ event TEXT NOT NULL CHECK (event IN ('AUTHORIZE','ISSUE','REVOKE','READ','DENY','INVALIDATE','CALL')),
+ tool_name TEXT CHECK (tool_name IS NULL OR tool_name IN ('catalog.list','catalog.get','catalog.history','catalog.categories','catalog.low_stock','orders.list','orders.get','analytics.summary','company.get','company.preview_update','company.commit_update','catalog.preview_create','catalog.commit_create','catalog.preview_update','catalog.commit_update','media.list','media.prepare_upload','media.commit_upload','media.preview_layout','media.commit_layout','inventory.summary','inventory.movements','inventory.preview_adjustment','inventory.commit_adjustment','orders.preview_decision','orders.commit_decision','analytics.sales_trend','analytics.top_products','analytics.inventory_risk','operations.get','operations.audit','operations.cancel')),
  resource_id TEXT, outcome TEXT NOT NULL,
- duration_ms BIGINT NOT NULL CHECK (duration_ms >= 0), result_count BIGINT NOT NULL CHECK (result_count >= 0)
+ duration_ms BIGINT NOT NULL CHECK (duration_ms >= 0), result_count BIGINT NOT NULL CHECK (result_count >= 0),
+ operation_id TEXT, sequence BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY
 );
-CREATE INDEX mcp_audit_time ON mcp_audit(at);
+CREATE INDEX IF NOT EXISTS mcp_audit_time ON mcp_audit(at);
+CREATE INDEX IF NOT EXISTS mcp_audit_operation_sequence ON mcp_audit(operation_id,at,sequence);
 
 CREATE TABLE whatsapp_qr_session (
  id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -522,14 +524,16 @@ CREATE TABLE IF NOT EXISTS mcp_v2_approval (
   approved_at TEXT NOT NULL, expires_at TEXT NOT NULL CHECK (expires_at > approved_at), consumed_at TEXT
 );
 CREATE TABLE IF NOT EXISTS mcp_v2_event (
-  id TEXT PRIMARY KEY, at TEXT NOT NULL, tenant_id TEXT NOT NULL, account_id TEXT,
+  id TEXT NOT NULL UNIQUE, at TEXT NOT NULL, tenant_id TEXT NOT NULL, account_id TEXT,
   client_id TEXT, grant_id TEXT, tool_name TEXT NOT NULL CHECK (length(tool_name) BETWEEN 1 AND 128), resource_id TEXT,
   operation_id TEXT NOT NULL, approver_id TEXT,
   event TEXT NOT NULL CHECK (event IN ('PREPARE','REQUEST_APPROVAL','APPROVE','REJECT','COMMIT','CANCEL','EXPIRE','CONFLICT','FAIL','DENY')),
-  outcome TEXT NOT NULL CHECK (length(outcome) BETWEEN 1 AND 80), correlation_id TEXT NOT NULL
+  outcome TEXT NOT NULL CHECK (length(outcome) BETWEEN 1 AND 80), correlation_id TEXT NOT NULL,
+  sequence BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY
 );
 CREATE INDEX IF NOT EXISTS mcp_v2_event_time ON mcp_v2_event(at);
 CREATE INDEX IF NOT EXISTS mcp_v2_event_operation ON mcp_v2_event(operation_id, at);
+CREATE INDEX IF NOT EXISTS mcp_v2_event_operation_sequence ON mcp_v2_event(operation_id,at,sequence);
 
 CREATE TABLE mcp_v2_operation_media_policy (
   operation_id TEXT PRIMARY KEY REFERENCES mcp_v2_operation(id) ON DELETE RESTRICT,
@@ -660,14 +664,14 @@ CREATE INDEX mcp_v2_media_event_time ON mcp_v2_media_event(at,id);
 CREATE INDEX mcp_v2_media_event_stage ON mcp_v2_media_event(stage_id,at,id);
 
 CREATE TABLE mcp_v2_schema (
-      id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL CHECK (version = 2),
+      id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL CHECK (version = 3),
       ddl_digest TEXT NOT NULL CHECK (length(ddl_digest) = 64),
       manifest_digest TEXT NOT NULL CHECK (length(manifest_digest) = 64)
     );
 INSERT INTO mcp_v2_schema(id, version, ddl_digest, manifest_digest)
-    VALUES (1, 2, '7e572ad2ea22da74c366aaf0ded4d4557113700aa1ab15993f75bdb2d157850c', (SELECT encode(sha256(convert_to(jsonb_build_object(
+    VALUES (1, 3, '8a3057a26cce0b19ffd8caceb83cc2836c1003f5972231da513f4b7c7d0d3454', (SELECT encode(sha256(convert_to(jsonb_build_object(
     'tables', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY table_name, ordinal_position) FROM (
-      SELECT table_name, column_name, ordinal_position, data_type, is_nullable, column_default
+      SELECT table_name, column_name, ordinal_position, data_type, is_nullable, column_default, is_identity, identity_generation, identity_start, identity_increment, identity_maximum, identity_minimum, identity_cycle
       FROM information_schema.columns WHERE table_schema = 'public' AND table_name LIKE 'mcp!_v2!_%' ESCAPE '!'
     ) t), '[]'::jsonb),
     'constraints', COALESCE((SELECT jsonb_agg(to_jsonb(c) ORDER BY table_name, conname) FROM (

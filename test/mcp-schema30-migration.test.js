@@ -36,7 +36,7 @@ const admin = ['synthetic_owner', 'synthetic-historical-hash', '2026-11-01T00:00
 test('fresh PostgreSQL baseline embeds exact shared operation DDL and self-contained metadata SQL', () => {
   const sql = readFileSync(new URL('../src/postgres/schema.sql', import.meta.url), 'utf8');
   assert.ok(sql.includes(operationStorageDdl('postgres') + '\n' + operationStorageMetaSchema('postgres') + '\n' + operationStorageSeedSql() + '\n'));
-  assert.match(sql, /INSERT INTO schema_meta VALUES \(1, 33\)/);
+  assert.match(sql, /INSERT INTO schema_meta VALUES \(1, 34\)/);
 });
 
 test('SQLite29 to30 migration preserves historical rows, rolls back final DDL failure and is repeatable', async (t) => {
@@ -101,7 +101,7 @@ for (const version of Array.from({ length: 20 }, (_, index) => index + 10)) {
     assert.equal((await store.get("SELECT to_regclass('public.mcp_v2_schema') AS name")).name, null);
     const upgraded = await openPostgresDatabase(url, { allowUpgrade: true });
     try {
-      assert.equal(await upgraded.schemaVersion(), 33);
+      assert.equal(await upgraded.schemaVersion(), SCHEMA_VERSION);
       assert.equal(await operationStorageReady(upgraded), true);
       assert.equal((await upgraded.get('SELECT manifest_digest FROM mcp_v2_schema WHERE id = 1')).manifest_digest, expectedManifest);
       assert.deepEqual(await upgraded.get('SELECT * FROM admin'), before);
@@ -148,4 +148,5 @@ test('PostgreSQL29 upgrade grants the legacy application role new tables without
   await tenant.transaction(() => upgradePostgres(tenant, 29));
   assert.equal((await tenant.get("SELECT has_table_privilege('online_shopping_app', 'mcp_v2_operation', 'SELECT') AS allowed")).allowed, false);
   for (const table of ['inventory_schema','inventory_coverage','inventory_state','inventory_movement']) assert.equal((await tenant.get("SELECT has_table_privilege('online_shopping_app', ?, 'SELECT') AS allowed",table)).allowed,false);
+  for (const name of ['mcp_audit_sequence_seq','mcp_v2_event_sequence_seq']) assert.equal((await tenant.get("SELECT has_sequence_privilege('online_shopping_app', ?, 'USAGE') AS allowed",name)).allowed,false);
 });

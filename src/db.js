@@ -9,9 +9,9 @@ import { migrateLegacyVariants } from './options.js';
 import { migrateListings } from './listings.js';
 import { migrateSharedGalleries } from './product-gallery.js';
 import { migrateOAuth } from './mcp/schema.js';
-import { initializeOperationStorage, operationStorageReady, upgradeMediaStorage, assertOperationStorage } from './mcp/operation-runtime.js';
+import { initializeOperationStorage, operationStorageReady, upgradeMediaStorage, assertOperationStorageForUpgrade, upgradeOperationAuditStorage } from './mcp/operation-runtime.js';
 
-export const SCHEMA_VERSION = 33;
+export const SCHEMA_VERSION = 34;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -644,12 +644,16 @@ export async function migrateStore(store) {
     version = 31;
   }
   if (version === 31) {
-    await store.transaction(async () => { await assertOperationStorage(store); await migrateInventory(store); await store.setSchemaVersion(32); });
+    await store.transaction(async () => { await assertOperationStorageForUpgrade(store); await migrateInventory(store); await store.setSchemaVersion(32); });
     version = 32;
   }
   if (version === 32) {
-    await store.transaction(async () => { await assertOperationStorage(store); await migrateInventoryOrderIndex(store); await store.setSchemaVersion(33); });
+    await store.transaction(async () => { await assertOperationStorageForUpgrade(store); await migrateInventoryOrderIndex(store); await store.setSchemaVersion(33); });
     version = 33;
+  }
+  if (version === 33) {
+    await store.transaction(async () => { await upgradeOperationAuditStorage(store); await store.setSchemaVersion(34); });
+    version = 34;
   }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }

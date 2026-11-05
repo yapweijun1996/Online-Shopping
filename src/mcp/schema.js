@@ -1,3 +1,4 @@
+import { mcpAuditSchema } from './audit-schema.js';
 // Shared DDL keeps fresh/upgrade PostgreSQL and SQLite constraints equivalent.
 export function oauthSchema(dialect, addVersion = true) {
   const integer = dialect === 'postgres' ? 'BIGINT' : 'INTEGER';
@@ -47,15 +48,7 @@ CREATE TABLE IF NOT EXISTS oauth_token (
 )${strict};
 CREATE INDEX IF NOT EXISTS oauth_token_grant_expiry ON oauth_token(grant_id, expires_at);
 CREATE INDEX IF NOT EXISTS oauth_token_predecessor ON oauth_token(predecessor_hash);
-CREATE TABLE IF NOT EXISTS mcp_audit (
- id TEXT PRIMARY KEY, at TEXT NOT NULL, tenant_id TEXT NOT NULL, account_id TEXT, client_id TEXT, grant_id TEXT,
- correlation_id TEXT NOT NULL,
- event TEXT NOT NULL CHECK (event IN ('AUTHORIZE','ISSUE','REVOKE','READ','DENY','INVALIDATE')),
- tool_name TEXT CHECK (tool_name IS NULL OR tool_name IN ('catalog.list','catalog.get','catalog.history','catalog.categories','catalog.low_stock','orders.list','orders.get','analytics.summary')),
- resource_id TEXT, outcome TEXT NOT NULL,
- duration_ms ${integer} NOT NULL CHECK (duration_ms >= 0), result_count ${integer} NOT NULL CHECK (result_count >= 0)
-)${strict};
-CREATE INDEX IF NOT EXISTS mcp_audit_time ON mcp_audit(at);
+${mcpAuditSchema(dialect, { version: 33 })}
 `;
 }
 

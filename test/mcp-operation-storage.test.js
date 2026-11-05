@@ -115,7 +115,7 @@ for (const dialect of ['sqlite', 'postgres']) {
   test(`${dialect}: extension initialization is explicit, repeatable, base-compatible and readiness checks physical schema`, options, async (t) => {
     const store = await fixture(t, dialect);
     await ensureAdmin(store, 'synthetic_owner', ownerPassword);
-    assert.equal(SCHEMA_VERSION, 33);
+    assert.equal(SCHEMA_VERSION, 34);
     assert.equal(await ready(store), true);
     assert.equal(await initializeOperationStorage(store), false);
     assert.equal(await initializeOperationStorage(store, { enabled: false }), false);
@@ -147,7 +147,7 @@ for (const dialect of ['sqlite', 'postgres']) {
     assert.equal(await store.schemaVersion(), 29);
     store.exec = exec;
     await initializeOperationStorage(store, { enabled: true });
-    await store.setSchemaVersion(33);
+    await store.setSchemaVersion(SCHEMA_VERSION);
     assert.equal(await operationStorageReady(store), true);
     await store.run('UPDATE mcp_v2_schema SET ddl_digest = ? WHERE id = 1', '0'.repeat(64));
     assert.equal(await operationStorageReady(store), false);
@@ -169,7 +169,7 @@ for (const dialect of ['sqlite', 'postgres']) {
     assert.equal(await operationStorageReady(store), false);
     assert.equal((await extensionNames(store)).includes(OPERATION_STORAGE_META), false);
     await store.setSchemaVersion(28);
-    await assert.rejects(initializeOperationStorage(store, { enabled: true }), /base schema 29, 30, 31, 32 or 33/);
+    await assert.rejects(initializeOperationStorage(store, { enabled: true }), /base schema 29, 30, 31, 32, 33 or 34/);
     assert.equal(await store.schemaVersion(), 28);
   });
 
@@ -209,10 +209,13 @@ test('PostgreSQL existing extension initializes under an explicitly granted appl
   app = openPostgresStore(url.href);
   assert.equal(await operationStorageReady(app), false, 'No implicit grants to guessed application roles');
   await owner.exec(`GRANT USAGE ON SCHEMA public TO ${role}; GRANT SELECT ON schema_meta TO ${role};
-    GRANT SELECT, INSERT, UPDATE, DELETE ON ${[OPERATION_STORAGE_META, ...OPERATION_STORAGE_TABLES].join(', ')} TO ${role}`);
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ${[OPERATION_STORAGE_META, ...OPERATION_STORAGE_TABLES, 'mcp_audit'].join(', ')} TO ${role}; GRANT USAGE, SELECT ON SEQUENCE mcp_audit_sequence_seq,mcp_v2_event_sequence_seq TO ${role}`);
   assert.equal((await app.get("SELECT has_schema_privilege(current_user, 'public', 'CREATE') AS allowed")).allowed, false);
   assert.equal(await operationStorageReady(app), true);
   assert.equal(await initializeOperationStorage(app, { enabled: true }), true);
+  const id=randomUUID();
+  await app.run("INSERT INTO mcp_audit(id,at,tenant_id,correlation_id,event,tool_name,outcome,duration_ms,result_count) VALUES(?,?,'synthetic',?,'CALL','company.commit_update','REPLAY',0,1)",id,new Date().toISOString(),id);
+  assert.ok((await app.get('SELECT sequence FROM mcp_audit WHERE id=?',id)).sequence>0);
 });
 
 test('SQLite snapshot restore retains durable extension but rotated external epoch denies a restored approval before any adapter write', async (t) => {

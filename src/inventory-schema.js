@@ -73,7 +73,7 @@ export function inventorySeedSql() {
 }
 // The frozen32 table manifest remains unchanged by the separate33 index.
 export async function assertInventoryStorage(store) {
-  if (![32,33].includes(await store.schemaVersion())) throw new Error('Inventory tables require schema32 or33.');
+  if (![32,33,34].includes(await store.schemaVersion())) throw new Error('Inventory tables require schema32,33 or34.');
   const row = await store.get('SELECT version,ddl_digest,manifest_digest FROM inventory_schema WHERE id=1');
   if (row?.version !== INVENTORY_SCHEMA_VERSION || row.ddl_digest !== hash(inventorySchema(store.dialect)) || row.manifest_digest !== await manifest(store)) throw new Error('Incompatible inventory storage.');
 }
@@ -96,7 +96,7 @@ export async function inventoryOrderIndexReady(store) {
   return columns.map(row=>row.name).join(',') === 'product_id,id,delivery_id' && columns.every(row=>row.desc===0&&row.coll==='BINARY');
 }
 export async function inventoryStorageReady(store) {
-  try { if (await store.schemaVersion() !== 33) return false; await assertInventoryStorage(store); return await inventoryOrderIndexReady(store); } catch { return false; }
+  try { if (await store.schemaVersion() !== 34) return false; await assertInventoryStorage(store); return await inventoryOrderIndexReady(store); } catch { return false; }
 }
 export async function migrateInventoryOrderIndex(store) {
   if (await store.schemaVersion() !== 32) throw new Error('Inventory index migration requires schema32.');
