@@ -7,13 +7,14 @@ import { requiresCompanyCurrencyAcknowledgement, COMPANY_CURRENCY_ACKNOWLEDGED }
 import { operationEpochHash } from './operation-epoch.js';
 import { verifyOperationAuthority } from './operation-authorization.js';
 import { MEDIA_LIMITS } from './media-schema.js';
-import { mediaJson, mediaPolicyForTool, validateRetainedMediaPolicy } from './media-policy.js';
+import { mediaJson, mediaPolicyForTool } from './media-policy.js';
 import { mediaManifestRows } from './media-manifest.js';
-import { readMediaPolicy, storeMediaPolicy, withMediaWriter } from './media-storage.js';
+import { storeMediaPolicy, withMediaWriter } from './media-storage.js';
 import { persistMediaFrame, readMediaFrame } from './media-frame-storage.js';
 import { readMediaApprovalEvidence } from './media-approval-policy.js';
 import { assertUploadThumbnail } from './media-upload-policy.js';
-import { operationInstant, operationReceiptExpiry, OPERATION_TERMINAL_STATES } from './operation-maintenance.js';
+import { operationReceiptExpiry } from './operation-maintenance.js';
+import { readOperationRecord } from './operation-record.js';
 import { OPERATION_APPROVAL_MS, OPERATION_MUTATION_PAIRS, OPERATION_SCOPE_POLICIES, operationAuthorityPolicy } from './operation-policy.js';
 
 const ttl = 10 * 60 * 1000;
@@ -157,36 +158,10 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
     resource: binding.resource, grantExpiresAt: authority.grantExpiresAt });
 
   async function metadata(row, adapter, tenantRevision, grant, authority) {
-    let policy;
-    try { policy = operationAuthorityPolicy(row?.tool_name, row?.media_policy_id ?? null); } catch { return false; }
-    if (!row || !adapter || !grant || !uuid.test(row.id || '') || !uuid.test(row.account_id || '') ||
-        !uuid.test(row.grant_id || '') || !uuid.test(row.correlation_id || '') ||
-        row.tenant_id !== binding.tenantId || row.issuer !== binding.issuer || row.resource !== binding.resource ||
-        row.tenant_revision !== tenantRevision || row.epoch_hash !== epochHash || row.build_digest !== buildDigest ||
-        typeof row.client_id !== 'string' || !row.client_id.length || row.client_id.length > 128 ||
-        row.resource_type !== adapter.resourceType || !/^[a-z][a-z0-9_.-]{0,127}$/.test(row.resource_type) ||
-        !(row.resource_id === null || (typeof row.resource_id === 'string' && row.resource_id.length > 0 && row.resource_id.length <= 128)) ||
-        !(row.expected_revision === null || (typeof row.expected_revision === 'string' && row.expected_revision.length > 0 && row.expected_revision.length <= 128)) ||
-        !operationInstant(row.created_at) || !operationInstant(row.expires_at) || row.created_at >= row.expires_at ||
-        Date.parse(row.expires_at) - Date.parse(row.created_at) !== ttl || row.created_at > stamp() ||
-        !operationInstant(row.receipt_expires_at) || row.receipt_expires_at !== operationReceiptExpiry(grant.absolute_expires_at) ||
-        row.receipt_expires_at <= stamp() ||
-        !['request_hash', 'preview_hash', 'idempotency_hash'].every((key) => /^[0-9a-f]{64}$/.test(row[key] || '')) ||
-        !Object.hasOwn(OPERATION_SCOPE_POLICIES, row.tool_name) ||
-        row.required_scope !== OPERATION_SCOPE_POLICIES[row.tool_name].scope ||
-        row.required_capability !== OPERATION_SCOPE_POLICIES[row.tool_name].capability ||
-        row.risk !== policy.risk || (row.media_policy_id ?? null) !== (adapter.media?.policyId ?? null)) return false;
-    const envelope = row.redacted_at === null ? readStoredOperation(row, binding) : null;
-    if (row.redacted_at === null && !envelope) return false;
-    try {
-      const stored = await readMediaPolicy(store, contextFor(authority, tenantRevision), row.id);
-      const descriptor = validateRetainedMediaPolicy(row, stored,
-        envelope && Object.hasOwn(envelope.proposal, 'media') ? envelope.proposal.media : undefined);
-      if (adapter.media && (!descriptor || descriptor.codecDigest !== adapter.media.codecDigest || descriptor.graphRevision !== row.expected_revision)) return false;
-    } catch { return false; }
-    if (row.redacted_at !== null) return OPERATION_TERMINAL_STATES.includes(row.state) && row.envelope_json === null &&
-      operationInstant(row.redacted_at) && row.redacted_at >= row.expires_at && row.redacted_at <= stamp();
-    return true;
+    if (!adapter) return false;
+    return Boolean(await readOperationRecord(store, row, { binding, tenantRevision, epochHash, buildDigest, grant,
+      context: contextFor(authority, tenantRevision), expected: { resourceType: adapter.resourceType,
+        mediaPolicyId: adapter.media?.policyId ?? null, codecDigest: adapter.media?.codecDigest } }));
   }
 
   async function receipt(adapter, value) {
