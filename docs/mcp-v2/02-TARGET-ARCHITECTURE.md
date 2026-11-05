@@ -2,6 +2,10 @@
 
 Current verified implementation and remaining work are maintained in [progress](09-IMPLEMENTATION-PROGRESS.md); exact source, commands, failures and proof limits are maintained in [validation](10-FINAL-VALIDATION-REPORT.md). New write features remain disabled by default and production activation is rejected. The original design below is historical; a planned capability is not authorization or evidence of implementation.
 
+The reviewed [catalog expansion plan](CATALOG-EXPANSION-PLAN.md) defines union snapshots/projections, fixed constructor-selected dual-scope HIGH update policy, trusted listing identity, exact engine/review changes and phased two-store acceptance. Stock adjustments remain separate inventory operations; newborn staged-image composition is not implied.
+
+The reviewed [catalog expansion plan](CATALOG-EXPANSION-PLAN.md) defines union snapshots/projections, fixed dual-scope HIGH update policy, trusted listing identity, engine/review changes and two-store acceptance. Stock adjustments remain separate inventory operations; newborn staged-image composition is not implied.
+
 ## Historical design snapshot
 
 Status: **PROPOSED**, except the existing components identified in the audit and the isolated hash helper in the progress report. None of the proposed write tools is available. Baseline: `17bc1de65a83838e0332f2c2cc5271beac6a109b`.
