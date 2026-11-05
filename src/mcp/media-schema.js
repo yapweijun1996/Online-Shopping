@@ -1,9 +1,11 @@
 // Schema31 storage only. These constants and tables grant no tool authority.
 export const MEDIA_LIMITS = Object.freeze({ sourceBytes: 524288, canonicalBytes: 524288, thumbnailBytes: 81920,
+  appendCalls: 240, appendWindowBytes: 12582912, rateWindowMs: 900000,
   chunkBytes: 36864, chunks: 15, uploadMs: 900000, absoluteMs: 1500000, leaseMs: 45000, coordinatorMs: 30000,
   decodeMs: 5000, validationAttempts: 2, tenantSlots: 24, clientSlots: 12, tenantBytes: 33554432, clientBytes: 16777216,
   products: 300, listings: 2, oldAssets: 32, newAssets: 10, assets: 42, records: 512, pages: 16, pageRecords: 32,
   pageBytes: 16384, oldBytes: 16777216, newBytes: 8388608, graphBytes: 25165824, cleanupRows: 100, cleanupBytes: 1048576 });
+export const MEDIA_POLICY_DESCRIPTOR_FIELDS = Object.freeze(['policyId','manifestRoot','graphRevision','codecDigest','pageCount','assetCount','effectCount']);
 export const MEDIA_POLICY_IDS = Object.freeze(['media-upload-v1', 'media-layout-v1', 'catalog-media-v1']);
 export const MEDIA_STORAGE_TABLES = Object.freeze(['mcp_v2_operation_media_policy', 'mcp_v2_media_quota', 'mcp_v2_media_stage',
   'mcp_v2_media_chunk', 'mcp_v2_media_pin', 'mcp_v2_media_manifest_page', 'mcp_v2_media_asset_ref', 'mcp_v2_media_delivery',
@@ -78,6 +80,7 @@ CREATE TABLE mcp_v2_media_stage (
 CREATE INDEX mcp_v2_media_stage_owner ON mcp_v2_media_stage(tenant_id,account_id,client_id,state,upload_expires_at,id);
 CREATE INDEX mcp_v2_media_stage_lease ON mcp_v2_media_stage(state,lease_until,id);
 CREATE INDEX mcp_v2_media_stage_expiry ON mcp_v2_media_stage(absolute_expires_at,id);
+CREATE INDEX mcp_v2_media_stage_receipt ON mcp_v2_media_stage(tenant_id,receipt_expires_at,id) WHERE reserved_bytes = 0;
 CREATE INDEX mcp_v2_media_stage_quota ON mcp_v2_media_stage(tenant_id,quota_owner_key) WHERE reserved_bytes > 0;
 CREATE INDEX mcp_v2_media_stage_product ON mcp_v2_media_stage(product_id,id);
 CREATE TABLE mcp_v2_media_chunk (

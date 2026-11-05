@@ -590,6 +590,7 @@ CREATE TABLE mcp_v2_media_stage (
 CREATE INDEX mcp_v2_media_stage_owner ON mcp_v2_media_stage(tenant_id,account_id,client_id,state,upload_expires_at,id);
 CREATE INDEX mcp_v2_media_stage_lease ON mcp_v2_media_stage(state,lease_until,id);
 CREATE INDEX mcp_v2_media_stage_expiry ON mcp_v2_media_stage(absolute_expires_at,id);
+CREATE INDEX mcp_v2_media_stage_receipt ON mcp_v2_media_stage(tenant_id,receipt_expires_at,id) WHERE reserved_bytes = 0;
 CREATE INDEX mcp_v2_media_stage_quota ON mcp_v2_media_stage(tenant_id,quota_owner_key) WHERE reserved_bytes > 0;
 CREATE INDEX mcp_v2_media_stage_product ON mcp_v2_media_stage(product_id,id);
 CREATE TABLE mcp_v2_media_chunk (
@@ -664,7 +665,7 @@ CREATE TABLE mcp_v2_schema (
       manifest_digest TEXT NOT NULL CHECK (length(manifest_digest) = 64)
     );
 INSERT INTO mcp_v2_schema(id, version, ddl_digest, manifest_digest)
-    VALUES (1, 2, '2f7c3b22af36e53b018686388ceae1624a2d20d1504002cd6b5fd075c043089b', (SELECT encode(sha256(convert_to(jsonb_build_object(
+    VALUES (1, 2, '7e572ad2ea22da74c366aaf0ded4d4557113700aa1ab15993f75bdb2d157850c', (SELECT encode(sha256(convert_to(jsonb_build_object(
     'tables', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY table_name, ordinal_position) FROM (
       SELECT table_name, column_name, ordinal_position, data_type, is_nullable, column_default
       FROM information_schema.columns WHERE table_schema = 'public' AND table_name LIKE 'mcp!_v2!_%' ESCAPE '!'
