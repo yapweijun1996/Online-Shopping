@@ -6,7 +6,7 @@ import { senderFields } from '../sender-settings.js';
 import { canonicalOperationJson } from './operation-envelope.js';
 import { readCatalogMediaMetadata, readCatalogMediaState } from './catalog-media-state.js';
 import { readCatalogMediaBeforeGraph, projectCatalogMediaMove } from './catalog-media-projection.js';
-import { catalogUpdateChangesSchema } from './catalog-tools.js';
+import { catalogUpdateChangesSchema, describeOptions as describeProductOptions } from './catalog-tools.js';
 import { valid } from './tools.js';
 
 export const CATALOG_UPDATE_LIMITS = Object.freeze({ reviewBytes: 48 * 1024, privateBytes: 8 * 1024 * 1024, normalizationSettingsBytes: 64 * 1024 });
@@ -55,22 +55,18 @@ function existingProduct(row) {
     stockQuantity: row.stock_quantity, variantGroup: row.variant_group, variantLabel: row.variant_label,
     createdAt: row.created_at, updatedAt: row.updated_at };
 }
-function describeOptions(rows, pairs) {
-  return [...pairs].sort((a, b) => a.typeId < b.typeId ? -1 : a.typeId > b.typeId ? 1 : 0).map(({ typeId, valueId }) => {
-    const type = rows.option_type.find(row => row.id === typeId), value = rows.option_value.find(row => row.id === valueId);
-    if (!type || !value || value.option_type_id !== typeId) changed();
-    return { typeId, valueId, typeName: type.name, typeCode: type.code, valueLabel: value.label, valueCode: value.code,
-      typeActive: type.active === 1, valueActive: value.active === 1 };
-  });
+async function describeOptions(read, rows, pairs) {
+  try { return await describeProductOptions(read, pairs, { types: rows.option_type, values: rows.option_value }); }
+  catch (error) { if (error instanceof TypeError) changed(); throw error; }
 }
-function productReview(rows, row) {
+async function productReview(read, rows, row) {
   const { updatedAt: _updatedAt, ...product } = existingProduct(row);
   const category = rows.general_code.find(value => value.code === row.category);
   if (!category) changed();
   const pairs = rows.product_option.filter(value => value.product_id === row.id)
     .map(value => ({ typeId: value.option_type_id, valueId: value.option_value_id }));
   return { ...product, category: { code: category.code, label: category.label, active: category.active === 1 },
-    options: describeOptions(rows, pairs) };
+    options: await describeOptions(read, rows, pairs) };
 }
 const listingReview = row => ({ id: row.id, code: row.code, name: row.name, description: row.description, categoryCode: row.category });
 
@@ -97,14 +93,15 @@ export async function prepareCatalogMediaUpdate(read, value) {
   const move = moved ? await planMoveToListing(read, existing.id, existing.listingId,
     { ...existing, ...patch, category: patch.category || existing.categoryCode }) : null;
   const targetPlan = move?.target ?? null;
-  const before = metadata.rows.product.map(row => productReview(metadata.rows, row));
+  const before = [];
+  for (const row of metadata.rows.product) before.push(await productReview(read, metadata.rows, row));
   const after = structuredClone(before), target = after.find(row => row.id === existing.id);
   for (const key of ['sku', 'name', 'description', 'priceMinor', 'currency', 'active', 'variantGroup', 'variantLabel']) {
     if (Object.hasOwn(patch, key)) target[key] = patch[key];
   }
   if (Object.hasOwn(patch, 'category')) target.categoryCode = patch.category;
   target.variantLabel = optionsAfter.variantLabelAfter;
-  target.options = describeOptions(metadata.rows, optionsAfter.optionsAfter);
+  target.options = await describeOptions(read, metadata.rows, optionsAfter.optionsAfter);
   const listingsBefore = metadata.rows.listing.map(listingReview), listingsAfter = structuredClone(listingsBefore);
   if (move) {
     target.listingId = targetPlan.listing.id;
