@@ -30,7 +30,7 @@ async function singleGallery(store, product, seller, mode = 'manual') {
     if (hero.image_data && hash(hero.image_data) === entry.heroSha256) references = entry.media.slice(1).map((_, index) => staticMedia(`static:${product.sku}:${index + 1}`));
   }
   if (row.gallery_layout_json !== null) {
-    ids = JSON.parse(row.gallery_layout_json);
+    ids = galleryLayoutIds(JSON.parse(row.gallery_layout_json), false, []);
     for (const id of ids) {const item = staticMedia(id);if (item) media.set(id, item);}
   } else {
     // v11 already exposed main + stored uploads. Preserve those authoritative
@@ -38,7 +38,7 @@ async function singleGallery(store, product, seller, mode = 'manual') {
     // for explicit selection instead of deleting stored images or blocking edits.
     const staticIds = product.name === entry?.name && uploads.length <= 4 ? references.map((item) => item.id) : [];
     for (const id of staticIds) media.set(id, staticMedia(id));
-    ids = [...(product.imageUrl ? ['main'] : []), ...staticIds, ...uploads.map((item) => item.id)];
+    ids = galleryLayoutIds(null, Boolean(product.imageUrl), uploads.map(item => item.id), staticIds);
   }
   const items = ids.map((id) => media.get(id)).filter(Boolean);
   return { ...product, imageUrl: items[0]?.src || null, images: items.map((item) => item.src),
@@ -52,10 +52,23 @@ async function singleGallery(store, product, seller, mode = 'manual') {
  * photos or another colour. A variant shows its own main photo first when that photo is not already in the gallery.
  * A listing with a single product keeps the plain per-product gallery.
  */
+// The caller supplies rows ordered by the existing DATABASE created_at,sku,id rule.
+export const galleryHolderFromOrderedMembers = rows => rows.length > 1 ? rows[0].id : null;
+
+// Null layouts retain the original implicit main/reference/upload order.
+export const galleryLayoutIds = (saved, hasMain, uploadIds, implicitReferenceIds = []) => saved === null
+  ? [...(hasMain ? ['main'] : []), ...implicitReferenceIds, ...uploadIds] : saved;
+
+// The real service obtains sameAsShared by its original SQL byte equality;
+// a projector must derive that fact from captured full-byte SHA, never MIME keys.
+export const sharedGalleryItems = (ownMain, shared, sameAsShared) => [
+  ...(ownMain && !sameAsShared ? [ownMain] : []), ...shared.map(item => ({ ...item, shared: true }))
+];
+
 async function listingHolder(store, listingId) {
   if (!listingId) return null;
   const rows = await store.all('SELECT id FROM product WHERE listing_id = ? ORDER BY created_at, sku, id LIMIT 2', listingId);
-  return rows.length > 1 ? rows[0].id : null;
+  return galleryHolderFromOrderedMembers(rows);
 }
 
 /* 'single': one product in its listing; 'holder': owns the shared gallery; 'variant': shows the holder's gallery. */
@@ -70,11 +83,10 @@ export async function productGallery(store, product, seller, mode = 'manual') {
   const holder = await store.get('SELECT id, sku, name FROM product WHERE id = ?', holderId);
   // The holder is read without its main photo, so only its uploaded images (and demo references) are shared.
   const shared = (await singleGallery(store, { ...holder, imageUrl: null }, seller, mode)).galleryItems
-    .filter((item) => item.id !== 'main').map((item) => ({ ...item, shared: true }));
+    .filter((item) => item.id !== 'main');
   const sameAsShared = product.imageUrl && await store.get(`SELECT 1 AS found FROM product_gallery_image g
     JOIN product p ON p.id = ? WHERE g.product_id = ? AND g.data = p.image_data LIMIT 1`, product.id, holderId);
-  const own = product.imageUrl && !sameAsShared ? [{ id: 'main', src: product.imageUrl }] : [];
-  const items = [...own, ...shared];
+  const items = sharedGalleryItems(product.imageUrl ? { id: 'main', src: product.imageUrl } : null, shared, sameAsShared);
   return { ...product, imageUrl: items[0]?.src || null, images: items.map((item) => item.src), imageMedia: items,
     galleryItems: items, galleryShared: true, galleryHolderId: holderId, ...(seller ? { galleryReferenceItems: [] } : {}) };
 }
@@ -201,6 +213,27 @@ export function requireGalleryRevision(current, expected) {
  * Called when a listing has several products: makes the holder's gallery explicit and moves its main photo out of it
  * (as an uploaded copy), so the shared gallery no longer depends on any variant's main photo. Idempotent.
  */
+// Metadata-only kernel shared by real SQL planning and a future bounded projector.
+// This accepts trusted internal facts, not authority, bytes, IDs to allocate or URLs.
+export function planSharedGallerySelection({ holderId, layout, mainSha256, uploads }) {
+  const ids = galleryLayoutIds(layout, Boolean(mainSha256), uploads.map(row => row.id));
+  if (!ids.includes('main')) return { holderId, selected: ids, pendingRef: null, writeLayout: layout === null };
+  const twin = mainSha256 && uploads.find(row => row.byteSha256 === mainSha256);
+  let replacement = twin?.id, pendingRef = null;
+  if (!replacement && mainSha256 && uploads.length < 10) {
+    const base = `shared-main:sha256:${mainSha256}`;
+    replacement = base;
+    for (let n = 1; ids.includes(replacement) || uploads.some(row => row.id === replacement); n++) replacement = `${base}:${n}`;
+    pendingRef = replacement;
+  }
+  const selected = [];
+  for (const id of ids) {
+    const mapped = id === 'main' ? replacement : id;
+    if (mapped && !selected.includes(mapped)) selected.push(mapped);
+  }
+  return { holderId, selected, pendingRef, writeLayout: true };
+}
+
 // Private binary plan: planning performs SELECTs only; new IDs/times are allocated
 // by the existing service inside its caller's transaction, never by a client.
 export async function planListingGallerySharing(store, listingId) {
@@ -208,25 +241,17 @@ export async function planListingGallerySharing(store, listingId) {
   if (!holderId) return null;
   const holder = await store.get('SELECT id, image_mime, image_data, thumb_mime, thumb_data, gallery_layout_json FROM product WHERE id = ?', holderId);
   const uploads = await store.all('SELECT id, data FROM product_gallery_image WHERE product_id = ? ORDER BY position', holderId);
-  const layout = holder.gallery_layout_json === null ? [...(holder.image_data ? ['main'] : []), ...uploads.map((row) => row.id)]
-    : JSON.parse(holder.gallery_layout_json);
-  if (!layout.includes('main')) return { holderId, selected: layout, pending: null, writeLayout: holder.gallery_layout_json === null };
-  const twin = holder.image_data && uploads.find((row) => hash(row.data) === hash(holder.image_data));
-  let replacement = twin?.id, pending = null;
-  if (!replacement && holder.image_data && uploads.length < 10) {
-    const base = `shared-main:sha256:${hash(holder.image_data)}`;
-    replacement = base;
-    for (let n = 1; layout.includes(replacement) || uploads.some(row => row.id === replacement); n++) replacement = `${base}:${n}`;
+  const layout = holder.gallery_layout_json === null ? null : JSON.parse(holder.gallery_layout_json);
+  const mainNeeded = holder.image_data && (layout === null || layout.includes('main'));
+  const plan = planSharedGallerySelection({ holderId, layout, mainSha256: mainNeeded ? hash(holder.image_data) : null,
+    uploads: uploads.map(row => ({ id: row.id, byteSha256: mainNeeded ? hash(row.data) : null })) });
+  let pending = null;
+  if (plan.pendingRef) {
     const position = Number((await store.get('SELECT COALESCE(MAX(position), 0) AS last FROM product_gallery_image WHERE product_id = ?', holderId)).last) + 1;
-    pending = { ref: replacement, position, mime: holder.image_mime, data: holder.image_data,
+    pending = { ref: plan.pendingRef, position, mime: holder.image_mime, data: holder.image_data,
       thumb_mime: holder.thumb_mime ?? null, thumb_data: holder.thumb_data ?? null };
   }
-  const selected = [];
-  for (const id of layout) {
-    const mapped = id === 'main' ? replacement : id;
-    if (mapped && !selected.includes(mapped)) selected.push(mapped);
-  }
-  return { holderId, selected, pending, writeLayout: true };
+  return { holderId, selected: plan.selected, pending, writeLayout: plan.writeLayout };
 }
 
 export async function shareListingGallery(store, listingId) {
