@@ -5,6 +5,7 @@ import { galleryHolderFromOrderedMembers,galleryLayoutIds,sharedGalleryItems,pla
 import { canonicalOperationJson } from './operation-envelope.js';
 import { mediaAssetKey } from './media-manifest.js';
 import { MEDIA_LIMITS } from './media-schema.js';
+import { readCatalogCreateMediaState } from './catalog-create-media-state.js';
 
 // Internal metadata planning only. No tool, authority, native work or write token.
 const changed=()=>{throw new ApiError(409,'MEDIA_PROJECTION_CHANGED','Catalog media changed. Prepare a fresh projection.');};
@@ -128,6 +129,15 @@ export async function readCatalogMediaBeforeGraph(read,snapshot){
  return freeze({version:1,mediaRevision:snapshot.revision,before:{products:actual.products,listings:actual.listings},beforeViews:actual.views});
 }
 
+// The real shareListingGallery rule is identical for a move and a new member.
+function shareProjectedGroup(state,group,physicalEffects){
+ const holderId=galleryHolderFromOrderedMembers(group.memberIds.map(id=>({id})));
+ if(!holderId)return;
+ const holder=state.products.get(holderId),main=holder.mainSource&&state.sources.get(holder.mainSource),uploads=state.galleries.get(holderId),plan=planSharedGallerySelection({holderId,layout:holder.layout,mainSha256:main?.byte_sha256||null,uploads:uploads.map(g=>({id:g.galleryId,byteSha256:state.sources.get(g.source).byte_sha256}))});
+ if(plan.pendingRef){if(!main)unsupported();const position=Math.max(0,...uploads.map(g=>g.position))+1;if(position>MEDIA_LIMITS.newAssets)unsupported();const copy={...main,source_kind:'GALLERY',source_id:plan.pendingRef},source=key(copy);state.sources.set(source,copy);uploads.push({galleryId:plan.pendingRef,productId:holderId,position,source});state.bytes+=copy.byte_length+(copy.thumbnail?.byte_length||0);physicalEffects.push({kind:'COPY_MAIN',productId:holderId,ref:plan.pendingRef,source:ref(main),thumbnail:main.thumbnail?{...main.thumbnail}:null,position});}
+ if(plan.writeLayout){holder.layout=[...plan.selected];physicalEffects.push({kind:'SET_LAYOUT',productId:holderId,selected:[...plan.selected]});}
+}
+
 export async function projectCatalogMediaMove(read,snapshot,input){
  object(input,['productId','targetPlan','patch']);if(Object.keys(input).length!==3||!validId(input.productId)||input.productId!==snapshot?.targetId)unsupported();
  const patch=json(input.patch);object(patch,['sku','name','description','category','priceMinor','currency','active','variantGroup','variantLabel','options']);if(!Object.keys(patch).length||Object.hasOwn(patch,'variantGroup')&&!text(patch.variantGroup,40,true)||Object.hasOwn(patch,'sku')&&(!text(patch.sku,40)||!patch.sku.length))unsupported();
@@ -137,14 +147,52 @@ export async function projectCatalogMediaMove(read,snapshot,input){
  const beforeProduct=snapshot.products.find(p=>p.productId===input.productId);if(current.variant_group!==beforeProduct.variantGroup)changed();
  const ordered=await readProjectedListingOrder(read,snapshot,{productId:input.productId,targetListingId:target.targetListingId,sku:patch.sku??current.sku}),state=model(snapshot),physicalEffects=[];
  for(const row of ordered.rows){const p=state.products.get(row.productId);p.listingId=row.listingId;p.sku=row.sku;}
- if(target.groupChange){const group=ordered.groups.find(g=>g.listingId===target.targetListingId),holderId=galleryHolderFromOrderedMembers(group.memberIds.map(id=>({id})));
-  if(holderId){const holder=state.products.get(holderId),main=holder.mainSource&&state.sources.get(holder.mainSource),uploads=state.galleries.get(holderId),plan=planSharedGallerySelection({holderId,layout:holder.layout,mainSha256:main?.byte_sha256||null,uploads:uploads.map(g=>({id:g.galleryId,byteSha256:state.sources.get(g.source).byte_sha256}))});
-   if(plan.pendingRef){if(!main)unsupported();const position=Math.max(0,...uploads.map(g=>g.position))+1;if(position>MEDIA_LIMITS.newAssets)unsupported();const copy={...main,source_kind:'GALLERY',source_id:plan.pendingRef},source=key(copy);state.sources.set(source,copy);uploads.push({galleryId:plan.pendingRef,productId:holderId,position,source});state.bytes+=copy.byte_length+(copy.thumbnail?.byte_length||0);physicalEffects.push({kind:'COPY_MAIN',productId:holderId,ref:plan.pendingRef,source:ref(main),thumbnail:main.thumbnail?{...main.thumbnail}:null,position});}
-   if(plan.writeLayout){holder.layout=[...plan.selected];physicalEffects.push({kind:'SET_LAYOUT',productId:holderId,selected:[...plan.selected]});}
-  }
- }
+ if(target.groupChange)shareProjectedGroup(state,ordered.groups.find(g=>g.listingId===target.targetListingId),physicalEffects);
  if(state.bytes>MEDIA_LIMITS.oldBytes||state.sources.size>MEDIA_LIMITS.products*(MEDIA_LIMITS.newAssets+1)||ordered.groups.length>MEDIA_LIMITS.listings)limited();
  const projected=graph(state,ordered.groups),after={products:projected.products,listings:projected.listings},removedListingIds=snapshot.listings.map(l=>l.id).filter(id=>!ordered.groups.some(group=>group.listingId===id));
  const result={version:1,mediaRevision:snapshot.revision,before:snapshot.before,after,afterViews:projected.views,removedListingIds,physicalEffects,bindings:{newPrivateListing:target.targetListingId===null},graphReadBytes:{beforeOldBytes:snapshot.graphReadBytes.oldBytes,afterOldBytes:state.bytes},catalogDependencies:{targetPlan:target.plan,normalizedPatch:patch}};
  if(Buffer.byteLength(JSON.stringify(result))>MEDIA_LIMITS.records*MEDIA_LIMITS.pageBytes)limited();return freeze(result);
+}
+
+// Compare bounded private metadata without invoking caller-supplied accessors.
+function samePrivate(value,current,depth=0){
+ if(depth>20)return false;
+ if(value===null||typeof value!=='object')return value===current;
+ if(!current||typeof current!=='object'||Array.isArray(value)!==Array.isArray(current)||
+  ![Object.prototype,null,Array.prototype].includes(Object.getPrototypeOf(value)))return false;
+ const keys=Reflect.ownKeys(value),expected=Reflect.ownKeys(current);
+ if(keys.length!==expected.length)return false;
+ return expected.every(key=>{const a=Object.getOwnPropertyDescriptor(value,key),b=Object.getOwnPropertyDescriptor(current,key);
+  return a&&Object.hasOwn(a,'value')&&a.enumerable===b.enumerable&&samePrivate(a.value,b.value,depth+1);});
+}
+
+/** Private CREATE projection only. This does not create a manifest, an approval
+ * or an eligible operation. No synthetic DB product/snapshot is constructed. */
+export async function projectCatalogMediaCreate(read,captured){
+ object(captured,['version','revision','catalogRevision','mediaRevision','creationIdentity','normalizedInput','after','optionReview','source','metadata']);
+ if(captured.version!==1||!sha.test(captured.revision||''))unsupported();
+ object(captured.metadata,['version','request','predicates','revision','rows']);
+ const current=await readCatalogCreateMediaState(read,captured.metadata.request);
+ if(!samePrivate(captured,current))changed();
+ const identity=current.creationIdentity,newProduct=current.after,source=current.source,existing=source.kind==='EXISTING_TARGET';
+ const state=existing?model(source.snapshot):{products:new Map(),sources:new Map(),galleries:new Map(),bytes:0};
+ const before=existing?source.snapshot.before:{products:[],listings:[]};
+ const oldIds=existing?source.order.map(row=>row.productId):[],groups=[{listingId:newProduct.listingId,memberIds:[...oldIds,identity.productId]}];
+ const beforeViews=existing?(await readCatalogMediaBeforeGraph(read,source.snapshot)).beforeViews:[];
+ // No hypothetical created_at: the actual executor guarantees strict-later
+ // creation. This private model only needs identity, layout and source fields.
+ state.products.set(identity.productId,{productId:identity.productId,listingId:newProduct.listingId,sku:newProduct.sku,
+  name:newProduct.name,variantGroup:newProduct.variantGroup,variantLabel:newProduct.variantLabel,active:newProduct.active,layout:null,mainSource:null});
+ state.galleries.set(identity.productId,[]);
+ const physicalEffects=[];shareProjectedGroup(state,groups[0],physicalEffects);
+ if(state.products.size>MEDIA_LIMITS.products||state.bytes>MEDIA_LIMITS.oldBytes)limited();
+ const projected=graph(state,groups);
+ const result={version:1,kind:'CATALOG_CREATE_PRIVATE',revision:current.revision,creationIdentity:identity,
+  before,after:{products:projected.products,listings:projected.listings},beforeViews,afterViews:projected.views,
+  newProduct:{before:null,after:newProduct,optionReview:current.optionReview},physicalEffects,
+  creationOrder:{kind:'STRICT_LATER_AT_COMMIT',oldMembers:existing?source.order:[],newProductId:identity.productId},
+  source:{kind:source.kind,anchorId:existing?source.anchorId:null,assets:existing?source.snapshot.assets:[],sources:existing?source.snapshot.sources:[]},
+  graphReadBytes:{beforeOldBytes:existing?source.snapshot.graphReadBytes.oldBytes:0,afterOldBytes:state.bytes}};
+ if(Buffer.byteLength(JSON.stringify(result))>MEDIA_LIMITS.records*MEDIA_LIMITS.pageBytes)limited();
+ return freeze(result);
 }

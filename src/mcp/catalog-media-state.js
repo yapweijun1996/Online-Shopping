@@ -58,6 +58,16 @@ async function materialize(read,part){
  return rows;
 }
 
+// Internal source-owned definitions only. COUNT/SUM/MAX across every dependency
+// completes before any selected text is materialized. No public SQL interface.
+export async function readBoundedCatalogMetadata(read,definitions,reserve=0){
+ const parts=[];let upper=reserve;
+ if(!Number.isSafeInteger(upper)||upper<0||upper>CATALOG_STATE_LIMITS.metadataBytes)large();
+ for(const definition of definitions){const part=await stats(read,...definition);upper+=part.bound;if(upper>CATALOG_STATE_LIMITS.metadataBytes)large();parts.push(part);}
+ const rows={};for(const part of parts)rows[part.table]=await materialize(read,part);
+ return {parts,rows};
+}
+
 /** Current facts only. Caller already holds the platform -> tenant read/writer fence. */
 export async function readCatalogMediaMetadata(read,input){
  const intent=args(input),{productId,changes,plannedIdentity:identity}=intent;
@@ -97,12 +107,7 @@ export async function readCatalogMediaMetadata(read,input){
  ];
  // Predicate/header values have fixed UUID/code/SKU/label bounds; this reserve
  // covers their JSON framing, including worst-case UTF8/escaping, before reads.
- const parts=[];let upper=Buffer.byteLength(json(intent))+4096;
- // Complete preflight before materializing text from ANY dependency table.
- for(const definition of definitions){
-  const part=await stats(read,...definition);upper+=part.bound;if(upper>CATALOG_STATE_LIMITS.metadataBytes)large();parts.push(part);
- }
- const rows={};for(const part of parts)rows[part.table]=await materialize(read,part);
+ const {parts,rows}=await readBoundedCatalogMetadata(read,definitions,Buffer.byteLength(json(intent))+4096);
  if(rows.product.length===0||rows.listing.length!==listingIds.length||rows.company_setting.length!==1||
   listingIds.some(id=>!rows.product.some(row=>row.listing_id===id)))unsupported();
  const planned=identity?await read.get('SELECT id,substr(code,1,41) AS code FROM listing WHERE id=?',identity.newListingId):null;

@@ -130,7 +130,7 @@ async function component(read, id, patch = {}) {
   return { target, members, mappings, listings, types, values, revision: hash.state.digest('hex') };
 }
 export async function catalogUpdateRevision(read, id, patch = {}) { return (await component(read, id, patch))?.revision ?? null; }
-async function describeOptions(read, options, known = null) {
+export async function describeOptions(read, options, known = null) {
   const types = known?.types ?? await rowsFor(read, 'option_type', typeColumns, 'id', options.map(item => item.typeId), 6);
   const values = known?.values ?? await rowsFor(read, 'option_value', valueColumns, 'id', options.map(item => item.valueId), 6);
   const byType = new Map(types.map(row => [row.id, row])), byValue = new Map(values.map(row => [row.id, row]));
