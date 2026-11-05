@@ -8,12 +8,14 @@ import { cleanupOAuth } from './cleanup.js';
 import { parseJson } from './json.js';
 import { createOperationApproval, createOperationReview } from './operation-approval.js';
 import { initializeOperationStorage } from './operation-runtime.js';
+import { createOperationTools } from './operation-tools.js';
+import { maintainOperations } from './operation-maintenance.js';
 
 export const connectorPath = (path) => /^\/(?:mcp$|oauth\/(?:register|authorize|token|revoke|consent\.js|consent\.css|operation|operation-review\.(?:js|css))$|\.well-known\/oauth-(?:protected-resource|authorization-server)(?:\/|$)|api\/v1\/seller\/mcp(?:\/|$))/.test(path);
 const operationPath = (path) => path === '/oauth/operation' || /^\/oauth\/operation-review\.(?:js|css)$/.test(path) || /^\/api\/v1\/seller\/mcp\/(?:operations(?:\/|$)|approval(?:\/|$))/.test(path);
 const reviewCsp = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-export function createConnector({ store, config, tenantId, tenantGuard, quickLogin }) {
+export function createConnector({ store, config, tenantId, tenantGuard, quickLogin, operationTools = [] }) {
   const enabled = config.mcpEnabled === true && !quickLogin && Boolean(config.sellerOrigin) && new URL(config.sellerOrigin).protocol === 'https:';
   const limiters = new Map();
   const limit = async (bucket, key, count) => {
@@ -21,7 +23,13 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
     if (!await limiters.get(bucket).attempt(key)) fail('temporarily_unavailable', 429, { 'Retry-After': '900' });
   };
   const oauth = createOAuth({ store, config, tenantId, limit });
-  const protocol = createProtocol({ store, config, binding: oauth.binding, limit });
+  const extensions = createOperationTools({ store, binding: oauth.binding, config, tenantGuard, quickLogin, entries: operationTools });
+  const maintain = async () => {
+    if (config.mcpV2?.enabled !== true || !enabled || config.production === true || !tenantGuard) return;
+    try { await maintainOperations(store, { enabled: true, tenantGuard, tenantId }); }
+    catch { /* Hygiene failure cannot change a decision already recorded. */ }
+  };
+  const protocol = createProtocol({ store, config, binding: oauth.binding, limit, operationTools: extensions, afterOperation: maintain });
   let operations;
   const operationHandlers = () => {
     if (!operations) {
@@ -100,7 +108,10 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
         if (!handler) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
         if (request.method !== handler[0]) fail('invalid_request', 405, { Allow: handler[0] });
         response = await handler[1](request, ip);
-        await cleanupOAuth(store);
+        if (path === '/mcp') {
+          try { await cleanupOAuth(store); }
+          catch { /* Cleanup failure cannot misreport an already committed operation. */ }
+        } else await cleanupOAuth(store);
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) throw e;
@@ -119,6 +130,7 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
       }
       response = json(e instanceof OAuthError ? e.status : e instanceof ApiError ? e.status : 503, { error: e instanceof OAuthError ? e.error : 'temporarily_unavailable' }, e.headers || {});
     }
+    if (operation && path.startsWith('/api/')) await maintain();
     response.headers.set('Referrer-Policy', 'no-referrer'); response.headers.set('X-Content-Type-Options', 'nosniff'); response.headers.set('Cache-Control', 'no-store');
     if (operation) { response.headers.set('Content-Security-Policy', reviewCsp); response.headers.set('X-Frame-Options', 'DENY'); response.headers.set('X-Robots-Tag', 'noindex'); }
     if (!operation && origin && approved) { response.headers.set('Access-Control-Allow-Origin', origin); response.headers.set('Vary', 'Origin'); response.headers.set('Access-Control-Expose-Headers', 'WWW-Authenticate, MCP-Protocol-Version'); }

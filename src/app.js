@@ -76,7 +76,7 @@ function requireCsrf(request, session) {
  * the client address it trusts and, optionally, a handler for non-API paths.
  */
 /* Routes for one tenant (one shop, one store). Built once per tenant by createApi. */
-async function createTenantApi({ store, config, tenantId, tenantGuard, serveStatic = null, whatsappTransport = createWhatsAppTransport(), aiProvider, aiFetchImpl, studioProvider }) {
+async function createTenantApi({ store, config, tenantId, tenantGuard, operationTools, serveStatic = null, whatsappTransport = createWhatsAppTransport(), aiProvider, aiFetchImpl, studioProvider }) {
   const demoEnabled = config.shopMode === 'public-demo' && (await getShopSetup(store)).mode === 'demo';
   // Explicit opt-in: passwordless seller sign-in for a sample site. Never enable it for a real tenant.
   const quickLogin = demoEnabled || config.sellerQuickLogin === true;
@@ -96,7 +96,7 @@ async function createTenantApi({ store, config, tenantId, tenantGuard, serveStat
   const qrAvailable = config.whatsappQr?.enabled && !quickLogin && config.shopMode !== 'public-demo' && secretBox &&
     (tenantId === 'default' ? !basePath : config.whatsappQr?.bindings?.some(binding => binding.shopId === tenantId));
   const qrSeller = qrAvailable ? createQrSellerApi({ store, secretBox, shopId: tenantId, ai: config.ai, provider: aiProvider ?? createAnthropicProvider({ ...config.ai, fetchImpl: aiFetchImpl }) }) : null;
-  const connector = createConnector({ store, config, tenantId, tenantGuard, quickLogin });
+  const connector = createConnector({ store, config, tenantId, tenantGuard, quickLogin, operationTools });
   await connector.initialize();
   const sellerCookie = (token, maxAge) => cookieFor(token, maxAge, config.production, `${basePath}/api/v1/seller`);
   const prefix = (value) => typeof value === 'string' && /^\/(?:api|shop|seller|shared)\//.test(value) ? basePath + value : value;
@@ -636,13 +636,13 @@ async function createTenantApi({ store, config, tenantId, tenantGuard, serveStat
  * resolved to a tenant first; an unknown tenant is 404 and a suspended one 503 without touching any database.
  * Every tenant gets its own route table (limiters, secret box, quick sign-in decision), built on first use.
  */
-export async function createApi({ store, config, registry = null, platformHandler = null, setupHandler = null, serveStatic = null, whatsappTransport = createWhatsAppTransport(), aiProvider, aiFetchImpl, studioProvider = (apiKey) => createOpenAiStudioProvider({ apiKey }) }) {
+export async function createApi({ store, config, registry = null, operationTools = [], platformHandler = null, setupHandler = null, serveStatic = null, whatsappTransport = createWhatsAppTransport(), aiProvider, aiFetchImpl, studioProvider = (apiKey) => createOpenAiStudioProvider({ apiKey }) }) {
   const tenants = registry ?? singleTenantRegistry({ store, config });
   const handlers = new WeakMap();
   const handlerFor = (tenant) => {
     if (!handlers.has(tenant)) {
       handlers.set(tenant, createTenantApi({ store: tenant.store, config: tenant.config, tenantId: tenant.id,
-        tenantGuard: tenants.operationGuard?.(tenant), serveStatic, whatsappTransport, aiProvider, aiFetchImpl, studioProvider })
+        tenantGuard: tenants.operationGuard?.(tenant), operationTools, serveStatic, whatsappTransport, aiProvider, aiFetchImpl, studioProvider })
         .catch((error) => { handlers.delete(tenant); throw error; }));
     }
     return handlers.get(tenant);
