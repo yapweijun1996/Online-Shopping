@@ -6,6 +6,7 @@ import { openPostgresDatabase } from '../src/postgres-db.js';
 import { authenticate, createSession, ensureAdmin, readSession, revokeSessions } from '../src/auth.js';
 import { changeOwnPassword, createAccount, listAccounts, resetPasswordFromHost, updateAccount } from '../src/accounts.js';
 import { ready } from '../src/db.js';
+import { MEDIA_STORAGE_TABLES } from '../src/mcp/media-schema.js';
 
 const base = process.env.SHOP_TEST_DATABASE_URL;
 if (base && (process.env.NODE_ENV !== 'test' || !/test/i.test(new URL(base).pathname))) throw new Error('PostgreSQL tests require NODE_ENV=test and a disposable test database.');
@@ -50,6 +51,7 @@ test('PostgreSQL: the schema 22 to 23 upgrade copies the administrator in as Own
   t.after(async () => { await pool.query(`DROP DATABASE ${name} WITH (FORCE)`); await pool.end(); });
   const fresh = await openPostgresDatabase(url.href);
   try {
+    for (const table of MEDIA_STORAGE_TABLES.toReversed()) await fresh.exec(`DROP TABLE ${table}`);
     await fresh.exec('DROP TABLE mcp_v2_authorization_request; DROP TABLE mcp_v2_scope_consent; DROP TABLE mcp_v2_approval_challenge; DROP TABLE mcp_v2_approval; DROP TABLE mcp_v2_event; DROP TABLE mcp_v2_operation; DROP TABLE mcp_v2_schema; DROP TABLE oauth_token; DROP TABLE oauth_authorization_code; DROP TABLE oauth_grant; DROP TABLE oauth_authorization_request; DROP TABLE oauth_client; DROP TABLE mcp_audit; DROP TABLE account_event; DROP TABLE seller_account; ALTER TABLE session DROP COLUMN account_id');
     await fresh.run("INSERT INTO admin(id, username, password_hash, created_at) VALUES (1, 'Legacy_Owner', 'abcd:1234', ?)", '2026-10-01T00:00:00.000Z');
     await fresh.setSchemaVersion(22);

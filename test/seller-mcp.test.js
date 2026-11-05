@@ -20,6 +20,7 @@ import { readFile, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cleanupOAuth } from '../src/mcp/cleanup.js';
+import { MEDIA_STORAGE_TABLES } from '../src/mcp/media-schema.js';
 
 import { createPlatformRegistry } from '../src/platform/registry.js';
 import { upgradePostgres } from '../src/postgres/upgrade.js';
@@ -288,6 +289,7 @@ test('flag-off uses legacy static and seller authentication handling; enabled bu
 
 test('SQLite schema24 upgrade is repeatable, preserves business rows and rejects invalid OAuth state', async (t) => {
   const f = await fixture(t, 'sqlite');
+  for (const table of MEDIA_STORAGE_TABLES.toReversed()) await f.store.exec(`DROP TABLE ${table}`);
   await f.store.exec('DROP TABLE IF EXISTS mcp_v2_authorization_request; DROP TABLE IF EXISTS mcp_v2_scope_consent; DROP TABLE IF EXISTS mcp_v2_approval_challenge; DROP TABLE IF EXISTS mcp_v2_approval; DROP TABLE IF EXISTS mcp_v2_event; DROP TABLE IF EXISTS mcp_v2_operation; DROP TABLE IF EXISTS mcp_v2_schema; DROP TABLE oauth_token; DROP TABLE oauth_authorization_code; DROP TABLE oauth_grant; DROP TABLE oauth_authorization_request; DROP TABLE oauth_client; DROP TABLE mcp_audit; ALTER TABLE seller_account DROP COLUMN oauth_auth_version');
   await f.store.setSchemaVersion(24);
   const before = await f.store.all('SELECT id, username, password_hash FROM seller_account');
@@ -372,6 +374,7 @@ for (const engine of ['sqlite', 'postgres']) {
       constraints: await f.store.all("SELECT r.relname, pg_get_constraintdef(c.oid) AS definition FROM pg_constraint c JOIN pg_class r ON r.oid = c.conrelid JOIN pg_namespace n ON n.oid = r.relnamespace WHERE n.nspname = 'public' AND (r.relname LIKE 'oauth_%' OR r.relname = 'mcp_audit') ORDER BY r.relname, definition"),
     } : null;
     const before = await physical(), accounts = await f.store.all('SELECT id, username, password_hash FROM seller_account');
+    for (const table of MEDIA_STORAGE_TABLES.toReversed()) await f.store.exec(`DROP TABLE ${table}`);
     await f.store.exec('DROP TABLE IF EXISTS mcp_v2_authorization_request; DROP TABLE IF EXISTS mcp_v2_scope_consent; DROP TABLE IF EXISTS mcp_v2_approval_challenge; DROP TABLE IF EXISTS mcp_v2_approval; DROP TABLE IF EXISTS mcp_v2_event; DROP TABLE IF EXISTS mcp_v2_operation; DROP TABLE IF EXISTS mcp_v2_schema; DROP TABLE oauth_token; DROP TABLE oauth_authorization_code; DROP TABLE oauth_grant; DROP TABLE oauth_authorization_request; DROP TABLE oauth_client; DROP TABLE mcp_audit; ALTER TABLE seller_account DROP COLUMN oauth_auth_version');
     await f.store.setSchemaVersion(24);
     const upgrade = (store) => engine === 'postgres' ? store.transaction(() => upgradePostgres(store, 24)) : migrateStore(store);
