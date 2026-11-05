@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, chmod, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, chmod, writeFile, rm, lstat, symlink } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -100,20 +102,46 @@ test('rejects oversized raster,16bit and animated WebP rather than decoding only
 
 async function fixture(t, decode = decodeImage) {
   const dir = await mkdtemp(join(tmpdir(), 'codec-unit-')); await chmod(dir, 0o700);
+  const socketDir = join(dir, 'socket'); await mkdir(socketDir); await chmod(socketDir, 0o730);
   const token = randomBytes(32).toString('base64url');
-  const tokenFile = join(dir, 'token'); await writeFile(tokenFile, token, { mode: 0o600 });
-  const socketPath = join(dir, 'codec.sock');
+  const tokenFile = join(dir, 'token'); await writeFile(tokenFile, token, { mode: 0o640 }); await chmod(tokenFile, 0o640);
+  const socketPath = join(socketDir, 'codec.sock');
   const server = await startCodec({ socketPath, tokenFile, decode });
   t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await rm(dir, { recursive: true, force: true }); });
   return { socketPath, token };
 }
 test('private socket roundtrip rejects wrong token and invalid source with controlled transport errors', async t => {
   const connection = await fixture(t);
+  assert.equal((await lstat(connection.socketPath)).mode & 0o7777, 0o660);
   const bytes = await image();
   const result = await decodeViaSocket({ ...connection, bytes, mime: MIME.png });
   assert.equal(result.sourceSha256, sha256(bytes));
   await assert.rejects(decodeViaSocket({ ...connection, token: 'A'.repeat(43), bytes, mime: MIME.png }), /CODEC_FAILED/);
   await assert.rejects(decodeViaSocket({ ...connection, bytes: bytes.subarray(0, 32), mime: MIME.png }), /CODEC_FAILED/);
+});
+test('startup requires host-owned group-scoped directory/token with exact initial modes', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'codec-config-')); await chmod(dir, 0o700);
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const socketDir = join(dir, 'socket'); await mkdir(socketDir); await chmod(socketDir, 0o730);
+  const tokenFile = join(dir, 'token'); await writeFile(tokenFile, 'A'.repeat(43), { mode: 0o640 }); await chmod(tokenFile, 0o640);
+  const options = { socketPath: join(socketDir, 'codec.sock'), tokenFile, decode: decodeImage };
+  for (const mode of [0o700, 0o710, 0o770, 0o1730, 0o2730]) {
+    await chmod(socketDir, mode); await assert.rejects(startCodec(options), /CONFIGURATION/);
+  }
+  await chmod(socketDir, 0o730);
+  for (const mode of [0o600, 0o660, 0o644, 0o1640]) {
+    await chmod(tokenFile, mode); await assert.rejects(startCodec(options), /CONFIGURATION/);
+  }
+  await chmod(tokenFile, 0o640);
+  const tokenLink = join(dir, 'token-link'); await symlink(tokenFile, tokenLink);
+  await assert.rejects(startCodec({ ...options, tokenFile: tokenLink }), /CONFIGURATION/);
+  const socketLink = join(dir, 'socket-link'); await symlink(socketDir, socketLink);
+  await assert.rejects(startCodec({ ...options, socketPath: join(socketLink, 'codec.sock') }), /CONFIGURATION/);
+});
+test('fixed executable refuses the host identity before loading the native decoder', async () => {
+  assert.equal(process.getuid(), 1000); assert.equal(process.getgid(), 1000);
+  await assert.rejects(promisify(execFile)(process.execPath, [new URL('../src/main.js', import.meta.url).pathname]),
+    error => error.code === 1 && error.stdout === '' && error.stderr === 'CODEC_START_FAILED\n');
 });
 test('one active decode, four waiting jobs and fifth queued job rejected before buffering', async t => {
   let unblock, entered = 0;

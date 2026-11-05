@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, lstat, readdir } from 'node:fs/promises';
 import sharp from 'sharp';
 import { image } from './fixtures.js';
 import { docker, startContainer } from '../scripts/dev-container.js';
@@ -27,12 +27,21 @@ test('actual ARM64 Alpine codec is isolated, fully decodes max raster and enforc
   assert.deepEqual(config.CapDrop, ['ALL']); assert.ok(config.SecurityOpt.includes('no-new-privileges:true'));
   assert.equal(config.Memory, 192 * 1024 * 1024); assert.equal(config.MemorySwap, config.Memory);
   assert.equal(config.PidsLimit, 32); assert.equal(config.NanoCpus, 500000000);
-  assert.equal(config.LogConfig.Type, 'none'); assert.equal(details.Config.User, '1000:1000');
+  assert.equal(config.LogConfig.Type, 'none'); assert.equal(details.Config.User, '10001:1000');
   assert.equal(details.Mounts.length, 2); assert.deepEqual(Object.keys(details.NetworkSettings.Ports ?? {}), []);
   assert.ok(details.Mounts.every(mount => [fixture.socketDir, fixture.tokenFile].includes(mount.Source)));
   const runtime = JSON.parse(await docker(['exec', fixture.id, 'node', '--input-type=module', '-e',
     "import fs from 'node:fs';import os from 'node:os';let readonly=false;try{fs.writeFileSync('/codec/forbidden','x')}catch(e){readonly=e.code==='EROFS'}console.log(JSON.stringify({uid:process.getuid(),arch:process.arch,network:Object.keys(os.networkInterfaces()),readonly,secrets:Object.keys(process.env).filter(k=>/DATABASE|PASSWORD|SECRET|ACCESS_KEY/.test(k)),proxy:Object.entries(process.env).filter(([k,v])=>/proxy/i.test(k)&&v).length}));"]));
-  assert.deepEqual(runtime, { uid: 1000, arch: 'arm64', network: ['lo'], readonly: true, secrets: [], proxy: 0 });
+  assert.deepEqual(runtime, { uid: 10001, arch: 'arm64', network: ['lo'], readonly: true, secrets: [], proxy: 0 });
+  const dir = await lstat(fixture.socketDir), socket = await lstat(fixture.socketPath), token = await lstat(fixture.tokenFile);
+  assert.deepEqual([dir.uid, dir.gid, dir.mode & 0o7777], [1000, 1000, 0o710]);
+  assert.deepEqual([socket.uid, socket.gid, socket.mode & 0o7777], [10001, 1000, 0o660]);
+  assert.deepEqual([token.uid, token.gid, token.mode & 0o7777], [1000, 1000, 0o640]);
+  const sealed = JSON.parse(await docker(['exec', fixture.id, 'node', '--input-type=module', '-e',
+    "import fs from 'node:fs';const denied={};for(const [name,work] of Object.entries({create:()=>fs.writeFileSync('/run/media-codec/forbidden','x'),mkdir:()=>fs.mkdirSync('/run/media-codec/forbidden-dir'),chmod:()=>fs.chmodSync('/run/media-codec',0o730),unlink:()=>fs.unlinkSync('/run/media-codec/codec.sock'),rename:()=>fs.renameSync('/run/media-codec/codec.sock','/run/media-codec/other.sock'),tokenWrite:()=>fs.writeFileSync('/run/media-codec-token','x')})){try{work();denied[name]=false}catch(e){denied[name]=['EACCES','EPERM','EROFS'].includes(e.code)}}console.log(JSON.stringify(denied));"]));
+  assert.deepEqual(sealed, { create: true, mkdir: true, chmod: true, unlink: true, rename: true, tokenWrite: true });
+  assert.deepEqual(await readdir(fixture.socketDir), ['codec.sock']);
+  assert.equal((await lstat(fixture.socketDir)).mode & 0o7777, 0o710);
   for (const format of ['png', 'jpeg', 'webp']) {
     const bytes = await image(format, { width: 2048, height: 2048 });
     const result = await decodeViaSocket({ ...fixture, bytes, mime: MIME[format] });

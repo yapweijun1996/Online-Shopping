@@ -8,21 +8,35 @@ private package and exact `sharp@0.35.5` lock under `media-codec/`.
 
 ## Trust boundary
 
-The trusted development host starts one owned container. A private0700 directory
-holds its Unix socket; a separate0600 file holds a random32-byte base64url token.
-Both belong to uid1000, the fixed nonroot runtime uid. The token is mounted read
-only, never passed on a command line or in container environment. It expires with
-the test session/container, and the harness removes both paths in `finally` hooks.
-The backend must never receive a Docker socket or permission to start containers.
+The trusted development host starts one owned container. A private0700 base belongs
+to host uid/gid1000. Inside it, a host-owned0730 socket directory initially allows
+the distinct codec uid10001/shared gid1000 to create its0660 Unix socket. A separate
+host-owned0640 file holds a random32-byte base64url token, bind-mounted read only.
+The fixed executable rejects any runtime uid/gid other than10001:1000. Startup checks
+exact directory/token owners, group and modes; no sticky/set-ID bits or symlinks.
+
+Before returning the socket path/token to any client, the trusted host harness
+changes the directory to0710, verifies its owner/mode, the same intended socket
+inode/uid/gid/mode and that no other directory entries exist. The codec can traverse
+the sealed directory and use the socket but cannot create entries, unlink/rename
+the socket or chmod the host-owned directory back. Actual container tests assert
+each denial and then decode images successfully. The token never appears on a
+command line or in container environment. It expires with the session/container;
+the harness removes both paths in `finally` hooks. The backend must never receive
+a Docker socket or permission to start containers.
 
 The container exposes no IP port and has network `none`, no runtime proxy values,
 no DB/application/provider credentials, no source/host-service mounts, a read-only
-root filesystem, all capabilities dropped and no-new-privileges. Only the private
-socket directory is writable. Default seccomp/AppArmor remain in force. Code/image
-compromise remains inside a native-code trust boundary, not a proof of arbitrary
-host-compromise resistance. The writable bind directory lacks an independent disk
-quota; native compromise could abuse that directory. Production needs a bounded
-shared runtime mount and a separately reviewed supervisor, not this test harness.
+root filesystem, all capabilities dropped and no-new-privileges. The bind directory
+is writable by the codec only during trusted startup, before clients are disclosed;
+after sealing it cannot create regular files or directory entries there. This is a
+fixed development policy, not a filesystem quota. It assumes the pinned startup image is trusted:
+sealing cannot revoke a writable file descriptor malicious startup code opened
+before sealing. A failed startup/seal destroys that owned container and its paths;
+the same socket directory is never reused for an automatic restart. Default
+seccomp/AppArmor remain in force. Native-code compromise is still not a proof of
+arbitrary host-compromise resistance. Production needs a separately reviewed
+supervisor and bounded runtime filesystem, not this development harness.
 
 The client is transport only: its socket path and token must come from trusted
 configuration, never model arguments. It provides no tenant, grant, consent,
@@ -147,12 +161,15 @@ The build uses the existing pinned Node24.20.0 Alpine base, optional native pack
 passes it as a BuildKit secret and sets NODE_EXTRA_CA_CERTS only for dependency
 fetch; no CA/token is copied into image layers. The build records the exact image
 ID in ignored `.local/media-codec-image-id`. Tests require this explicit image and
-uid/gid1000, clear endpoint/context/TLS selectors, use only
+host uid/gid1000, clear endpoint/context/TLS selectors, use only
 `unix:///var/run/docker.sock`, and serialize at most one unique owned container.
 They never attach to, inspect secrets from, stop or restart unrelated containers.
 The optional `media-codec/compose.dev.yaml` profile is a separate dev-only example;
-it is not included by any application Compose file and requires explicit private
-directory/token paths. It does not provision a production supervisor.
+it is not included by any application Compose file. Compose alone does not perform
+the host-side seal: a trusted harness must provision the private base, host-owned
+0730 directory/0640 token, verify readiness and seal0710 before permitting any
+client request. Starting that profile without this sealing step is unsupported.
+It does not provision a production supervisor.
 
 ## Primary dependency references
 

@@ -107,12 +107,12 @@ export function createCodecServer({ token, decode, fatal = () => process.exit(70
 export async function startCodec({ socketPath, tokenFile, decode }) {
   const dir = await lstat(dirname(socketPath));
   const file = await lstat(tokenFile);
-  if (!dir.isDirectory() || dir.isSymbolicLink() || (dir.mode & 0o777) !== 0o700 ||
-      dir.uid !== process.getuid() || !file.isFile() || file.isSymbolicLink() ||
-      (file.mode & 0o777) !== 0o600 || file.uid !== process.getuid() || file.size !== 43) throw new CodecError('CONFIGURATION');
+  if (!dir.isDirectory() || dir.isSymbolicLink() || (dir.mode & 0o7777) !== 0o730 ||
+      dir.uid !== 1000 || dir.gid !== 1000 || !file.isFile() || file.isSymbolicLink() ||
+      (file.mode & 0o7777) !== 0o640 || file.uid !== 1000 || file.gid !== 1000 || file.size !== 43) throw new CodecError('CONFIGURATION');
   const token = await readFile(tokenFile, 'utf8');
   const server = createCodecServer({ token, decode });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(socketPath, resolve); });
-  await chmod(socketPath, 0o600);
+  await chmod(socketPath, 0o660);
   return server;
 }

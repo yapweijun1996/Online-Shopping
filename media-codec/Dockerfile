@@ -10,7 +10,8 @@ RUN --mount=type=secret,id=proxy_ca \
     else npm ci --omit=dev --ignore-scripts --no-audit --no-fund --strict-ssl=true; fi \
     && rm -rf /root/.npm
 COPY src ./src
-RUN chmod -R a+rX /codec && mkdir -p /run/media-codec && chown node:node /run/media-codec
-USER node
+RUN chmod -R a+rX /codec && mkdir -p /run/media-codec
+# Distinct from the trusted host owner; shared group permits only socket IPC.
+USER 10001:1000
 ENV NODE_ENV=development NODE_OPTIONS=--max-old-space-size=32
 CMD ["node", "src/main.js"]

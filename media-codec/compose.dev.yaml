@@ -6,7 +6,7 @@ services:
     image: shopping-media-codec:development
     network_mode: none
     read_only: true
-    user: "1000:1000"
+    user: "10001:1000"
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     mem_limit: 192m
@@ -31,10 +31,11 @@ services:
       no_proxy: ""
     volumes:
       - type: bind
-        source: ${MEDIA_CODEC_SOCKET_DIR:?Private0700 socket directory required}
+        # Trusted host must seal0730 to0710 after socket readiness, before any client.
+        source: ${MEDIA_CODEC_SOCKET_DIR:?Host1000-group1000 socket directory and trusted sealing harness required}
         target: /run/media-codec
       - type: bind
-        source: ${MEDIA_CODEC_TOKEN_FILE:?Private0600 ephemeral token file required}
+        source: ${MEDIA_CODEC_TOKEN_FILE:?Host1000-group1000 mode0640 ephemeral token file required}
         target: /run/media-codec-token
         read_only: true
     logging:

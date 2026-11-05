@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, mkdir, chmod, writeFile, rm, lstat } from 'node:fs/promises';
+import { mkdtemp, mkdir, chmod, writeFile, rm, lstat, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -21,13 +21,13 @@ export async function startContainer(image, { memoryMiB = 192, command = [] } = 
   if (process.getuid() !== 1000 || process.getgid() !== 1000) throw new Error('Development fixture requires uid/gid1000.');
   const base = await mkdtemp(join(tmpdir(), 'shopping-codec-'));
   await chmod(base, 0o700);
-  const socketDir = join(base, 'socket'); await mkdir(socketDir, { mode: 0o700 });
+  const socketDir = join(base, 'socket'); await mkdir(socketDir, { mode: 0o730 }); await chmod(socketDir, 0o730);
   const tokenFile = join(base, 'token'); const token = randomBytes(32).toString('base64url');
-  await writeFile(tokenFile, token, { mode: 0o600 });
+  await writeFile(tokenFile, token, { mode: 0o640 }); await chmod(tokenFile, 0o640);
   const name = `shopping-codec-test-${randomBytes(8).toString('hex')}`;
   owned = name;
   const args = ['run', '-d', '--name', name, '--label', 'shopping.media-codec-owned=true', '--network=none',
-    '--read-only', '--user=1000:1000', '--cap-drop=ALL', '--security-opt=no-new-privileges:true',
+    '--read-only', '--user=10001:1000', '--cap-drop=ALL', '--security-opt=no-new-privileges:true',
     '--cgroupns=private', '--init', '--memory', `${memoryMiB}m`, '--memory-swap', `${memoryMiB}m`,
     '--cpus=0.5', '--pids-limit=32', '--shm-size=1m', '--ulimit=core=0:0', '--ulimit=nofile=64:64',
     '--restart=no', '--log-driver=none', '--mount', `type=bind,src=${socketDir},dst=/run/media-codec`,
@@ -47,8 +47,21 @@ export async function startContainer(image, { memoryMiB = 192, command = [] } = 
     const socketPath = join(socketDir, 'codec.sock');
     const deadline = Date.now() + 15000;
     while (Date.now() < deadline) {
-      try { if ((await lstat(socketPath)).isSocket()) return { id, image, name, socketPath, token, stop, socketDir, tokenFile }; }
-      catch { /* Startup polling never logs credentials or native error text. */ }
+      let socket;
+      try { socket = await lstat(socketPath); }
+      catch (error) { if (error.code !== 'ENOENT') throw error; }
+      if (socket?.isSocket() && socket.uid === 10001 && socket.gid === 1000 && (socket.mode & 0o7777) === 0o660) {
+        // The worker cannot restore write access on this host-owned directory.
+        // Never disclose a client/token until the trusted host finishes sealing.
+        await chmod(socketDir, 0o710);
+        const dir = await lstat(socketDir), sealedSocket = await lstat(socketPath), file = await lstat(tokenFile);
+        if (!dir.isDirectory() || dir.isSymbolicLink() || dir.uid !== 1000 || dir.gid !== 1000 || (dir.mode & 0o7777) !== 0o710 ||
+            !sealedSocket.isSocket() || sealedSocket.uid !== 10001 || sealedSocket.gid !== 1000 || (sealedSocket.mode & 0o7777) !== 0o660 ||
+            sealedSocket.ino !== socket.ino || sealedSocket.dev !== socket.dev ||
+            !file.isFile() || file.isSymbolicLink() || file.uid !== 1000 || file.gid !== 1000 || (file.mode & 0o7777) !== 0o640 || file.size !== 43 ||
+            (await readdir(socketDir)).join(',') !== 'codec.sock') throw new Error('Invalid sealed codec filesystem.');
+        return { id, image, name, socketPath, token, stop, socketDir, tokenFile };
+      }
       if (await docker(['inspect', '--format={{.State.Running}}', id]) !== 'true') break;
       await new Promise(resolve => setTimeout(resolve, 50));
     }
