@@ -3,7 +3,7 @@ import { ApiError } from '../http.js';
 import { canonicalOperationJson } from './operation-envelope.js';
 import { operationEpochHash } from './operation-epoch.js';
 import { verifyOperationControlAuthority } from './operation-authorization.js';
-import { recordMcpAudit, MCP_AUDIT_OUTCOMES } from './audit.js';
+import { recordMcpAudit, MCP_AUDIT_OUTCOMES, readOperationAuditAnchors } from './audit.js';
 import { recordOperationEvent } from './operation-events.js';
 import { expireOperationRecord } from './operation-expiry.js';
 import { operationInstant } from './operation-maintenance.js';
@@ -70,8 +70,7 @@ export function createOperationControls({store,binding,config,tenantGuard,quickL
     if(args.cursor)cursor=decode(args.cursor,cursorBinding,limit);
     else {
       // A single statement captures both independent insertion sequence anchors.
-      const anchors=await store.get('SELECT (SELECT COALESCE(MAX(sequence),0) FROM mcp_v2_event WHERE operation_id=?) AS lifecycle,(SELECT COALESCE(MAX(sequence),0) FROM mcp_audit WHERE operation_id=?) AS calls',row.id,row.id);
-      if(![anchors.lifecycle,anchors.calls].every(n=>Number.isSafeInteger(n)&&n>=0))corrupt();
+      const anchors=await readOperationAuditAnchors(store,row.id);
       const at=new Date().toISOString();cursor={version:1,binding:cursorBinding,limit,anchors:[anchors.lifecycle,anchors.calls],at,expiresAt:new Date(Date.parse(at)+900000).toISOString(),position:null};
     }
     const keys=[row.id,row.tenant_id,row.account_id,row.client_id,row.grant_id,row.correlation_id];

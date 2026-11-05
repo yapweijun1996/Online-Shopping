@@ -18,5 +18,5 @@ export function mcpAuditSchema(dialect, { version = 34, table = 'mcp_audit', ind
  operation_id TEXT, sequence ${sequence}` : ''}
 )${strict};
 ${indexes ? `CREATE INDEX IF NOT EXISTS mcp_audit_time ON ${table}(at);
-${version === 34 ? `CREATE INDEX IF NOT EXISTS mcp_audit_operation_sequence ON ${table}(operation_id,at,sequence);\n` : ''}` : ''}`;
+${version === 34 ? `CREATE INDEX IF NOT EXISTS mcp_audit_operation_sequence ON ${table}(operation_id,at,sequence);\nCREATE INDEX IF NOT EXISTS mcp_audit_operation_anchor ON ${table}(operation_id,sequence);\n` : ''}` : ''}`;
 }

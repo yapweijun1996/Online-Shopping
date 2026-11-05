@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mcpAuditSchema, MCP_AUDIT_TOOLS } from './audit-schema.js';
 const legacy = Object.freeze({ sqlite: 'e087465d8086577057a47e85406e61e3b4d5ca6ce7e2902417c377b6255370cc', postgres: '8536efe90ed79edc1fb5ae9181ad6081b59c86811d65156521c7ad9b6140a914' });
-const current = Object.freeze({ sqlite: 'cbb54563a8c40ac9e0500123ad9a067a712b7ec4e7c975e201eb1cb9bb7c3d4c', postgres: 'f227f453803a705fc98ca9ad913710af3e8bbe2500e1ddca3431080584f588fb' });
+const current = Object.freeze({ sqlite: 'a2ae15cd2f4703d620d9df4454a8ea78bade651390b57ed5bbb5b229aecbced9', postgres: '0bc8b42038d0075b129f7059af203c20ad27b1d7e07fbeb29d2f1c8b73b844e8' });
 const oldColumns = 'id,at,tenant_id,account_id,client_id,grant_id,correlation_id,event,tool_name,resource_id,outcome,duration_ms,result_count';
 
 // Only physical storage metadata; never includes audit record values.

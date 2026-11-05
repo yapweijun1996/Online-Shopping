@@ -91,5 +91,5 @@ export function operationEventSchema(dialect, { auditSequence = true, table = 'm
   event TEXT NOT NULL CHECK (event IN ('PREPARE','REQUEST_APPROVAL','APPROVE','REJECT','COMMIT','CANCEL','EXPIRE','CONFLICT','FAIL','DENY')),
   outcome TEXT NOT NULL CHECK (length(outcome) BETWEEN 1 AND 80), correlation_id TEXT NOT NULL${auditSequence ? `,\n  sequence ${dialect === 'sqlite' ? 'INTEGER PRIMARY KEY AUTOINCREMENT' : 'BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY'}` : ''}
 )${strict};
-${indexes ? `CREATE INDEX IF NOT EXISTS mcp_v2_event_time ON ${table}(at);\nCREATE INDEX IF NOT EXISTS mcp_v2_event_operation ON ${table}(operation_id, at);${auditSequence ? `\nCREATE INDEX IF NOT EXISTS mcp_v2_event_operation_sequence ON ${table}(operation_id,at,sequence);` : ''}` : ''}`;
+${indexes ? `CREATE INDEX IF NOT EXISTS mcp_v2_event_time ON ${table}(at);\nCREATE INDEX IF NOT EXISTS mcp_v2_event_operation ON ${table}(operation_id, at);${auditSequence ? `\nCREATE INDEX IF NOT EXISTS mcp_v2_event_operation_sequence ON ${table}(operation_id,at,sequence);\nCREATE INDEX IF NOT EXISTS mcp_v2_event_operation_anchor ON ${table}(operation_id,sequence);` : ''}` : ''}`;
 }

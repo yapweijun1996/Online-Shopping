@@ -398,6 +398,7 @@ CREATE TABLE IF NOT EXISTS mcp_audit (
 );
 CREATE INDEX IF NOT EXISTS mcp_audit_time ON mcp_audit(at);
 CREATE INDEX IF NOT EXISTS mcp_audit_operation_sequence ON mcp_audit(operation_id,at,sequence);
+CREATE INDEX IF NOT EXISTS mcp_audit_operation_anchor ON mcp_audit(operation_id,sequence);
 
 CREATE TABLE whatsapp_qr_session (
  id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -534,6 +535,7 @@ CREATE TABLE IF NOT EXISTS mcp_v2_event (
 CREATE INDEX IF NOT EXISTS mcp_v2_event_time ON mcp_v2_event(at);
 CREATE INDEX IF NOT EXISTS mcp_v2_event_operation ON mcp_v2_event(operation_id, at);
 CREATE INDEX IF NOT EXISTS mcp_v2_event_operation_sequence ON mcp_v2_event(operation_id,at,sequence);
+CREATE INDEX IF NOT EXISTS mcp_v2_event_operation_anchor ON mcp_v2_event(operation_id,sequence);
 
 CREATE TABLE mcp_v2_operation_media_policy (
   operation_id TEXT PRIMARY KEY REFERENCES mcp_v2_operation(id) ON DELETE RESTRICT,
@@ -669,7 +671,7 @@ CREATE TABLE mcp_v2_schema (
       manifest_digest TEXT NOT NULL CHECK (length(manifest_digest) = 64)
     );
 INSERT INTO mcp_v2_schema(id, version, ddl_digest, manifest_digest)
-    VALUES (1, 3, '8a3057a26cce0b19ffd8caceb83cc2836c1003f5972231da513f4b7c7d0d3454', (SELECT encode(sha256(convert_to(jsonb_build_object(
+    VALUES (1, 3, '7b7965ce4971654ec58117ac1e53df035ae971e92e6beb606e826e45e014e7b0', (SELECT encode(sha256(convert_to(jsonb_build_object(
     'tables', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY table_name, ordinal_position) FROM (
       SELECT table_name, column_name, ordinal_position, data_type, is_nullable, column_default, is_identity, identity_generation, identity_start, identity_increment, identity_maximum, identity_minimum, identity_cycle
       FROM information_schema.columns WHERE table_schema = 'public' AND table_name LIKE 'mcp!_v2!_%' ESCAPE '!'

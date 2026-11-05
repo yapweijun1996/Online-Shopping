@@ -33,7 +33,9 @@ actor, client, grant and correlation IDs; private notes are not copied.
 
 `operations.audit` takes the operation ID plus optional `limit` (1–50, default25)
 and `cursor`. Keep the same limit on later pages. One SELECT captures both lifecycle
-and typed MCP insertion sequence anchors. Pages use timestamp/source/sequence
+and typed MCP insertion sequence anchors with composite-index endpoint seeks;
+see [AUDIT-STORAGE.md](AUDIT-STORAGE.md) for the actual two-database plan checks.
+Pages use timestamp/source/sequence
 ordering, exclude later insertions and restrict records to the90-day window as of
 the first page. The canonical cursor is HMAC protected using the raw external epoch
 with a fixed domain separator. It binds all original identities, tenant revision,

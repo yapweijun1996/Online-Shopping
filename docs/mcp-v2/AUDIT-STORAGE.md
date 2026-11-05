@@ -6,6 +6,21 @@ uses GENERATED ALWAYS AS IDENTITY. Existing UUID `id` values remain unique and a
 existing fields/rows are preserved. The new numeric sequence is an internal snapshot
 anchor, not an authorization identifier or a timestamp.
 
+Each table has separate `(operation_id,sequence)` endpoint and
+`(operation_id,at,sequence)` page-order indexes. The first-page runtime reads both
+anchors in one SELECT using equal closed operation-ID bounds, descending composite
+key order and LIMIT1. A plain equality+MAX can choose a PostgreSQL global-sequence
+reverse scan and filter many unrelated operations even when a composite index
+exists. The closed range keeps both index sort keys visible. No sequence ceiling
+omits unsafe BIGINT values; driver/application safe-integer checks fail closed.
+
+`test/mcp-audit-anchor.test.js` runs the actual runtime SQL against60,000 rows per
+source (10,000 old target rows followed by50,000 unrelated rows). PostgreSQL's actual
+plan must use each composite endpoint with one row/one loop and no filtered rows;
+SQLite must use covering endpoints and bounded-limit VM instructions. These are
+regression checks for the supported database/Node versions, not an optimizer promise
+for untested future versions. Schema33/golden30 fixtures remain unchanged.
+
 `mcp_audit.operation_id` is nullable and deliberately has no foreign key: historical
 audit can outlive a scrubbed or purged operation. The fixed tool whitelist covers all
 32 known legacy/new names and adds the typed CALL event. A whitelist entry grants no

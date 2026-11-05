@@ -7,6 +7,19 @@ export const MCP_AUDIT_OUTCOMES = Object.freeze(['OK','PENDING_APPROVAL','PREPAR
 const outcomes = new Set(MCP_AUDIT_OUTCOMES);
 const readNames = new Set(['company.get','analytics.sales_trend','analytics.top_products','analytics.inventory_risk','inventory.summary','inventory.movements','media.list','operations.get','operations.audit']);
 const invalid = () => { throw new TypeError('Invalid typed MCP audit record.'); };
+// Keep both sort keys visible to the optimizer. Equality+MAX can choose a
+// global sequence PK reverse scan through unrelated operations on PostgreSQL.
+// Equal closed bounds preserve exact operation identity and the composite-key
+// endpoint order. No sequence ceiling hides an unsafe BIGINT anchor.
+export const OPERATION_AUDIT_ANCHORS_SQL=`SELECT
+  COALESCE((SELECT sequence FROM mcp_v2_event WHERE operation_id>=? AND operation_id<=? ORDER BY operation_id DESC,sequence DESC LIMIT 1),0) AS lifecycle,
+  COALESCE((SELECT sequence FROM mcp_audit WHERE operation_id>=? AND operation_id<=? ORDER BY operation_id DESC,sequence DESC LIMIT 1),0) AS calls`;
+export async function readOperationAuditAnchors(store,operationId) {
+  if(!uuid.test(operationId||''))invalid();
+  const anchors=await store.get(OPERATION_AUDIT_ANCHORS_SQL,operationId,operationId,operationId,operationId);
+  if(![anchors.lifecycle,anchors.calls].every(n=>Number.isSafeInteger(n)&&n>=0))invalid();
+  return anchors;
+}
 const text = (value, max) => typeof value === 'string' && value.length > 0 && value.length <= max && value.isWellFormed() && !/[\u0000-\u001f]/.test(value);
 export function mcpAuditResource(toolName, args) {
   if (!Object.hasOwn(OPERATION_SCOPE_POLICIES, toolName)) invalid();
