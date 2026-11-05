@@ -24,8 +24,8 @@ export function createProtocol({ store, config, binding, limit }) {
     catch (e) { if (e.status === 413 || e.status === 408) throw e; return rpcError(null, -32700, 'Parse error'); }
     const credentials = async () => {
       const token = await store.get("SELECT * FROM oauth_token WHERE token_hash = ? AND kind = 'access'", hash(bearer[1]));
-      const grant = token && await liveGrant(store, token.grant_id, binding);
-      if (!token || token.revoked_at || token.expires_at <= stamp() || token.resource !== binding.resource || !grant) fail('invalid_token', 401, { 'WWW-Authenticate': challenge });
+      const grant = token && await liveGrant(store, token.grant_id, binding, token.issued_at);
+      if (!token || token.issued_at > stamp() || token.revoked_at || token.expires_at <= stamp() || token.resource !== binding.resource || !grant) fail('invalid_token', 401, { 'WWW-Authenticate': challenge });
       return { token, grant };
     };
     const initial = await credentials();
