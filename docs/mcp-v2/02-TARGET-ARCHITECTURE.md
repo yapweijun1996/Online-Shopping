@@ -63,3 +63,12 @@ Every phase requires schema/authorization contracts, positive and negative tests
 4. Introduce the movement ledger only with a migration and an atomic plan for all current stock writers; do not claim history before its coverage date.
 5. Resolve image decoding and the existing 64 KiB transport limit before accepting uploads.
 6. Require a separate release decision, security review, migration/restore rehearsal and new authorization before any staging or production deployment.
+
+
+## Catalog expansion profile — approved design, activation pending
+
+The isolated full catalog profile will use one constructor-selected preview/commit pair per operation name. Its CREATE and UPDATE operations always require both catalog.write and media.write plus catalog.write RBAC and HIGH first-party approval, including metadata-only changes or image-free creation. The separate development flag defaults off; it must never turn unsafe runtime modes on. The current safe profile remains available with the flag off. Switching profiles cannot downgrade a pending full operation to the safe path.
+
+Use one immutable composite revision for operation and descriptor, including the current catalog/media facts and canonical literal labels/true visibility projection. Keep the raw media snapshot revision for exact byte loading. Reuse shared listing, option, gallery, inventory and history services. CREATE reserves no domain rows: bind exact absent server UUIDs and either a real existing target closure or an explicit empty BEFORE; commit supplies real creation time and appends according to the existing service. Existing stock changes belong to the separate HIGH inventory adjustment policy.
+
+Catalog image effects contain no STAGE upload or newborn image composition in this expansion. Protected compact pages must bind actual before/after SKU/name, role and main visibility, plus ordered listing gallery keys. Every page and old/new full-image delivery still requires hash/decode/one-use ACK, unchecked acknowledgment and fresh human password; a zero-image create still needs its page proof. Existing default DIRECT media grammar and original eight tools stay compatible. These design choices are not current activation or deployment evidence; see progress/validation for accepted prerequisites and remaining C/D integration.
