@@ -14,12 +14,12 @@ Scope: finish the Seller Operations Engine in dependency order with independent 
 | MCP0-06 | Verified locally | Foundation source25ec84f:1015 tests,991 passed,0 failed,24 browser opt-ins skipped; targeted actual browser/restore and timing regression passed separately. |
 | MCP1 | Verified locally | Company3tools at08136e6, full1051tests/1027pass/0fail/24skip; actual defaults/approval/browser11/11. Production remains disabled. |
 | MCP2 | Safe subset verified; full variants deferred | Four gated built-ins; source707052c full1094/1069pass/0fail/25skip, actual browser/default7/7. Group/media/stock dependencies remain. |
-| MCP3 | Isolated codec verified; application media incomplete | Independent codec11/11 unit+4/4 real ARM64 container tests; filesystem sealing follow-up in progress. Staging/review/commit tools remain unavailable. See [media delivery plan](mcp-v2/MEDIA-DELIVERY-PLAN.md). |
+| MCP3 | Codec verified; storage31 implementation in progress | Independent sealed-UID codec13/13 unit+4/4 real ARM64 container tests. Portable wire extraction and schema31 storage/cleanup are in progress; staging/review/commit tools remain unavailable. See [media delivery plan](mcp-v2/MEDIA-DELIVERY-PLAN.md). |
 | MCP4 | Source audited; implementation pending | [Inventory delivery plan](mcp-v2/INVENTORY-DELIVERY-PLAN.md); all-writer ledger, preserve48-hour computed holds, controlled cancellation overflow. |
 | MCP5 | Depends on MCP0 | Existing order decisions only; approval, revision checks and stock deduction exactly once. |
-| MCP6 | Read-only core implementation in progress | Shared dashboard definitions, independent fixtures, currencies, UTC+8 and bounded coverage; default registration pending. |
+| MCP6 | Verified locally, bounded read-only scope | Three gated tools atf7dc171; independent full1120/1095passed/0failed/25skipped,213.239s; response/default5/5, core29/29. Shared dashboard definitions, honest history/current-category/row/byte limits. |
 | MCP7 | Depends on MCP0 | Resource-authorized operations inspection/cancellation/audit and existing retention policy. |
-| MCP8 | Designed only | KB supplies untrusted knowledge; commerce state and authorization stay in this app. |
+| MCP8 | Current-tool boundary verified | Sourcecc56449/root66d232c, independent8/8 bothDB. KB outage/stale claims/injection cannot replace live state or approval. No runtime KB dependency; future business and vendor acceptance remain separate. |
 | MCP-VERIFY | Required per phase | Record commands, environment, revision, actual test counts, security and rollback evidence; finish with independent acceptance. |
 
 Detailed evidence: [MCP v2 progress](mcp-v2/09-IMPLEMENTATION-PROGRESS.md). No completion percentage is assigned to this mixed implementation/verification backlog.

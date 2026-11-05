@@ -1,5 +1,7 @@
 # Online Shopping Threat Model
 
+MCP v2 isolated update2026-11-05/sourcef7dc171: three bounded analytics reads require safe opt-in, fresh analytics.extended/current figures.read. Shared UTC+8/current accepted-status/submission-time definitions and currencies stay stable. Current category/database-only coverage is explicit; no cash/profit claim. SQL excludes contacts/notes/images; source/response guards reject excess without partial totals. Audit uses fixed read names in the compatible outcome field, null legacy tool column, existing90-day retention; Phase7 normalization remains pending. KB is untrusted client reference only: actual current-tool RPC tests cover stale/outage/injected claims and real revocation, with no runtime KB dependency/fallback. This does not prove LLM behavior or unfinished media/inventory/order/operations. Production activation remains blocked.
+
 Evidence base: R1–R4 release source and actual verification dated 2026-10-11; exact SHAs, CI and production state are recorded in MULTI_TENANT_LEDGER.md. Statements describe what the code does today; anything else is labelled **Planned**, **Partial** or **Missing**. Update this file when a trust boundary, entry point or control changes.
 
 Source review at `41407a7bda20adf167e2825900a268f3949316cc`: [CODEBASE_BUG_REVIEW.md](CODEBASE_BUG_REVIEW.md) preserves 15 confirmed findings. B01–B09 are fixed and locally verified; B10–B15 remain open. These checks do not establish production deployment or activation. Invariants below remain required properties.

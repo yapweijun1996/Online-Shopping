@@ -1,5 +1,15 @@
 # MCP v2 validation snapshots — foundation, company and catalog subset
 
+## Latest analytics and knowledge acceptance
+
+Root sourcef7dc171 full Node24.22.0+SQLite/disposablePG: **1120 total,1095 passed,0 failed,25 browser opt-ins skipped**,213.239s, exit0; log.local/manager-analytics-integrated-full.tap, same full command below. Targeted analytics/shared-read/dashboard/query-plan29/29,0skip,10.722s; response/default5/5,0skip,8.448s. Fresh analytics.extended/current figures.read gates the three built-ins; v1/dashboard definitions are unchanged. Independent fixtures, safe integer money and bounded/incomplete coverage are tested; query plans are synthetic, not production capacity.
+
+Review reproduced a legal74315-byte Unicode page returning Internal error. Shared preflighta212be0/rootca6da6e now returns controlled503 for all three services, without partial data/success audit; smaller pages preserve IDs/totals. Source budgets precede currency filtering. A worker process took332.94s; later worker/root runs finished as recorded, with no claimed causal fix. Existing pg concurrent-query deprecation was observed; future dependency upgrades need verification. Knowledgecc56449/root66d232c independently passed8/8bothDB,0skip,11.737s (.local/manager-knowledge-boundary.tap): real commerce RPC/OAuth/approval/revocation with synthetic external knowledge only. Real LLM/vendor/KB outage is unverified; no runtime KB fallback added.
+
+## Sealed codec follow-up018ea6a
+
+Root13/13unit,0.504s, plus4/4 actualARM64Alpine Docker,14.161s,0skip. Logs.local/manager-media-codec-seal-unit.tap and.local/manager-media-codec-seal-container.tap. Image86945adf537fe0a3b7edcdad8a7899a78c2113ce4aa1ce2ebf660882d5fa39aa. Kernel192MiB/swap0/pids32/0.5CPU; peak167333888bytes. UID10001 cannot create/delete/rename files, restore directory write or modify readonly token after trusted seal0710. Real OOM137/true, crash137/false and watchdog70after5106ms preserve synthetic parent API; owned containers removed. Trusted startup/pre-opened descriptor caveat remains, no quota/production-supervisor claim. Media application workflow remains unaccepted; schema31/storage, portable wire and shared gallery planning are in progress. No push/merge/deploy, production commerce data or service/tunnel/timer changes.
+
 ## Latest catalog safe-subset acceptance — source707052c
 
 Independent root Node24.22.0 full command with private disposable PostgreSQL: `NODE_ENV=test SHOP_TEST_DATABASE_URL=<synthetic URL> env -u QA_PLAYWRIGHT_MODULE node --test --test-concurrency=1 'test/*.test.js'`. Exit0: **1094 total,1069 passed,0 failed,25 browser opt-ins skipped**,206.247s; log.local/manager-phase2-catalog-final-full.tap. Actual loopback HTTPS Chromium approval plus catalog/company default-registration tests with QA_PLAYWRIGHT_MODULE: **7/7**,0skip,5.307s; log.local/manager-phase2-catalog-browser.tap. Final core/contracts after option-code bound fix: **39/39**,SQLite+PG,0skip,9.876s; log.local/manager-phase2-catalog-safe-final.tap.

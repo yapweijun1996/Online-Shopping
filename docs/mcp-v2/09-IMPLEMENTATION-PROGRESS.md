@@ -12,12 +12,12 @@ Updated 2026-11-05. Baseline `1634735aa70090dcdf54b8d09e2cc09b33cd8a77`; foundat
 | 0 — security foundation | **Verified in isolated development** | Default-off/prod-blocked config, explicit OAuth consent, schema30, authentic first-party challenge/password approval, platform lifecycle fence, immutable operation engine, minimal receipts, bounded cleanup/CLI, gated trusted registry, actual snapshot restore. Independent full suite **1015 total, 991 passed, 0 failed, 24 browser opt-ins skipped**. See validation report for separately executed browser tests and limits. |
 | 1 — company | **Verified in isolated development** | Source08136e6; three built-in tools under safe explicit opt-in and consent. Shared service rules, affected-set revision, dedicated human currency ACK, actual default RPC path. Independent full1051/1027passed/0failed/24skipped and targeted browser/default/mode11/11. |
 | 2 — products | **Safe subset verified; full expansion incomplete** | Source707052c: four built-ins, shared listing/option review, existing services/history and revision protection. Full1094/1069pass/0fail/25skip; actual browser/default7/7. Group/media/stock paths remain gated. |
-| 3 — images | Isolated codec verified; staging/review incomplete | [Media delivery plan](MEDIA-DELIVERY-PLAN.md) separates enforceable native-memory isolation from staging, multi-scope authority and actual old/new image approval. Media application tools remain ineligible. |
+| 3 — images | Sealed codec verified; storage31 in progress | Portable wire/client extraction and schema31/storage/cleanup are being implemented. [Media delivery plan](MEDIA-DELIVERY-PLAN.md); actual multi-scope/old-new approval still pending. No media application tools eligible. |
 | 4 — inventory | Source audit complete; implementation pending | [Inventory delivery plan](INVENTORY-DELIVERY-PLAN.md); all-writer ledger, computed48-hour holds, cancellation-overflow conflict and coverage. |
 | 5 — orders | Not started | Existing decisions/state machine only; stock deduction exactly once and explicit human approval. |
-| 6 — analytics | Read-only core in progress | Shared dashboard definitions, independent metric fixtures, currencies, UTC+8 and bounded coverage; no new default tools yet. |
+| 6 — analytics | **Verified in isolated development** | Sourcef7dc171, three safe-opt-in reads, shared definitions/independent fixtures/bounded coverage; full1120/1095passed/0failed/25skipped, response/default5/5, core29/29. |
 | 7 — operations/audit | Not started | Resource-bound inspection/cancellation/audit tools; foundation maintenance is not their implementation. |
-| 8 — KB integration | Designed only | KB remains untrusted knowledge, never live-state or authorization authority. |
+| 8 — KB integration | Current-tool boundary verified | Source66d232c, independent8/8 bothDB; no runtime KB call/fallback. Real-vendor/LLM and future business-phase acceptance remain unverified. |
 
 ## Verified foundation behavior
 

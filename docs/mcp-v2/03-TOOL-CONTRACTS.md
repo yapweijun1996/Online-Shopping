@@ -12,9 +12,13 @@ Four preview/commit descriptors use the actual schemas and examples in [03-CATAL
 
 The safe development factory registers these four tools after explicit opt-in; independent full-suite and actual Chromium approval/default-registration evidence is recorded in the validation report. Existing-stock keys, group joins/moves and gallery-holder-changing renames remain rejected. Historical catalog candidates below are design history; their numeric revisions, full-object receipts and argument shapes are superseded for this implemented safe subset.
 
-## Remaining 17 tools: proposed
+## Implemented analytics (isolated default-off)
 
-The historical JSON bundle retains superseded company and catalog candidates for traceability; the separate implemented bundles are authoritative for those names within their documented supported subset.
+`analytics.sales_trend`, `analytics.top_products` and `analytics.inventory_risk` use [03-ANALYTICS-IMPLEMENTED.json](03-ANALYTICS-IMPLEMENTED.json), exported from real descriptors. [ANALYTICS-TOOLS.md](ANALYTICS-TOOLS.md) defines actual filters, coverage, current-category attribution, safety bounds, errors, audit and examples. Fresh analytics.extended/current figures.read is required. Existing dashboard definitions and v1 summary stay unchanged. Sourcef7dc171 passed independent full1120/1095passed/0failed/25skipped; unsupported history/cash/profit claims are excluded.
+
+## Remaining 14 tools: proposed
+
+The historical JSON bundle retains superseded company, catalog and analytics candidates for traceability; separate implemented bundles are authoritative within their documented supported subset.
 
 Generated from `generate-contracts.py`; change that source and regenerate both this document and its JSON Schema bundle together.
 
