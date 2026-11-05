@@ -1,0 +1,9 @@
+# Current catalog media visibility
+
+`readCatalogMediaBeforeGraph(read,snapshot)` is a SELECT-only foundation. The caller supplies a fresh B1 single/union capture while holding its lifecycle and tenant fence. It rechecks the complete current member set and each id/listing/SKU/created-at tuple, ordered by actual SQL `listing_id,created_at,sku,id`, then reuses the same private B2 model/graph as AFTER projection. No fake reader, no-op future target, new identity, mutation, options normalization, native work or authority is introduced.
+
+The result is frozen `{version:1,mediaRevision,before,beforeViews}`. Physical own-main keys remain in `before`; `beforeViews` supplies actual ordered visible associations. Hidden/unselected holder uploads can suppress a variant's own main by raw byte SHA even when that key is absent from selected gallery keys. The helper never guesses suppression from MIME/asset-key selection. Its output is independently compared to the B1 physical graph and actual current Portal-derived view facts.
+
+Single-source and true two-listing captures keep their B1 shape/version. The existing `projectCatalogMediaMove` return contract is unchanged. New C review must still bind literal labels, composite revision and both actual before/after visible effects; this helper alone enables no operation or human approval. C1b's legacy empty-group guard remains a controlled denial; membership null-equivalence and strict option clearing are separate business predicates.
+
+Both SQLite/PostgreSQL tests compare real services/B1 captures with full ten shared plus distinct own eleven, a hidden unselected physical twin, single explicit hidden own main, changed tuples and forged view metadata. All helper queries are instrumented SELECT-only metadata with the actual ORDER BY and cap. The tests establish current graph consistency, not native decoding, OAuth or actual C approval.

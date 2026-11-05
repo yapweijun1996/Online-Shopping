@@ -100,6 +100,34 @@ function graph(model,groups){
  return{views:views.sort((a,b)=>a.productId<b.productId?-1:1),products:products.sort((a,b)=>a.productId<b.productId?-1:1),listings:listings.sort((a,b)=>a.listingId===null?1:b.listingId===null?-1:a.listingId<b.listingId?-1:1)};
 }
 
+// Actual current ordering plus the same private gallery graph used for AFTER.
+// The caller supplies a fresh B1 capture inside its existing lifecycle/store fence.
+export async function readCatalogMediaBeforeGraph(read,snapshot){
+ if(!snapshot||!validId(snapshot.targetId))unsupported();
+ const current=await read.get('SELECT id,listing_id,sku,created_at FROM product WHERE id=?',snapshot.targetId);if(!current)changed();
+ if(snapshot.version===2&&!Array.isArray(snapshot.capture?.listingIds))unsupported();
+ const target=snapshot.version===2?snapshot.capture.listingIds.find(id=>id!==current.listing_id):current.listing_id;
+ const ids=selector(snapshot,snapshot.targetId,current.listing_id,target);
+ const rows=await read.all(`SELECT id,listing_id,sku,created_at FROM product WHERE listing_id IN (${ids.map(()=>'?').join(',')})
+  ORDER BY listing_id,created_at,sku,id LIMIT ${MEDIA_LIMITS.products+1}`,...ids);
+ if(rows.length>MEDIA_LIMITS.products)limited();if(rows.length!==snapshot.products.length)changed();
+ const captured=new Map(snapshot.products.map(row=>[row.productId,row])),groups=new Map(),seen=new Set();
+ for(const row of rows){const before=captured.get(row.id);if(!before||seen.has(row.id)||row.listing_id!==before.listingId||row.sku!==before.sku||row.created_at!==before.createdAt)changed();seen.add(row.id);
+  if(!groups.has(row.listing_id))groups.set(row.listing_id,[]);groups.get(row.listing_id).push(row.id);
+ }
+ const actual=graph(model(snapshot),[...groups].map(([listingId,memberIds])=>({listingId,memberIds})));
+ for(const [kind,id] of [['products','productId'],['listings','listingId']]){
+  if(actual[kind].length!==snapshot.before[kind].length)changed();
+  for(const row of actual[kind]){const before=snapshot.before[kind].find(value=>value[id]===row[id]);if(!before||!equal(row,before))changed();}
+ }
+ if(!Array.isArray(snapshot.views)||snapshot.views.length!==actual.views.length)changed();
+ for(const row of actual.views){const before=snapshot.views.find(value=>value.productId===row.productId);
+  if(!before||!equal(row,{productId:before.productId,role:before.role,holderId:before.holderId,
+   visible:before.visible.map(({id,assetKey,shared})=>({id,assetKey,shared}))}))changed();
+ }
+ return freeze({version:1,mediaRevision:snapshot.revision,before:{products:actual.products,listings:actual.listings},beforeViews:actual.views});
+}
+
 export async function projectCatalogMediaMove(read,snapshot,input){
  object(input,['productId','targetPlan','patch']);if(Object.keys(input).length!==3||!validId(input.productId)||input.productId!==snapshot?.targetId)unsupported();
  const patch=json(input.patch);object(patch,['sku','name','description','category','priceMinor','currency','active','variantGroup','variantLabel','options']);if(!Object.keys(patch).length||Object.hasOwn(patch,'variantGroup')&&!text(patch.variantGroup,40,true)||Object.hasOwn(patch,'sku')&&(!text(patch.sku,40)||!patch.sku.length))unsupported();
