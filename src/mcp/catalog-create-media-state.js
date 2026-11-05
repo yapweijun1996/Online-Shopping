@@ -94,5 +94,5 @@ export async function readCatalogCreateMediaState(read,input){
  const mediaRevision=existing?source.snapshot.revision:sha(json({kind:'EMPTY_BEFORE',identity}));
  const revision=sha(json({version:1,kind:'catalog-media-create',catalogRevision:metadata.revision,mediaRevision,identity,prepared,after,optionReview,order:source.order??[]}));
  return freeze({version:1,revision,catalogRevision:metadata.revision,mediaRevision,creationIdentity:identity,
-  normalizedInput:prepared,after,optionReview,source,metadata});
+  normalizedInput,preparedInput:prepared,after,optionReview,source,metadata});
 }

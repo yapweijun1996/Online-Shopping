@@ -169,7 +169,7 @@ function samePrivate(value,current,depth=0){
 /** Private CREATE projection only. This does not create a manifest, an approval
  * or an eligible operation. No synthetic DB product/snapshot is constructed. */
 export async function projectCatalogMediaCreate(read,captured){
- object(captured,['version','revision','catalogRevision','mediaRevision','creationIdentity','normalizedInput','after','optionReview','source','metadata']);
+ object(captured,['version','revision','catalogRevision','mediaRevision','creationIdentity','normalizedInput','preparedInput','after','optionReview','source','metadata']);
  if(captured.version!==1||!sha.test(captured.revision||''))unsupported();
  object(captured.metadata,['version','request','predicates','revision','rows']);
  const current=await readCatalogCreateMediaState(read,captured.metadata.request);
