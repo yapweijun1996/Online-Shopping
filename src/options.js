@@ -10,6 +10,13 @@ import { OPTION_LIMITS } from './option-limits.js';
  * carts and orders are unchanged.
  */
 export const OPTION_DISPLAYS = ['button', 'swatch', 'image', 'dropdown'];
+// Mirror the actual per-dialect unique index, including SQLite's ASCII-only
+// NOCASE semantics rather than silently changing it to JavaScript case folding.
+export async function hasVariantLabel(database, group, label, excludeId = null) {
+  const comparison = database.dialect === 'postgres' ? 'lower(variant_label) = lower(?)' : 'variant_label COLLATE NOCASE = ?';
+  return Boolean(group && label && await database.get(`SELECT id FROM product WHERE variant_group = ? AND ${comparison}
+    AND (? IS NULL OR id <> ?) LIMIT 1`, group, label, excludeId, excludeId));
+}
 const localePattern = /^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$/;
 const colorPattern = /^#[0-9a-fA-F]{6}$/;
 /* A rejected option choice: 400 with a stable code the seller UI can translate, reported on the `options` field. */
@@ -219,11 +226,10 @@ const typeSet = (options) => options.map((option) => option.type.id).sort().join
  * Replaces the options of one product. `options` is [{ typeId, valueId }]; an empty array clears them.
  * All products of a variant group must use the same option types, and each combination is unique.
  */
-export async function setProductOptions(database, productId, variantGroup, options, { newProduct = false } = {}) {
+export async function prepareProductOptions(database, productId, variantGroup, options, { newProduct = false } = {}) {
   if (!Array.isArray(options)) throw new FieldError('options', 'Choose options as a list.');
   if (!options.length) {
-    await database.run('DELETE FROM product_option WHERE product_id = ?', productId);
-    return;
+    return { options: [], label: null };
   }
   if (!variantGroup) throw optionError('OPTIONS_GROUP_REQUIRED', 'Set a variant group before choosing options.');
   if (options.length > OPTION_LIMITS.typesPerGroup) throw new FieldError('options', `Use at most ${OPTION_LIMITS.typesPerGroup} option types.`);
@@ -234,8 +240,8 @@ export async function setProductOptions(database, productId, variantGroup, optio
     picked.push(item);
   }
   if (new Set(picked.map((item) => item.typeId)).size !== picked.length) throw new FieldError('options', 'Choose each option type only once.');
-  const rows = await database.all(`SELECT v.id AS value_id, v.option_type_id, v.active AS value_active, t.active AS type_active
-    FROM option_value v JOIN option_type t ON t.id = v.option_type_id WHERE v.id IN (${placeholders(picked)})`, ...picked.map((item) => item.valueId));
+  const rows = await database.all(`SELECT v.id AS value_id, v.option_type_id, v.active AS value_active, t.active AS type_active, v.label, t.position, t.name AS type_name, t.id AS type_id
+    FROM option_value v JOIN option_type t ON t.id = v.option_type_id WHERE v.id IN (${placeholders(picked)}) ORDER BY t.position, t.name, t.id`, ...picked.map((item) => item.valueId));
   const byValue = new Map(rows.map((row) => [row.value_id, row]));
   const current = new Set((await database.all('SELECT option_value_id FROM product_option WHERE product_id = ?', productId)).map((row) => row.option_value_id));
   for (const item of picked) {
@@ -243,7 +249,7 @@ export async function setProductOptions(database, productId, variantGroup, optio
     if (!row || row.option_type_id !== item.typeId) throw new FieldError('options', 'Choose an existing option value.');
     if ((!row.value_active || !row.type_active) && !current.has(item.valueId)) throw new FieldError('options', 'This option is inactive.');
   }
-  const siblings = await database.all('SELECT id FROM product WHERE variant_group = ? AND id <> ?', variantGroup, productId);
+  const siblings = await database.all('SELECT id FROM product WHERE variant_group = ? AND (? IS NULL OR id <> ?)', variantGroup, productId, productId);
   if (siblings.length + 1 > OPTION_LIMITS.combinationsPerGroup) throw new ApiError(409, 'OPTION_LIMIT', `A variant group can have at most ${OPTION_LIMITS.combinationsPerGroup} products.`);
   const siblingOptions = await loadProductOptions(database, siblings.map((row) => row.id));
   const mine = picked.map((item) => ({ type: { id: item.typeId }, value: { id: item.valueId } }));
@@ -256,6 +262,23 @@ export async function setProductOptions(database, productId, variantGroup, optio
       throw conflict;
     }
   }
+  const label = rows.map(row => row.label).join(' / ').slice(0, 80);
+  if (await hasVariantLabel(database, variantGroup, label, productId)) {
+    const conflict = new ApiError(409, 'DUPLICATE_VARIANT', 'This combination already exists in the group.');
+    conflict.field = 'options';
+    throw conflict;
+  }
+  return { options: picked.map(item => ({ typeId: item.typeId, valueId: item.valueId })), label };
+}
+
+export async function requireGroupOptions(database, productId, group, has) {
+  if (group && !has && await groupUsesOptions(database, group, productId)) {
+    throw optionError('OPTIONS_REQUIRED', 'This variant group is described by option types; choose its options.');
+  }
+}
+
+export async function setProductOptions(database, productId, variantGroup, options, settings = {}) {
+  const { options: picked } = await prepareProductOptions(database, productId, variantGroup, options, settings);
   await database.run('DELETE FROM product_option WHERE product_id = ?', productId);
   for (const item of picked) {
     await database.run('INSERT INTO product_option (product_id, option_type_id, option_value_id) VALUES (?, ?, ?)', productId, item.typeId, item.valueId);

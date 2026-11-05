@@ -5,7 +5,7 @@ import { validateProductInput } from './product-input.js';
 import { decodeProductImage, decodeThumbnail } from './product-image.js';
 import { getCompanySettings, requireActiveCategory } from './settings.js';
 import { presentCatalogCopy } from './catalog-copy.js';
-import { groupUsesOptions, loadProductOptions, optionAxes, optionError, setProductOptions } from './options.js';
+import { hasVariantLabel, loadProductOptions, optionAxes, optionError, requireGroupOptions, setProductOptions } from './options.js';
 import { listingFor, moveToListing, syncListing } from './listings.js';
 import { reservedQuantitySql } from './stock-reservation.js';
 import { galleryRole, productCover, productGallery, requireGalleryRevision, saveProductGallery, shareListingGallery } from './product-gallery.js';
@@ -89,13 +89,33 @@ function duplicateSku(error) {
   throw error;
 }
 
+// Shared read-only preparation; callers that apply the result hold the writer lock.
+export async function prepareProductCreate(database, input) {
+  const currency = (await getCompanySettings(database)).defaultCurrency;
+  if (!input || typeof input !== 'object' || Array.isArray(input)) validateProductInput(input, [currency]);
+  const product = validateProductInput(input && { currency, ...input }, [currency]);
+  await requireActiveCategory(database, product.category);
+  await validateVariantGroup(database, product);
+  return product;
+}
+
+export async function requireUniqueProductSku(database, sku, excludeId = null) {
+  if (await database.get('SELECT id FROM product WHERE sku = ? AND (? IS NULL OR id <> ?) LIMIT 1', sku, excludeId, excludeId)) {
+    throw new ApiError(409, 'DUPLICATE_SKU', 'This SKU is already in use.');
+  }
+}
+
+export async function requireUniqueVariantLabel(database, group, label, excludeId = null) {
+  if (await hasVariantLabel(database, group, label, excludeId)) {
+    const conflict = new ApiError(409, 'DUPLICATE_VARIANT', 'This variant option is already in the group.');
+    conflict.field = 'variantLabel';
+    throw conflict;
+  }
+}
+
 export async function createProduct(database, input) {
   return await database.transaction(async () => {
-    const currency = (await getCompanySettings(database)).defaultCurrency;
-    if (!input || typeof input !== 'object' || Array.isArray(input)) validateProductInput(input, [currency]);
-    const product = validateProductInput(input && { currency, ...input }, [currency]);
-    await requireActiveCategory(database, product.category);
-    await validateVariantGroup(database, product);
+    const product = await prepareProductCreate(database, input);
     const id = randomUUID();
     // Creation times in a listing strictly increase: the oldest variant holds the shared gallery and represents the listing.
     const latest = product.variantGroup && await database.get(`SELECT MAX(p.created_at) AS last FROM product p JOIN listing l
@@ -103,6 +123,8 @@ export async function createProduct(database, input) {
     const now = new Date(Math.max(Date.now(), latest?.last ? Date.parse(latest.last) + 1 : 0)).toISOString();
     // Variants share their listing's title, description and category; the first product of a group defines them.
     const listing = await listingFor(database, product, now);
+    await requireUniqueProductSku(database, product.sku);
+    await requireUniqueVariantLabel(database, product.variantGroup, product.variantLabel);
     try {
       await database.run(`INSERT INTO product
       (id, sku, name, description, category, price_minor, currency, active, image_mime, image_data,
@@ -117,9 +139,7 @@ export async function createProduct(database, input) {
     } catch (error) {duplicateSku(error);}
     const hasOptions = Array.isArray(product.options) && product.options.length > 0;
     if (hasOptions) await setProductOptions(database, id, product.variantGroup, product.options, { newProduct: true });
-    else if (product.variantGroup && await groupUsesOptions(database, product.variantGroup, id)) {
-      throw optionError('OPTIONS_REQUIRED', 'This variant group is described by option types; choose its options.');
-    }
+    else await requireGroupOptions(database, id, product.variantGroup, false);
     await shareListingGallery(database, listing.id);
     return await getProduct(database, id, true);
   });
@@ -163,9 +183,9 @@ export async function updateProduct(database, id, input, mode = 'manual') {
   });
 }
 
-async function patchProduct(database, id, input, { galleryChanging = false } = {}) {
-  const existing = await getProduct(database, id, true);
-  if (!existing) return null;
+// This helper deliberately has no product/gallery detail or mutation dependency.
+export async function prepareProductUpdate(database, existing, input) {
+  const id = existing.id;
   const currency = (await getCompanySettings(database)).defaultCurrency;
   const patch = validateProductInput(input, [existing.currency], { partial: true });
   if (Object.hasOwn(patch, 'stockQuantity') && (patch.stockQuantity === null) !== (existing.stockQuantity === null) &&
@@ -188,6 +208,13 @@ async function patchProduct(database, id, input, { galleryChanging = false } = {
     options: patch.options,
     category: patch.category || existing.categoryCode, currency: patch.currency || existing.currency
   }, id, Object.hasOwn(patch, 'variantGroup') && (patch.variantGroup || null) !== (existing.variantGroup || null));
+  return patch;
+}
+
+async function patchProduct(database, id, input, { galleryChanging = false } = {}) {
+  const existing = await getProduct(database, id, true);
+  if (!existing) return null;
+  const patch = await prepareProductUpdate(database, existing, input);
   if (!galleryChanging && !existing.galleryShared && patch.image === null && existing.images.length > (existing.imageUrl ? 1 : 0)) {
     throw new FieldError('imageDataUrl', 'Remove gallery images before removing the main image.');
   }
@@ -206,6 +233,11 @@ async function patchProduct(database, id, input, { galleryChanging = false } = {
   }
   assignments.push('updated_at = ?');
   values.push(new Date(Math.max(Date.now(), Date.parse(existing.updatedAt) + 1)).toISOString(), id);
+  if (Object.hasOwn(patch, 'sku')) await requireUniqueProductSku(database, patch.sku, id);
+  if (Object.hasOwn(patch, 'variantGroup') || Object.hasOwn(patch, 'variantLabel')) {
+    await requireUniqueVariantLabel(database, Object.hasOwn(patch, 'variantGroup') ? patch.variantGroup : existing.variantGroup,
+      Object.hasOwn(patch, 'variantLabel') ? patch.variantLabel : existing.variantLabel, id);
+  }
   try {
     await database.run(`UPDATE product SET ${assignments.join(', ')} WHERE id = ?`, ...values);
   } catch (error) {duplicateSku(error);}
@@ -228,9 +260,7 @@ async function saveOptions(database, id, existing, patch) {
   if (Object.hasOwn(patch, 'options')) await setProductOptions(database, id, group, patch.options);
   else if (Object.hasOwn(patch, 'variantGroup') && group !== existing.variantGroup) await setProductOptions(database, id, group, []);
   const has = Boolean(await database.get('SELECT 1 FROM product_option WHERE product_id = ?', id));
-  if (group && !has && await groupUsesOptions(database, group, id)) {
-    throw optionError('OPTIONS_REQUIRED', 'This variant group is described by option types; choose its options.');
-  }
+  await requireGroupOptions(database, id, group, has);
 }
 
 export async function getProduct(database, id, seller = false, mode = 'manual', variantPage = null) {
