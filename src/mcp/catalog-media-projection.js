@@ -59,7 +59,7 @@ async function currentProduct(read,id){
  const row=await read.get('SELECT id,listing_id,sku,created_at,variant_group,name,description,category FROM product WHERE id=?',id);if(!row)changed();return row;
 }
 async function targetPlan(read,current,patch,passed){
- const groupChange=Object.hasOwn(patch,'variantGroup')&&patch.variantGroup!==current.variant_group;
+ const groupChange=Object.hasOwn(patch,'variantGroup')&&(patch.variantGroup||null)!==(current.variant_group||null);
  if(!groupChange){if(passed!==null)unsupported();return{groupChange:false,targetListingId:current.listing_id,plan:null};}
  if(patch.variantGroup!==null){const size=await read.get('SELECT length(name) AS name_length,length(description) AS description_length,length(category) AS category_length FROM listing WHERE code=?',patch.variantGroup);if(size&&(Number(size.name_length)>120||Number(size.description_length)>2000||Number(size.category_length)>80))unsupported();}
  const fresh=await planMoveToListing(read,current.id,current.listing_id,{...current,...patch});
