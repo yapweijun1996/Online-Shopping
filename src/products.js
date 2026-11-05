@@ -2,13 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { ApiError } from './http.js';
 import { FieldError, boundedText } from './validation.js';
 import { validateProductInput } from './product-input.js';
-import { decodeProductImage, decodeThumbnail } from './product-image.js';
+import { decodeThumbnail } from './product-image.js';
 import { getCompanySettings, requireActiveCategory } from './settings.js';
 import { presentCatalogCopy } from './catalog-copy.js';
 import { hasVariantLabel, loadProductOptions, optionAxes, optionError, requireGroupOptions, setProductOptions } from './options.js';
 import { listingFor, moveToListing, syncListing } from './listings.js';
 import { reservedQuantitySql } from './stock-reservation.js';
-import { galleryRole, productCover, productGallery, requireGalleryRevision, saveProductGallery, shareListingGallery } from './product-gallery.js';
+import { galleryRole, productCover, productGallery, requireGalleryRevision, saveProductGallery, planProductGallery, applyProductGalleryPlan, prepareGalleryUploadEntry, requireMainImageRemoval, shareListingGallery } from './product-gallery.js';
 
 const columns = () => `p.id, p.sku, p.name, p.description, p.category AS category_code,
   c.label AS category, p.price_minor, p.currency, p.active, p.image_mime, p.variant_group, p.variant_label, p.stock_quantity, p.listing_id,
@@ -215,9 +215,7 @@ async function patchProduct(database, id, input, { galleryChanging = false } = {
   const existing = await getProduct(database, id, true);
   if (!existing) return null;
   const patch = await prepareProductUpdate(database, existing, input);
-  if (!galleryChanging && !existing.galleryShared && patch.image === null && existing.images.length > (existing.imageUrl ? 1 : 0)) {
-    throw new FieldError('imageDataUrl', 'Remove gallery images before removing the main image.');
-  }
+  requireMainImageRemoval(existing, patch.image, galleryChanging);
   const mapping = { sku: 'sku', name: 'name', description: 'description', category: 'category', priceMinor: 'price_minor', currency: 'currency', active: 'active', variantGroup: 'variant_group', variantLabel: 'variant_label', stockQuantity: 'stock_quantity' };
   const assignments = [];
   const values = [];
@@ -320,16 +318,23 @@ export async function setGalleryThumbnail(database, productId, imageId, thumbDat
 
 const sharedGalleryError = () => new ApiError(409, 'GALLERY_SHARED', 'The photo gallery is shared by all variants; edit it on the main variant.');
 
+// The prepared entry comes from prepareGalleryUploadEntry; all layout/image
+// validation still runs through the common read-only gallery planner.
+export async function planGalleryImageAddition(database, productId, entry, mode = 'manual') {
+  const product = await database.get('SELECT image_mime, listing_id FROM product WHERE id = ?', productId);
+  if (!product) throw new ApiError(404, 'NOT_FOUND', 'Product not found.');
+  if (await galleryRole(database, { id: productId, listingId: product.listing_id }) === 'variant') throw sharedGalleryError();
+  if (!product.image_mime) throw new FieldError('imageDataUrl', 'Add a main image first.');
+  const current = await getProduct(database, productId, true, mode);
+  const plan = await planProductGallery(database, productId, [...current.galleryItems.map(item => ({ id: item.id })), entry], current);
+  return { current, plan };
+}
+
 export async function addGalleryImage(database, productId, imageDataUrl, mode = 'manual', thumbDataUrl = null) {
-  const image = decodeProductImage(imageDataUrl);
-  if (!image) throw new FieldError('imageDataUrl', 'Choose an image.');
+  const entry = prepareGalleryUploadEntry(imageDataUrl, thumbDataUrl);
   return await database.transaction(async () => {
-    const product = await database.get('SELECT image_mime, listing_id FROM product WHERE id = ?', productId);
-    if (!product) throw new ApiError(404, 'NOT_FOUND', 'Product not found.');
-    if (await galleryRole(database, { id: productId, listingId: product.listing_id }) === 'variant') throw sharedGalleryError();
-    if (!product.image_mime) throw new FieldError('imageDataUrl', 'Add a main image first.');
-    const current = await getProduct(database, productId, true, mode);
-    await saveProductGallery(database, productId, [...current.galleryItems.map((item) => ({ id: item.id })), thumbDataUrl ? { imageDataUrl, thumbDataUrl } : { imageDataUrl }], current);
+    const { current, plan } = await planGalleryImageAddition(database, productId, entry, mode);
+    await applyProductGalleryPlan(database, plan);
     await database.run('UPDATE product SET updated_at = ? WHERE id = ?', new Date(Math.max(Date.now(), Date.parse(current.updatedAt) + 1)).toISOString(), productId);
     return await getProduct(database, productId, true, mode);
   });

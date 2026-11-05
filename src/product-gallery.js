@@ -95,16 +95,21 @@ export async function productCover(store, product, seller) {
   return upload ? `/api/v1/${seller ? 'seller/' : ''}products/${product.id}/gallery/${upload.id}${seller ? '' : `?v=${version(upload.created_at)}`}` : null;
 }
 
-export async function saveProductGallery(store, productId, requested, current) {
+// Read-only selection plan. A trusted main projection reproduces the portal
+// post-patch main state without speculative writes. Private bytes stay internal.
+export async function planProductGallery(store, productId, requested, current, projection = {}) {
   if (!Array.isArray(requested) || requested.length > 20) throw new FieldError('gallery', 'Choose up to ten images.');
   const allowed = new Map([...current.galleryItems, ...(current.galleryReferenceItems || [])].map((item) => [item.id, item]));
   const original = await store.get('SELECT image_data, listing_id FROM product WHERE id = ?', productId);
-  const shared = Boolean(await listingHolder(store, original.listing_id));
-  if (original.image_data && !shared) allowed.set('main', { id: 'main' });
+  const mainData = Object.hasOwn(projection, 'mainImageDataUrl') ? decodeProductImage(projection.mainImageDataUrl)?.data ?? null : original.image_data;
+  const holderId = await listingHolder(store, original.listing_id);
+  const shared = Boolean(holderId);
+  const role = !shared ? 'single' : holderId === productId ? 'holder' : 'variant';
+  if (mainData && !shared) allowed.set('main', { id: 'main' });
   const uploads = await store.all('SELECT * FROM product_gallery_image WHERE product_id = ? ORDER BY position', productId);
   const uploadById = new Map(uploads.map((item) => [item.id, item]));
   const fingerprint = new Map(uploads.map((item) => [hash(item.data), item.id]));
-  if (original.image_data && !shared) fingerprint.set(hash(original.image_data), 'main');
+  if (mainData && !shared) fingerprint.set(hash(mainData), 'main');
   const selected = [],seen = new Set(),pending = new Map();
   for (const entry of requested) {
     const keys = entry && typeof entry === 'object' && !Array.isArray(entry) ? Object.keys(entry) : [];
@@ -119,9 +124,12 @@ export async function saveProductGallery(store, productId, requested, current) {
       const digest = hash(image.data);
       id = fingerprint.get(digest);
       if (!id) {
-        id = randomUUID();fingerprint.set(digest, id);
+        id = `upload:sha256:${digest}`;
+        // Stored legacy IDs need not be UUIDs; keep new aliases disjoint.
+        for (let n = 1; allowed.has(id) || uploadById.has(id); n++) id = `upload:sha256:${digest}:${n}`;
+        fingerprint.set(digest, id);
         const thumb = decodeThumbnail(entry.thumbDataUrl);
-        pending.set(id, { id, mime: image.mime, data: image.data, created_at: new Date().toISOString(), thumb_mime: thumb?.mime || null, thumb_data: thumb?.data || null });
+        pending.set(id, { mime: image.mime, data: image.data, thumb_mime: thumb?.mime || null, thumb_data: thumb?.data || null });
       }
     } else if (shared && id === 'main') {
       continue; // a variant's main photo is its own colour photo, not a shared one
@@ -133,17 +141,46 @@ export async function saveProductGallery(store, productId, requested, current) {
     if (!seen.has(id)) {seen.add(id);selected.push(id);}
   }
   if (selected.length > 10) throw new FieldError('gallery', 'A product supports ten images in total.');
-  if (selected.includes('main') && !original.image_data) throw new FieldError('gallery', 'Add a main image first.');
-  // Reinsert only the selected uploads with their original IDs and bytes. The
-  // enclosing product transaction rolls metadata, images and layout back together.
+  if (selected.includes('main') && !mainData) throw new FieldError('gallery', 'Add a main image first.');
+  return { productId, role, holderId, mainDigest: mainData ? hash(mainData) : null, selected, retained: uploadById, pending };
+}
+
+// Internal plans contain private bytes, not MCP proposal DTOs. Apply only a plan
+// derived from current state inside the same enclosing business transaction.
+// The existing caller still owns revision updates, domain history and authority.
+export async function applyProductGalleryPlan(store, plan) {
+  const { productId, selected, retained, pending } = plan;
+  const allocated = new Map([...pending].map(([ref, image]) => [ref, { ...image, id: randomUUID(), created_at: new Date().toISOString() }]));
+  const resolved = selected.map(ref => allocated.get(ref)?.id || ref);
+  // Reinsert only selected uploads; retain old identities, bytes and timestamps.
   await store.run('DELETE FROM product_gallery_image WHERE product_id = ?', productId);
   let position = 0;
-  for (const id of selected) {
-    const image = pending.get(id) || uploadById.get(id);
+  for (const ref of selected) {
+    const image = allocated.get(ref) || retained.get(ref);
     if (image) await store.run('INSERT INTO product_gallery_image(id, product_id, position, mime, data, created_at, thumb_mime, thumb_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    id, productId, ++position, image.mime, image.data, image.created_at, image.thumb_mime ?? null, image.thumb_data ?? null);
+      image.id, productId, ++position, image.mime, image.data, image.created_at, image.thumb_mime ?? null, image.thumb_data ?? null);
   }
-  await store.run('UPDATE product SET gallery_layout_json = ? WHERE id = ?', JSON.stringify(selected), productId);
+  await store.run('UPDATE product SET gallery_layout_json = ? WHERE id = ?', JSON.stringify(resolved), productId);
+  return resolved;
+}
+
+export async function saveProductGallery(store, productId, requested, current) {
+  await applyProductGalleryPlan(store, await planProductGallery(store, productId, requested, current));
+}
+
+// Preserve the upload endpoint's early image validation and optional-preview
+// truthiness. Thumbnail validation remains in planning only for a new digest.
+export function prepareGalleryUploadEntry(imageDataUrl, thumbDataUrl = null) {
+  if (!decodeProductImage(imageDataUrl)) throw new FieldError('imageDataUrl', 'Choose an image.');
+  return thumbDataUrl ? { imageDataUrl, thumbDataUrl } : { imageDataUrl };
+}
+
+// Shared unchanged guard for a main-only removal. An explicit gallery change
+// is validated against its effective main by the layout planner instead.
+export function requireMainImageRemoval(current, image, galleryChanging = false) {
+  if (!galleryChanging && !current.galleryShared && image === null && current.images.length > (current.imageUrl ? 1 : 0)) {
+    throw new FieldError('imageDataUrl', 'Remove gallery images before removing the main image.');
+  }
 }
 
 export function requireGalleryRevision(current, expected) {
