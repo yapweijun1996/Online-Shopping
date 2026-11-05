@@ -11,6 +11,9 @@ import { createAccount, resetPasswordFromHost, updateAccount } from '../src/acco
 import { hash, secret, liveGrant, SCOPES, supportedScopes, v2Epoch } from '../src/mcp/credentials.js';
 import { initializeOperationStorage } from '../src/mcp/operation-runtime.js';
 import { verifyOperationAuthority } from '../src/mcp/operation-authorization.js';
+import { catalogue } from '../src/mcp/tools.js';
+import { companyReadContract } from '../src/mcp/company-tools.js';
+import { catalogCreateTool, catalogUpdateTool } from '../src/mcp/catalog-tools.js';
 
 const base = process.env.SHOP_TEST_DATABASE_URL;
 if (base && (process.env.NODE_ENV !== 'test' || !/test/i.test(new URL(base).pathname))) throw new Error('Disposable PostgreSQL test database required.');
@@ -99,13 +102,33 @@ for (const engine of ['sqlite', 'postgres']) {
     assert.equal((await f.rpc(rotated.data.access_token, 'tools/list')).data.result.tools.length, 5);
   });
   test(`${engine}: fresh OAuth consent records exact v2 identity and exposes only consented implemented tools`, options, async (t) => {
-    const f = await fixture(t, engine), grant = await f.grant('catalog.read orders.read analytics.read catalog.write company.read inventory.adjust');
+    const f = await fixture(t, engine), legacy = await f.grant('catalog.read orders.read analytics.read');
+    const legacyTools = catalogue.map(({ scope: _scope, ...tool }) => tool);
+    assert.deepEqual((await f.rpc(legacy.access_token, 'tools/list')).data.result.tools, legacyTools);
+    const grant = await f.grant('catalog.read orders.read analytics.read catalog.write company.read inventory.adjust');
     assert.match(grant.staged.data, /Read access/); assert.match(grant.staged.data, /Changes to shop data/);
     assert.doesNotMatch(grant.staged.data, /value="(?:catalog.write|company.read|inventory.adjust)" checked/);
     assert.match(grant.staged.data, /Scope consent is not approval of an individual change/);
     const listed = (await f.rpc(grant.access_token, 'tools/list')).data.result.tools;
-    assert.equal(listed.length, 9);
-    assert.deepEqual(listed.slice(8).map((tool) => tool.name), ['company.get']);
+    assert.deepEqual(listed.map((tool) => tool.name), ['catalog.list', 'catalog.get', 'catalog.categories', 'catalog.history', 'catalog.low_stock',
+      'orders.list', 'orders.get', 'analytics.summary', 'company.get', 'catalog.preview_create', 'catalog.commit_create', 'catalog.preview_update', 'catalog.commit_update']);
+    assert.deepEqual(listed.slice(0, 8), legacyTools);
+    assert.deepEqual(listed[8].inputSchema, companyReadContract.inputSchema);
+    assert.deepEqual(listed[8].outputSchema, companyReadContract.outputSchema);
+    const object = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
+    const uuid = { type: 'string', minLength: 36, maxLength: 36, pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' };
+    for (const [index, entry] of [[9, catalogCreateTool()], [11, catalogUpdateTool()]]) {
+      assert.deepEqual(listed[index].inputSchema, object({ input: entry.inputSchema,
+        idempotencyKey: { type: 'string', minLength: 16, maxLength: 128, pattern: '^[A-Za-z0-9._~-]+$' } }));
+      assert.deepEqual(listed[index].outputSchema, object({ operationId: uuid,
+        status: { enum: ['PREPARED', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'COMMITTED', 'EXPIRED', 'CANCELLED', 'CONFLICT', 'FAILED'] },
+        previewHash: { type: 'string', minLength: 64, maxLength: 64, pattern: '^[0-9a-f]{64}$' },
+        expiresAt: { type: 'string', minLength: 24, maxLength: 24 }, replayed: { type: 'boolean' }, reviewUrl: { type: 'string', minLength: 1, maxLength: 8192 } }));
+      assert.deepEqual(listed[index + 1].inputSchema, object({ operationId: uuid }));
+      assert.deepEqual(listed[index + 1].outputSchema, { oneOf: [object({ operationId: uuid, status: { const: 'COMMITTED' }, result: entry.receiptSchema, replayed: { type: 'boolean' } }),
+        object({ operationId: uuid, error: { enum: ['EXPIRED', 'STALE_REVISION'] } })] });
+    }
+    assert.deepEqual((await f.rpc(legacy.access_token, 'tools/list')).data.result.tools, legacyTools);
     assert.equal((await f.rpc(grant.access_token, 'tools/call', { name: 'catalog.commit_create', arguments: {} })).data.error.code, -32602);
     const token = await f.store.get('SELECT * FROM oauth_token WHERE token_hash = ?', hash(grant.access_token));
     const evidence = await f.store.all('SELECT * FROM mcp_v2_scope_consent WHERE grant_id = ? ORDER BY scope', token.grant_id);
