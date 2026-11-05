@@ -2,7 +2,7 @@
 
 ## MCP v2 isolated delivery (2026-11-05)
 
-Scope: finish the Seller Operations Engine in dependency order with independent verification after each bounded change. Active integration branch: `codex/mcp-v2-seller-engine`, based on `1634735aa70090dcdf54b8d09e2cc09b33cd8a77`. All32 tool names are integrated; full catalog group/media expansion remains incomplete. Current restricted32-tool integrated sourcece1e13c passed1661/1661 with all browser/native opt-ins. Named acceptance snapshots are recorded below. Preserve the eight v1 tools and current business rules. This task permits isolated development and synthetic verification; production activation remains a separate release gate.
+Scope: finish the Seller Operations Engine in dependency order with independent verification after each bounded change. Active integration branch: `codex/mcp-v2-seller-engine`, based on `1634735aa70090dcdf54b8d09e2cc09b33cd8a77`. All32 tool names are integrated; full catalog group/media expansion remains incomplete. Current restricted32-tool integrated source13bd24e passed1784/1784 with all browser/native opt-ins. Protected review and CREATE projection prerequisites are included; full C/D activation is still in progress. Named acceptance snapshots are recorded below. Preserve the eight v1 tools and current business rules. This task permits isolated development and synthetic verification; production activation remains a separate release gate.
 
 | ID | State | Acceptance and dependency |
 | --- | --- | --- |

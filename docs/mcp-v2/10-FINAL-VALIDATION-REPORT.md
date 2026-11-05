@@ -1,6 +1,12 @@
 # MCP v2 validation snapshots
 
-## Latest accepted integrated full run — all browser and native opt-ins
+## Latest accepted full — protected review prerequisites13bd24e
+
+Root13bd24e370ec3644e6b96d825bc51b2bcc97f4f8 (code51ea385 including C2a40a337e), Node24.22.0 with synthetic SQLite and owned loopback UTF-8 PostgreSQL16: `NODE_ENV=test SHOP_TEST_DATABASE_URL=<private synthetic URL> QA_PLAYWRIGHT_MODULE=<cached module> MEDIA_COORDINATOR_CONTAINER_TEST=1 MEDIA_TOOLS_NATIVE_BROWSER_TEST=1 node --test --test-concurrency=1 test/*.test.js`, exit0, **1784 tests/1784 passed/0 failed/0 skipped**,720.977s (`.local/manager-catalog-prerequisites-full-native-browsers.tap`). Every browser and both native opt-ins ran. The owned codec container label is empty after cleanup. This is isolated synthetic verification, not production capacity or deployment evidence.
+
+All32 names remain implemented through the restricted catalog profile. Protected UPDATE wire/frame/UI and private CREATE state/canonical-input prerequisites are included. Actual full catalog UPDATE/CREATE adapters, approval/control activation and their new-operation browser/native acceptance remain incomplete; these tests do not authorize or claim that activation.
+
+## Earlier accepted integrated full — all browser and native opt-ins
 
 Rootce1e13c, Node24.22.0, SQLite and owned loopback UTF-8 PostgreSQL16: full `NODE_ENV=test SHOP_TEST_DATABASE_URL=<private synthetic URL> QA_PLAYWRIGHT_MODULE=<cached module> MEDIA_COORDINATOR_CONTAINER_TEST=1 MEDIA_TOOLS_NATIVE_BROWSER_TEST=1 node --test --test-concurrency=1 test/*.test.js` completed with exit0: **1661 tests/1661 passed/0 failed/0 skipped**,638.298s (`.local/manager-32-tools-full-native-browsers.tap`). Every browser and native opt-in ran. Owned native containers were cleaned; no production capacity claim follows from this synthetic elapsed time. This source includes all32 names, schema34 and restricted catalog tools; full catalog expansion remains incomplete.
 
