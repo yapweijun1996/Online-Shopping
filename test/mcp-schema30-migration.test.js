@@ -9,6 +9,7 @@ import { openDatabase, migrateStore, SCHEMA_VERSION } from '../src/db.js';
 import { openPostgresDatabase } from '../src/postgres-db.js';
 import { upgradePostgres } from '../src/postgres/upgrade.js';
 import { operationSchema } from '../src/mcp/operation-schema.js';
+import { mcpAuditSchema } from '../src/mcp/audit-schema.js';
 import { operationStorageMetaSchema, operationStorageSeedSql, operationStorageReady, operationStorageDdl } from '../src/mcp/operation-runtime.js';
 import { postgresSchema12Sql } from '../deploy/postgres/schema12.js';
 import { senderFields } from '../src/sender-settings.js';
@@ -20,6 +21,8 @@ const tables = [...MEDIA_STORAGE_TABLES.toReversed(), 'mcp_v2_authorization_requ
 async function removeOperations(store) {
   await dropInventoryForLegacyFixture(store);
   for (const table of tables) await store.exec(`DROP TABLE ${table}`);
+  await store.exec('DROP TABLE mcp_audit');
+  await store.exec(mcpAuditSchema(store.dialect, { version: 33 }));
   await store.setSchemaVersion(29);
 }
 async function postgresFixture(t) {

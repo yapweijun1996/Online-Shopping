@@ -28,8 +28,9 @@ not adopted. SQLite rebuilds audit tables transactionally. PostgreSQL alters ide
 and key constraints transactionally and backfills sequence order by timestamp, UUID.
 The operation extension metadata advances from 2 to 3 and includes identity properties.
 
-The mixed combination of an already34 audit table with version2 operation metadata
-is rejected before mutation: no historical supported upgrade produces it. A legacy
+An already34 audit table with either version2 or version3 operation metadata is
+rejected before mutation when the global version remains33: no supported upgrade
+produces this partial state. A legacy
 audit table with version3 metadata is supported because pre30 upgrades can initialize
 the current operation extension before reaching the explicit audit migration. Legacy
 test fixtures recreate the actual old audit table rather than retaining fresh34 DDL.
