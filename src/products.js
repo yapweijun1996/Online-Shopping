@@ -334,9 +334,9 @@ async function patchProduct(database, id, input, { galleryChanging = false, list
   const updatedAt = new Date(Math.max(Date.now(), Date.parse(existing.updatedAt) + 1)).toISOString();
   values.push(updatedAt, id);
   if (Object.hasOwn(patch, 'sku')) await requireUniqueProductSku(database, patch.sku, id);
-  if (Object.hasOwn(patch, 'variantGroup') || Object.hasOwn(patch, 'variantLabel')) {
-    await requireUniqueVariantLabel(database, Object.hasOwn(patch, 'variantGroup') ? patch.variantGroup : existing.variantGroup,
-      Object.hasOwn(patch, 'variantLabel') ? patch.variantLabel : existing.variantLabel, id);
+  const optionsChange = productOptionsChange(existing, patch);
+  if (optionsChange.checkIntermediateLabel) {
+    await requireUniqueVariantLabel(database, optionsChange.groupAfter, optionsChange.baseLabel, id);
   }
   try {
     await database.run(`UPDATE product SET ${assignments.join(', ')} WHERE id = ?`, ...values);
@@ -355,13 +355,55 @@ async function patchProduct(database, id, input, { galleryChanging = false, list
   return await getProduct(database, id, true);
 }
 
+// The input is the server's BEFORE product and its normalized patch. This pure
+// choice is shared by pre-row label checks and post-row option persistence.
+export function productOptionsChange(existing, patch) {
+  if (!existing || typeof existing !== 'object' || Array.isArray(existing) ||
+      !Object.hasOwn(existing, 'variantGroup') || !Object.hasOwn(existing, 'variantLabel') ||
+      !(existing.variantGroup === null || typeof existing.variantGroup === 'string') ||
+      !(existing.variantLabel === null || typeof existing.variantLabel === 'string') ||
+      !patch || typeof patch !== 'object' || Array.isArray(patch) ||
+      Object.hasOwn(patch, 'variantGroup') && !(patch.variantGroup === null || typeof patch.variantGroup === 'string') ||
+      Object.hasOwn(patch, 'variantLabel') && !(patch.variantLabel === null || typeof patch.variantLabel === 'string')) throw new TypeError('A complete product and normalized patch are required.');
+  const groupAfter = Object.hasOwn(patch, 'variantGroup') ? patch.variantGroup : existing.variantGroup;
+  return { groupAfter,
+    replace: Object.hasOwn(patch, 'options') || Object.hasOwn(patch, 'variantGroup') && groupAfter !== existing.variantGroup,
+    requestedOptions: Object.hasOwn(patch, 'options') ? patch.options : [],
+    baseLabel: Object.hasOwn(patch, 'variantLabel') ? patch.variantLabel : existing.variantLabel,
+    checkIntermediateLabel: Object.hasOwn(patch, 'variantGroup') || Object.hasOwn(patch, 'variantLabel') };
+}
+
+// SELECT-only update preparation. Excluding this existing ID from sibling and
+// label checks makes the same BEFORE facts valid before/after its row update,
+// while its old mappings still exist. This is not a prepared write token.
+export async function prepareProductOptionsAfter(database, existing, patch) {
+  if (!existing || !Object.hasOwn(existing, 'id') || typeof existing.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(existing.id)) {
+    throw new TypeError('An existing product ID is required.');
+  }
+  const change = productOptionsChange(existing, patch);
+  if (!await database.get('SELECT id FROM product WHERE id = ?', existing.id)) throw new ApiError(404, 'NOT_FOUND', 'Product not found.');
+  if (change.checkIntermediateLabel) await requireUniqueVariantLabel(database, change.groupAfter, change.baseLabel, existing.id);
+  let optionsAfter, label = change.baseLabel;
+  if (change.replace) {
+    const selected = await prepareProductOptions(database, existing.id, change.groupAfter, change.requestedOptions);
+    optionsAfter = selected.options;
+    if (selected.label) label = selected.label;
+  } else {
+    optionsAfter = (await database.all('SELECT option_type_id, option_value_id FROM product_option WHERE product_id = ? ORDER BY option_type_id', existing.id))
+      .map(row => ({ typeId: row.option_type_id, valueId: row.option_value_id }));
+  }
+  await requireGroupOptions(database, existing.id, change.groupAfter, optionsAfter.length > 0);
+  // Match the UTF-8 text binding also for an explicitly patched base label.
+  return { action: change.replace ? 'REPLACE' : 'KEEP', groupAfter: change.groupAfter,
+    optionsAfter, variantLabelAfter: typeof label === 'string' ? label.toWellFormed() : label };
+}
+
 // Applies option changes after the product row is updated; moving or leaving a group drops stale options.
 async function saveOptions(database, id, existing, patch) {
-  const group = Object.hasOwn(patch, 'variantGroup') ? patch.variantGroup : existing.variantGroup;
-  if (Object.hasOwn(patch, 'options')) await setProductOptions(database, id, group, patch.options);
-  else if (Object.hasOwn(patch, 'variantGroup') && group !== existing.variantGroup) await setProductOptions(database, id, group, []);
+  const change = productOptionsChange(existing, patch);
+  if (change.replace) await setProductOptions(database, id, change.groupAfter, change.requestedOptions);
   const has = Boolean(await database.get('SELECT 1 FROM product_option WHERE product_id = ?', id));
-  await requireGroupOptions(database, id, group, has);
+  await requireGroupOptions(database, id, change.groupAfter, has);
 }
 
 export async function getProduct(database, id, seller = false, mode = 'manual', variantPage = null) {
