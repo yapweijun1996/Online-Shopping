@@ -1,6 +1,6 @@
 # Catalog media UPDATE runtime gate
 
-The independent catalog media UPDATE profile selects one fixed HIGH UPDATE pair with both catalog and media consent. CREATE remains RESERVED regardless of shared catalog-media grammar. All write flags remain off by default and production activation is blocked. Source review and the complete security/failure acceptance matrix are still in progress; component and native/browser checkpoints do not establish production readiness.
+The independent catalog media UPDATE profile selects one fixed HIGH UPDATE pair with both catalog and media consent. This UPDATE profile leaves full CREATE RESERVED regardless of shared catalog-media grammar. All write flags remain off by default and production activation is blocked. Its source review, security/failure matrix and actual native/browser gate passed isolated worker and independent root checks; combined full-project regression and production operational review remain separate gates.
 
 `MCP_V2_CATALOG_MEDIA_UPDATE_ENABLED` accepts exactly `0` or `1`, defaults to `0`, and maps to `config.mcpCatalogMediaUpdate`. Enabling requires explicit development/test mode, manual shop, password login, enabled MCP v2 and the already validated sealed local media worker configuration. Constructor safety additionally requires the tenant lifecycle guard. Neither the flag nor the internal eligibility boolean is accepted in model arguments or tool schemas.
 
@@ -12,7 +12,7 @@ The default constructor selects the full UPDATE adapter when the flag is enabled
 
 Capture/final preview/review/delivery/ACK/approval/current-revision checks reuse the shared C2c normalized state/proposal reader and sole review assembler. The human path compares the entire immutable public proposal, exact final composite, descriptor and every canonical page, while keeping the raw B1 union snapshot separate for the existing exact byte loader. It does not replace raw media revision with composite revision or increase canonical limits. Native validation uses the existing session outside both database locks. COMMITTED receipt replay keeps current authority and retained metadata checks while avoiding deleted sources and expired frames.
 
-Verification separates synthetic-decoder failure/race fixtures from actual native worker, fresh OAuth and real HTTPS Chromium default-constructor tests. The latter use real image SHA/decode/nonce acknowledgements, unchecked review confirmation and fresh password, without injected registrations, grants, tenant fences or human evidence. The remaining full matrix and independent root regression remain explicit acceptance gates.
+Verification separates synthetic-decoder failure/race fixtures from actual native worker, fresh OAuth and real HTTPS Chromium default-constructor tests. The latter use real image SHA/decode/nonce acknowledgements, unchecked review confirmation and fresh password, without injected registrations, grants, tenant fences or human evidence. The isolated evidence does not replace the root's combined full-project regression or establish production readiness.
 
 ## Authoritative schemas and profile
 
