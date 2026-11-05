@@ -6,9 +6,15 @@
 
 The actual company revision is a SHA-256 string; preview arguments wrap `{input:{expectedRevision,changes},idempotencyKey}`. Before/after values appear only in first-party review. Commit returns a minimal receipt, never the complete company object. Every company mutation is HIGH risk and OWNER-only; actual currency changes additionally require explicit human acknowledgment. See [COMPANY-TOOLS.md](COMPANY-TOOLS.md) for current fields, errors, examples and activation limits. Historical company candidates remain only in the proposed JSON bundle and are not the implemented API.
 
-## Remaining 21 tools: proposed
+## Implemented catalog descriptors (safe subset, default registration pending)
 
-The historical JSON bundle still includes three superseded company candidates for traceability; only the separate implemented company bundle is authoritative for those names.
+Four preview/commit descriptors use the actual schemas and examples in [03-CATALOG-SAFE-IMPLEMENTED.json](03-CATALOG-SAFE-IMPLEMENTED.json). [CATALOG-SAFE-SUBSET.md](CATALOG-SAFE-SUBSET.md) defines supported fields, complete shared-listing/option review, bounded revision scans, current-service reuse, errors, receipts and deferred media/inventory dependencies. A real preview captures authoritative state; commit protects edits made after that preview. It does not assert freshness against every earlier model read.
+
+The catalog core is implemented and tested through an explicit server-owned registry, but default application registration and its actual browser smoke are still in progress. Existing-stock keys, group joins/moves and gallery-holder-changing renames remain rejected. Historical catalog candidates below are design history; their numeric revisions, full-object receipts and argument shapes are superseded for this implemented safe subset.
+
+## Remaining 17 tools: proposed
+
+The historical JSON bundle retains superseded company and catalog candidates for traceability; the separate implemented bundles are authoritative for those names within their documented supported subset.
 
 Generated from `generate-contracts.py`; change that source and regenerate both this document and its JSON Schema bundle together.
 
