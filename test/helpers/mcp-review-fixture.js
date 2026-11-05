@@ -30,7 +30,7 @@ export async function reviewFixture(t, dialect = 'sqlite', options = {}) {
     mcpBrowserOrigins: ['https://ai.example.test'], mcpV2: { enabled: true, epoch, buildDigest }, ...options.config };
   const tenantId = options.tenantId || 'default', tenantRevision = options.tenantRevision ?? 0;
   const binding = { tenantId, issuer: config.sellerOrigin + (config.basePath || ''), resource: config.sellerOrigin + (config.basePath || '') + '/mcp' };
-  const api = await createApi({ store, config, ...(options.registry ? { registry: options.registry(store, config) } : {}) });
+  const api = await createApi({ store, config, operationTools: options.operationTools || [], ...(options.registry ? { registry: options.registry(store, config) } : {}) });
   let seq = 0;
   async function call(path, method = 'GET', body, headers = {}, requestOrigin = config.sellerOrigin) {
     const request = new Request(requestOrigin + (config.basePath || '') + path, { method,
@@ -61,8 +61,8 @@ export async function reviewFixture(t, dialect = 'sqlite', options = {}) {
       expectedRevision: 1, requiredScope: 'catalog.write', requiredCapability: 'catalog.write', risk: 'MEDIUM', createdAt: now, expiresAt: later,
       idempotencyHash: hash(secret()), correlationId: randomUUID(), proposal: { before: { name: 'Synthetic old' }, after: { name: 'Synthetic new' } }, ...patch };
     const previewHash = operationPreviewHash(value);
-    const columns = ['id', 'tenant_id', 'tenant_revision', 'account_id', 'client_id', 'grant_id', 'epoch_hash', 'build_digest', 'issuer', 'resource', 'tool_name', 'resource_type', 'resource_id', 'expected_revision', 'required_scope', 'required_capability', 'risk', 'created_at', 'expires_at', 'idempotency_hash', 'correlation_id', 'envelope_json', 'preview_hash', 'request_hash', 'state'];
-    const values = [value.operationId, value.tenantId, value.tenantRevision, value.accountId, value.clientId, value.grantId, value.epochHash, value.buildDigest, value.issuer, value.resource, value.toolName, value.resourceType, value.resourceId, String(value.expectedRevision), value.requiredScope, value.requiredCapability, value.risk, value.createdAt, value.expiresAt, value.idempotencyHash, value.correlationId, canonicalOperationJson(value), previewHash, hash('synthetic-request'), 'PENDING_APPROVAL'];
+    const columns = ['id', 'tenant_id', 'tenant_revision', 'account_id', 'client_id', 'grant_id', 'epoch_hash', 'build_digest', 'issuer', 'resource', 'tool_name', 'resource_type', 'resource_id', 'expected_revision', 'required_scope', 'required_capability', 'risk', 'created_at', 'expires_at', 'idempotency_hash', 'correlation_id', 'envelope_json', 'preview_hash', 'request_hash', 'state', 'receipt_expires_at'];
+    const values = [value.operationId, value.tenantId, value.tenantRevision, value.accountId, value.clientId, value.grantId, value.epochHash, value.buildDigest, value.issuer, value.resource, value.toolName, value.resourceType, value.resourceId, String(value.expectedRevision), value.requiredScope, value.requiredCapability, value.risk, value.createdAt, value.expiresAt, value.idempotencyHash, value.correlationId, canonicalOperationJson(value), previewHash, hash('synthetic-request'), 'PENDING_APPROVAL', new Date(Date.parse(later) + 90 * 86400000).toISOString()];
     await store.run(`INSERT INTO mcp_v2_operation(${columns.join(',')}) VALUES (${columns.map(() => '?').join(',')})`, ...values);
     const path = '/api/v1/seller/mcp/operations/' + value.operationId;
     return { value, path, previewHash, input: { operationId: value.operationId, previewHash, decision: 'approve', password: reviewPassword } };

@@ -100,7 +100,7 @@ for (const dialect of ['sqlite', 'postgres']) {
     });
 }
 
-test('missing optional v2 configuration keeps v1 healthy and review disabled without extension tables', async (t) => {
+test('missing optional v2 configuration keeps v1 healthy and review disabled with no operation authority', async (t) => {
   const f = await reviewFixture(t, 'sqlite', { config: { mcpV2: undefined } });
   const id = '00000000-0000-4000-8000-000000000001';
   for (const path of ['/oauth/operation?operationId=' + id, '/oauth/operation-review.js', '/api/v1/seller/mcp/operations/' + id]) {
@@ -108,7 +108,11 @@ test('missing optional v2 configuration keeps v1 healthy and review disabled wit
   }
   assert.equal((await f.call('/.well-known/oauth-authorization-server')).response.status, 200);
   assert.equal((await f.call('/ready')).response.status, 200);
-  assert.equal(await f.store.get("SELECT name FROM sqlite_master WHERE name = 'mcp_v2_operation'"), undefined);
+  assert.equal((await f.store.get("SELECT name FROM sqlite_master WHERE name = 'mcp_v2_operation'")).name, 'mcp_v2_operation');
+  for (const table of ['mcp_v2_operation', 'mcp_v2_scope_consent', 'mcp_v2_approval_challenge', 'mcp_v2_approval']) {
+    assert.equal(Number((await f.store.get(`SELECT COUNT(*) AS n FROM ${table}`)).n), 0);
+  }
+  assert.ok(!(await f.call('/.well-known/oauth-authorization-server')).data.scopes_supported.includes('catalog.write'));
   for (const patch of [{ sellerQuickLogin: true }, { shopMode: 'public-demo' }, { production: true }]) {
     const api = await createApi({ store: f.store, config: { ...f.config, ...patch, mcpV2: { enabled: true, epoch: secret(), buildDigest: 'e'.repeat(64) } } });
     assert.equal((await api(new Request(sellerOrigin + '/api/v1/seller/mcp/operations/' + id, { headers: f.headers }))).status, 404);

@@ -444,10 +444,10 @@ for (const engineName of ['sqlite', 'postgres']) {
     for (let i = 0; i < 81; i++) {
       await f.store.run(`INSERT INTO mcp_v2_operation(id, tenant_id, tenant_revision, account_id, client_id, grant_id, epoch_hash, build_digest, issuer, resource, tool_name,
         required_scope, required_capability, risk, resource_type, resource_id, expected_revision, envelope_json, preview_hash,
-        request_hash, idempotency_hash, state, created_at, expires_at, correlation_id)
+        request_hash, idempotency_hash, state, created_at, expires_at, correlation_id, receipt_expires_at)
         SELECT ?, tenant_id, tenant_revision, account_id, ?, grant_id, epoch_hash, build_digest, issuer, resource, tool_name, required_scope, required_capability,
         risk, resource_type, resource_id, expected_revision, envelope_json, preview_hash, request_hash, ?, state,
-        created_at, expires_at, ? FROM mcp_v2_operation WHERE id = ?`,
+        created_at, expires_at, ?, receipt_expires_at FROM mcp_v2_operation WHERE id = ?`,
       randomUUID(), `synthetic-other-client-${i}`, hash(`synthetic-quota-${i}`), randomUUID(), seed.operationId);
     }
     await assert.rejects(f.prepare('Over tenant quota'), { status: 429, code: 'RATE_LIMITED' });

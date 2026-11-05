@@ -70,11 +70,11 @@ async function fixture(t, engine) {
     const previewHash = operationPreviewHash(value);
     const columns = ['id', 'tenant_id', 'tenant_revision', 'account_id', 'client_id', 'grant_id', 'epoch_hash', 'build_digest', 'issuer', 'resource', 'tool_name',
       'required_scope', 'required_capability', 'risk', 'resource_type', 'resource_id', 'expected_revision',
-      'envelope_json', 'preview_hash', 'request_hash', 'idempotency_hash', 'state', 'created_at', 'expires_at', 'correlation_id'];
+      'envelope_json', 'preview_hash', 'request_hash', 'idempotency_hash', 'state', 'created_at', 'expires_at', 'correlation_id', 'receipt_expires_at'];
     const values = [value.operationId, value.tenantId, value.tenantRevision, value.accountId, value.clientId, value.grantId, value.epochHash, value.buildDigest, value.issuer,
       value.resource, value.toolName, value.requiredScope, value.requiredCapability, value.risk, value.resourceType,
       value.resourceId, String(value.expectedRevision), canonicalOperationJson(value), previewHash, hash('synthetic-request'),
-      value.idempotencyHash, 'PENDING_APPROVAL', value.createdAt, value.expiresAt, value.correlationId];
+      value.idempotencyHash, 'PENDING_APPROVAL', value.createdAt, value.expiresAt, value.correlationId, new Date(Date.parse(value.expiresAt) + 86400000).toISOString()];
     await store.run(`INSERT INTO mcp_v2_operation(${columns.join(',')}) VALUES (${columns.map(() => '?').join(',')})`, ...values);
     const challenge = secret();
     await store.run(`INSERT INTO mcp_v2_approval_challenge(id, operation_id, nonce_hash, created_at, expires_at, account_id, session_hash, account_auth_version, bound_at)
