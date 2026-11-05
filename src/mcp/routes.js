@@ -38,7 +38,7 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
   async function handle(request, ip) {
     const url = new URL(request.url), path = url.pathname, operation = operationPath(path);
     if (operation && (!enabled || config.mcpV2?.enabled !== true || config.production === true ||
-        config.shopMode === 'public-demo' || !tenantGuard)) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+        config.shopMode === 'public-demo' || !tenantGuard || url.origin !== config.sellerOrigin)) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
     if (!config.mcpEnabled) return null;
     if (!connectorPath(path)) return null;
     if (!enabled || url.host !== new URL(config.sellerOrigin).host) throw new ApiError(404, 'NOT_FOUND', 'Not found.');

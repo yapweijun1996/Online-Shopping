@@ -15,6 +15,9 @@ for (const dialect of ['sqlite', 'postgres']) {
       assert.doesNotMatch(JSON.stringify(await f.store.all('SELECT * FROM mcp_v2_approval_challenge')), new RegExp(op.input.challenge));
       const page = await f.call('/oauth/operation?operationId=' + op.value.operationId);
       assert.equal(page.response.status, 200);
+      assert.equal((await f.call('/oauth/operation?operationId=' + op.value.operationId, 'GET', undefined, {}, 'http://seller.example.test')).response.status, 404);
+      assert.equal((await f.call('/oauth/operation?operationId=' + op.value.operationId + '&operationId=' + op.value.operationId)).response.status, 400);
+      assert.equal((await f.call('/oauth/operation?operationId=' + op.value.operationId + '&extra=1')).response.status, 400);
       for (const response of [page.response, op.review.response]) {
         assert.match(response.headers.get('content-security-policy'), /frame-ancestors 'none'/);
         assert.equal(response.headers.get('x-frame-options'), 'DENY');
