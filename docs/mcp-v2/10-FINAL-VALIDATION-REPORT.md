@@ -1,8 +1,18 @@
 # MCP v2 validation snapshots
 
+## Integrated order tools and gated public media factory — full regression pending
+
+Root95dbd91 integrates order source809e93f. Independent Node24.22.0/SQLite/owned PostgreSQL16 command: `NODE_ENV=test SHOP_TEST_DATABASE_URL=<private synthetic URL> node --test --test-concurrency=1 test/mcp-order-tools.test.js test/mcp-order-security.test.js test/mcp-order-default-registration.test.js test/order-decision-bounds.test.js test/order-decision-query-plan.test.js test/inventory-read-revision.test.js test/seller-orders.test.js test/inventory-writers.test.js test/tracking-import.test.js test/store.test.js`, exit0, **92/92**,0skip,48.624s (`.local/manager-orders-focused.tap`). Actual HTTPS Chromium: same environment with `QA_PLAYWRIGHT_MODULE=<cached module> node --test --test-concurrency=1 test/mcp-order-app-browser.test.js`, exit0, **4/4**,0skip,8.770s (`.local/manager-orders-browser.tap`). Both stores exercise all five existing decisions through real OAuth/review/password/MCP, customer status and stock. Orders add no migration. Only the default-registry array conflicted during integration; both the order pair and closed media gate were retained.
+
+Rootbe3f7db integrates media factory e0f632e and fresh-consent classification fix092401c. The default acceptance gate stays false. Media tool/config/layout/APPEND/control-authority checks passed **29/29**,0skip,17.820s (`.local/manager-media-factory-authority.tap`). This invocation also named nonexistent `test/mcp-operation-registry.test.js`; Node24 ignored it, so this result provides no tests from that filename. Root95dbd91 explicitly reran the existing `test/mcp-operation-tools.test.js test/mcp-media-authority.test.js`: exit0, **15/15**,0skip,7.182s (`.local/manager-registry-media-authority.tap`). Real native/MCP/browser and eventual default-constructor acceptance remain separate gates.
+
+At source5961113, `npm run check` exited0. Separate `npm audit --omit=dev --audit-level=high` in the application root and `media-codec/` each exited0 with0 reported vulnerabilities. These checks do not establish absence of all vulnerabilities or successor full-suite success.
+
 ## Preparatory operation-control authority
 
 Root5961113, Node24.22.0, SQLite and owned PostgreSQL16: `NODE_ENV=test SHOP_TEST_DATABASE_URL=<private synthetic URL> node --test --test-concurrency=1 test/mcp-operation-record.test.js test/mcp-operation-control-authority.test.js test/mcp-operation-schema.test.js test/mcp-v2-oauth.test.js test/mcp-operation-authorization.test.js test/mcp-operation-engine.test.js test/mcp-media-engine.test.js`, exit0, **69/69**,0skip,39.989s (`.local/manager-control-authority.tap`). Root independently reviewed worker e5467e0 and7c8c0d0, integrated as1be590a and5961113. The tests cover fixed company/catalog pseudo IDs and domain UUIDs, immutable/redacted media records, original-grant identity, scope/consent/epoch/role checks and post-operation consent denial. The authority fixtures deliberately seed consent internally; real OAuth regressions execute separately within this command. No public control tool, typed CALL audit or schema34 is accepted by this batch. No full-suite result is claimed for this successor yet.
+
+That invocation named nonexistent `test/mcp-operation-authorization.test.js`, which Node24 ignored;69 is the actual count from the other files, not evidence for an absent test. The correctly discovered media-authority/operation-tools follow-up above supplies15 additional executed cases. Full-suite discovery uses actual `test/*.test.js` files.
 
 ## Latest integrated inventory tools and media components
 
