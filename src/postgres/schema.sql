@@ -1,4 +1,4 @@
--- PostgreSQL baseline matching SQLite schema 30. Timestamps stay ISO text to preserve API snapshots.
+-- PostgreSQL baseline matching SQLite schema 32. Timestamps stay ISO text to preserve API snapshots.
 CREATE TABLE admin (
         id BIGINT PRIMARY KEY CHECK (id = 1),
         username TEXT NOT NULL UNIQUE,
@@ -327,7 +327,7 @@ CREATE TABLE ai_studio_image (
  created_by TEXT NOT NULL, created_at TEXT NOT NULL
 );
 CREATE INDEX ai_studio_image_product ON ai_studio_image(product_id);
-INSERT INTO schema_meta VALUES (1, 31);
+INSERT INTO schema_meta VALUES (1, 32);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 INSERT INTO shop_setup(id, mode, shop_name) VALUES (1, NULL, 'Online Shopping');
@@ -680,3 +680,58 @@ INSERT INTO mcp_v2_schema(id, version, ddl_digest, manifest_digest)
       WHERE schemaname = 'public' AND tablename LIKE 'mcp!_v2!_%' ESCAPE '!'
     ) i), '[]'::jsonb)
   )::text, 'UTF8')), 'hex') AS digest));
+
+-- Inventory schema32, generated from inventory-schema.js.
+CREATE TABLE inventory_coverage (
+  product_id TEXT PRIMARY KEY REFERENCES product(id) ON DELETE RESTRICT,
+  origin TEXT NOT NULL CHECK (origin IN ('MIGRATED','CREATED')),
+  started_at TEXT NOT NULL CHECK (length(started_at) = 24),
+  baseline_quantity BIGINT CHECK (baseline_quantity IS NULL OR (baseline_quantity >= 0 AND baseline_quantity <= 1000000))
+);
+CREATE TABLE inventory_state (
+  product_id TEXT PRIMARY KEY REFERENCES inventory_coverage(product_id) ON DELETE RESTRICT,
+  revision BIGINT NOT NULL CHECK (revision >= 0 AND revision <= 9007199254740991)
+);
+CREATE TABLE inventory_movement (
+  id TEXT PRIMARY KEY CHECK (length(id) = 36 AND substr(id,9,1) = '-' AND substr(id,14,1) = '-' AND substr(id,19,1) = '-' AND substr(id,24,1) = '-' AND length(replace(id,'-','')) = 32 AND replace(id,'-','') ~ '^[0-9a-f]{32}$'),
+  product_id TEXT NOT NULL REFERENCES inventory_coverage(product_id) ON DELETE RESTRICT,
+  revision BIGINT NOT NULL CHECK (revision >= 1 AND revision <= 9007199254740991),
+  source_key TEXT NOT NULL UNIQUE CHECK (length(source_key) >= 1 AND length(source_key) <= 200),
+  kind TEXT NOT NULL CHECK (kind IN ('INITIALIZED','SET','TRACKING_ENABLED','TRACKING_DISABLED','ORDER_CONFIRMED','ORDER_CANCELLED')),
+  source TEXT NOT NULL CHECK (source IN ('PRODUCT','CSV','DEMO','OPERATOR','MCP_CATALOG','MCP_ADJUST','ORDER')),
+  reason_code TEXT NOT NULL CHECK (reason_code IN ('PRODUCT_CREATE','PRODUCT_SET','CSV_CREATE','CSV_SET','DEMO_CREATE','OPERATOR_CREATE','OPERATOR_SET','ORDER_CONFIRM','ORDER_CANCEL','COUNT_CORRECTION','RECEIPT','DAMAGE','OTHER')),
+  before_quantity BIGINT CHECK (before_quantity IS NULL OR (before_quantity >= 0 AND before_quantity <= 1000000)),
+  after_quantity BIGINT CHECK (after_quantity IS NULL OR (after_quantity >= 0 AND after_quantity <= 1000000)),
+  delta_quantity BIGINT CHECK (delta_quantity IS NULL OR (delta_quantity >= -1000000 AND delta_quantity <= 1000000)),
+  actor_kind TEXT NOT NULL CHECK (actor_kind IN ('SELLER','SYSTEM','OPERATOR','INTERNAL')),
+  actor_id TEXT NOT NULL CHECK (length(actor_id) >= 1 AND length(actor_id) <= 128),
+  client_id TEXT CHECK (client_id IS NULL OR (length(client_id) >= 1 AND length(client_id) <= 128)),
+  grant_id TEXT CHECK (grant_id IS NULL OR (length(grant_id) >= 1 AND length(grant_id) <= 128)),
+  operation_id TEXT CHECK (operation_id IS NULL OR (length(operation_id) = 36 AND substr(operation_id,9,1) = '-' AND substr(operation_id,14,1) = '-' AND substr(operation_id,19,1) = '-' AND substr(operation_id,24,1) = '-' AND length(replace(operation_id,'-','')) = 32 AND replace(operation_id,'-','') ~ '^[0-9a-f]{32}$')),
+  correlation_id TEXT CHECK (correlation_id IS NULL OR (length(correlation_id) = 36 AND substr(correlation_id,9,1) = '-' AND substr(correlation_id,14,1) = '-' AND substr(correlation_id,19,1) = '-' AND substr(correlation_id,24,1) = '-' AND length(replace(correlation_id,'-','')) = 32 AND replace(correlation_id,'-','') ~ '^[0-9a-f]{32}$')),
+  order_id TEXT REFERENCES shop_order(id) ON DELETE RESTRICT,
+  order_revision BIGINT CHECK (order_revision IS NULL OR (order_revision >= 1 AND order_revision <= 9007199254740991)),
+  occurred_at TEXT NOT NULL CHECK (length(occurred_at) = 24),
+  UNIQUE (product_id, revision),
+  CHECK ((kind = 'INITIALIZED' AND before_quantity IS NULL AND delta_quantity IS NULL AND revision = 1 AND reason_code IN ('PRODUCT_CREATE','CSV_CREATE','DEMO_CREATE','OPERATOR_CREATE')) OR
+    (kind = 'SET' AND before_quantity IS NOT NULL AND after_quantity IS NOT NULL AND before_quantity <> after_quantity AND delta_quantity IS NOT NULL AND delta_quantity = after_quantity - before_quantity AND reason_code IN ('PRODUCT_SET','CSV_SET','OPERATOR_SET','COUNT_CORRECTION','RECEIPT','DAMAGE','OTHER')) OR
+    (kind = 'TRACKING_ENABLED' AND before_quantity IS NULL AND after_quantity IS NOT NULL AND delta_quantity IS NULL AND reason_code IN ('PRODUCT_SET','CSV_SET','OPERATOR_SET','COUNT_CORRECTION','RECEIPT','DAMAGE','OTHER')) OR
+    (kind = 'TRACKING_DISABLED' AND before_quantity IS NOT NULL AND after_quantity IS NULL AND delta_quantity IS NULL AND reason_code IN ('PRODUCT_SET','CSV_SET','OPERATOR_SET','COUNT_CORRECTION','RECEIPT','DAMAGE','OTHER')) OR
+    (kind = 'ORDER_CONFIRMED' AND before_quantity IS NOT NULL AND after_quantity IS NOT NULL AND delta_quantity IS NOT NULL AND delta_quantity < 0 AND delta_quantity = after_quantity - before_quantity AND reason_code = 'ORDER_CONFIRM') OR
+    (kind = 'ORDER_CANCELLED' AND before_quantity IS NOT NULL AND after_quantity IS NOT NULL AND delta_quantity IS NOT NULL AND delta_quantity > 0 AND delta_quantity = after_quantity - before_quantity AND reason_code = 'ORDER_CANCEL')),
+  CHECK ((actor_kind = 'SELLER' AND (length(actor_id) = 36 AND substr(actor_id,9,1) = '-' AND substr(actor_id,14,1) = '-' AND substr(actor_id,19,1) = '-' AND substr(actor_id,24,1) = '-' AND length(replace(actor_id,'-','')) = 32 AND replace(actor_id,'-','') ~ '^[0-9a-f]{32}$')) OR (actor_kind = 'INTERNAL' AND actor_id = 'business-service') OR (actor_kind = 'SYSTEM' AND actor_id = 'demo-seed') OR (actor_kind = 'OPERATOR' AND actor_id IN ('seed-demo-shop','replace-catalog'))),
+  CHECK ((source IN ('PRODUCT','MCP_CATALOG') AND reason_code IN ('PRODUCT_CREATE','PRODUCT_SET')) OR (source = 'CSV' AND reason_code IN ('CSV_CREATE','CSV_SET')) OR (source = 'DEMO' AND reason_code = 'DEMO_CREATE') OR (source = 'OPERATOR' AND reason_code IN ('OPERATOR_CREATE','OPERATOR_SET')) OR (source = 'ORDER' AND reason_code IN ('ORDER_CONFIRM','ORDER_CANCEL')) OR (source = 'MCP_ADJUST' AND reason_code IN ('COUNT_CORRECTION','RECEIPT','DAMAGE','OTHER'))),
+  CHECK ((kind IN ('ORDER_CONFIRMED','ORDER_CANCELLED') AND order_id IS NOT NULL AND order_revision IS NOT NULL) OR
+    (kind NOT IN ('ORDER_CONFIRMED','ORDER_CANCELLED') AND order_id IS NULL AND order_revision IS NULL))
+);
+CREATE INDEX inventory_movement_product ON inventory_movement(product_id, occurred_at, id);
+CREATE INDEX inventory_movement_order ON inventory_movement(order_id);
+CREATE TABLE inventory_schema (
+  id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL CHECK (version = 1),
+  ddl_digest TEXT NOT NULL CHECK (length(ddl_digest) = 64), manifest_digest TEXT NOT NULL CHECK (length(manifest_digest) = 64)
+);
+INSERT INTO inventory_schema VALUES(1,1,'c90eabcdd202fccdb3790a23748c61f0b8b6ae664f24721c69c004f3bf8b3175',(SELECT encode(sha256(convert_to(jsonb_build_object(
+    'columns', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY table_name,ordinal_position) FROM (SELECT table_name,column_name,ordinal_position,data_type,is_nullable,column_default FROM information_schema.columns WHERE table_schema='public' AND table_name LIKE 'inventory!_%' ESCAPE '!') t),'[]'::jsonb),
+    'constraints', COALESCE((SELECT jsonb_agg(to_jsonb(c) ORDER BY table_name,conname) FROM (SELECT r.relname AS table_name,c.conname,pg_get_constraintdef(c.oid) AS definition FROM pg_constraint c JOIN pg_class r ON r.oid=c.conrelid JOIN pg_namespace n ON n.oid=r.relnamespace WHERE n.nspname='public' AND r.relname LIKE 'inventory!_%' ESCAPE '!') c),'[]'::jsonb),
+    'indexes', COALESCE((SELECT jsonb_agg(to_jsonb(i) ORDER BY tablename,indexname) FROM (SELECT tablename,indexname,indexdef FROM pg_indexes WHERE schemaname='public' AND tablename LIKE 'inventory!_%' ESCAPE '!') i),'[]'::jsonb)
+  )::text,'UTF8')),'hex') AS digest));

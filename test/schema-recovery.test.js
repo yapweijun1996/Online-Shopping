@@ -1,3 +1,4 @@
+import { dropInventoryForLegacyFixture } from './helpers/inventory-fixture.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -44,7 +45,7 @@ async function oldFixture(file) {
     DROP TABLE historical_gallery_fixture;
     CREATE INDEX product_gallery_product ON product_gallery_image(product_id,position);
     ALTER TABLE product DROP COLUMN gallery_layout_json;`);
-  await store.setSchemaVersion(10);
+  await dropInventoryForLegacyFixture(store); await store.setSchemaVersion(10);
   return { store, order };
 }
 

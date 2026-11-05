@@ -1,3 +1,4 @@
+import { dropInventoryForLegacyFixture } from './helpers/inventory-fixture.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
@@ -22,6 +23,7 @@ async function fixture(t, dialect) {
   return store;
 }
 async function legacy30(store) {
+  await dropInventoryForLegacyFixture(store);
   for (const table of MEDIA_STORAGE_TABLES.toReversed()) await store.exec(`DROP TABLE ${table}`);
   for (const table of ['mcp_v2_authorization_request','mcp_v2_scope_consent','mcp_v2_approval_challenge','mcp_v2_approval','mcp_v2_event','mcp_v2_operation','mcp_v2_schema']) await store.exec(`DROP TABLE ${table}`);
   await store.exec(operationSchema(store.dialect, { media: false }));
@@ -35,7 +37,7 @@ for (const dialect of ['sqlite','postgres']) {
   test(`${dialect}: schema31 validates the exact legacy30 fingerprint before transactional upgrade`, { skip: dialect === 'postgres' && !base }, async t => {
     assert.equal(sha(operationSchema(dialect, { media: false })), oldDigests[dialect]);
     const store = await fixture(t, dialect);
-    assert.equal(await store.schemaVersion(), 31); assert.equal(await operationStorageReady(store), true);
+    assert.equal(await store.schemaVersion(), 32); assert.equal(await operationStorageReady(store), true);
     await legacy30(store);
     assert.equal(await operationStorageReady(store), false);
     await assert.rejects(initializeOperationStorage(store, { enabled: true }), /Incompatible/);
@@ -45,7 +47,7 @@ for (const dialect of ['sqlite','postgres']) {
     await assert.rejects(migrate(), /Synthetic media DDL interruption/); store.exec = exec;
     assert.equal(await store.schemaVersion(), 30);
     assert.equal((await store.get('SELECT version FROM mcp_v2_schema WHERE id=1')).version, 1);
-    await migrate(); assert.equal(await store.schemaVersion(), 31); assert.equal(await operationStorageReady(store), true);
+    await migrate(); assert.equal(await store.schemaVersion(), 32); assert.equal(await operationStorageReady(store), true);
     assert.equal((await store.get('SELECT version FROM mcp_v2_schema WHERE id=1')).version, 2);
     for (const table of MEDIA_STORAGE_TABLES) assert.equal((await store.get(`SELECT COUNT(*) AS n FROM ${table}`)).n, 0);
     await store.exec('DROP INDEX mcp_v2_media_stage_lease'); assert.equal(await operationStorageReady(store), false);

@@ -1,3 +1,4 @@
+import { dropInventoryForLegacyFixture } from './helpers/inventory-fixture.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
@@ -54,14 +55,14 @@ test('PostgreSQL: the schema 22 to 23 upgrade copies the administrator in as Own
     for (const table of MEDIA_STORAGE_TABLES.toReversed()) await fresh.exec(`DROP TABLE ${table}`);
     await fresh.exec('DROP TABLE mcp_v2_authorization_request; DROP TABLE mcp_v2_scope_consent; DROP TABLE mcp_v2_approval_challenge; DROP TABLE mcp_v2_approval; DROP TABLE mcp_v2_event; DROP TABLE mcp_v2_operation; DROP TABLE mcp_v2_schema; DROP TABLE oauth_token; DROP TABLE oauth_authorization_code; DROP TABLE oauth_grant; DROP TABLE oauth_authorization_request; DROP TABLE oauth_client; DROP TABLE mcp_audit; DROP TABLE account_event; DROP TABLE seller_account; ALTER TABLE session DROP COLUMN account_id');
     await fresh.run("INSERT INTO admin(id, username, password_hash, created_at) VALUES (1, 'Legacy_Owner', 'abcd:1234', ?)", '2026-10-01T00:00:00.000Z');
-    await fresh.setSchemaVersion(22);
+    await dropInventoryForLegacyFixture(fresh); await fresh.setSchemaVersion(22);
   } finally { await fresh.close(); }
   for (let pass = 0; pass < 2; pass++) {
     const upgraded = await openPostgresDatabase(url.href, { allowUpgrade: true });
     try {
       assert.deepEqual((await upgraded.all('SELECT username, username_key, password_hash, role, active FROM seller_account')).map((row) => ({ ...row, active: Number(row.active) })),
         [{ username: 'Legacy_Owner', username_key: 'legacy_owner', password_hash: 'abcd:1234', role: 'OWNER', active: 1 }]);
-      await upgraded.setSchemaVersion(22);   // run the upgrade a second time over the finished schema
+      await dropInventoryForLegacyFixture(upgraded); await upgraded.setSchemaVersion(22);   // run the upgrade a second time over the finished schema
     } finally { await upgraded.close(); }
   }
 });

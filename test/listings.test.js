@@ -1,3 +1,4 @@
+import { dropInventoryForLegacyFixture } from './helpers/inventory-fixture.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { migrateStore, openDatabase } from '../src/db.js';
@@ -73,7 +74,7 @@ test('schema 17 upgrades into listings: one per variant group and per ungrouped 
     await store.exec('PRAGMA foreign_keys = OFF');
     await store.exec('UPDATE product SET listing_id = NULL; DELETE FROM listing');
     await store.exec('PRAGMA foreign_keys = ON');
-    await store.setSchemaVersion(17);
+    await dropInventoryForLegacyFixture(store); await store.setSchemaVersion(17);
     await migrateStore(store);
     assert.deepEqual(await store.all('SELECT id, sku, name, price_minor FROM product ORDER BY id'), before);
     const listings = await listingsOf(store);

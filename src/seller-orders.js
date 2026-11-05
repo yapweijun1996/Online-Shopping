@@ -1,3 +1,4 @@
+import { moveOrderStock, withInventorySeller } from './inventory.js';
 import { ApiError } from './http.js';
 import { FieldError, boundedText } from './validation.js';
 import { productCover } from './product-gallery.js';
@@ -216,31 +217,11 @@ function validateDecision(action, input) {
 }
 
 /* Confirming an order takes its quantities from tracked stock; the transaction rolls back if any product is short. */
-async function deductStock(database, orderId) {
-  const lines = await database.all(`SELECT i.product_id, SUM(i.quantity) AS quantity, p.sku, p.stock_quantity, p.updated_at
-    FROM order_item i JOIN delivery d ON d.id = i.delivery_id JOIN product p ON p.id = i.product_id
-    WHERE d.order_id = ? GROUP BY i.product_id, p.sku, p.stock_quantity, p.updated_at`, orderId);
-  for (const line of lines) {
-    if (line.stock_quantity === null) continue;
-    if (line.stock_quantity < line.quantity) {
-      const error = new ApiError(409, 'INSUFFICIENT_STOCK', `Not enough stock for ${line.sku}.`);
-      error.field = 'stock';
-      throw error;
-    }
-    const updatedAt = new Date(Math.max(Date.now(), Date.parse(line.updated_at) + 1)).toISOString();
-    await database.run('UPDATE product SET stock_quantity = stock_quantity - ?, updated_at = ? WHERE id = ?', line.quantity, updatedAt, line.product_id);
-  }
-}
-
-/* Cancelling a confirmed order returns its quantities to tracked stock. */
-async function restoreStock(database, orderId) {
-  const lines = await database.all(`SELECT p.id, p.updated_at, SUM(i.quantity) AS quantity
-    FROM order_item i JOIN delivery d ON d.id = i.delivery_id JOIN product p ON p.id = i.product_id
-    WHERE d.order_id = ? AND p.stock_quantity IS NOT NULL GROUP BY p.id, p.updated_at`, orderId);
-  for (const line of lines) {
-    const updatedAt = new Date(Math.max(Date.now(), Date.parse(line.updated_at) + 1)).toISOString();
-    await database.run('UPDATE product SET stock_quantity = stock_quantity + ?, updated_at = ? WHERE id = ?', line.quantity, updatedAt, line.id);
-  }
+async function moveStock(database, orderId, revision, direction) {
+  const lines = await database.all(`SELECT i.product_id, SUM(i.quantity) AS quantity
+    FROM order_item i JOIN delivery d ON d.id=i.delivery_id
+    WHERE d.order_id=? GROUP BY i.product_id ORDER BY i.product_id`, orderId);
+  for (const line of lines) await moveOrderStock(database, line.product_id, direction * Number(line.quantity), orderId, revision);
 }
 
 // Mutation-only helper joins an outer import transaction without loading order detail.
@@ -263,8 +244,8 @@ export async function applySellerDecision(database, id, action, input, actorId, 
     if (!changed) {
       throw new ApiError(409, 'STALE_REVISION', 'The order changed. Reload and try again.');
     }
-    if (decision.status === 'CONFIRMED') await deductStock(database, id);
-    if (decision.status === 'CANCELLED') await restoreStock(database, id);
+    if (decision.status === 'CONFIRMED') await withInventorySeller(database, actorId, () => moveStock(database, id, current.revision + 1, -1));
+    if (decision.status === 'CANCELLED') await withInventorySeller(database, actorId, () => moveStock(database, id, current.revision + 1, 1));
     await database.run(`INSERT INTO order_event
       (order_id, event_type, actor_type, actor_id, previous_status, status, reason, occurred_at)
       VALUES (?, ?, 'SELLER', ?, ?, ?, ?, ?)`, id, decision.status, actorId, from, decision.status, auditReason ?? decision.reason, now);

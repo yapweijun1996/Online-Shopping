@@ -1,9 +1,10 @@
+import { inventoryStorageReady } from './inventory-schema.js';
 import { createHash } from 'node:crypto';
 import { OPERATION_STORAGE_META, OPERATION_STORAGE_TABLES, operationStorageReady } from './mcp/operation-runtime.js';
 
 export const importTables = ['admin', 'seller_account', 'account_event', 'session', 'general_code', 'company_setting', 'shop_setup', 'option_type', 'option_value', 'listing', 'product',
   'product_option', 'product_gallery_image', 'order_sequence', 'shop_order', 'delivery', 'order_item', 'order_event', 'order_note', 'product_event',
-  'checkout_idempotency', 'rate_limit_attempt', 'integration_connection', 'integration_audit', 'webhook_receipt', 'message_outbox', 'message_inbound',
+  'inventory_coverage', 'inventory_state', 'inventory_movement', 'checkout_idempotency', 'rate_limit_attempt', 'integration_connection', 'integration_audit', 'webhook_receipt', 'message_outbox', 'message_inbound',
   'oauth_client', 'oauth_authorization_request', 'oauth_grant', 'oauth_authorization_code', 'oauth_token', 'mcp_audit', 'mcp_v2_event', 'mcp_v2_media_event', 'ai_setting', 'ai_usage', 'ai_suggestion_audit', 'ai_studio_credential', 'ai_studio_setting', 'ai_studio_usage', 'ai_studio_image'];
 
 // QR device identity, sealed peers and reply intents must not reactivate after a restore.
@@ -16,7 +17,7 @@ const excludedQrImportTables = ['whatsapp_qr_session', 'whatsapp_qr_auth', 'mess
 export const excludedOperationImportTables = Object.freeze([
   OPERATION_STORAGE_META, ...OPERATION_STORAGE_TABLES.filter((table) => !['mcp_v2_event', 'mcp_v2_media_event'].includes(table)),
 ]);
-export const excludedImportTables = [...excludedQrImportTables, ...excludedOperationImportTables];
+export const excludedImportTables = [...excludedQrImportTables, ...excludedOperationImportTables, 'inventory_schema'];
 
 export function rowsDigest(rows) {
   const normalized = rows.map(row => Object.fromEntries(Object.keys(row).sort().map(key =>
@@ -31,8 +32,8 @@ export async function importSqlite(source, target) {
   if (source.dialect !== 'sqlite' || target.dialect !== 'postgres') throw new Error('Expected SQLite source and PostgreSQL target.');
   if (await source.schemaVersion() !== await target.schemaVersion()) throw new Error('Schema versions do not match.');
   return target.transaction(async () => {
-    if (!await operationStorageReady(source) || !await operationStorageReady(target)) {
-      throw new Error('Import requires compatible MCP v2 schema 31 storage.');
+    if (!await operationStorageReady(source) || !await operationStorageReady(target) || !await inventoryStorageReady(source) || !await inventoryStorageReady(target)) {
+      throw new Error('Import requires compatible operation/inventory schema 32 storage.');
     }
     for (const table of OPERATION_STORAGE_TABLES) {
       if (await target.get(`SELECT 1 AS found FROM ${table} LIMIT 1`)) throw new Error('Import destination must have no MCP v2 history or authority.');

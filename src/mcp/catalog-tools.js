@@ -1,3 +1,4 @@
+import { withInventoryContext } from '../inventory.js';
 import { createHash } from 'node:crypto';
 import { ApiError } from '../http.js';
 import { FieldError } from '../validation.js';
@@ -281,8 +282,9 @@ function registration(kind) {
       async apply(store, proposal, context) {
         checkedProposal(proposal, kind);
         const actor = await author(store, context);
-        const product = kind === 'create' ? await trackCreate(store, actor, () => createProduct(store, proposal.normalizedInput))
-          : await trackUpdate(store, proposal.before.id, actor, () => updateProduct(store, proposal.before.id, proposal.normalizedInput));
+        const product = await withInventoryContext({ source: 'MCP_CATALOG', actorKind: 'SELLER', actorId: context.accountId,
+          clientId: context.clientId, grantId: context.grantId, operationId: context.operationId, correlationId: context.correlationId }, async () => kind === 'create' ? await trackCreate(store, actor, () => createProduct(store, proposal.normalizedInput))
+          : await trackUpdate(store, proposal.before.id, actor, () => updateProduct(store, proposal.before.id, proposal.normalizedInput)));
         if (!product) notFound();
         const actual = fromService(product), expected = kind === 'create' ? { ...proposal.after, id: product.id, listingId: product.listingId } : proposal.after;
         if (canonicalOperationJson(actual) !== canonicalOperationJson(expected)) throw new TypeError('Catalog normalization changed during commit.');

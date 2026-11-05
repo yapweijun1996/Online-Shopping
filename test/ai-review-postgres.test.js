@@ -1,3 +1,4 @@
+import { dropInventoryForLegacyFixture } from './helpers/inventory-fixture.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
@@ -23,7 +24,7 @@ test('review 1: superuser upgrade grants new tables to non-superuser application
  await ensureAdmin(store,'fixture_owner','FictionalPassword123!');
  await store.exec('DROP TABLE ai_suggestion_audit; DROP TABLE ai_usage; DROP TABLE ai_setting');
  await store.exec('GRANT USAGE ON SCHEMA public TO online_shopping_app; GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO online_shopping_app');
- await store.setSchemaVersion(27);
+ await dropInventoryForLegacyFixture(store); await store.setSchemaVersion(27);
  await store.transaction(() => upgradePostgres(store,27));
  app = openPostgresStore(url.href, { options: '-c role=online_shopping_app' });
  assert.equal(await ready(app),true);

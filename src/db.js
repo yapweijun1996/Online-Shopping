@@ -1,3 +1,4 @@
+import { migrateInventory, inventoryStorageReady } from './inventory-schema.js';
 import { migrateAi } from './ai/schema.js';
 import { migrateAiStudio } from './ai-studio/schema.js';
 import { migrateWhatsAppQr } from './whatsapp-qr/schema.js';
@@ -8,9 +9,9 @@ import { migrateLegacyVariants } from './options.js';
 import { migrateListings } from './listings.js';
 import { migrateSharedGalleries } from './product-gallery.js';
 import { migrateOAuth } from './mcp/schema.js';
-import { initializeOperationStorage, operationStorageReady, upgradeMediaStorage } from './mcp/operation-runtime.js';
+import { initializeOperationStorage, operationStorageReady, upgradeMediaStorage, assertOperationStorage } from './mcp/operation-runtime.js';
 
-export const SCHEMA_VERSION = 31;
+export const SCHEMA_VERSION = 32;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -642,6 +643,10 @@ export async function migrateStore(store) {
     });
     version = 31;
   }
+  if (version === 31) {
+    await store.transaction(async () => { await assertOperationStorage(store); await migrateInventory(store); await store.setSchemaVersion(32); });
+    version = 32;
+  }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }
 
@@ -655,7 +660,7 @@ async function addThumbnailColumns(store) {
 
 export async function ready(store) {
   try {
-    return await operationStorageReady(store) &&
+    return await operationStorageReady(store) && await inventoryStorageReady(store) &&
       await store.schemaVersion() === SCHEMA_VERSION &&
       Array.isArray(await store.all('SELECT stock_quantity, gallery_layout_json FROM product LIMIT 0')) &&
       Array.isArray(await store.all('SELECT tracking_carrier, tracking_no, contact_erased_at, contact_erased_by FROM shop_order LIMIT 0')) &&

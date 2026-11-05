@@ -1,3 +1,4 @@
+import { legacyInventoryDropSql } from './helpers/inventory-fixture.js';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -294,6 +295,7 @@ test('schema version two upgrades without losing catalog records', async () => {
   const f = await fixture();
   await f.app.close();
   const old = new DatabaseSync(f.config.dbPath);
+  old.exec(legacyInventoryDropSql);
   old.exec(`DROP TRIGGER product_category_insert; DROP TRIGGER product_category_update; DROP TABLE product_gallery_image; DROP TABLE shop_setup; DROP TABLE rate_limit_attempt; DROP TABLE company_setting; DROP TABLE general_code;
     DROP TABLE checkout_idempotency; DROP TABLE order_event; DROP TABLE order_item;
     DROP TABLE delivery; DROP TABLE shop_order; DROP TABLE order_sequence; PRAGMA user_version = 2;`);
@@ -328,6 +330,7 @@ test('schema version three upgrades an existing order without changing its snaps
   assert.equal(placed.response.status, 201);
   await f.app.close();
   const old = new DatabaseSync(f.config.dbPath);
+  old.exec(legacyInventoryDropSql);
   old.exec('DROP TABLE product_gallery_image; ALTER TABLE product DROP COLUMN gallery_layout_json');
   old.exec('PRAGMA foreign_keys = OFF; BEGIN IMMEDIATE');
   try {

@@ -1,3 +1,4 @@
+import { dropInventoryForLegacyFixture } from './helpers/inventory-fixture.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
@@ -291,7 +292,7 @@ test('SQLite schema24 upgrade is repeatable, preserves business rows and rejects
   const f = await fixture(t, 'sqlite');
   for (const table of MEDIA_STORAGE_TABLES.toReversed()) await f.store.exec(`DROP TABLE ${table}`);
   await f.store.exec('DROP TABLE IF EXISTS mcp_v2_authorization_request; DROP TABLE IF EXISTS mcp_v2_scope_consent; DROP TABLE IF EXISTS mcp_v2_approval_challenge; DROP TABLE IF EXISTS mcp_v2_approval; DROP TABLE IF EXISTS mcp_v2_event; DROP TABLE IF EXISTS mcp_v2_operation; DROP TABLE IF EXISTS mcp_v2_schema; DROP TABLE oauth_token; DROP TABLE oauth_authorization_code; DROP TABLE oauth_grant; DROP TABLE oauth_authorization_request; DROP TABLE oauth_client; DROP TABLE mcp_audit; ALTER TABLE seller_account DROP COLUMN oauth_auth_version');
-  await f.store.setSchemaVersion(24);
+  await dropInventoryForLegacyFixture(f.store); await f.store.setSchemaVersion(24);
   const before = await f.store.all('SELECT id, username, password_hash FROM seller_account');
   await migrateStore(f.store); await migrateStore(f.store);
   assert.deepEqual(await f.store.all('SELECT id, username, password_hash FROM seller_account'), before); assert.equal(await ready(f.store), true);
@@ -376,7 +377,7 @@ for (const engine of ['sqlite', 'postgres']) {
     const before = await physical(), accounts = await f.store.all('SELECT id, username, password_hash FROM seller_account');
     for (const table of MEDIA_STORAGE_TABLES.toReversed()) await f.store.exec(`DROP TABLE ${table}`);
     await f.store.exec('DROP TABLE IF EXISTS mcp_v2_authorization_request; DROP TABLE IF EXISTS mcp_v2_scope_consent; DROP TABLE IF EXISTS mcp_v2_approval_challenge; DROP TABLE IF EXISTS mcp_v2_approval; DROP TABLE IF EXISTS mcp_v2_event; DROP TABLE IF EXISTS mcp_v2_operation; DROP TABLE IF EXISTS mcp_v2_schema; DROP TABLE oauth_token; DROP TABLE oauth_authorization_code; DROP TABLE oauth_grant; DROP TABLE oauth_authorization_request; DROP TABLE oauth_client; DROP TABLE mcp_audit; ALTER TABLE seller_account DROP COLUMN oauth_auth_version');
-    await f.store.setSchemaVersion(24);
+    await dropInventoryForLegacyFixture(f.store); await f.store.setSchemaVersion(24);
     const upgrade = (store) => engine === 'postgres' ? store.transaction(() => upgradePostgres(store, 24)) : migrateStore(store);
     const faulty = { ...f.store, exec: async (sql) => { await f.store.exec(sql); if (sql.includes('CREATE TABLE IF NOT EXISTS oauth_client')) throw new Error('Synthetic migration fault'); } };
     await assert.rejects(upgrade(faulty), /Synthetic migration fault/);

@@ -1,3 +1,4 @@
+import { dropInventoryForLegacyFixture } from './helpers/inventory-fixture.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
@@ -28,7 +29,7 @@ for (const engine of ['sqlite', 'postgres']) {
   test(`${engine}: AI settings migration, validation, CAS and UTC usage`, options, async t => {
     const store = await database(t, engine);
     await store.exec('DROP TABLE ai_suggestion_audit; DROP TABLE ai_usage; DROP TABLE ai_setting;');
-    await store.setSchemaVersion(27);
+    await dropInventoryForLegacyFixture(store); await store.setSchemaVersion(27);
     if (engine === 'sqlite') await migrateStore(store);
     else await store.transaction(() => upgradePostgres(store, 27));
     assert.equal(await store.schemaVersion(), SCHEMA_VERSION);

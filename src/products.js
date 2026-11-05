@@ -1,3 +1,4 @@
+import { initializeProductStock, setProductStock, assertStockTrackingChange } from './inventory.js';
 import { randomUUID } from 'node:crypto';
 import { ApiError } from './http.js';
 import { FieldError, boundedText } from './validation.js';
@@ -133,10 +134,11 @@ export async function createProduct(database, input) {
       id, product.sku, listing.name, listing.description, listing.category,
       product.priceMinor, product.currency, Number(product.active),
       product.image?.mime || null, product.image?.data || null, product.variantGroup || null,
-      product.variantLabel || null, product.stockQuantity ?? null, listing.id,
+      product.variantLabel || null, null, listing.id,
       product.image ? product.thumb?.mime || null : null, product.image ? product.thumb?.data || null : null, now, now
       );
     } catch (error) {duplicateSku(error);}
+    await initializeProductStock(database, id, product.stockQuantity ?? null, now);
     const hasOptions = Array.isArray(product.options) && product.options.length > 0;
     if (hasOptions) await setProductOptions(database, id, product.variantGroup, product.options, { newProduct: true });
     else await requireGroupOptions(database, id, product.variantGroup, false);
@@ -188,13 +190,7 @@ export async function prepareProductUpdate(database, existing, input) {
   const id = existing.id;
   const currency = (await getCompanySettings(database)).defaultCurrency;
   const patch = validateProductInput(input, [existing.currency], { partial: true });
-  if (Object.hasOwn(patch, 'stockQuantity') && (patch.stockQuantity === null) !== (existing.stockQuantity === null) &&
-      await database.get(`SELECT 1 AS found FROM order_item i JOIN delivery d ON d.id = i.delivery_id
-        JOIN shop_order o ON o.id = d.order_id WHERE i.product_id = ? AND o.status = 'CONFIRMED' LIMIT 1`, id)) {
-    const error = new ApiError(409, 'STOCK_TRACKING_CONFLICT', 'Ship or cancel confirmed orders before changing stock tracking.');
-    error.field = 'stockQuantity';
-    throw error;
-  }
+  if (Object.hasOwn(patch, 'stockQuantity')) await assertStockTrackingChange(database, id, existing.stockQuantity, patch.stockQuantity);
   // A legacy mismatch requires explicit price review, never a currency relabel.
   if (existing.currency !== currency && (Object.hasOwn(patch, 'priceMinor') || patch.active === true || Object.hasOwn(patch, 'currency'))) {
     throw new ApiError(409, 'COMPANY_CURRENCY_CONFLICT', 'Review the existing product currency before changing its price or activating it.');
@@ -216,7 +212,7 @@ async function patchProduct(database, id, input, { galleryChanging = false } = {
   if (!existing) return null;
   const patch = await prepareProductUpdate(database, existing, input);
   requireMainImageRemoval(existing, patch.image, galleryChanging);
-  const mapping = { sku: 'sku', name: 'name', description: 'description', category: 'category', priceMinor: 'price_minor', currency: 'currency', active: 'active', variantGroup: 'variant_group', variantLabel: 'variant_label', stockQuantity: 'stock_quantity' };
+  const mapping = { sku: 'sku', name: 'name', description: 'description', category: 'category', priceMinor: 'price_minor', currency: 'currency', active: 'active', variantGroup: 'variant_group', variantLabel: 'variant_label' };
   const assignments = [];
   const values = [];
   for (const [key, column] of Object.entries(mapping)) {
@@ -230,7 +226,8 @@ async function patchProduct(database, id, input, { galleryChanging = false } = {
     values.push(patch.image?.mime || null, patch.image?.data || null, patch.thumb?.mime || null, patch.thumb?.data || null);
   }
   assignments.push('updated_at = ?');
-  values.push(new Date(Math.max(Date.now(), Date.parse(existing.updatedAt) + 1)).toISOString(), id);
+  const updatedAt = new Date(Math.max(Date.now(), Date.parse(existing.updatedAt) + 1)).toISOString();
+  values.push(updatedAt, id);
   if (Object.hasOwn(patch, 'sku')) await requireUniqueProductSku(database, patch.sku, id);
   if (Object.hasOwn(patch, 'variantGroup') || Object.hasOwn(patch, 'variantLabel')) {
     await requireUniqueVariantLabel(database, Object.hasOwn(patch, 'variantGroup') ? patch.variantGroup : existing.variantGroup,
@@ -239,6 +236,7 @@ async function patchProduct(database, id, input, { galleryChanging = false } = {
   try {
     await database.run(`UPDATE product SET ${assignments.join(', ')} WHERE id = ?`, ...values);
   } catch (error) {duplicateSku(error);}
+  if (Object.hasOwn(patch, 'stockQuantity')) await setProductStock(database, id, patch.stockQuantity, updatedAt);
   // Shared fields live on the listing; a group change moves the row to the listing of its new group.
   const now = new Date().toISOString();
   if (Object.hasOwn(patch, 'variantGroup') && (patch.variantGroup || null) !== (existing.variantGroup || null)) {

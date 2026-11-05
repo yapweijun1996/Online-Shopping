@@ -1,3 +1,5 @@
+import { inventoryStorageReady } from '../src/inventory-schema.js';
+import { dropInventoryForLegacyFixture } from './helpers/inventory-fixture.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -16,6 +18,7 @@ if (base && (process.env.NODE_ENV !== 'test' || !/test/i.test(new URL(base).path
 import { MEDIA_STORAGE_TABLES } from '../src/mcp/media-schema.js';
 const tables = [...MEDIA_STORAGE_TABLES.toReversed(), 'mcp_v2_authorization_request', 'mcp_v2_scope_consent', 'mcp_v2_approval_challenge', 'mcp_v2_approval', 'mcp_v2_event', 'mcp_v2_operation', 'mcp_v2_schema'];
 async function removeOperations(store) {
+  await dropInventoryForLegacyFixture(store);
   for (const table of tables) await store.exec(`DROP TABLE ${table}`);
   await store.setSchemaVersion(29);
 }
@@ -32,8 +35,8 @@ const admin = ['synthetic_owner', 'synthetic-historical-hash', '2026-11-01T00:00
 
 test('fresh PostgreSQL baseline embeds exact shared operation DDL and self-contained metadata SQL', () => {
   const sql = readFileSync(new URL('../src/postgres/schema.sql', import.meta.url), 'utf8');
-  assert.ok(sql.endsWith(operationStorageDdl('postgres') + '\n' + operationStorageMetaSchema('postgres') + '\n' + operationStorageSeedSql() + '\n'));
-  assert.match(sql, /INSERT INTO schema_meta VALUES \(1, 31\)/);
+  assert.ok(sql.includes(operationStorageDdl('postgres') + '\n' + operationStorageMetaSchema('postgres') + '\n' + operationStorageSeedSql() + '\n'));
+  assert.match(sql, /INSERT INTO schema_meta VALUES \(1, 32\)/);
 });
 
 test('SQLite29 to30 migration preserves historical rows, rolls back final DDL failure and is repeatable', async (t) => {
@@ -98,7 +101,7 @@ for (const version of Array.from({ length: 20 }, (_, index) => index + 10)) {
     assert.equal((await store.get("SELECT to_regclass('public.mcp_v2_schema') AS name")).name, null);
     const upgraded = await openPostgresDatabase(url, { allowUpgrade: true });
     try {
-      assert.equal(await upgraded.schemaVersion(), 31);
+      assert.equal(await upgraded.schemaVersion(), 32);
       assert.equal(await operationStorageReady(upgraded), true);
       assert.equal((await upgraded.get('SELECT manifest_digest FROM mcp_v2_schema WHERE id = 1')).manifest_digest, expectedManifest);
       assert.deepEqual(await upgraded.get('SELECT * FROM admin'), before);
@@ -131,6 +134,7 @@ test('PostgreSQL29 upgrade grants the legacy application role new tables without
   await store.transaction(async () => {
     await store.exec('SET LOCAL ROLE online_shopping_app');
     assert.equal(await operationStorageReady(store), true);
+    assert.equal(await inventoryStorageReady(store), true);
     await store.run(`INSERT INTO mcp_v2_event(id, at, tenant_id, tool_name, operation_id, event, outcome, correlation_id)
       VALUES (?, ?, ?, ?, ?, 'DENY', 'FORBIDDEN', ?)`, randomUUID(), new Date().toISOString(), 'synthetic', 'catalog.preview_create', randomUUID(), randomUUID());
   });
@@ -143,4 +147,5 @@ test('PostgreSQL29 upgrade grants the legacy application role new tables without
   await removeOperations(tenant);
   await tenant.transaction(() => upgradePostgres(tenant, 29));
   assert.equal((await tenant.get("SELECT has_table_privilege('online_shopping_app', 'mcp_v2_operation', 'SELECT') AS allowed")).allowed, false);
+  for (const table of ['inventory_schema','inventory_coverage','inventory_state','inventory_movement']) assert.equal((await tenant.get("SELECT has_table_privilege('online_shopping_app', ?, 'SELECT') AS allowed",table)).allowed,false);
 });

@@ -1,3 +1,4 @@
+import { dropInventoryForLegacyFixture } from './helpers/inventory-fixture.js';
 import { setupShop } from '../src/shop-setup.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -104,6 +105,7 @@ async function pendingOperation(store, authority) {
   return { operationId: envelope.operationId, previewHash };
 }
 async function downgradeOperationStore(store) {
+  await dropInventoryForLegacyFixture(store);
   for (const table of [...MEDIA_STORAGE_TABLES.toReversed(), 'mcp_v2_authorization_request', 'mcp_v2_scope_consent', 'mcp_v2_approval_challenge', 'mcp_v2_approval', 'mcp_v2_event', 'mcp_v2_operation', 'mcp_v2_schema']) await store.exec(`DROP TABLE ${table}`);
   await store.setSchemaVersion(29);
 }
@@ -113,7 +115,7 @@ for (const dialect of ['sqlite', 'postgres']) {
   test(`${dialect}: extension initialization is explicit, repeatable, base-compatible and readiness checks physical schema`, options, async (t) => {
     const store = await fixture(t, dialect);
     await ensureAdmin(store, 'synthetic_owner', ownerPassword);
-    assert.equal(SCHEMA_VERSION, 31);
+    assert.equal(SCHEMA_VERSION, 32);
     assert.equal(await ready(store), true);
     assert.equal(await initializeOperationStorage(store), false);
     assert.equal(await initializeOperationStorage(store, { enabled: false }), false);
@@ -145,7 +147,7 @@ for (const dialect of ['sqlite', 'postgres']) {
     assert.equal(await store.schemaVersion(), 29);
     store.exec = exec;
     await initializeOperationStorage(store, { enabled: true });
-    await store.setSchemaVersion(31);
+    await store.setSchemaVersion(32);
     assert.equal(await operationStorageReady(store), true);
     await store.run('UPDATE mcp_v2_schema SET ddl_digest = ? WHERE id = 1', '0'.repeat(64));
     assert.equal(await operationStorageReady(store), false);
@@ -167,7 +169,7 @@ for (const dialect of ['sqlite', 'postgres']) {
     assert.equal(await operationStorageReady(store), false);
     assert.equal((await extensionNames(store)).includes(OPERATION_STORAGE_META), false);
     await store.setSchemaVersion(28);
-    await assert.rejects(initializeOperationStorage(store, { enabled: true }), /base schema 29, 30 or 31/);
+    await assert.rejects(initializeOperationStorage(store, { enabled: true }), /base schema 29, 30, 31 or 32/);
     assert.equal(await store.schemaVersion(), 28);
   });
 

@@ -1,3 +1,4 @@
+import { dropInventoryForLegacyFixture } from './helpers/inventory-fixture.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
@@ -39,7 +40,7 @@ test('SQLite schema 21: tables are created, the upgrade from 20 is repeatable, a
     for (const table of TABLES) await store.get(`SELECT COUNT(*) AS n FROM ${table}`);
     // A schema 20 database has none of the tables; the upgrade adds them and a second run changes nothing.
     await store.exec(`DROP TABLE message_inbound; DROP TABLE message_outbox; DROP TABLE webhook_receipt; DROP TABLE integration_audit; DROP TABLE integration_connection`);
-    await store.setSchemaVersion(20);
+    await dropInventoryForLegacyFixture(store); await store.setSchemaVersion(20);
     await migrateStore(store); await migrateStore(store);
 
     await setupShop(store, { mode: 'demo' });
@@ -91,7 +92,7 @@ test('PostgreSQL schema 20 upgrades to 21 and matches a fresh schema 21, repeata
   const old = await openPostgresDatabase(urlOf(names[1]));
   closers.push(() => fresh.close());
   await old.exec(`DROP TABLE message_inbound; DROP TABLE message_outbox; DROP TABLE webhook_receipt; DROP TABLE integration_audit; DROP TABLE integration_connection`);
-  await old.setSchemaVersion(20);
+  await dropInventoryForLegacyFixture(old); await old.setSchemaVersion(20);
   await old.close();
 
   const upgraded = await openPostgresDatabase(urlOf(names[1]), { allowUpgrade: true });

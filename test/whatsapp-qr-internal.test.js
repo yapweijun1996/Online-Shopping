@@ -1,3 +1,4 @@
+import { dropInventoryForLegacyFixture } from './helpers/inventory-fixture.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto';
@@ -358,7 +359,7 @@ for (const engine of ['sqlite','postgres']) {
     };
     const baseline = await catalog();
     for (const table of tables) await f.store.exec(`DROP TABLE ${table}`);
-    await f.store.setSchemaVersion(26);
+    await dropInventoryForLegacyFixture(f.store); await f.store.setSchemaVersion(26);
     if (engine === 'postgres') await f.store.transaction(() => upgradePostgres(f.store, 26));
     else await migrateStore(f.store);
     assert.equal(await f.store.schemaVersion(), SCHEMA_VERSION);

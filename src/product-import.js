@@ -1,3 +1,4 @@
+import { withInventoryContext } from './inventory.js';
 // CSV import of the catalog (the counterpart of product-export.js). Rows are matched by SKU: an existing SKU is updated,
 // a new SKU is created. Only price, stock, active, name, description and category can be set. Variant columns cannot be
 // imported (variants are made in the app). A preview reports every row without writing; the import itself is all or
@@ -150,8 +151,8 @@ export async function importProducts(database, csvText, actor, mode = 'manual') 
     const plan = await planImport(database, csvText);
     if (plan.summary.errors) throw Object.assign(new ApiError(409, 'IMPORT_HAS_ERRORS', 'Fix the rows with errors first. Nothing was imported.'), { plan });
     for (const row of plan.rows) {
-      if (row.action === 'create') await trackCreate(database, actor, () => createProduct(database, row.input));
-      else if (row.action === 'update') await trackUpdate(database, row.id, actor, () => updateProduct(database, row.id, row.input, mode));
+      if (row.action === 'create') await trackCreate(database, actor, () => withInventoryContext({ source: 'CSV' }, () => createProduct(database, row.input)));
+      else if (row.action === 'update') await trackUpdate(database, row.id, actor, () => withInventoryContext({ source: 'CSV' }, () => updateProduct(database, row.id, row.input, mode)));
     }
     return plan;
   });

@@ -1,3 +1,4 @@
+import { dropInventoryForLegacyFixture } from './helpers/inventory-fixture.js';
 import { unzip, assertBalanced } from './helpers/xlsx.js';
 import { migrateStore, SCHEMA_VERSION } from '../src/db.js';
 import { upgradePostgres } from '../src/postgres/upgrade.js';
@@ -33,7 +34,7 @@ for (const backend of ['SQLite', 'PostgreSQL']) test(`${backend}: shipping parce
     t.after(async () => { await db.close(); await pool.query(`DROP DATABASE ${name} WITH (FORCE)`); await pool.end(); });
   } else { db = await openDatabase(':memory:'); t.after(() => db.close()); }
   for (const column of ['sender_name', 'sender_phone', 'sender_address_line1', 'sender_address_line2', 'sender_city', 'sender_state', 'sender_postcode', 'sender_country']) await db.exec(`ALTER TABLE company_setting DROP COLUMN ${column}`);
-  await db.setSchemaVersion(25);
+  await dropInventoryForLegacyFixture(db); await db.setSchemaVersion(25);
   if (backend === 'SQLite') await migrateStore(db);
   else await db.transaction(() => upgradePostgres(db, 25));
   assert.equal(await db.schemaVersion(), SCHEMA_VERSION);
