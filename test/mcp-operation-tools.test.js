@@ -102,7 +102,7 @@ for (const dialect of ['sqlite', 'postgres']) {
   test(`${dialect}: JSON-RPC rejects authority arguments, stale credentials, RBAC and tenant substitution`,
     { skip: dialect === 'postgres' && !process.env.SHOP_TEST_DATABASE_URL }, async (t) => {
       const f = await rpcFixture(t, dialect), args = { input: f.input, idempotencyKey: 'synthetic-negative-0001' };
-      for (const key of ['bearer', 'tenantId', 'config', 'adapter', 'approved']) {
+      for (const key of ['bearer', 'tenantId', 'config', 'adapter', 'approved', 'currencyAcknowledged']) {
         assert.equal((await f.tool('catalog.preview_update', { ...args, [key]: true })).data.error.code, -32602);
         assert.equal((await f.tool('catalog.preview_update', { ...args, input: { ...f.input, [key]: true } })).data.error.code, -32602);
       }
