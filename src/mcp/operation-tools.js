@@ -5,7 +5,7 @@ import { OPERATION_MUTATION_PAIRS, OPERATION_SCOPE_POLICIES } from './operation-
 import { valid } from './tools.js';
 import { audit } from './credentials.js';
 import { operationEpochHash } from './operation-epoch.js';
-import { verifyOperationAuthority } from './operation-authorization.js';
+import { verifyOperationAuthority, verifyMediaAuthority } from './operation-authorization.js';
 import { isMediaCoordinator, decodeMediaParts } from './media-coordinator.js';
 import { MEDIA_TOOL_CONTRACTS, mediaStageInput, mediaStageOutput, mediaReceiptSchema, mediaLayoutInput, mediaListInput, mediaListOutput } from './media-contracts.js';
 
@@ -177,10 +177,20 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
   const engine = Object.keys(adapters).length ? createOperationEngine({ store, binding, adapters, tenantGuard, quickLogin, ...config.mcpV2 }) : null;
   const epochHash = operationEpochHash(config.mcpV2.epoch), read = selectOnly(store);
   return Object.freeze({ catalogue: Object.freeze(tools), find: name => byName.get(name)?.tool || null,
-    isMediaAppend(name, args) {
+    async isMediaAppend(name, args, bearer) {
       const entry = byName.get(name);
       if (entry?.kind !== 'stage' || name !== 'media.prepare_upload' || !valid(args,entry.tool.inputSchema) || args.input.action !== 'append') return false;
-      try { decodeMediaParts(args.input.dataParts); return true; } catch { return false; }
+      try { decodeMediaParts(args.input.dataParts); } catch { return false; }
+      try {
+        return await tenantGuard.withActiveTenant(binding.tenantId, tenant => store.transaction(async () => {
+          if (!tenant || !Number.isSafeInteger(tenant.revision) || tenant.revision < 0) throw new ApiError(403,'FORBIDDEN','Operation authorization failed.');
+          await verifyMediaAuthority(store,{bearer,binding,epochHash,buildDigest:config.mcpV2.buildDigest,tenantRevision:tenant.revision});
+          return true;
+        }));
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 403) return false;
+        throw error;
+      }
     },
     async call(name, args, bearer) {
       const registered = byName.get(name);

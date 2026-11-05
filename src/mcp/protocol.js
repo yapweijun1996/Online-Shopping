@@ -38,7 +38,8 @@ export function createProtocol({ store, config, binding, limit, operationTools =
     const append = envelope(body) && Object.hasOwn(body,'id') && body.method === 'tools/call' &&
       request.headers.get('mcp-protocol-version') === REVISION && body.params && !Array.isArray(body.params) &&
       Object.keys(body.params).every(key => ['name','arguments'].includes(key)) && initial.grant.allowed.includes('media.write') &&
-      initial.token.scopes.split(' ').includes('media.write') && operationTools?.isMediaAppend?.(body.params.name,body.params.arguments ?? {});
+      initial.token.scopes.split(' ').includes('media.write') &&
+      await (operationTools?.isMediaAppend?.(body.params.name,body.params.arguments ?? {},bearer[1]) ?? false);
     if (!append) await limit('mcp-call', `${initial.grant.account_id}:${initial.grant.client_id}`, 120);
     await limit('mcp-call-shop', 'shop', 600);
     if (body?.method === 'tools/call' && catalogue.find((t) => t.name === body.params?.name)?.scope === 'analytics.read') await limit('mcp-analytics', initial.grant.account_id, 20);
