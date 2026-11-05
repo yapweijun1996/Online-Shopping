@@ -32,6 +32,7 @@ export function operationResourceBinding(row) {
 export async function readOperationRecord(store, row, { binding, tenantRevision, epochHash, buildDigest, grant, context, expected }) {
   let policy;
   try { policy = operationAuthorityPolicy(row?.tool_name, row?.media_policy_id ?? null); } catch { return null; }
+  if (policy.mediaPolicyId === 'catalog-media-v1' && !operationResourceBinding(row)) return null;
   if (!row || !expected || !grant || !uuid.test(row.id || '') || !uuid.test(row.account_id || '') ||
       !uuid.test(row.grant_id || '') || !uuid.test(row.correlation_id || '') ||
       row.tenant_id !== binding.tenantId || row.issuer !== binding.issuer || row.resource !== binding.resource ||

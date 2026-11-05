@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import {mediaEngineFixture} from './helpers/mcp-media-engine-fixture.js';
 import {verifyOperationAuthority} from '../src/mcp/operation-authorization.js';
 import {storeMediaPolicy,readMediaPolicy} from '../src/mcp/media-storage.js';
+import {readOperationRecord} from '../src/mcp/operation-record.js';
+import {seedCatalogWireOperation} from './helpers/mcp-catalog-wire-fixture.js';
+import {canonicalOperationJson,operationPreviewHash} from '../src/mcp/operation-envelope.js';
 for(const dialect of ['sqlite','postgres']){
  const options={skip:dialect==='postgres'&&!process.env.SHOP_TEST_DATABASE_URL};
  test(`${dialect}: central C authority defaults deny and rejects CREATE/resource/policy substitutions`,options,async t=>{
@@ -29,5 +32,15 @@ for(const dialect of ['sqlite','postgres']){
   assert.equal((await readMediaPolicy(f.store,f.context,id)).required_scopes,'catalog.write media.write');
   assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?',id)).state,'PENDING_APPROVAL');
   assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_approval')).n,0);
+ });
+ test(`${dialect}: retained C record enforces the fixed product UUID binding even with self-consistent envelope hashes`,options,async t=>{
+  const f=await mediaEngineFixture(t,dialect),op=await seedCatalogWireOperation(f),grant=await f.store.get('SELECT * FROM oauth_grant WHERE id=?',f.context.grantId);
+  const read=async()=>readOperationRecord(f.store,await f.store.get('SELECT * FROM mcp_v2_operation WHERE id=?',op.id),
+   {binding:f.binding,tenantRevision:f.context.tenantRevision,epochHash:f.context.epochHash,buildDigest:f.context.buildDigest,grant,context:f.context,
+    expected:{resourceType:'product',mediaPolicyId:'catalog-media-v1'}});
+  assert.ok(await read());
+  const forged={...op.envelope,resourceId:'catalog'};
+  await f.store.run('UPDATE mcp_v2_operation SET resource_id=?,envelope_json=?,preview_hash=? WHERE id=?','catalog',canonicalOperationJson(forged),operationPreviewHash(forged),op.id);
+  assert.equal(await read(),null);
  });
 }
