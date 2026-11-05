@@ -7,15 +7,16 @@ import { MEDIA_LIMITS } from './media-schema.js';
 import { mediaContext, withMediaWriter } from './media-storage.js';
 import { readMediaSnapshot, loadOldMediaAsset } from './media-resources.js';
 import { decodeViaSocket } from './media-codec-client.js';
-import { decodeOutput, encodeOutput } from './media-codec-wire.js';
+import { createMediaNativeSession } from './media-native.js';
 import { isMediaHash, isMediaUuid, mediaObject } from './media-policy.js';
 import { makeUploadAdapter } from './media-upload-adapter.js';
 import { assertUploadThumbnail } from './media-upload-policy.js';
 
 const invalid = () => { throw new ApiError(400, 'MEDIA_INPUT', 'Invalid media upload input.'); };
 const changed = () => { throw new ApiError(409, 'MEDIA_RESOURCE_CHANGED', 'Media resource changed. Reopen its review.'); };
-const deadline = () => { throw new ApiError(503, 'MEDIA_DEADLINE', 'Media validation exceeded its time budget.'); };
 const denied = () => { throw new ApiError(403, 'FORBIDDEN', 'Media authorization failed.'); };
+const coordinators = new WeakSet();
+export const isMediaCoordinator = value => coordinators.has(value);
 
 /** Strict canonical independently encoded parts keep every model string <=4096. */
 export function decodeMediaParts(parts) {
@@ -130,29 +131,9 @@ export function createMediaCoordinator({ store, binding, tenantGuard, epoch, bui
     },
     async resolve(captured, { signal, deadline: engineDeadline }) {
       if (!captured || !Number.isFinite(engineDeadline)) invalid();
-      const stop = Math.min(engineDeadline, performance.now() + MEDIA_LIMITS.coordinatorMs);
-      const one = async (bytes, mime, sha) => {
-        if (signal?.aborted || stop - performance.now() < MEDIA_LIMITS.decodeMs) deadline();
-        const controller = new AbortController();
-        const cancel = () => controller.abort();
-        signal?.addEventListener('abort', cancel, { once: true });
-        let timer;
-        const timeout = new Promise((_, reject) => { timer = setTimeout(() => {
-          controller.abort(); reject(new ApiError(503, 'MEDIA_DEADLINE', 'Media validation exceeded its time budget.'));
-        }, MEDIA_LIMITS.decodeMs); });
-        try {
-          const raw = await Promise.race([decode({ socketPath: codec.socketPath, token: codec.token, bytes: Buffer.from(bytes), mime, signal: controller.signal }), timeout]);
-          const packet = decodeOutput(encodeOutput(raw), sha);
-          if (signal?.aborted || performance.now() >= stop) deadline();
-          if (packet.mime !== mime) throw new ApiError(503, 'MEDIA_CODEC_FAILED', 'Media validation failed.');
-          return packet;
-        } catch (error) {
-          if (error instanceof ApiError) throw error;
-          throw new ApiError(503, 'MEDIA_CODEC_FAILED', 'Media validation failed.');
-        } finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel); }
-      };
-      const packet = await one(captured.lease.source, captured.lease.sourceMime, captured.lease.sourceSha256);
-      for (const asset of captured.old) await one(asset.bytes, asset.ref.mime, asset.ref.byte_sha256);
+      const native = createMediaNativeSession(codec, { signal, deadline: engineDeadline, decode });
+      const packet = await native.decode(captured.lease.source, captured.lease.sourceMime, captured.lease.sourceSha256);
+      for (const asset of captured.old) await native.decode(asset.bytes, asset.ref.mime, asset.ref.byte_sha256);
       const result = { sourceSha256: packet.sourceSha256, image: Buffer.from(packet.image), thumbnail: Buffer.from(packet.thumbnail),
         mime: packet.mime, width: packet.width, height: packet.height, codecDigest: codec.digest };
       // Source/old bytes are unnecessary after native validation; do not carry them into final planning.
@@ -174,5 +155,7 @@ export function createMediaCoordinator({ store, binding, tenantGuard, epoch, bui
       await writer.consume(envelope.proposal.stageId, envelope.operationId);
     },
   });
-  return Object.freeze({ begin, append, discard, uploadAdapter: makeUploadAdapter({ hooks }) });
+  const coordinator = Object.freeze({ begin, append, discard, uploadAdapter: makeUploadAdapter({ hooks }) });
+  coordinators.add(coordinator);
+  return coordinator;
 }

@@ -4,6 +4,7 @@ import { parseKeyFile } from './secret-box.js';
 import { checkPassword } from './accounts.js';
 import { safeRedirect } from './mcp/oauth.js';
 import { readMcpV2Config } from './mcp/operation-runtime.js';
+import { readMcpMediaConfig } from './mcp/media-config.js';
 
 const weakPasswords = new Set(['password', 'password123', 'changeme', 'admin123', 'testpassword', 'replace-me']);
 
@@ -196,5 +197,7 @@ export function readConfig(env = process.env) {
   })) throw new Error('Invalid MCP_BROWSER_ORIGINS.');
   if (mcpEnabled && (!sellerOrigin || new URL(sellerOrigin).protocol !== 'https:')) throw new Error('MCP_ENABLED requires an HTTPS SELLER_ORIGIN.');
   const mcpV2 = readMcpV2Config(env, { mcpEnabled, sellerOrigin, dbPath });
-  return { mcpV2, production, username, password, dbPath, databaseUrl, publicOrigin, sellerOrigin, appRevision, integrationKeys, whatsappQr, ai, mcpEnabled, mcpRedirectUris, mcpBrowserOrigins, platform: readPlatformConfig(env, integrationKeys), port, trustProxy, shopMode: readShopMode(env), sellerQuickLogin: env.SELLER_QUICK_LOGIN === '1', demoRevision: readDemoRevision(env) };
+  const shopMode = readShopMode(env), sellerQuickLogin = env.SELLER_QUICK_LOGIN === '1';
+  const mcpMedia = readMcpMediaConfig(env, { production, mcpEnabled, mcpV2, shopMode, sellerQuickLogin, dbPath });
+  return { mcpV2, mcpMedia, production, username, password, dbPath, databaseUrl, publicOrigin, sellerOrigin, appRevision, integrationKeys, whatsappQr, ai, mcpEnabled, mcpRedirectUris, mcpBrowserOrigins, platform: readPlatformConfig(env, integrationKeys), port, trustProxy, shopMode, sellerQuickLogin, demoRevision: readDemoRevision(env) };
 }

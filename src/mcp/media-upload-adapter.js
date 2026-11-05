@@ -7,14 +7,14 @@ import { canonicalOperationJson } from './operation-envelope.js';
 import { mediaContext, mediaHash, withMediaWriter } from './media-storage.js';
 import { readMediaSnapshot } from './media-resources.js';
 import { readMediaFrame } from './media-frame-storage.js';
-import { buildMediaManifest, mediaAssetKey } from './media-manifest.js';
+import { mediaAssetKey } from './media-manifest.js';
+import { mediaSnapshotManifest, assertMediaGraphAfter } from './media-graph.js';
 import { isMediaHash, isMediaUuid, mediaObject, validateMediaDescriptor } from './media-policy.js';
 import { uploadThumbnail, assertUploadThumbnail } from './media-upload-policy.js';
 
 const changed = () => { throw new ApiError(409, 'MEDIA_RESOURCE_CHANGED', 'Media resource changed. Reopen its review.'); };
 const invalid = () => { throw new TypeError('Invalid stored media upload.'); };
 const dataUrl = (mime, data) => 'data:' + mime + ';base64,' + Buffer.from(data).toString('base64');
-const sourceFields = ['source_kind','source_id','source_product_id','stage_id','byte_sha256','mime','byte_length'];
 
 async function planState(read, stage, result) {
   const snapshot = await readMediaSnapshot(read, stage.productId);
@@ -48,23 +48,8 @@ async function planState(read, stage, result) {
     const selected = galleryPlan.selected.map(id => { if (!keys.has(id)) invalid(); return keys.get(id); });
     after.listings.find(value => value.listingId === target.listingId).galleryAssetKeys = selected;
   }
-  const effects = [
-    ...snapshot.before.products.map(({ productId, ...before }) => ({ kind: 'PRODUCT', productId, before,
-      after: Object.fromEntries(Object.entries(after.products.find(value => value.productId === productId)).filter(([field]) => field !== 'productId')) })),
-    ...snapshot.before.listings.map(({ listingId, ...before }) => ({ kind: 'LISTING', listingId, before,
-      after: Object.fromEntries(Object.entries(after.listings.find(value => value.listingId === listingId)).filter(([field]) => field !== 'listingId')) })),
-  ];
-  const used = new Set();
-  for (const effect of effects) for (const side of ['before','after']) {
-    const state = effect[side];
-    if (effect.kind === 'PRODUCT') { if (state.mainAssetKey) used.add(state.mainAssetKey); }
-    else for (const value of state.galleryAssetKeys) used.add(value);
-  }
-  const assets = snapshot.assets.filter(value => used.has(mediaAssetKey(value.mime, value.byte_sha256)))
-    .map(value => Object.fromEntries(sourceFields.map(field => [field, value[field]])));
-  assets.push(asset);
-  const manifest = buildMediaManifest({ toolName: 'media.prepare_upload', graphRevision: snapshot.revision,
-    codecDigest: stage.codecDigest, graphBytes: { oldBytes: snapshot.graphReadBytes.oldBytes, newBytes: result.image.length + result.thumbnail.length }, assets, effects });
+  const manifest = mediaSnapshotManifest('media.prepare_upload', snapshot, after, stage.codecDigest,
+    { assets: [asset], newBytes: result.image.length + result.thumbnail.length });
   return { snapshot, manifest, mainUrl, thumbUrl, product };
 }
 async function plan(read, stage, result) {
@@ -132,17 +117,7 @@ export function makeUploadAdapter({ hooks }) {
               source.thumbnail.byte_sha256 !== proposal.thumbnail.sha256 || source.thumbnail.byte_length !== proposal.thumbnail.byteLength) changed();
         } else if (canonicalOperationJson(source.thumbnail) !== canonicalOperationJson(old.thumbnail)) changed();
       }
-      for (const kind of ['PRODUCT','LISTING']) {
-        const rows = kind === 'PRODUCT' ? after.before.products : after.before.listings;
-        const id = kind === 'PRODUCT' ? 'productId' : 'listingId';
-        const expected = retained.effects.filter(effect => effect.kind === kind);
-        if (rows.length !== expected.length) changed();
-        for (const row of rows) {
-          const effect = expected.find(value => value[id] === row[id]);
-          const { [id]: _id, ...state } = row;
-          if (!effect || canonicalOperationJson(state) !== canonicalOperationJson(effect.after)) changed();
-        }
-      }
+      assertMediaGraphAfter(after, retained);
       return { productId: product.id, listingId: product.listingId, revision: after.revision };
     },
     validResult: validReceipt,

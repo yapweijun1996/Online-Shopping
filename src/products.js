@@ -147,7 +147,31 @@ export async function createProduct(database, input) {
   });
 }
 
+// Gallery-only edits use the same metadata validation and gallery planner but
+// must not fabricate a name PATCH that overwrites legacy member-specific copy.
+export async function updateProductGallery(database, id, input, mode = 'manual') {
+  if (!input || !Object.hasOwn(input, 'gallery') || Object.keys(input).some(key => !['gallery','expectedUpdatedAt'].includes(key))) {
+    throw new FieldError('gallery', 'Send an existing image selection and its revision.');
+  }
+  return database.transaction(async () => {
+    const existing = await getProduct(database, id, true, mode);
+    if (!existing) return null;
+    if (Object.hasOwn(input, 'expectedUpdatedAt')) requireGalleryRevision(existing, input.expectedUpdatedAt);
+    const role = await galleryRole(database, existing);
+    if (role !== 'variant') requireGalleryRevision(existing, input.expectedUpdatedAt);
+    await prepareProductUpdate(database, existing, { name: existing.name });
+    if (role !== 'variant') await saveProductGallery(database, id, input.gallery, existing);
+    await database.run('UPDATE product SET updated_at = ? WHERE id = ?',
+      new Date(Math.max(Date.now(), Date.parse(existing.updatedAt) + 1)).toISOString(), id);
+    await saveOptions(database, id, existing, {});
+    return getProduct(database, id, true, mode);
+  });
+}
+
 export async function updateProduct(database, id, input, mode = 'manual') {
+  if (input && Object.hasOwn(input, 'gallery') && Object.keys(input).every(key => ['gallery','expectedUpdatedAt'].includes(key))) {
+    return updateProductGallery(database, id, input, mode);
+  }
   return await database.transaction(async () => {
     const existing = await getProduct(database, id, true, mode);
     if (!existing) return null;
