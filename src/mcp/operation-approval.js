@@ -88,7 +88,7 @@ export function createOperationReview({ store, binding, sellerOrigin, quickLogin
         const account = await store.get('SELECT oauth_auth_version FROM seller_account WHERE id = ?', session.account.id);
         if (!Number.isSafeInteger(account?.oauth_auth_version)) forbidden();
         const challenge = secret(), now = stamp();
-        const expires = new Date(Math.min(Date.now() + APPROVAL_MS, Date.parse(row.expires_at))).toISOString();
+        const expires = new Date(Math.min(Date.parse(now) + APPROVAL_MS, Date.parse(row.expires_at))).toISOString();
         await store.run('DELETE FROM mcp_v2_approval_challenge WHERE operation_id = ? AND account_id = ?', row.id, session.account.id);
         await store.run(`INSERT INTO mcp_v2_approval_challenge(id, operation_id, nonce_hash, created_at, expires_at, account_id, session_hash, account_auth_version, bound_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, randomUUID(), row.id, hash(challenge + ':' + row.preview_hash), now, expires,
@@ -154,7 +154,7 @@ export function createOperationApproval({ store, binding, sellerOrigin, quickLog
       const row = await store.get('SELECT * FROM mcp_v2_operation WHERE id = ?', input.operationId);
       if (!await humanContext(store, binding, tenant.revision, epochHash, buildDigest, session, row) ||
           !sameSecret(row.preview_hash, input.previewHash)) forbidden();
-      const now = stamp(), expires = new Date(Math.min(Date.now() + APPROVAL_MS, Date.parse(row.expires_at))).toISOString();
+      const now = stamp(), expires = new Date(Math.min(Date.parse(now) + APPROVAL_MS, Date.parse(row.expires_at))).toISOString();
       if (expires <= now) forbidden();
       const consumed = await store.get(`UPDATE mcp_v2_approval_challenge SET consumed_at = ? WHERE id = ? AND operation_id = ?
         AND nonce_hash = ? AND account_id = ? AND session_hash = ? AND account_auth_version = ? AND consumed_at IS NULL AND expires_at > ? RETURNING id`,

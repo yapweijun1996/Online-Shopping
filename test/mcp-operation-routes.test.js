@@ -266,3 +266,23 @@ for (const dialect of ['sqlite', 'postgres']) {
       assert.equal(cleaned.state, 'EXPIRED'); assert.equal(cleaned.envelope_json, null);
     });
 }
+
+for (const dialect of ['sqlite', 'postgres']) {
+  test(`${dialect}: approval lifetime uses one timestamp when the clock advances between reads`,
+    { skip: dialect === 'postgres' && !process.env.SHOP_TEST_DATABASE_URL }, async (t) => {
+      const f = await reviewFixture(t, dialect); await f.seedGrant();
+      const op = await f.reviewedOperation();
+      const originalNow = Date.now, base = originalNow(); let ticks = 0, response;
+      Date.now = () => base + ++ticks;
+      try {
+        const review = await f.call(op.path, 'GET', undefined, f.headers);
+        assert.equal(review.response.status, 200); op.input.challenge = review.data.challenge;
+        const challenge = await f.store.get('SELECT created_at, expires_at FROM mcp_v2_approval_challenge WHERE operation_id = ?', op.value.operationId);
+        assert.equal(Date.parse(challenge.expires_at) - Date.parse(challenge.created_at), 5 * 60000);
+        response = await f.call(op.path + '/approval', 'POST', op.input, f.headers);
+      } finally { Date.now = originalNow; }
+      assert.equal(response.response.status, 200, JSON.stringify(response.data));
+      const proof = await f.store.get('SELECT approved_at, expires_at FROM mcp_v2_approval WHERE operation_id = ?', op.value.operationId);
+      assert.equal(Date.parse(proof.expires_at) - Date.parse(proof.approved_at), 5 * 60000);
+    });
+}
