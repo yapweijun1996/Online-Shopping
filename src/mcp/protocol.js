@@ -1,5 +1,5 @@
 import { ApiError, json, readBody } from '../http.js';
-import { audit, hash, liveGrant, stamp } from './credentials.js';
+import { audit, hash, liveGrant, stamp, SCOPES, V2_SCOPES } from './credentials.js';
 import { callTool, catalogue, error, valid } from './tools.js';
 import { fail } from './oauth.js';
 import { parseJson } from './json.js';
@@ -13,6 +13,15 @@ const envelope = body => Boolean(body && !Array.isArray(body) && typeof body ===
   (!Object.hasOwn(body,'id') || Number.isSafeInteger(body.id) || (typeof body.id === 'string' && body.id.length <= 64)));
 export function createProtocol({ store, config, binding, limit, operationTools = null, afterOperation = null }) {
   const discovery = `${config.sellerOrigin}/.well-known/oauth-protected-resource${config.basePath || ''}/mcp`;
+  const knownScopes = new Set([...SCOPES, ...V2_SCOPES]);
+  const requiredScopes = tool => {
+    const required = typeof operationTools?.requiredScopes === 'function' ? operationTools.requiredScopes(tool.name) : null;
+    if (!Array.isArray(required) || !required.length || required[0] !== tool.scope ||
+        new Set(required).size !== required.length || required.some(scope => !knownScopes.has(scope))) {
+      throw new TypeError('Invalid server operation scope requirements.');
+    }
+    return [...required];
+  };
   return async function protocol(request, ip) {
     await limit('mcp-http', ip, 300);
     const authorization = request.headers.get('authorization');
@@ -54,8 +63,9 @@ export function createProtocol({ store, config, binding, limit, operationTools =
       const args = body.params;
       if (!args || typeof args !== 'object' || Array.isArray(args) || Object.keys(args).some(key => !['name', 'arguments'].includes(key)) ||
           !valid(args.arguments ?? {}, extension.inputSchema)) return rpcError(body.id, -32602, 'Invalid params');
-      if (!initial.grant.allowed.includes(extension.scope) || !initial.token.scopes.split(' ').includes(extension.scope)) {
-        fail('insufficient_scope', 403, { 'WWW-Authenticate': `Bearer error="insufficient_scope", scope="${extension.scope}"` });
+      const required = requiredScopes(extension);
+      if (!required.every(scope => initial.grant.allowed.includes(scope) && initial.token.scopes.split(' ').includes(scope))) {
+        fail('insufficient_scope', 403, { 'WWW-Authenticate': `Bearer error="insufficient_scope", scope="${required.join(' ')}"` });
       }
       try {
         const dto = await operationTools.call(extension.name, args.arguments ?? {}, bearer[1]);
@@ -86,7 +96,8 @@ export function createProtocol({ store, config, binding, limit, operationTools =
       const allowed = grant.allowed.filter((s) => token.scopes.split(' ').includes(s));
       if (body.method === 'tools/list') {
         if (Object.keys(args).length) return rpcError(body.id, -32602, 'Invalid params');
-        const dto = { tools: [...catalogue, ...(operationTools?.catalogue || [])].filter((t) => allowed.includes(t.scope)).map(({ scope: _scope, ...tool }) => tool) };
+        const dto = { tools: [...catalogue.filter(tool => allowed.includes(tool.scope)),
+          ...(operationTools?.catalogue || []).filter(tool => requiredScopes(tool).every(scope => allowed.includes(scope)))].map(({ scope: _scope, ...tool }) => tool) };
         if (Buffer.byteLength(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: dto })) > 262144) return rpcError(body.id, -32603, 'Internal error');
         return result(body.id, dto);
       }

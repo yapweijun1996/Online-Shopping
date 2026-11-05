@@ -2,7 +2,7 @@ import { ApiError } from '../http.js';
 import { randomUUID } from 'node:crypto';
 import { canonicalOperationJson } from './operation-envelope.js';
 import { createOperationEngine } from './operation-engine.js';
-import { OPERATION_MUTATION_PAIRS, OPERATION_SCOPE_POLICIES } from './operation-policy.js';
+import { OPERATION_MUTATION_PAIRS, OPERATION_SCOPE_POLICIES, operationAuthorityPolicy } from './operation-policy.js';
 import { valid } from './tools.js';
 import { recordMcpAudit, mcpAuditResource } from './audit.js';
 import { operationEpochHash } from './operation-epoch.js';
@@ -97,6 +97,13 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
   if (!Array.isArray(entries) || entries.length > Object.keys(OPERATION_MUTATION_PAIRS).length + readNames.size + 5) invalid();
   const mediaEnabled = config.mcpMedia?.enabled === true && config.production === false && config.shopMode === 'manual';
   const tools = [], byName = new Map(), adapters = Object.create(null), skipped = new Set();
+  // Scope requirements belong to the constructor's trusted adapter policy, not
+  // the public tool schema or any caller-supplied scope/marker argument.
+  const register = (name, entry, mediaPolicyId = null) => {
+    const requiredScopes = entry.kind === 'control' ? [OPERATION_SCOPE_POLICIES[name].scope] :
+      operationAuthorityPolicy(name, mediaPolicyId).requiredScopes;
+    byName.set(name, { ...entry, requiredScopes: Object.freeze([...requiredScopes]) });
+  };
   for (const entry of entries) {
     if(entry?.kind==='control') {
       const contract=Object.hasOwn(OPERATION_CONTROL_CONTRACTS,entry.name)&&OPERATION_CONTROL_CONTRACTS[entry.name];
@@ -104,7 +111,7 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
         entry.scope!==OPERATION_SCOPE_POLICIES[entry.name].scope||canonicalOperationJson(entry.inputSchema)!==canonicalOperationJson(contract.inputSchema)||
         canonicalOperationJson(entry.outputSchema)!==canonicalOperationJson(contract.outputSchema))invalid();
       const tool=freeze({name:entry.name,scope:entry.scope,...contract,annotations:{readOnlyHint:entry.name!=='operations.cancel',destructiveHint:false,idempotentHint:true,openWorldHint:false}});
-      tools.push(tool);byName.set(entry.name,{kind:'control',tool});continue;
+      tools.push(tool);register(entry.name,{kind:'control',tool});continue;
     }
     if (entry?.kind === 'read') {
       if (Object.keys(entry).sort().join(',') !== 'capability,inputSchema,kind,name,outputSchema,read,scope' || !readNames.has(entry.name) ||
@@ -118,7 +125,7 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
       const tool = freeze({ name: entry.name, scope: entry.scope,
         description: readDescriptions[entry.name],
         inputSchema, outputSchema, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } });
-      tools.push(tool); byName.set(entry.name, { kind: 'read', tool, read: entry.read });
+      tools.push(tool); register(entry.name, { kind: 'read', tool, read: entry.read });
       continue;
     }
 
@@ -135,7 +142,7 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
       adapters[entry.name] = { ...adapter, validReceipt: async value => valid(value,receiptSchema) && await validateReceipt(value) === true };
       const tool = freeze({ name: entry.name, scope: entry.scope, ...MEDIA_TOOL_CONTRACTS[entry.name], inputSchema, outputSchema });
       const commit = freeze({ name: entry.commitName, scope: entry.scope, ...MEDIA_TOOL_CONTRACTS[entry.commitName] });
-      tools.push(tool,commit); byName.set(entry.name,{ kind:'stage',tool,coordinator:entry.coordinator }); byName.set(entry.commitName,{ kind:'commit',tool:commit });
+      tools.push(tool,commit); register(entry.name,{ kind:'stage',tool,coordinator:entry.coordinator },adapter.media?.policyId ?? null); register(entry.commitName,{ kind:'commit',tool:commit },adapter.media?.policyId ?? null);
       continue;
     }
 
@@ -178,17 +185,18 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
           'Apply an explicitly approved stored proposal once. Authorization and revision are rechecked; an authorized identical retry returns a minimal receipt.',
         inputSchema: schema, outputSchema, annotations: { readOnlyHint: false, destructiveHint: kind === 'commit', idempotentHint: true, openWorldHint: false },
         ...(mediaLayout ? MEDIA_TOOL_CONTRACTS[name] : {}) });
-      tools.push(tool); byName.set(name, { kind, tool });
+      tools.push(tool); register(name, { kind, tool }, entry.adapter.media?.policyId ?? null);
     }
   }
   if (Buffer.byteLength(JSON.stringify(tools)) > 131072) invalid();
   const enabled = config.mcpEnabled === true && config.mcpV2?.enabled === true && config.production !== true &&
     config.shopMode !== 'public-demo' && quickLogin === false && Boolean(tenantGuard);
-  if (!enabled || !tools.length) return Object.freeze({ catalogue: Object.freeze([]), find: () => null, call: () => { throw new ApiError(404, 'NOT_FOUND', 'Not found.'); } });
+  if (!enabled || !tools.length) return Object.freeze({ catalogue: Object.freeze([]), find: () => null, requiredScopes: () => null, call: () => { throw new ApiError(404, 'NOT_FOUND', 'Not found.'); } });
   const engine = Object.keys(adapters).length ? createOperationEngine({ store, binding, adapters, tenantGuard, quickLogin, ...config.mcpV2 }) : null;
   const epochHash = operationEpochHash(config.mcpV2.epoch), read = selectOnly(store);
   const controls=tools.some(tool=>Object.hasOwn(OPERATION_CONTROL_CONTRACTS,tool.name))?createOperationControls({store,binding,config,tenantGuard,quickLogin}):null;
   return Object.freeze({ catalogue: Object.freeze(tools), find: name => byName.get(name)?.tool || null,
+    requiredScopes: name => byName.get(name)?.requiredScopes || null,
     async isMediaAppend(name, args, bearer) {
       const entry = byName.get(name);
       if (entry?.kind !== 'stage' || name !== 'media.prepare_upload' || !valid(args,entry.tool.inputSchema) || args.input.action !== 'append') return false;
