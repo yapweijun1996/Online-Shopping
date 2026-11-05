@@ -2,6 +2,8 @@
 
 Current verified implementation and remaining work are maintained in [progress](09-IMPLEMENTATION-PROGRESS.md); exact source, commands, failures and proof limits are maintained in [validation](10-FINAL-VALIDATION-REPORT.md). New write features remain disabled by default and production activation is rejected. The original design below is historical; a planned capability is not authorization or evidence of implementation.
 
+Full catalog CREATE/UPDATE use independent default-off HIGH dual-scope profiles. Commit, human review/delivery/ACK and controls revalidate original-grant authority and immutable revisions. CREATE binds catalog/catalog and a server newborn identity; EMPTY_BEFORE has zero assets but a mandatory PAGE ACK. UPDATE binds a product UUID. Actual default OAuth/native/HTTPS and per-name missing-auth/read-scope/closed-argument results are in [validation](10-FINAL-VALIDATION-REPORT.md); hashes or synthetic frames never authorize writes.
+
 ## Historical design snapshot
 
 Status: **PARTIAL ISOLATED PROTOTYPE**. The baseline provides read-only OAuth. Unregistered local helpers check explicit v2 consent, current scope/role and an operation-specific seller session, password and preview hash; an unregistered review page renders the complete proposal as text. A generic engine has only been exercised with a synthetic adapter. There is no application route, real business adapter, OAuth consent integration or application migration. The pieces do not yet prove a real human saw a real proposal and must not be exposed on their own. The flow below is not complete.

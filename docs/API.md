@@ -2,6 +2,8 @@
 
 **Status: locally implemented for seller session, products, guest order creation, and seller order review.** Deployment behavior remains unverified. Keep this file aligned with actual behavior.
 
+**MCP v2 isolated candidate,2026-11-05:** the existing transport has32 tool definitions, preserving original8. Authoritative schemas/policies/examples are in [MCP contracts](mcp-v2/03-TOOL-CONTRACTS.md). New writes default off; full catalog CREATE/UPDATE use separate dev/test-only HIGH dual-scope profiles and protected seller approval. Production activation is rejected. [Validation](mcp-v2/10-FINAL-VALIDATION-REPORT.md) records actual checks and final integrated gate status; this does not claim live availability.
+
 ## Implemented local endpoints
 
 | Method | Path | Behavior |

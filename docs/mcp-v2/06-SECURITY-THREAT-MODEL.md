@@ -1,6 +1,6 @@
 # Security threat model
 
-Status: **Mixed implemented controls and future-phase requirements.** [Progress](09-IMPLEMENTATION-PROGRESS.md) is the current acceptance ledger; [validation](10-FINAL-VALIDATION-REPORT.md) records exact source, executed checks and proof limits. Public media, orders, operations and schema34 are included in restricted-profile full1784/1784 at13bd24e. Full UPDATE successor4087705 has independent runtime and genuine native/OAuth/browser evidence; its remaining security matrix and full CREATE runtime are incomplete. Component hashes and synthetic approval fixtures never substitute for actual OAuth/browser/commit proof. New write flags stay off by default; production activation is rejected.
+Status: **Isolated implementation/component acceptance complete; final integrated gate pending.** [Progress](09-IMPLEMENTATION-PROGRESS.md) and [validation](10-FINAL-VALIDATION-REPORT.md) record source, commands, failures and limits. All32 tools, including full CREATE/UPDATE, now have component and genuine default OAuth/native/HTTPS workflow evidence. Cross-domain tests verify all24 new actual responses and per-name negative calls on both stores. Bounded independent source reviews found no confirmed P0/P1/P2; this is not exhaustive security certification. Hashes/synthetic frames never substitute for human authority. New write flags default off; production activation is rejected.
 
 | Threat | Required control | Evidence required before enabling |
 | --- | --- | --- |

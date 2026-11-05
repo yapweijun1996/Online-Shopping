@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:online-shopping:mcp-v2:catalog-media-update:implemented",
-  "$comment": "Generated from the actual full UPDATE factory and registry. Independent default-off development/test profile; production and full CREATE activation remain blocked. Examples are synthetic schema demonstrations, never live credentials, approvals or resource identities.",
+  "$comment": "Generated from the actual full UPDATE factory and registry. Independent default-off development/test profile; production activation remains blocked. Full CREATE has its own independent flag. Examples are synthetic schema demonstrations, never live credentials, approvals or resource identities.",
   "$defs": {
     "catalog.preview_update.input": {
       "type": "object",

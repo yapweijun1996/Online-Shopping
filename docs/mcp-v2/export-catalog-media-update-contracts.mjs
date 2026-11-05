@@ -27,7 +27,7 @@ try{
   assert.equal(valid(input,tool.inputSchema),true);assert.equal(valid(output,tool.outputSchema),true);examples[tool.name]={input,output};
  }
  const bundle={$schema:'https://json-schema.org/draft/2020-12/schema',$id:'urn:online-shopping:mcp-v2:catalog-media-update:implemented',
-  $comment:'Generated from the actual full UPDATE factory and registry. Independent default-off development/test profile; production and full CREATE activation remain blocked. Examples are synthetic schema demonstrations, never live credentials, approvals or resource identities.',
+  $comment:'Generated from the actual full UPDATE factory and registry. Independent default-off development/test profile; production activation remains blocked. Full CREATE has its own independent flag. Examples are synthetic schema demonstrations, never live credentials, approvals or resource identities.',
   $defs:definitions,'x-toolPolicies':policies,'x-examples':examples};
  const text=JSON.stringify(bundle,null,2)+'\n',file=new URL('./03-CATALOG-MEDIA-UPDATE-IMPLEMENTED.json',import.meta.url);
  if(process.argv.includes('--check'))assert.equal(await readFile(file,'utf8'),text,'Catalog media UPDATE contracts are stale.');else await writeFile(file,text);

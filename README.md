@@ -4,6 +4,8 @@
 
 Self-hosted setup and verification: [OrbStack deployment](docs/ORBSTACK_DEPLOY.md). The legacy local Compose stack below continues to use SQLite.
 
+The isolated [MCP v2 Seller Operations Engine](docs/mcp-v2/09-IMPLEMENTATION-PROGRESS.md) extends the existing connector with24 new tools while preserving the original8. Changes require current consent/RBAC and first-party approval; analytics and operation audit stay bounded. Full catalog CREATE and UPDATE have independent development/test-only flags, both off by default; production activation is blocked. [Contracts](docs/mcp-v2/03-TOOL-CONTRACTS.md), [validation](docs/mcp-v2/10-FINAL-VALIDATION-REPORT.md) and [rollback](docs/mcp-v2/08-ROLLBACK-PLAN.md) distinguish isolated acceptance from deployment authorization.
+
 ## Quick start
 
 Requires Node 24.15 or later in the 24.x line.
