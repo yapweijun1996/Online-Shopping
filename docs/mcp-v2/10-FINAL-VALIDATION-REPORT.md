@@ -1,5 +1,20 @@
 # MCP v2 validation snapshots
 
+## Additional repository gates — source9007cda
+
+Node24.22.0 on persistent ARM64 Ubuntu24.04, isolated workspace and synthetic fixtures only. Commands were discovered from repository/package definitions. All exited0:
+
+| Command | Observed result | Evidence |
+| --- | --- | --- |
+| `npm audit --omit=dev --audit-level=high` (repository) | 0 vulnerabilities | `.local/manager-final-root-audit.log` |
+| `npm audit --omit=dev --audit-level=high` (media-codec) | 0 vulnerabilities | `.local/manager-final-codec-audit.log` |
+| `NODE_ENV=test npm run test:integrations` | 50/50,0skips,1.678s | `.local/manager-final-integrations.tap` |
+| `python3 test/auto-update.test.py` | 39/39,0.209s | `.local/manager-final-auto-update.log` |
+| `npm test` (media-codec) | 18/18,0skips,1.508s | `.local/manager-final-codec-unit.tap` |
+| `MEDIA_CODEC_CONTAINER_TEST=1 npm run test:container` (media-codec) | 4/4,0skips,9.634s | `.local/manager-final-codec-container.tap` |
+
+The container gate observed actual ARM64 kernel limits:192MiB memory,swap0,pids32,0.5CPU,UID10001,read-only filesystem,only loopback network and no secret/proxy environment. Genuine crash and OOMKilled cases preserved the synthetic parent API; the five-second watchdog terminated the unfinished owned worker. Container label query was empty after cleanup. These are local isolation/failure checks, not production capacity or remote attestation. Later source changes still need final integrated acceptance; dependency audits need repetition if their lockfiles change.
+
 ## Full UPDATE runtime successor4087705 — partial acceptance
 
 Root integrated private adapter80cb433→2979916, shared-gallery revision fixcf668c86→f67b749 and runtime0abfcfa/d809110/6b95f1d→b109faa/3933760/4087705. Node24.22.0, synthetic SQLite and owned PostgreSQL16 on loopback59025 only; no production access or release action. All new write flags remain default-off and production activation is rejected. These overlapping component counts are not additive and do not replace the final full-suite gate.
