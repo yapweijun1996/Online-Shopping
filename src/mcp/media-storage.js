@@ -108,6 +108,15 @@ export async function withMediaWriter(store, trustedContext, work, { now: suppli
         const row=await load(id);await event(row,'BEGIN','UPLOADING');return metadata(row);
       },
       async get(id){return metadata(await load(id),true);},
+      async inspect(id) {
+        const row = await load(id);
+        return Object.freeze({ ...metadata(row, true), productId: row.product_id, targetSlot: row.target_slot,
+          expectedRevision: row.expected_revision, sourceSha256: row.source_sha256, sourceMime: row.source_mime,
+          declaredBytes: row.declared_bytes, codecDigest: row.codec_digest, receiptExpiresAt: row.receipt_expires_at,
+          validationAttempts: row.validation_attempts, leaseUntil: row.lease_until, boundExpiresAt: row.bound_expires_at,
+          canonicalSha256: row.canonical_sha256, canonicalBytes: row.canonical_bytes, canonicalMime: row.canonical_mime,
+          width: row.width, height: row.height, thumbnailSha256: row.thumbnail_sha256, thumbnailBytes: row.thumbnail_bytes });
+      },
       async append(id,offset,bytes) {
         alive();if(!integer(offset,0,MEDIA_LIMITS.sourceBytes)||!(bytes instanceof Uint8Array)||bytes.byteLength<1||bytes.byteLength>MEDIA_LIMITS.chunkBytes)invalid();
         const data=Buffer.from(bytes), digest=mediaHash(data), row=await load(id);current(row);if(row.state!=='UPLOADING')conflict();await quotas();
