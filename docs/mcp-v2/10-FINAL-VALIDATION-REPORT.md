@@ -1,5 +1,15 @@
 # MCP v2 validation snapshots
 
+## Latest inventory foundation and authority acceptance
+
+Root sourceeee6556 (workerc4440ef), Node24.22.0, SQLite and owned PostgreSQL16: `NODE_ENV=test SHOP_TEST_DATABASE_URL=<private synthetic URL> env -u QA_PLAYWRIGHT_MODULE node --test --test-concurrency=1 test/*.test.js`, exit0, **1249 total/1224 passed/0 failed/25 browser opt-ins skipped**,228.994s (`.local/manager-inventory-foundation-full.tap`). This includes prior root media resource/frame/cancel follow-ups and the additional actual authenticated portal test file. Schema32, all stock writers, ledger/history rollback, exact31 migration, restricted roles, actual SQLite/PostgreSQL restore, import and catalog OAuth identity are covered. Inventory tools and complete computed-hold proposal revisions are not implemented by this foundation.
+
+The worker's earlier full1216/1190pass/1fail/25skip,244.327s failed a synthetic platform downgrade fixture that retained new inventory children. Its exact dependency teardown and legacy cross-grant assertions were corrected; worker final1217/1192pass/0fail/25skip,259.719s then passed, plus separately discovered portal tests2/2. Root's larger run above independently includes that file. No business or security assertion was removed.
+
+Media authority successor73d3833: root `node --test --test-concurrency=1 test/mcp-media-authority.test.js test/mcp-operation-engine.test.js test/mcp-operation-approval.test.js test/mcp-v2-oauth.test.js`, same Node/database environment, exit0, **37/37**,0skip,15.093s (`.local/manager-media-authority.tap`). Fixed media policies require every token/grant scope and its separate identity/epoch/time-bound consent. Legacy operation paths remain compatible. No media default registration, real image review or arbitrary adapter authority is established by these tests.
+
+Portable client abort successord67e23d: root `node --test --test-concurrency=1 media-codec/test/codec.test.js media-codec/test/runtime.test.js test/mcp-media-codec-cancel.test.js`, exit0, **20/20**,0skip,3.725s (`.local/manager-media-codec-cancel-unit.tap`). Real Unix-socket cancellation and an unrelated healthy connection are covered; the independent5s bound and fixed wire remain. Worker initially lacked its private Sharp dependency link; that failed runtime run is retained separately from the corrected7/7 worker run. Current native coordinator E2E remains pending and does not inherit human-review proof from these tests.
+
 ## Internal frame follow-up — sourcef5043c5
 
 Root Node24.22.0 with SQLite/disposable PostgreSQL: `node --test --test-concurrency=1 test/mcp-media-frame-storage.test.js test/mcp-media-storage.test.js test/mcp-media-manifest.test.js test/mcp-media-policy.test.js`, exit0, **34/34**,0skip,4.220s (`.local/manager-media-frame.tap`). Sourcef39638b adds internal scalar inspection and canonical policy/page/asset/pin persistence; this does not expose a tool or route.
