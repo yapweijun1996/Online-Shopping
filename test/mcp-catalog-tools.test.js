@@ -12,7 +12,8 @@ import { decideSellerOrder } from '../src/seller-orders.js';
 import { reservedQuantity, RESERVATION_HOURS } from '../src/stock-reservation.js';
 import { rowsDigest } from '../src/sqlite-import.js';
 import { createApi } from '../src/app.js';
-import { catalogue } from '../src/mcp/tools.js';
+import { catalogue, valid } from '../src/mcp/tools.js';
+import { OPERATION_SCOPE_POLICIES, OPERATION_PREVIEW_RISKS } from '../src/mcp/operation-policy.js';
 import { reviewFixture, reviewPassword } from './helpers/mcp-review-fixture.js';
 
 async function fixture(t, dialect) {
@@ -421,3 +422,25 @@ for (const dialect of ['sqlite', 'postgres']) {
     assert.deepEqual(await f.store.get('SELECT sku_snapshot, name_snapshot, price_minor, quantity, currency FROM order_item'), snapshot);
   });
 }
+
+
+test('implemented catalog contracts and synthetic examples match actual RPC descriptors', async t => {
+  const f = await fixture(t, 'sqlite');
+  const response = await f.call('/mcp', 'POST', { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} },
+    { authorization: 'Bearer ' + f.bearer, accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' });
+  assert.equal(response.response.status, 200);
+  const bundle = JSON.parse(readFileSync(new URL('../docs/mcp-v2/03-CATALOG-SAFE-IMPLEMENTED.json', import.meta.url), 'utf8'));
+  const tools = response.data.result.tools.filter(tool => /^catalog\.(?:preview|commit)_/.test(tool.name));
+  assert.equal(tools.length, 4); assert.equal(Object.keys(bundle.$defs).length, 8);
+  assert.deepEqual(Object.keys(bundle['x-syntheticExamples']).sort(), tools.map(tool => tool.name).sort());
+  for (const tool of tools) {
+    assert.deepEqual(tool.inputSchema, bundle.$defs[tool.name + '.input']);
+    assert.deepEqual(tool.outputSchema, bundle.$defs[tool.name + '.output']);
+    assert.deepEqual(bundle['x-toolPolicies'][tool.name], { ...OPERATION_SCOPE_POLICIES[tool.name],
+      risk: OPERATION_PREVIEW_RISKS[tool.name.replace('commit_', 'preview_')] });
+    const example = bundle['x-syntheticExamples'][tool.name];
+    assert.equal(valid(example.input, tool.inputSchema), true, tool.name + ' input');
+    assert.equal(valid(example.output, tool.outputSchema), true, tool.name + ' output');
+    if (tool.name.includes('preview_')) assert.equal(Object.hasOwn(example.input.input, 'expectedRevision'), false);
+  }
+});

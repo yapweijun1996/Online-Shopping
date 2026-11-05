@@ -40,6 +40,10 @@ The current engine's single primary scope is not evidence of additional media/in
 
 Order rules are untouched: SUBMITTED quantities reserve stock for48 hours, confirmation deducts and cancellation restores tracked stock, and order/item price/name/currency snapshots remain immutable. Catalog metadata operations do not change reservations or introduce new stock rejection rules.
 
+## Implemented contracts
+
+`03-CATALOG-SAFE-IMPLEMENTED.json` contains the actual four descriptors produced by `createOperationTools`, their closed input/output JSON Schemas and fixed server scope/capability/risk policies. Its clearly synthetic examples show arguments and structuredContent; examples do not represent live IDs, bearer credentials or approvals. A real authenticated RPC `tools/list` regression checks exact schema parity and validates every example. Catalog preview input intentionally has no client revision field.
+
 ## Validation scope
 
 Synthetic SQLite/PostgreSQL tests exercise real RPC and first-party approval, create/update/retry, full sibling review, timestamp-stable sibling and option changes, SKU phantoms, category/currency/import/portal races, scope/RBAC/tenant/revocation/configured-shop denial, unsupported paths, metadata byte-read spies, payload/scan caps, history/audit rollback and unchanged stock holds/order snapshots. Existing product/options/import/gallery tests remain compatibility checks. This document does not authorize default registration, production migration/deployment or any external provider action.
