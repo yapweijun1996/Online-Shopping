@@ -1,6 +1,6 @@
 # Security threat model
 
-Status: **Mixed implemented controls and future-phase requirements.** Accepted company, restricted catalog and analytics tools, schema 31 storage/cleanup, complete resource snapshots and the isolated native codec have independent evidence in [validation](10-FINAL-VALIDATION-REPORT.md). Metadata integrity and native limits do not establish safe image authorization or human review. Media coordination/approval, inventory, order decisions, operations tools and full catalog expansion remain incomplete. New authority stays disabled by default, and production activation is rejected.
+Status: **Mixed implemented controls and future-phase requirements.** Accepted company, restricted catalog, inventory and analytics tools, schema33 storage, the bounded native coordinator and real first-party image review have independent evidence in [validation](10-FINAL-VALIDATION-REPORT.md). The full public five-tool media workflow, order decisions, operation controls and full catalog expansion remain incomplete. Component hashes, native limits and synthetic approval fixtures cannot substitute for actual OAuth/browser/commit integration. New authority stays disabled by default, and production activation is rejected.
 
 | Threat | Required control | Evidence required before enabling |
 | --- | --- | --- |

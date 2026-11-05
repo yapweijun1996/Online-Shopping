@@ -16,7 +16,11 @@ The safe development factory registers these four tools after explicit opt-in; i
 
 `analytics.sales_trend`, `analytics.top_products` and `analytics.inventory_risk` use [03-ANALYTICS-IMPLEMENTED.json](03-ANALYTICS-IMPLEMENTED.json), exported from real descriptors. [ANALYTICS-TOOLS.md](ANALYTICS-TOOLS.md) defines actual filters, coverage, current-category attribution, safety bounds, errors, audit and examples. Fresh analytics.extended/current figures.read is required. Existing dashboard definitions and v1 summary stay unchanged. Sourcef7dc171 passed independent full1120/1095passed/0failed/25skipped; unsupported history/cash/profit claims are excluded.
 
-## Remaining 14 tools: proposed
+## Implemented inventory (isolated, default-off)
+
+`inventory.summary`, `inventory.movements`, `inventory.preview_adjustment` and `inventory.commit_adjustment` use [03-INVENTORY-IMPLEMENTED.json](03-INVENTORY-IMPLEMENTED.json), exported from actual descriptors by `node scripts/export-inventory-contracts.js`. [INVENTORY-TOOLS.md](INVENTORY-TOOLS.md) defines all inputs, outputs, scopes, capability, tenant binding, risk, errors, examples, idempotency, complete revision, audit and acceptance evidence. Reads require fresh inventory.read; HIGH-risk adjustments require inventory.adjust, current catalog.write and separate first-party password approval. The client supplies a complete expected revision and absolute nullable stock, plus a fixed reason; notes stay only in the expiring proposal. Commit accepts operationId only and returns a minimal receipt. Old read grants and eight v1 schemas remain unchanged.
+
+## Remaining 10 tools: proposed
 
 The historical JSON bundle retains superseded company, catalog and analytics candidates for traceability; separate implemented bundles are authoritative within their documented supported subset.
 
