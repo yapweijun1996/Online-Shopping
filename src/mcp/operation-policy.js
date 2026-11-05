@@ -1,3 +1,5 @@
+import { mediaPolicyForTool } from './media-policy.js';
+
 // Server-owned draft policy. Nothing here registers tools, issues scopes, or
 // grants authority. Operations inspection/cancellation need an additional
 // per-resource policy and are deliberately absent from the tool map.
@@ -49,3 +51,21 @@ export const OPERATION_PREVIEW_RISKS = Object.freeze({
   'inventory.preview_adjustment': 'HIGH',
   'orders.preview_decision': 'HIGH',
 });
+
+export const MEDIA_REVIEW_ACKNOWLEDGED = 'MEDIA_REVIEW_ACKNOWLEDGED';
+// The optional marker is source-owned stored metadata, never an MCP scope argument.
+// Describing a reserved catalog policy does not enable its write path.
+export function operationAuthorityPolicy(toolName, mediaPolicyId = null) {
+  if (typeof toolName !== 'string' || !Object.hasOwn(OPERATION_SCOPE_POLICIES, toolName)) {
+    throw new TypeError('Unknown operation policy.');
+  }
+  const base = OPERATION_SCOPE_POLICIES[toolName];
+  if (mediaPolicyId !== null || ['media.prepare_upload', 'media.commit_upload', 'media.preview_layout', 'media.commit_layout'].includes(toolName)) {
+    const media = mediaPolicyForTool(toolName);
+    if (mediaPolicyId !== null && mediaPolicyId !== media.policyId) throw new TypeError('Invalid media operation policy.');
+    return Object.freeze({ scope: base.scope, capability: media.capability, requiredScopes: media.requiredScopes,
+      risk: media.risk, mediaPolicyId: media.policyId, flow: media.flow });
+  }
+  return Object.freeze({ scope: base.scope, capability: base.capability, requiredScopes: Object.freeze([base.scope]),
+    risk: OPERATION_PREVIEW_RISKS[toolName] ?? null, mediaPolicyId: null, flow: 'LEGACY' });
+}
