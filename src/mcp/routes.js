@@ -7,7 +7,7 @@ import { createProtocol } from './protocol.js';
 import { audit, supportedScopes } from './credentials.js';
 import { cleanupOAuth } from './cleanup.js';
 import { parseJson } from './json.js';
-import { createOperationApproval, createOperationReview } from './operation-approval.js';
+import { createOperationApproval, createOperationReview, createMediaReviewDelivery } from './operation-approval.js';
 import { initializeOperationStorage } from './operation-runtime.js';
 import { createOperationTools } from './operation-tools.js';
 import { maintainOperations } from './operation-maintenance.js';
@@ -17,7 +17,7 @@ import { analyticsSalesTrendTool, analyticsTopProductsTool, analyticsInventoryRi
 
 export const connectorPath = (path) => /^\/(?:mcp$|oauth\/(?:register|authorize|token|revoke|consent\.js|consent\.css|operation|operation-review\.(?:js|css))$|\.well-known\/oauth-(?:protected-resource|authorization-server)(?:\/|$)|api\/v1\/seller\/mcp(?:\/|$))/.test(path);
 const operationPath = (path) => path === '/oauth/operation' || /^\/oauth\/operation-review\.(?:js|css)$/.test(path) || /^\/api\/v1\/seller\/mcp\/(?:operations(?:\/|$)|approval(?:\/|$))/.test(path);
-const reviewCsp = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
+const reviewCsp = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export function createConnector({ store, config, tenantId, tenantGuard, quickLogin, operationTools }) {
   const enabled = config.mcpEnabled === true && !quickLogin && Boolean(config.sellerOrigin) && new URL(config.sellerOrigin).protocol === 'https:';
@@ -43,10 +43,10 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
     if (!operations) {
       operations = (async () => {
         const options = { store, binding: { ...oauth.binding, mcpV2: config.mcpV2 }, sellerOrigin: config.sellerOrigin,
-          quickLogin, ...config.mcpV2, tenantGuard };
-        const review = createOperationReview(options), approve = createOperationApproval(options);
+          quickLogin, ...config.mcpV2, tenantGuard, mcpMedia: config.mcpMedia };
+        const review = createOperationReview(options), approve = createOperationApproval(options), media = createMediaReviewDelivery(options);
         await tenantGuard.withActiveTenant(tenantId, () => initializeOperationStorage(store, { enabled: true }));
-        return { review, approve };
+        return { review, approve, media };
       })().catch((error) => { operations = null; throw error; });
     }
     return operations;
@@ -70,7 +70,7 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
       }
       if (request.url.length > 8192) fail('invalid_request', 414);
       if (operation) {
-        const match = /^\/api\/v1\/seller\/mcp\/operations\/([0-9a-f-]+)(\/approval)?$/.exec(path);
+        const match = /^\/api\/v1\/seller\/mcp\/operations\/([0-9a-f-]+)(\/(?:approval|media\/(?:delivery|ack)))?$/.exec(path);
         const page = path === '/oauth/operation', asset = /^\/oauth\/operation-review\.(js|css)$/.exec(path);
         if (!page && !asset && (!match || !uuid.test(match[1]))) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
         const method = match?.[2] ? 'POST' : 'GET';
@@ -92,7 +92,9 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
             let input;
             try { input = parseJson(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); } catch { fail('invalid_request', 400); }
             if (input?.operationId !== match[1]) fail('invalid_request', 400);
-            response = json(200, await handlers.approve(request, input, ip));
+            if (match[2] === '/media/delivery') response = await handlers.media.deliver(request, input);
+            else if (match[2] === '/media/ack') response = json(200, await handlers.media.ack(request, input));
+            else response = json(200, await handlers.approve(request, input, ip));
           } else response = json(200, await handlers.review(request, match[1]));
         }
       } else if (request.method === 'OPTIONS') {

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'">
   <title>Review seller operation</title>
   <link rel="stylesheet" href="operation-review.css">
   <script src="operation-review.js" defer></script>
@@ -30,7 +30,20 @@
       <h2 id="proposal-title">Complete proposal</h2>
       <p>All text below is data supplied by the shop or connected app.</p>
       <pre id="proposal" tabindex="0"></pre>
+      <section id="media-review" hidden aria-labelledby="media-title">
+        <h2 id="media-title">Complete image changes</h2>
+        <p>Review every before and after role and gallery position below. An identical byte hash may appear in several roles; each unique image is reviewed once.</p>
+        <p id="media-progress" role="status"></p>
+        <div id="media-effects"></div>
+        <section id="media-viewer" aria-labelledby="media-view-title">
+          <h3 id="media-view-title">Exact image</h3>
+          <p id="media-image-details"></p>
+          <img id="media-image" alt="Protected image for the selected change">
+          <button id="media-image-ack" type="button" disabled>I reviewed this exact image</button>
+        </section>
+      </section>
       <form id="decision" method="post">
+        <label id="media-warning" class="currency-acknowledgement" hidden><input id="media-ack" type="checkbox">I reviewed every exact image and the complete before and after roles and ordered galleries.</label>
         <div id="currency-warning" class="currency-warning" hidden role="group" aria-label="Company currency change">
           <strong>Company currency change</strong>
           <p id="currency-warning-text"></p>
@@ -39,7 +52,7 @@
         <label for="password">Confirm your seller password</label>
         <input id="password" type="password" autocomplete="current-password" required maxlength="256">
         <div class="actions">
-          <button type="submit" name="decision" value="approve">Approve this change</button>
+          <button id="approve" type="submit" name="decision" value="approve">Approve this change</button>
           <button type="submit" name="decision" value="reject" class="secondary">Reject this change</button>
         </div>
       </form>

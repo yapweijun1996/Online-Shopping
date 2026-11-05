@@ -1,8 +1,8 @@
 # Internal media operation integration
 
 This batch extends the existing operation engine. It does not register media tools,
-add an upload endpoint, or enable image approval. The current ordinary human review
-and approval handlers reject media operations. The internal SQL evidence fixture is
+add an upload endpoint, or enable image approval. The later [first-party image review](MEDIA-REVIEW.md)
+is separately gated; without explicit media enablement human handlers reject media operations. The internal SQL evidence fixture is
 synthetic test data, not evidence of human review or an application approval flow.
 
 ## Fixed authority
@@ -87,5 +87,5 @@ original grant absolute expiry plus 90 days. Purging it cannot revive an expired
 decoder hooks and explicitly synthetic SQL review evidence. It exercises actual
 product services/history on disposable SQLite and PostgreSQL, transaction rollback,
 replay/retention, authority races, immutable metadata, deadline abort and ordinary
-human-handler denial. Native codec and actual upload coordinator acceptance are
-separate suites. Successful internal tests do not enable the missing image review UI.
+human-handler denial. Native codec, actual upload coordinator and first-party review
+acceptance are separate suites. Successful internal tests do not activate public media tools.

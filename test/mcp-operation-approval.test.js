@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { ensureAdmin, createSession, deleteSession } from '../src/auth.js';
+import { setupShop } from '../src/shop-setup.js';
 import { openDatabase } from '../src/db.js';
 import { openPostgresDatabase } from '../src/postgres-db.js';
 import { ApiError } from '../src/http.js';
@@ -35,6 +36,7 @@ async function fixture(t, engine) {
   }
   await store.transaction(() => store.exec(operationSchema(engine)));
   await ensureAdmin(store, 'synthetic_owner', password);
+  await setupShop(store, { mode: 'production', shopName: 'Synthetic approval shop' });
   const account = await store.get('SELECT * FROM seller_account WHERE username_key = ?', 'synthetic_owner');
   const session = await createSession(store, account.id);
   const now = new Date().toISOString(), later = new Date(Date.now() + 600000).toISOString();
