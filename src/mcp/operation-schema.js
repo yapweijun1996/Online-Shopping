@@ -1,7 +1,7 @@
 import { OPERATION_SCOPES } from './operation-policy.js';
 
-// Experimental tenant-local DDL for isolated verification only. It is not
-// included in application migration, readiness, OAuth, or HTTP/MCP routing.
+// Tenant-local opt-in extension DDL. The base application schema remains unchanged.
+// Initialization and compatibility checks live in operation-runtime.js.
 // Do not enable a write tool until those integrations and the first-party
 // human approval flow have been reviewed and tested together.
 export function operationSchema(dialect) {
@@ -16,6 +16,11 @@ export function operationSchema(dialect) {
     : `length(${column}) = 64 AND ${column} NOT GLOB '*[^0-9a-f]*'`;
   const scopes = OPERATION_SCOPES.map((scope) => `'${scope}'`).join(',');
   return `
+CREATE TABLE IF NOT EXISTS mcp_v2_authorization_request (
+  request_id TEXT PRIMARY KEY REFERENCES oauth_authorization_request(id) ON DELETE CASCADE,
+  epoch_hash TEXT NOT NULL CHECK (${validHash('epoch_hash')}),
+  created_at TEXT NOT NULL
+)${strict};
 CREATE TABLE IF NOT EXISTS mcp_v2_scope_consent (
   grant_id TEXT NOT NULL REFERENCES oauth_grant(id) ON DELETE CASCADE,
   tenant_id TEXT NOT NULL, account_id TEXT NOT NULL, client_id TEXT NOT NULL,

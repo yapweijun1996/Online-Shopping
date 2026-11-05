@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { OPERATION_STORAGE_META, OPERATION_STORAGE_TABLES, operationStorageReady } from './mcp/operation-runtime.js';
 
 export const importTables = ['admin', 'seller_account', 'account_event', 'session', 'general_code', 'company_setting', 'shop_setup', 'option_type', 'option_value', 'listing', 'product',
   'product_option', 'product_gallery_image', 'order_sequence', 'shop_order', 'delivery', 'order_item', 'order_event', 'order_note', 'product_event',
@@ -8,6 +9,13 @@ export const importTables = ['admin', 'seller_account', 'account_event', 'sessio
 // QR device identity, sealed peers and reply intents must not reactivate after a restore.
 // Keep the fresh OFF/IDLE session; do not import auth, QR material or dependent history.
 export const excludedImportTables = ['whatsapp_qr_session', 'whatsapp_qr_auth', 'message_peer_suppression', 'message_thread', 'message_thread_message'];
+
+// Optional extension inventory is separate from the baseline inventory. Active
+// consent, pending requests, operations, challenges and approvals never transfer.
+// Only non-sensitive historical audit events survive an authorized import.
+export const excludedOperationImportTables = Object.freeze([
+  OPERATION_STORAGE_META, ...OPERATION_STORAGE_TABLES.filter((table) => table !== 'mcp_v2_event'),
+]);
 
 export function rowsDigest(rows) {
   const normalized = rows.map(row => Object.fromEntries(Object.keys(row).sort().map(key =>
@@ -22,8 +30,22 @@ export async function importSqlite(source, target) {
   if (source.dialect !== 'sqlite' || target.dialect !== 'postgres') throw new Error('Expected SQLite source and PostgreSQL target.');
   if (await source.schemaVersion() !== await target.schemaVersion()) throw new Error('Schema versions do not match.');
   return target.transaction(async () => {
+    const sourceExtension = Boolean(await source.get("SELECT name FROM sqlite_schema WHERE type = 'table' AND name GLOB 'mcp_v2_*' LIMIT 1"));
+    const targetExtension = Boolean((await target.get("SELECT to_regclass('public.mcp_v2_schema') AS name")).name);
+    const targetObjects = await target.get("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename LIKE 'mcp!_v2!_%' ESCAPE '!' LIMIT 1");
+    if ((sourceExtension && !await operationStorageReady(source)) ||
+        (targetObjects && (!targetExtension || !await operationStorageReady(target)))) {
+      throw new Error('Import requires compatible MCP v2 storage extensions.');
+    }
+    if (sourceExtension && !targetExtension) throw new Error('Initialize the destination MCP v2 extension to preserve historical audit.');
+    if (targetExtension) {
+      for (const table of OPERATION_STORAGE_TABLES) {
+        if (await target.get(`SELECT 1 AS found FROM ${table} LIMIT 1`)) throw new Error('Import destination must have no MCP v2 history or authority.');
+      }
+    }
+    const tables = [...importTables, ...(sourceExtension ? ['mcp_v2_event'] : [])];
     const defaults = new Set(['company_setting', 'shop_setup', 'order_sequence', 'ai_setting', 'ai_studio_setting']);
-    for (const table of importTables) {
+    for (const table of tables) {
       const rows = await target.all(`SELECT * FROM ${table}`);
       if ((!defaults.has(table) && rows.length) || (defaults.has(table) && rows.length !== 1)) throw new Error('Import destination must be a fresh baseline.');
     }
@@ -43,7 +65,7 @@ export async function importSqlite(source, target) {
     // those exact rows, then reinstate the normal write-time category constraint.
     await target.exec('ALTER TABLE product DISABLE TRIGGER USER');
     const evidence = [];
-    for (const table of importTables) {
+    for (const table of tables) {
       const rows = await source.all(`SELECT * FROM ${table}`);
       for (const row of rows) {
         const keys = Object.keys(row);

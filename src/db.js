@@ -8,6 +8,7 @@ import { migrateLegacyVariants } from './options.js';
 import { migrateListings } from './listings.js';
 import { migrateSharedGalleries } from './product-gallery.js';
 import { migrateOAuth } from './mcp/schema.js';
+import { operationStorageReady } from './mcp/operation-runtime.js';
 
 export const SCHEMA_VERSION = 29;
 
@@ -638,9 +639,10 @@ async function addThumbnailColumns(store) {
   }
 }
 
-export async function ready(store) {
+export async function ready(store, options) {
   try {
-    return await store.schemaVersion() === SCHEMA_VERSION &&
+    return (options?.mcpV2?.enabled !== true || await operationStorageReady(store)) &&
+      await store.schemaVersion() === SCHEMA_VERSION &&
       Array.isArray(await store.all('SELECT stock_quantity, gallery_layout_json FROM product LIMIT 0')) &&
       Array.isArray(await store.all('SELECT tracking_carrier, tracking_no, contact_erased_at, contact_erased_by FROM shop_order LIMIT 0')) &&
       Array.isArray(await store.all('SELECT availability_text, shipping_text, returns_text, sender_name, sender_phone, sender_address_line1, sender_address_line2, sender_city, sender_state, sender_postcode, sender_country FROM company_setting LIMIT 0')) &&
