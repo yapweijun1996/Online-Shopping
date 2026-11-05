@@ -1,8 +1,12 @@
 # Executable task ledger
 
+## MCP v2 live release (2026-11-06) — authorized, pending
+
+The owner explicitly authorized commit, push, merge and deployment on 2026-11-06 (Asia/Kuala_Lumpur). This authorizes the reviewed schema34 release with MCP, AI and QR disabled; it does not enable the new production MCP profiles. Production remains on baseline1634735/shop29/platform2 while the updater is paused. Exact-main CI, backup/restore rehearsal, migration, immutable images, health and public acceptance remain mandatory. See the [live release record](mcp-v2/12-LIVE-RELEASE.md); no migration or deployment is claimed yet.
+
 ## MCP v2 isolated delivery (2026-11-05 to2026-11-06)
 
-Scope: complete the Seller Operations Engine in isolation with independent verification. Branch `codex/mcp-v2-seller-engine`, baseline `1634735aa70090dcdf54b8d09e2cc09b33cd8a77`. Candidate62c43c6 implements all32 names including separately flagged full catalog CREATE/UPDATE. Root shared99/99, genuine native/OAuth/HTTPS CREATE+UPDATE10/10, CREATE security43/43, final contract/profile6/6 and cross-domain15/15 passed with0skips. Every new24 tool has actual response-schema and per-name negative evidence on both stores. Final integrated full-suite acceptance passed2012/2012,0failures/0skips,589.123s atb8614b4; historical13bd24e is superseded. Preserve original8/business rules. All writes default off; production activation is blocked, with no release authorized by this ledger.
+Scope: complete the Seller Operations Engine in isolation with independent verification. Branch `codex/mcp-v2-seller-engine`, baseline `1634735aa70090dcdf54b8d09e2cc09b33cd8a77`. Candidate62c43c6 implements all32 names including separately flagged full catalog CREATE/UPDATE. Root shared99/99, genuine native/OAuth/HTTPS CREATE+UPDATE10/10, CREATE security43/43, final contract/profile6/6 and cross-domain15/15 passed with0skips. Every new24 tool has actual response-schema and per-name negative evidence on both stores. Final integrated full-suite acceptance passed2012/2012,0failures/0skips,589.123s atb8614b4; historical13bd24e is superseded. Preserve original8/business rules. All writes default off; production activation of the new profiles remains blocked. The separately authorized flags-off release is pending in the release record above.
 
 | ID | State | Acceptance and dependency |
 | --- | --- | --- |
