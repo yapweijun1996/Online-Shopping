@@ -53,6 +53,7 @@ export const OPERATION_PREVIEW_RISKS = Object.freeze({
 });
 
 export const MEDIA_REVIEW_ACKNOWLEDGED = 'MEDIA_REVIEW_ACKNOWLEDGED';
+export const OPERATION_APPROVAL_MS = 5 * 60 * 1000;
 // The optional marker is source-owned stored metadata, never an MCP scope argument.
 // Describing a reserved catalog policy does not enable its write path.
 export function operationAuthorityPolicy(toolName, mediaPolicyId = null) {
