@@ -230,6 +230,6 @@ for (const dialect of ['sqlite', 'postgres']) {
     assert.equal((await f.maintain()).events, 1);
     assert.ok(await f.store.get('SELECT id FROM mcp_v2_event WHERE id = ?', boundary));
     assert.ok(await f.store.get('SELECT id FROM mcp_v2_event WHERE id = ?', foreign));
-    assert.deepEqual(await maintainOperations({ transaction() { throw new Error('Off maintenance queried database.'); } }), { expired: 0, redacted: 0, challenges: 0, approvals: 0, receipts: 0, events: 0 });
+    assert.deepEqual(await maintainOperations({ transaction() { throw new Error('Off maintenance queried database.'); } }), { expired: 0, redacted: 0, challenges: 0, approvals: 0, receipts: 0, events: 0, audits: 0 });
   });
 }

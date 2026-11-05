@@ -24,7 +24,7 @@ for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: valid multibyte 
     await assert.rejects(inventoryRisk(f.store, { mode: 'all', limit: 100 }), { status: 503, code: 'ANALYTICS_RESPONSE_LIMIT' });
     const denied = await client.call('analytics.inventory_risk', { mode: 'all', limit: 100 });
     assert.equal(denied.response.status, 503); assert.deepEqual(denied.data, { error: 'temporarily_unavailable' });
-    assert.equal(Number((await f.store.get("SELECT COUNT(*) AS n FROM mcp_audit WHERE event = 'READ' AND outcome = 'analytics.inventory_risk'")).n), 0);
+    assert.equal(Number((await f.store.get("SELECT COUNT(*) AS n FROM mcp_audit WHERE event = 'READ' AND tool_name = 'analytics.inventory_risk' AND outcome = 'OK'")).n), 0);
     const pages = [];
     for (const offset of [0, 50]) {
       const response = await client.call('analytics.inventory_risk', { mode: 'all', limit: 50, offset });

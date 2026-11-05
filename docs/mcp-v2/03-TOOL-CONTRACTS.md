@@ -360,3 +360,13 @@ Read redacted operation audit for this grant/client.
 Example arguments: `{"operationId":"00000000-0000-4000-8000-000000000001"}`
 
 Example structured result: `{"items":[{"at":"2026-11-04T00:00:00.000Z","operationId":"00000000-0000-4000-8000-000000000001","tenantId":"synthetic-shop","accountId":"00000000-0000-4000-8000-000000000002","clientId":"synthetic-client","toolName":"catalog.preview_update","resourceId":"00000000-0000-4000-8000-000000000001","approverId":null,"outcome":"PREPARED","correlationId":"00000000-0000-4000-8000-000000000002"}],"nextOffset":null,"paginationCapped":false}`
+
+## Implemented operation controls
+
+The actual `operations.get`, `operations.cancel` and `operations.audit` schemas are
+[03-OPERATIONS-IMPLEMENTED.json](03-OPERATIONS-IMPLEMENTED.json), exported from the
+source-owned registry contract. [OPERATIONS.md](OPERATIONS.md) defines original-grant
+and underlying-domain authorization, low-risk cancellation, stable audit coverage,
+retention, errors, tests and isolated rollback. Historical proposed definitions
+below/above are not runtime authority. The proposal generator writes only the
+separate `.proposed.md` and `.proposed.json` artifacts.

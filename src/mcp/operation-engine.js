@@ -15,6 +15,8 @@ import { readMediaApprovalEvidence } from './media-approval-policy.js';
 import { assertUploadThumbnail } from './media-upload-policy.js';
 import { operationReceiptExpiry } from './operation-maintenance.js';
 import { readOperationRecord } from './operation-record.js';
+import { recordOperationCall } from './audit.js';
+import { recordOperationEvent as event } from './operation-events.js';
 import { OPERATION_APPROVAL_MS, OPERATION_MUTATION_PAIRS, OPERATION_SCOPE_POLICIES, operationAuthorityPolicy } from './operation-policy.js';
 
 const ttl = 10 * 60 * 1000;
@@ -87,14 +89,6 @@ function readOnly(store, alive) {
     get: (query, ...values) => store.get(sql(query), ...values),
     all: (query, ...values) => store.all(sql(query), ...values),
   });
-}
-
-function event(store, row, name, outcome, approverId = null) {
-  return store.run(`INSERT INTO mcp_v2_event(id, at, tenant_id, account_id, client_id, grant_id, tool_name, resource_id,
-    operation_id, approver_id, event, outcome, correlation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  randomUUID(), stamp(), row.tenant_id, row.account_id, row.client_id, row.grant_id, row.tool_name,
-  typeof row.resource_id === 'string' && uuid.test(row.resource_id) ? row.resource_id : null,
-  row.id, approverId, name, outcome, row.correlation_id);
 }
 
 function publicState(row, replayed = false) {
@@ -222,10 +216,13 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
         const expired = await store.get("UPDATE mcp_v2_operation SET state='EXPIRED' WHERE id=? AND state=? RETURNING id", row.id, row.state);
         if (!expired) denied();
         if (row.state === 'APPROVED') await store.run('UPDATE mcp_v2_approval SET consumed_at=? WHERE operation_id=? AND consumed_at IS NULL', stamp(), row.id);
-        await event(store, row, 'EXPIRE', 'EXPIRED'); return publicState({ ...row, state: 'EXPIRED' }, true);
+        await event(store, row, 'EXPIRE', 'EXPIRED');
+        await recordOperationCall(store,row,toolName,'EXPIRED');
+        return publicState({ ...row, state: 'EXPIRED' }, true);
       }
       if (adapter.media) await mediaResources(row, adapter, readStoredOperation(row, binding), contextFor(authority, tenant.revision));
     }
+    await recordOperationCall(store,row,toolName,'REPLAY');
     return publicState(row, true);
   }
   async function pendingLimit(authority) {
@@ -347,6 +344,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
         WHERE id = ? AND state = 'PREPARED' RETURNING id`, row.id);
       if (!changed) throw new Error('Operation transition failed.');
       await event(store, row, 'REQUEST_APPROVAL', 'PENDING_APPROVAL');
+      await recordOperationCall(store,row,toolName,'PENDING_APPROVAL');
       return publicState({ ...row, state: 'PENDING_APPROVAL' });
     }));
   }
@@ -384,6 +382,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
             if (saved.serialized !== row.result_json) denied();
             result = saved.value;
           } catch { denied(); }
+          await recordOperationCall(store,row,toolName,'REPLAY');
           return { operationId: row.id, status: 'COMMITTED', result, replayed: true };
         }
         const now = stamp();
@@ -405,6 +404,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
             WHERE id = ? AND state = 'APPROVED' RETURNING id`, row.id);
           if (!consumed || !expired) denied();
           await event(store, row, 'EXPIRE', 'EXPIRED', approval.approver_id);
+          await recordOperationCall(store,row,toolName,'EXPIRED');
           return { operationId: row.id, error: 'EXPIRED' };
         }
         const session = await store.get(`SELECT s.expires_at, a.id, a.role, a.active, a.must_change_password
@@ -439,6 +439,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
             WHERE id = ? AND state = 'APPROVED' RETURNING id`, row.id);
           if (!consumed || !conflict) denied();
           await event(store, row, 'CONFLICT', 'STALE_REVISION', approval.approver_id);
+          await recordOperationCall(store,row,toolName,'STALE_REVISION');
           return { operationId: row.id, error: 'STALE_REVISION' };
         }
         const consumed = await store.get(`UPDATE mcp_v2_approval SET consumed_at = ?
@@ -485,6 +486,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
           WHERE id = ? AND state = 'APPROVED' RETURNING id`, serialized, row.id);
         if (!changed) throw new Error('Operation transition failed.');
         await event(store, row, 'COMMIT', 'COMMITTED', approval.approver_id);
+        await recordOperationCall(store,row,toolName,'COMMITTED');
         return { operationId: row.id, status: 'COMMITTED', result: savedReceipt.value, replayed: false };
       }));
     } catch (error) {
@@ -503,6 +505,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
                 await store.run('UPDATE mcp_v2_approval SET consumed_at = ? WHERE operation_id = ? AND consumed_at IS NULL', stamp(), operationId);
               }
               await event(store, row, status === 'EXPIRED' ? 'EXPIRE' : 'FAIL', status, approval?.approver_id || null);
+              await recordOperationCall(store,row,toolName,status);
             }
           }));
         } catch { /* Never turn a failed mutation into a success. */ }

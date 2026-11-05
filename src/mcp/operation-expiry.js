@@ -1,5 +1,19 @@
-import { randomUUID } from 'node:crypto';
 import { stamp } from './credentials.js';
+import { recordOperationEvent } from './operation-events.js';
+
+// The caller already holds platform->tenant writer locks and selected an
+// expired nonterminal record. Shared by bounded maintenance and RPC controls.
+export async function expireOperationRecord(store,row,now=stamp()) {
+  let approverId=null;
+  if(row.state==='APPROVED') {
+    const approval=await store.get("UPDATE mcp_v2_approval SET consumed_at=? WHERE operation_id=? AND decision='APPROVED' AND consumed_at IS NULL RETURNING approver_id",now,row.id);
+    if(!approval)throw new Error('Expired operation has invalid approval state.');
+    approverId=approval.approver_id;
+  }
+  const changed=await store.get("UPDATE mcp_v2_operation SET state='EXPIRED' WHERE id=? AND tenant_id=? AND state=? RETURNING id",row.id,row.tenant_id,row.state);
+  if(!changed)throw new Error('Expired operation changed concurrently.');
+  await recordOperationEvent(store,{...row,resource_id:null},'EXPIRE','EXPIRED',approverId,{at:now});
+}
 
 // Isolated prototype only: callers must hold the platform tenant fence before
 // the tenant-store transaction. This marks expired operations but deliberately
@@ -27,22 +41,7 @@ export async function expireOperations({ store, tenantGuard, tenantId, limit = 3
         if(bytes+size>1048576)break;rows.push(row);bytes+=size;
       }
       for (const row of rows) {
-        let approverId = null;
-        if (row.state === 'APPROVED') {
-          const approval = await store.get(`UPDATE mcp_v2_approval SET consumed_at = ?
-            WHERE operation_id = ? AND decision = 'APPROVED' AND consumed_at IS NULL
-            RETURNING approver_id`, now, row.id);
-          if (!approval) throw new Error('Expired operation has invalid approval state.');
-          approverId = approval.approver_id;
-        }
-        const changed = await store.get(`UPDATE mcp_v2_operation SET state = 'EXPIRED'
-          WHERE id = ? AND tenant_id = ? AND state = ? RETURNING id`, row.id, tenantId, row.state);
-        if (!changed) throw new Error('Expired operation changed concurrently.');
-        await store.run(`INSERT INTO mcp_v2_event(id, at, tenant_id, account_id, client_id, grant_id, tool_name,
-          resource_id, operation_id, approver_id, event, outcome, correlation_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'EXPIRE', 'EXPIRED', ?)`,
-        randomUUID(), now, row.tenant_id, row.account_id, row.client_id, row.grant_id, row.tool_name,
-        null, row.id, approverId, row.correlation_id);
+        await expireOperationRecord(store,row,now);
       }
       return { expired: rows.length };
     });

@@ -47,7 +47,7 @@ for (const dialect of ['sqlite', 'postgres']) {
     const value = dto(read); assert.equal(value.company.senderAddressLine1, 'PRIVATE Business Address'); assert.equal(value.company.sellerWhatsAppPhone, '60123456789');
     assert.match(value.company.revision, /^[0-9a-f]{64}$/); assert.deepEqual(Object.keys(value.company).sort(), [...COMPANY_FIELDS, 'revision'].sort());
     assert.equal((await f.tool('company.get', { id: 'another' })).data.error.code, -32602);
-    const audit = await f.store.all("SELECT * FROM mcp_audit WHERE event = 'READ' AND outcome = 'company.get'"); assert.equal(audit.length, 1); assert.equal(audit[0].tool_name, null);
+    const audit = await f.store.all("SELECT * FROM mcp_audit WHERE event = 'READ' AND tool_name = 'company.get' AND outcome = 'OK'"); assert.equal(audit.length, 1); assert.equal(audit[0].tool_name, 'company.get');
     assert.doesNotMatch(JSON.stringify(audit), /PRIVATE|60123456789/);
     const original = f.store.run;
     f.store.run = async (sql, ...args) => { if (sql.includes('INSERT INTO mcp_audit') && args.includes('company.get')) throw new Error('Synthetic read audit failure.'); return original(sql, ...args); };

@@ -1,5 +1,6 @@
 import { expireOperations } from './operation-expiry.js';
 import { stamp } from './credentials.js';
+import { cleanupMcpAudit } from './audit.js';
 
 export const OPERATION_AUDIT_RETENTION_MS = 90 * 86400000;
 export const OPERATION_TERMINAL_STATES = Object.freeze(['COMMITTED', 'REJECTED', 'EXPIRED', 'CANCELLED', 'CONFLICT', 'FAILED']);
@@ -24,7 +25,7 @@ function boundedRows(rows) {
 }
 
 export async function maintainOperations(store, { enabled = false, tenantGuard, tenantId } = {}) {
-  const counts = { expired: 0, redacted: 0, challenges: 0, approvals: 0, receipts: 0, events: 0 };
+  const counts = { expired: 0, redacted: 0, challenges: 0, approvals: 0, receipts: 0, events: 0, audits: 0 };
   if (enabled !== true) return counts;
   if (!tenantGuard || typeof tenantGuard.withActiveTenant !== 'function' || typeof tenantId !== 'string' || !tenantId) {
     throw new TypeError('Operation maintenance requires a trusted tenant fence.');
@@ -72,5 +73,6 @@ export async function maintainOperations(store, { enabled = false, tenantGuard, 
     AND NOT EXISTS(SELECT 1 FROM mcp_v2_media_approval_evidence e WHERE e.operation_id=o.id)
     ORDER BY o.receipt_expires_at,o.id LIMIT 100`,[tenantId,now],'receipts');
   await erase('mcp_v2_event','id','SELECT * FROM mcp_v2_event WHERE tenant_id=? AND at<? ORDER BY at,id LIMIT 100',[tenantId,cutoff],'events');
+  await phase(async()=>{ counts.audits=(await cleanupMcpAudit(store,{tenantId,now})).deleted; });
   return counts;
 }

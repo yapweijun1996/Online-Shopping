@@ -46,8 +46,8 @@ for (const dialect of ['sqlite', 'postgres']) {
       assert.equal(listed.data.result.tools[0].name, 'company.get'); assert.equal(listed.data.result.tools[0].annotations.readOnlyHint, true);
       assert.deepEqual((await get({})).data.result.structuredContent, { defaultCurrency: 'MYR' });
       assert.equal((await get({ tenantId: 'other' })).data.error.code, -32602);
-      const audits = () => f.store.all("SELECT * FROM mcp_audit WHERE event = 'READ' AND outcome = 'company.get'");
-      const audit = (await audits())[0]; assert.ok(audit); assert.equal(audit.tool_name, null);
+      const audits = () => f.store.all("SELECT * FROM mcp_audit WHERE event = 'READ' AND tool_name = 'company.get' AND outcome = 'OK'");
+      const audit = (await audits())[0]; assert.ok(audit); assert.equal(audit.tool_name, 'company.get');
       assert.equal(audit.account_id, f.account.id); assert.equal(audit.client_id, f.clientId); assert.equal(audit.grant_id, f.grantId);
       badOutput = true;
       const invalid = await get({}); assert.equal(invalid.data.error.code, -32603);

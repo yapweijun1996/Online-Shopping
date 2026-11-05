@@ -196,5 +196,5 @@ for name,desc,inp,output,scope,cap,kind,risk,approval,example_in,example_out,con
            "Example arguments: `"+json.dumps(example_in,ensure_ascii=False,separators=(",",":"))+"`",
            "",
            "Example structured result: `"+json.dumps(example_out,ensure_ascii=False,separators=(",",":"))+"`",""]
-(out/"03-TOOL-CONTRACTS.md").write_text("\n".join(md))
+(out/"03-TOOL-CONTRACTS.proposed.md").write_text("\n".join(md))
 print("Generated",len(specs),"proposed contracts; all input and output examples match their schemas.")

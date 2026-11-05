@@ -1,13 +1,16 @@
 import { ApiError } from '../http.js';
+import { randomUUID } from 'node:crypto';
 import { canonicalOperationJson } from './operation-envelope.js';
 import { createOperationEngine } from './operation-engine.js';
 import { OPERATION_MUTATION_PAIRS, OPERATION_SCOPE_POLICIES } from './operation-policy.js';
 import { valid } from './tools.js';
-import { audit } from './credentials.js';
+import { recordMcpAudit, mcpAuditResource } from './audit.js';
 import { operationEpochHash } from './operation-epoch.js';
 import { verifyOperationAuthority, verifyMediaAuthority } from './operation-authorization.js';
 import { isMediaCoordinator, decodeMediaParts } from './media-coordinator.js';
 import { MEDIA_TOOL_CONTRACTS, mediaStageInput, mediaStageOutput, mediaReceiptSchema, mediaLayoutInput, mediaListInput, mediaListOutput } from './media-contracts.js';
+import { OPERATION_CONTROL_CONTRACTS } from './operation-control-contracts.js';
+import { createOperationControls } from './operation-controls.js';
 
 const uuid = { type: 'string', minLength: 36, maxLength: 36, pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' };
 const object = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
@@ -91,10 +94,18 @@ function selectOnly(store) {
 }
 
 export function createOperationTools({ store, binding, config, tenantGuard, quickLogin, entries = [] }) {
-  if (!Array.isArray(entries) || entries.length > Object.keys(OPERATION_MUTATION_PAIRS).length + readNames.size + 2) invalid();
+  if (!Array.isArray(entries) || entries.length > Object.keys(OPERATION_MUTATION_PAIRS).length + readNames.size + 5) invalid();
   const mediaEnabled = config.mcpMedia?.enabled === true && config.production === false && config.shopMode === 'manual';
   const tools = [], byName = new Map(), adapters = Object.create(null), skipped = new Set();
   for (const entry of entries) {
+    if(entry?.kind==='control') {
+      const contract=Object.hasOwn(OPERATION_CONTROL_CONTRACTS,entry.name)&&OPERATION_CONTROL_CONTRACTS[entry.name];
+      if(Object.keys(entry).sort().join(',')!=='inputSchema,kind,name,outputSchema,scope'||!contract||byName.has(entry.name)||
+        entry.scope!==OPERATION_SCOPE_POLICIES[entry.name].scope||canonicalOperationJson(entry.inputSchema)!==canonicalOperationJson(contract.inputSchema)||
+        canonicalOperationJson(entry.outputSchema)!==canonicalOperationJson(contract.outputSchema))invalid();
+      const tool=freeze({name:entry.name,scope:entry.scope,...contract,annotations:{readOnlyHint:entry.name!=='operations.cancel',destructiveHint:false,idempotentHint:true,openWorldHint:false}});
+      tools.push(tool);byName.set(entry.name,{kind:'control',tool});continue;
+    }
     if (entry?.kind === 'read') {
       if (Object.keys(entry).sort().join(',') !== 'capability,inputSchema,kind,name,outputSchema,read,scope' || !readNames.has(entry.name) ||
           !Object.hasOwn(OPERATION_SCOPE_POLICIES, entry.name) || byName.has(entry.name) || skipped.has(entry.name) || typeof entry.read !== 'function') invalid();
@@ -176,6 +187,7 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
   if (!enabled || !tools.length) return Object.freeze({ catalogue: Object.freeze([]), find: () => null, call: () => { throw new ApiError(404, 'NOT_FOUND', 'Not found.'); } });
   const engine = Object.keys(adapters).length ? createOperationEngine({ store, binding, adapters, tenantGuard, quickLogin, ...config.mcpV2 }) : null;
   const epochHash = operationEpochHash(config.mcpV2.epoch), read = selectOnly(store);
+  const controls=tools.some(tool=>Object.hasOwn(OPERATION_CONTROL_CONTRACTS,tool.name))?createOperationControls({store,binding,config,tenantGuard,quickLogin}):null;
   return Object.freeze({ catalogue: Object.freeze(tools), find: name => byName.get(name)?.tool || null,
     async isMediaAppend(name, args, bearer) {
       const entry = byName.get(name);
@@ -195,6 +207,7 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
     async call(name, args, bearer) {
       const registered = byName.get(name);
       if (!registered || !valid(args, registered.tool.inputSchema)) throw new ApiError(400, 'INVALID_INPUT', 'Invalid operation arguments.');
+      if(registered.kind==='control')return controls.call(name,args,bearer);
       if (registered.kind === 'read') {
         const safeArgs = freeze(JSON.parse(canonicalOperationJson(args)));
         return tenantGuard.withActiveTenant(binding.tenantId, tenant => store.transaction(async () => {
@@ -204,9 +217,8 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
           if (Buffer.byteLength(serialized) > 65536) throw new TypeError('Operation read output is too large.');
           const dto = JSON.parse(serialized);
           if (!valid(dto, registered.tool.outputSchema)) throw new TypeError('Invalid operation read output.');
-          // Compatibility encoding: the legacy audit tool constraint has eight
-          // v1 names. Fixed v2 read names are recorded in outcome with a null tool.
-          await audit(store, binding.tenantId, 'READ', { account_id: authority.accountId, client_id: authority.clientId, grant_id: authority.grantId }, name, null, 1);
+          await recordMcpAudit(store, {tenantId:binding.tenantId,accountId:authority.accountId,clientId:authority.clientId,grantId:authority.grantId,
+            toolName:name,resourceId:mcpAuditResource(name,safeArgs),operationId:null,correlationId:randomUUID(),event:'READ',outcome:'OK',durationMs:0,resultCount:1});
           const current = await verifyOperationAuthority(store, { bearer, binding, toolName: name, epochHash });
           if (current.grantId !== authority.grantId || current.accountId !== authority.accountId || current.clientId !== authority.clientId) {
             throw new ApiError(403, 'FORBIDDEN', 'Operation authorization failed.');

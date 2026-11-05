@@ -16,8 +16,9 @@ Logical `mcp_v2_event` records retain their old IDs, fields and historical previ
 labels. New typed MCP READ/CALL records serve a different purpose: actual invocation
 names, controlled outcomes and original operation correlation. This migration does
 not rewrite old records or claim complete historical RPC/replay coverage. The engine
-must append initial/commit/replay CALL records inside its writer transaction before
-the new public controls can be accepted; a post-commit audit wrapper is insufficient.
+appends initial/commit/replay CALL records inside its writer transaction; public
+controls read only the operation-linked records described in [OPERATIONS.md](OPERATIONS.md).
+There is no post-commit audit wrapper.
 
 ## Explicit migration and physical checks
 

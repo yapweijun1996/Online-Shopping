@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { can } from '../roles.js';
 import { OPERATION_SCOPE_CAPABILITIES, OPERATION_RESOURCE_SCOPES } from './operation-policy.js';
 import { operationEpochHash } from './operation-epoch.js';
+import { cleanupMcpAudit } from './audit.js';
 
 export const hash = (value) => createHash('sha256').update(value).digest('hex');
 export const secret = () => randomBytes(32).toString('base64url');
@@ -22,7 +23,7 @@ export const effective = (account, scopes, config) => eligible(account) && typeo
     (OPERATION_RESOURCE_SCOPES.includes(scope) || can(account.role, capability[scope] ?? OPERATION_SCOPE_CAPABILITIES[scope]))) : [];
 
 export async function audit(store, tenantId, event, context = {}, outcome = 'OK', tool = null, count = 0) {
-  await store.run('DELETE FROM mcp_audit WHERE id IN (SELECT id FROM mcp_audit WHERE at < ? ORDER BY at LIMIT 100)', stamp(-90 * 86400000));
+  await cleanupMcpAudit(store, { tenantId, limit: 99 });
   await store.run(`INSERT INTO mcp_audit(id, at, tenant_id, account_id, client_id, grant_id, correlation_id,
     event, tool_name, resource_id, outcome, duration_ms, result_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   randomUUID(), stamp(), tenantId, context.account_id ?? null, context.client_id ?? null, context.grant_id ?? context.id ?? null,
