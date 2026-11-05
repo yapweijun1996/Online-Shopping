@@ -57,3 +57,13 @@ registration, decoder, tenant guard, grant or human evidence. Configuration/root
 boundaries plus synthetic-decoder actual handler tests passed25/25 with no skips.
 These are bounded acceptance checks; the broader adversarial/concurrency matrix
 and root's independent combined/full verification remain separate requirements.
+
+A separate synthetic-decoder security suite passed24/24 on both stores. It uses
+real RPC/password/ACK/consent handlers to exercise concurrent prepare/commit,
+current original grant/consent/epoch/RBAC/mode, different-grant control denial,
+configuration epoch/build/codec fencing, outside-lock portal changes, SKU
+occupancy, cancellation, approval expiry, redacted receipt replay/revocation, and
+ledger/history/receipt/audit sink rollback. The replay spy denies all business
+reads and this operation's frame reads; bounded global request-time hygiene after
+the cached result remains permitted. These tests fabricate neither human evidence
+nor native validation claims.
