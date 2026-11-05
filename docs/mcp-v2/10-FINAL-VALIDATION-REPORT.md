@@ -1,5 +1,9 @@
 # MCP v2 validation snapshots
 
+## Preparatory operation-control authority
+
+Root5961113, Node24.22.0, SQLite and owned PostgreSQL16: `NODE_ENV=test SHOP_TEST_DATABASE_URL=<private synthetic URL> node --test --test-concurrency=1 test/mcp-operation-record.test.js test/mcp-operation-control-authority.test.js test/mcp-operation-schema.test.js test/mcp-v2-oauth.test.js test/mcp-operation-authorization.test.js test/mcp-operation-engine.test.js test/mcp-media-engine.test.js`, exit0, **69/69**,0skip,39.989s (`.local/manager-control-authority.tap`). Root independently reviewed worker e5467e0 and7c8c0d0, integrated as1be590a and5961113. The tests cover fixed company/catalog pseudo IDs and domain UUIDs, immutable/redacted media records, original-grant identity, scope/consent/epoch/role checks and post-operation consent denial. The authority fixtures deliberately seed consent internally; real OAuth regressions execute separately within this command. No public control tool, typed CALL audit or schema34 is accepted by this batch. No full-suite result is claimed for this successor yet.
+
 ## Latest integrated inventory tools and media components
 
 Root c95e2b4, Node24.22.0 with SQLite and owned PostgreSQL16: `NODE_ENV=test SHOP_TEST_DATABASE_URL=<private synthetic URL> env -u QA_PLAYWRIGHT_MODULE -u MEDIA_COORDINATOR_CONTAINER_TEST node --test --test-concurrency=1 test/*.test.js`, exit0, **1361 total/1333 passed/0 failed/28 opt-in skips**,249.055s (`.local/manager-inventory-media-combined-full.tap`). This includes four default-off inventory built-ins, schema33 index, media engine/coordinator and immutable-thumbnail/main-restoration fixes. Twenty-seven skips are browser opt-ins; one is the native-container opt-in. No public media factory is enabled by this snapshot.
