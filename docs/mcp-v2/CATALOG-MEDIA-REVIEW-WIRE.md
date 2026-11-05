@@ -1,6 +1,16 @@
-# Catalog UPDATE review metadata foundation
+# Catalog media review metadata foundation
 
-This preparatory contract supports only the reserved `catalog.preview_update` / `catalog-media-v1` metadata grammar. It does not activate the policy. The engine, seller authorization and policy writer still reject RESERVED catalog media operations. CREATE is a separate unfinished contract. No registry, feature flag, scope policy, resource loader or database schema changes are part of this batch.
+## Exact CREATE metadata
+
+CREATE uses the same closed labels/visibility records, canonical pages, bounded record stream, physical byte mapper and frame/proposal comparison as UPDATE. Exactly one new PRODUCT has `before: null` and `labels.before: null`; its AFTER has no own main and `ownMainVisible: false`. Every old product retains its listing, stored main and literal SKU/name. Exactly one target LISTING is included. Fresh/private creation has a null BEFORE listing and two effects with zero assets, still requiring at least one hashed page. Old aliases must be DB sources owned BEFORE; stages and new-product source owners reject.
+
+`catalogProductLabels` / `catalogReviewLabels` default to strict UPDATE. Passing the fixed CREATE tool context permits the precise null BEFORE metadata. `catalogMediaReviewBinding` accepts CREATE's closed `{ toolName: 'catalog.preview_create', creationIdentity, baseRevision, reviewLabels, beforeViews, afterViews }`; BEFORE views contain only real old members, AFTER all members. Its existing bounded stream is reused with a distinct CREATE revision domain binding the strict D0 identity and `catalog/catalog` root. UPDATE hashes and DIRECT pages/root remain unchanged.
+
+`assertCatalogReviewBinding` requires CREATE root `catalog/catalog`, HIGH risk, exact planned ID/listing, literal page/proposal labels and the matching stored final AFTER metadata. `optionReview` must match the final AFTER option pairs. This is integrity only; live dictionaries, service preparation, scopes, tenant and human evidence still require the future real flow. Final normalized request and resolved labels remain separate as described in [CREATE projection](CATALOG-CREATE-PROJECTION.md).
+
+The shared renderer shows “Not yet created” for new-product BEFORE, literal AFTER labels and option names/values. A zero-asset graph still fetches, hashes and acknowledges every page, requires the unchecked media review confirmation and a password before its synthetic submit can proceed. Synthetic transport/frame fixtures do not establish actual CREATE authorization; real seller review/approval remains403. Old unactivated RESERVED CREATE toy records lacking labels/visibility are rejected rather than assigned defaults. Full CREATE assembler/runtime acceptance remains separate work.
+
+This preparatory contract supports reserved `catalog.preview_update` and `catalog.preview_create` / `catalog-media-v1` metadata grammar. It does not activate either policy. The engine, seller authorization and policy writer still reject RESERVED catalog media operations. The actual safe null-marker CREATE contract is unchanged. No registry, feature flag, scope policy, resource loader or database schema changes are part of this batch.
 
 ## Complete labels and visibility
 

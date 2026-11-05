@@ -11,7 +11,7 @@ const integrity = () => { throw new ApiError(503, 'MEDIA_FRAME_INTEGRITY', 'Medi
 const pageColumns = 'operation_id,page_index,page_json,page_hash,record_count,created_at';
 const assetColumns = 'operation_id,asset_key,source_kind,source_id,source_product_id,stage_id,byte_sha256,mime,byte_length,before_needed,after_needed';
 function catalogBinding(operation, context, manifest) {
-  if (operation.tool_name !== 'catalog.preview_update' || operation.media_policy_id !== 'catalog-media-v1') return;
+  if (!['catalog.preview_update','catalog.preview_create'].includes(operation.tool_name) || operation.media_policy_id !== 'catalog-media-v1') return;
   const envelope = readStoredOperation(operation, { tenantId: context.tenantId, issuer: context.issuer, resource: context.resource });
   if (!envelope) integrity();
   try { assertCatalogReviewBinding(envelope, manifest); } catch { integrity(); }

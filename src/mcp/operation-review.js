@@ -68,7 +68,7 @@ async function load() {
     document.querySelector('#approve').disabled = true;
     document.querySelector('#media-review').hidden = false;
     document.querySelector('#media-warning').hidden = false; mediaAck.checked = false;
-    await loadMedia(value.toolName, value.proposal, value.resourceId).catch(() => { statusNode.textContent = 'Image verification failed. Reload this review or reject the proposal.'; });
+    await loadMedia(value.toolName, value.proposal, value.resourceId, value.resourceType, value.risk).catch(() => { statusNode.textContent = 'Image verification failed. Reload this review or reject the proposal.'; });
   }
 }
 
@@ -95,18 +95,22 @@ async function acknowledgeMedia(item, nonce) {
   const result = await response.json();
   if (result.operationId !== id || result.itemKey !== item.itemKey || result.kind !== item.kind || result.acknowledged !== true) throw new Error('Image confirmation failed.');
 }
-async function loadMedia(toolName, proposal, resourceId) {
+async function loadMedia(toolName, proposal, resourceId, resourceType, risk) {
   const { descriptor, items, labels } = mediaReview;
   const catalog = descriptor?.policyId === 'catalog-media-v1';
+  const create = catalog && toolName === 'catalog.preview_create';
   if (catalog) {
     const binding = proposal.reviewBinding;
+    const identity = create ? catalogCreationIdentity(proposal.creationIdentity) : null;
+    const preimage = create ? {version:2,kind:'catalog-media-create',resourceType:'catalog',resourceId:'catalog',creationIdentity:identity,
+      baseRevision:binding?.baseRevision,reviewProjectionHash:binding?.reviewProjectionHash} :
+      {version:2,kind:'catalog-media-update',productId:resourceId,baseRevision:binding?.baseRevision,reviewProjectionHash:binding?.reviewProjectionHash};
     if (!exactKeys(binding, ['version','baseRevision','reviewProjectionHash']) || binding.version !== 1 ||
-        !idPattern.test(resourceId || '') || ![binding.baseRevision,binding.reviewProjectionHash].every(value => hashPattern.test(value || '')) ||
+        (create ? resourceId !== 'catalog' || resourceType !== 'catalog' || risk !== 'HIGH' : !idPattern.test(resourceId || '')) || ![binding.baseRevision,binding.reviewProjectionHash].every(value => hashPattern.test(value || '')) ||
         new TextEncoder().encode(canonical(proposal)).length > 49152 ||
-        await sha256(new TextEncoder().encode(canonical({version:2,kind:'catalog-media-update',productId:resourceId,
-          baseRevision:binding.baseRevision,reviewProjectionHash:binding.reviewProjectionHash}))) !== descriptor.graphRevision) throw new Error('Invalid catalog revision binding.');
+        await sha256(new TextEncoder().encode(canonical(preimage))) !== descriptor.graphRevision) throw new Error('Invalid catalog revision binding.');
   }
-  if (!descriptor || (catalog ? toolName !== 'catalog.preview_update' : !['media-upload-v1', 'media-layout-v1'].includes(descriptor.policyId)) ||
+  if (!descriptor || (catalog ? !['catalog.preview_update','catalog.preview_create'].includes(toolName) : !['media-upload-v1', 'media-layout-v1'].includes(descriptor.policyId)) ||
       ![descriptor.manifestRoot, descriptor.graphRevision, descriptor.codecDigest].every(value => hashPattern.test(value || '')) ||
       !Number.isInteger(descriptor.pageCount) || descriptor.pageCount < 1 || descriptor.pageCount > 16 ||
       !Number.isInteger(descriptor.assetCount) || descriptor.assetCount < 0 || descriptor.assetCount > 42 ||
@@ -149,7 +153,7 @@ async function loadMedia(toolName, proposal, resourceId) {
         !Number.isInteger(asset.byte_length) || asset.byte_length < 1 || asset.byte_length > 524288 ||
         await sha256(new TextEncoder().encode(canonical({ mime: asset.mime, byteSha256: asset.byte_sha256 }))) !== item.assetKey) throw new Error('Invalid image asset.');
   }
-  if (catalog) renderCatalogMediaEffects(effects, proposal.reviewLabels);
+  if (catalog) renderCatalogMediaEffects(effects, proposal.reviewLabels, create ? proposal : null);
   else renderMediaEffects(effects, labels);
   updateMediaProgress();
   if (mediaReview.assetItems.length) await showMediaImage(mediaReview.assetItems[0]);
@@ -212,13 +216,34 @@ function renderMediaEffects(effects, labels) {
 
 const exactKeys = (value, keys) => value && !Array.isArray(value) && typeof value === 'object' &&
   Object.keys(value).sort().join(',') === [...keys].sort().join(',');
-function catalogLabels(rows) {
+function catalogCreationIdentity(value) {
+  if (!exactKeys(value,['version','productId','targetCode','targetListingId','newListingId']) || value.version !== 1 || !idPattern.test(value.productId || '') ||
+      !(value.targetCode === null || typeof value.targetCode === 'string' && /^[A-Z0-9][A-Z0-9._-]{0,39}$/.test(value.targetCode)) ||
+      (value.targetListingId === null ? !idPattern.test(value.newListingId || '') : !idPattern.test(value.targetListingId || '') || value.newListingId !== null || value.targetCode === null)) throw new Error('Invalid creation identity.');
+  return value;
+}
+function catalogCreateOptions(proposal) {
+  const options = proposal.after?.options, review = proposal.optionReview;
+  if (!exactKeys(review,['before','after']) || !Array.isArray(review.before) || review.before.length !== 0 || !Array.isArray(options) || options.length > 6 ||
+      !Array.isArray(review.after) || review.after.length !== options.length) throw new Error('Invalid creation options.');
+  const pairs = [], seen = new Set();
+  for (const row of review.after) {
+    if (!exactKeys(row,['typeId','valueId','typeName','typeCode','valueLabel','valueCode','typeActive','valueActive']) || !idPattern.test(row.typeId || '') || !idPattern.test(row.valueId || '') ||
+        seen.has(row.typeId) || typeof row.typeActive !== 'boolean' || typeof row.valueActive !== 'boolean') throw new Error('Invalid creation option.');
+    for (const [key,max] of [['typeName',60],['typeCode',60],['valueLabel',80],['valueCode',60]]) if (typeof row[key] !== 'string' || !row[key].isWellFormed() || row[key].length > max) throw new Error('Invalid literal option.');
+    seen.add(row.typeId); pairs.push({typeId:row.typeId,valueId:row.valueId});
+  }
+  if (canonical(pairs) !== canonical(options)) throw new Error('Mismatched creation options.');
+  return review.after;
+}
+function catalogLabels(rows, create = false) {
   if (!Array.isArray(rows) || rows.length < 1 || rows.length > 300 || new TextEncoder().encode(canonical(rows)).length > 49152) throw new Error('Invalid catalog labels.');
   const names = new Map(); let last = '';
   for (const row of rows) {
     if (!exactKeys(row, ['productId','before','after']) || !idPattern.test(row.productId || '') || row.productId <= last) throw new Error('Invalid catalog label identity.');
     for (const side of ['before','after']) {
       const label = row[side];
+      if (create && side === 'before' && label === null) continue;
       if (!exactKeys(label,['sku','name']) || typeof label.sku !== 'string' || !label.sku.isWellFormed() || label.sku.length > 40 ||
           typeof label.name !== 'string' || !label.name.isWellFormed() || label.name.length > 120) throw new Error('Invalid literal label.');
     }
@@ -226,8 +251,9 @@ function catalogLabels(rows) {
   }
   return names;
 }
-function renderCatalogMediaEffects(effects, labels) {
-  const names = catalogLabels(labels), listings = new Map(), seen = new Set();
+function renderCatalogMediaEffects(effects, labels, creationProposal = null) {
+  const identity = creationProposal ? catalogCreationIdentity(creationProposal.creationIdentity) : null;
+  const names = catalogLabels(labels, Boolean(identity)), listings = new Map(), seen = new Set();
   for (const effect of effects) {
     if (!idPattern.test(effect.productId || effect.listingId || '')) throw new Error('Invalid catalog image identity.');
     if (effect.kind === 'LISTING') {
@@ -243,6 +269,7 @@ function renderCatalogMediaEffects(effects, labels) {
           canonical(effect.labels) !== canonical({before:names.get(effect.productId).before,after:names.get(effect.productId).after})) throw new Error('Mismatched catalog labels.');
       for (const side of ['before','after']) {
         const state = effect[side];
+        if (identity && side === 'before' && state === null && effect.productId === identity.productId && effect.labels.before === null) continue;
         if (!exactKeys(state,['listingId','role','mainAssetKey','ownMainVisible']) || !idPattern.test(state.listingId || '') ||
             !['single','holder','variant'].includes(state.role) || !(state.mainAssetKey === null || hashPattern.test(state.mainAssetKey || '')) ||
             typeof state.ownMainVisible !== 'boolean' || state.mainAssetKey === null && state.ownMainVisible) throw new Error('Invalid catalog product state.');
@@ -251,9 +278,21 @@ function renderCatalogMediaEffects(effects, labels) {
     }
   }
   if (seen.size !== names.size) throw new Error('Incomplete catalog labels.');
-  renderCatalogStates(effects,names,listings);
+  if (identity) {
+    const products = effects.filter(row => row.kind === 'PRODUCT'), fresh = products.find(row => row.productId === identity.productId), listing = [...listings.values()][0], after = creationProposal.after;
+    if (listings.size !== 1 || !fresh || fresh.before !== null || fresh.labels.before !== null || fresh.after.mainAssetKey !== null || fresh.after.ownMainVisible !== false ||
+        !listing?.after || listing.listingId !== (identity.targetListingId ?? identity.newListingId) || (listing.before === null) !== (identity.targetListingId === null) ||
+        creationProposal.before !== null || !after || after.id !== identity.productId || after.listingId !== listing.listingId || canonical({sku:after.sku,name:after.name}) !== canonical(fresh.labels.after)) throw new Error('Invalid CREATE effects.');
+    for (const product of products) if (product.after.listingId !== listing.listingId || product !== fresh && (!product.before || product.before.listingId !== listing.listingId ||
+        product.before.mainAssetKey !== product.after.mainAssetKey || canonical(product.labels.before) !== canonical(product.labels.after))) throw new Error('Unsupported existing-product change.');
+    if (listing.before === null ? products.length !== 1 || fresh.after.role !== 'single' || listing.after.holderId !== null || listing.after.galleryAssetKeys.length !== 0 : products.length < 2) throw new Error('Invalid CREATE membership.');
+    const owners = new Set(products.filter(row => row.before !== null).map(row => row.productId));
+    if ([...mediaReview.assets.values()].some(row => row.stage_id !== null || !owners.has(row.source_product_id))) throw new Error('Invalid CREATE source owner.');
+    catalogCreateOptions(creationProposal);
+  }
+  renderCatalogStates(effects,names,listings,creationProposal);
 }
-function renderCatalogStates(effects, names, listings) {
+function renderCatalogStates(effects, names, listings, creationProposal = null) {
   const root = document.querySelector('#media-effects'); root.replaceChildren();
   const labelText = label => visible(`${label.sku} · ${label.name}`);
   function reference(key) {
@@ -276,10 +315,14 @@ function renderCatalogStates(effects, names, listings) {
       const title = document.createElement('strong'); title.textContent = side === 'before' ? 'Before' : 'After'; line.append(title);
       const detail = document.createElement('div');
       if (state === null) {
-        if (effect.kind !== 'LISTING') throw new Error('Invalid absent product.');
-        detail.textContent = side === 'before' ? 'Did not exist before this change.' : 'Removed by this change.';
+        if (effect.kind !== 'LISTING' && !(creationProposal && side === 'before' && effect.productId === creationProposal.creationIdentity.productId)) throw new Error('Invalid absent product.');
+        detail.textContent = effect.kind === 'PRODUCT' ? 'Not yet created.' : side === 'before' ? 'Did not exist before this change.' : 'Removed by this change.';
       } else if (effect.kind === 'PRODUCT') {
         const literal = document.createElement('p'); literal.textContent = labelText(names.get(effect.productId)[side]); detail.append(literal);
+        if (creationProposal && side === 'after' && effect.productId === creationProposal.creationIdentity.productId) {
+          const options = document.createElement('p'), rows = catalogCreateOptions(creationProposal);
+          options.textContent = rows.length ? visible('Options: ' + rows.map(row => `${row.typeName}: ${row.valueLabel}`).join('; ')) : 'Options: none'; detail.append(options);
+        }
         const role = document.createElement('p'); role.textContent = `Role: ${state.role}; listing: ${state.listingId}`; detail.append(role);
         const stored = document.createElement('p'); stored.textContent = state.mainAssetKey === null ? 'No stored own main image.' : 'Stored own main image: '; if (state.mainAssetKey !== null) stored.append(reference(state.mainAssetKey)); detail.append(stored);
         const visibility = document.createElement('p'); visibility.textContent = state.ownMainVisible ? 'Own main is visible in the shopper gallery.' : state.mainAssetKey === null ? 'Own main is absent.' : 'Stored own main is hidden in the shopper gallery.'; detail.append(visibility);

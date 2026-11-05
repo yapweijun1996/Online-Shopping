@@ -1,6 +1,6 @@
 import { MEDIA_LIMITS } from './media-schema.js';
 import { MIME } from './media-codec-wire.js';
-import { catalogProductLabels, catalogReviewLabels } from './catalog-media-review-wire.js';
+import { catalogProductLabels, catalogReviewLabels, catalogCreateEffects } from './catalog-media-review-wire.js';
 import { freezeMedia, isMediaHash, isMediaUuid, makeMediaDescriptor, makeMediaPolicyRow, mediaDescriptorHash,
   mediaHash, mediaJson, mediaObject, mediaPolicyForTool, validateRetainedMediaPolicy } from './media-policy.js';
 
@@ -34,19 +34,20 @@ function asset(value) {
       (value.source_kind === 'PRODUCT_MAIN' && value.source_id !== value.source_product_id)) invalid();
   return { ...value, asset_key: mediaAssetKey(value.mime, value.byte_sha256) };
 }
-function effect(value, reserved, catalogUpdate = false) {
+function effect(value, reserved, catalogTool = null) {
+  const catalogUpdate=catalogTool==='catalog.preview_update',catalog=Boolean(catalogTool);
   if (!value || !['PRODUCT', 'LISTING'].includes(Object.getOwnPropertyDescriptor(value, 'kind')?.value)) invalid();
   const product = value.kind === 'PRODUCT', id = product ? 'productId' : 'listingId';
-  mediaObject(value, ['kind', id, 'before', 'after', ...(product && catalogUpdate ? ['labels'] : [])]);
+  mediaObject(value, ['kind', id, 'before', 'after', ...(product && catalog ? ['labels'] : [])]);
   if (product && catalogUpdate && (value.before === null || value.after === null)) invalid();
   if (!isMediaUuid(value[id]) || (product && value.after === null) || (!reserved && (value.before === null || value.after === null))) invalid();
   for (const side of ['before', 'after']) {
     const state = value[side]; if (state === null) continue;
     if (product) {
-      mediaObject(state, ['listingId', 'role', 'mainAssetKey', ...(catalogUpdate ? ['ownMainVisible'] : [])]);
+      mediaObject(state, ['listingId', 'role', 'mainAssetKey', ...(catalog ? ['ownMainVisible'] : [])]);
       if (!isMediaUuid(state.listingId) || !['single', 'holder', 'variant'].includes(state.role) ||
           !(state.mainAssetKey === null || isMediaHash(state.mainAssetKey))) invalid();
-      if (catalogUpdate && (typeof state.ownMainVisible !== 'boolean' || state.mainAssetKey === null && state.ownMainVisible)) invalid();
+      if (catalog && (typeof state.ownMainVisible !== 'boolean' || state.mainAssetKey === null && state.ownMainVisible)) invalid();
     } else {
       mediaObject(state, ['holderId', 'galleryAssetKeys']);
       if (!(state.holderId === null || isMediaUuid(state.holderId))) invalid();
@@ -56,7 +57,7 @@ function effect(value, reserved, catalogUpdate = false) {
     }
   }
   if (value.before === null && value.after === null) invalid();
-  if (product && catalogUpdate) catalogProductLabels(value.labels);
+  if (product && catalog) catalogProductLabels(value.labels,catalogTool);
   if (!reserved && (product ? value.before.listingId !== value.after.listingId || value.before.role !== value.after.role
     : value.before.holderId !== value.after.holderId)) invalid();
   return JSON.parse(mediaJson(value));
@@ -125,8 +126,8 @@ export function buildMediaManifest(input) {
       oldBytes > MEDIA_LIMITS.oldBytes || newBytes > MEDIA_LIMITS.newBytes || oldBytes + newBytes > MEDIA_LIMITS.graphBytes) invalid();
   array(input.assets, MEDIA_LIMITS.records); array(input.effects, MEDIA_LIMITS.records);
   const aliases = input.assets.map(asset), assets = new Map(), sources = new Map(), stages = new Map(), old = new Map();
-  const catalogUpdate = input.toolName === 'catalog.preview_update' && policy.policyId === 'catalog-media-v1';
-  if (catalogUpdate && (newBytes !== 0 || aliases.some(value => value.source_kind === 'STAGE'))) invalid();
+  const catalogTool = ['catalog.preview_update','catalog.preview_create'].includes(input.toolName) && policy.policyId === 'catalog-media-v1' ? input.toolName : null;
+  if (catalogTool && (newBytes !== 0 || aliases.some(value => value.source_kind === 'STAGE'))) invalid();
   const sourceOrder = value => `${value.source_kind === 'STAGE' ? '1' : '0'}:${value.source_kind}:${value.source_product_id}:${value.source_id}`;
   for (const value of aliases) {
     const source = `${value.source_kind}:${value.source_id}`, priorSource = sources.get(source);
@@ -144,9 +145,10 @@ export function buildMediaManifest(input) {
   if (assets.size > MEDIA_LIMITS.assets || old.size > MEDIA_LIMITS.oldAssets || stages.size > MEDIA_LIMITS.newAssets ||
       [...old.values()].reduce((a, b) => a + b, 0) > oldBytes ||
       [...stages.values()].reduce((sum, value) => sum + value.byte_length, 0) > newBytes) invalid();
-  const effects = input.effects.map(value => effect(value, policy.flow === 'RESERVED', catalogUpdate));
-  if (catalogUpdate) catalogReviewLabels(effects.filter(value => value.kind === 'PRODUCT')
-    .map(value => ({ productId: value.productId, ...value.labels })).sort((a,b) => compare(a.productId,b.productId)));
+  const effects = input.effects.map(value => effect(value, policy.flow === 'RESERVED', catalogTool));
+  if (catalogTool) catalogReviewLabels(effects.filter(value => value.kind === 'PRODUCT')
+    .map(value => ({ productId: value.productId, ...value.labels })).sort((a,b) => compare(a.productId,b.productId)),catalogTool);
+  if (catalogTool==='catalog.preview_create') catalogCreateEffects(effects);
   const ids = effects.map(value => `${value.kind}:${value.productId ?? value.listingId}`);
   if (!effects.length || new Set(ids).size !== ids.length || effects.length + assets.size > MEDIA_LIMITS.records) invalid();
   graph(effects, assets, aliases);
