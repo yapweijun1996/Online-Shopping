@@ -2,7 +2,7 @@
 
 ## MCP v2 isolated delivery (2026-11-05)
 
-Scope: implement the Seller Operations Engine in dependency order, beginning with the unaccepted security foundation. Active workspace: `codex/mcp-v2-phase0`, based on `1634735aa70090dcdf54b8d09e2cc09b33cd8a77`. Preserve the eight v1 tools and current business rules. This task permits isolated development and synthetic verification; production activation remains a separate release gate.
+Scope: finish the Seller Operations Engine in dependency order with independent verification after each bounded change. Active integration branch: `codex/mcp-v2-seller-engine`, based on `1634735aa70090dcdf54b8d09e2cc09b33cd8a77`. Foundation and company tools have passed their named local acceptance snapshots; later phases remain incomplete. Preserve the eight v1 tools and current business rules. This task permits isolated development and synthetic verification; production activation remains a separate release gate.
 
 | ID | State | Acceptance and dependency |
 | --- | --- | --- |
@@ -14,7 +14,7 @@ Scope: implement the Seller Operations Engine in dependency order, beginning wit
 | MCP0-06 | Verified locally | Foundation source25ec84f:1015 tests,991 passed,0 failed,24 browser opt-ins skipped; targeted actual browser/restore and timing regression passed separately. |
 | MCP1 | Verified locally | Company3tools at08136e6, full1051tests/1027pass/0fail/24skip; actual defaults/approval/browser11/11. Production remains disabled. |
 | MCP2 | In progress, staged subset | Product tools via existing services, including shared listing revision, SKU, snapshots and history. |
-| MCP3 | Read-only design audit | Bounded image staging, decoding, old/new review and atomic gallery layout. |
+| MCP3 | Design audited; codec implementation delegated | Bounded image staging, decoding, old/new review and atomic gallery layout. First batch is a separately memory-capped, credential-free development codec; application media tools remain unavailable. See [media delivery plan](mcp-v2/MEDIA-DELIVERY-PLAN.md). |
 | MCP4 | Depends on MCP0 | Atomic stock ledger across writers; preserve 48-hour computed SUBMITTED holds. |
 | MCP5 | Depends on MCP0 | Existing order decisions only; approval, revision checks and stock deduction exactly once. |
 | MCP6 | Depends on MCP0 | Extended analytics with independent fixtures, currencies, UTC+8 and coverage definitions. |

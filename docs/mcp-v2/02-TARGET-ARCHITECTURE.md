@@ -1,6 +1,6 @@
 # Target architecture and implementation plan
 
-Current status2026-11-05: Phase0 is independently verified at25ec84f. Real authenticated challenge/password review, explicit scope consent, transactional receipts and matching schema30 migrations are implemented. Default domain registry is empty; production activation is rejected. Actual synthetic snapshot restores and external epoch fencing passed; production multi-instance recovery remains unverified. API.md and10-FINAL-VALIDATION-REPORT.md give current paths, evidence and limits. The original design below is a historical snapshot, not current implementation status.
+Current status2026-11-05: Phase0 is independently verified at25ec84f and Phase1 company tools at08136e6. Real authenticated challenge/password review, explicit scope consent, transactional receipts and matching schema30 migrations are implemented. Safe development opt-in registers the three company tools; production activation is rejected. Catalog safe-subset verification and the [media delivery plan](MEDIA-DELIVERY-PLAN.md) are in progress. Actual synthetic snapshot restores and external epoch fencing passed; production multi-instance recovery remains unverified. API.md and10-FINAL-VALIDATION-REPORT.md give current paths, evidence and limits. The original design below is a historical snapshot, not current implementation status.
 
 ## Historical design snapshot
 
