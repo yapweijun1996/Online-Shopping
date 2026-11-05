@@ -5,6 +5,7 @@ import { hash, stamp } from './credentials.js';
 import { canonicalOperationJson, operationPreviewHash, readStoredOperation } from './operation-envelope.js';
 import { operationEpochHash } from './operation-epoch.js';
 import { verifyOperationAuthority } from './operation-authorization.js';
+import { operationInstant, operationReceiptExpiry, OPERATION_TERMINAL_STATES } from './operation-maintenance.js';
 import { OPERATION_MUTATION_PAIRS, OPERATION_PREVIEW_RISKS, OPERATION_SCOPE_POLICIES } from './operation-policy.js';
 
 const ttl = 10 * 60 * 1000;
@@ -84,14 +85,49 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
     if (!commitTool || !previewPolicy || !commitPolicy || previewPolicy.scope !== commitPolicy.scope ||
         !adapter || typeof adapter !== 'object' || typeof adapter.resourceType !== 'string' ||
         typeof adapter.preview !== 'function' || typeof adapter.currentRevision !== 'function' ||
-        typeof adapter.apply !== 'function' || typeof adapter.validResult !== 'function') {
+        typeof adapter.apply !== 'function' || typeof adapter.validResult !== 'function' ||
+        typeof adapter.toReceipt !== 'function' || typeof adapter.validReceipt !== 'function') {
       throw new TypeError('Invalid operation adapter.');
     }
     registered[name] = Object.freeze({ resourceType: adapter.resourceType, preview: adapter.preview,
-      currentRevision: adapter.currentRevision, apply: adapter.apply, validResult: adapter.validResult, commitTool });
+      currentRevision: adapter.currentRevision, apply: adapter.apply, validResult: adapter.validResult, toReceipt: adapter.toReceipt, validReceipt: adapter.validReceipt, commitTool });
   }
   Object.freeze(registered);
   const read = readOnly(store);
+
+  function metadata(row, adapter, tenantRevision, grant) {
+    if (!row || !adapter || !grant || !uuid.test(row.id || '') || !uuid.test(row.account_id || '') ||
+        !uuid.test(row.grant_id || '') || !uuid.test(row.correlation_id || '') ||
+        row.tenant_id !== binding.tenantId || row.issuer !== binding.issuer || row.resource !== binding.resource ||
+        row.tenant_revision !== tenantRevision || row.epoch_hash !== epochHash || row.build_digest !== buildDigest ||
+        typeof row.client_id !== 'string' || !row.client_id.length || row.client_id.length > 128 ||
+        row.resource_type !== adapter.resourceType || !/^[a-z][a-z0-9_.-]{0,127}$/.test(row.resource_type) ||
+        !(row.resource_id === null || (typeof row.resource_id === 'string' && row.resource_id.length > 0 && row.resource_id.length <= 128)) ||
+        !(row.expected_revision === null || (typeof row.expected_revision === 'string' && row.expected_revision.length > 0 && row.expected_revision.length <= 128)) ||
+        !operationInstant(row.created_at) || !operationInstant(row.expires_at) || row.created_at >= row.expires_at ||
+        Date.parse(row.expires_at) - Date.parse(row.created_at) !== ttl || row.created_at > stamp() ||
+        !operationInstant(row.receipt_expires_at) || row.receipt_expires_at !== operationReceiptExpiry(grant.absolute_expires_at) ||
+        row.receipt_expires_at <= stamp() ||
+        !['request_hash', 'preview_hash', 'idempotency_hash'].every((key) => /^[0-9a-f]{64}$/.test(row[key] || '')) ||
+        !Object.hasOwn(OPERATION_SCOPE_POLICIES, row.tool_name) ||
+        row.required_scope !== OPERATION_SCOPE_POLICIES[row.tool_name].scope ||
+        row.required_capability !== OPERATION_SCOPE_POLICIES[row.tool_name].capability ||
+        row.risk !== OPERATION_PREVIEW_RISKS[row.tool_name]) return false;
+    if (row.redacted_at !== null) return OPERATION_TERMINAL_STATES.includes(row.state) && row.envelope_json === null &&
+      operationInstant(row.redacted_at) && row.redacted_at >= row.expires_at && row.redacted_at <= stamp();
+    return Boolean(readStoredOperation(row, binding));
+  }
+
+  async function receipt(adapter, value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('Invalid operation receipt.');
+    const serialized = canonicalOperationJson(value);
+    if (Buffer.byteLength(serialized) > 2048) throw new TypeError('Operation receipt is too large.');
+    const safe = freezeJson(JSON.parse(serialized));
+    // The trusted domain adapter must use a strict non-sensitive receipt schema.
+    // Generic JSON validity cannot establish that text contains no personal data.
+    if (await adapter.validReceipt(safe) !== true) throw new TypeError('Invalid operation receipt.');
+    return { value: safe, serialized };
+  }
 
   async function prepare(input) {
     if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length !== 4 ||
@@ -113,6 +149,8 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
     catch { fail(400, 'INVALID_INPUT', 'Invalid operation request.'); }
     return withTenant((tenant) => store.transaction(async () => {
       const authority = await verifyOperationAuthority(store, { bearer, binding, toolName, epochHash });
+      const originalGrant = await store.get('SELECT absolute_expires_at FROM oauth_grant WHERE id = ?', authority.grantId);
+      const receiptExpiry = operationReceiptExpiry(originalGrant.absolute_expires_at);
       const idem = hash(idempotencyKey);
       const existing = await store.get(`SELECT * FROM mcp_v2_operation
         WHERE tenant_id = ? AND account_id = ? AND client_id = ? AND idempotency_hash = ?`,
@@ -123,7 +161,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
         }
         if (existing.grant_id !== authority.grantId || existing.tenant_revision !== tenant.revision ||
             existing.epoch_hash !== epochHash || existing.build_digest !== buildDigest ||
-            !readStoredOperation(existing, binding)) denied();
+            !metadata(existing, adapter, tenant.revision, originalGrant)) denied();
         if (['PREPARED', 'PENDING_APPROVAL', 'APPROVED'].includes(existing.state) && existing.expires_at <= stamp()) {
           const expired = await store.get(`UPDATE mcp_v2_operation SET state = 'EXPIRED'
             WHERE id = ? AND state = ? RETURNING id`, existing.id, existing.state);
@@ -156,17 +194,17 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
         clientId: authority.clientId, grantId: authority.grantId, epochHash, buildDigest, issuer: binding.issuer, resource: binding.resource,
         toolName, resourceType: adapter.resourceType, resourceId: draft.resourceId, expectedRevision: draft.expectedRevision,
         requiredScope: policy.scope, requiredCapability: policy.capability, risk: OPERATION_PREVIEW_RISKS[toolName],
-        createdAt: now, expiresAt: stamp(ttl), idempotencyHash: idem, correlationId: randomUUID(), proposal: draft.proposal,
+        createdAt: now, expiresAt: new Date(Date.parse(now) + ttl).toISOString(), idempotencyHash: idem, correlationId: randomUUID(), proposal: draft.proposal,
       };
       const previewHash = operationPreviewHash(envelope), serialized = canonicalOperationJson(envelope);
       await store.run(`INSERT INTO mcp_v2_operation(id, tenant_id, tenant_revision, account_id, client_id, grant_id, epoch_hash, build_digest, issuer, resource,
         tool_name, required_scope, required_capability, risk, resource_type, resource_id, expected_revision,
-        envelope_json, preview_hash, request_hash, idempotency_hash, state, created_at, expires_at, correlation_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PREPARED', ?, ?, ?)`,
+        envelope_json, preview_hash, request_hash, idempotency_hash, state, created_at, expires_at, correlation_id, receipt_expires_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PREPARED', ?, ?, ?, ?)`,
       envelope.operationId, envelope.tenantId, envelope.tenantRevision, envelope.accountId, envelope.clientId, envelope.grantId, epochHash, buildDigest,
       envelope.issuer, envelope.resource, toolName, policy.scope, policy.capability, envelope.risk,
       envelope.resourceType, envelope.resourceId, envelope.expectedRevision === null ? null : String(envelope.expectedRevision),
-      serialized, previewHash, requestHash, idem, now, envelope.expiresAt, envelope.correlationId);
+      serialized, previewHash, requestHash, idem, now, envelope.expiresAt, envelope.correlationId, receiptExpiry);
       const row = await store.get('SELECT * FROM mcp_v2_operation WHERE id = ?', envelope.operationId);
       await event(store, row, 'PREPARE', 'PREPARED');
       const changed = await store.get(`UPDATE mcp_v2_operation SET state = 'PENDING_APPROVAL'
@@ -192,9 +230,10 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
         const authority = await verifyOperationAuthority(store, { bearer, binding, toolName, epochHash });
         const row = await store.get('SELECT * FROM mcp_v2_operation WHERE id = ?', operationId);
         const adapter = row && Object.hasOwn(registered, row.tool_name) && registered[row.tool_name];
-        const stored = row && readStoredOperation(row, binding);
+        const originalGrant = await store.get('SELECT absolute_expires_at FROM oauth_grant WHERE id = ?', authority.grantId);
+        const stored = row?.redacted_at === null && readStoredOperation(row, binding);
         const envelope = stored && freezeJson(stored);
-        if (!row || !adapter || !envelope || row.tenant_revision !== tenant.revision ||
+        if (!row || !adapter || !metadata(row, adapter, tenant.revision, originalGrant) || row.tenant_revision !== tenant.revision ||
             row.epoch_hash !== epochHash || row.build_digest !== buildDigest ||
             adapter.commitTool !== toolName || row.grant_id !== authority.grantId ||
             row.account_id !== authority.accountId || row.client_id !== authority.clientId ||
@@ -204,13 +243,14 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
         if (row.state === 'COMMITTED') {
           let result;
           try {
-            result = JSON.parse(row.result_json);
-            if (canonicalOperationJson(result) !== row.result_json || await adapter.validResult(result) !== true) denied();
+            const saved = await receipt(adapter, JSON.parse(row.result_json));
+            if (saved.serialized !== row.result_json) denied();
+            result = saved.value;
           } catch { denied(); }
           return { operationId: row.id, status: 'COMMITTED', result, replayed: true };
         }
         const now = stamp();
-        if (row.state !== 'APPROVED') denied();
+        if (row.state !== 'APPROVED' || !envelope) denied();
         const approval = await store.get('SELECT * FROM mcp_v2_approval WHERE operation_id = ?', row.id);
         if (!approval || approval.decision !== 'APPROVED' || approval.consumed_at || approval.preview_hash !== row.preview_hash ||
             approval.approver_id !== row.account_id || typeof approval.approved_at !== 'string' ||
@@ -260,6 +300,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
         if (!result || typeof result !== 'object' || Array.isArray(result) || await adapter.validResult(result) !== true) {
           throw new TypeError('Invalid operation result.');
         }
+        const savedReceipt = await receipt(adapter, await adapter.toReceipt(result));
         // Long-running adapters cannot turn an expired token or approval into
         // a successful commit. An error here rolls all domain changes back.
         const finalAuthority = await verifyOperationAuthority(store, { bearer, binding, toolName, epochHash });
@@ -273,12 +314,12 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
         if (!finalSession || finalSession.id !== row.account_id || finalSession.active !== 1 ||
             finalSession.must_change_password !== 0 || finalSession.expires_at <= stamp() ||
             !can(finalSession.role, row.required_capability)) denied();
-        const serialized = canonicalOperationJson(result);
+        const serialized = savedReceipt.serialized;
         const changed = await store.get(`UPDATE mcp_v2_operation SET state = 'COMMITTED', result_json = ?
           WHERE id = ? AND state = 'APPROVED' RETURNING id`, serialized, row.id);
         if (!changed) throw new Error('Operation transition failed.');
         await event(store, row, 'COMMIT', 'COMMITTED', approval.approver_id);
-        return { operationId: row.id, status: 'COMMITTED', result, replayed: false };
+        return { operationId: row.id, status: 'COMMITTED', result: savedReceipt.value, replayed: false };
       }));
     } catch (error) {
       if (attempted) {

@@ -5,6 +5,7 @@ import pg from 'pg';
 import { openDatabase } from '../src/db.js';
 import { openPostgresDatabase } from '../src/postgres-db.js';
 import { operationSchema } from '../src/mcp/operation-schema.js';
+import { operationReceiptExpiry } from '../src/mcp/operation-maintenance.js';
 import { expireOperations } from '../src/mcp/operation-expiry.js';
 
 const base = process.env.SHOP_TEST_DATABASE_URL;
@@ -35,11 +36,11 @@ async function fixture(t, dialect) {
     const id = randomUUID();
     await store.run(`INSERT INTO mcp_v2_operation(id, tenant_id, tenant_revision, account_id, client_id, grant_id,
       epoch_hash, build_digest, issuer, resource, tool_name, required_scope, required_capability, risk, resource_type,
-      envelope_json, preview_hash, request_hash, idempotency_hash, state, created_at, expires_at, correlation_id)
+      envelope_json, preview_hash, request_hash, idempotency_hash, state, created_at, expires_at, correlation_id, receipt_expires_at)
       VALUES (?, ?, 1, 'account', 'client', 'grant', ?, ?, 'https://example.test', 'https://example.test/mcp',
-      'catalog.preview_update', 'catalog.write', 'catalog.write', 'MEDIUM', 'product', '{}', ?, ?, ?, ?, ?, ?, ?)`,
+      'catalog.preview_update', 'catalog.write', 'catalog.write', 'MEDIUM', 'product', '{}', ?, ?, ?, ?, ?, ?, ?, ?)`,
     id, tenant, digest, digest, digest, digest, id.replaceAll('-', '') + digest.slice(0, 32), state,
-    '2020-01-01T00:00:00.000Z', expiresAt, randomUUID());
+    '2020-01-01T00:00:00.000Z', expiresAt, randomUUID(), operationReceiptExpiry(expiresAt));
     if (approvalExpires) await store.run(`INSERT INTO mcp_v2_approval(operation_id, approver_id, session_hash,
       preview_hash, decision, approved_at, expires_at) VALUES (?, 'account', ?, ?, 'APPROVED', ?, ?)`,
     id, digest, digest, '2020-01-01T00:00:00.000Z', approvalExpires);
