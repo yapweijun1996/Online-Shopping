@@ -1,3 +1,4 @@
+import { setupShop } from '../src/shop-setup.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -108,6 +109,7 @@ for (const engine of ['sqlite', 'postgres']) {
     const store = await fixture(t, engine);
     await store.transaction(() => store.exec(operationSchema(engine)));
     await ensureAdmin(store, 'synthetic_owner', 'Synthetic-owner-password-2026!');
+    await setupShop(store, { mode: 'production', shopName: 'Synthetic v2 shop' });
     const account = await store.get('SELECT * FROM seller_account WHERE username_key = ?', 'synthetic_owner');
     const now = new Date().toISOString(), expiry = new Date(Date.now() + 600000).toISOString();
     const binding = { tenantId: 'synthetic', issuer: 'https://seller.example.test', resource: 'https://seller.example.test/mcp' };

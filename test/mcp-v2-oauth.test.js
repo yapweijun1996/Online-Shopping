@@ -1,3 +1,4 @@
+import { setupShop } from '../src/shop-setup.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
@@ -26,6 +27,7 @@ async function fixture(t, engine, mcpV2 = enabled()) {
     t.after(async () => { await store.close(); await pool.query(`DROP DATABASE ${name} WITH (FORCE)`); await pool.end(); });
   } else { store = await openDatabase(':memory:'); t.after(() => store.close()); }
   await ensureAdmin(store, 'fixture_owner', password);
+  await setupShop(store, { mode: 'production', shopName: 'Synthetic v2 shop' });
   // Explicit isolated extension installation; this fixture does not activate a deployment migration.
   if (mcpV2?.enabled) await initializeOperationStorage(store, { enabled: true });
   const config = { sellerOrigin: origin, publicOrigin: 'https://shop.example.com', mcpEnabled: true,

@@ -1,3 +1,4 @@
+import { setupShop } from '../src/shop-setup.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -28,6 +29,7 @@ async function fixture(t, dialect) {
   const productId = randomUUID();
   await store.run('INSERT INTO synthetic_receipt_resource VALUES (?, ?, 1)', productId, 'PRIVATE_ORIGINAL_NAME');
   await ensureAdmin(store, 'synthetic_owner', 'Synthetic-retention-password-2026!');
+  await setupShop(store, { mode: 'production', shopName: 'Synthetic v2 shop' });
   const account = await store.get("SELECT * FROM seller_account WHERE username_key = 'synthetic_owner'");
   const session = await createSession(store, account.id);
   const epoch = secret(), epochHash = operationEpochHash(epoch), buildDigest = 'e'.repeat(64);

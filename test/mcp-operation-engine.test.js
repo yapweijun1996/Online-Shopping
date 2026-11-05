@@ -1,3 +1,4 @@
+import { setupShop } from '../src/shop-setup.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -101,6 +102,7 @@ async function fixture(t, dialect) {
   const productId = randomUUID();
   await store.run('INSERT INTO synthetic_product(id, name, revision) VALUES (?, ?, ?)', productId, 'Original synthetic name', 1);
   await ensureAdmin(store, 'synthetic_owner', password);
+  await setupShop(store, { mode: 'production', shopName: 'Synthetic v2 shop' });
   const account = await store.get('SELECT * FROM seller_account WHERE username_key = ?', 'synthetic_owner');
   const session = await createSession(store, account.id);
   const now = new Date().toISOString(), expiry = new Date(Date.now() + 600000).toISOString();

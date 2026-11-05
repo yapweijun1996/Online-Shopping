@@ -17,6 +17,11 @@ export async function verifyOperationAuthority(store, { bearer, binding, toolNam
       typeof binding.resource !== 'string') deny();
   const { scope, capability } = OPERATION_SCOPE_POLICIES[toolName];
 
+  // Deployment mode is not the shop's persisted setup choice. Require a real
+  // configured shop on every v2 read/prepare/commit/replay inside its transaction.
+  const setup = await store.get('SELECT mode FROM shop_setup WHERE id = 1');
+  if (setup?.mode !== 'production') deny();
+
   const token = await store.get("SELECT * FROM oauth_token WHERE token_hash = ? AND kind = 'access'", hash(bearer));
   const grant = token && await liveGrant(store, token.grant_id, binding);
   const now = stamp();

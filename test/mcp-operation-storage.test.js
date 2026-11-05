@@ -1,3 +1,4 @@
+import { setupShop } from '../src/shop-setup.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -42,6 +43,7 @@ async function extensionNames(store) {
 }
 async function seedAuthority(store, epoch = secret()) {
   await ensureAdmin(store, 'synthetic_owner', ownerPassword);
+  await setupShop(store, { mode: 'production', shopName: 'Synthetic v2 shop' });
   const account = await store.get('SELECT * FROM seller_account WHERE username_key = ?', 'synthetic_owner');
   const session = await createSession(store, account.id);
   const now = new Date().toISOString(), expiry = new Date(Date.now() + 600000).toISOString();
