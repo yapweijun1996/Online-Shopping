@@ -8,9 +8,9 @@ import { migrateLegacyVariants } from './options.js';
 import { migrateListings } from './listings.js';
 import { migrateSharedGalleries } from './product-gallery.js';
 import { migrateOAuth } from './mcp/schema.js';
-import { initializeOperationStorage, operationStorageReady } from './mcp/operation-runtime.js';
+import { initializeOperationStorage, operationStorageReady, upgradeMediaStorage } from './mcp/operation-runtime.js';
 
-export const SCHEMA_VERSION = 30;
+export const SCHEMA_VERSION = 31;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -634,6 +634,13 @@ export async function migrateStore(store) {
       await store.setSchemaVersion(30);
     });
     version = 30;
+  }
+  if (version === 30) {
+    await store.transaction(async () => {
+      await upgradeMediaStorage(store);
+      await store.setSchemaVersion(31);
+    });
+    version = 31;
   }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
 }

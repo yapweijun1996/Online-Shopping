@@ -18,6 +18,7 @@ import { canonicalOperationJson, operationPreviewHash } from '../src/mcp/operati
 import { initializeOperationStorage, operationStorageReady, OPERATION_STORAGE_TABLES, OPERATION_STORAGE_META } from '../src/mcp/operation-runtime.js';
 import { importSqlite, importTables, excludedImportTables, excludedOperationImportTables, rowsDigest } from '../src/sqlite-import.js';
 
+import { MEDIA_STORAGE_TABLES } from '../src/mcp/media-schema.js';
 const base = process.env.SHOP_TEST_DATABASE_URL;
 if (base && (process.env.NODE_ENV !== 'test' || !/test/i.test(new URL(base).pathname))) throw new Error('Disposable PostgreSQL test database required.');
 const ownerPassword = 'Synthetic-owner-password-2026!';
@@ -103,7 +104,7 @@ async function pendingOperation(store, authority) {
   return { operationId: envelope.operationId, previewHash };
 }
 async function downgradeOperationStore(store) {
-  for (const table of ['mcp_v2_authorization_request', 'mcp_v2_scope_consent', 'mcp_v2_approval_challenge', 'mcp_v2_approval', 'mcp_v2_event', 'mcp_v2_operation', 'mcp_v2_schema']) await store.exec(`DROP TABLE ${table}`);
+  for (const table of [...MEDIA_STORAGE_TABLES.toReversed(), 'mcp_v2_authorization_request', 'mcp_v2_scope_consent', 'mcp_v2_approval_challenge', 'mcp_v2_approval', 'mcp_v2_event', 'mcp_v2_operation', 'mcp_v2_schema']) await store.exec(`DROP TABLE ${table}`);
   await store.setSchemaVersion(29);
 }
 
@@ -112,7 +113,7 @@ for (const dialect of ['sqlite', 'postgres']) {
   test(`${dialect}: extension initialization is explicit, repeatable, base-compatible and readiness checks physical schema`, options, async (t) => {
     const store = await fixture(t, dialect);
     await ensureAdmin(store, 'synthetic_owner', ownerPassword);
-    assert.equal(SCHEMA_VERSION, 30);
+    assert.equal(SCHEMA_VERSION, 31);
     assert.equal(await ready(store), true);
     assert.equal(await initializeOperationStorage(store), false);
     assert.equal(await initializeOperationStorage(store, { enabled: false }), false);
@@ -144,7 +145,7 @@ for (const dialect of ['sqlite', 'postgres']) {
     assert.equal(await store.schemaVersion(), 29);
     store.exec = exec;
     await initializeOperationStorage(store, { enabled: true });
-    await store.setSchemaVersion(30);
+    await store.setSchemaVersion(31);
     assert.equal(await operationStorageReady(store), true);
     await store.run('UPDATE mcp_v2_schema SET ddl_digest = ? WHERE id = 1', '0'.repeat(64));
     assert.equal(await operationStorageReady(store), false);
@@ -166,7 +167,7 @@ for (const dialect of ['sqlite', 'postgres']) {
     assert.equal(await operationStorageReady(store), false);
     assert.equal((await extensionNames(store)).includes(OPERATION_STORAGE_META), false);
     await store.setSchemaVersion(28);
-    await assert.rejects(initializeOperationStorage(store, { enabled: true }), /base schema 29 or 30/);
+    await assert.rejects(initializeOperationStorage(store, { enabled: true }), /base schema 29, 30 or 31/);
     assert.equal(await store.schemaVersion(), 28);
   });
 

@@ -1,10 +1,11 @@
 import { OPERATION_SCOPES } from './operation-policy.js';
+import { mediaPolicyCheck } from './media-schema.js';
 
 // Shared schema30 operation DDL for SQLite migration and the PostgreSQL baseline.
 // Initialization and compatibility checks live in operation-runtime.js.
 // Do not enable a write tool until those integrations and the first-party
 // human approval flow have been reviewed and tested together.
-export function operationSchema(dialect) {
+export function operationSchema(dialect, { media = true } = {}) {
   if (!['sqlite', 'postgres'].includes(dialect)) throw new TypeError('Unsupported database dialect.');
   const integer = dialect === 'postgres' ? 'BIGINT' : 'INTEGER';
   const strict = dialect === 'sqlite' ? ' STRICT' : '';
@@ -49,7 +50,7 @@ CREATE TABLE IF NOT EXISTS mcp_v2_operation (
   receipt_expires_at TEXT NOT NULL CHECK (receipt_expires_at > expires_at),
   redacted_at TEXT CHECK (redacted_at IS NULL OR redacted_at >= expires_at),
   result_json TEXT CHECK (result_json IS NULL OR (length(result_json) <= 65536 AND ${validObject('result_json')})),
-  CHECK ((redacted_at IS NULL AND envelope_json IS NOT NULL) OR
+${media ? `  media_policy_id TEXT CHECK (media_policy_id IS NULL OR (${mediaPolicyCheck('media_policy_id')})),\n` : ''}  CHECK ((redacted_at IS NULL AND envelope_json IS NOT NULL) OR
     (redacted_at IS NOT NULL AND envelope_json IS NULL AND state IN ('COMMITTED','REJECTED','EXPIRED','CANCELLED','CONFLICT','FAILED'))),
   UNIQUE (tenant_id, account_id, client_id, idempotency_hash)
 )${strict};

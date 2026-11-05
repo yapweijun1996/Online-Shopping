@@ -327,7 +327,7 @@ CREATE TABLE ai_studio_image (
  created_by TEXT NOT NULL, created_at TEXT NOT NULL
 );
 CREATE INDEX ai_studio_image_product ON ai_studio_image(product_id);
-INSERT INTO schema_meta VALUES (1, 30);
+INSERT INTO schema_meta VALUES (1, 31);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 INSERT INTO shop_setup(id, mode, shop_name) VALUES (1, NULL, 'Online Shopping');
@@ -460,7 +460,7 @@ CREATE TABLE ai_suggestion_audit (
  action TEXT NOT NULL DEFAULT 'SUGGEST' CHECK (action IN ('SUGGEST','SETTINGS_UPDATED'))
 );
 
--- MCP v2 durable operation storage, including self-contained compatibility metadata.
+-- MCP v2 durable operation and media storage; no tool authority.
 
 CREATE TABLE IF NOT EXISTS mcp_v2_authorization_request (
   request_id TEXT PRIMARY KEY REFERENCES oauth_authorization_request(id) ON DELETE CASCADE,
@@ -493,6 +493,7 @@ CREATE TABLE IF NOT EXISTS mcp_v2_operation (
   receipt_expires_at TEXT NOT NULL CHECK (receipt_expires_at > expires_at),
   redacted_at TEXT CHECK (redacted_at IS NULL OR redacted_at >= expires_at),
   result_json TEXT CHECK (result_json IS NULL OR (length(result_json) <= 65536 AND jsonb_typeof(result_json::jsonb) = 'object')),
+  media_policy_id TEXT CHECK (media_policy_id IS NULL OR (media_policy_id IN ('media-upload-v1','media-layout-v1','catalog-media-v1'))),
   CHECK ((redacted_at IS NULL AND envelope_json IS NOT NULL) OR
     (redacted_at IS NOT NULL AND envelope_json IS NULL AND state IN ('COMMITTED','REJECTED','EXPIRED','CANCELLED','CONFLICT','FAILED'))),
   UNIQUE (tenant_id, account_id, client_id, idempotency_hash)
@@ -530,13 +531,140 @@ CREATE TABLE IF NOT EXISTS mcp_v2_event (
 CREATE INDEX IF NOT EXISTS mcp_v2_event_time ON mcp_v2_event(at);
 CREATE INDEX IF NOT EXISTS mcp_v2_event_operation ON mcp_v2_event(operation_id, at);
 
+CREATE TABLE mcp_v2_operation_media_policy (
+  operation_id TEXT PRIMARY KEY REFERENCES mcp_v2_operation(id) ON DELETE RESTRICT,
+  policy_id TEXT NOT NULL CHECK (policy_id IN ('media-upload-v1','media-layout-v1','catalog-media-v1')), required_scopes TEXT NOT NULL,
+  descriptor_hash TEXT NOT NULL CHECK (length(descriptor_hash) = 64 AND descriptor_hash ~ '^[0-9a-f]{64}$'), manifest_root TEXT NOT NULL CHECK (length(manifest_root) = 64 AND manifest_root ~ '^[0-9a-f]{64}$'), graph_revision TEXT NOT NULL CHECK (length(graph_revision) = 64 AND graph_revision ~ '^[0-9a-f]{64}$'), codec_digest TEXT NOT NULL CHECK (length(codec_digest) = 64 AND codec_digest ~ '^[0-9a-f]{64}$'),
+  page_count BIGINT NOT NULL CHECK (page_count >= 1 AND page_count <= 16),
+  asset_count BIGINT NOT NULL CHECK (asset_count >= 0 AND asset_count <= 42),
+  effect_count BIGINT NOT NULL CHECK (effect_count >= 1 AND effect_count <= 512),
+  created_at TEXT NOT NULL CHECK (length(created_at) = 24 AND created_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'), expires_at TEXT NOT NULL CHECK (length(expires_at) = 24 AND expires_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'), CHECK (expires_at > created_at),
+  CHECK ((policy_id IN ('media-upload-v1','media-layout-v1') AND required_scopes = 'media.write') OR
+    (policy_id = 'catalog-media-v1' AND required_scopes = 'catalog.write media.write'))
+);
+CREATE INDEX mcp_v2_media_policy_root ON mcp_v2_operation_media_policy(manifest_root);
+CREATE TABLE mcp_v2_media_quota (
+  tenant_id TEXT NOT NULL CHECK (length(tenant_id) >= 1 AND length(tenant_id) <= 100),
+  kind TEXT NOT NULL CHECK (kind IN ('TENANT','CLIENT')), owner_key TEXT NOT NULL,
+  reserved_bytes BIGINT NOT NULL CHECK (reserved_bytes >= 0), active_slots BIGINT NOT NULL CHECK (active_slots >= 0),
+  PRIMARY KEY (tenant_id,kind,owner_key),
+  CHECK ((kind = 'TENANT' AND owner_key = 'tenant' AND reserved_bytes <= 33554432 AND active_slots <= 24) OR
+    (kind = 'CLIENT' AND length(owner_key) = 64 AND owner_key ~ '^[0-9a-f]{64}$' AND reserved_bytes <= 16777216 AND active_slots <= 12))
+);
+CREATE TABLE mcp_v2_media_stage (
+  id TEXT PRIMARY KEY CHECK (length(id) = 36 AND substr(id,9,1) = '-' AND substr(id,14,1) = '-' AND substr(id,19,1) = '-' AND substr(id,24,1) = '-' AND length(replace(id,'-','')) = 32 AND replace(id,'-','') ~ '^[0-9a-f]{32}$'), tenant_id TEXT NOT NULL CHECK (length(tenant_id) >= 1 AND length(tenant_id) <= 100),
+  tenant_revision BIGINT NOT NULL CHECK (tenant_revision >= 0), account_id TEXT NOT NULL CHECK (length(account_id) >= 1 AND length(account_id) <= 128), client_id TEXT NOT NULL CHECK (length(client_id) >= 1 AND length(client_id) <= 128), grant_id TEXT NOT NULL CHECK (length(grant_id) >= 1 AND length(grant_id) <= 128),
+  account_auth_version BIGINT NOT NULL CHECK (account_auth_version >= 0), epoch_hash TEXT NOT NULL CHECK (length(epoch_hash) = 64 AND epoch_hash ~ '^[0-9a-f]{64}$'), build_digest TEXT NOT NULL CHECK (length(build_digest) = 64 AND build_digest ~ '^[0-9a-f]{64}$'),
+  issuer TEXT NOT NULL CHECK (length(issuer) >= 1 AND length(issuer) <= 8192), resource TEXT NOT NULL CHECK (length(resource) >= 1 AND length(resource) <= 8192),
+  product_id TEXT NOT NULL CHECK (length(product_id) = 36 AND substr(product_id,9,1) = '-' AND substr(product_id,14,1) = '-' AND substr(product_id,19,1) = '-' AND substr(product_id,24,1) = '-' AND length(replace(product_id,'-','')) = 32 AND replace(product_id,'-','') ~ '^[0-9a-f]{32}$'), target_slot TEXT NOT NULL CHECK (target_slot IN ('MAIN','GALLERY')), expected_revision TEXT NOT NULL CHECK (length(expected_revision) = 64 AND expected_revision ~ '^[0-9a-f]{64}$'),
+  begin_request_hash TEXT NOT NULL CHECK (length(begin_request_hash) = 64 AND begin_request_hash ~ '^[0-9a-f]{64}$'), idempotency_hash TEXT NOT NULL CHECK (length(idempotency_hash) = 64 AND idempotency_hash ~ '^[0-9a-f]{64}$'), source_sha256 TEXT NOT NULL CHECK (length(source_sha256) = 64 AND source_sha256 ~ '^[0-9a-f]{64}$'), codec_digest TEXT NOT NULL CHECK (length(codec_digest) = 64 AND codec_digest ~ '^[0-9a-f]{64}$'),
+  source_mime TEXT NOT NULL CHECK (source_mime IN ('image/png','image/jpeg','image/webp')),
+  declared_bytes BIGINT NOT NULL CHECK (declared_bytes >= 1 AND declared_bytes <= 524288),
+  next_offset BIGINT NOT NULL CHECK (next_offset >= 0 AND next_offset <= declared_bytes),
+  reserved_bytes BIGINT NOT NULL CHECK (reserved_bytes = declared_bytes + 606208 OR reserved_bytes = 0), quota_owner_key TEXT NOT NULL CHECK (length(quota_owner_key) = 64 AND quota_owner_key ~ '^[0-9a-f]{64}$'),
+  state TEXT NOT NULL CHECK (state IN ('UPLOADING','VALIDATING','BOUND','CONSUMED','FAILED','EXPIRED','CANCELLED')),
+  version BIGINT NOT NULL CHECK (version >= 0), validation_attempts BIGINT NOT NULL CHECK (validation_attempts >= 0 AND validation_attempts <= 2),
+  lease_hash TEXT CHECK (lease_hash IS NULL OR (length(lease_hash) = 64 AND lease_hash ~ '^[0-9a-f]{64}$')), lease_until TEXT CHECK (lease_until IS NULL OR (length(lease_until) = 24 AND lease_until ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$')),
+  operation_id TEXT CHECK (operation_id IS NULL OR (length(operation_id) = 36 AND substr(operation_id,9,1) = '-' AND substr(operation_id,14,1) = '-' AND substr(operation_id,19,1) = '-' AND substr(operation_id,24,1) = '-' AND length(replace(operation_id,'-','')) = 32 AND replace(operation_id,'-','') ~ '^[0-9a-f]{32}$')), correlation_id TEXT NOT NULL CHECK (length(correlation_id) = 36 AND substr(correlation_id,9,1) = '-' AND substr(correlation_id,14,1) = '-' AND substr(correlation_id,19,1) = '-' AND substr(correlation_id,24,1) = '-' AND length(replace(correlation_id,'-','')) = 32 AND replace(correlation_id,'-','') ~ '^[0-9a-f]{32}$'),
+  canonical_data BYTEA, canonical_sha256 TEXT, canonical_bytes BIGINT, canonical_mime TEXT, width BIGINT, height BIGINT,
+  thumbnail_data BYTEA, thumbnail_sha256 TEXT, thumbnail_bytes BIGINT,
+  created_at TEXT NOT NULL CHECK (length(created_at) = 24 AND created_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'), upload_expires_at TEXT NOT NULL CHECK (length(upload_expires_at) = 24 AND upload_expires_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'), absolute_expires_at TEXT NOT NULL CHECK (length(absolute_expires_at) = 24 AND absolute_expires_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'), receipt_expires_at TEXT NOT NULL CHECK (length(receipt_expires_at) = 24 AND receipt_expires_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'),
+  bound_expires_at TEXT CHECK (bound_expires_at IS NULL OR (length(bound_expires_at) = 24 AND bound_expires_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$')),
+  scrubbed_at TEXT CHECK (scrubbed_at IS NULL OR (length(scrubbed_at) = 24 AND scrubbed_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$')), terminal_at TEXT CHECK (terminal_at IS NULL OR (length(terminal_at) = 24 AND terminal_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$')),
+  UNIQUE (tenant_id,account_id,client_id,grant_id,idempotency_hash),
+  CHECK (upload_expires_at > created_at AND absolute_expires_at > upload_expires_at AND receipt_expires_at > absolute_expires_at),
+  CHECK ((state = 'VALIDATING' AND lease_hash IS NOT NULL AND lease_until IS NOT NULL AND lease_until <= upload_expires_at AND next_offset = declared_bytes) OR
+    (state <> 'VALIDATING' AND lease_hash IS NULL AND lease_until IS NULL)),
+  CHECK ((state IN ('UPLOADING','VALIDATING','BOUND') AND terminal_at IS NULL) OR (state IN ('CONSUMED','FAILED','EXPIRED','CANCELLED') AND terminal_at IS NOT NULL)),
+  CHECK ((reserved_bytes > 0 AND scrubbed_at IS NULL) OR (reserved_bytes = 0 AND scrubbed_at IS NOT NULL AND state IN ('CONSUMED','FAILED','EXPIRED','CANCELLED'))),
+  CHECK ((operation_id IS NULL AND bound_expires_at IS NULL) OR (operation_id IS NOT NULL AND bound_expires_at IS NOT NULL AND bound_expires_at > created_at AND bound_expires_at <= absolute_expires_at)),
+  CHECK ((state = 'BOUND' AND operation_id IS NOT NULL AND next_offset = declared_bytes AND canonical_data IS NOT NULL AND canonical_sha256 IS NOT NULL AND canonical_bytes IS NOT NULL
+    AND canonical_mime IS NOT NULL AND width IS NOT NULL AND height IS NOT NULL AND thumbnail_data IS NOT NULL AND thumbnail_sha256 IS NOT NULL AND thumbnail_bytes IS NOT NULL
+    AND length(canonical_sha256) = 64 AND canonical_sha256 ~ '^[0-9a-f]{64}$' AND length(thumbnail_sha256) = 64 AND thumbnail_sha256 ~ '^[0-9a-f]{64}$' AND canonical_mime = source_mime
+    AND canonical_bytes >= 1 AND canonical_bytes <= 524288 AND octet_length(canonical_data) = canonical_bytes
+    AND thumbnail_bytes >= 1 AND thumbnail_bytes <= 81920 AND octet_length(thumbnail_data) = thumbnail_bytes
+    AND width >= 1 AND width <= 8192 AND height >= 1 AND height <= 8192 AND width * height <= 4194304) OR
+    (state <> 'BOUND' AND canonical_data IS NULL AND canonical_sha256 IS NULL AND canonical_bytes IS NULL AND canonical_mime IS NULL
+      AND width IS NULL AND height IS NULL AND thumbnail_data IS NULL AND thumbnail_sha256 IS NULL AND thumbnail_bytes IS NULL))
+);
+CREATE INDEX mcp_v2_media_stage_owner ON mcp_v2_media_stage(tenant_id,account_id,client_id,state,upload_expires_at,id);
+CREATE INDEX mcp_v2_media_stage_lease ON mcp_v2_media_stage(state,lease_until,id);
+CREATE INDEX mcp_v2_media_stage_expiry ON mcp_v2_media_stage(absolute_expires_at,id);
+CREATE INDEX mcp_v2_media_stage_quota ON mcp_v2_media_stage(tenant_id,quota_owner_key) WHERE reserved_bytes > 0;
+CREATE INDEX mcp_v2_media_stage_product ON mcp_v2_media_stage(product_id,id);
+CREATE TABLE mcp_v2_media_chunk (
+  stage_id TEXT NOT NULL REFERENCES mcp_v2_media_stage(id) ON DELETE RESTRICT, "offset" BIGINT NOT NULL CHECK ("offset" >= 0),
+  byte_length BIGINT NOT NULL CHECK (byte_length >= 1 AND byte_length <= 36864), sha256 TEXT NOT NULL CHECK (length(sha256) = 64 AND sha256 ~ '^[0-9a-f]{64}$'), data BYTEA NOT NULL,
+  PRIMARY KEY (stage_id,"offset"), CHECK (octet_length(data) = byte_length)
+);
+CREATE TABLE mcp_v2_media_pin (
+  stage_id TEXT PRIMARY KEY REFERENCES mcp_v2_media_stage(id) ON DELETE RESTRICT,
+  operation_id TEXT NOT NULL REFERENCES mcp_v2_operation(id) ON DELETE RESTRICT,
+  canonical_sha256 TEXT NOT NULL CHECK (length(canonical_sha256) = 64 AND canonical_sha256 ~ '^[0-9a-f]{64}$'), codec_digest TEXT NOT NULL CHECK (length(codec_digest) = 64 AND codec_digest ~ '^[0-9a-f]{64}$'), created_at TEXT NOT NULL CHECK (length(created_at) = 24 AND created_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'), expires_at TEXT NOT NULL CHECK (length(expires_at) = 24 AND expires_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'), CHECK (expires_at > created_at),
+  UNIQUE (stage_id,operation_id)
+);
+CREATE INDEX mcp_v2_media_pin_operation ON mcp_v2_media_pin(operation_id);
+CREATE TABLE mcp_v2_media_manifest_page (
+  operation_id TEXT NOT NULL REFERENCES mcp_v2_operation(id) ON DELETE RESTRICT,
+  page_index BIGINT NOT NULL CHECK (page_index >= 0 AND page_index <= 15),
+  page_json TEXT NOT NULL CHECK (octet_length(page_json) >= 2 AND octet_length(page_json) <= 16384 AND jsonb_typeof(page_json::jsonb) = 'object'),
+  page_hash TEXT NOT NULL CHECK (length(page_hash) = 64 AND page_hash ~ '^[0-9a-f]{64}$'), record_count BIGINT NOT NULL CHECK (record_count >= 1 AND record_count <= 32), created_at TEXT NOT NULL CHECK (length(created_at) = 24 AND created_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'),
+  PRIMARY KEY (operation_id,page_index)
+);
+CREATE TABLE mcp_v2_media_asset_ref (
+  operation_id TEXT NOT NULL REFERENCES mcp_v2_operation(id) ON DELETE RESTRICT, asset_key TEXT NOT NULL CHECK (length(asset_key) = 64 AND asset_key ~ '^[0-9a-f]{64}$'), byte_sha256 TEXT NOT NULL CHECK (length(byte_sha256) = 64 AND byte_sha256 ~ '^[0-9a-f]{64}$'),
+  mime TEXT NOT NULL CHECK (mime IN ('image/png','image/jpeg','image/webp')),
+  byte_length BIGINT NOT NULL CHECK (byte_length >= 1 AND byte_length <= 524288),
+  source_kind TEXT NOT NULL CHECK (source_kind IN ('PRODUCT_MAIN','GALLERY','STAGE')), source_id TEXT NOT NULL CHECK (length(source_id) = 36 AND substr(source_id,9,1) = '-' AND substr(source_id,14,1) = '-' AND substr(source_id,19,1) = '-' AND substr(source_id,24,1) = '-' AND length(replace(source_id,'-','')) = 32 AND replace(source_id,'-','') ~ '^[0-9a-f]{32}$'), source_product_id TEXT NOT NULL CHECK (length(source_product_id) = 36 AND substr(source_product_id,9,1) = '-' AND substr(source_product_id,14,1) = '-' AND substr(source_product_id,19,1) = '-' AND substr(source_product_id,24,1) = '-' AND length(replace(source_product_id,'-','')) = 32 AND replace(source_product_id,'-','') ~ '^[0-9a-f]{32}$'), stage_id TEXT,
+  before_needed BIGINT NOT NULL CHECK (before_needed IN (0,1)), after_needed BIGINT NOT NULL CHECK (after_needed IN (0,1)),
+  CHECK (before_needed = 1 OR after_needed = 1),
+  CHECK ((source_kind = 'STAGE' AND stage_id IS NOT NULL AND stage_id = source_id) OR (source_kind <> 'STAGE' AND stage_id IS NULL)),
+  PRIMARY KEY (operation_id,asset_key), FOREIGN KEY (stage_id,operation_id) REFERENCES mcp_v2_media_pin(stage_id,operation_id) ON DELETE RESTRICT
+);
+CREATE INDEX mcp_v2_media_asset_stage ON mcp_v2_media_asset_ref(stage_id,operation_id);
+CREATE TABLE mcp_v2_media_delivery (
+  challenge_id TEXT NOT NULL REFERENCES mcp_v2_approval_challenge(id) ON DELETE RESTRICT,
+  operation_id TEXT NOT NULL REFERENCES mcp_v2_operation(id) ON DELETE RESTRICT,
+  kind TEXT NOT NULL CHECK (kind IN ('PAGE','ASSET')), item_key TEXT NOT NULL CHECK (length(item_key) >= 1 AND length(item_key) <= 64),
+  manifest_root TEXT NOT NULL CHECK (length(manifest_root) = 64 AND manifest_root ~ '^[0-9a-f]{64}$'), expected_hash TEXT NOT NULL CHECK (length(expected_hash) = 64 AND expected_hash ~ '^[0-9a-f]{64}$'), nonce_hash TEXT NOT NULL CHECK (length(nonce_hash) = 64 AND nonce_hash ~ '^[0-9a-f]{64}$'), issued_at TEXT NOT NULL CHECK (length(issued_at) = 24 AND issued_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'), expires_at TEXT NOT NULL CHECK (length(expires_at) = 24 AND expires_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'),
+  ack_at TEXT CHECK (ack_at IS NULL OR (length(ack_at) = 24 AND ack_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$')), page_index BIGINT, asset_key TEXT,
+  CHECK (expires_at > issued_at AND (ack_at IS NULL OR (ack_at >= issued_at AND ack_at <= expires_at))),
+  CHECK ((kind = 'PAGE' AND page_index IS NOT NULL AND page_index >= 0 AND page_index <= 15 AND asset_key IS NULL AND item_key = CAST(page_index AS TEXT)) OR
+    (kind = 'ASSET' AND asset_key IS NOT NULL AND length(asset_key) = 64 AND asset_key ~ '^[0-9a-f]{64}$' AND item_key = asset_key AND page_index IS NULL)),
+  PRIMARY KEY (challenge_id,kind,item_key),
+  FOREIGN KEY (operation_id,page_index) REFERENCES mcp_v2_media_manifest_page(operation_id,page_index) ON DELETE RESTRICT,
+  FOREIGN KEY (operation_id,asset_key) REFERENCES mcp_v2_media_asset_ref(operation_id,asset_key) ON DELETE RESTRICT
+);
+CREATE INDEX mcp_v2_media_delivery_expiry ON mcp_v2_media_delivery(expires_at,challenge_id);
+CREATE TABLE mcp_v2_media_approval_evidence (
+  operation_id TEXT PRIMARY KEY REFERENCES mcp_v2_operation(id) ON DELETE RESTRICT,
+  challenge_id TEXT NOT NULL REFERENCES mcp_v2_approval_challenge(id) ON DELETE RESTRICT,
+  manifest_root TEXT NOT NULL CHECK (length(manifest_root) = 64 AND manifest_root ~ '^[0-9a-f]{64}$'), descriptor_hash TEXT NOT NULL CHECK (length(descriptor_hash) = 64 AND descriptor_hash ~ '^[0-9a-f]{64}$'), approver_id TEXT NOT NULL CHECK (length(approver_id) >= 1 AND length(approver_id) <= 128), session_hash TEXT NOT NULL CHECK (length(session_hash) = 64 AND session_hash ~ '^[0-9a-f]{64}$'),
+  account_auth_version BIGINT NOT NULL CHECK (account_auth_version >= 0), epoch_hash TEXT NOT NULL CHECK (length(epoch_hash) = 64 AND epoch_hash ~ '^[0-9a-f]{64}$'), build_digest TEXT NOT NULL CHECK (length(build_digest) = 64 AND build_digest ~ '^[0-9a-f]{64}$'),
+  tenant_revision BIGINT NOT NULL CHECK (tenant_revision >= 0), policy_id TEXT NOT NULL CHECK (policy_id IN ('media-upload-v1','media-layout-v1','catalog-media-v1')),
+  approved_at TEXT NOT NULL CHECK (length(approved_at) = 24 AND approved_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'), expires_at TEXT NOT NULL CHECK (length(expires_at) = 24 AND expires_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'), acknowledged_at TEXT NOT NULL CHECK (length(acknowledged_at) = 24 AND acknowledged_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'),
+  CHECK (expires_at > approved_at AND acknowledged_at <= approved_at),
+  FOREIGN KEY (operation_id) REFERENCES mcp_v2_approval(operation_id) ON DELETE RESTRICT
+);
+CREATE TABLE mcp_v2_media_event (
+  id TEXT PRIMARY KEY CHECK (length(id) = 36 AND substr(id,9,1) = '-' AND substr(id,14,1) = '-' AND substr(id,19,1) = '-' AND substr(id,24,1) = '-' AND length(replace(id,'-','')) = 32 AND replace(id,'-','') ~ '^[0-9a-f]{32}$'), at TEXT NOT NULL CHECK (length(at) = 24 AND at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'), tenant_id TEXT NOT NULL, account_id TEXT NOT NULL, client_id TEXT NOT NULL,
+  grant_id TEXT NOT NULL, stage_id TEXT NOT NULL CHECK (length(stage_id) = 36 AND substr(stage_id,9,1) = '-' AND substr(stage_id,14,1) = '-' AND substr(stage_id,19,1) = '-' AND substr(stage_id,24,1) = '-' AND length(replace(stage_id,'-','')) = 32 AND replace(stage_id,'-','') ~ '^[0-9a-f]{32}$'), correlation_id TEXT NOT NULL CHECK (length(correlation_id) = 36 AND substr(correlation_id,9,1) = '-' AND substr(correlation_id,14,1) = '-' AND substr(correlation_id,19,1) = '-' AND substr(correlation_id,24,1) = '-' AND length(replace(correlation_id,'-','')) = 32 AND replace(correlation_id,'-','') ~ '^[0-9a-f]{32}$'),
+  event TEXT NOT NULL CHECK (event IN ('BEGIN','APPEND','VALIDATE','BOUND','CONSUME','EXPIRE','CANCEL','FAIL','DENY')),
+  outcome TEXT NOT NULL CHECK (length(outcome) >= 1 AND length(outcome) <= 80 AND outcome ~ '^[A-Z][A-Z0-9_]*$'),
+  byte_count BIGINT NOT NULL CHECK (byte_count >= 0 AND byte_count <= 524288),
+  tool_name TEXT CHECK (tool_name IS NULL OR tool_name IN ('media.prepare_upload','media.commit_upload','media.preview_layout','media.commit_layout')),
+  operation_id TEXT CHECK (operation_id IS NULL OR (length(operation_id) = 36 AND substr(operation_id,9,1) = '-' AND substr(operation_id,14,1) = '-' AND substr(operation_id,19,1) = '-' AND substr(operation_id,24,1) = '-' AND length(replace(operation_id,'-','')) = 32 AND replace(operation_id,'-','') ~ '^[0-9a-f]{32}$'))
+);
+CREATE INDEX mcp_v2_media_event_time ON mcp_v2_media_event(at,id);
+CREATE INDEX mcp_v2_media_event_stage ON mcp_v2_media_event(stage_id,at,id);
+
 CREATE TABLE mcp_v2_schema (
-      id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL CHECK (version = 1),
+      id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL CHECK (version = 2),
       ddl_digest TEXT NOT NULL CHECK (length(ddl_digest) = 64),
       manifest_digest TEXT NOT NULL CHECK (length(manifest_digest) = 64)
     );
 INSERT INTO mcp_v2_schema(id, version, ddl_digest, manifest_digest)
-    VALUES (1, 1, '5deabb4f780c68580da9f23d85e2c80a33d1ce7ea194b39cf4567e6adc01ce6b', (SELECT encode(sha256(convert_to(jsonb_build_object(
+    VALUES (1, 2, '2f7c3b22af36e53b018686388ceae1624a2d20d1504002cd6b5fd075c043089b', (SELECT encode(sha256(convert_to(jsonb_build_object(
     'tables', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY table_name, ordinal_position) FROM (
       SELECT table_name, column_name, ordinal_position, data_type, is_nullable, column_default
       FROM information_schema.columns WHERE table_schema = 'public' AND table_name LIKE 'mcp!_v2!_%' ESCAPE '!'

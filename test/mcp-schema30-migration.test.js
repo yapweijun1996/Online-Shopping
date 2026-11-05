@@ -7,13 +7,14 @@ import { openDatabase, migrateStore, SCHEMA_VERSION } from '../src/db.js';
 import { openPostgresDatabase } from '../src/postgres-db.js';
 import { upgradePostgres } from '../src/postgres/upgrade.js';
 import { operationSchema } from '../src/mcp/operation-schema.js';
-import { operationStorageMetaSchema, operationStorageSeedSql, operationStorageReady } from '../src/mcp/operation-runtime.js';
+import { operationStorageMetaSchema, operationStorageSeedSql, operationStorageReady, operationStorageDdl } from '../src/mcp/operation-runtime.js';
 import { postgresSchema12Sql } from '../deploy/postgres/schema12.js';
 import { senderFields } from '../src/sender-settings.js';
 
 const base = process.env.SHOP_TEST_DATABASE_URL;
 if (base && (process.env.NODE_ENV !== 'test' || !/test/i.test(new URL(base).pathname))) throw new Error('Disposable PostgreSQL test database required.');
-const tables = ['mcp_v2_authorization_request', 'mcp_v2_scope_consent', 'mcp_v2_approval_challenge', 'mcp_v2_approval', 'mcp_v2_event', 'mcp_v2_operation', 'mcp_v2_schema'];
+import { MEDIA_STORAGE_TABLES } from '../src/mcp/media-schema.js';
+const tables = [...MEDIA_STORAGE_TABLES.toReversed(), 'mcp_v2_authorization_request', 'mcp_v2_scope_consent', 'mcp_v2_approval_challenge', 'mcp_v2_approval', 'mcp_v2_event', 'mcp_v2_operation', 'mcp_v2_schema'];
 async function removeOperations(store) {
   for (const table of tables) await store.exec(`DROP TABLE ${table}`);
   await store.setSchemaVersion(29);
@@ -31,8 +32,8 @@ const admin = ['synthetic_owner', 'synthetic-historical-hash', '2026-11-01T00:00
 
 test('fresh PostgreSQL baseline embeds exact shared operation DDL and self-contained metadata SQL', () => {
   const sql = readFileSync(new URL('../src/postgres/schema.sql', import.meta.url), 'utf8');
-  assert.ok(sql.endsWith(operationSchema('postgres') + '\n' + operationStorageMetaSchema('postgres') + '\n' + operationStorageSeedSql() + '\n'));
-  assert.match(sql, /INSERT INTO schema_meta VALUES \(1, 30\)/);
+  assert.ok(sql.endsWith(operationStorageDdl('postgres') + '\n' + operationStorageMetaSchema('postgres') + '\n' + operationStorageSeedSql() + '\n'));
+  assert.match(sql, /INSERT INTO schema_meta VALUES \(1, 31\)/);
 });
 
 test('SQLite29 to30 migration preserves historical rows, rolls back final DDL failure and is repeatable', async (t) => {
@@ -81,7 +82,7 @@ async function sourceVersionFixture(store, version) {
 }
 
 for (const version of Array.from({ length: 20 }, (_, index) => index + 10)) {
-  test(`PostgreSQL source-version${version} reaches30 with matching operation schema and final-step rollback`, { skip: !base }, async (t) => {
+  test(`PostgreSQL source-version${version} reaches31 with matching operation schema and final-step rollback`, { skip: !base }, async (t) => {
     const { store, url } = await postgresFixture(t);
     const expectedManifest = (await store.get('SELECT manifest_digest FROM mcp_v2_schema WHERE id = 1')).manifest_digest;
     await sourceVersionFixture(store, version);
@@ -97,7 +98,7 @@ for (const version of Array.from({ length: 20 }, (_, index) => index + 10)) {
     assert.equal((await store.get("SELECT to_regclass('public.mcp_v2_schema') AS name")).name, null);
     const upgraded = await openPostgresDatabase(url, { allowUpgrade: true });
     try {
-      assert.equal(await upgraded.schemaVersion(), 30);
+      assert.equal(await upgraded.schemaVersion(), 31);
       assert.equal(await operationStorageReady(upgraded), true);
       assert.equal((await upgraded.get('SELECT manifest_digest FROM mcp_v2_schema WHERE id = 1')).manifest_digest, expectedManifest);
       assert.deepEqual(await upgraded.get('SELECT * FROM admin'), before);

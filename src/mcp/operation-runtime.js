@@ -4,11 +4,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { operationEpochHash } from './operation-epoch.js';
 import { operationSchema } from './operation-schema.js';
+import { mediaSchema, MEDIA_STORAGE_TABLES, mediaPolicyCheck } from './media-schema.js';
 
-export const OPERATION_STORAGE_VERSION = 1;
+export const OPERATION_STORAGE_VERSION = 2;
 export const OPERATION_STORAGE_TABLES = Object.freeze([
   'mcp_v2_authorization_request', 'mcp_v2_scope_consent', 'mcp_v2_operation',
-  'mcp_v2_approval_challenge', 'mcp_v2_approval', 'mcp_v2_event',
+  'mcp_v2_approval_challenge', 'mcp_v2_approval', 'mcp_v2_event', ...MEDIA_STORAGE_TABLES,
 ]);
 export const OPERATION_STORAGE_META = 'mcp_v2_schema';
 const sourceRoot = fileURLToPath(new URL('../../', import.meta.url));
@@ -108,10 +109,11 @@ export function operationStorageManifestSql() {
 const manifestDigest = async (store) => store.dialect === 'postgres'
   ? (await store.get(operationStorageManifestSql())).digest
   : sha256(JSON.stringify(await extensionObjects(store)));
-const ddlDigest = (store) => sha256(operationSchema(store.dialect));
+export const operationStorageDdl = dialect => operationSchema(dialect) + mediaSchema(dialect);
+const ddlDigest = (store) => sha256(operationStorageDdl(store.dialect));
 
 async function assertStorage(store) {
-  if (![29, 30].includes(await store.schemaVersion())) throw new Error('MCP v2 storage requires base schema 29 or 30.');
+  if (![29, 30, 31].includes(await store.schemaVersion())) throw new Error('MCP v2 storage requires base schema 29, 30 or 31.');
   const meta = await store.get('SELECT version, ddl_digest, manifest_digest FROM mcp_v2_schema WHERE id = 1');
   if (!meta || meta.version !== OPERATION_STORAGE_VERSION || meta.ddl_digest !== ddlDigest(store) ||
       meta.manifest_digest !== await manifestDigest(store)) throw new Error('Incompatible MCP v2 storage extension.');
@@ -119,13 +121,13 @@ async function assertStorage(store) {
 }
 
 export async function operationStorageReady(store) {
-  try { if (await store.schemaVersion() !== 30) return false; await assertStorage(store); return true; } catch { return false; }
+  try { if (await store.schemaVersion() !== 31) return false; await assertStorage(store); return true; } catch { return false; }
 }
 
 export function operationStorageMetaSchema(dialect) {
   if (!['sqlite', 'postgres'].includes(dialect)) throw new TypeError('Unsupported database dialect.');
   return `CREATE TABLE mcp_v2_schema (
-      id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL CHECK (version = 1),
+      id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL CHECK (version = 2),
       ddl_digest TEXT NOT NULL CHECK (length(ddl_digest) = 64),
       manifest_digest TEXT NOT NULL CHECK (length(manifest_digest) = 64)
     )${dialect === 'sqlite' ? ' STRICT' : ''};`;
@@ -133,7 +135,7 @@ export function operationStorageMetaSchema(dialect) {
 
 export function operationStorageSeedSql() {
   return `INSERT INTO mcp_v2_schema(id, version, ddl_digest, manifest_digest)
-    VALUES (1, ${OPERATION_STORAGE_VERSION}, '${sha256(operationSchema('postgres'))}', (${operationStorageManifestSql()}));`;
+    VALUES (1, ${OPERATION_STORAGE_VERSION}, '${sha256(operationStorageDdl('postgres'))}', (${operationStorageManifestSql()}));`;
 }
 
 async function writeStorageMetadata(store) {
@@ -145,7 +147,7 @@ async function writeStorageMetadata(store) {
 // The fresh SQL baseline initializes its metadata itself so direct SQL bootstrap
 // and the JS loader have identical behavior. The loader verifies before commit.
 export async function initializeFreshOperationStorage(store) {
-  if (store.dialect !== 'postgres' || await store.schemaVersion() !== 30) throw new Error('Expected a fresh PostgreSQL schema 30.');
+  if (store.dialect !== 'postgres' || await store.schemaVersion() !== 31) throw new Error('Expected a fresh PostgreSQL schema 31.');
   await assertStorage(store);
 }
 
@@ -155,7 +157,7 @@ export async function initializeOperationStorage(store, options) {
   if (options === undefined || options?.enabled === false) return false;
   if (options?.enabled !== true) throw new TypeError('Explicit MCP v2 storage opt-in is required.');
   return store.transaction(async () => {
-    if (![29, 30].includes(await store.schemaVersion())) throw new Error('MCP v2 storage requires base schema 29 or 30.');
+    if (![29, 30, 31].includes(await store.schemaVersion())) throw new Error('MCP v2 storage requires base schema 29, 30 or 31.');
     const exists = store.dialect === 'sqlite'
       ? Boolean(await store.get("SELECT name FROM sqlite_schema WHERE name = 'mcp_v2_schema'"))
       : store.dialect === 'postgres' && Boolean((await store.get("SELECT to_regclass('public.mcp_v2_schema') AS name")).name);
@@ -164,9 +166,24 @@ export async function initializeOperationStorage(store, options) {
     if (store.dialect === 'sqlite' ? objects.length : objects.tables.length || objects.constraints.length || objects.indexes.length) {
       throw new Error('Unversioned MCP v2 storage must be reviewed before initialization.');
     }
-    await store.exec(operationSchema(store.dialect));
+    await store.exec(operationStorageDdl(store.dialect));
     await store.exec(operationStorageMetaSchema(store.dialect));
     await writeStorageMetadata(store);
     return true;
   });
+}
+
+// Explicit global30->31 migration only. Never adopt partial prototypes or let a
+// request silently upgrade an existing metadata version. Caller owns transaction.
+export async function upgradeMediaStorage(store) {
+  if (await store.schemaVersion() !== 30) throw new Error('Media storage migration requires schema30.');
+  const meta = await store.get('SELECT version, ddl_digest, manifest_digest FROM mcp_v2_schema WHERE id = 1');
+  if (meta?.version === OPERATION_STORAGE_VERSION) { await assertStorage(store); return; }
+  if (!meta || meta.version !== 1 || meta.ddl_digest !== sha256(operationSchema(store.dialect, { media: false })) ||
+      meta.manifest_digest !== await manifestDigest(store)) throw new Error('Incompatible schema30 operation storage.');
+  await store.exec(`ALTER TABLE mcp_v2_operation ADD COLUMN media_policy_id TEXT CHECK (media_policy_id IS NULL OR (${mediaPolicyCheck('media_policy_id')}))`);
+  await store.exec(mediaSchema(store.dialect));
+  await store.exec('DROP TABLE mcp_v2_schema');
+  await store.exec(operationStorageMetaSchema(store.dialect));
+  await writeStorageMetadata(store);
 }
