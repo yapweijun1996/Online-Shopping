@@ -96,12 +96,14 @@ for (const engine of ['sqlite', 'postgres']) {
     const rotated = await f.refresh(legacy); assert.equal(rotated.data.scope, 'catalog.read');
     assert.equal((await f.rpc(rotated.data.access_token, 'tools/list')).data.result.tools.length, 5);
   });
-  test(`${engine}: fresh OAuth consent records exact v2 identity, scope and epoch without registering write tools`, options, async (t) => {
+  test(`${engine}: fresh OAuth consent records exact v2 identity and exposes only consented implemented tools`, options, async (t) => {
     const f = await fixture(t, engine), grant = await f.grant('catalog.read orders.read analytics.read catalog.write company.read inventory.adjust');
     assert.match(grant.staged.data, /Read access/); assert.match(grant.staged.data, /Changes to shop data/);
     assert.doesNotMatch(grant.staged.data, /value="(?:catalog.write|company.read|inventory.adjust)" checked/);
     assert.match(grant.staged.data, /Scope consent is not approval of an individual change/);
-    assert.equal((await f.rpc(grant.access_token, 'tools/list')).data.result.tools.length, 8);
+    const listed = (await f.rpc(grant.access_token, 'tools/list')).data.result.tools;
+    assert.equal(listed.length, 9);
+    assert.deepEqual(listed.slice(8).map((tool) => tool.name), ['company.get']);
     assert.equal((await f.rpc(grant.access_token, 'tools/call', { name: 'catalog.commit_create', arguments: {} })).data.error.code, -32602);
     const token = await f.store.get('SELECT * FROM oauth_token WHERE token_hash = ?', hash(grant.access_token));
     const evidence = await f.store.all('SELECT * FROM mcp_v2_scope_consent WHERE grant_id = ? ORDER BY scope', token.grant_id);

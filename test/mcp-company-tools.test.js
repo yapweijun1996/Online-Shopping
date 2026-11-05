@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { companyMutationTool, companyReadTool, companyRevision, getCompanyToolSnapshot, COMPANY_FIELDS } from '../src/mcp/company-tools.js';
 import { getCompanySettings, prepareCompanySettings, updateCompanySettings, createCategory } from '../src/settings.js';
@@ -11,7 +12,7 @@ import { operationEpochHash } from '../src/mcp/operation-epoch.js';
 import { reviewFixture, reviewPassword } from './helpers/mcp-review-fixture.js';
 
 async function fixture(t, dialect, options = {}) {
-  const f = await reviewFixture(t, dialect, { operationTools: [companyMutationTool()], ...options }); await f.seedGrant();
+  const f = await reviewFixture(t, dialect, { operationTools: [companyReadTool(), companyMutationTool()], ...options }); await f.seedGrant();
   const scopes = 'catalog.read orders.read analytics.read company.read company.write';
   await f.store.run('UPDATE oauth_grant SET scopes = ? WHERE id = ?', scopes, f.grantId);
   for (const scope of ['company.read', 'company.write']) await f.store.run(`INSERT INTO mcp_v2_scope_consent(grant_id,tenant_id,account_id,client_id,scope,account_auth_version,epoch_hash,consented_at)
@@ -39,6 +40,29 @@ async function fixture(t, dialect, options = {}) {
 const dto = (response) => response.data.result.structuredContent;
 for (const dialect of ['sqlite', 'postgres']) {
   const options = { skip: dialect === 'postgres' && !process.env.SHOP_TEST_DATABASE_URL };
+  test(`${dialect}: real company.get requires its explicit scope, OWNER role and successful redacted audit`, options, async (t) => {
+    const f = await fixture(t, dialect);
+    await updateCompanySettings(f.store, { senderName: 'PRIVATE Business Owner', senderAddressLine1: 'PRIVATE Business Address', sellerWhatsAppPhone: '+60123456789' });
+    const read = await f.tool('company.get', {}); assert.equal(read.response.status, 200);
+    const value = dto(read); assert.equal(value.company.senderAddressLine1, 'PRIVATE Business Address'); assert.equal(value.company.sellerWhatsAppPhone, '60123456789');
+    assert.match(value.company.revision, /^[0-9a-f]{64}$/); assert.deepEqual(Object.keys(value.company).sort(), [...COMPANY_FIELDS, 'revision'].sort());
+    assert.equal((await f.tool('company.get', { id: 'another' })).data.error.code, -32602);
+    const audit = await f.store.all("SELECT * FROM mcp_audit WHERE event = 'READ' AND outcome = 'company.get'"); assert.equal(audit.length, 1); assert.equal(audit[0].tool_name, null);
+    assert.doesNotMatch(JSON.stringify(audit), /PRIVATE|60123456789/);
+    const original = f.store.run;
+    f.store.run = async (sql, ...args) => { if (sql.includes('INSERT INTO mcp_audit') && args.includes('company.get')) throw new Error('Synthetic read audit failure.'); return original(sql, ...args); };
+    let failed; try { failed = await f.tool('company.get', {}); } finally { f.store.run = original; }
+    assert.equal(failed.data.error.code, -32603); assert.doesNotMatch(JSON.stringify(failed.data), /PRIVATE|60123456789/);
+    await f.store.run("UPDATE oauth_token SET scopes = 'company.write' WHERE token_hash = ?", hash(f.bearer));
+    assert.equal((await f.tool('company.get', {})).response.status, 403);
+    await f.store.run("UPDATE oauth_token SET scopes = 'company.read company.write' WHERE token_hash = ?", hash(f.bearer));
+    await f.store.run("UPDATE seller_account SET role = 'MANAGER' WHERE id = ?", f.account.id); assert.equal((await f.tool('company.get', {})).response.status, 403);
+    await f.store.run("UPDATE seller_account SET role = 'OWNER' WHERE id = ?", f.account.id);
+    await f.store.run("DELETE FROM mcp_v2_scope_consent WHERE grant_id = ? AND scope = 'company.read'", f.grantId);
+    assert.equal((await f.tool('company.get', {})).response.status, 403);
+    await f.store.run("UPDATE oauth_grant SET tenant_id = 'another-shop' WHERE id = ?", f.grantId);
+    const wrongTenant = await f.tool('company.get', {}); assert.equal(wrongTenant.response.status, 401); assert.doesNotMatch(JSON.stringify(wrongTenant.data), /PRIVATE|60123456789/);
+  });
   test(`${dialect}: shared settings preview normalizes without writes and leaves omitted fields unchanged`, options, async (t) => {
     const f = await fixture(t, dialect);
     await updateCompanySettings(f.store, { senderName: 'PRIVATE Existing Sender', senderAddressLine1: 'PRIVATE Existing Address', availabilityText: 'Keep unchanged', sellerWhatsAppPhone: '+60123456789' });
@@ -50,8 +74,8 @@ for (const dialect of ['sqlite', 'postgres']) {
     assert.equal(normalized.after.sellerWhatsAppPhone, null); assert.equal(normalized.after.returnsText, null);
     const updated = await updateCompanySettings(f.store, { senderName: '  PRIVATE New Sender  ', shippingText: '  First\r\nSecond  ', sellerWhatsAppPhone: '', returnsText: null });
     assert.deepEqual(updated, normalized.after);
-    for (const changes of [{}, { companyName: 'Invented' }, { defaultCurrency: 'USD' }, { senderCountry: 'my' }, { sellerWhatsAppPhone: 'invalid' }]) {
-      const result = await f.preview(changes); assert.ok(result.data.error, JSON.stringify(result.data));
+    for (const changes of [{}, { companyName: 'Invented' }, { defaultCurrency: 'USD' }, { senderCountry: 'my' }, { sellerWhatsAppPhone: 'invalid' }, { sellerWhatsAppPhone: '   ' }]) {
+      const result = await f.preview(changes); assert.equal(result.data.error.code, -32602, JSON.stringify(result.data));
     }
   });
   test(`${dialect}: real MCP company update shows full proposal, requires approval and commits once`, options, async (t) => {
@@ -133,6 +157,25 @@ for (const dialect of ['sqlite', 'postgres']) {
     assert.equal((await getCompanySettings(f.store)).senderName, null);
     assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_operation')).n, 0);
   });
+  test(`${dialect}: real currency change requires explicit first-party acknowledgment and matching commit evidence`, options, async (t) => {
+    const f = await fixture(t, dialect), op = dto(await f.preview({ defaultCurrency: 'SGD' }));
+    const path = '/api/v1/seller/mcp/operations/' + op.operationId;
+    const reviewed = await f.call(path, 'GET', undefined, f.headers); assert.equal(reviewed.response.status, 200);
+    assert.equal(reviewed.data.currencyAcknowledgementRequired, true); assert.match(reviewed.data.currencyWarning, /historical order currencies are not converted/);
+    const approval = { operationId: op.operationId, previewHash: op.previewHash, challenge: reviewed.data.challenge, decision: 'approve', password: reviewPassword };
+    assert.equal((await f.call(path + '/approval', 'POST', approval, f.headers)).response.status, 403);
+    assert.equal((await f.call(path + '/approval', 'POST', { ...approval, currencyAcknowledged: false }, f.headers)).response.status, 403);
+    assert.equal((await f.commit(op)).response.status, 403); assert.equal((await getCompanySettings(f.store)).defaultCurrency, 'MYR');
+    assert.equal((await f.call(path + '/approval', 'POST', { ...approval, currencyAcknowledged: true }, f.headers)).response.status, 200);
+    const ack = await f.store.get("SELECT * FROM mcp_v2_event WHERE operation_id = ? AND event = 'APPROVE'", op.operationId);
+    const proof = await f.store.get('SELECT * FROM mcp_v2_approval WHERE operation_id = ?', op.operationId);
+    assert.equal(ack.outcome, COMPANY_CURRENCY_ACKNOWLEDGED); assert.equal(ack.at, proof.approved_at);
+    const results = await Promise.all([f.commit(op), f.commit(op)]); assert.deepEqual(results.map((result) => dto(result).replayed).sort(), [false, true]);
+    assert.equal((await getCompanySettings(f.store)).defaultCurrency, 'SGD'); assert.equal(dto(results[0]).result.currencyChanged, true);
+    await createCategory(f.store, { code: 'FUTURE', label: 'Future synthetic products' });
+    const product = await createProduct(f.store, { sku: 'COMPANY-NEW-SGD', name: 'Future catalog entry', description: 'Synthetic future product', category: 'FUTURE', priceMinor: 450, active: true });
+    assert.equal(product.currency, 'SGD'); assert.equal(product.priceMinor, 450);
+  });
   test(`${dialect}: company currency commit rejects bare or incorrectly bound acknowledgment evidence`, options, async (t) => {
     const f = await fixture(t, dialect), op = dto(await f.preview({ defaultCurrency: 'SGD' }));
     const row = await f.store.get('SELECT * FROM mcp_v2_operation WHERE id = ?', op.operationId);
@@ -179,4 +222,28 @@ test('company revision query has a hard catalog scan bound and never uses timest
   read.all = async () => [{ currency: 'MYR', count: 1 }]; const first = await companyRevision(read);
   read.all = async () => [{ currency: 'MYR', count: 2 }]; assert.notEqual(await companyRevision(read), first);
   read.all = async () => [{ currency: 'SGD', count: 1 }]; assert.notEqual(await companyRevision(read), first);
+});
+test('company descriptors remain invisible when v2 is disabled and preserve the eight legacy tools', async (t) => {
+  const f = await reviewFixture(t, 'sqlite', { operationTools: [companyReadTool(), companyMutationTool()], config: { mcpV2: { enabled: false } } }); await f.seedGrant();
+  const scopes = 'catalog.read orders.read analytics.read', bearer = secret();
+  await f.store.run('UPDATE oauth_grant SET scopes = ? WHERE id = ?', scopes, f.grantId);
+  await f.store.run(`INSERT INTO oauth_token(token_hash,kind,grant_id,resource,scopes,issued_at,expires_at,generation)
+    VALUES (?, 'access', ?, ?, ?, ?, ?, 0)`, hash(bearer), f.grantId, f.binding.resource, scopes, stamp(), stamp(600000));
+  const headers = { authorization: `Bearer ${bearer}`, accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' };
+  const listed = await f.call('/mcp', 'POST', { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }, headers);
+  assert.equal(listed.data.result.tools.length, 8); assert.ok(listed.data.result.tools.every((tool) => !tool.name.startsWith('company.')));
+  const read = await f.call('/mcp', 'POST', { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'company.get', arguments: {} } }, headers);
+  assert.equal(read.data.error.code, -32602);
+});
+
+test('implemented company JSON Schema bundle matches the runtime descriptors', async (t) => {
+  const f = await fixture(t, 'sqlite');
+  const response = await f.call('/mcp', 'POST', { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} },
+    { authorization: `Bearer ${f.bearer}`, accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' });
+  const bundle = JSON.parse(await readFile(new URL('../docs/mcp-v2/03-COMPANY-IMPLEMENTED.json', import.meta.url), 'utf8'));
+  const tools = response.data.result.tools.filter((tool) => tool.name.startsWith('company.')); assert.equal(tools.length, 3);
+  for (const tool of tools) {
+    assert.deepEqual(tool.inputSchema, bundle.$defs[tool.name + '.input']); assert.deepEqual(tool.outputSchema, bundle.$defs[tool.name + '.output']);
+  }
+  assert.equal(Object.keys(bundle.$defs).length, 6);
 });
