@@ -111,6 +111,7 @@ for (const dialect of ['sqlite', 'postgres']) {
     const missing = await f.previewUpdate(randomUUID(), { name: 'Missing target' });
     assert.equal(missing.response.status, 200); assert.deepEqual(missing.data.error, { code: -32602, message: 'Invalid params' });
     for (const patch of [{ stockQuantity: 1 }, { stockQuantity: null }, { imageDataUrl: null }, { thumbDataUrl: 'x' }, { gallery: [] },
+      { image_data: [1, 2, 3] }, { imageMime: 'image/png' }, { mime: 'image/webp' }, { thumb_mime: 'image/png' },
       { accountId: 'other' }, { tenantId: 'other' }, { expectedUpdatedAt: p.updatedAt }, {}]) {
       assert.equal((await f.previewUpdate(p.id, patch)).data.error.code, -32602);
     }
