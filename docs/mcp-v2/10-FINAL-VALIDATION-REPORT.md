@@ -1,5 +1,9 @@
 # MCP v2 validation snapshots
 
+## Shared CREATE assembler successor14af225
+
+Root integrated a6f9a0d→14af225 and independently ran `NODE_ENV=test SHOP_TEST_DATABASE_URL=<private synthetic URL> node --test --test-concurrency=1 test/mcp-catalog-create-review-manifest.test.js test/mcp-catalog-review-manifest.test.js test/catalog-create-label-contract.test.js test/catalog-create-media-projection.test.js test/mcp-catalog-media-state.test.js`: exit0,88/88 passed,0skips,39.185s (`.local/manager-create-assembler-state.tap`); syntax0. The same assembler/projection proof covers explicit empty BEFORE and actual target closure; raw metadata and composite digests are recomputed through shared unchanged preimages, detecting shared-request-reference tampering. UPDATE and canonical/derived-label compatibility remain covered. No actual CREATE runtime authorization is claimed.
+
 ## UPDATE state/assembler and CREATE wire successor3235179
 
 Rootb5e056b: `NODE_ENV=test SHOP_TEST_DATABASE_URL=<private synthetic URL> node --test --test-concurrency=1 test/catalog-media-update-state.test.js test/mcp-catalog-review-manifest.test.js test/mcp-catalog-review-wire.test.js test/mcp-catalog-media-state.test.js test/product-options-after.test.js test/planned-listing-identity.test.js`, exit0,103/103 passed,0skips,24.410s (`.local/manager-update-state-assembler.tap`); syntax0. Shared options formatting, streamed complete private metadata versus bounded changed review, fresh metadata before BLOBs, strict identity and the sole UPDATE union assembler are covered. These are prerequisites, not runtime approval evidence.
