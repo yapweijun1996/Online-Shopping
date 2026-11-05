@@ -206,7 +206,9 @@ export async function loadProductOptions(database, productIds) {
   return result;
 }
 
-const labelOf = (options) => options.map((option) => option.value.label).join(' / ');
+// Stores already replace lone surrogates when binding UTF-8 text.
+// Keep that stored value and the original 80 UTF-16 code-unit clip.
+const derivedVariantLabel = labels => labels.join(' / ').slice(0, 80).toWellFormed();
 
 /* The label shown in the variant list stays derived from the chosen values, so older screens keep working. */
 export async function refreshVariantLabels(database, productIds) {
@@ -214,8 +216,8 @@ export async function refreshVariantLabels(database, productIds) {
   if (!ids.length) return;
   const options = await loadProductOptions(database, ids);
   for (const id of ids) {
-    const label = labelOf(options.get(id));
-    if (label) await database.run('UPDATE product SET variant_label = ? WHERE id = ?', label.slice(0, 80), id);
+    const label = derivedVariantLabel(options.get(id).map(option => option.value.label));
+    if (label) await database.run('UPDATE product SET variant_label = ? WHERE id = ?', label, id);
   }
 }
 
@@ -262,7 +264,7 @@ export async function prepareProductOptions(database, productId, variantGroup, o
       throw conflict;
     }
   }
-  const label = rows.map(row => row.label).join(' / ').slice(0, 80);
+  const label = derivedVariantLabel(rows.map(row => row.label));
   if (await hasVariantLabel(database, variantGroup, label, productId)) {
     const conflict = new ApiError(409, 'DUPLICATE_VARIANT', 'This combination already exists in the group.');
     conflict.field = 'options';

@@ -1,0 +1,11 @@
+# Derived option-label storage parity
+
+A valid option selection can place an emoji across the existing derived label's 80 UTF-16 code-unit boundary. The old read-only preparation returned a lone high surrogate, while both SQLite and PostgreSQL stored U+FFFD after the existing driver encoded that clipped string as UTF-8. A canonical MCP proposal could therefore reject the prepared string or predict a value different from the real business service.
+
+One private `derivedVariantLabel` helper now serves both `prepareProductOptions` and `refreshVariantLabels`: join the labels in their existing database order, apply the same `.slice(0,80)`, then `.toWellFormed()`. This models the value already persisted by both stores. It does not switch to 80 code points, change option-value text, rewrite existing rows, add a migration or introduce a new grapheme/normalization rule.
+
+Preparation remains SELECT-only. Refresh retains its existing conditional write: no derived label means no label update. Empty preparation still returns `{options:[],label:null}`. Association order, current inactive-choice grandfathering, combination/type constraints and per-dialect uniqueness checks remain unchanged. Only an existing explicit product/option update invokes the original refresh path; importing this helper does not refresh old products.
+
+Synthetic tests on both databases reproduce the old mismatch using 76 ASCII characters, the separator and an emoji, compare preparation directly with actual stored values from product creation and option-value edits, and verify the complete emoji pair when it fits at 80. Other cases retain empty/manual labels, unchanged product timestamps/history during existing refresh, read-only row digests, full option-value text and existing collision/transaction rollback behavior. The new regression is run against the old source first and fails on the four expected storage-parity assertions; the fixed source passes.
+
+This is a bounded business-helper correction, not approval of the full Options AFTER preparer, catalog-media policy, new tools, manifest changes, native validation or production rollout. The larger AFTER SSOT design remains separately reviewed. Source rollback needs no schema migration; preserve actual committed product/option/history state.
