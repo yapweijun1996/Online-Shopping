@@ -43,6 +43,7 @@ const categoryColumns = 'code, label, active, created_at, updated_at';
 export const catalogMetadataColumns = () => Object.freeze({ product: productColumns, listing: listingColumns,
   option_type: typeColumns, option_value: valueColumns, general_code: categoryColumns });
 export const catalogUpdateChangesSchema = () => JSON.parse(JSON.stringify(patchSchema));
+export const catalogProductMetadataSchema = () => JSON.parse(JSON.stringify(metadataSchema));
 const tooLarge = () => { throw new ApiError(503, 'CATALOG_REVIEW_TOO_LARGE', 'The catalog review exceeds its safe metadata limit.'); };
 const unsupported = () => { throw new ApiError(400, 'CATALOG_PHASE_DEPENDENCY', 'This change requires the separately reviewed media or inventory operation.'); };
 const notFound = () => { throw new ApiError(404, 'NOT_FOUND', 'Product not found.'); };
