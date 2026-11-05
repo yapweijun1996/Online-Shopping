@@ -1,5 +1,11 @@
 # MCP v2 validation snapshots
 
+## Internal frame follow-up — sourcef5043c5
+
+Root Node24.22.0 with SQLite/disposable PostgreSQL: `node --test --test-concurrency=1 test/mcp-media-frame-storage.test.js test/mcp-media-storage.test.js test/mcp-media-manifest.test.js test/mcp-media-policy.test.js`, exit0, **34/34**,0skip,4.220s (`.local/manager-media-frame.tap`). Sourcef39638b adds internal scalar inspection and canonical policy/page/asset/pin persistence; this does not expose a tool or route.
+
+Independent review found that a matching stage SHA/codec alone did not compare the actual stage MIME/length to its manifest alias. Follow-upf5043c5 now binds both through each exact stage reference, including deduplicated aliases. Otherwise valid manifests with incorrect MIME or length fail with controlled503 and no frame writes on both adapters. Existing policy, graph ownership, live authority, native validation and first-party approval remain separate mandatory checks.
+
 ## Latest storage and resource acceptance — sources5eba37b and3f4c1e9
 
 Root full Node24.22.0, SQLite and owned disposable PostgreSQL command below, exit0: **1190 total/1165 passed/0 failed/25 browser opt-ins skipped**,200.437s (`.local/manager-media-storage-full.tap`). This accepts atomic stage quotas/append/lease/pin/consume and bounded cleanup, dataful synthetic SQLite snapshot/PostgreSQL dump restore, feature-off suspended-tenant CLI, import exclusion and legacy regressions. Storage fixture bytes are deliberately synthetic; these storage tests do not claim native decoding or real human approval.
