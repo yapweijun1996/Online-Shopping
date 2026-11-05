@@ -1,5 +1,15 @@
 # MCP v2 validation snapshots — foundation, company and catalog subset
 
+## Latest media foundation acceptance — source5ecf145, metadata successor edda35c
+
+Root full command: Node24.22.0, `NODE_ENV=test SHOP_TEST_DATABASE_URL=<private synthetic URL> env -u QA_PLAYWRIGHT_MODULE node --test --test-concurrency=1 test/*.test.js`, exit0. **1150 total/1125 passed/0 failed/25 browser opt-ins skipped**,220.185s; `.local/manager-media-schema-gallery-fixed-full.tap`. This includes schema31, all supported migrations/readiness/import checks, shared SELECT-only gallery planning and the existing business surfaces. Staging cleanup, actual media authority/coordinator and visual approval are not completed by this result.
+
+Earlier c0ec064 full run exited1:1150total/1121pass/4fail/25skip,225.751s (`.local/manager-media-schema-gallery-full.tap`). Historical test fixtures dropped old parent tables before new media children. Fix694c3e6 adds reverse dependency teardown in two test files without CASCADE or weaker assertions; the full suite above was rerun after that fix and descriptor/index refinement5ecf145. The failed snapshot is retained.
+
+Portable codec source45d38ea: root18/18 unit tests again against schema31,2.341s (`.local/manager-media-portable-schema31-unit.tap`), plus4/4 actual ARM64 Alpine container tests,10.478s (`.local/manager-media-portable-container.tap`). Image6417fd93519f8ffb111823ef5167bb69951a52738ad308afecaafd29bac9e2a1; peak168611840bytes, watchdog5087ms. Actual OOM137/true and crash137/false preserve the synthetic parent API. Development-only Docker context includes only the private codec package and shared wire/client. Production package/manifests remain unchanged. Trusted startup/pre-opened-descriptor limitations remain.
+
+Pure policy/manifest sourceedda35c: root `node --test --test-concurrency=1 test/mcp-media-policy.test.js test/mcp-media-manifest.test.js test/mcp-operation-envelope.test.js`, exit0,22/22,0skip,0.573s (`.local/manager-media-policy.tap`). Canonical metadata and retained descriptor checks are tested; they are not token, ownership, native-byte or human-approval evidence.
+
 ## Latest analytics and knowledge acceptance
 
 Root sourcef7dc171 full Node24.22.0+SQLite/disposablePG: **1120 total,1095 passed,0 failed,25 browser opt-ins skipped**,213.239s, exit0; log.local/manager-analytics-integrated-full.tap, same full command below. Targeted analytics/shared-read/dashboard/query-plan29/29,0skip,10.722s; response/default5/5,0skip,8.448s. Fresh analytics.extended/current figures.read gates the three built-ins; v1/dashboard definitions are unchanged. Independent fixtures, safe integer money and bounded/incomplete coverage are tested; query plans are synthetic, not production capacity.
