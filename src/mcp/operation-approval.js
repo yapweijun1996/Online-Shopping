@@ -45,6 +45,8 @@ async function humanContext(store, binding, tenantRevision, epochHash, buildDige
   if (session.account.mustChangePassword || !row || row.state !== 'PENDING_APPROVAL' || row.expires_at <= stamp() ||
       row.account_id !== session.account.id || row.tenant_revision !== tenantRevision ||
       row.epoch_hash !== epochHash || row.build_digest !== buildDigest) return null;
+  const shop = await getShopSetup(store);
+  if (shop.mode === 'demo') return null;
   const envelope = readStoredOperation(row, binding);
   const policy = Object.hasOwn(OPERATION_SCOPE_POLICIES, row.tool_name) && OPERATION_SCOPE_POLICIES[row.tool_name];
   const grant = await liveGrant(store, row.grant_id, binding);
@@ -56,7 +58,7 @@ async function humanContext(store, binding, tenantRevision, epochHash, buildDige
     WHERE grant_id = ? AND tenant_id = ? AND account_id = ? AND client_id = ? AND scope = ?
       AND account_auth_version = ? AND epoch_hash = ? AND consented_at <= ?`,
   grant.id, binding.tenantId, grant.account_id, grant.client_id, policy.scope, grant.account_auth_version, epochHash, stamp());
-  return consent ? { envelope, grant, policy } : null;
+  return consent ? { envelope, grant, policy, shop } : null;
 }
 
 // An authenticated seller can review the complete stored proposal. This
@@ -81,7 +83,7 @@ export function createOperationReview({ store, binding, sellerOrigin, quickLogin
         const context = await humanContext(store, binding, tenant.revision, epochHash, buildDigest, session, row);
         if (!context) forbidden();
         const client = await store.get('SELECT client_name FROM oauth_client WHERE id = ?', row.client_id);
-        const shop = await getShopSetup(store);
+        const shop = context.shop;
         if (!client || !shop?.shopName) forbidden();
         const account = await store.get('SELECT oauth_auth_version FROM seller_account WHERE id = ?', session.account.id);
         if (!Number.isSafeInteger(account?.oauth_auth_version)) forbidden();

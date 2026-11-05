@@ -70,6 +70,8 @@ for (const dialect of ['sqlite', 'postgres']) {
         assert.equal((await f.call(op.path, 'GET', undefined, f.headers)).response.status, 403);
         assert.equal((await f.call(op.path + '/approval', 'POST', op.input, f.headers)).response.status, 403);
       };
+      await f.store.run("UPDATE shop_setup SET mode = 'demo' WHERE id = 1");
+      await denied(); await f.store.run("UPDATE shop_setup SET mode = 'production' WHERE id = 1");
       await f.store.run('UPDATE oauth_grant SET revoked_at = ? WHERE id = ?', new Date().toISOString(), f.grantId);
       await denied(); await f.store.run('UPDATE oauth_grant SET revoked_at = NULL WHERE id = ?', f.grantId);
       await f.store.run("UPDATE seller_account SET role = 'STAFF' WHERE id = ?", f.account.id);
