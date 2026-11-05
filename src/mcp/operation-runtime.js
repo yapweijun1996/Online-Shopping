@@ -204,9 +204,10 @@ export async function upgradeMediaStorage(store) {
 // the caller's outer transaction also owns global version/inventory checks.
 export async function upgradeOperationAuditStorage(store) {
   if (await store.schemaVersion() !== 33) throw new Error('Operation audit migration requires schema33.');
-  await assertMcpAuditUpgradeSource(store);
+  const auditSource = await assertMcpAuditUpgradeSource(store);
   await assertOperationStorageForUpgrade(store);
   const meta = await store.get('SELECT version FROM mcp_v2_schema WHERE id=1');
+  if (auditSource === 'CURRENT' && meta.version === 2) throw new Error('Partial schema34 audit storage.');
   if (meta.version === 2) {
     const columns = 'id,at,tenant_id,account_id,client_id,grant_id,tool_name,resource_id,operation_id,approver_id,event,outcome,correlation_id';
     if (store.dialect === 'sqlite') {

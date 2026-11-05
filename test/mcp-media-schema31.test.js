@@ -10,6 +10,7 @@ import { operationSchema } from '../src/mcp/operation-schema.js';
 import { mediaSchema, MEDIA_STORAGE_TABLES } from '../src/mcp/media-schema.js';
 import { operationStorageReady, operationStorageManifestSql, initializeOperationStorage } from '../src/mcp/operation-runtime.js';
 import { excludedImportTables } from '../src/sqlite-import.js';
+import { mcpAuditSchema } from '../src/mcp/audit-schema.js';
 const base = process.env.SHOP_TEST_DATABASE_URL;
 if (base && (process.env.NODE_ENV !== 'test' || !/test/i.test(new URL(base).pathname))) throw new Error('Disposable PostgreSQL required.');
 const sha = value => createHash('sha256').update(value).digest('hex');
@@ -24,6 +25,8 @@ async function fixture(t, dialect) {
 }
 async function legacy30(store) {
   await dropInventoryForLegacyFixture(store);
+  await store.exec('DROP TABLE mcp_audit');
+  await store.exec(mcpAuditSchema(store.dialect, { version: 33 }));
   for (const table of MEDIA_STORAGE_TABLES.toReversed()) await store.exec(`DROP TABLE ${table}`);
   for (const table of ['mcp_v2_authorization_request','mcp_v2_scope_consent','mcp_v2_approval_challenge','mcp_v2_approval','mcp_v2_event','mcp_v2_operation','mcp_v2_schema']) await store.exec(`DROP TABLE ${table}`);
   await store.exec(operationSchema(store.dialect, { media: false }));

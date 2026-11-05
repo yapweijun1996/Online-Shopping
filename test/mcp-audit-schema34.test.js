@@ -9,7 +9,7 @@ import { upgradePostgres } from '../src/postgres/upgrade.js';
 import { operationEventSchema } from '../src/mcp/operation-schema.js';
 import { mcpAuditSchema } from '../src/mcp/audit-schema.js';
 import { operationStorageDdl, operationStorageMetaSchema, operationStorageReady } from '../src/mcp/operation-runtime.js';
-import { assertMcpAuditStorage } from '../src/mcp/audit-storage.js';
+import { assertMcpAuditStorage, migrateMcpAuditStorage } from '../src/mcp/audit-storage.js';
 import { mediaFixture } from './helpers/mcp-media-storage-fixture.js';
 import { importSqlite, rowsDigest } from '../src/sqlite-import.js';
 const sha = value => createHash('sha256').update(value).digest('hex');
@@ -50,6 +50,13 @@ async function history(store) {
   return { mcp: await store.all('SELECT * FROM mcp_audit ORDER BY at,id'), lifecycle: await store.all('SELECT * FROM mcp_v2_event ORDER BY at,id') };
 }
 for (const dialect of ['sqlite','postgres']) {
+  test(`${dialect}: audit34 with version2 operation metadata rejects partial migration without adoption`, async t => {
+    const {store,migrate}=await legacyFixture(t,dialect);await history(store);
+    await store.transaction(()=>migrateMcpAuditStorage(store));
+    await assert.rejects(migrate(),/Partial schema34 audit storage/);
+    assert.equal(await store.schemaVersion(),33);assert.equal((await store.get('SELECT version FROM mcp_v2_schema')).version,2);
+    const row=await store.get('SELECT * FROM mcp_v2_event LIMIT 1');assert.equal(Object.hasOwn(row,'sequence'),false);
+  });
   test(`${dialect}: strict33 audit upgrade preserves all UUIDs and fields and allocates nonreused insertion sequences`, async t => {
     const { store, migrate } = await legacyFixture(t, dialect), before = await history(store);
     await migrate(); assert.equal(await store.schemaVersion(), 34); assert.equal(await operationStorageReady(store), true); await assertMcpAuditStorage(store);

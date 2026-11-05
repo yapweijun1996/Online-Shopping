@@ -21,6 +21,7 @@ export async function mcpAuditFingerprint(store) {
 export async function assertMcpAuditUpgradeSource(store) {
   const fingerprint = await mcpAuditFingerprint(store);
   if (![legacy[store.dialect], current[store.dialect]].includes(fingerprint)) throw new Error('Incompatible schema33 MCP audit storage.');
+  return fingerprint === legacy[store.dialect] ? 'LEGACY' : 'CURRENT';
 }
 export async function assertMcpAuditStorage(store) {
   if (await mcpAuditFingerprint(store) !== current[store.dialect]) throw new Error('Incompatible MCP audit storage.');
