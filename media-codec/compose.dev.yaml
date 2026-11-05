@@ -1,0 +1,41 @@
+# Isolated development only. Never include from production Compose or mount a Docker socket.
+services:
+  media-codec:
+    profiles: [media-codec-dev]
+    build: .
+    image: shopping-media-codec:development
+    network_mode: none
+    read_only: true
+    user: "1000:1000"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 192m
+    memswap_limit: 192m
+    cpus: 0.5
+    pids_limit: 32
+    init: true
+    cgroup: private
+    shm_size: 1m
+    ulimits:
+      core: 0
+      nofile: 64
+    restart: "no"
+    environment:
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      ALL_PROXY: ""
+      NO_PROXY: ""
+      http_proxy: ""
+      https_proxy: ""
+      all_proxy: ""
+      no_proxy: ""
+    volumes:
+      - type: bind
+        source: ${MEDIA_CODEC_SOCKET_DIR:?Private0700 socket directory required}
+        target: /run/media-codec
+      - type: bind
+        source: ${MEDIA_CODEC_TOKEN_FILE:?Private0600 ephemeral token file required}
+        target: /run/media-codec-token
+        read_only: true
+    logging:
+      driver: none
