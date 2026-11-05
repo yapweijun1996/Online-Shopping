@@ -2,7 +2,9 @@
 services:
   media-codec:
     profiles: [media-codec-dev]
-    build: .
+    build:
+      context: ..
+      dockerfile: media-codec/Dockerfile
     image: shopping-media-codec:development
     network_mode: none
     read_only: true

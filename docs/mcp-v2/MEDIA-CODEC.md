@@ -144,6 +144,24 @@ requires admission controls before production use.
 
 ## Development commands
 
+The wire contract is defined once in `src/mcp/media-codec-wire.js`; the Unix socket
+transport is `src/mcp/media-codec-client.js`. Both use only Node built-ins and perform
+no filesystem configuration reads on import. Private codec `contract.js`/`client.js`
+are re-exports of those actual modules. Backend code can import the shared modules
+from its existing `src/` tree without copying or installing `media-codec/` or Sharp.
+A production-shaped startup fixture checks the disabled backend with neither private
+codec nor Sharp present; transport imports alone do not register any tool or route.
+
+The development build context is the repository root, with
+`media-codec/Dockerfile.dockerignore` denying everything except the private package,
+lock/runtime JS and the two exact shared modules. An actual build-time read-only
+context inspection rejects extra files/symlinks, more than64files or256KiB total.
+The image retains `/codec/src` and its own dependencies; the two shared modules are
+placed at `/src/mcp`, with the private package also providing their ESM scope through
+`/package.json`. No application manifest, other application source or public files are copied. The
+container regression checks that exact layout. The source whitelist excludes
+`.env`, `.local`, node_modules, databases and the rest of application source.
+
 Use Node24.15..<25 and a trusted local unix Docker daemon. Read the cloud runtime
 Docker instructions and inspect the persistent host first. No daemon restart,
 Docker prune, production Compose edit or deployment is part of these commands.
@@ -156,13 +174,20 @@ node media-codec/scripts/build-dev.mjs
 MEDIA_CODEC_CONTAINER_TEST=1 npm run test:container --prefix media-codec
 ```
 
+The backend startup fixture also needs the existing real root dependencies installed
+from the unchanged root lock (usual repository setup). It does not substitute fake
+dependencies or install Sharp in the backend.
+
 The build uses the existing pinned Node24.20.0 Alpine base, optional native packages,
 `npm ci --ignore-scripts` and strict TLS. If CODEX_PROXY_CERT is configured, the build
 passes it as a BuildKit secret and sets NODE_EXTRA_CA_CERTS only for dependency
 fetch; no CA/token is copied into image layers. The build records the exact image
 ID in ignored `.local/media-codec-image-id`. Tests require this explicit image and
-host uid/gid1000, clear endpoint/context/TLS selectors, use only
+host uid/gid1000, clear endpoint/context/TLS and BUILDX_BUILDER selectors, use only
 `unix:///var/run/docker.sock`, and serialize at most one unique owned container.
+Builds additionally force `buildx --builder=default --load` and reject a default
+builder that is not a single local Docker-driver node. Registry configuration,
+inherited proxy values and optional CA-secret policy are preserved.
 They never attach to, inspect secrets from, stop or restart unrelated containers.
 The optional `media-codec/compose.dev.yaml` profile is a separate dev-only example;
 it is not included by any application Compose file. Compose alone does not perform
@@ -170,6 +195,13 @@ the host-side seal: a trusted harness must provision the private base, host-owne
 0730 directory/0640 token, verify readiness and seal0710 before permitting any
 client request. Starting that profile without this sealing step is unsupported.
 It does not provision a production supervisor.
+
+Shared source now participates in the existing backend source build digest; the
+private Sharp lock/worker still does not. Later trusted configuration must bind
+shared wire/client source hashes, codec source/lock/policy and immutable worker image
+digest into the operation descriptor. No descriptor/config reader, registration or
+attestation mechanism is implemented in this extraction. A matching response label
+alone does not attest to the image running behind the socket.
 
 ## Primary dependency references
 

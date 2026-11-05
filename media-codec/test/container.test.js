@@ -33,6 +33,10 @@ test('actual ARM64 Alpine codec is isolated, fully decodes max raster and enforc
   const runtime = JSON.parse(await docker(['exec', fixture.id, 'node', '--input-type=module', '-e',
     "import fs from 'node:fs';import os from 'node:os';let readonly=false;try{fs.writeFileSync('/codec/forbidden','x')}catch(e){readonly=e.code==='EROFS'}console.log(JSON.stringify({uid:process.getuid(),arch:process.arch,network:Object.keys(os.networkInterfaces()),readonly,secrets:Object.keys(process.env).filter(k=>/DATABASE|PASSWORD|SECRET|ACCESS_KEY/.test(k)),proxy:Object.entries(process.env).filter(([k,v])=>/proxy/i.test(k)&&v).length}));"]));
   assert.deepEqual(runtime, { uid: 10001, arch: 'arm64', network: ['lo'], readonly: true, secrets: [], proxy: 0 });
+  const layout = JSON.parse(await docker(['exec', fixture.id, 'node', '--input-type=module', '-e',
+    "import fs from 'node:fs';console.log(JSON.stringify({shared:fs.readdirSync('/src/mcp').sort(),package:JSON.parse(fs.readFileSync('/package.json','utf8')).name,app:fs.existsSync('/src/app.js'),public:fs.existsSync('/public')}));"]));
+  assert.deepEqual(layout, { shared: ['media-codec-client.js', 'media-codec-wire.js'],
+    package: 'shopping-development-media-codec', app: false, public: false });
   const dir = await lstat(fixture.socketDir), socket = await lstat(fixture.socketPath), token = await lstat(fixture.tokenFile);
   assert.deepEqual([dir.uid, dir.gid, dir.mode & 0o7777], [1000, 1000, 0o710]);
   assert.deepEqual([socket.uid, socket.gid, socket.mode & 0o7777], [10001, 1000, 0o660]);

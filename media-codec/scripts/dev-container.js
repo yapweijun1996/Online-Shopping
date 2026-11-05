@@ -8,7 +8,7 @@ import { randomBytes } from 'node:crypto';
 const exec = promisify(execFile);
 export const DOCKER_HOST = 'unix:///var/run/docker.sock';
 const dockerEnv = { ...process.env };
-for (const name of ['DOCKER_HOST', 'DOCKER_CONTEXT', 'DOCKER_TLS', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH']) delete dockerEnv[name];
+for (const name of ['DOCKER_HOST', 'DOCKER_CONTEXT', 'DOCKER_TLS', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH', 'BUILDX_BUILDER']) delete dockerEnv[name];
 export async function docker(args, timeout = 20000) {
   try {
     return (await exec('docker', [`--host=${DOCKER_HOST}`, ...args],

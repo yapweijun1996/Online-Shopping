@@ -1,0 +1,15 @@
+# Repo-root context: only these exact runtime inputs may reach the builder.
+**
+!media-codec/
+media-codec/**
+!media-codec/package.json
+!media-codec/package-lock.json
+!media-codec/src/
+media-codec/src/**
+!media-codec/src/*.js
+!src/
+src/**
+!src/mcp/
+src/mcp/**
+!src/mcp/media-codec-wire.js
+!src/mcp/media-codec-client.js
