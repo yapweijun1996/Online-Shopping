@@ -30,7 +30,9 @@ export async function reviewFixture(t, dialect = 'sqlite', options = {}) {
     mcpBrowserOrigins: ['https://ai.example.test'], mcpV2: { enabled: true, epoch, buildDigest }, ...options.config };
   const tenantId = options.tenantId || 'default', tenantRevision = options.tenantRevision ?? 0;
   const binding = { tenantId, issuer: config.sellerOrigin + (config.basePath || ''), resource: config.sellerOrigin + (config.basePath || '') + '/mcp' };
-  const api = await createApi({ store, config, operationTools: options.operationTools || [], ...(options.registry ? { registry: options.registry(store, config) } : {}) });
+  const registrations = Object.hasOwn(options, 'operationTools') ? options.operationTools : [];
+  const api = await createApi({ store, config, ...(registrations === undefined ? {} : { operationTools: registrations }),
+    ...(options.registry ? { registry: options.registry(store, config) } : {}) });
   let seq = 0;
   async function call(path, method = 'GET', body, headers = {}, requestOrigin = config.sellerOrigin) {
     const request = new Request(requestOrigin + (config.basePath || '') + path, { method,

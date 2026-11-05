@@ -10,12 +10,13 @@ import { createOperationApproval, createOperationReview } from './operation-appr
 import { initializeOperationStorage } from './operation-runtime.js';
 import { createOperationTools } from './operation-tools.js';
 import { maintainOperations } from './operation-maintenance.js';
+import { companyReadTool, companyMutationTool } from './company-tools.js';
 
 export const connectorPath = (path) => /^\/(?:mcp$|oauth\/(?:register|authorize|token|revoke|consent\.js|consent\.css|operation|operation-review\.(?:js|css))$|\.well-known\/oauth-(?:protected-resource|authorization-server)(?:\/|$)|api\/v1\/seller\/mcp(?:\/|$))/.test(path);
 const operationPath = (path) => path === '/oauth/operation' || /^\/oauth\/operation-review\.(?:js|css)$/.test(path) || /^\/api\/v1\/seller\/mcp\/(?:operations(?:\/|$)|approval(?:\/|$))/.test(path);
 const reviewCsp = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-export function createConnector({ store, config, tenantId, tenantGuard, quickLogin, operationTools = [] }) {
+export function createConnector({ store, config, tenantId, tenantGuard, quickLogin, operationTools }) {
   const enabled = config.mcpEnabled === true && !quickLogin && Boolean(config.sellerOrigin) && new URL(config.sellerOrigin).protocol === 'https:';
   const limiters = new Map();
   const limit = async (bucket, key, count) => {
@@ -23,7 +24,10 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
     if (!await limiters.get(bucket).attempt(key)) fail('temporarily_unavailable', 429, { 'Retry-After': '900' });
   };
   const oauth = createOAuth({ store, config, tenantId, limit });
-  const extensions = createOperationTools({ store, binding: oauth.binding, config, tenantGuard, quickLogin, entries: operationTools });
+  const safeV2 = enabled && config.mcpV2?.enabled === true && config.production !== true &&
+    config.shopMode !== 'public-demo' && quickLogin === false && typeof tenantGuard?.withActiveTenant === 'function';
+  const registrations = operationTools === undefined ? (safeV2 ? [companyReadTool(), companyMutationTool()] : []) : operationTools;
+  const extensions = createOperationTools({ store, binding: oauth.binding, config, tenantGuard, quickLogin, entries: registrations });
   const maintain = async () => {
     if (config.mcpV2?.enabled !== true || !enabled || config.production === true || !tenantGuard) return;
     try { await maintainOperations(store, { enabled: true, tenantGuard, tenantId }); }

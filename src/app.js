@@ -636,7 +636,8 @@ async function createTenantApi({ store, config, tenantId, tenantGuard, operation
  * resolved to a tenant first; an unknown tenant is 404 and a suspended one 503 without touching any database.
  * Every tenant gets its own route table (limiters, secret box, quick sign-in decision), built on first use.
  */
-export async function createApi({ store, config, registry = null, operationTools = [], platformHandler = null, setupHandler = null, serveStatic = null, whatsappTransport = createWhatsAppTransport(), aiProvider, aiFetchImpl, studioProvider = (apiKey) => createOpenAiStudioProvider({ apiKey }) }) {
+export async function createApi({ store, config, registry = null, operationTools, platformHandler = null, setupHandler = null, serveStatic = null, whatsappTransport = createWhatsAppTransport(), aiProvider, aiFetchImpl, studioProvider = (apiKey) => createOpenAiStudioProvider({ apiKey }) }) {
+  if (operationTools !== undefined && !Array.isArray(operationTools)) throw new TypeError('Operation tool registrations must be an array.');
   const tenants = registry ?? singleTenantRegistry({ store, config });
   const handlers = new WeakMap();
   const handlerFor = (tenant) => {
