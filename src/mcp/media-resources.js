@@ -56,26 +56,35 @@ function stream(records) {
   }
   return state.digest('hex');
 }
-async function collect(read, productId) {
+async function collect(read, productId, targetListingId = null, expectedCapture = null) {
   id(productId);
   const target = await read.get('SELECT id, substr(listing_id,1,37) AS listing_id FROM product WHERE id = ?', productId);
   if (!target) missing(); id(target.listing_id);
+  if (targetListingId !== null) id(targetListingId);
+  const listingIds = [...new Set([target.listing_id, ...(targetListingId === null ? [] : [targetListingId])])].sort();
+  const capture = listingIds.length > 1 ? { sourceListingId: target.listing_id, listingIds } : null;
+  if (expectedCapture && canonicalOperationJson(capture) !== canonicalOperationJson(expectedCapture)) changed();
+  if (capture && !await read.get('SELECT id FROM listing WHERE id = ?', targetListingId)) { if (expectedCapture) changed(); missing(); }
+  const scope = listingIds.length === 1 ? '= ?' : 'IN (?,?)';
   const stats = await read.get(`SELECT COUNT(*) AS n, COALESCE(SUM(${textSize(read, ['p.id','p.listing_id','p.sku','p.name','p.category','p.variant_group','p.variant_label','p.created_at','p.gallery_layout_json','c.label'])}),0) AS metadata_bytes,
     COALESCE(SUM(COALESCE(${length(read, 'p.image_data')},0) + COALESCE(${length(read, 'p.thumb_data')},0)),0) AS byte_count,
-    COUNT(p.image_data) AS sources FROM product p LEFT JOIN general_code c ON c.type = 'PRODUCT_CATEGORY' AND c.code = p.category WHERE p.listing_id = ?`, target.listing_id);
+    COUNT(p.image_data) AS sources FROM product p LEFT JOIN general_code c ON c.type = 'PRODUCT_CATEGORY' AND c.code = p.category WHERE p.listing_id ${scope}`, ...listingIds);
   if (count(stats.n) > MEDIA_LIMITS.products || count(stats.metadata_bytes) > rawMetadataLimit || count(stats.byte_count) > MEDIA_LIMITS.oldBytes) limited();
   const galleryStats = await read.get(`SELECT COUNT(*) AS n, COALESCE(SUM(COALESCE(${length(read, 'g.data')},0) + COALESCE(${length(read, 'g.thumb_data')},0)),0) AS byte_count,
     COALESCE(SUM(${textSize(read, ['g.id','g.product_id','g.created_at'])}),0) AS metadata_bytes
-    FROM product_gallery_image g JOIN product p ON p.id = g.product_id WHERE p.listing_id = ?`, target.listing_id);
+    FROM product_gallery_image g JOIN product p ON p.id = g.product_id WHERE p.listing_id ${scope}`, ...listingIds);
   const physicalBytes = count(stats.byte_count) + count(galleryStats.byte_count);
   if (physicalBytes > MEDIA_LIMITS.oldBytes || count(stats.sources) + count(galleryStats.n) > sourceRowsLimit || count(stats.metadata_bytes) + count(galleryStats.metadata_bytes) > rawMetadataLimit) limited();
-  const listings = await read.all(`SELECT id, code, name FROM listing WHERE id = ? AND ${textSize(read, ['code','name'])} <= ? LIMIT ?`, target.listing_id, rawMetadataLimit, MEDIA_LIMITS.listings + 1);
+  const listings = await read.all(`SELECT id, code, name FROM listing WHERE id ${scope} AND ${textSize(read, ['code','name'])} <= ? ORDER BY id LIMIT ?`, ...listingIds, rawMetadataLimit, MEDIA_LIMITS.listings + 1);
+  if (capture && listings.length !== listingIds.length) { if (expectedCapture) changed(); unsupported(); }
   if (!listings.length) unsupported(); if (listings.length > MEDIA_LIMITS.listings) limited();
   for (const listing of listings) { id(listing.id); text(listing.code, 80, true); text(listing.name, 120); }
   const rows = await read.all(`SELECT p.id,p.listing_id,p.sku,p.name,p.category,c.label AS category_label,c.active AS category_active,p.variant_group,p.variant_label,p.active,p.created_at,p.gallery_layout_json,
     p.image_mime,p.thumb_mime,${length(read, 'p.image_data')} AS image_bytes,${length(read, 'p.thumb_data')} AS thumb_bytes
-    FROM product p LEFT JOIN general_code c ON c.type = 'PRODUCT_CATEGORY' AND c.code = p.category WHERE p.listing_id = ? ORDER BY p.id LIMIT ?`, target.listing_id, MEDIA_LIMITS.products + 1);
+    FROM product p LEFT JOIN general_code c ON c.type = 'PRODUCT_CATEGORY' AND c.code = p.category WHERE p.listing_id ${scope} ORDER BY p.id LIMIT ?`, ...listingIds, MEDIA_LIMITS.products + 1);
   if (rows.length !== count(stats.n) || rows.length > MEDIA_LIMITS.products) changed();
+  // Existing manifest graphs cannot describe a non-null empty listing.
+  if (capture && listingIds.some(listingId => !rows.some(row => row.listing_id === listingId))) unsupported();
   const products = [], sources = [];
   for (const row of rows) {
     id(row.id); id(row.listing_id); text(row.sku, 40); text(row.name, 120); text(row.category, 80); text(row.category_label, 80); text(row.variant_group, 40, true); text(row.variant_label, 80, true); instant(row.created_at);
@@ -86,7 +95,7 @@ async function collect(read, productId) {
       variantGroup: row.variant_group, variantLabel: row.variant_label, active: row.active === 1, createdAt: row.created_at, layout: layout(row.gallery_layout_json), mainSource: source ? sourceKey(source) : null });
   }
   const gallery = await read.all(`SELECT g.id,g.product_id,g.position,g.mime,g.thumb_mime,g.created_at,${length(read, 'g.data')} AS image_bytes,${length(read, 'g.thumb_data')} AS thumb_bytes
-    FROM product_gallery_image g JOIN product p ON p.id = g.product_id WHERE p.listing_id = ? ORDER BY g.product_id,g.position,g.id LIMIT ?`, target.listing_id, galleryRowsLimit + 1);
+    FROM product_gallery_image g JOIN product p ON p.id = g.product_id WHERE p.listing_id ${scope} ORDER BY g.product_id,g.position,g.id LIMIT ?`, ...listingIds, galleryRowsLimit + 1);
   if (gallery.length !== count(galleryStats.n)) changed();
   const galleries = [];
   for (const row of gallery) {
@@ -101,9 +110,9 @@ async function collect(read, productId) {
     if (ref === 'main') { if (!product.mainSource) unsupported(); }
     else if (!galleries.some(row => row.productId === product.productId && row.galleryId === ref)) unsupported();
   }
-  const records = [{ kind: 'MEDIA_RESOURCE_SNAPSHOT', version: 1, targetId: productId }, ...listings.map(value => ({ listing: value })), ...products.map(value => ({ product: value })), ...galleries.map(value => ({ gallery: value })),
+  const records = [{ kind: 'MEDIA_RESOURCE_SNAPSHOT', version: capture ? 2 : 1, targetId: productId, ...(capture ? { capture } : {}) }, ...listings.map(value => ({ listing: value })), ...products.map(value => ({ product: value })), ...galleries.map(value => ({ gallery: value })),
     ...sources.map(value => ({ source: { ...value, thumbnail: value.thumbnail && { ...value.thumbnail } } }))];
-  return { targetId: productId, listings, products, galleries, sources, graphReadBytes: { oldBytes: physicalBytes, newBytes: 0 }, structureRevision: stream(records), records };
+  return { targetId: productId, capture, listings, products, galleries, sources, graphReadBytes: { oldBytes: physicalBytes, newBytes: 0 }, structureRevision: stream(records), records };
 }
 async function bytes(read, source, thumbnail = false) {
   const table = source.source_kind === 'PRODUCT_MAIN' ? 'product' : 'product_gallery_image', field = thumbnail ? 'thumb_data' : source.source_kind === 'PRODUCT_MAIN' ? 'image_data' : 'data';
@@ -124,8 +133,8 @@ function manifestAsset(source) {
 }
 // Caller holds the platform/tenant lifecycle and shared store transaction.
 // Metadata only leaves this function; content buffers are hashed sequentially.
-export async function readMediaSnapshot(read, productId) {
-  const graph = await collect(read, productId), assets = new Map();
+async function snapshot(read, productId, targetListingId = null) {
+  const graph = await collect(read, productId, targetListingId), assets = new Map();
   for (const source of graph.sources) {
     source.byte_sha256 = hash(await bytes(read, source));
     if (source.thumbnail) source.thumbnail.byte_sha256 = hash(await bytes(read, source, true));
@@ -153,13 +162,34 @@ export async function readMediaSnapshot(read, productId) {
   }
   if (beforeProducts.length + beforeListings.length > MEDIA_LIMITS.records) limited();
   const revision = stream([...graph.records, ...graph.sources.map(source => ({ asset: source })), ...views.map(view => ({ view }))]);
-  return frozen({ version: 1, targetId: productId, revision, structureRevision: graph.structureRevision, listings: graph.listings, products: graph.products,
+  return frozen({ version: graph.capture ? 2 : 1, targetId: productId, ...(graph.capture ? { capture: graph.capture } : {}), revision, structureRevision: graph.structureRevision, listings: graph.listings, products: graph.products,
     galleries: graph.galleries, sources: graph.sources, assets: [...assets.values()], views, before: { products: beforeProducts, listings: beforeListings }, graphReadBytes: graph.graphReadBytes });
+}
+// Preserve the existing single-listing shape and revision framing byte for byte.
+export async function readMediaSnapshot(read, productId) { return snapshot(read, productId); }
+
+// Internal target ID comes from the trusted listing plan, never tenant authority.
+// Both components share every physical/read/effect budget before any BLOB load.
+export async function readMediaUnionSnapshot(read, productId, options = {}) {
+  if (!options || typeof options !== 'object' || ![Object.prototype, null].includes(Object.getPrototypeOf(options)) ||
+      Reflect.ownKeys(options).some(key => key !== 'targetListingId' ||
+        !Object.hasOwn(Object.getOwnPropertyDescriptor(options, key), 'value'))) unsupported();
+  return snapshot(read, productId, options.targetListingId ?? null);
+}
+function capturedTarget(value) {
+  if (value.version === 1) { if (Object.hasOwn(value, 'capture')) changed(); return null; }
+  const capture = value.capture;
+  if (value.version !== 2 || !capture || Object.keys(capture).sort().join(',') !== 'listingIds,sourceListingId' ||
+      !Array.isArray(capture.listingIds) || capture.listingIds.length !== 2 || new Set(capture.listingIds).size !== 2 ||
+      !capture.listingIds.every(item => typeof item === 'string' && uuid.test(item)) ||
+      !capture.listingIds.includes(capture.sourceListingId) || capture.listingIds.join(',') !== [...capture.listingIds].sort().join(',')) changed();
+  return capture.listingIds.find(item => item !== capture.sourceListingId);
 }
 // Internal exact-source loader, not an authorization/tenant selector. The future
 // coordinator owns current full-graph authority/revision/lease/pin checks.
 export async function loadOldMediaAsset(read, snapshot, expected, { thumbnail = false } = {}) {
-  if (!snapshot || snapshot.version !== 1 || !sha.test(snapshot.structureRevision || '') || !Array.isArray(snapshot.sources)) changed();
+  if (!snapshot || ![1,2].includes(snapshot.version) || !sha.test(snapshot.structureRevision || '') || !Array.isArray(snapshot.sources)) changed();
+  const targetListingId = capturedTarget(snapshot);
   const keys = ['source_kind','source_id','source_product_id','stage_id','byte_sha256','mime','byte_length'];
   if (!expected || typeof expected !== 'object' || ![Object.prototype, null].includes(Object.getPrototypeOf(expected)) ||
       Reflect.ownKeys(expected).length !== keys.length || keys.some(key => !Object.hasOwn(Object.getOwnPropertyDescriptor(expected, key) || {}, 'value'))) changed();
@@ -168,7 +198,7 @@ export async function loadOldMediaAsset(read, snapshot, expected, { thumbnail = 
       expected.byte_length < 1 || expected.byte_length > MEDIA_LIMITS.sourceBytes || (expected.source_kind === 'PRODUCT_MAIN' && expected.source_id !== expected.source_product_id)) changed();
   const captured = snapshot.sources.find(source => sourceKey(source) === sourceKey(expected));
   if (!captured || canonicalOperationJson(manifestAsset(captured)) !== canonicalOperationJson(expected)) changed();
-  const current = await collect(read, snapshot.targetId);
+  const current = await collect(read, snapshot.targetId, targetListingId, snapshot.version === 2 ? snapshot.capture : null);
   if (current.structureRevision !== snapshot.structureRevision) changed();
   const source = current.sources.find(item => sourceKey(item) === sourceKey(captured)); if (!source) changed();
   const data = await bytes(read, source, thumbnail), identity = thumbnail ? captured.thumbnail : captured;
