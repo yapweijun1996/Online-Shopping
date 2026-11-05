@@ -4,7 +4,7 @@ Current verified implementation and remaining work are maintained in [progress](
 
 The reviewed [catalog expansion plan](CATALOG-EXPANSION-PLAN.md) defines union snapshots/projections, fixed constructor-selected dual-scope HIGH update policy, trusted listing identity, exact engine/review changes and phased two-store acceptance. Stock adjustments remain separate inventory operations; newborn staged-image composition is not implied.
 
-The reviewed [catalog expansion plan](CATALOG-EXPANSION-PLAN.md) defines union snapshots/projections, fixed dual-scope HIGH update policy, trusted listing identity, engine/review changes and two-store acceptance. Stock adjustments remain separate inventory operations; newborn staged-image composition is not implied.
+The isolated UPDATE successor selects exactly one catalog update pair at construction. `MCP_V2_CATALOG_MEDIA_UPDATE_ENABLED=1` additionally requires validated media/v2 configuration, manual password login and development/test mode; production activation is rejected. Every UPDATE in that mode, including metadata-only edits, uses HIGH risk, both `catalog.write` and `media.write`, the same immutable graph and protected human review. There is no request-selected profile or MEDIUM fallback. Flag-off preserves the restricted pair and denies pending full UPDATE operations. CREATE remains on the restricted profile until its separate runtime and independent acceptance are complete; the UPDATE flag cannot enable CREATE. See [runtime](CATALOG-MEDIA-UPDATE-RUNTIME.md) and [validation](10-FINAL-VALIDATION-REPORT.md).
 
 ## Historical design snapshot
 
