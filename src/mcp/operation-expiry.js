@@ -1,0 +1,49 @@
+import { stamp } from './credentials.js';
+import { recordOperationEvent } from './operation-events.js';
+
+// The caller already holds platform->tenant writer locks and selected an
+// expired nonterminal record. Shared by bounded maintenance and RPC controls.
+export async function expireOperationRecord(store,row,now=stamp()) {
+  let approverId=null;
+  if(row.state==='APPROVED') {
+    const approval=await store.get("UPDATE mcp_v2_approval SET consumed_at=? WHERE operation_id=? AND decision='APPROVED' AND consumed_at IS NULL RETURNING approver_id",now,row.id);
+    if(!approval)throw new Error('Expired operation has invalid approval state.');
+    approverId=approval.approver_id;
+  }
+  const changed=await store.get("UPDATE mcp_v2_operation SET state='EXPIRED' WHERE id=? AND tenant_id=? AND state=? RETURNING id",row.id,row.tenant_id,row.state);
+  if(!changed)throw new Error('Expired operation changed concurrently.');
+  await recordOperationEvent(store,{...row,resource_id:null},'EXPIRE','EXPIRED',approverId,{at:now});
+}
+
+// Isolated prototype only: callers must hold the platform tenant fence before
+// the tenant-store transaction. This marks expired operations but deliberately
+// does not delete proposals or idempotency evidence. Retention is unresolved.
+export async function expireOperations({ store, tenantGuard, tenantId, limit = 33 }) {
+  if (!store || typeof store.transaction !== 'function' || !tenantGuard ||
+      typeof tenantGuard.withActiveTenant !== 'function' || typeof tenantId !== 'string' || !tenantId ||
+      !Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw new TypeError('A trusted tenant guard and bounded expiry batch are required.');
+  }
+  return tenantGuard.withActiveTenant(tenantId, (tenant) => {
+    if (!tenant || !Number.isSafeInteger(tenant.revision) || tenant.revision < 0) {
+      throw new TypeError('Invalid tenant fence.');
+    }
+    return store.transaction(async () => {
+      const now = stamp();
+      const candidates = await store.all(`SELECT o.*, a.approver_id AS expiry_approver_id FROM mcp_v2_operation o
+        LEFT JOIN mcp_v2_approval a ON a.operation_id = o.id
+        WHERE o.tenant_id = ? AND o.state IN ('PREPARED','PENDING_APPROVAL','APPROVED')
+          AND (o.expires_at <= ? OR (o.state = 'APPROVED' AND a.expires_at <= ?))
+        ORDER BY o.expires_at, o.id LIMIT ?`, tenantId, now, now, Math.min(limit, 33));
+      const rows=[];let bytes=0;
+      for(const row of candidates){
+        const size=2*Buffer.byteLength(JSON.stringify(row))+2048;
+        if(bytes+size>1048576)break;rows.push(row);bytes+=size;
+      }
+      for (const row of rows) {
+        await expireOperationRecord(store,row,now);
+      }
+      return { expired: rows.length };
+    });
+  });
+}

@@ -22,10 +22,15 @@ login.addEventListener('submit', async (event) => {
 });
 consent.addEventListener('submit', async (event) => {
   event.preventDefault();
-  if (!csrf) return;
+  if (!csrf || !event.submitter || !['approve', 'deny'].includes(event.submitter.value)) return;
+  const selected = new FormData(consent).getAll('scope');
+  if (event.submitter.value === 'approve' && !selected.length) {
+    message.textContent = 'Choose at least one scope, or deny access.';
+    return;
+  }
   const buttons = [...consent.querySelectorAll('button')]; buttons.forEach((b) => { b.disabled = true; });
   try {
-    const result = await send('/api/v1/seller/mcp/consent', { authorizationRequestId: main.dataset.request, decision: event.submitter.value, scopes: new FormData(consent).getAll('scope') }, { 'X-CSRF-Token': csrf });
+    const result = await send('/api/v1/seller/mcp/consent', { authorizationRequestId: main.dataset.request, decision: event.submitter.value, scopes: selected }, { 'X-CSRF-Token': csrf });
     csrf = null; window.location.assign(result.redirectTo);
   } catch (error) { message.textContent = error.message; buttons.forEach((b) => { b.disabled = false; }); }
 });

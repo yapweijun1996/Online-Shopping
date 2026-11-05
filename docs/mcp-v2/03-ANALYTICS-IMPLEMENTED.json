@@ -1,0 +1,1301 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:online-shopping:mcp-v2:analytics:implemented",
+  "$comment": "Actual isolated analytics descriptor contracts. Included only behind the existing nonproduction safe-v2 gate; configuration remains default-off and production is blocked. Arguments below are synthetic examples.",
+  "$defs": {
+    "analytics.sales_trend.input": {
+      "additionalProperties": false,
+      "properties": {
+        "comparePrevious": {
+          "type": "boolean"
+        },
+        "currency": {
+          "enum": [
+            "MYR",
+            "SGD"
+          ],
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        "from": {
+          "maxLength": 10,
+          "minLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "groupBy": {
+          "enum": [
+            "day",
+            "week",
+            "month"
+          ],
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "offset": {
+          "maximum": 10000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "toExclusive": {
+          "maxLength": 10,
+          "minLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "toExclusive"
+      ],
+      "type": "object"
+    },
+    "analytics.sales_trend.output": {
+      "additionalProperties": false,
+      "properties": {
+        "acceptedStatuses": {
+          "items": {
+            "enum": [
+              "CONFIRMED",
+              "SHIPPED",
+              "DELIVERED"
+            ],
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "asOf": {
+          "maxLength": 24,
+          "minLength": 24,
+          "type": "string"
+        },
+        "comparison": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "delta": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "currency": {
+                        "enum": [
+                          "MYR",
+                          "SGD"
+                        ],
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "orders": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "totalMinor": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "currency",
+                      "orders",
+                      "totalMinor"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 2,
+                  "minItems": 0,
+                  "type": "array"
+                },
+                "from": {
+                  "maxLength": 10,
+                  "minLength": 10,
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                  "type": "string"
+                },
+                "toExclusive": {
+                  "maxLength": 10,
+                  "minLength": 10,
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                  "type": "string"
+                },
+                "totals": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "currency": {
+                        "enum": [
+                          "MYR",
+                          "SGD"
+                        ],
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "orders": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "totalMinor": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "currency",
+                      "orders",
+                      "totalMinor"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 2,
+                  "minItems": 0,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "from",
+                "toExclusive",
+                "totals",
+                "delta"
+              ],
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "coverage": {
+          "additionalProperties": false,
+          "properties": {
+            "databaseComplete": {
+              "const": true,
+              "type": "boolean"
+            },
+            "historyComplete": {
+              "const": false,
+              "type": "boolean"
+            },
+            "note": {
+              "const": "Complete bounded database records for this query; historical/external completeness is unverified. Pages are live reads.",
+              "maxLength": 119,
+              "minLength": 119,
+              "type": "string"
+            },
+            "pageComplete": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "databaseComplete",
+            "historyComplete",
+            "pageComplete",
+            "note"
+          ],
+          "type": "object"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "enum": [
+                "MYR",
+                "SGD"
+              ],
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dateRange": {
+          "additionalProperties": false,
+          "properties": {
+            "from": {
+              "maxLength": 10,
+              "minLength": 10,
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "type": "string"
+            },
+            "toExclusive": {
+              "maxLength": 10,
+              "minLength": 10,
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "from",
+            "toExclusive"
+          ],
+          "type": "object"
+        },
+        "definitionVersion": {
+          "const": "accepted-submission-v1",
+          "maxLength": 22,
+          "minLength": 22,
+          "type": "string"
+        },
+        "filters": {
+          "additionalProperties": false,
+          "properties": {
+            "comparePrevious": {
+              "type": "boolean"
+            },
+            "currency": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "MYR",
+                    "SGD"
+                  ],
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "groupBy": {
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "currency",
+            "groupBy",
+            "comparePrevious"
+          ],
+          "type": "object"
+        },
+        "groupBy": {
+          "enum": [
+            "day",
+            "week",
+            "month"
+          ],
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "from": {
+                "maxLength": 10,
+                "minLength": 10,
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "type": "string"
+              },
+              "sales": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "currency": {
+                      "enum": [
+                        "MYR",
+                        "SGD"
+                      ],
+                      "maxLength": 64,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "orders": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "totalMinor": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "currency",
+                    "orders",
+                    "totalMinor"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 2,
+                "minItems": 0,
+                "type": "array"
+              },
+              "toExclusive": {
+                "maxLength": 10,
+                "minLength": 10,
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "from",
+              "toExclusive",
+              "sales"
+            ],
+            "type": "object"
+          },
+          "maxItems": 100,
+          "minItems": 0,
+          "type": "array"
+        },
+        "metricName": {
+          "const": "accepted_order_value",
+          "maxLength": 20,
+          "minLength": 20,
+          "type": "string"
+        },
+        "nextOffset": {
+          "anyOf": [
+            {
+              "maximum": 10000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "paginationCapped": {
+          "type": "boolean"
+        },
+        "timeZone": {
+          "const": "UTC+8",
+          "maxLength": 5,
+          "minLength": 5,
+          "type": "string"
+        },
+        "totals": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "currency": {
+                "enum": [
+                  "MYR",
+                  "SGD"
+                ],
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              "orders": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "totalMinor": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "currency",
+              "orders",
+              "totalMinor"
+            ],
+            "type": "object"
+          },
+          "maxItems": 2,
+          "minItems": 0,
+          "type": "array"
+        },
+        "weekStartsOn": {
+          "const": "MONDAY",
+          "maxLength": 6,
+          "minLength": 6,
+          "type": "string"
+        }
+      },
+      "required": [
+        "timeZone",
+        "definitionVersion",
+        "asOf",
+        "acceptedStatuses",
+        "metricName",
+        "dateRange",
+        "currency",
+        "filters",
+        "groupBy",
+        "weekStartsOn",
+        "totals",
+        "comparison",
+        "items",
+        "nextOffset",
+        "paginationCapped",
+        "coverage"
+      ],
+      "type": "object"
+    },
+    "analytics.top_products.input": {
+      "additionalProperties": false,
+      "properties": {
+        "currency": {
+          "enum": [
+            "MYR",
+            "SGD"
+          ],
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        "from": {
+          "maxLength": 10,
+          "minLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "groupBy": {
+          "enum": [
+            "product",
+            "category"
+          ],
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "offset": {
+          "maximum": 10000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sortBy": {
+          "enum": [
+            "quantity",
+            "value"
+          ],
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        "toExclusive": {
+          "maxLength": 10,
+          "minLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "toExclusive"
+      ],
+      "type": "object"
+    },
+    "analytics.top_products.output": {
+      "additionalProperties": false,
+      "properties": {
+        "acceptedStatuses": {
+          "items": {
+            "enum": [
+              "CONFIRMED",
+              "SHIPPED",
+              "DELIVERED"
+            ],
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "asOf": {
+          "maxLength": 24,
+          "minLength": 24,
+          "type": "string"
+        },
+        "attribution": {
+          "const": "CURRENT_PRODUCT_AND_CATEGORY",
+          "maxLength": 28,
+          "minLength": 28,
+          "type": "string"
+        },
+        "coverage": {
+          "additionalProperties": false,
+          "properties": {
+            "databaseComplete": {
+              "const": true,
+              "type": "boolean"
+            },
+            "historyComplete": {
+              "const": false,
+              "type": "boolean"
+            },
+            "note": {
+              "const": "Complete bounded database records for this query; historical/external completeness is unverified. Pages are live reads.",
+              "maxLength": 119,
+              "minLength": 119,
+              "type": "string"
+            },
+            "pageComplete": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "databaseComplete",
+            "historyComplete",
+            "pageComplete",
+            "note"
+          ],
+          "type": "object"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "enum": [
+                "MYR",
+                "SGD"
+              ],
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dateRange": {
+          "additionalProperties": false,
+          "properties": {
+            "from": {
+              "maxLength": 10,
+              "minLength": 10,
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "type": "string"
+            },
+            "toExclusive": {
+              "maxLength": 10,
+              "minLength": 10,
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "from",
+            "toExclusive"
+          ],
+          "type": "object"
+        },
+        "definitionVersion": {
+          "const": "accepted-submission-v1",
+          "maxLength": 22,
+          "minLength": 22,
+          "type": "string"
+        },
+        "filters": {
+          "additionalProperties": false,
+          "properties": {
+            "currency": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "MYR",
+                    "SGD"
+                  ],
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "groupBy": {
+              "enum": [
+                "product",
+                "category"
+              ],
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            "sortBy": {
+              "enum": [
+                "quantity",
+                "value"
+              ],
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "currency",
+            "groupBy",
+            "sortBy"
+          ],
+          "type": "object"
+        },
+        "groupBy": {
+          "enum": [
+            "product",
+            "category"
+          ],
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        "historicalCategoryAvailable": {
+          "const": false,
+          "type": "boolean"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "categoryCode": {
+                "maxLength": 80,
+                "minLength": 0,
+                "type": "string"
+              },
+              "currency": {
+                "enum": [
+                  "MYR",
+                  "SGD"
+                ],
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              "name": {
+                "anyOf": [
+                  {
+                    "maxLength": 120,
+                    "minLength": 0,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "productId": {
+                "anyOf": [
+                  {
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "quantity": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "sku": {
+                "anyOf": [
+                  {
+                    "maxLength": 40,
+                    "minLength": 0,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "totalMinor": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "productId",
+              "sku",
+              "name",
+              "categoryCode",
+              "currency",
+              "quantity",
+              "totalMinor"
+            ],
+            "type": "object"
+          },
+          "maxItems": 100,
+          "minItems": 0,
+          "type": "array"
+        },
+        "metricName": {
+          "const": "accepted_item_value",
+          "maxLength": 19,
+          "minLength": 19,
+          "type": "string"
+        },
+        "nextOffset": {
+          "anyOf": [
+            {
+              "maximum": 10000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "paginationCapped": {
+          "type": "boolean"
+        },
+        "sortBy": {
+          "enum": [
+            "quantity",
+            "value"
+          ],
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        "timeZone": {
+          "const": "UTC+8",
+          "maxLength": 5,
+          "minLength": 5,
+          "type": "string"
+        },
+        "totals": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "currency": {
+                "enum": [
+                  "MYR",
+                  "SGD"
+                ],
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              "quantity": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "totalMinor": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "currency",
+              "quantity",
+              "totalMinor"
+            ],
+            "type": "object"
+          },
+          "maxItems": 2,
+          "minItems": 0,
+          "type": "array"
+        }
+      },
+      "required": [
+        "timeZone",
+        "definitionVersion",
+        "asOf",
+        "acceptedStatuses",
+        "metricName",
+        "dateRange",
+        "currency",
+        "filters",
+        "groupBy",
+        "sortBy",
+        "attribution",
+        "historicalCategoryAvailable",
+        "totals",
+        "items",
+        "nextOffset",
+        "paginationCapped",
+        "coverage"
+      ],
+      "type": "object"
+    },
+    "analytics.inventory_risk.input": {
+      "additionalProperties": false,
+      "properties": {
+        "activeOnly": {
+          "type": "boolean"
+        },
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "mode": {
+          "enum": [
+            "low",
+            "slow",
+            "either",
+            "all"
+          ],
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        "offset": {
+          "maximum": 10000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "slowDays": {
+          "maximum": 366,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "threshold": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "analytics.inventory_risk.output": {
+      "additionalProperties": false,
+      "properties": {
+        "acceptedStatuses": {
+          "items": {
+            "enum": [
+              "CONFIRMED",
+              "SHIPPED",
+              "DELIVERED"
+            ],
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "activeOnly": {
+          "type": "boolean"
+        },
+        "asOf": {
+          "maxLength": 24,
+          "minLength": 24,
+          "type": "string"
+        },
+        "coverage": {
+          "additionalProperties": false,
+          "properties": {
+            "databaseComplete": {
+              "const": true,
+              "type": "boolean"
+            },
+            "historyComplete": {
+              "const": false,
+              "type": "boolean"
+            },
+            "note": {
+              "const": "Complete bounded database records for this query; historical/external completeness is unverified. Pages are live reads.",
+              "maxLength": 119,
+              "minLength": 119,
+              "type": "string"
+            },
+            "pageComplete": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "databaseComplete",
+            "historyComplete",
+            "pageComplete",
+            "note"
+          ],
+          "type": "object"
+        },
+        "currency": {
+          "type": "null"
+        },
+        "dateRange": {
+          "additionalProperties": false,
+          "properties": {
+            "from": {
+              "maxLength": 24,
+              "minLength": 24,
+              "type": "string"
+            },
+            "toExclusive": {
+              "maxLength": 24,
+              "minLength": 24,
+              "type": "string"
+            }
+          },
+          "required": [
+            "from",
+            "toExclusive"
+          ],
+          "type": "object"
+        },
+        "definitionVersion": {
+          "const": "accepted-submission-v1",
+          "maxLength": 22,
+          "minLength": 22,
+          "type": "string"
+        },
+        "filters": {
+          "additionalProperties": false,
+          "properties": {
+            "activeOnly": {
+              "type": "boolean"
+            },
+            "mode": {
+              "enum": [
+                "low",
+                "slow",
+                "either",
+                "all"
+              ],
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            "slowDays": {
+              "maximum": 366,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "threshold": {
+              "maximum": 1000000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "threshold",
+            "slowDays",
+            "mode",
+            "activeOnly"
+          ],
+          "type": "object"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "acceptedQuantityInPeriod": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "active": {
+                "type": "boolean"
+              },
+              "availableQuantity": {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "categoryCode": {
+                "maxLength": 80,
+                "minLength": 0,
+                "type": "string"
+              },
+              "lowStock": {
+                "type": "boolean"
+              },
+              "name": {
+                "maxLength": 120,
+                "minLength": 0,
+                "type": "string"
+              },
+              "productId": {
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "reservationShortfall": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "reservedQuantity": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "sku": {
+                "maxLength": 40,
+                "minLength": 0,
+                "type": "string"
+              },
+              "slowMoving": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "stockQuantity": {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "productId",
+              "sku",
+              "name",
+              "categoryCode",
+              "active",
+              "stockQuantity",
+              "reservedQuantity",
+              "availableQuantity",
+              "reservationShortfall",
+              "lowStock",
+              "slowMoving",
+              "acceptedQuantityInPeriod"
+            ],
+            "type": "object"
+          },
+          "maxItems": 100,
+          "minItems": 0,
+          "type": "array"
+        },
+        "lookbackFrom": {
+          "maxLength": 24,
+          "minLength": 24,
+          "type": "string"
+        },
+        "lookbackToExclusive": {
+          "maxLength": 24,
+          "minLength": 24,
+          "type": "string"
+        },
+        "metricName": {
+          "const": "inventory_risk",
+          "maxLength": 14,
+          "minLength": 14,
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "low",
+            "slow",
+            "either",
+            "all"
+          ],
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        "nextOffset": {
+          "anyOf": [
+            {
+              "maximum": 10000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "paginationCapped": {
+          "type": "boolean"
+        },
+        "reservationHours": {
+          "maximum": 48,
+          "minimum": 48,
+          "type": "integer"
+        },
+        "slowDays": {
+          "maximum": 366,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "slowDefinition": {
+          "const": "ZERO_ACCEPTED_UNITS_AND_OLD_ENOUGH",
+          "maxLength": 34,
+          "minLength": 34,
+          "type": "string"
+        },
+        "threshold": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "timeZone": {
+          "const": "UTC+8",
+          "maxLength": 5,
+          "minLength": 5,
+          "type": "string"
+        },
+        "totals": {
+          "additionalProperties": false,
+          "properties": {
+            "matchedLowStock": {
+              "maximum": 10000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "matchedProducts": {
+              "maximum": 10000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "matchedSlowMoving": {
+              "maximum": 10000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "matchedTracked": {
+              "maximum": 10000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "matchedUnknownSlow": {
+              "maximum": 10000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "matchedUnlimited": {
+              "maximum": 10000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "scannedProducts": {
+              "maximum": 10000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "scannedProducts",
+            "matchedProducts",
+            "matchedTracked",
+            "matchedUnlimited",
+            "matchedLowStock",
+            "matchedSlowMoving",
+            "matchedUnknownSlow"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "timeZone",
+        "definitionVersion",
+        "asOf",
+        "acceptedStatuses",
+        "metricName",
+        "dateRange",
+        "currency",
+        "filters",
+        "threshold",
+        "slowDays",
+        "mode",
+        "activeOnly",
+        "totals",
+        "reservationHours",
+        "lookbackFrom",
+        "lookbackToExclusive",
+        "slowDefinition",
+        "items",
+        "nextOffset",
+        "paginationCapped",
+        "coverage"
+      ],
+      "type": "object"
+    }
+  },
+  "x-toolPolicies": {
+    "analytics.sales_trend": {
+      "scope": "analytics.extended",
+      "capability": "figures.read",
+      "risk": "LOW"
+    },
+    "analytics.top_products": {
+      "scope": "analytics.extended",
+      "capability": "figures.read",
+      "risk": "LOW"
+    },
+    "analytics.inventory_risk": {
+      "scope": "analytics.extended",
+      "capability": "figures.read",
+      "risk": "LOW"
+    }
+  },
+  "x-syntheticArguments": {
+    "analytics.sales_trend": {
+      "from": "2026-10-01",
+      "toExclusive": "2026-11-01",
+      "groupBy": "week",
+      "comparePrevious": true,
+      "limit": 50
+    },
+    "analytics.top_products": {
+      "from": "2026-10-01",
+      "toExclusive": "2026-11-01",
+      "groupBy": "category",
+      "currency": "MYR",
+      "sortBy": "value",
+      "limit": 50
+    },
+    "analytics.inventory_risk": {
+      "threshold": 5,
+      "slowDays": 30,
+      "mode": "either",
+      "activeOnly": true,
+      "limit": 50
+    }
+  }
+}

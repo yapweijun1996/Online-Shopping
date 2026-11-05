@@ -1,3 +1,4 @@
+import { withInventoryContext } from '../src/inventory.js';
 import { realpath } from 'node:fs/promises';
 import { readSeedFile, validateSeedJpeg } from './seed-image-input.mjs';
 import { resolve } from 'node:path';
@@ -77,7 +78,7 @@ export async function seedDemoShop(store, { data, images, shopName, dryRun = fal
         const { code, label } = planned.get(input.category);
         await createCategory(store, { code, label });
       }
-      let product = await createProduct(store, input);
+      let product = await withInventoryContext({ source: 'OPERATOR', actorKind: 'OPERATOR', actorId: 'seed-demo-shop' }, () => createProduct(store, input));
       for (const photo of photos.slice(1)) product = await addGalleryImage(store, product.id, photo.imageDataUrl, 'manual', photo.thumbDataUrl);
       return product;
     });

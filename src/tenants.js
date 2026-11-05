@@ -11,5 +11,13 @@ export const DEFAULT_TENANT_ID = 'default';
 /* The current single shop as a registry: every request belongs to it. */
 export function singleTenantRegistry({ store, config }) {
   const tenant = Object.freeze({ id: DEFAULT_TENANT_ID, code: null, status: 'ACTIVE', store, config });
-  return { resolve: async () => tenant };
+  // This identity comes from the deployment, never request arguments. Platform
+  // registries must replace this with their live lifecycle fence.
+  const operationGuard = Object.freeze({
+    async withActiveTenant(id, work) {
+      if (id !== DEFAULT_TENANT_ID || typeof work !== 'function') throw new TypeError('Invalid single-tenant operation.');
+      return work(Object.freeze({ revision: 0 }));
+    },
+  });
+  return { resolve: async () => tenant, operationGuard: (identity) => identity === tenant ? operationGuard : null };
 }

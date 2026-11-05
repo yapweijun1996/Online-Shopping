@@ -1,3 +1,4 @@
+import { setupShop } from '../src/shop-setup.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -44,22 +45,22 @@ async function insertOperation(store, { id = randomUUID(), tenant = 'synthetic',
   await store.run(`INSERT INTO mcp_v2_operation
     (id, tenant_id, tenant_revision, account_id, client_id, grant_id, epoch_hash, build_digest, issuer, resource, tool_name, required_scope,
      required_capability, risk, resource_type, envelope_json, preview_hash, request_hash,
-     idempotency_hash, state, created_at, expires_at, correlation_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     idempotency_hash, state, created_at, expires_at, receipt_expires_at, correlation_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   id, tenant, 1, account, client, 'grant', digest, digest, 'https://seller.example.test', 'https://seller.example.test/mcp',
   'catalog.preview_update', scope, 'catalog.write', 'MEDIUM', 'product', envelope,
-  hash, digest, idem, state, start, end, randomUUID());
+  hash, digest, idem, state, start, end, '2027-03-01T00:00:00.000Z', randomUUID());
   return id;
 }
 
 for (const engine of ['sqlite', 'postgres']) {
-  test(`${engine}: experimental operation tables are opt-in and enforce bounded integrity`, { skip: engine === 'postgres' && !base }, async (t) => {
+  test(`${engine}: durable operation tables enforce bounded integrity`, { skip: engine === 'postgres' && !base }, async (t) => {
     const store = await fixture(t, engine);
     const hasTable = async () => engine === 'sqlite'
       ? Boolean(await store.get("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'mcp_v2_operation'"))
       : Boolean((await store.get("SELECT to_regclass('public.mcp_v2_operation') AS name")).name);
-    // Merely starting the existing app must not create or activate v2 tables.
-    assert.equal(await hasTable(), false);
+    // Schema30 creates durable storage without activating v2 tools.
+    assert.equal(await hasTable(), true);
     await store.transaction(() => store.exec(operationSchema(engine)));
     assert.equal(await hasTable(), true);
     const id = await insertOperation(store);
@@ -73,6 +74,15 @@ for (const engine of ['sqlite', 'postgres']) {
     await assert.rejects(insertOperation(store, { idem: 'b'.repeat(64), envelope: '[]' }));
     await assert.rejects(insertOperation(store)); // same tenant/account/client/idempotency key
     await insertOperation(store, { account: 'other-account' }); // binding is part of uniqueness
+
+    await assert.rejects(store.run('UPDATE mcp_v2_operation SET envelope_json = NULL WHERE id = ?', id));
+    await assert.rejects(store.run('UPDATE mcp_v2_operation SET receipt_expires_at = expires_at WHERE id = ?', id));
+    await assert.rejects(store.run('UPDATE mcp_v2_operation SET redacted_at = ?, envelope_json = NULL WHERE id = ?', end, id));
+    const receipt = await insertOperation(store, { idem: 'e'.repeat(64), state: 'COMMITTED' });
+    await assert.rejects(store.run('UPDATE mcp_v2_operation SET redacted_at = ?, envelope_json = NULL WHERE id = ?', start, receipt));
+    await store.run('UPDATE mcp_v2_operation SET redacted_at = ?, envelope_json = NULL, result_json = ? WHERE id = ?', end, '{"receipt":"synthetic-safe-receipt"}', receipt);
+    assert.equal((await store.get('SELECT envelope_json FROM mcp_v2_operation WHERE id = ?', receipt)).envelope_json, null);
+    await assert.rejects(store.run('UPDATE mcp_v2_operation SET redacted_at = NULL WHERE id = ?', receipt));
 
     const challenge = randomUUID();
     await store.run(`INSERT INTO mcp_v2_approval_challenge(id, operation_id, nonce_hash, created_at, expires_at)
@@ -99,6 +109,7 @@ for (const engine of ['sqlite', 'postgres']) {
     const store = await fixture(t, engine);
     await store.transaction(() => store.exec(operationSchema(engine)));
     await ensureAdmin(store, 'synthetic_owner', 'Synthetic-owner-password-2026!');
+    await setupShop(store, { mode: 'production', shopName: 'Synthetic v2 shop' });
     const account = await store.get('SELECT * FROM seller_account WHERE username_key = ?', 'synthetic_owner');
     const now = new Date().toISOString(), expiry = new Date(Date.now() + 600000).toISOString();
     const binding = { tenantId: 'synthetic', issuer: 'https://seller.example.test', resource: 'https://seller.example.test/mcp' };
@@ -123,7 +134,9 @@ for (const engine of ['sqlite', 'postgres']) {
     await denied(verify('catalog.commit_update', { bearer: 'invalid' }));
     await store.run(`INSERT INTO mcp_v2_scope_consent(grant_id, tenant_id, account_id, client_id, scope, account_auth_version, epoch_hash, consented_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, grantId, binding.tenantId, account.id, clientId, 'catalog.write', account.oauth_auth_version, digest, now);
-    assert.deepEqual(await verify(), { tenantId: binding.tenantId, accountId: account.id, clientId, grantId, scope: 'catalog.write' });
+    assert.deepEqual(await verify(), { tenantId: binding.tenantId, accountId: account.id, clientId, grantId,
+      accountAuthVersion: account.oauth_auth_version, grantExpiresAt: expiry, tokenIssuedAt: now,
+      scope: 'catalog.write', requiredScopes: ['catalog.write'] });
     await denied(verify('catalog.commit_update', { epochHash: 'b'.repeat(64) }));
     await denied(verify('catalog.commit_update', { binding: { ...binding, tenantId: 'another-tenant' } }));
     await denied(verify('catalog.commit_update', { binding: { ...binding, resource: binding.resource + '/other' } }));
@@ -170,7 +183,7 @@ test('draft policy matches proposed contracts and does not change the active rea
     assert.ok(OPERATION_SCOPES.includes(policy.scope));
   }
   for (const name of ['operations.get', 'operations.cancel', 'operations.audit']) {
-    assert.equal(Object.hasOwn(OPERATION_SCOPE_POLICIES, name), false); // requires target-specific RBAC design
+    assert.equal(Object.hasOwn(OPERATION_SCOPE_POLICIES, name), true); // every call additionally requires its verified target policy
   }
   assert.ok(OPERATION_SCOPES.every((scope) => !SCOPES.includes(scope)));
   assert.deepEqual(catalogue.map((tool) => tool.name).sort(), [

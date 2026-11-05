@@ -1,3 +1,4 @@
+import { withInventoryContext } from './inventory.js';
 import { senderFields } from './sender-settings.js';
 import catalog from './public-demo-catalog.json' with { type: 'json' };
 import { ApiError } from './http.js';
@@ -18,7 +19,9 @@ async function seedDemo(store) {
     mobile_hide_bars_on_scroll = 0, availability_text = NULL, shipping_text = NULL, returns_text = NULL,
     ${Object.values(senderFields).map(([column]) => `${column} = NULL`).join(', ')}, updated_at = ? WHERE id = 1`, new Date().toISOString());
   for (const [code, label] of Object.entries(categories)) await createCategory(store, { code, label });
-  for (const product of catalog) await createProduct(store, product);
+  await withInventoryContext({ source: 'DEMO', actorKind: 'SYSTEM', actorId: 'demo-seed' }, async () => {
+    for (const product of catalog) await createProduct(store, product);
+  });
 }
 
 /*
@@ -31,7 +34,7 @@ export async function resetDemo(store) {
     if ((await getShopSetup(store)).mode !== 'demo') {
       throw new ApiError(409, 'NOT_DEMO', 'Only a Demo shop can be reset.');
     }
-    for (const table of ['message_inbound', 'message_outbox', 'order_note', 'order_event', 'order_item', 'delivery', 'checkout_idempotency', 'shop_order',
+    for (const table of ['inventory_movement', 'inventory_state', 'inventory_coverage', 'message_inbound', 'message_outbox', 'order_note', 'order_event', 'order_item', 'delivery', 'checkout_idempotency', 'shop_order',
       'product_gallery_image', 'product_option', 'product_event', 'product', 'option_value', 'option_type', 'general_code']) await store.run(`DELETE FROM ${table}`);
     await store.run('UPDATE order_sequence SET value = 0 WHERE id = 1');
     await seedDemo(store);

@@ -1,3 +1,4 @@
+import { legacyInventoryDropSql } from './helpers/inventory-fixture.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -121,7 +122,7 @@ test('v11 preview migration preserves every stored upload and keeps an editable 
     for (let n = 0; n < count; n++) f.store.run('INSERT INTO product_gallery_image (id, product_id, position, mime, data, created_at) VALUES (?, ?, ?, ?, ?, ?)',
       `aaaaaaaa-aaaa-4aaa-8aaa-${String(n).padStart(12, '0')}`, f.id, n + 1, 'image/png', Buffer.concat([png, Buffer.from(String(n))]), '2026-10-01T00:00:00Z');
     const before = f.store.all('SELECT * FROM product_gallery_image ORDER BY position');
-    f.store.exec('ALTER TABLE product DROP COLUMN gallery_layout_json'); f.store.setSchemaVersion(11); await migrateStore(f.store);
+    f.store.exec(legacyInventoryDropSql); f.store.exec('ALTER TABLE product DROP COLUMN gallery_layout_json'); f.store.setSchemaVersion(11); await migrateStore(f.store);
     assert.deepEqual(f.store.all('SELECT * FROM product_gallery_image ORDER BY position'), before);
     const detail = await (await f.call(f.seller)).json();
     assert.equal(detail.images.length, count <= 4 ? count + 6 : count + 1);

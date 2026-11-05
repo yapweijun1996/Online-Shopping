@@ -1,14 +1,16 @@
+import { initializeProductStock, setProductStock, assertStockTrackingChange } from './inventory.js';
 import { randomUUID } from 'node:crypto';
 import { ApiError } from './http.js';
 import { FieldError, boundedText } from './validation.js';
 import { validateProductInput } from './product-input.js';
-import { decodeProductImage, decodeThumbnail } from './product-image.js';
+import { decodeThumbnail } from './product-image.js';
 import { getCompanySettings, requireActiveCategory } from './settings.js';
 import { presentCatalogCopy } from './catalog-copy.js';
-import { groupUsesOptions, loadProductOptions, optionAxes, optionError, setProductOptions } from './options.js';
-import { listingFor, moveToListing, syncListing } from './listings.js';
+import { hasVariantLabel, loadProductOptions, optionAxes, optionError, prepareProductOptions, requireGroupOptions, setProductOptions } from './options.js';
+import { listingFor, moveToListing, syncListing, plannedListingIdentity, plannedProductCreationIdentity, planProductCreationListing, listingForPlannedProductCreate } from './listings.js';
+import { OPTION_LIMITS } from './option-limits.js';
 import { reservedQuantitySql } from './stock-reservation.js';
-import { galleryRole, productCover, productGallery, requireGalleryRevision, saveProductGallery, shareListingGallery } from './product-gallery.js';
+import { galleryRole, productCover, productGallery, requireGalleryRevision, saveProductGallery, planProductGallery, planProductMainRestoration, applyProductGalleryPlan, prepareGalleryUploadEntry, requireMainImageRemoval, shareListingGallery } from './product-gallery.js';
 
 const columns = () => `p.id, p.sku, p.name, p.description, p.category AS category_code,
   c.label AS category, p.price_minor, p.currency, p.active, p.image_mime, p.variant_group, p.variant_label, p.stock_quantity, p.listing_id,
@@ -89,20 +91,94 @@ function duplicateSku(error) {
   throw error;
 }
 
+// Shared read-only preparation; callers that apply the result hold the writer lock.
+export async function prepareProductCreate(database, input) {
+  const currency = (await getCompanySettings(database)).defaultCurrency;
+  if (!input || typeof input !== 'object' || Array.isArray(input)) validateProductInput(input, [currency]);
+  const product = validateProductInput(input && { currency, ...input }, [currency]);
+  await requireActiveCategory(database, product.category);
+  await validateVariantGroup(database, product);
+  return product;
+}
+
+export async function hasProductSkuConflict(database, sku, excludeId = null) {
+  return Boolean(await database.get('SELECT id FROM product WHERE sku = ? AND (? IS NULL OR id <> ?) LIMIT 1', sku, excludeId, excludeId));
+}
+
+export async function requireUniqueProductSku(database, sku, excludeId = null) {
+  if (await hasProductSkuConflict(database, sku, excludeId)) {
+    throw new ApiError(409, 'DUPLICATE_SKU', 'This SKU is already in use.');
+  }
+}
+
+export async function requireUniqueVariantLabel(database, group, label, excludeId = null) {
+  if (await hasVariantLabel(database, group, label, excludeId)) {
+    const conflict = new ApiError(409, 'DUPLICATE_VARIANT', 'This variant option is already in the group.');
+    conflict.field = 'variantLabel';
+    throw conflict;
+  }
+}
+
 export async function createProduct(database, input) {
+  return createProductInternal(database,input);
+}
+
+const creationConflict=()=>{throw new ApiError(409,'PRODUCT_CREATE_PLAN_CONFLICT','The planned product creation changed.');};
+const creationFields=['sku','name','description','category','priceMinor','currency','active','variantGroup','variantLabel','stockQuantity','options'];
+function creationInput(input) {
+  if(!input||![Object.prototype,null].includes(Object.getPrototypeOf(input)))creationConflict();
+  const copy={};
+  for(const key of Reflect.ownKeys(input)) {
+    const field=Object.getOwnPropertyDescriptor(input,key);
+    if(!creationFields.includes(key)||!field?.enumerable||!Object.hasOwn(field,'value'))creationConflict();
+    copy[key]=field.value;
+  }
+  if(Object.hasOwn(copy,'options')) {
+    const options=copy.options;
+    if(!Array.isArray(options)||options.length>OPTION_LIMITS.typesPerGroup||Reflect.ownKeys(options).length!==options.length+1)creationConflict();
+    copy.options=Array.from({length:options.length},(_,index)=>{
+      const entry=Object.getOwnPropertyDescriptor(options,String(index));
+      if(!entry?.enumerable||!Object.hasOwn(entry,'value'))creationConflict();
+      const option=entry.value;
+      if(!option||![Object.prototype,null].includes(Object.getPrototypeOf(option))||Reflect.ownKeys(option).length!==2)creationConflict();
+      return Object.fromEntries(['typeId','valueId'].map(key=>{
+        const field=Object.getOwnPropertyDescriptor(option,key);if(!field?.enumerable||!Object.hasOwn(field,'value'))creationConflict();return[key,field.value];
+      }));
+    });
+  }
+  return copy;
+}
+
+// Pure preparation for a trusted planned creation. The absent non-null ID is
+// important: option-group exclusion predicates must not receive SQL NULL.
+export async function preparePlannedProductCreate(database,input,context) {
+  const identity=plannedProductCreationIdentity(context),product=await prepareProductCreate(database,creationInput(input));
+  await planProductCreationListing(database,product,identity);
+  await requireUniqueProductSku(database,product.sku);
+  await requireUniqueVariantLabel(database,product.variantGroup,product.variantLabel);
+  const selected=await prepareProductOptions(database,identity.productId,product.variantGroup,product.options??[],{newProduct:true});
+  await requireGroupOptions(database,identity.productId,product.variantGroup,selected.options.length>0);
+  return {...product,stockQuantity:product.stockQuantity??null,...(selected.options.length?{options:selected.options,variantLabel:selected.label}:{})};
+}
+
+// Internal commit entry. Callers separately own authority, immutable approval,
+// catalog revision and history. Public/model inputs cannot supply this context.
+export async function applyPlannedProductCreate(database,input,context) {
+  return createProductInternal(database,creationInput(input),plannedProductCreationIdentity(context));
+}
+
+async function createProductInternal(database,input,identity=null) {
   return await database.transaction(async () => {
-    const currency = (await getCompanySettings(database)).defaultCurrency;
-    if (!input || typeof input !== 'object' || Array.isArray(input)) validateProductInput(input, [currency]);
-    const product = validateProductInput(input && { currency, ...input }, [currency]);
-    await requireActiveCategory(database, product.category);
-    await validateVariantGroup(database, product);
-    const id = randomUUID();
+    const product = identity?await preparePlannedProductCreate(database,input,identity):await prepareProductCreate(database, input);
+    const id = identity?.productId??randomUUID();
     // Creation times in a listing strictly increase: the oldest variant holds the shared gallery and represents the listing.
     const latest = product.variantGroup && await database.get(`SELECT MAX(p.created_at) AS last FROM product p JOIN listing l
       ON l.id = p.listing_id WHERE l.code = ?`, product.variantGroup);
     const now = new Date(Math.max(Date.now(), latest?.last ? Date.parse(latest.last) + 1 : 0)).toISOString();
     // Variants share their listing's title, description and category; the first product of a group defines them.
-    const listing = await listingFor(database, product, now);
+    const listing = identity?await listingForPlannedProductCreate(database,product,now,identity):await listingFor(database, product, now);
+    await requireUniqueProductSku(database, product.sku);
+    await requireUniqueVariantLabel(database, product.variantGroup, product.variantLabel);
     try {
       await database.run(`INSERT INTO product
       (id, sku, name, description, category, price_minor, currency, active, image_mime, image_data,
@@ -111,24 +187,72 @@ export async function createProduct(database, input) {
       id, product.sku, listing.name, listing.description, listing.category,
       product.priceMinor, product.currency, Number(product.active),
       product.image?.mime || null, product.image?.data || null, product.variantGroup || null,
-      product.variantLabel || null, product.stockQuantity ?? null, listing.id,
+      product.variantLabel || null, null, listing.id,
       product.image ? product.thumb?.mime || null : null, product.image ? product.thumb?.data || null : null, now, now
       );
-    } catch (error) {duplicateSku(error);}
+    } catch (error) {
+      if(identity&&(error?.code==='23505'&&error.constraint==='product_pkey'||/UNIQUE constraint failed: product\.id/.test(error?.message||'')))creationConflict();
+      duplicateSku(error);
+    }
+    await initializeProductStock(database, id, product.stockQuantity ?? null, now);
     const hasOptions = Array.isArray(product.options) && product.options.length > 0;
     if (hasOptions) await setProductOptions(database, id, product.variantGroup, product.options, { newProduct: true });
-    else if (product.variantGroup && await groupUsesOptions(database, product.variantGroup, id)) {
-      throw optionError('OPTIONS_REQUIRED', 'This variant group is described by option types; choose its options.');
-    }
+    else await requireGroupOptions(database, id, product.variantGroup, false);
     await shareListingGallery(database, listing.id);
     return await getProduct(database, id, true);
   });
 }
 
-export async function updateProduct(database, id, input, mode = 'manual') {
-  return await database.transaction(async () => {
+// Gallery-only edits use the same metadata validation and gallery planner but
+// must not fabricate a name PATCH that overwrites legacy member-specific copy.
+export async function updateProductGallery(database, id, input, mode = 'manual') {
+  if (!input || !Object.hasOwn(input, 'gallery') || Object.keys(input).some(key => !['gallery','expectedUpdatedAt'].includes(key))) {
+    throw new FieldError('gallery', 'Send an existing image selection and its revision.');
+  }
+  return database.transaction(async () => {
     const existing = await getProduct(database, id, true, mode);
     if (!existing) return null;
+    if (Object.hasOwn(input, 'expectedUpdatedAt')) requireGalleryRevision(existing, input.expectedUpdatedAt);
+    const role = await galleryRole(database, existing);
+    if (role !== 'variant') requireGalleryRevision(existing, input.expectedUpdatedAt);
+    await prepareProductUpdate(database, existing, { name: existing.name });
+    if (role !== 'variant') await saveProductGallery(database, id, input.gallery, existing);
+    await database.run('UPDATE product SET updated_at = ? WHERE id = ?',
+      new Date(Math.max(Date.now(), Date.parse(existing.updatedAt) + 1)).toISOString(), id);
+    await saveOptions(database, id, existing, {});
+    return getProduct(database, id, true, mode);
+  });
+}
+
+export async function updateProduct(database, id, input, mode = 'manual') {
+  return updateProductInternal(database, id, input, mode);
+}
+
+// Internal commit entry; authority, immutable approval and history remain the
+// caller's responsibility. No route/model field supplies the context argument.
+export async function applyPlannedProductUpdate(database, input, context, mode = 'manual') {
+  const identity = plannedListingIdentity(context), keys = ['id', 'changes'];
+  if (!input || ![Object.prototype, null].includes(Object.getPrototypeOf(input)) ||
+      Reflect.ownKeys(input).length !== keys.length || keys.some(key => {
+        const descriptor = Object.getOwnPropertyDescriptor(input, key);
+        return !descriptor?.enumerable || !Object.hasOwn(descriptor, 'value');
+      }) || input.id !== identity.productId || !input.changes ||
+      ['stockQuantity', 'imageDataUrl', 'thumbDataUrl', 'gallery'].some(key => Object.hasOwn(input.changes, key))) {
+    throw new ApiError(409, 'LISTING_PLAN_CONFLICT', 'The planned listing creation changed.');
+  }
+  return updateProductInternal(database, input.id, input.changes, mode, identity);
+}
+
+async function updateProductInternal(database, id, input, mode, listingIdentity = null) {
+  if (input && Object.hasOwn(input, 'gallery') && Object.keys(input).every(key => ['gallery','expectedUpdatedAt'].includes(key))) {
+    return updateProductGallery(database, id, input, mode);
+  }
+  return await database.transaction(async () => {
+    const existing = await getProduct(database, id, true, mode);
+    if (!existing) {
+      if (listingIdentity) throw new ApiError(409, 'LISTING_PLAN_CONFLICT', 'The planned listing creation changed.');
+      return null;
+    }
     const hasRevision = input && Object.hasOwn(input, 'expectedUpdatedAt');
     if (hasRevision) requireGalleryRevision(existing, input.expectedUpdatedAt);
     if (hasRevision && !Object.hasOwn(input, 'gallery')) {
@@ -151,30 +275,22 @@ export async function updateProduct(database, id, input, mode = 'manual') {
       // Gallery-only edits still advance the shared product revision.
       if (!Object.keys(patch).length) patch = { name: existing.name };
     }
-    await patchProduct(database, id, patch, { galleryChanging: hasGallery });
-    if (hasGallery) await saveProductGallery(database, id, input.gallery, existing);else
-    if (role === 'single' && input.imageDataUrl && !existing.galleryItems.some((item) => item.id === 'main')) {
-      // A legacy image-only replacement must become visible. Keep any explicitly
-      // selected primary/order, append the restored main, and reject overflow
-      // atomically rather than accepting an invisible replacement.
-      await saveProductGallery(database, id, [...existing.galleryItems.map((item) => ({ id: item.id })), { id: 'main' }], existing);
+    await patchProduct(database, id, patch, { galleryChanging: hasGallery, listingIdentity });
+    if (hasGallery) await saveProductGallery(database, id, input.gallery, existing);
+    else {
+      const restoration = await planProductMainRestoration(database, id, input.imageDataUrl, existing);
+      if (restoration) await applyProductGalleryPlan(database, restoration);
     }
     return await getProduct(database, id, true, mode);
   });
 }
 
-async function patchProduct(database, id, input, { galleryChanging = false } = {}) {
-  const existing = await getProduct(database, id, true);
-  if (!existing) return null;
+// This helper deliberately has no product/gallery detail or mutation dependency.
+export async function prepareProductUpdate(database, existing, input) {
+  const id = existing.id;
   const currency = (await getCompanySettings(database)).defaultCurrency;
   const patch = validateProductInput(input, [existing.currency], { partial: true });
-  if (Object.hasOwn(patch, 'stockQuantity') && (patch.stockQuantity === null) !== (existing.stockQuantity === null) &&
-      await database.get(`SELECT 1 AS found FROM order_item i JOIN delivery d ON d.id = i.delivery_id
-        JOIN shop_order o ON o.id = d.order_id WHERE i.product_id = ? AND o.status = 'CONFIRMED' LIMIT 1`, id)) {
-    const error = new ApiError(409, 'STOCK_TRACKING_CONFLICT', 'Ship or cancel confirmed orders before changing stock tracking.');
-    error.field = 'stockQuantity';
-    throw error;
-  }
+  if (Object.hasOwn(patch, 'stockQuantity')) await assertStockTrackingChange(database, id, existing.stockQuantity, patch.stockQuantity);
   // A legacy mismatch requires explicit price review, never a currency relabel.
   if (existing.currency !== currency && (Object.hasOwn(patch, 'priceMinor') || patch.active === true || Object.hasOwn(patch, 'currency'))) {
     throw new ApiError(409, 'COMPANY_CURRENCY_CONFLICT', 'Review the existing product currency before changing its price or activating it.');
@@ -188,10 +304,20 @@ async function patchProduct(database, id, input, { galleryChanging = false } = {
     options: patch.options,
     category: patch.category || existing.categoryCode, currency: patch.currency || existing.currency
   }, id, Object.hasOwn(patch, 'variantGroup') && (patch.variantGroup || null) !== (existing.variantGroup || null));
-  if (!galleryChanging && !existing.galleryShared && patch.image === null && existing.images.length > (existing.imageUrl ? 1 : 0)) {
-    throw new FieldError('imageDataUrl', 'Remove gallery images before removing the main image.');
+  return patch;
+}
+
+async function patchProduct(database, id, input, { galleryChanging = false, listingIdentity = null } = {}) {
+  const existing = await getProduct(database, id, true);
+  if (!existing) return null;
+  const patch = await prepareProductUpdate(database, existing, input);
+  if (listingIdentity && (listingIdentity.productId !== id || listingIdentity.previousListingId !== existing.listingId ||
+      !Object.hasOwn(patch, 'variantGroup') || (patch.variantGroup || null) === (existing.variantGroup || null) ||
+      (patch.variantGroup || null) !== listingIdentity.targetCode)) {
+    throw new ApiError(409, 'LISTING_PLAN_CONFLICT', 'The planned listing creation changed.');
   }
-  const mapping = { sku: 'sku', name: 'name', description: 'description', category: 'category', priceMinor: 'price_minor', currency: 'currency', active: 'active', variantGroup: 'variant_group', variantLabel: 'variant_label', stockQuantity: 'stock_quantity' };
+  requireMainImageRemoval(existing, patch.image, galleryChanging);
+  const mapping = { sku: 'sku', name: 'name', description: 'description', category: 'category', priceMinor: 'price_minor', currency: 'currency', active: 'active', variantGroup: 'variant_group', variantLabel: 'variant_label' };
   const assignments = [];
   const values = [];
   for (const [key, column] of Object.entries(mapping)) {
@@ -205,15 +331,22 @@ async function patchProduct(database, id, input, { galleryChanging = false } = {
     values.push(patch.image?.mime || null, patch.image?.data || null, patch.thumb?.mime || null, patch.thumb?.data || null);
   }
   assignments.push('updated_at = ?');
-  values.push(new Date(Math.max(Date.now(), Date.parse(existing.updatedAt) + 1)).toISOString(), id);
+  const updatedAt = new Date(Math.max(Date.now(), Date.parse(existing.updatedAt) + 1)).toISOString();
+  values.push(updatedAt, id);
+  if (Object.hasOwn(patch, 'sku')) await requireUniqueProductSku(database, patch.sku, id);
+  const optionsChange = productOptionsChange(existing, patch);
+  if (optionsChange.checkIntermediateLabel) {
+    await requireUniqueVariantLabel(database, optionsChange.groupAfter, optionsChange.baseLabel, id);
+  }
   try {
     await database.run(`UPDATE product SET ${assignments.join(', ')} WHERE id = ?`, ...values);
   } catch (error) {duplicateSku(error);}
+  if (Object.hasOwn(patch, 'stockQuantity')) await setProductStock(database, id, patch.stockQuantity, updatedAt);
   // Shared fields live on the listing; a group change moves the row to the listing of its new group.
   const now = new Date().toISOString();
   if (Object.hasOwn(patch, 'variantGroup') && (patch.variantGroup || null) !== (existing.variantGroup || null)) {
     const merged = { ...existing, ...patch, category: patch.category || existing.categoryCode };
-    const listing = await moveToListing(database, id, existing.listingId, merged, now);
+    const listing = await moveToListing(database, id, existing.listingId, merged, now, listingIdentity);
     await shareListingGallery(database, listing.id);
   } else {
     await syncListing(database, existing.listingId, patch, now);
@@ -222,15 +355,55 @@ async function patchProduct(database, id, input, { galleryChanging = false } = {
   return await getProduct(database, id, true);
 }
 
+// The input is the server's BEFORE product and its normalized patch. This pure
+// choice is shared by pre-row label checks and post-row option persistence.
+export function productOptionsChange(existing, patch) {
+  if (!existing || typeof existing !== 'object' || Array.isArray(existing) ||
+      !Object.hasOwn(existing, 'variantGroup') || !Object.hasOwn(existing, 'variantLabel') ||
+      !(existing.variantGroup === null || typeof existing.variantGroup === 'string') ||
+      !(existing.variantLabel === null || typeof existing.variantLabel === 'string') ||
+      !patch || typeof patch !== 'object' || Array.isArray(patch) ||
+      Object.hasOwn(patch, 'variantGroup') && !(patch.variantGroup === null || typeof patch.variantGroup === 'string') ||
+      Object.hasOwn(patch, 'variantLabel') && !(patch.variantLabel === null || typeof patch.variantLabel === 'string')) throw new TypeError('A complete product and normalized patch are required.');
+  const groupAfter = Object.hasOwn(patch, 'variantGroup') ? patch.variantGroup : existing.variantGroup;
+  return { groupAfter,
+    replace: Object.hasOwn(patch, 'options') || Object.hasOwn(patch, 'variantGroup') && groupAfter !== existing.variantGroup,
+    requestedOptions: Object.hasOwn(patch, 'options') ? patch.options : [],
+    baseLabel: Object.hasOwn(patch, 'variantLabel') ? patch.variantLabel : existing.variantLabel,
+    checkIntermediateLabel: Object.hasOwn(patch, 'variantGroup') || Object.hasOwn(patch, 'variantLabel') };
+}
+
+// SELECT-only update preparation. Excluding this existing ID from sibling and
+// label checks makes the same BEFORE facts valid before/after its row update,
+// while its old mappings still exist. This is not a prepared write token.
+export async function prepareProductOptionsAfter(database, existing, patch) {
+  if (!existing || !Object.hasOwn(existing, 'id') || typeof existing.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(existing.id)) {
+    throw new TypeError('An existing product ID is required.');
+  }
+  const change = productOptionsChange(existing, patch);
+  if (!await database.get('SELECT id FROM product WHERE id = ?', existing.id)) throw new ApiError(404, 'NOT_FOUND', 'Product not found.');
+  if (change.checkIntermediateLabel) await requireUniqueVariantLabel(database, change.groupAfter, change.baseLabel, existing.id);
+  let optionsAfter, label = change.baseLabel;
+  if (change.replace) {
+    const selected = await prepareProductOptions(database, existing.id, change.groupAfter, change.requestedOptions);
+    optionsAfter = selected.options;
+    if (selected.label) label = selected.label;
+  } else {
+    optionsAfter = (await database.all('SELECT option_type_id, option_value_id FROM product_option WHERE product_id = ? ORDER BY option_type_id', existing.id))
+      .map(row => ({ typeId: row.option_type_id, valueId: row.option_value_id }));
+  }
+  await requireGroupOptions(database, existing.id, change.groupAfter, optionsAfter.length > 0);
+  // Match the UTF-8 text binding also for an explicitly patched base label.
+  return { action: change.replace ? 'REPLACE' : 'KEEP', groupAfter: change.groupAfter,
+    optionsAfter, variantLabelAfter: typeof label === 'string' ? label.toWellFormed() : label };
+}
+
 // Applies option changes after the product row is updated; moving or leaving a group drops stale options.
 async function saveOptions(database, id, existing, patch) {
-  const group = Object.hasOwn(patch, 'variantGroup') ? patch.variantGroup : existing.variantGroup;
-  if (Object.hasOwn(patch, 'options')) await setProductOptions(database, id, group, patch.options);
-  else if (Object.hasOwn(patch, 'variantGroup') && group !== existing.variantGroup) await setProductOptions(database, id, group, []);
+  const change = productOptionsChange(existing, patch);
+  if (change.replace) await setProductOptions(database, id, change.groupAfter, change.requestedOptions);
   const has = Boolean(await database.get('SELECT 1 FROM product_option WHERE product_id = ?', id));
-  if (group && !has && await groupUsesOptions(database, group, id)) {
-    throw optionError('OPTIONS_REQUIRED', 'This variant group is described by option types; choose its options.');
-  }
+  await requireGroupOptions(database, id, change.groupAfter, has);
 }
 
 export async function getProduct(database, id, seller = false, mode = 'manual', variantPage = null) {
@@ -290,16 +463,23 @@ export async function setGalleryThumbnail(database, productId, imageId, thumbDat
 
 const sharedGalleryError = () => new ApiError(409, 'GALLERY_SHARED', 'The photo gallery is shared by all variants; edit it on the main variant.');
 
+// The prepared entry comes from prepareGalleryUploadEntry; all layout/image
+// validation still runs through the common read-only gallery planner.
+export async function planGalleryImageAddition(database, productId, entry, mode = 'manual') {
+  const product = await database.get('SELECT image_mime, listing_id FROM product WHERE id = ?', productId);
+  if (!product) throw new ApiError(404, 'NOT_FOUND', 'Product not found.');
+  if (await galleryRole(database, { id: productId, listingId: product.listing_id }) === 'variant') throw sharedGalleryError();
+  if (!product.image_mime) throw new FieldError('imageDataUrl', 'Add a main image first.');
+  const current = await getProduct(database, productId, true, mode);
+  const plan = await planProductGallery(database, productId, [...current.galleryItems.map(item => ({ id: item.id })), entry], current);
+  return { current, plan };
+}
+
 export async function addGalleryImage(database, productId, imageDataUrl, mode = 'manual', thumbDataUrl = null) {
-  const image = decodeProductImage(imageDataUrl);
-  if (!image) throw new FieldError('imageDataUrl', 'Choose an image.');
+  const entry = prepareGalleryUploadEntry(imageDataUrl, thumbDataUrl);
   return await database.transaction(async () => {
-    const product = await database.get('SELECT image_mime, listing_id FROM product WHERE id = ?', productId);
-    if (!product) throw new ApiError(404, 'NOT_FOUND', 'Product not found.');
-    if (await galleryRole(database, { id: productId, listingId: product.listing_id }) === 'variant') throw sharedGalleryError();
-    if (!product.image_mime) throw new FieldError('imageDataUrl', 'Add a main image first.');
-    const current = await getProduct(database, productId, true, mode);
-    await saveProductGallery(database, productId, [...current.galleryItems.map((item) => ({ id: item.id })), thumbDataUrl ? { imageDataUrl, thumbDataUrl } : { imageDataUrl }], current);
+    const { current, plan } = await planGalleryImageAddition(database, productId, entry, mode);
+    await applyProductGalleryPlan(database, plan);
     await database.run('UPDATE product SET updated_at = ? WHERE id = ?', new Date(Math.max(Date.now(), Date.parse(current.updatedAt) + 1)).toISOString(), productId);
     return await getProduct(database, productId, true, mode);
   });

@@ -1,3 +1,4 @@
+import { dropInventoryForLegacyFixture } from './helpers/inventory-fixture.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -109,7 +110,7 @@ test('schema 18 upgrades to a shared gallery: copies are removed, colour photos 
     const blackMain = await bytes(store, black.id);
     // The real schema 18 has no preview columns; the gallery step of the upgrade must still copy photos.
     for (const table of ['product', 'product_gallery_image']) for (const column of ['thumb_mime', 'thumb_data']) await store.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`);
-    await store.setSchemaVersion(18);
+    await dropInventoryForLegacyFixture(store); await store.setSchemaVersion(18);
     await migrateStore(store);
     assert.equal((await store.all('SELECT id FROM product_gallery_image WHERE product_id = ?', black.id)).length, 0, 'the copy on the other colour is gone');
     assert.equal((await store.get('SELECT gallery_layout_json AS layout FROM product WHERE id = ?', black.id)).layout, null);

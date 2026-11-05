@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { ensureAdmin, createSession, deleteSession } from '../src/auth.js';
+import { setupShop } from '../src/shop-setup.js';
 import { openDatabase } from '../src/db.js';
 import { openPostgresDatabase } from '../src/postgres-db.js';
 import { ApiError } from '../src/http.js';
@@ -35,6 +36,7 @@ async function fixture(t, engine) {
   }
   await store.transaction(() => store.exec(operationSchema(engine)));
   await ensureAdmin(store, 'synthetic_owner', password);
+  await setupShop(store, { mode: 'production', shopName: 'Synthetic approval shop' });
   const account = await store.get('SELECT * FROM seller_account WHERE username_key = ?', 'synthetic_owner');
   const session = await createSession(store, account.id);
   const now = new Date().toISOString(), later = new Date(Date.now() + 600000).toISOString();
@@ -70,13 +72,16 @@ async function fixture(t, engine) {
     const previewHash = operationPreviewHash(value);
     const columns = ['id', 'tenant_id', 'tenant_revision', 'account_id', 'client_id', 'grant_id', 'epoch_hash', 'build_digest', 'issuer', 'resource', 'tool_name',
       'required_scope', 'required_capability', 'risk', 'resource_type', 'resource_id', 'expected_revision',
-      'envelope_json', 'preview_hash', 'request_hash', 'idempotency_hash', 'state', 'created_at', 'expires_at', 'correlation_id'];
+      'envelope_json', 'preview_hash', 'request_hash', 'idempotency_hash', 'state', 'created_at', 'expires_at', 'correlation_id', 'receipt_expires_at'];
     const values = [value.operationId, value.tenantId, value.tenantRevision, value.accountId, value.clientId, value.grantId, value.epochHash, value.buildDigest, value.issuer,
       value.resource, value.toolName, value.requiredScope, value.requiredCapability, value.risk, value.resourceType,
       value.resourceId, String(value.expectedRevision), canonicalOperationJson(value), previewHash, hash('synthetic-request'),
-      value.idempotencyHash, 'PENDING_APPROVAL', value.createdAt, value.expiresAt, value.correlationId];
+      value.idempotencyHash, 'PENDING_APPROVAL', value.createdAt, value.expiresAt, value.correlationId, new Date(Date.parse(value.expiresAt) + 86400000).toISOString()];
     await store.run(`INSERT INTO mcp_v2_operation(${columns.join(',')}) VALUES (${columns.map(() => '?').join(',')})`, ...values);
-    return { value, previewHash, input: { operationId: value.operationId, previewHash, decision: 'approve', password } };
+    const challenge = secret();
+    await store.run(`INSERT INTO mcp_v2_approval_challenge(id, operation_id, nonce_hash, created_at, expires_at, account_id, session_hash, account_auth_version, bound_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, randomUUID(), value.operationId, hash(challenge + ':' + previewHash), now, later, account.id, hash(session.token), account.oauth_auth_version, now);
+    return { value, previewHash, input: { operationId: value.operationId, previewHash, challenge, decision: 'approve', password } };
   }
   return { store, account, session, binding, grantId, epoch, buildDigest, tenantGuard, request, operation };
 }
@@ -101,7 +106,9 @@ for (const engine of ['sqlite', 'postgres']) {
       const op = await f.operation(false, 'catalog.preview_update', injection);
       const reviewRequest = new Request('https://seller.example.test/api/v1/seller/mcp/operations/' + op.value.operationId,
         { method: 'GET', headers: { cookie: `seller_session=${f.session.token}` } });
-      assert.equal((await review(reviewRequest, op.value.operationId)).proposal.after.name, injection);
+      const reviewed = await review(reviewRequest, op.value.operationId);
+      assert.equal(reviewed.proposal.after.name, injection);
+      op.input.challenge = reviewed.challenge;
       await denied(review(new Request(reviewRequest.url), op.value.operationId));
       await denied(review(new Request(reviewRequest.url, { headers: { origin: 'https://other.example.test',
         cookie: `seller_session=${f.session.token}` } }), op.value.operationId));

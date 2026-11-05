@@ -1,7 +1,9 @@
+import { inventoryStorageReady } from './inventory-schema.js';
 import { readFile } from 'node:fs/promises';
 import { openPostgresStore } from './postgres-store.js';
 import { upgradePostgres } from './postgres/upgrade.js';
 import { SCHEMA_VERSION } from './db.js';
+import { initializeFreshOperationStorage } from './mcp/operation-runtime.js';
 
 export async function openPostgresDatabase(url, options) {
   const store = openPostgresStore(url, options);
@@ -12,6 +14,7 @@ export async function openPostgresDatabase(url, options) {
         const tables = await store.all("SELECT tablename FROM pg_tables WHERE schemaname = 'public'");
         if (tables.length) throw new Error('PostgreSQL baseline requires an empty database.');
         await store.exec(await readFile(new URL('./postgres/schema.sql', import.meta.url), 'utf8'));
+        await initializeFreshOperationStorage(store);
       }
       let version = await store.schemaVersion();
       if (version !== SCHEMA_VERSION && options?.allowUpgrade === true) {
@@ -19,6 +22,7 @@ export async function openPostgresDatabase(url, options) {
         version = await store.schemaVersion();
       }
       if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
+      if (!await inventoryStorageReady(store)) throw new Error('Incompatible inventory storage.');
     });
     return store;
   } catch (error) {

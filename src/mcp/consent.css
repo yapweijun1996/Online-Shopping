@@ -5,3 +5,8 @@ input:not([type=checkbox]) { display: block; width: 95%; padding: .7rem; font: i
 button { padding: .8rem 1.2rem; margin: .5rem; font: inherit; cursor: pointer; }
 :focus-visible { outline: 3px solid #176552; outline-offset: 3px; }
 [hidden] { display: none !important; }
+
+fieldset { margin-block: 1rem; padding: 1rem; border: 1px solid #8ba397; }
+legend { font-weight: 700; }
+.mutation-scopes { border: 2px solid #8a5100; }
+.mutation-scopes p { color: #694000; }

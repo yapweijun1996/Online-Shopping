@@ -1,0 +1,302 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:online-shopping:mcp-v2:orders-implemented:v1",
+  "description": "Actual trusted order descriptor schemas; synthetic examples are not authority or production acceptance.",
+  "$defs": {
+    "orders.preview_decision.input": {
+      "type": "object",
+      "properties": {
+        "input": {
+          "additionalProperties": false,
+          "properties": {
+            "decision": {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "enum": [
+                    "confirm",
+                    "reject",
+                    "cancel",
+                    "ship",
+                    "deliver"
+                  ],
+                  "maxLength": 40,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "carrier": {
+                  "maxLength": 4096,
+                  "minLength": 0,
+                  "type": "string"
+                },
+                "reason": {
+                  "maxLength": 4096,
+                  "minLength": 0,
+                  "type": "string"
+                },
+                "trackingNo": {
+                  "anyOf": [
+                    {
+                      "maxLength": 4096,
+                      "minLength": 0,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "action"
+              ],
+              "type": "object"
+            },
+            "expectedRevision": {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "orderId": {
+              "maxLength": 36,
+              "minLength": 36,
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "orderId",
+            "decision"
+          ],
+          "type": "object"
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._~-]+$"
+        }
+      },
+      "required": [
+        "input",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "orders.preview_decision.output": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "status": {
+          "enum": [
+            "PREPARED",
+            "PENDING_APPROVAL",
+            "APPROVED",
+            "REJECTED",
+            "COMMITTED",
+            "EXPIRED",
+            "CANCELLED",
+            "CONFLICT",
+            "FAILED"
+          ]
+        },
+        "previewHash": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "expiresAt": {
+          "type": "string",
+          "minLength": 24,
+          "maxLength": 24
+        },
+        "replayed": {
+          "type": "boolean"
+        },
+        "reviewUrl": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
+        }
+      },
+      "required": [
+        "operationId",
+        "status",
+        "previewHash",
+        "expiresAt",
+        "replayed",
+        "reviewUrl"
+      ],
+      "additionalProperties": false
+    },
+    "orders.commit_decision.input": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        }
+      },
+      "required": [
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "orders.commit_decision.output": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operationId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36,
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "status": {
+              "const": "COMMITTED"
+            },
+            "result": {
+              "additionalProperties": false,
+              "properties": {
+                "orderId": {
+                  "maxLength": 36,
+                  "minLength": 36,
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                  "type": "string"
+                },
+                "orderNo": {
+                  "maxLength": 80,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "resourceRevision": {
+                  "maxLength": 64,
+                  "minLength": 64,
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "status": {
+                  "enum": [
+                    "SUBMITTED",
+                    "CONFIRMED",
+                    "REJECTED",
+                    "SHIPPED",
+                    "DELIVERED",
+                    "CANCELLED"
+                  ],
+                  "maxLength": 40,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "orderId",
+                "orderNo",
+                "status",
+                "revision",
+                "resourceRevision"
+              ],
+              "type": "object"
+            },
+            "replayed": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "operationId",
+            "status",
+            "result",
+            "replayed"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operationId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36,
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "error": {
+              "enum": [
+                "EXPIRED",
+                "STALE_REVISION"
+              ]
+            }
+          },
+          "required": [
+            "operationId",
+            "error"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "x-toolPolicies": {
+    "orders.preview_decision": {
+      "scope": "orders.decide",
+      "capability": "orders.decide",
+      "risk": "HIGH"
+    },
+    "orders.commit_decision": {
+      "scope": "orders.decide",
+      "capability": "orders.decide",
+      "risk": "HIGH"
+    }
+  },
+  "x-syntheticExamples": {
+    "orders.preview_decision": {
+      "arguments": {
+        "input": {
+          "orderId": "00000000-0000-4000-8000-000000000001",
+          "decision": {
+            "action": "confirm"
+          }
+        },
+        "idempotencyKey": "synthetic-order-example-0001"
+      },
+      "result": {
+        "operationId": "00000000-0000-4000-8000-000000000001",
+        "status": "PENDING_APPROVAL",
+        "previewHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expiresAt": "2026-11-05T00:10:00.000Z",
+        "replayed": false,
+        "reviewUrl": "https://seller.example.test/oauth/operation?operationId=00000000-0000-4000-8000-000000000001"
+      }
+    },
+    "orders.commit_decision": {
+      "arguments": {
+        "operationId": "00000000-0000-4000-8000-000000000001"
+      },
+      "result": {
+        "operationId": "00000000-0000-4000-8000-000000000001",
+        "status": "COMMITTED",
+        "result": {
+          "orderId": "00000000-0000-4000-8000-000000000001",
+          "orderNo": "OS-00000001",
+          "status": "CONFIRMED",
+          "revision": 2,
+          "resourceRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "replayed": false
+      }
+    }
+  }
+}

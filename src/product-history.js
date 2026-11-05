@@ -1,3 +1,4 @@
+import { withInventorySeller } from './inventory.js';
 // Who changed which product, when, and what from and to (SEL review item 11). Entries are appended in the same
 // transaction as the edit and never changed or deleted by the application (the Demo reset aside). Stock that moves
 // because an order is confirmed or cancelled is not listed here; the order's own events show it.
@@ -35,7 +36,7 @@ async function append(database, productId, actor, action, changes) {
 export async function trackUpdate(database, id, actor, work) {
   return database.transaction(async () => {
     const before = await getProduct(database, id, true);
-    const result = await work();
+    const result = await withInventorySeller(database, actor, work);
     if (!result) return result;
     await append(database, id, actor, 'UPDATED', diff(before, await getProduct(database, id, true)));
     return result;
@@ -44,9 +45,24 @@ export async function trackUpdate(database, id, actor, work) {
 
 export async function trackCreate(database, actor, work) {
   return database.transaction(async () => {
-    const created = await work();
+    const created = await withInventorySeller(database, actor, work);
     await append(database, created.id, actor, 'CREATED', diff(null, created).filter((change) => ['sku', 'name', 'priceMinor', 'currency', 'active', 'stockQuantity'].includes(change.field)));
     return created;
+  });
+}
+
+// Stock-only operations share the existing diff/append history format without
+// loading product descriptions, variants or media. Other editor history stays
+// on the full product wrapper above.
+export async function trackStockUpdate(database, id, actor, work) {
+  return database.transaction(async () => {
+    const before = await database.get('SELECT stock_quantity FROM product WHERE id = ?', id);
+    if (!before) return null;
+    const result = await withInventorySeller(database, actor, work);
+    if (!result) return result;
+    const after = await database.get('SELECT stock_quantity FROM product WHERE id = ?', id);
+    await append(database, id, actor, 'UPDATED', diff({ stockQuantity: before.stock_quantity }, { stockQuantity: after.stock_quantity }));
+    return result;
   });
 }
 

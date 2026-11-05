@@ -1,13 +1,11 @@
 import { readConfig } from '../src/config.js';
-import { openDatabase } from '../src/db.js';
-import { openPostgresDatabase } from '../src/postgres-db.js';
-import { cleanupOAuth } from '../src/mcp/cleanup.js';
+import { parseCleanupArguments, runSellerMcpCleanup } from '../src/mcp/cleanup-runner.js';
 
-const passes = Number(process.argv[2] ?? 100);
-if (!Number.isInteger(passes) || passes < 1 || passes > 1000) throw new Error('Usage: node scripts/cleanup-seller-mcp.js [passes:1-1000]');
-const config = readConfig();
-const store = config.databaseUrl ? await openPostgresDatabase(config.databaseUrl) : await openDatabase(config.dbPath);
 try {
-  for (let i = 0; i < passes; i++) await cleanupOAuth(store);
-  console.log(JSON.stringify({ cleanupPasses: passes }));
-} finally { await store.close(); }
+  const options = parseCleanupArguments(process.argv.slice(2));
+  console.log(JSON.stringify(await runSellerMcpCleanup({ config: readConfig(), ...options })));
+} catch {
+  // Database/client errors can include credentials or private row values.
+  console.error('MCP cleanup failed. Check the arguments, private configuration and target lifecycle.');
+  process.exitCode = 1;
+}

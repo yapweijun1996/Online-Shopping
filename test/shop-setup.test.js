@@ -1,3 +1,4 @@
+import { dropInventoryForLegacyFixture } from './helpers/inventory-fixture.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { openDatabase, migrateStore } from '../src/db.js';
@@ -102,7 +103,7 @@ test('existing version 6 catalogs migrate to production without altering product
     ALTER TABLE company_setting DROP COLUMN seller_whatsapp_phone;
     ALTER TABLE company_setting DROP COLUMN mobile_hide_bars_on_scroll;
     DROP TABLE shop_setup`);
-  await store.setSchemaVersion(6);
+  await dropInventoryForLegacyFixture(store); await store.setSchemaVersion(6);
   await migrateStore(store);
   assert.equal((await getShopSetup(store)).mode, 'production');
   assert.equal((await store.get('SELECT COUNT(*) AS n FROM product')).n, 35);
@@ -115,7 +116,7 @@ test('version 8 Demo migration never seeds a real contact, then preserves seller
   await store.exec('ALTER TABLE product DROP COLUMN stock_quantity');
   await store.exec('ALTER TABLE company_setting DROP COLUMN seller_whatsapp_phone');
   await store.exec('ALTER TABLE company_setting DROP COLUMN mobile_hide_bars_on_scroll');
-  await store.setSchemaVersion(8);
+  await dropInventoryForLegacyFixture(store); await store.setSchemaVersion(8);
   await migrateStore(store);
   assert.equal((await store.get('SELECT seller_whatsapp_phone FROM company_setting')).seller_whatsapp_phone, null);
   await store.run('UPDATE company_setting SET seller_whatsapp_phone = NULL WHERE id = 1');
@@ -127,7 +128,7 @@ test('version 9 migration defaults existing shops to always-visible mobile bars'
   const store = await fixture(t);
   await store.exec('ALTER TABLE product DROP COLUMN stock_quantity');
   await store.exec('ALTER TABLE company_setting DROP COLUMN mobile_hide_bars_on_scroll');
-  await store.setSchemaVersion(9);
+  await dropInventoryForLegacyFixture(store); await store.setSchemaVersion(9);
   await migrateStore(store);
   assert.equal((await store.get('SELECT mobile_hide_bars_on_scroll FROM company_setting')).mobile_hide_bars_on_scroll, 0);
 });

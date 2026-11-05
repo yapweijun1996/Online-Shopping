@@ -1,0 +1,774 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:online-shopping:mcp-v2:inventory-implemented:v1",
+  "description": "Actual descriptor schemas. Synthetic examples are not authorization or production acceptance.",
+  "$defs": {
+    "inventory.summary.input": {
+      "additionalProperties": false,
+      "properties": {
+        "productId": {
+          "maxLength": 36,
+          "minLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "productId"
+      ],
+      "type": "object"
+    },
+    "inventory.summary.output": {
+      "additionalProperties": false,
+      "properties": {
+        "activeHoldOrders": {
+          "maximum": 10000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "asOf": {
+          "maxLength": 24,
+          "minLength": 24,
+          "type": "string"
+        },
+        "available": {
+          "anyOf": [
+            {
+              "maximum": 1000000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confirmedOrders": {
+          "maximum": 10000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "coverage": {
+          "additionalProperties": false,
+          "properties": {
+            "baselineQuantity": {
+              "anyOf": [
+                {
+                  "maximum": 1000000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "origin": {
+              "enum": [
+                "MIGRATED",
+                "CREATED"
+              ],
+              "maxLength": 40,
+              "minLength": 1,
+              "type": "string"
+            },
+            "preCoverageHistoryAvailable": {
+              "const": false,
+              "type": "boolean"
+            },
+            "startedAt": {
+              "maxLength": 24,
+              "minLength": 24,
+              "type": "string"
+            },
+            "writerCoverage": {
+              "const": "APPLICATION_WRITERS",
+              "maxLength": 19,
+              "minLength": 19,
+              "type": "string"
+            }
+          },
+          "required": [
+            "origin",
+            "startedAt",
+            "baselineQuantity",
+            "writerCoverage",
+            "preCoverageHistoryAvailable"
+          ],
+          "type": "object"
+        },
+        "held": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "onHand": {
+          "anyOf": [
+            {
+              "maximum": 1000000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "product": {
+          "additionalProperties": false,
+          "properties": {
+            "active": {
+              "type": "boolean"
+            },
+            "categoryCode": {
+              "maxLength": 80,
+              "minLength": 0,
+              "type": "string"
+            },
+            "id": {
+              "maxLength": 36,
+              "minLength": 36,
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            "name": {
+              "maxLength": 120,
+              "minLength": 0,
+              "type": "string"
+            },
+            "sku": {
+              "maxLength": 40,
+              "minLength": 0,
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "sku",
+            "name",
+            "categoryCode",
+            "active"
+          ],
+          "type": "object"
+        },
+        "reservationHours": {
+          "maximum": 48,
+          "minimum": 48,
+          "type": "integer"
+        },
+        "revision": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "shortfall": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stockRevision": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "product",
+        "stockRevision",
+        "onHand",
+        "coverage",
+        "revision",
+        "held",
+        "available",
+        "shortfall",
+        "activeHoldOrders",
+        "confirmedOrders",
+        "reservationHours",
+        "asOf"
+      ],
+      "type": "object"
+    },
+    "inventory.movements.input": {
+      "additionalProperties": false,
+      "properties": {
+        "beforeRevision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "productId": {
+          "maxLength": 36,
+          "minLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "productId"
+      ],
+      "type": "object"
+    },
+    "inventory.movements.output": {
+      "additionalProperties": false,
+      "properties": {
+        "coverage": {
+          "additionalProperties": false,
+          "properties": {
+            "baselineQuantity": {
+              "anyOf": [
+                {
+                  "maximum": 1000000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "origin": {
+              "enum": [
+                "MIGRATED",
+                "CREATED"
+              ],
+              "maxLength": 40,
+              "minLength": 1,
+              "type": "string"
+            },
+            "preCoverageHistoryAvailable": {
+              "const": false,
+              "type": "boolean"
+            },
+            "startedAt": {
+              "maxLength": 24,
+              "minLength": 24,
+              "type": "string"
+            },
+            "writerCoverage": {
+              "const": "APPLICATION_WRITERS",
+              "maxLength": 19,
+              "minLength": 19,
+              "type": "string"
+            }
+          },
+          "required": [
+            "origin",
+            "startedAt",
+            "baselineQuantity",
+            "writerCoverage",
+            "preCoverageHistoryAvailable"
+          ],
+          "type": "object"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "afterQuantity": {
+                "anyOf": [
+                  {
+                    "maximum": 1000000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "beforeQuantity": {
+                "anyOf": [
+                  {
+                    "maximum": 1000000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "deltaQuantity": {
+                "anyOf": [
+                  {
+                    "maximum": 1000000,
+                    "minimum": -1000000,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "id": {
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "INITIALIZED",
+                  "SET",
+                  "TRACKING_ENABLED",
+                  "TRACKING_DISABLED",
+                  "ORDER_CONFIRMED",
+                  "ORDER_CANCELLED"
+                ],
+                "maxLength": 40,
+                "minLength": 1,
+                "type": "string"
+              },
+              "occurredAt": {
+                "maxLength": 24,
+                "minLength": 24,
+                "type": "string"
+              },
+              "productId": {
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "reasonCode": {
+                "enum": [
+                  "PRODUCT_CREATE",
+                  "PRODUCT_SET",
+                  "CSV_CREATE",
+                  "CSV_SET",
+                  "DEMO_CREATE",
+                  "OPERATOR_CREATE",
+                  "OPERATOR_SET",
+                  "ORDER_CONFIRM",
+                  "ORDER_CANCEL",
+                  "COUNT_CORRECTION",
+                  "RECEIPT",
+                  "DAMAGE",
+                  "OTHER"
+                ],
+                "maxLength": 40,
+                "minLength": 1,
+                "type": "string"
+              },
+              "source": {
+                "enum": [
+                  "PRODUCT",
+                  "CSV",
+                  "DEMO",
+                  "OPERATOR",
+                  "MCP_CATALOG",
+                  "MCP_ADJUST",
+                  "ORDER"
+                ],
+                "maxLength": 40,
+                "minLength": 1,
+                "type": "string"
+              },
+              "stockRevision": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "productId",
+              "stockRevision",
+              "kind",
+              "source",
+              "reasonCode",
+              "beforeQuantity",
+              "afterQuantity",
+              "deltaQuantity",
+              "occurredAt"
+            ],
+            "type": "object"
+          },
+          "maxItems": 100,
+          "minItems": 0,
+          "type": "array"
+        },
+        "nextBeforeRevision": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "productId": {
+          "maxLength": 36,
+          "minLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "stockRevision": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "productId",
+        "stockRevision",
+        "coverage",
+        "items",
+        "nextBeforeRevision"
+      ],
+      "type": "object"
+    },
+    "inventory.preview_adjustment.input": {
+      "type": "object",
+      "properties": {
+        "input": {
+          "additionalProperties": false,
+          "properties": {
+            "expectedRevision": {
+              "maxLength": 64,
+              "minLength": 64,
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "note": {
+              "maxLength": 500,
+              "minLength": 0,
+              "type": "string"
+            },
+            "productId": {
+              "maxLength": 36,
+              "minLength": 36,
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            "reasonCode": {
+              "enum": [
+                "COUNT_CORRECTION",
+                "RECEIPT",
+                "DAMAGE",
+                "OTHER"
+              ],
+              "maxLength": 40,
+              "minLength": 1,
+              "type": "string"
+            },
+            "stockQuantity": {
+              "anyOf": [
+                {
+                  "maximum": 1000000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "productId",
+            "expectedRevision",
+            "stockQuantity",
+            "reasonCode"
+          ],
+          "type": "object"
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._~-]+$"
+        }
+      },
+      "required": [
+        "input",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "inventory.preview_adjustment.output": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "status": {
+          "enum": [
+            "PREPARED",
+            "PENDING_APPROVAL",
+            "APPROVED",
+            "REJECTED",
+            "COMMITTED",
+            "EXPIRED",
+            "CANCELLED",
+            "CONFLICT",
+            "FAILED"
+          ]
+        },
+        "previewHash": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "expiresAt": {
+          "type": "string",
+          "minLength": 24,
+          "maxLength": 24
+        },
+        "replayed": {
+          "type": "boolean"
+        },
+        "reviewUrl": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
+        }
+      },
+      "required": [
+        "operationId",
+        "status",
+        "previewHash",
+        "expiresAt",
+        "replayed",
+        "reviewUrl"
+      ],
+      "additionalProperties": false
+    },
+    "inventory.commit_adjustment.input": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        }
+      },
+      "required": [
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "inventory.commit_adjustment.output": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operationId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36,
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "status": {
+              "const": "COMMITTED"
+            },
+            "result": {
+              "additionalProperties": false,
+              "properties": {
+                "movementId": {
+                  "maxLength": 36,
+                  "minLength": 36,
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                  "type": "string"
+                },
+                "productId": {
+                  "maxLength": 36,
+                  "minLength": 36,
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                  "type": "string"
+                },
+                "revision": {
+                  "maxLength": 64,
+                  "minLength": 64,
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "stockRevision": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "productId",
+                "movementId",
+                "stockRevision",
+                "revision"
+              ],
+              "type": "object"
+            },
+            "replayed": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "operationId",
+            "status",
+            "result",
+            "replayed"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operationId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36,
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "error": {
+              "enum": [
+                "EXPIRED",
+                "STALE_REVISION"
+              ]
+            }
+          },
+          "required": [
+            "operationId",
+            "error"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "x-toolPolicies": {
+    "inventory.summary": {
+      "scope": "inventory.read",
+      "capability": "catalog.write",
+      "risk": "LOW"
+    },
+    "inventory.movements": {
+      "scope": "inventory.read",
+      "capability": "catalog.write",
+      "risk": "LOW"
+    },
+    "inventory.preview_adjustment": {
+      "scope": "inventory.adjust",
+      "capability": "catalog.write",
+      "risk": "HIGH"
+    },
+    "inventory.commit_adjustment": {
+      "scope": "inventory.adjust",
+      "capability": "catalog.write",
+      "risk": "HIGH"
+    }
+  },
+  "x-syntheticExamples": {
+    "inventory.summary": {
+      "arguments": {
+        "productId": "00000000-0000-4000-8000-000000000001"
+      },
+      "result": {
+        "product": {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "sku": "SYNTHETIC",
+          "name": "Synthetic inventory item",
+          "categoryCode": "SYNTHETIC",
+          "active": true
+        },
+        "stockRevision": 1,
+        "onHand": 8,
+        "coverage": {
+          "origin": "CREATED",
+          "startedAt": "2026-11-05T00:00:00.000Z",
+          "baselineQuantity": 8,
+          "writerCoverage": "APPLICATION_WRITERS",
+          "preCoverageHistoryAvailable": false
+        },
+        "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "held": 2,
+        "available": 6,
+        "shortfall": 0,
+        "activeHoldOrders": 1,
+        "confirmedOrders": 0,
+        "reservationHours": 48,
+        "asOf": "2026-11-05T00:00:00.000Z"
+      }
+    },
+    "inventory.movements": {
+      "arguments": {
+        "productId": "00000000-0000-4000-8000-000000000001",
+        "limit": 50
+      },
+      "result": {
+        "productId": "00000000-0000-4000-8000-000000000001",
+        "stockRevision": 1,
+        "coverage": {
+          "origin": "CREATED",
+          "startedAt": "2026-11-05T00:00:00.000Z",
+          "baselineQuantity": 8,
+          "writerCoverage": "APPLICATION_WRITERS",
+          "preCoverageHistoryAvailable": false
+        },
+        "items": [
+          {
+            "id": "00000000-0000-4000-8000-000000000002",
+            "productId": "00000000-0000-4000-8000-000000000001",
+            "stockRevision": 1,
+            "kind": "INITIALIZED",
+            "source": "PRODUCT",
+            "reasonCode": "PRODUCT_CREATE",
+            "beforeQuantity": null,
+            "afterQuantity": 8,
+            "deltaQuantity": null,
+            "occurredAt": "2026-11-05T00:00:00.000Z"
+          }
+        ],
+        "nextBeforeRevision": null
+      }
+    },
+    "inventory.preview_adjustment": {
+      "arguments": {
+        "input": {
+          "productId": "00000000-0000-4000-8000-000000000001",
+          "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stockQuantity": 3,
+          "reasonCode": "COUNT_CORRECTION",
+          "note": "Synthetic human-reviewed count"
+        },
+        "idempotencyKey": "synthetic-inventory-example-0001"
+      },
+      "result": {
+        "operationId": "00000000-0000-4000-8000-000000000001",
+        "status": "PENDING_APPROVAL",
+        "previewHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "expiresAt": "2026-11-05T00:00:00.000Z",
+        "replayed": false,
+        "reviewUrl": "https://seller.example.test/oauth/operation?operationId=00000000-0000-4000-8000-000000000001"
+      }
+    },
+    "inventory.commit_adjustment": {
+      "arguments": {
+        "operationId": "00000000-0000-4000-8000-000000000001"
+      },
+      "result": {
+        "operationId": "00000000-0000-4000-8000-000000000001",
+        "status": "COMMITTED",
+        "result": {
+          "productId": "00000000-0000-4000-8000-000000000001",
+          "movementId": "00000000-0000-4000-8000-000000000002",
+          "stockRevision": 2,
+          "revision": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "replayed": false
+      }
+    }
+  }
+}

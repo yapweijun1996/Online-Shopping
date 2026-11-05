@@ -1,0 +1,582 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:online-shopping:mcp-v2:company:implemented",
+  "$comment": "Implemented isolated company tool arguments and structuredContent. Activation remains default-off and blocked in production.",
+  "$defs": {
+    "company.get.input": {
+      "additionalProperties": false,
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "company.get.output": {
+      "additionalProperties": false,
+      "properties": {
+        "company": {
+          "additionalProperties": false,
+          "properties": {
+            "availabilityText": {
+              "anyOf": [
+                {
+                  "maxLength": 1000,
+                  "minLength": 0,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "defaultCurrency": {
+              "enum": [
+                "MYR",
+                "SGD"
+              ],
+              "maxLength": 3,
+              "minLength": 3,
+              "type": "string"
+            },
+            "mobileHideBarsOnScroll": {
+              "type": "boolean"
+            },
+            "returnsText": {
+              "anyOf": [
+                {
+                  "maxLength": 1000,
+                  "minLength": 0,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "revision": {
+              "maxLength": 64,
+              "minLength": 64,
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "sellerWhatsAppPhone": {
+              "anyOf": [
+                {
+                  "maxLength": 15,
+                  "minLength": 0,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "senderAddressLine1": {
+              "anyOf": [
+                {
+                  "maxLength": 240,
+                  "minLength": 0,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "senderAddressLine2": {
+              "anyOf": [
+                {
+                  "maxLength": 240,
+                  "minLength": 0,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "senderCity": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 0,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "senderCountry": {
+              "anyOf": [
+                {
+                  "maxLength": 2,
+                  "minLength": 0,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "senderName": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 0,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "senderPhone": {
+              "anyOf": [
+                {
+                  "maxLength": 15,
+                  "minLength": 0,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "senderPostcode": {
+              "anyOf": [
+                {
+                  "maxLength": 20,
+                  "minLength": 0,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "senderState": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 0,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "shippingText": {
+              "anyOf": [
+                {
+                  "maxLength": 1000,
+                  "minLength": 0,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "defaultCurrency",
+            "sellerWhatsAppPhone",
+            "mobileHideBarsOnScroll",
+            "availabilityText",
+            "shippingText",
+            "returnsText",
+            "senderName",
+            "senderPhone",
+            "senderAddressLine1",
+            "senderAddressLine2",
+            "senderCity",
+            "senderState",
+            "senderPostcode",
+            "senderCountry",
+            "revision"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "company"
+      ],
+      "type": "object"
+    },
+    "company.preview_update.input": {
+      "type": "object",
+      "properties": {
+        "input": {
+          "additionalProperties": false,
+          "properties": {
+            "changes": {
+              "additionalProperties": false,
+              "properties": {
+                "availabilityText": {
+                  "anyOf": [
+                    {
+                      "maxLength": 4096,
+                      "minLength": 0,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "defaultCurrency": {
+                  "enum": [
+                    "MYR",
+                    "SGD"
+                  ],
+                  "maxLength": 3,
+                  "minLength": 3,
+                  "type": "string"
+                },
+                "mobileHideBarsOnScroll": {
+                  "type": "boolean"
+                },
+                "returnsText": {
+                  "anyOf": [
+                    {
+                      "maxLength": 4096,
+                      "minLength": 0,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sellerWhatsAppPhone": {
+                  "anyOf": [
+                    {
+                      "maxLength": 32,
+                      "minLength": 0,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "senderAddressLine1": {
+                  "anyOf": [
+                    {
+                      "maxLength": 4096,
+                      "minLength": 0,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "senderAddressLine2": {
+                  "anyOf": [
+                    {
+                      "maxLength": 4096,
+                      "minLength": 0,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "senderCity": {
+                  "anyOf": [
+                    {
+                      "maxLength": 4096,
+                      "minLength": 0,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "senderCountry": {
+                  "anyOf": [
+                    {
+                      "maxLength": 4096,
+                      "minLength": 0,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "senderName": {
+                  "anyOf": [
+                    {
+                      "maxLength": 4096,
+                      "minLength": 0,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "senderPhone": {
+                  "anyOf": [
+                    {
+                      "maxLength": 32,
+                      "minLength": 0,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "senderPostcode": {
+                  "anyOf": [
+                    {
+                      "maxLength": 4096,
+                      "minLength": 0,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "senderState": {
+                  "anyOf": [
+                    {
+                      "maxLength": 4096,
+                      "minLength": 0,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "shippingText": {
+                  "anyOf": [
+                    {
+                      "maxLength": 4096,
+                      "minLength": 0,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "expectedRevision": {
+              "maxLength": 64,
+              "minLength": 64,
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "expectedRevision",
+            "changes"
+          ],
+          "type": "object"
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._~-]+$"
+        }
+      },
+      "required": [
+        "input",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "company.preview_update.output": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "status": {
+          "enum": [
+            "PREPARED",
+            "PENDING_APPROVAL",
+            "APPROVED",
+            "REJECTED",
+            "COMMITTED",
+            "EXPIRED",
+            "CANCELLED",
+            "CONFLICT",
+            "FAILED"
+          ]
+        },
+        "previewHash": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "expiresAt": {
+          "type": "string",
+          "minLength": 24,
+          "maxLength": 24
+        },
+        "replayed": {
+          "type": "boolean"
+        },
+        "reviewUrl": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
+        }
+      },
+      "required": [
+        "operationId",
+        "status",
+        "previewHash",
+        "expiresAt",
+        "replayed",
+        "reviewUrl"
+      ],
+      "additionalProperties": false
+    },
+    "company.commit_update.input": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        }
+      },
+      "required": [
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "company.commit_update.output": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operationId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36,
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "status": {
+              "const": "COMMITTED"
+            },
+            "result": {
+              "additionalProperties": false,
+              "properties": {
+                "changedFields": {
+                  "items": {
+                    "enum": [
+                      "defaultCurrency",
+                      "sellerWhatsAppPhone",
+                      "mobileHideBarsOnScroll",
+                      "availabilityText",
+                      "shippingText",
+                      "returnsText",
+                      "senderName",
+                      "senderPhone",
+                      "senderAddressLine1",
+                      "senderAddressLine2",
+                      "senderCity",
+                      "senderState",
+                      "senderPostcode",
+                      "senderCountry"
+                    ],
+                    "maxLength": 32,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "maxItems": 14,
+                  "minItems": 0,
+                  "type": "array"
+                },
+                "currencyChanged": {
+                  "type": "boolean"
+                },
+                "revision": {
+                  "maxLength": 64,
+                  "minLength": 64,
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "revision",
+                "changedFields",
+                "currencyChanged"
+              ],
+              "type": "object"
+            },
+            "replayed": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "operationId",
+            "status",
+            "result",
+            "replayed"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operationId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36,
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "error": {
+              "enum": [
+                "EXPIRED",
+                "STALE_REVISION"
+              ]
+            }
+          },
+          "required": [
+            "operationId",
+            "error"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "x-toolPolicies": {
+    "company.get": {
+      "scope": "company.read",
+      "capability": "settings.write",
+      "risk": "LOW"
+    },
+    "company.preview_update": {
+      "scope": "company.write",
+      "capability": "settings.write",
+      "risk": "HIGH"
+    },
+    "company.commit_update": {
+      "scope": "company.write",
+      "capability": "settings.write",
+      "risk": "HIGH"
+    }
+  }
+}

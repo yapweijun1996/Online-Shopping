@@ -1,10 +1,11 @@
 import { OPERATION_SCOPES } from './operation-policy.js';
+import { mediaPolicyCheck } from './media-schema.js';
 
-// Experimental tenant-local DDL for isolated verification only. It is not
-// included in application migration, readiness, OAuth, or HTTP/MCP routing.
+// Shared schema30 operation DDL for SQLite migration and the PostgreSQL baseline.
+// Initialization and compatibility checks live in operation-runtime.js.
 // Do not enable a write tool until those integrations and the first-party
 // human approval flow have been reviewed and tested together.
-export function operationSchema(dialect) {
+export function operationSchema(dialect, { media = true, auditSequence = media } = {}) {
   if (!['sqlite', 'postgres'].includes(dialect)) throw new TypeError('Unsupported database dialect.');
   const integer = dialect === 'postgres' ? 'BIGINT' : 'INTEGER';
   const strict = dialect === 'sqlite' ? ' STRICT' : '';
@@ -15,7 +16,14 @@ export function operationSchema(dialect) {
     ? `length(${column}) = 64 AND ${column} ~ '^[0-9a-f]{64}$'`
     : `length(${column}) = 64 AND ${column} NOT GLOB '*[^0-9a-f]*'`;
   const scopes = OPERATION_SCOPES.map((scope) => `'${scope}'`).join(',');
+  // Keep the compound envelope length comparisons explicit: PostgreSQL restores
+  // flatten BETWEEN-generated AND nodes, changing catalog fingerprints.
   return `
+CREATE TABLE IF NOT EXISTS mcp_v2_authorization_request (
+  request_id TEXT PRIMARY KEY REFERENCES oauth_authorization_request(id) ON DELETE CASCADE,
+  epoch_hash TEXT NOT NULL CHECK (${validHash('epoch_hash')}),
+  created_at TEXT NOT NULL
+)${strict};
 CREATE TABLE IF NOT EXISTS mcp_v2_scope_consent (
   grant_id TEXT NOT NULL REFERENCES oauth_grant(id) ON DELETE CASCADE,
   tenant_id TEXT NOT NULL, account_id TEXT NOT NULL, client_id TEXT NOT NULL,
@@ -33,16 +41,21 @@ CREATE TABLE IF NOT EXISTS mcp_v2_operation (
   tool_name TEXT NOT NULL, required_scope TEXT NOT NULL CHECK (required_scope IN (${scopes})),
   required_capability TEXT NOT NULL, risk TEXT NOT NULL CHECK (risk IN ('LOW','MEDIUM','HIGH')),
   resource_type TEXT NOT NULL, resource_id TEXT, expected_revision TEXT,
-  envelope_json TEXT NOT NULL CHECK (length(envelope_json) BETWEEN 2 AND 65536 AND ${validObject('envelope_json')}),
+  envelope_json TEXT CHECK (envelope_json IS NULL OR (length(envelope_json) >= 2 AND length(envelope_json) <= 65536 AND ${validObject('envelope_json')})),
   preview_hash TEXT NOT NULL CHECK (${validHash('preview_hash')}),
   request_hash TEXT NOT NULL CHECK (${validHash('request_hash')}),
   idempotency_hash TEXT NOT NULL CHECK (${validHash('idempotency_hash')}),
   state TEXT NOT NULL CHECK (state IN ('PREPARED','PENDING_APPROVAL','APPROVED','COMMITTED','REJECTED','EXPIRED','CANCELLED','CONFLICT','FAILED')),
   created_at TEXT NOT NULL, expires_at TEXT NOT NULL CHECK (expires_at > created_at), correlation_id TEXT NOT NULL,
+  receipt_expires_at TEXT NOT NULL CHECK (receipt_expires_at > expires_at),
+  redacted_at TEXT CHECK (redacted_at IS NULL OR redacted_at >= expires_at),
   result_json TEXT CHECK (result_json IS NULL OR (length(result_json) <= 65536 AND ${validObject('result_json')})),
+${media ? `  media_policy_id TEXT CHECK (media_policy_id IS NULL OR (${mediaPolicyCheck('media_policy_id')})),\n` : ''}  CHECK ((redacted_at IS NULL AND envelope_json IS NOT NULL) OR
+    (redacted_at IS NOT NULL AND envelope_json IS NULL AND state IN ('COMMITTED','REJECTED','EXPIRED','CANCELLED','CONFLICT','FAILED'))),
   UNIQUE (tenant_id, account_id, client_id, idempotency_hash)
 )${strict};
 CREATE INDEX IF NOT EXISTS mcp_v2_operation_expiry ON mcp_v2_operation(expires_at, state);
+CREATE INDEX IF NOT EXISTS mcp_v2_operation_receipt_expiry ON mcp_v2_operation(receipt_expires_at, id);
 CREATE INDEX IF NOT EXISTS mcp_v2_operation_grant ON mcp_v2_operation(grant_id, state);
 CREATE INDEX IF NOT EXISTS mcp_v2_operation_tenant_active ON mcp_v2_operation(tenant_id, state, expires_at);
 CREATE INDEX IF NOT EXISTS mcp_v2_operation_client_active ON mcp_v2_operation(tenant_id, client_id, state, expires_at);
@@ -64,14 +77,19 @@ CREATE TABLE IF NOT EXISTS mcp_v2_approval (
   decision TEXT NOT NULL CHECK (decision IN ('APPROVED','REJECTED')),
   approved_at TEXT NOT NULL, expires_at TEXT NOT NULL CHECK (expires_at > approved_at), consumed_at TEXT
 )${strict};
-CREATE TABLE IF NOT EXISTS mcp_v2_event (
-  id TEXT PRIMARY KEY, at TEXT NOT NULL, tenant_id TEXT NOT NULL, account_id TEXT,
+${operationEventSchema(dialect, { auditSequence })}
+`;
+}
+
+export function operationEventSchema(dialect, { auditSequence = true, table = 'mcp_v2_event', indexes = true } = {}) {
+  if (!['sqlite', 'postgres'].includes(dialect) || !['mcp_v2_event', 'mcp_v2_event_next34'].includes(table)) throw new TypeError('Unsupported operation audit schema.');
+  const strict = dialect === 'sqlite' ? ' STRICT' : '';
+  return `CREATE TABLE IF NOT EXISTS ${table} (
+  ${auditSequence ? 'id TEXT NOT NULL UNIQUE' : 'id TEXT PRIMARY KEY'}, at TEXT NOT NULL, tenant_id TEXT NOT NULL, account_id TEXT,
   client_id TEXT, grant_id TEXT, tool_name TEXT NOT NULL CHECK (length(tool_name) BETWEEN 1 AND 128), resource_id TEXT,
   operation_id TEXT NOT NULL, approver_id TEXT,
   event TEXT NOT NULL CHECK (event IN ('PREPARE','REQUEST_APPROVAL','APPROVE','REJECT','COMMIT','CANCEL','EXPIRE','CONFLICT','FAIL','DENY')),
-  outcome TEXT NOT NULL CHECK (length(outcome) BETWEEN 1 AND 80), correlation_id TEXT NOT NULL
+  outcome TEXT NOT NULL CHECK (length(outcome) BETWEEN 1 AND 80), correlation_id TEXT NOT NULL${auditSequence ? `,\n  sequence ${dialect === 'sqlite' ? 'INTEGER PRIMARY KEY AUTOINCREMENT' : 'BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY'}` : ''}
 )${strict};
-CREATE INDEX IF NOT EXISTS mcp_v2_event_time ON mcp_v2_event(at);
-CREATE INDEX IF NOT EXISTS mcp_v2_event_operation ON mcp_v2_event(operation_id, at);
-`;
+${indexes ? `CREATE INDEX IF NOT EXISTS mcp_v2_event_time ON ${table}(at);\nCREATE INDEX IF NOT EXISTS mcp_v2_event_operation ON ${table}(operation_id, at);${auditSequence ? `\nCREATE INDEX IF NOT EXISTS mcp_v2_event_operation_sequence ON ${table}(operation_id,at,sequence);\nCREATE INDEX IF NOT EXISTS mcp_v2_event_operation_anchor ON ${table}(operation_id,sequence);` : ''}` : ''}`;
 }

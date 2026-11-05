@@ -1,5 +1,13 @@
 # Target architecture and implementation plan
 
+Current verified implementation and remaining work are maintained in [progress](09-IMPLEMENTATION-PROGRESS.md); exact source, commands, failures and proof limits are maintained in [validation](10-FINAL-VALIDATION-REPORT.md). New write features remain disabled by default and production activation is rejected. The original design below is historical; a planned capability is not authorization or evidence of implementation.
+
+The reviewed [catalog expansion plan](CATALOG-EXPANSION-PLAN.md) defines union snapshots/projections, fixed constructor-selected dual-scope HIGH update policy, trusted listing identity, exact engine/review changes and phased two-store acceptance. Stock adjustments remain separate inventory operations; newborn staged-image composition is not implied.
+
+The catalog successor selects one pair per CREATE/UPDATE name at construction. `MCP_V2_CATALOG_MEDIA_CREATE_ENABLED` and `MCP_V2_CATALOG_MEDIA_UPDATE_ENABLED` are independent default-off dev/test flags requiring validated v2/media and manual password login; production activation is rejected. Every full-profile operation is HIGH with both catalog.write and media.write, including metadata-only UPDATE and image-free CREATE. There is no caller-selected profile or MEDIUM fallback. Flag-off preserves the restricted pair while denying pending full-profile operations; flag-on denies review/commit of old safe pending proposals. CREATE binds catalog/catalog and an absent server-generated product/listing identity. EMPTY_BEFORE has no DB snapshot/assets but still requires a PAGE ACK and fresh password. Existing-target byte loading retains its real B1 revision separately from the composite. See [CREATE](CATALOG-MEDIA-CREATE-RUNTIME.md), [UPDATE](CATALOG-MEDIA-UPDATE-RUNTIME.md) and [validation](10-FINAL-VALIDATION-REPORT.md).
+
+## Historical design snapshot
+
 Status: **PROPOSED**, except the existing components identified in the audit and the isolated hash helper in the progress report. None of the proposed write tools is available. Baseline: `17bc1de65a83838e0332f2c2cc5271beac6a109b`.
 
 ```text
@@ -55,3 +63,12 @@ Every phase requires schema/authorization contracts, positive and negative tests
 4. Introduce the movement ledger only with a migration and an atomic plan for all current stock writers; do not claim history before its coverage date.
 5. Resolve image decoding and the existing 64 KiB transport limit before accepting uploads.
 6. Require a separate release decision, security review, migration/restore rehearsal and new authorization before any staging or production deployment.
+
+
+## Catalog expansion profile — approved design, activation pending
+
+The implemented catalog profiles use one constructor-selected pair per name. Full CREATE/UPDATE require both catalog.write and media.write, current catalog.write RBAC and HIGH human approval. Their separate default-off dev/test flags never enable each other or unsafe modes. Safe profiles remain with the corresponding flag off; switching profiles cannot reinterpret an existing pending proposal.
+
+Use one immutable composite revision for operation and descriptor, including the current catalog/media facts and canonical literal labels/true visibility projection. Keep the raw media snapshot revision for exact byte loading. Reuse shared listing, option, gallery, inventory and history services. CREATE reserves no domain rows: bind exact absent server UUIDs and either a real existing target closure or an explicit empty BEFORE; commit supplies real creation time and appends according to the existing service. Existing stock changes belong to the separate HIGH inventory adjustment policy.
+
+Catalog image effects contain no STAGE upload or newborn image composition in this expansion. Protected compact pages must bind actual before/after SKU/name, role and main visibility, plus ordered listing gallery keys. Every page and old/new full-image delivery still requires hash/decode/one-use ACK, unchecked acknowledgment and fresh human password; a zero-image create still needs its page proof. Existing default DIRECT media grammar and original eight tools stay compatible. These design choices are not current activation or deployment evidence; see progress/validation for accepted prerequisites and remaining C/D integration.

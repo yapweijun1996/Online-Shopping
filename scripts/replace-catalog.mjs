@@ -1,3 +1,4 @@
+import { withInventoryContext } from '../src/inventory.js';
 import { readFileSync } from 'node:fs';
 import catalog from '../src/public-demo-catalog.json' with { type: 'json' };
 import gallery from '../src/public-demo-gallery.json' with { type: 'json' };
@@ -36,7 +37,7 @@ export async function replaceCatalog(store) {
     }
     for (const product of catalog) {
       if (await store.get('SELECT 1 FROM product WHERE sku = ?', product.sku)) { result.skipped++; continue; }
-      const created = await createProduct(store, { ...product, category: codeFor.get(product.category) });
+      const created = await withInventoryContext({ source: 'OPERATOR', actorKind: 'OPERATOR', actorId: 'replace-catalog' }, () => createProduct(store, { ...product, category: codeFor.get(product.category) }));
       const media = gallery.products[product.sku]?.media ?? [];
       const layout = ['main', ...media.slice(1, 6).map((_, index) => `static:${product.sku}:${index + 1}`)];
       await store.run('UPDATE product SET gallery_layout_json = ? WHERE id = ?', JSON.stringify(layout), created.id);

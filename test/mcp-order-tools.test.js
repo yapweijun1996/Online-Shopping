@@ -1,0 +1,35 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { orderToolFixture,orderDto as dto } from './helpers/mcp-order-fixture.js';
+import { rowsDigest } from '../src/sqlite-import.js';
+for(const dialect of ['sqlite','postgres']){
+ const options={skip:dialect==='postgres'&&!process.env.SHOP_TEST_DATABASE_URL};
+ test(`${dialect}: default actual order confirm ship deliver uses authoritative captured integer/hash and once-only domain/ledger effects`,options,async t=>{
+  const f=await orderToolFixture(t,dialect),p=await f.product(),unlimited=await f.product({stockQuantity:null}),order=await f.order([p,unlimited],2,2);
+  const original=rowsDigest(await f.store.all('SELECT * FROM order_item'));
+  const confirm=dto(await f.preview(order.id,{action:'confirm'}));assert.equal(confirm.status,'PENDING_APPROVAL');assert.equal((await f.commit(confirm)).response.status,403);
+  const row=await f.store.get('SELECT * FROM mcp_v2_operation WHERE id=?',confirm.operationId),proposal=JSON.parse(row.envelope_json).proposal;
+  assert.equal(row.resource_type,'order');assert.equal(row.resource_id,order.id);assert.equal(row.risk,'HIGH');assert.match(row.expected_revision,/^[0-9a-f]{64}$/);assert.equal(proposal.resourceRevision,row.expected_revision);assert.equal(proposal.before.revision,1);assert.equal(proposal.after.revision,2);assert.equal(proposal.before.totalMinor,4000);
+  assert.equal(proposal.stockEffects.find(e=>e.productId===p.id).onHandAfter,6);assert.equal(proposal.stockEffects.find(e=>e.productId===unlimited.id).movement,'NONE');assert.doesNotMatch(JSON.stringify(proposal),/private buyer|private recipient|private street|private city|example.invalid|image|address|phone/);
+  assert.equal((await f.approve(confirm)).response.status,200);const done=(await Promise.all([f.commit(confirm),f.commit(confirm)])).map(dto);assert.deepEqual(done.map(r=>r.replayed).sort(),[false,true]);assert.deepEqual(done[0].result,done[1].result);assert.equal(done[0].result.revision,2);
+  const movement=await f.store.get('SELECT * FROM inventory_movement WHERE order_id=?',order.id);assert.equal(movement.delta_quantity,-4);assert.equal(movement.actor_id,f.account.id);assert.equal(movement.client_id,row.client_id);assert.equal(movement.grant_id,row.grant_id);assert.equal(movement.operation_id,confirm.operationId);assert.equal(movement.correlation_id,row.correlation_id);assert.equal(movement.reason_code,'ORDER_CONFIRM');
+  const ship=dto(await f.preview(order.id,{action:'ship',carrier:'  Synthetic carrier  ',trackingNo:'  Synthetic tracking  '},{expectedRevision:2}));assert.equal((await f.approve(ship)).response.status,200);assert.equal(dto(await f.commit(ship)).result.status,'SHIPPED');
+  const delivered=dto(await f.preview(order.id,{action:'deliver'},{expectedRevision:3}));assert.equal((await f.approve(delivered)).response.status,200);const receipt=dto(await f.commit(delivered)).result;assert.equal(receipt.status,'DELIVERED');assert.equal(receipt.revision,4);assert.ok(Buffer.byteLength(JSON.stringify(receipt))<=2048);assert.doesNotMatch(JSON.stringify(receipt),/Synthetic carrier|Synthetic tracking|private/);
+  assert.equal(rowsDigest(await f.store.all('SELECT * FROM order_item')),original);assert.equal((await f.store.get('SELECT stock_quantity FROM product WHERE id=?',p.id)).stock_quantity,6);assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM inventory_movement WHERE order_id=?',order.id)).n,1);assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM order_event WHERE order_id=?',order.id)).n,4);
+  const stored=await f.store.get('SELECT tracking_carrier,tracking_no FROM shop_order WHERE id=?',order.id);assert.equal(stored.tracking_carrier,'Synthetic carrier');assert.equal(stored.tracking_no,'Synthetic tracking');assert.doesNotMatch(JSON.stringify(await f.store.all('SELECT * FROM mcp_v2_event')),/Synthetic carrier|Synthetic tracking/);
+ });
+ test(`${dialect}: reject and cancel preserve existing required domain reason, release holds/restore stock and exclude rawreason from MCP evidence`,options,async t=>{
+  const f=await orderToolFixture(t,dialect),p=await f.product(),rejected=await f.order([p],2),reason='  Synthetic private cancellation reason <script>inert</script>  ';
+  const reject=dto(await f.preview(rejected.id,{action:'reject',reason}));assert.equal((await f.approve(reject)).response.status,200);assert.equal(dto(await f.commit(reject)).result.status,'REJECTED');assert.equal((await f.store.get('SELECT stock_quantity FROM product WHERE id=?',p.id)).stock_quantity,10);
+  const cancelled=await f.order([p],2),confirm=dto(await f.preview(cancelled.id,{action:'confirm'}));await f.approve(confirm);await f.commit(confirm);
+  const cancel=dto(await f.preview(cancelled.id,{action:'cancel',reason}));await f.approve(cancel);assert.equal(dto(await f.commit(cancel)).result.status,'CANCELLED');assert.equal((await f.store.get('SELECT stock_quantity FROM product WHERE id=?',p.id)).stock_quantity,10);
+  const event=await f.store.get("SELECT reason FROM order_event WHERE order_id=? AND event_type='CANCELLED'",cancelled.id);assert.equal(event.reason,reason.trim());
+  for(const table of ['inventory_movement','mcp_v2_event','mcp_audit'])assert.doesNotMatch(JSON.stringify(await f.store.all(`SELECT * FROM ${table}`)),/Synthetic private cancellation reason|inert/);
+ });
+}
+import { updateCompanySettings } from '../src/settings.js';
+import { updateProduct } from '../src/products.js';
+for(const dialect of ['sqlite','postgres'])test(`${dialect}: SGD order money and immutable snapshots survive catalog repricing and confirm/cancel without conversion`,{skip:dialect==='postgres'&&!process.env.SHOP_TEST_DATABASE_URL},async t=>{
+ const f=await orderToolFixture(t,dialect);await updateCompanySettings(f.store,{defaultCurrency:'SGD'});const p=await f.product({priceMinor:450}),order=await f.order([p],3);assert.equal(p.currency,'SGD');assert.equal(order.currency,'SGD');assert.equal(order.total_minor,1350);const lines=rowsDigest(await f.store.all('SELECT * FROM order_item'));
+ const confirm=dto(await f.preview(order.id,{action:'confirm'})),proposal=JSON.parse((await f.store.get('SELECT envelope_json FROM mcp_v2_operation WHERE id=?',confirm.operationId)).envelope_json).proposal;assert.equal(proposal.before.currency,'SGD');assert.equal(proposal.after.currency,'SGD');assert.equal(proposal.after.totalMinor,1350);await updateProduct(f.store,p.id,{priceMinor:999});await f.approve(confirm);assert.equal(dto(await f.commit(confirm)).result.status,'CONFIRMED');const cancel=dto(await f.preview(order.id,{action:'cancel',reason:'Synthetic SGD cancellation'}));await f.approve(cancel);assert.equal(dto(await f.commit(cancel)).result.status,'CANCELLED');assert.equal(rowsDigest(await f.store.all('SELECT * FROM order_item')),lines);const header=await f.store.get('SELECT currency,total_minor FROM shop_order WHERE id=?',order.id);assert.equal(header.currency,'SGD');assert.equal(header.total_minor,1350);assert.equal((await f.store.get('SELECT stock_quantity FROM product WHERE id=?',p.id)).stock_quantity,10);
+});

@@ -1,0 +1,470 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:online-shopping:mcp-v2:operations:implemented",
+  "$comment": "Actual source schemas. Isolated default-off v2 only; low-risk abort never applies or undoes commerce. No authorization is conferred by metadata.",
+  "$defs": {
+    "operations.get.input": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        }
+      },
+      "required": [
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "operations.get.output": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "PREPARED",
+            "PENDING_APPROVAL",
+            "APPROVED",
+            "COMMITTED",
+            "REJECTED",
+            "EXPIRED",
+            "CANCELLED",
+            "CONFLICT",
+            "FAILED"
+          ],
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "toolName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "enum": [
+            "company.get",
+            "company.preview_update",
+            "company.commit_update",
+            "catalog.preview_create",
+            "catalog.commit_create",
+            "catalog.preview_update",
+            "catalog.commit_update",
+            "media.list",
+            "media.prepare_upload",
+            "media.commit_upload",
+            "media.preview_layout",
+            "media.commit_layout",
+            "inventory.summary",
+            "inventory.movements",
+            "inventory.preview_adjustment",
+            "inventory.commit_adjustment",
+            "orders.preview_decision",
+            "orders.commit_decision",
+            "analytics.sales_trend",
+            "analytics.top_products",
+            "analytics.inventory_risk",
+            "operations.get",
+            "operations.audit",
+            "operations.cancel"
+          ]
+        },
+        "resourceType": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16,
+          "enum": [
+            "company",
+            "catalog",
+            "product",
+            "inventory",
+            "order"
+          ]
+        },
+        "resourceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "risk": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8,
+          "enum": [
+            "MEDIUM",
+            "HIGH"
+          ]
+        },
+        "createdAt": {
+          "type": "string",
+          "minLength": 24,
+          "maxLength": 24
+        },
+        "expiresAt": {
+          "type": "string",
+          "minLength": 24,
+          "maxLength": 24
+        },
+        "receiptExpiresAt": {
+          "type": "string",
+          "minLength": 24,
+          "maxLength": 24
+        },
+        "proposalRedacted": {
+          "type": "boolean"
+        },
+        "proposalExpired": {
+          "type": "boolean"
+        },
+        "receiptAvailable": {
+          "type": "boolean"
+        },
+        "inventoryReason": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "enum": [
+                "COUNT_CORRECTION",
+                "RECEIPT",
+                "DAMAGE",
+                "OTHER"
+              ]
+            }
+          ]
+        }
+      },
+      "required": [
+        "operationId",
+        "status",
+        "toolName",
+        "resourceType",
+        "resourceId",
+        "risk",
+        "createdAt",
+        "expiresAt",
+        "receiptExpiresAt",
+        "proposalRedacted",
+        "proposalExpired",
+        "receiptAvailable",
+        "inventoryReason"
+      ],
+      "additionalProperties": false
+    },
+    "operations.cancel.input": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        }
+      },
+      "required": [
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "operations.cancel.output": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "PREPARED",
+            "PENDING_APPROVAL",
+            "APPROVED",
+            "COMMITTED",
+            "REJECTED",
+            "EXPIRED",
+            "CANCELLED",
+            "CONFLICT",
+            "FAILED"
+          ],
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "replayed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "operationId",
+        "status",
+        "replayed"
+      ],
+      "additionalProperties": false
+    },
+    "operations.audit.input": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "cursor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 3072
+        }
+      },
+      "required": [
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "operations.audit.output": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 36,
+                "maxLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "at": {
+                "type": "string",
+                "minLength": 24,
+                "maxLength": 24
+              },
+              "source": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 16,
+                "enum": [
+                  "LIFECYCLE",
+                  "MCP"
+                ]
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "toolName": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "enum": [
+                  "company.get",
+                  "company.preview_update",
+                  "company.commit_update",
+                  "catalog.preview_create",
+                  "catalog.commit_create",
+                  "catalog.preview_update",
+                  "catalog.commit_update",
+                  "media.list",
+                  "media.prepare_upload",
+                  "media.commit_upload",
+                  "media.preview_layout",
+                  "media.commit_layout",
+                  "inventory.summary",
+                  "inventory.movements",
+                  "inventory.preview_adjustment",
+                  "inventory.commit_adjustment",
+                  "orders.preview_decision",
+                  "orders.commit_decision",
+                  "analytics.sales_trend",
+                  "analytics.top_products",
+                  "analytics.inventory_risk",
+                  "operations.get",
+                  "operations.audit",
+                  "operations.cancel"
+                ]
+              },
+              "event": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32,
+                "enum": [
+                  "PREPARE",
+                  "REQUEST_APPROVAL",
+                  "APPROVE",
+                  "REJECT",
+                  "COMMIT",
+                  "CANCEL",
+                  "EXPIRE",
+                  "CONFLICT",
+                  "FAIL",
+                  "DENY",
+                  "READ",
+                  "CALL"
+                ]
+              },
+              "outcome": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "actorAccount": {
+                "type": "string",
+                "minLength": 36,
+                "maxLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "actorClient": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "actorGrant": {
+                "type": "string",
+                "minLength": 36,
+                "maxLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "humanAccount": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "string",
+                    "minLength": 36,
+                    "maxLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  }
+                ]
+              },
+              "correlationId": {
+                "type": "string",
+                "minLength": 36,
+                "maxLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              }
+            },
+            "required": [
+              "id",
+              "at",
+              "source",
+              "sequence",
+              "toolName",
+              "event",
+              "outcome",
+              "actorAccount",
+              "actorClient",
+              "actorGrant",
+              "humanAccount",
+              "correlationId"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0,
+          "maxItems": 50
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 3072
+            }
+          ]
+        },
+        "coverage": {
+          "type": "object",
+          "properties": {
+            "retentionDays": {
+              "type": "integer",
+              "minimum": 90,
+              "maximum": 90
+            },
+            "historicalUnlinkedCallsIncluded": {
+              "type": "boolean",
+              "const": false
+            },
+            "preOperationStagesIncluded": {
+              "type": "boolean",
+              "const": false
+            },
+            "lifecycleAnchor": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "callAnchor": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "snapshotAt": {
+              "type": "string",
+              "minLength": 24,
+              "maxLength": 24
+            }
+          },
+          "required": [
+            "retentionDays",
+            "historicalUnlinkedCallsIncluded",
+            "preOperationStagesIncluded",
+            "lifecycleAnchor",
+            "callAnchor",
+            "snapshotAt"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "operationId",
+        "items",
+        "nextCursor",
+        "coverage"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "x-toolPolicies": {
+    "operations.get": {
+      "scope": "operations.read",
+      "risk": "LOW",
+      "requiredUnderlyingPolicy": "Every source-owned scope and current capability of the target original-grant operation; separate consent must precede operation creation."
+    },
+    "operations.cancel": {
+      "scope": "operations.cancel",
+      "risk": "LOW",
+      "requiredUnderlyingPolicy": "Every source-owned scope and current capability of the target original-grant operation; separate consent must precede operation creation."
+    },
+    "operations.audit": {
+      "scope": "operations.read",
+      "risk": "LOW",
+      "requiredUnderlyingPolicy": "Every source-owned scope and current capability of the target original-grant operation; separate consent must precede operation creation."
+    }
+  }
+}

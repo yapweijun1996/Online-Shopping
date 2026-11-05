@@ -1,0 +1,12 @@
+{
+  "name": "shopping-development-media-codec",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.15.0 <25" },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test/codec.test.js test/runtime.test.js",
+    "test:container": "node --test --test-concurrency=1 test/container.test.js"
+  },
+  "dependencies": { "sharp": "0.35.5" }
+}

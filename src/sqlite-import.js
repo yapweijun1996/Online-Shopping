@@ -1,13 +1,23 @@
+import { inventoryStorageReady } from './inventory-schema.js';
 import { createHash } from 'node:crypto';
+import { OPERATION_STORAGE_META, OPERATION_STORAGE_TABLES, operationStorageReady } from './mcp/operation-runtime.js';
 
 export const importTables = ['admin', 'seller_account', 'account_event', 'session', 'general_code', 'company_setting', 'shop_setup', 'option_type', 'option_value', 'listing', 'product',
   'product_option', 'product_gallery_image', 'order_sequence', 'shop_order', 'delivery', 'order_item', 'order_event', 'order_note', 'product_event',
-  'checkout_idempotency', 'rate_limit_attempt', 'integration_connection', 'integration_audit', 'webhook_receipt', 'message_outbox', 'message_inbound',
-  'oauth_client', 'oauth_authorization_request', 'oauth_grant', 'oauth_authorization_code', 'oauth_token', 'mcp_audit', 'ai_setting', 'ai_usage', 'ai_suggestion_audit', 'ai_studio_credential', 'ai_studio_setting', 'ai_studio_usage', 'ai_studio_image'];
+  'inventory_coverage', 'inventory_state', 'inventory_movement', 'checkout_idempotency', 'rate_limit_attempt', 'integration_connection', 'integration_audit', 'webhook_receipt', 'message_outbox', 'message_inbound',
+  'oauth_client', 'oauth_authorization_request', 'oauth_grant', 'oauth_authorization_code', 'oauth_token', 'mcp_audit', 'mcp_v2_event', 'mcp_v2_media_event', 'ai_setting', 'ai_usage', 'ai_suggestion_audit', 'ai_studio_credential', 'ai_studio_setting', 'ai_studio_usage', 'ai_studio_image'];
 
 // QR device identity, sealed peers and reply intents must not reactivate after a restore.
 // Keep the fresh OFF/IDLE session; do not import auth, QR material or dependent history.
-export const excludedImportTables = ['whatsapp_qr_session', 'whatsapp_qr_auth', 'message_peer_suppression', 'message_thread', 'message_thread_message'];
+const excludedQrImportTables = ['whatsapp_qr_session', 'whatsapp_qr_auth', 'message_peer_suppression', 'message_thread', 'message_thread_message'];
+
+// Active consent, pending requests, operations, challenges and approvals never
+// transfer. Schema compatibility metadata is reconstructed on the destination.
+// Only non-sensitive historical audit events survive an authorized import.
+export const excludedOperationImportTables = Object.freeze([
+  OPERATION_STORAGE_META, ...OPERATION_STORAGE_TABLES.filter((table) => !['mcp_v2_event', 'mcp_v2_media_event'].includes(table)),
+]);
+export const excludedImportTables = [...excludedQrImportTables, ...excludedOperationImportTables, 'inventory_schema'];
 
 export function rowsDigest(rows) {
   const normalized = rows.map(row => Object.fromEntries(Object.keys(row).sort().map(key =>
@@ -22,8 +32,15 @@ export async function importSqlite(source, target) {
   if (source.dialect !== 'sqlite' || target.dialect !== 'postgres') throw new Error('Expected SQLite source and PostgreSQL target.');
   if (await source.schemaVersion() !== await target.schemaVersion()) throw new Error('Schema versions do not match.');
   return target.transaction(async () => {
+    if (!await operationStorageReady(source) || !await operationStorageReady(target) || !await inventoryStorageReady(source) || !await inventoryStorageReady(target)) {
+      throw new Error('Import requires compatible operation/inventory schema 34 storage.');
+    }
+    for (const table of OPERATION_STORAGE_TABLES) {
+      if (await target.get(`SELECT 1 AS found FROM ${table} LIMIT 1`)) throw new Error('Import destination must have no MCP v2 history or authority.');
+    }
+    const tables = importTables;
     const defaults = new Set(['company_setting', 'shop_setup', 'order_sequence', 'ai_setting', 'ai_studio_setting']);
-    for (const table of importTables) {
+    for (const table of tables) {
       const rows = await target.all(`SELECT * FROM ${table}`);
       if ((!defaults.has(table) && rows.length) || (defaults.has(table) && rows.length !== 1)) throw new Error('Import destination must be a fresh baseline.');
     }
@@ -32,7 +49,7 @@ export async function importSqlite(source, target) {
       qr.revision !== 1 || qr.qr_text !== null || qr.peer_key_sealed !== null || qr.lease_owner !== null) {
       throw new Error('Import destination must have a fresh QR session.');
     }
-    for (const table of excludedImportTables.filter(table => table !== 'whatsapp_qr_session')) {
+    for (const table of excludedQrImportTables.filter(table => table !== 'whatsapp_qr_session')) {
       if (await target.get(`SELECT 1 AS found FROM ${table} LIMIT 1`)) throw new Error('Import destination must have no QR history or auth.');
     }
     const setting = await target.get('SELECT mode FROM shop_setup WHERE id = 1');
@@ -43,12 +60,13 @@ export async function importSqlite(source, target) {
     // those exact rows, then reinstate the normal write-time category constraint.
     await target.exec('ALTER TABLE product DISABLE TRIGGER USER');
     const evidence = [];
-    for (const table of importTables) {
+    for (const table of tables) {
       const rows = await source.all(`SELECT * FROM ${table}`);
       for (const row of rows) {
         const keys = Object.keys(row);
         if (keys.some(key => !/^[a-z_][a-z_0-9]*$/.test(key))) throw new Error('Unexpected import column.');
-        await target.run(`INSERT INTO ${table} (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`,
+        const identity = ['mcp_audit','mcp_v2_event'].includes(table) ? ' OVERRIDING SYSTEM VALUE' : '';
+        await target.run(`INSERT INTO ${table} (${keys.join(', ')})${identity} VALUES (${keys.map(() => '?').join(', ')})`,
           ...keys.map(key => ArrayBuffer.isView(row[key]) ? Buffer.from(row[key]) : row[key]));
       }
       const restored = await target.all(`SELECT * FROM ${table}`);
@@ -61,6 +79,8 @@ export async function importSqlite(source, target) {
       await target.get(`SELECT setval(pg_get_serial_sequence('${table}', 'id'),
         COALESCE((SELECT MAX(id) FROM ${table}), 1), EXISTS(SELECT 1 FROM ${table}))`);
     }
+    for (const table of ['mcp_audit','mcp_v2_event']) await target.get(`SELECT setval(pg_get_serial_sequence('${table}','sequence'),
+      COALESCE((SELECT MAX(sequence) FROM ${table}),1),EXISTS(SELECT 1 FROM ${table}))`);
     return { schemaVersion: await target.schemaVersion(), tables: evidence };
   });
 }

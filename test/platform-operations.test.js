@@ -1,3 +1,4 @@
+import { dropInventoryForLegacyFixture } from './helpers/inventory-fixture.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
@@ -27,9 +28,9 @@ test('tenant upgrades under their own role never grant the legacy application ro
   const password = f.secretBox.open(row.database_password_sealed, row.database_key_id, `TENANT_DB:${row.id}`);
   const url = tenantUrl(f.baseUrl, { database: row.database_name, role: row.database_role, password });
   const previous = openPostgresStore(url);
-  try { await previous.setSchemaVersion(23); } finally { await previous.close(); }
+  try { await dropInventoryForLegacyFixture(previous); await previous.setSchemaVersion(23); } finally { await previous.close(); }
   const upgraded = await openPostgresDatabase(url, { allowUpgrade: true, max: 1 }); t.after(() => upgraded.close());
-  for (const table of ['option_type', 'listing', 'integration_connection', 'message_outbox']) {
+  for (const table of ['option_type', 'listing', 'integration_connection', 'message_outbox', 'inventory_schema', 'inventory_coverage', 'inventory_state', 'inventory_movement']) {
     assert.equal((await upgraded.get("SELECT has_table_privilege('online_shopping_app', ?, 'SELECT') AS allowed", 'public.' + table)).allowed, false);
   }
 });

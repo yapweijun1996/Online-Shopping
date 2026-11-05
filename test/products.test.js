@@ -1,3 +1,4 @@
+import { legacyInventoryDropSql } from './helpers/inventory-fixture.js';
 import assert from 'node:assert/strict';
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -260,6 +261,7 @@ test('schema version one upgrades without losing the provisioned seller', async 
   const { cookie } = await f.login();
   await f.app.close();
   const old = new DatabaseSync(config.dbPath);
+  old.exec(legacyInventoryDropSql);
   old.exec(`DROP TABLE product_gallery_image; DROP TABLE shop_setup; DROP TABLE rate_limit_attempt; DROP TABLE company_setting; DROP TABLE general_code;
     DROP TABLE checkout_idempotency; DROP TABLE order_event; DROP TABLE order_item;
     DROP TABLE delivery; DROP TABLE shop_order; DROP TABLE order_sequence;

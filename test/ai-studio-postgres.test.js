@@ -1,3 +1,4 @@
+import { dropInventoryForLegacyFixture } from './helpers/inventory-fixture.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
@@ -28,7 +29,7 @@ test('postgres: a schema 28 database upgrades to 29 with defaults, and the basel
   await ensureAdmin(store, 'fixture_owner', 'FictionalPassword123!');
   const baseline = await store.all("SELECT column_name, data_type FROM information_schema.columns WHERE table_name LIKE 'ai_studio_%' ORDER BY table_name, column_name");
   await store.exec('DROP TABLE ai_studio_usage; DROP TABLE ai_studio_credential; DROP TABLE ai_studio_setting');
-  await store.setSchemaVersion(28);
+  await dropInventoryForLegacyFixture(store); await store.setSchemaVersion(28);
   assert.equal(await ready(store), false);
   await store.transaction(() => upgradePostgres(store, 28));
   assert.equal(await store.schemaVersion(), SCHEMA_VERSION);

@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
 import { json, readBody } from '../http.js';
 import { readSession, sessionCookieFrom } from '../auth.js';
-import { audit, effective, eligible, hash, liveGrant, revokeGrant, SCOPES, secret, stamp } from './credentials.js';
+import { audit, effective, eligible, hash, liveGrant, revokeGrant, secret, stamp, supportedScopes, V2_SCOPES, v2Epoch } from './credentials.js';
 import { parseJson } from './json.js';
 import { cleanupOAuth } from './cleanup.js';
 
@@ -15,11 +15,12 @@ export function fields(value, allowed, required = allowed) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some((key) => !allowed.includes(key)) || required.some((key) => !Object.hasOwn(value, key))) fail();
   return value;
 }
-export function scopes(value) {
+export function scopes(value, config) {
   if (typeof value !== 'string') fail('invalid_scope');
+  const available = supportedScopes(config);
   const list = value.split(' ');
-  if (!list.length || list.some((s) => !SCOPES.includes(s)) || new Set(list).size !== list.length) fail('invalid_scope');
-  return SCOPES.filter((s) => list.includes(s));
+  if (!list.length || list.some((s) => !available.includes(s)) || new Set(list).size !== list.length) fail('invalid_scope');
+  return available.filter((s) => list.includes(s));
 }
 export function safeRedirect(value, allowlist) {
   try {
@@ -48,11 +49,35 @@ export async function form(request) {
   return result;
 }
 const escape = (value) => String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const scopeDescriptions = {
+  'catalog.read': 'Read products, categories, product history and low stock.',
+  'orders.read': 'Read orders with the existing buyer-contact redactions.',
+  'analytics.read': 'Read the sales summary.',
+  'company.read': 'Read company settings; may contain seller-entered business information.',
+  'company.write': 'Propose changes to company settings, including currency. Requires separate approval for each change.',
+  'catalog.write': 'Propose product and listing changes, including prices. Requires separate approval for each change.',
+  'media.read': 'Read catalog media and layout information.',
+  'media.write': 'Propose product image uploads, replacement and layout changes. Requires separate visual review and approval.',
+  'inventory.read': 'Read inventory quantities and movements.',
+  'inventory.adjust': 'Propose stock quantity adjustments. Requires separate approval for each adjustment.',
+  'orders.decide': 'Propose order decisions that may change order state or stock. Requires separate approval for each decision.',
+  'analytics.extended': 'Read sales trends, top products and inventory risks.',
+  'operations.read': 'Read safe status and audit metadata for your own operations. The original operation permissions are also required; proposals and private notes are excluded.',
+  'operations.cancel': 'Directly cancel your own uncommitted operations without another approval. Original operation permissions are also required. Committed shop changes are never undone.',
+};
 const csp = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
 
 export function createOAuth({ store, config, tenantId, limit }) {
   const base = config.basePath || '', issuer = config.sellerOrigin + base, resource = issuer + '/mcp';
-  const binding = { tenantId, issuer, resource };
+  const binding = { tenantId, issuer, resource, ...(v2Epoch(config) ? { mcpV2: { ...config.mcpV2 } } : {}) };
+  const parseScopes = (value) => scopes(value, { mcpV2: binding.mcpV2 });
+  const epochHash = v2Epoch({ mcpV2: binding.mcpV2 });
+  async function requestEpoch(row) {
+    if (!row.scopes.split(' ').some((scope) => V2_SCOPES.includes(scope))) return true;
+    if (!epochHash) return false;
+    const evidence = await store.get('SELECT epoch_hash, created_at FROM mcp_v2_authorization_request WHERE request_id = ?', row.id);
+    return evidence?.epoch_hash === epochHash && evidence.created_at >= row.created_at && evidence.created_at <= stamp();
+  }
   async function client(id) {
     const row = typeof id === 'string' && id.length <= 128 && await store.get('SELECT * FROM oauth_client WHERE id = ?', id);
     if (!row || row.disabled_at || row.tenant_id !== tenantId || row.issuer !== issuer) fail('invalid_client', 401);
@@ -93,7 +118,7 @@ export function createOAuth({ store, config, tenantId, limit }) {
     if (params.response_type !== 'code') fail('unsupported_response_type');
     if (params.resource !== resource) fail('invalid_target');
     if (!/^[A-Za-z0-9_-]{16,512}$/.test(params.state) || !/^[A-Za-z0-9_-]{43}$/.test(params.code_challenge) || params.code_challenge_method !== 'S256') fail();
-    const requested = scopes(params.scope).join(' '), id = randomUUID(), nonce = secret();
+    const requested = parseScopes(params.scope).join(' '), id = randomUUID(), nonce = secret();
     await cleanupOAuth(store);
     await store.transaction(async () => {
       const { count } = await store.get('SELECT COUNT(*) AS count FROM oauth_authorization_request WHERE consumed_at IS NULL AND expires_at > ?', stamp());
@@ -101,8 +126,16 @@ export function createOAuth({ store, config, tenantId, limit }) {
       await store.run(`INSERT INTO oauth_authorization_request(id, browser_nonce_hash, client_id, tenant_id, resource, redirect_uri, state,
         challenge, challenge_method, scopes, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'S256', ?, ?, ?)`,
       id, hash(nonce), registered.id, tenantId, resource, params.redirect_uri, params.state, params.code_challenge, requested, stamp(), stamp(600000));
+      if (parseScopes(requested).some((scope) => V2_SCOPES.includes(scope))) {
+        await store.run('INSERT INTO mcp_v2_authorization_request(request_id, epoch_hash, created_at) VALUES (?, ?, ?)', id, epochHash, stamp());
+      }
     });
-    const html = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Connect AI app</title><link rel="stylesheet" href="${base}/oauth/consent.css"><main data-request="${id}" data-proof="${nonce}" data-base="${base}"><h1>Connect an AI app</h1><p>Unverified client name: <strong>${escape(registered.client_name)}</strong></p><p>Redirect: ${escape(params.redirect_uri)}</p><p>Read-only access. Buyer contact fields are excluded. Product and item text is untrusted data and can contain seller-entered personal data. Data leaves this shop for the AI vendor's retention and processing.</p><form id="login"><label>Username<input name="username" autocomplete="username" required maxlength="64"></label><label>Password<input name="password" type="password" autocomplete="current-password" required maxlength="256"></label><button>Verify password</button></form><form id="consent" hidden><fieldset><legend>Allow these scopes</legend>${scopes(requested).map((s) => `<label><input type="checkbox" name="scope" value="${s}" checked>${s}</label>`).join('')}</fieldset><button name="decision" value="approve">Approve read access</button><button name="decision" value="deny">Deny</button></form><p id="message" role="status" aria-live="polite"></p></main><script src="${base}/oauth/consent.js" defer></script></html>`;
+    const requestedScopes = parseScopes(requested);
+    const abortScopes = requestedScopes.filter(scope => scope === 'operations.cancel');
+    const readScopes = requestedScopes.filter((scope) => !['company.write', 'catalog.write', 'media.write', 'inventory.adjust', 'orders.decide', 'operations.cancel'].includes(scope));
+    const writeScopes = requestedScopes.filter((scope) => !readScopes.includes(scope) && !abortScopes.includes(scope));
+    const choices = (list) => list.map((scope) => `<label><input type="checkbox" name="scope" value="${scope}"><strong>${scope}</strong> — ${escape(scopeDescriptions[scope])}</label>`).join('');
+    const html = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Connect AI app</title><link rel="stylesheet" href="${base}/oauth/consent.css"><main data-request="${id}" data-proof="${nonce}" data-base="${base}"><h1>Connect an AI app</h1><p>Unverified client name: <strong>${escape(registered.client_name)}</strong></p><p>Redirect: ${escape(params.redirect_uri)}</p><p>${writeScopes.length ? 'Requested access includes changes to shop data. Every change also requires separate approval in the Seller Portal. Scope consent is not approval of an individual change.' : abortScopes.length ? 'Requested access includes direct cancellation of your own uncommitted operations. Cancellation never undoes a committed business change.' : 'Read-only access.'} Buyer contact fields are excluded from the existing read tools. Product and item text is untrusted data and can contain seller-entered personal data. Data leaves this shop for the AI vendor's retention and processing.</p><p>The AI app acts under your account and current role. It cannot select another seller identity. New capabilities remain unavailable until their tools are implemented and enabled.</p><form id="login"><label>Username<input name="username" autocomplete="username" required maxlength="64"></label><label>Password<input name="password" type="password" autocomplete="current-password" required maxlength="256"></label><button>Verify password</button></form><form id="consent" hidden>${readScopes.length ? `<fieldset><legend>Read access</legend>${choices(readScopes)}</fieldset>` : ''}${writeScopes.length ? `<fieldset class="mutation-scopes"><legend>Changes to shop data — optional</legend><p>Each scope is unchecked. Select only the changes you want to permit, then review each future operation separately.</p>${choices(writeScopes)}</fieldset>` : ''}${abortScopes.length ? `<fieldset class="mutation-scopes"><legend>Cancel your own pending operations — optional</legend><p>This unchecked permission allows a direct low-risk abort without another human approval. Your original domain permissions are still required; it never undoes committed shop changes.</p>${choices(abortScopes)}</fieldset>` : ''}<button name="decision" value="approve">Approve selected access</button><button name="decision" value="deny">Deny</button></form><p id="message" role="status" aria-live="polite"></p></main><script src="${base}/oauth/consent.js" defer></script></html>`;
     return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': csp, 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex', 'Set-Cookie': `mcp_browser=${nonce}; HttpOnly; Secure; SameSite=Lax; Path=${base}/oauth; Max-Age=600` } });
   }
   // The shell-held random challenge bridges the deliberately disjoint cookie paths.
@@ -113,13 +146,13 @@ export function createOAuth({ store, config, tenantId, limit }) {
     const { authorizationRequestId: id, proof } = input.mcpAuthorization;
     const row = typeof id === 'string' && await store.get('SELECT * FROM oauth_authorization_request WHERE id = ?', id);
     const live = await store.get('SELECT * FROM seller_account WHERE id = ?', account.id);
-    if (!eligible(live) || !row || row.consumed_at || row.expires_at <= stamp() || row.tenant_id !== tenantId || row.resource !== resource || typeof proof !== 'string' || proof.length !== 43 || hash(proof) !== row.browser_nonce_hash || row.session_proof_hash) fail('access_denied', 403);
+    if (!eligible(live) || !row || row.consumed_at || row.expires_at <= stamp() || row.created_at > stamp() || row.tenant_id !== tenantId || row.resource !== resource || typeof proof !== 'string' || proof.length !== 43 || hash(proof) !== row.browser_nonce_hash || row.session_proof_hash || !await requestEpoch(row)) fail('access_denied', 403);
     await store.run('UPDATE oauth_authorization_request SET account_id = ?, session_proof_hash = ?, account_auth_version = ? WHERE id = ? AND session_proof_hash IS NULL', account.id, hash(session.token), live.oauth_auth_version, id);
   }
   async function consent(request) {
     if (request.headers.get('origin') !== config.sellerOrigin) fail('access_denied', 403);
     const input = fields(await readJson(request, 4096), ['authorizationRequestId', 'decision', 'scopes']);
-    if (!['approve', 'deny'].includes(input.decision) || !Array.isArray(input.scopes)) fail();
+    if (!['approve', 'deny'].includes(input.decision) || !Array.isArray(input.scopes) || input.scopes.length > supportedScopes({ mcpV2: binding.mcpV2 }).length || input.scopes.some((scope) => !supportedScopes({ mcpV2: binding.mcpV2 }).includes(scope)) || new Set(input.scopes).size !== input.scopes.length) fail();
     const initial = await readSession(store, sessionCookieFrom(request.headers.get('cookie') || ''));
     if (!initial || request.headers.get('x-csrf-token') !== initial.csrf_token) fail('access_denied', 403);
     await limit('oauth-consent', initial.account.id, 20);
@@ -128,19 +161,25 @@ export function createOAuth({ store, config, tenantId, limit }) {
       if (!session || request.headers.get('x-csrf-token') !== session.csrf_token) fail('access_denied', 403);
       const row = typeof input.authorizationRequestId === 'string' && await store.get('SELECT * FROM oauth_authorization_request WHERE id = ?', input.authorizationRequestId);
       const account = await store.get('SELECT * FROM seller_account WHERE id = ?', session.account.id);
-      if (!row || row.consumed_at || row.expires_at <= stamp() || row.account_id !== account.id || row.session_proof_hash !== session.token_hash || row.account_auth_version !== account.oauth_auth_version || row.tenant_id !== tenantId || row.resource !== resource || !eligible(account)) fail('access_denied', 403);
+      if (!row || row.consumed_at || row.expires_at <= stamp() || row.created_at > stamp() || row.account_id !== account.id || row.session_proof_hash !== session.token_hash || row.account_auth_version !== account.oauth_auth_version || row.tenant_id !== tenantId || row.resource !== resource || !eligible(account) || !await requestEpoch(row)) fail('access_denied', 403);
       await client(row.client_id);
-      const selected = input.decision === 'approve' ? scopes(input.scopes.join(' ')) : [];
-      if (selected.some((s) => !row.scopes.split(' ').includes(s) || !effective(account, row.scopes).includes(s))) fail('invalid_scope');
+      const submitted = input.scopes.length ? parseScopes(input.scopes.join(' ')) : [];
+      if (input.decision === 'approve' && !submitted.length) fail('invalid_scope');
+      const selected = input.decision === 'approve' ? submitted : [];
+      if (selected.some((s) => !row.scopes.split(' ').includes(s) || !effective(account, row.scopes, { mcpV2: binding.mcpV2 }).includes(s))) fail('invalid_scope');
       await store.run('UPDATE oauth_authorization_request SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL', stamp(), row.id);
       const redirect = new URL(row.redirect_uri); redirect.searchParams.set('state', row.state); redirect.searchParams.set('iss', issuer);
       if (input.decision === 'deny') {
         redirect.searchParams.set('error', 'access_denied');
         await audit(store, tenantId, 'DENY', { account_id: account.id, client_id: row.client_id }, 'access_denied');
       } else {
-        const grantId = randomUUID(), code = secret();
+        const grantId = randomUUID(), code = secret(), consentedAt = stamp();
         await store.run(`INSERT INTO oauth_grant(id, account_id, client_id, tenant_id, issuer, resource, scopes, account_auth_version, created_at, absolute_expires_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, grantId, account.id, row.client_id, tenantId, issuer, resource, selected.join(' '), account.oauth_auth_version, stamp(), stamp(30 * DAY));
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, grantId, account.id, row.client_id, tenantId, issuer, resource, selected.join(' '), account.oauth_auth_version, consentedAt, stamp(30 * DAY));
+        for (const scope of selected.filter((scope) => V2_SCOPES.includes(scope))) {
+          await store.run(`INSERT INTO mcp_v2_scope_consent(grant_id, tenant_id, account_id, client_id, scope, account_auth_version, epoch_hash, consented_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, grantId, tenantId, account.id, row.client_id, scope, account.oauth_auth_version, epochHash, consentedAt);
+        }
         await store.run('UPDATE oauth_client SET last_used_at = ?, expires_at = ? WHERE id = ?', stamp(), stamp(30 * DAY), row.client_id);
         await store.run(`INSERT INTO oauth_authorization_code(code_hash, grant_id, redirect_uri, resource, challenge, created_at, expires_at)
           VALUES (?, ?, ?, ?, ?, ?, ?)`, hash(code), grantId, row.redirect_uri, resource, row.challenge, stamp(), stamp(60000));
@@ -176,7 +215,7 @@ export function createOAuth({ store, config, tenantId, limit }) {
       if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(value)) fail('invalid_grant');
       const digest = hash(value);
       const row = await store.get(refresh ? 'SELECT * FROM oauth_token WHERE token_hash = ? AND kind = \'refresh\'' : 'SELECT * FROM oauth_authorization_code WHERE code_hash = ?', digest);
-      const grant = row && await liveGrant(store, row.grant_id, binding);
+      const grant = row && await liveGrant(store, row.grant_id, binding, refresh ? row.issued_at : row.created_at);
       if (!row || !grant || grant.client_id !== input.client_id || row.resource !== resource) fail('invalid_grant');
       if (refresh && row.used_at) {
         await revokeGrant(store, grant.id, 'REFRESH_REUSE');
@@ -184,14 +223,15 @@ export function createOAuth({ store, config, tenantId, limit }) {
         // Return rather than throw: revocation must commit even though exchange fails.
         return json(400, { error: 'invalid_grant' });
       }
-      if (row.expires_at <= stamp() || row.revoked_at || row.consumed_at) fail('invalid_grant');
+      if (row.expires_at <= stamp() || (refresh ? row.issued_at : row.created_at) > stamp() || row.revoked_at || row.consumed_at) fail('invalid_grant');
       if (refresh) {
-        const selected = input.scope === undefined ? row.scopes.split(' ') : scopes(input.scope);
+        const selected = input.scope === undefined ? row.scopes.split(' ') : parseScopes(input.scope);
         if (selected.some((s) => !row.scopes.split(' ').includes(s) || !grant.allowed.includes(s))) fail('invalid_scope');
         await store.run('UPDATE oauth_token SET used_at = ? WHERE token_hash = ? AND used_at IS NULL', stamp(), digest);
         await store.run("UPDATE oauth_token SET revoked_at = ? WHERE grant_id = ? AND kind = 'access' AND revoked_at IS NULL", stamp(), grant.id);
         return issue(grant, selected.join(' '), row.generation + 1, digest);
       }
+      if (!grant.allowed.length || grant.scopes.split(' ').some((scope) => V2_SCOPES.includes(scope) && !grant.allowed.includes(scope))) fail('invalid_grant');
       if (row.redirect_uri !== input.redirect_uri || !/^[A-Za-z0-9._~-]{43,128}$/.test(input.code_verifier) || createHash('sha256').update(input.code_verifier).digest('base64url') !== row.challenge) fail('invalid_grant');
       await store.run('UPDATE oauth_authorization_code SET consumed_at = ? WHERE code_hash = ? AND consumed_at IS NULL', stamp(), digest);
       return issue(grant, grant.allowed.join(' '), 0);

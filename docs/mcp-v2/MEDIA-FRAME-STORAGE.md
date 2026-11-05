@@ -1,0 +1,13 @@
+# Internal media frame persistence
+
+This dependency checkpoint does not register media tools, expose routes, authorize users, decode images, approve operations or change business data.
+
+`withMediaWriter(...).inspect(stageId)` returns a frozen scalar copy of the stage's product, slot, captured graph/source/codec hashes, lifecycle/version, times and canonical metadata. It requires the same exact trusted context as every existing stage writer call. It contains no BLOB, lease secret or reusable writer capability. An escaped writer remains unusable after its callback.
+
+`persistMediaFrame(store, trustedContext, operationId, manifest)` joins the caller's transaction. The engine must already hold its platform-first lifecycle fence, fresh authority and tenant writer transaction. Required order is operation -> matching media policy -> stage pin/bind -> manifest pages/assets. The helper checks the existing policy exactly, canonical rebuild, all stage aliases (including aliases whose pixels deduplicate to an old asset), actual BOUND stage/product/correlation/hash/codec metadata and the exact complete pin set. It only inserts into an empty frame for PREPARED/PENDING_APPROVAL operations. Errors roll back its writes; the engine's outer transaction also rolls back operation/policy/pins.
+
+`readMediaFrame(store, trustedContext, operationId, proposalDescriptor?)` joins the same transaction and returns a rebuilt frozen manifest after retained policy, complete ordered page and asset checks and exact BOUND pins. Reads use fixed limits17 pages,43 assets and11 pins, each one above the accepted ceiling so excess is rejected. Schema page-size constraints bound transferred page JSON to17*16KiB before canonical validation. This is a live pre-consumption frame check; committed receipt replay must not depend on consumed stages or deleted approval evidence.
+
+Neither API derives live authority, selects a tenant, serves image bytes, proves native validation, checks current full product graph revision or verifies human approval. The coordinator and operation engine must recheck those under their shared fence. Existing byte loading and `boundBytes` remain explicit private operations. No stored snapshot or manifest supplies authorization.
+
+Synthetic SQLite/PostgreSQL contract tests exercise actual schema31 writes, stage lease/bind and FK rows, context substitution rejection, canonical corruption, missing/wrong pins, duplicate insertion and an injected asset-write failure that rolls back pages and the outer stage bind. Codec packets in these tests are synthetic storage fixtures, not native decoder evidence.

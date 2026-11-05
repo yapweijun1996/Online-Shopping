@@ -95,8 +95,9 @@ export function publicBusinessContact(settings) {
   catch { return null; }
 }
 
-export async function updateCompanySettings(database, input) {
-  return database.transaction(async () => {
+// Shared read-only validation/normalization. Call under the caller's writer
+// transaction when the resulting values will be reviewed or applied.
+export async function prepareCompanySettings(database, input) {
   if (!input || typeof input !== 'object' || Array.isArray(input) ||
       !Object.keys(input).length ||
       Object.keys(input).some((key) => !['defaultCurrency', 'sellerWhatsAppPhone', 'mobileHideBarsOnScroll', ...Object.keys(storefrontTextFields), ...Object.keys(senderFields)].includes(key))) {
@@ -141,9 +142,20 @@ export async function updateCompanySettings(database, input) {
     if (field === 'senderCountry' && value && !/^[A-Z]{2}$/.test(value)) throw new FieldError(field, 'Enter an uppercase ISO country code.');
     sender.push(value);
   }
+  return { before: current, after: {
+    defaultCurrency: currency, sellerWhatsAppPhone: phone, mobileHideBarsOnScroll: hideBars,
+    ...Object.fromEntries(Object.entries(storefrontTextFields).map(([field, column]) => [field, texts[column]])),
+    ...Object.fromEntries(Object.keys(senderFields).map((field, index) => [field, sender[index]])),
+  } };
+}
+
+export async function updateCompanySettings(database, input) {
+  return database.transaction(async () => {
+  const { after } = await prepareCompanySettings(database, input);
   await database.run(`UPDATE company_setting SET default_currency = ?, seller_whatsapp_phone = ?, mobile_hide_bars_on_scroll = ?,
     availability_text = ?, shipping_text = ?, returns_text = ?, ${Object.values(senderFields).map(([column]) => `${column} = ?`).join(', ')}, updated_at = ? WHERE id = 1`,
-    currency, phone, Number(hideBars), texts.availability_text, texts.shipping_text, texts.returns_text, ...sender, new Date().toISOString());
+    after.defaultCurrency, after.sellerWhatsAppPhone, Number(after.mobileHideBarsOnScroll), after.availabilityText, after.shippingText, after.returnsText,
+    ...Object.keys(senderFields).map((field) => after[field]), new Date().toISOString());
   return await getCompanySettings(database);
   });
 }

@@ -1,5 +1,33 @@
 # Executable task ledger
 
+## MCP v2 live release (2026-11-06) — authorized, pending
+
+The owner explicitly authorized commit, push, merge and deployment on 2026-11-06 (Asia/Kuala_Lumpur). This authorizes the reviewed schema34 release with MCP, AI and QR disabled; it does not enable the new production MCP profiles. Production remains on baseline1634735/shop29/platform2 while the updater is paused. Exact-main CI, backup/restore rehearsal, migration, immutable images, health and public acceptance remain mandatory. See the [live release record](mcp-v2/12-LIVE-RELEASE.md); no migration or deployment is claimed yet.
+
+## MCP v2 isolated delivery (2026-11-05 to2026-11-06)
+
+Scope: complete the Seller Operations Engine in isolation with independent verification. Branch `codex/mcp-v2-seller-engine`, baseline `1634735aa70090dcdf54b8d09e2cc09b33cd8a77`. Candidate62c43c6 implements all32 names including separately flagged full catalog CREATE/UPDATE. Root shared99/99, genuine native/OAuth/HTTPS CREATE+UPDATE10/10, CREATE security43/43, final contract/profile6/6 and cross-domain15/15 passed with0skips. Every new24 tool has actual response-schema and per-name negative evidence on both stores. Final integrated full-suite acceptance passed2012/2012,0failures/0skips,589.123s atb8614b4; historical13bd24e is superseded. Preserve original8/business rules. All writes default off; production activation of the new profiles remains blocked. The separately authorized flags-off release is pending in the release record above.
+
+| ID | State | Acceptance and dependency |
+| --- | --- | --- |
+| MCP0-01 | Verified locally | Default-off configuration, external restore epoch, source-derived build identity; reject unsafe/demo/production activation. |
+| MCP0-02 | Verified locally | Durable opt-in extension storage on both databases, fail-closed schema checks, rollback, no v2 authority imported by SQLite import. Explain base-schema and migration compatibility. |
+| MCP0-03 | Verified locally | Explicit OAuth consent for new scopes, writes unchecked, current RBAC, no elevation of old grants/tokens, epoch/revocation checks and v1 regression coverage. |
+| MCP0-04 | Verified locally | Actual review/approval application routes with session, fresh password, Origin/CSRF, bounded input, immutable proposal, tenant lifecycle fence and no-store/CSP. |
+| MCP0-05 | Verified locally | Bounded expiry, terminal proposal redaction, minimal replay receipts, audit90d, authenticated request maintenance and feature-off CLI hygiene are tested. |
+| MCP0-06 | Verified locally | Foundation source25ec84f:1015 tests,991 passed,0 failed,24 browser opt-ins skipped; targeted actual browser/restore and timing regression passed separately. |
+| MCP1 | Verified locally | Company3tools at08136e6, full1051tests/1027pass/0fail/24skip; actual defaults/approval/browser11/11. Production remains disabled. |
+| MCP2 | Verified complete in isolation | Source62c43c6 includes independently verified full CREATE/UPDATE, contracts, mode isolation, actual native/human proof and cross-domain flows. Shared-gallery stale-save bug fixed atf67b749. Existing stock changes use separate HIGH inventory policy. |
+| MCP3 | Verified in integrated full/browser/native run | Root111f1eb real default-constructor/native/MCP/browser5/5, boundaries/planning58/58. Five media tools require a separate default-off flag; production rejected. [Tools](mcp-v2/MEDIA-TOOLS.md). |
+| MCP4 | Verified in isolated development | Rootc95e2b4: four gated built-ins, complete stock/hold revision, schema33 covering index and narrow history. Combined full1361/1333pass/0fail/28opt-in skips,249.055s; actual inventory browsers included in785cec6 seven-case run. [Tools](mcp-v2/INVENTORY-TOOLS.md). |
+| MCP5 | Verified in isolated development | Root95dbd91 full1456/1422pass/0fail/34skip,92/92 focused and4/4 actual two-store HTTPS browser tests; existing five decisions only, no migration. [Tools](mcp-v2/ORDERS-TOOLS.md). |
+| MCP6 | Verified locally, bounded read-only scope | Three gated tools atf7dc171; independent full1120/1095passed/0failed/25skipped,213.239s; response/default5/5, core29/29. Shared dashboard definitions, honest history/current-category/row/byte limits. |
+| MCP7 | Verified in integrated full/browser/native run | All three controls and schema34 integrated; rootce1e13c full1661/1661,0skip. Root379b405 migration/union139/139;01028af control/stage/engine69/69. Original-grant/domain authority, typed audit and bounded sequence pagination. Retention stays90days. |
+| MCP8 | Current-tool boundary verified | Sourcecc56449/root66d232c, independent8/8 bothDB. KB outage/stale claims/injection cannot replace live state or approval. No runtime KB dependency; future business and vendor acceptance remain separate. |
+| MCP-VERIFY | Verified complete in isolation | Sourceb8614b4 full2012/2012,0failures/0skips; all browser/native gates enabled. First full2010/2012 and strict timestamp-test correction are preserved in validation. Final report A–G records scope, risks, rollback and production safety. |
+
+Detailed evidence: [MCP v2 progress](mcp-v2/09-IMPLEMENTATION-PROGRESS.md). No completion percentage is assigned to this mixed implementation/verification backlog.
+
 **Customer workflow update (2026-09-26):** Browser-local Profile is required before checkout; buyer details are read-only there. Cart checkboxes select one order with one delivery address. This supersedes earlier customer multi-destination UI requirements; the existing API/history stays compatible. See UI_SPEC.md.
 
 **Updated direction (2026-09-26):** Cloudflare Worker + SQLite Durable Object is the public Demo for simulated transactions with sample pet products. Future Production will use Docker + PostgreSQL on the owner’s server behind Cloudflare Tunnel. This supersedes earlier DEC-04 production-host wording below; the current Docker SQLite adapter has not yet been migrated to PostgreSQL.

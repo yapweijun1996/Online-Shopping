@@ -2,6 +2,8 @@
 
 **Status: locally implemented for seller session, products, guest order creation, and seller order review.** Deployment behavior remains unverified. Keep this file aligned with actual behavior.
 
+**MCP v2 isolated candidate,2026-11-05:** the existing transport has32 tool definitions, preserving original8. Authoritative schemas/policies/examples are in [MCP contracts](mcp-v2/03-TOOL-CONTRACTS.md). New writes default off; full catalog CREATE/UPDATE use separate dev/test-only HIGH dual-scope profiles and protected seller approval. Production activation is rejected. [Validation](mcp-v2/10-FINAL-VALIDATION-REPORT.md) records actual checks and final integrated gate status; this does not claim live availability.
+
 ## Implemented local endpoints
 
 | Method | Path | Behavior |
@@ -284,6 +286,30 @@ The edge checks `GET <base>/api/v1/tenant-access` before serving tenant static f
 Frontends resolve the public shop-info storage scope before importing any state-reading module. Default keys remain unchanged; non-default localStorage/sessionStorage and IndexedDB names append the immutable scope. Network failures can use a validated cached scope; explicit 404/503 responses cannot. Shop-specific worker caches use `tenant-<code>-shop` or `tenant-<code>-seller`, while default caches keep `os-shop`/`os-seller`. Language and light/dark appearance are shared. A controlled navigation through a rename alias propagates the redirect before using a cached shell.
 
 ## Seller MCP connector (P1; default OFF)
+
+### MCP v2 foundation (isolated development)
+
+Three gated reads are now implemented: analytics.sales_trend, analytics.top_products and analytics.inventory_risk, requiring fresh analytics.extended/current figures.read. They share dashboard definitions, preserve UTC+8/submission-time/current accepted-status attribution and separate currencies, and label current category/database-only coverage. Source/pages/UTF8 bytes are bounded; excessive pages return controlled503 and smaller pages retain full totals. They do not measure cash/profit. [Actual analytics contracts](mcp-v2/ANALYTICS-TOOLS.md), [schemas](mcp-v2/03-ANALYTICS-IMPLEMENTED.json). KB remains [untrusted reference knowledge](mcp-v2/KNOWLEDGE-BOUNDARY.md), with no authority fallback.
+
+Schema 30 adds operation, consent and approval tables on both adapters; empty tables confer no authority. `MCP_V2_ENABLED` defaults OFF. Development activation requires MCP, HTTPS, password login and an external `MCP_V2_EPOCH_FILE`; production activation is explicitly rejected. Safe opt-in registers three company tools and four catalog safe-subset tools, filtered by fresh scope consent and current RBAC. Old grants retain their original read contracts.
+
+The latest accepted isolated integrated full snapshotce1e13c uses schema34 audit sequences and passed1661/1661 including browser/native opt-ins; this is not release or production migration authorization. Operations.get/cancel/audit are gated built-ins with explicit control plus original-domain authority; see [contracts](mcp-v2/OPERATIONS.md). Schema 31 added media staging, retained policy and bounded cleanup; schema 32 adds the shared all-writer inventory ledger, monotonic stock revision and honest coverage baseline. Schema 33 adds the covering order-item index. Four inventory tools are gated built-ins: inventory.summary, inventory.movements, inventory.preview_adjustment and inventory.commit_adjustment. Fresh inventory.read or inventory.adjust and current catalog.write capability are required; adjustments require HIGH-risk first-party approval, a complete revision, absolute nullable stock and fixed reason. Notes stay only in the expiring proposal. See [tools](mcp-v2/INVENTORY-TOOLS.md) and [schemas](mcp-v2/03-INVENTORY-IMPLEMENTED.json). Complete media snapshots and the portable native codec have separate local verification; the upload coordinator, authority and protected old/new review are independently verified. The protected first-party delivery/ACK endpoints require separate media enablement and a real seller session; five public media tools are eligible under the separate default-off development media flag and fresh scopes. Root111f1eb passed the actual default-constructor/native/browser chain on both stores; production activation remains rejected. See [media storage](mcp-v2/MEDIA-STORAGE.md), [resource snapshots](mcp-v2/MEDIA-RESOURCES.md) and [validation](mcp-v2/10-FINAL-VALIDATION-REPORT.md). Storage helpers and policy hashes do not authorize a write.
+
+Two order tools, orders.preview_decision and orders.commit_decision, require fresh orders.decide/current capability and HIGH first-party password approval. Existing five transitions, historical money and once-only stock effects remain authoritative. Preview captures the actual integer revision and complete hash; commit accepts operationId only. [Contracts and bounds](mcp-v2/ORDERS-TOOLS.md).
+
+Catalog requires catalog.write/current catalog.write capability. `catalog.preview_create` accepts `{input:{sku,name,description,category,priceMinor,active,...},idempotencyKey}`; `catalog.preview_update` accepts `{input:{id,changes},idempotencyKey}`. Preview captures an authoritative bounded revision and returns operation metadata/reviewUrl. Complete before/after, listing/member effects and resolved option labels appear in trusted first-party review. Commit accepts `{operationId}` only and returns minimal IDs/revision, with authorized exact-once replay. Existing-stock keys, media fields, group joins/moves and holder-changing renames reject until separate policies are implemented. Initial stock on an independent new SKU is explicitly reviewed. [Actual contracts](mcp-v2/CATALOG-SAFE-SUBSET.md), [machine schemas](mcp-v2/03-CATALOG-SAFE-IMPLEMENTED.json).
+
+New scopes require explicit consent bound to account, client, grant, epoch and issue time. Choices start unchecked; old grants/tokens never gain new rights. Scope consent does not approve an individual operation.
+
+| Method | Development path | Contract |
+| --- | --- | --- |
+| GET | `/oauth/operation?operationId=<uuid>` | First-party review shell; no proof in URL. Assets: `/oauth/operation-review.js` and `.css`. |
+| GET | `/api/v1/seller/mcp/operations/<uuid>` | Current seller session/live grant; returns immutable proposal and short-lived session/hash-bound challenge. |
+| POST | `/api/v1/seller/mcp/operations/<uuid>/approval` | JSON <=4096 bytes, exactly `operationId`, `previewHash`, `challenge`, `decision` (`approve`/`reject`), `password`. Exact Origin/CSRF, fresh password, tenant/account/grant and URL/body ID checks; consumes challenge atomically. Actual currency changes additionally require human-only currencyAcknowledged:true and its fixed audit proof; MCP arguments cannot supply it. Approval does not commit the operation. |
+
+Tenant prefixes apply. Demo shops, quick login, production configuration, wrong hosts/origins and flag-off requests cannot use review. Responses are no-store with strict CSP/frame denial and no AI-client CORS. Migration, restore, retention and acceptance evidence: [MCP v2 progress](mcp-v2/09-IMPLEMENTATION-PROGRESS.md). Production release is outside this development run.
+
+### Original read-only v1 connector
 
 Enable explicitly with `MCP_ENABLED=1` and configured HTTPS `SELLER_ORIGIN`. Disabled/new paths return the same generic 404; public-demo/quick-login and non-seller hosts cannot use the connector. No new dependency, provider call, write tool or connected-app management API is included. **Claude.ai/ChatGPT callbacks, current protocol/spec support, CORS requirements and plan availability are UNVERIFIED.**
 

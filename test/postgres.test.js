@@ -1,3 +1,4 @@
+import { dropInventoryForLegacyFixture } from './helpers/inventory-fixture.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
@@ -255,7 +256,7 @@ test('PostgreSQL schema 17 upgrades into listings, keeping every product id and 
   const before = await store.all('SELECT id, sku, name, price_minor, stock_quantity FROM product ORDER BY id');
   // Put the database back into its schema 17 shape.
   await store.exec('ALTER TABLE product ALTER COLUMN listing_id DROP NOT NULL; UPDATE product SET listing_id = NULL; DELETE FROM listing');
-  await store.setSchemaVersion(17);
+  await dropInventoryForLegacyFixture(store); await store.setSchemaVersion(17);
   const upgraded = await openPostgresDatabase(url, { allowUpgrade: true }); t.shoppingClosers.push(()=>upgraded.close());
   assert.deepEqual(await upgraded.all('SELECT id, sku, name, price_minor, stock_quantity FROM product ORDER BY id'), before);
   assert.equal((await upgraded.get('SELECT COUNT(*)::int AS n FROM listing')).n, 2);
@@ -282,7 +283,7 @@ test('PostgreSQL schema 18 upgrades to one shared gallery per listing and drops 
   }
   // The real schema 18 has no preview columns; the gallery step of the upgrade must still copy photos.
   await store.exec('ALTER TABLE product DROP COLUMN thumb_mime; ALTER TABLE product DROP COLUMN thumb_data; ALTER TABLE product_gallery_image DROP COLUMN thumb_mime; ALTER TABLE product_gallery_image DROP COLUMN thumb_data');
-  await store.setSchemaVersion(18);
+  await dropInventoryForLegacyFixture(store); await store.setSchemaVersion(18);
   const upgraded = await openPostgresDatabase(url, { allowUpgrade: true }); t.shoppingClosers.push(()=>upgraded.close());
   assert.equal((await upgraded.get('SELECT COUNT(*)::int AS n FROM product_gallery_image WHERE product_id = ?', black.id)).n, 0);
   assert.equal((await upgraded.get('SELECT gallery_layout_json FROM product WHERE id = ?', black.id)).gallery_layout_json, null);
@@ -307,7 +308,7 @@ test('PostgreSQL stores image previews, serves them on request and upgrades from
   assert.deepEqual(Buffer.from((await getGalleryImage(store, made.id, galleryId, true, true)).data), Buffer.concat([png, Buffer.from('gallery-small')]));
   // The schema 19 shape: no preview columns yet; the upgrade adds them and keeps the images.
   await store.exec('ALTER TABLE product DROP COLUMN thumb_mime; ALTER TABLE product DROP COLUMN thumb_data; ALTER TABLE product_gallery_image DROP COLUMN thumb_mime; ALTER TABLE product_gallery_image DROP COLUMN thumb_data');
-  await store.setSchemaVersion(19);
+  await dropInventoryForLegacyFixture(store); await store.setSchemaVersion(19);
   const upgraded = await openPostgresDatabase(url, { allowUpgrade: true }); t.shoppingClosers.push(()=>upgraded.close());
   assert.deepEqual(Buffer.from((await getProductImage(upgraded, made.id, true, true)).data), Buffer.concat([png, Buffer.from('full')]), 'no preview yet: the full image answers');
   await setProductThumbnail(upgraded, made.id, data('late'));
