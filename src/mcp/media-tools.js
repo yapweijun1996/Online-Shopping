@@ -4,8 +4,8 @@ import { listMedia } from './media-list.js';
 import { mediaLayoutAdapter } from './media-layout-adapter.js';
 import { mediaListInput, mediaListOutput, mediaStageInput, mediaStageOutput, mediaLayoutInput, mediaReceiptSchema } from './media-contracts.js';
 
-// Default registration stays closed until actual native MCP/browser acceptance.
-export const MEDIA_TOOLS_ACCEPTED = false;
+// Independent development feature configuration remains off by default.
+export const MEDIA_TOOLS_ACCEPTED = true;
 
 export const mediaListTool = () => Object.freeze({ kind: 'read', name: 'media.list', scope: 'media.read', capability: 'catalog.write',
   inputSchema: mediaListInput, outputSchema: mediaListOutput, read: listMedia });

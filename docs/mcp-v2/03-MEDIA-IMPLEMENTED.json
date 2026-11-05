@@ -1,5 +1,5 @@
 {
-  "status": "explicit-factory-candidate-default-ineligible",
+  "status": "development-feature-off-by-default",
   "production": "blocked",
   "note": "Examples demonstrate closed argument shapes only. Replace synthetic IDs/hashes/bytes with real owned resources and complete validated source bytes; they do not provide authorization or demonstrate successful approval.",
   "limits": {

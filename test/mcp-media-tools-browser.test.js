@@ -17,14 +17,12 @@ import { setupShop } from '../src/shop-setup.js';
 import { createCategory } from '../src/settings.js';
 import { createProduct } from '../src/products.js';
 import { singleTenantRegistry } from '../src/tenants.js';
-import { mediaTools } from '../src/mcp/media-tools.js';
 import { secret,hash } from '../src/mcp/credentials.js';
 import { startContainer } from '../media-codec/scripts/dev-container.js';
 import { freshCatalogAccess,legacyCatalogScopes } from './helpers/mcp-catalog-default-grant.js';
 import { reviewPassword } from './helpers/mcp-review-fixture.js';
 import { catalogue } from '../src/mcp/tools.js';
 import { syntheticMediaPng } from './helpers/mcp-media-hooks-fixture.js';
-import { catalogCreateTool,catalogUpdateTool } from '../src/mcp/catalog-tools.js';
 const enabled=Boolean(process.env.QA_PLAYWRIGHT_MODULE)&&process.env.MEDIA_TOOLS_NATIVE_BROWSER_TEST==='1';
 const dto=value=>value.data.result?.structuredContent;
 async function environment(t,dialect,worker,browser,seedExisting=false){
@@ -59,9 +57,10 @@ async function environment(t,dialect,worker,browser,seedExisting=false){
  await createCategory(store,{code:'SYNTHETIC',label:'Synthetic media category'});
  const product=seedExisting?await createProduct(store,{sku:'SYNTHETIC-MEDIA',name:'<script>window.__mediaInjected=true</script> Synthetic media',description:'Synthetic existing media fixture',
   category:'SYNTHETIC',priceMinor:1200,stockQuantity:7,active:true,imageDataUrl:'data:image/png;base64,'+syntheticMediaPng(9).toString('base64')}):null;
- const binding={tenantId:'default',issuer:origin,resource:origin+'/mcp'},registry=singleTenantRegistry({store,config}),tenant=await registry.resolve(new Request(origin));
- const entries=[catalogCreateTool(),catalogUpdateTool(),...mediaTools({store,binding,config,tenantGuard:registry.operationGuard(tenant),quickLogin:false})];
- api=await createApi({store,config,registry,operationTools:entries,serveStatic});
+ const binding={tenantId:'default',issuer:origin,resource:origin+'/mcp'},registry=singleTenantRegistry({store,config});
+ // Acceptance must exercise the actual built-in constructor. No operationTools
+ // injection, native adapter override, session/grant/evidence fixture or fake fence.
+ api=await createApi({store,config,registry,serveStatic});
  context=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:390,height:900}});
  const call=async(path,method='GET',body,headers={})=>{
   const response=await context.request.fetch(origin+path,{method,headers:{...(body===undefined?{}:{'content-type':'application/json'}),...headers},
@@ -113,9 +112,13 @@ async function reviewMetadata(f,page,operation){
 async function authorized(f){
  assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM oauth_grant')).n,0);
  assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_scope_consent')).n,0);
- const client=await freshCatalogAccess(f,legacyCatalogScopes+' catalog.write media.read media.write',f.call),tools=await client.rpc('tools/list',{});
- assert.equal(tools.data.result.tools.length,17);assert.deepEqual(tools.data.result.tools.slice(0,8),catalogue.map(({scope:_scope,...tool})=>tool));
- assert.deepEqual(tools.data.result.tools.slice(12).map(tool=>tool.name),['media.list','media.prepare_upload','media.commit_upload','media.preview_layout','media.commit_layout']);
+ const scopes=legacyCatalogScopes+' company.read company.write catalog.write analytics.extended inventory.read inventory.adjust media.read media.write';
+ const client=await freshCatalogAccess(f,scopes,f.call),tools=await client.rpc('tools/list',{});
+ assert.deepEqual(tools.data.result.tools.map(tool=>tool.name),[...catalogue.map(tool=>tool.name),
+  'company.get','company.preview_update','company.commit_update','catalog.preview_create','catalog.commit_create','catalog.preview_update','catalog.commit_update',
+  'analytics.sales_trend','analytics.top_products','analytics.inventory_risk','inventory.summary','inventory.movements','inventory.preview_adjustment','inventory.commit_adjustment',
+  'media.list','media.prepare_upload','media.commit_upload','media.preview_layout','media.commit_layout']);
+ assert.equal(tools.data.result.tools.length,27);assert.deepEqual(tools.data.result.tools.slice(0,8),catalogue.map(({scope:_scope,...tool})=>tool));
  const errors=[],external=[];await f.context.route('**/*',route=>new URL(route.request().url()).origin===f.origin?route.continue():(external.push(route.request().url()),route.abort()));
  const page=await f.context.newPage();page.on('pageerror',error=>errors.push(error.message));return{client,page,errors,external};
 }
