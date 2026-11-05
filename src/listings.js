@@ -12,6 +12,21 @@ import { ApiError } from './http.js';
 const SHARED = ['name', 'description', 'category'];
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const plannedConflict = () => { throw new ApiError(409, 'LISTING_PLAN_CONFLICT', 'The planned listing creation changed.'); };
+const creationConflict = () => { throw new ApiError(409, 'PRODUCT_CREATE_PLAN_CONFLICT', 'The planned product creation changed.'); };
+
+// Trusted internal metadata only. No row is reserved and no authority is granted.
+export function plannedProductCreationIdentity(value) {
+  const keys=['version','productId','targetCode','targetListingId','newListingId'];
+  if(!value||![Object.prototype,null].includes(Object.getPrototypeOf(value))||Reflect.ownKeys(value).length!==keys.length||keys.some(key=>{
+    const field=Object.getOwnPropertyDescriptor(value,key);return !field?.enumerable||!Object.hasOwn(field,'value');
+  }))creationConflict();
+  const identity=Object.fromEntries(keys.map(key=>[key,value[key]]));
+  const id=value=>typeof value==='string'&&uuid.test(value);
+  if(identity.version!==1||!id(identity.productId)||
+    !(identity.targetCode===null||typeof identity.targetCode==='string'&&/^[A-Z0-9][A-Z0-9._-]{0,39}$/.test(identity.targetCode))||
+    !(identity.targetListingId===null?id(identity.newListingId):id(identity.targetListingId)&&identity.newListingId===null&&identity.targetCode!==null))creationConflict();
+  return Object.freeze(identity);
+}
 
 // Trusted service metadata only, never an input field or authorization proof.
 export function plannedListingIdentity(value) {
@@ -83,6 +98,24 @@ async function applyListingForPlan(database, plan, now, newListingId = null) {
 /* The listing a product row joins: the one of its variant group (created on first use), or a new private one. */
 export async function listingFor(database, fields, now) {
   return applyListingForPlan(database, await planListingFor(database, fields), now);
+}
+
+// SELECT-only check. The apply caller must hold the shared writer transaction;
+// an earlier returned plan never replaces the fresh application-time lookup.
+export async function planProductCreationListing(database,fields,context) {
+  const identity=plannedProductCreationIdentity(context),plan=await planListingFor(database,fields);
+  if(identity.targetCode!==plan.code||await database.get('SELECT id FROM product WHERE id=?',identity.productId)||
+    (plan.create?identity.targetListingId!==null||identity.newListingId===null||await database.get('SELECT id FROM listing WHERE id=?',identity.newListingId):
+      identity.targetListingId!==plan.listing.id||identity.newListingId!==null))creationConflict();
+  return plan;
+}
+
+// Joins the real product creation transaction; never adopts an appearing code
+// or substitutes a random ID when the approved identity no longer fits.
+export async function listingForPlannedProductCreate(database,fields,now,context) {
+  const identity=plannedProductCreationIdentity(context),plan=await planProductCreationListing(database,fields,identity);
+  try {return await applyListingForPlan(database,plan,now,identity.newListingId);}
+  catch(error){if(error?.code==='LISTING_PLAN_CONFLICT')creationConflict();throw error;}
 }
 
 /* SELECT-only membership/shared-field projection; no gallery, option or stock plan. */

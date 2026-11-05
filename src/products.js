@@ -6,8 +6,9 @@ import { validateProductInput } from './product-input.js';
 import { decodeThumbnail } from './product-image.js';
 import { getCompanySettings, requireActiveCategory } from './settings.js';
 import { presentCatalogCopy } from './catalog-copy.js';
-import { hasVariantLabel, loadProductOptions, optionAxes, optionError, requireGroupOptions, setProductOptions } from './options.js';
-import { listingFor, moveToListing, syncListing, plannedListingIdentity } from './listings.js';
+import { hasVariantLabel, loadProductOptions, optionAxes, optionError, prepareProductOptions, requireGroupOptions, setProductOptions } from './options.js';
+import { listingFor, moveToListing, syncListing, plannedListingIdentity, plannedProductCreationIdentity, planProductCreationListing, listingForPlannedProductCreate } from './listings.js';
+import { OPTION_LIMITS } from './option-limits.js';
 import { reservedQuantitySql } from './stock-reservation.js';
 import { galleryRole, productCover, productGallery, requireGalleryRevision, saveProductGallery, planProductGallery, planProductMainRestoration, applyProductGalleryPlan, prepareGalleryUploadEntry, requireMainImageRemoval, shareListingGallery } from './product-gallery.js';
 
@@ -119,15 +120,63 @@ export async function requireUniqueVariantLabel(database, group, label, excludeI
 }
 
 export async function createProduct(database, input) {
+  return createProductInternal(database,input);
+}
+
+const creationConflict=()=>{throw new ApiError(409,'PRODUCT_CREATE_PLAN_CONFLICT','The planned product creation changed.');};
+const creationFields=['sku','name','description','category','priceMinor','currency','active','variantGroup','variantLabel','stockQuantity','options'];
+function creationInput(input) {
+  if(!input||![Object.prototype,null].includes(Object.getPrototypeOf(input)))creationConflict();
+  const copy={};
+  for(const key of Reflect.ownKeys(input)) {
+    const field=Object.getOwnPropertyDescriptor(input,key);
+    if(!creationFields.includes(key)||!field?.enumerable||!Object.hasOwn(field,'value'))creationConflict();
+    copy[key]=field.value;
+  }
+  if(Object.hasOwn(copy,'options')) {
+    const options=copy.options;
+    if(!Array.isArray(options)||options.length>OPTION_LIMITS.typesPerGroup||Reflect.ownKeys(options).length!==options.length+1)creationConflict();
+    copy.options=Array.from({length:options.length},(_,index)=>{
+      const entry=Object.getOwnPropertyDescriptor(options,String(index));
+      if(!entry?.enumerable||!Object.hasOwn(entry,'value'))creationConflict();
+      const option=entry.value;
+      if(!option||![Object.prototype,null].includes(Object.getPrototypeOf(option))||Reflect.ownKeys(option).length!==2)creationConflict();
+      return Object.fromEntries(['typeId','valueId'].map(key=>{
+        const field=Object.getOwnPropertyDescriptor(option,key);if(!field?.enumerable||!Object.hasOwn(field,'value'))creationConflict();return[key,field.value];
+      }));
+    });
+  }
+  return copy;
+}
+
+// Pure preparation for a trusted planned creation. The absent non-null ID is
+// important: option-group exclusion predicates must not receive SQL NULL.
+export async function preparePlannedProductCreate(database,input,context) {
+  const identity=plannedProductCreationIdentity(context),product=await prepareProductCreate(database,creationInput(input));
+  await planProductCreationListing(database,product,identity);
+  await requireUniqueProductSku(database,product.sku);
+  await requireUniqueVariantLabel(database,product.variantGroup,product.variantLabel);
+  const selected=await prepareProductOptions(database,identity.productId,product.variantGroup,product.options??[],{newProduct:true});
+  await requireGroupOptions(database,identity.productId,product.variantGroup,selected.options.length>0);
+  return {...product,stockQuantity:product.stockQuantity??null,...(selected.options.length?{options:selected.options,variantLabel:selected.label}:{})};
+}
+
+// Internal commit entry. Callers separately own authority, immutable approval,
+// catalog revision and history. Public/model inputs cannot supply this context.
+export async function applyPlannedProductCreate(database,input,context) {
+  return createProductInternal(database,creationInput(input),plannedProductCreationIdentity(context));
+}
+
+async function createProductInternal(database,input,identity=null) {
   return await database.transaction(async () => {
-    const product = await prepareProductCreate(database, input);
-    const id = randomUUID();
+    const product = identity?await preparePlannedProductCreate(database,input,identity):await prepareProductCreate(database, input);
+    const id = identity?.productId??randomUUID();
     // Creation times in a listing strictly increase: the oldest variant holds the shared gallery and represents the listing.
     const latest = product.variantGroup && await database.get(`SELECT MAX(p.created_at) AS last FROM product p JOIN listing l
       ON l.id = p.listing_id WHERE l.code = ?`, product.variantGroup);
     const now = new Date(Math.max(Date.now(), latest?.last ? Date.parse(latest.last) + 1 : 0)).toISOString();
     // Variants share their listing's title, description and category; the first product of a group defines them.
-    const listing = await listingFor(database, product, now);
+    const listing = identity?await listingForPlannedProductCreate(database,product,now,identity):await listingFor(database, product, now);
     await requireUniqueProductSku(database, product.sku);
     await requireUniqueVariantLabel(database, product.variantGroup, product.variantLabel);
     try {
@@ -141,7 +190,10 @@ export async function createProduct(database, input) {
       product.variantLabel || null, null, listing.id,
       product.image ? product.thumb?.mime || null : null, product.image ? product.thumb?.data || null : null, now, now
       );
-    } catch (error) {duplicateSku(error);}
+    } catch (error) {
+      if(identity&&(error?.code==='23505'&&error.constraint==='product_pkey'||/UNIQUE constraint failed: product\.id/.test(error?.message||'')))creationConflict();
+      duplicateSku(error);
+    }
     await initializeProductStock(database, id, product.stockQuantity ?? null, now);
     const hasOptions = Array.isArray(product.options) && product.options.length > 0;
     if (hasOptions) await setProductOptions(database, id, product.variantGroup, product.options, { newProduct: true });
