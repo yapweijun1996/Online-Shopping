@@ -3,6 +3,7 @@ import { ApiError } from '../http.js';
 import { can } from '../roles.js';
 import { hash, stamp } from './credentials.js';
 import { canonicalOperationJson, operationPreviewHash, readStoredOperation } from './operation-envelope.js';
+import { requiresCompanyCurrencyAcknowledgement, COMPANY_CURRENCY_ACKNOWLEDGED } from './company-approval-policy.js';
 import { operationEpochHash } from './operation-epoch.js';
 import { verifyOperationAuthority } from './operation-authorization.js';
 import { operationInstant, operationReceiptExpiry, OPERATION_TERMINAL_STATES } from './operation-maintenance.js';
@@ -274,6 +275,17 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
           FROM session s JOIN seller_account a ON a.id = s.account_id WHERE s.token_hash = ?`, approval.session_hash);
         if (!session || session.id !== row.account_id || session.active !== 1 || session.must_change_password !== 0 ||
             session.expires_at <= now || !can(session.role, row.required_capability)) denied();
+        let currencyAcknowledgementRequired;
+        try { currencyAcknowledgementRequired = requiresCompanyCurrencyAcknowledgement(envelope); }
+        catch { denied(); }
+        if (currencyAcknowledgementRequired) {
+          const acknowledged = await store.get(`SELECT id FROM mcp_v2_event WHERE operation_id = ? AND tenant_id = ?
+            AND account_id = ? AND client_id = ? AND grant_id = ? AND tool_name = ? AND approver_id = ?
+            AND correlation_id = ? AND at = ? AND event = 'APPROVE' AND outcome = ? LIMIT 1`,
+          row.id, row.tenant_id, row.account_id, row.client_id, row.grant_id, row.tool_name, approval.approver_id,
+          row.correlation_id, approval.approved_at, COMPANY_CURRENCY_ACKNOWLEDGED);
+          if (!acknowledged) denied();
+        }
         const current = await adapter.currentRevision(read, envelope);
         if (!current || typeof current !== 'object' || typeof current.exists !== 'boolean' ||
             !Object.hasOwn(current, 'revision')) throw new TypeError('Invalid server revision.');
