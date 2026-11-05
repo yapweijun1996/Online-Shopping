@@ -219,7 +219,7 @@ for (const dialect of ['sqlite', 'postgres']) {
     assert.ok(counts.every((row) => row.expired <= 33 && row.redacted <= 100 && row.approvals <= 100));
     assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_approval')).n, 0);
     assert.equal((await f.store.get("SELECT COUNT(*) AS n FROM mcp_v2_operation WHERE state = 'EXPIRED' AND envelope_json IS NULL")).n, 105);
-    const event = await f.store.get('SELECT * FROM mcp_v2_event LIMIT 1');
+    const { sequence: _sequence, ...event } = await f.store.get('SELECT * FROM mcp_v2_event LIMIT 1');
     const insertEvent = async (id, tenant, at) => {
       const row = { ...event, id, tenant_id: tenant, at }, columns = Object.keys(row);
       await f.store.run(`INSERT INTO mcp_v2_event (${columns.join(',')}) VALUES (${columns.map(() => '?').join(',')})`, ...columns.map((column) => row[column]));
