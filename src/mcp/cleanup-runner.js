@@ -55,7 +55,7 @@ function cleanupFence(platform, tenantId) {
 async function assertIdentity(store, tenantId) {
   // A supplied default connection cannot silently target an already populated
   // non-default shop, and mixed/imported identities must be reviewed first.
-  for (const table of ['oauth_client', 'oauth_authorization_request', 'oauth_grant', 'mcp_v2_operation', 'mcp_v2_scope_consent']) {
+  for (const table of ['oauth_client', 'oauth_authorization_request', 'oauth_grant', 'mcp_v2_operation', 'mcp_v2_scope_consent', 'mcp_v2_media_stage', 'mcp_v2_media_quota', 'mcp_v2_media_event']) {
     if (await store.get(`SELECT tenant_id FROM ${table} WHERE tenant_id <> ? LIMIT 1`, tenantId)) unavailable();
   }
 }

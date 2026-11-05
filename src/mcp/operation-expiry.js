@@ -4,7 +4,7 @@ import { stamp } from './credentials.js';
 // Isolated prototype only: callers must hold the platform tenant fence before
 // the tenant-store transaction. This marks expired operations but deliberately
 // does not delete proposals or idempotency evidence. Retention is unresolved.
-export async function expireOperations({ store, tenantGuard, tenantId, limit = 50 }) {
+export async function expireOperations({ store, tenantGuard, tenantId, limit = 33 }) {
   if (!store || typeof store.transaction !== 'function' || !tenantGuard ||
       typeof tenantGuard.withActiveTenant !== 'function' || typeof tenantId !== 'string' || !tenantId ||
       !Number.isInteger(limit) || limit < 1 || limit > 100) {
@@ -16,11 +16,16 @@ export async function expireOperations({ store, tenantGuard, tenantId, limit = 5
     }
     return store.transaction(async () => {
       const now = stamp();
-      const rows = await store.all(`SELECT o.* FROM mcp_v2_operation o
+      const candidates = await store.all(`SELECT o.*, a.approver_id AS expiry_approver_id FROM mcp_v2_operation o
         LEFT JOIN mcp_v2_approval a ON a.operation_id = o.id
         WHERE o.tenant_id = ? AND o.state IN ('PREPARED','PENDING_APPROVAL','APPROVED')
           AND (o.expires_at <= ? OR (o.state = 'APPROVED' AND a.expires_at <= ?))
-        ORDER BY o.expires_at, o.id LIMIT ?`, tenantId, now, now, limit);
+        ORDER BY o.expires_at, o.id LIMIT ?`, tenantId, now, now, Math.min(limit, 33));
+      const rows=[];let bytes=0;
+      for(const row of candidates){
+        const size=2*Buffer.byteLength(JSON.stringify(row))+2048;
+        if(bytes+size>1048576)break;rows.push(row);bytes+=size;
+      }
       for (const row of rows) {
         let approverId = null;
         if (row.state === 'APPROVED') {

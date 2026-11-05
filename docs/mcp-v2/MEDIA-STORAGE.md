@@ -63,8 +63,8 @@ history is imported separately, without stage/grant foreign keys. External epoch
 rotation remains mandatory after an authorized restore. Schema and byte retention
 are not consent, human approval or an immutable codec build attestation.
 
-The next storage/maintenance checkpoint must implement atomic source append,
-lease/CAS, pin/install, consume, complete byte scrub and exact quota release.
+The internal storage/maintenance checkpoint below implements atomic source append,
+lease/CAS, pin/install, consume, byte scrub and exact quota release.
 Every cleanup transaction must count metadata/quota/audit writes within100rows
 and1MiB. A maximum1,130,496byte stage cannot be erased in one such transaction.
 Expiry must run its bounded approved-operation batch before proof cleanup, leave
@@ -72,3 +72,66 @@ remaining APPROVED backlog intact, drain children before parent deletes and reta
 minimal policy to the original receipt horizon. New media tools stay ineligible
 until authority, byte delivery/ACK, real image review, service effects, rollback,
 restore and both-database acceptance are implemented separately.
+
+## Internal writer and hygiene checkpoint
+
+`withMediaWriter(store, trustedContext, callback)` joins the caller's existing
+writer transaction and supplies an ephemeral callback-only capability. The
+caller must already hold the platform lifecycle fence and verify live authority;
+these functions cannot authenticate a token, select a tenant store, establish
+product ownership or grant permission. Context contains tenant/revision, original
+account/auth-version/client/grant, epoch/build, issuer/resource and the trusted
+grant expiry. Production code must use the authoritative clock; injected clocks
+in synthetic tests are not model arguments. The clock is captured after acquiring
+the store transaction so lock wait cannot create a stale lease start.
+
+The writer offers begin, append, get, claimValidation, bind, boundBytes, consume,
+discard and failValidation. Begin hashes exact normalized declarations and binds
+the original idempotency key. Append hashes actual immutable byte copies, requires
+sequential offsets, acknowledges only exact-byte repeats and rejects conflicts.
+Quota rows and stages change atomically. Counter mismatches deny new work; no
+positive quota is inferred or reset from a counter. Zero counters may be pruned
+only when no reserved stage remains.
+
+Claim verifies all bounded chunks and the complete source hash before freezing a
+version/token lease. It returns source bytes to the trusted coordinator, which
+must return from the transaction/release both locks BEFORE any codec call.
+Reclaim is explicit, only after lease expiry and at most the second attempt;
+native validation failure is terminal, never automatically retried. Bind takes
+only trusted decoder output, verifies its source hash, same-format MIME, declared
+codec digest, size/dimensions and actual canonical/thumbnail hashes. The new
+server-created operation must reuse the stage correlation ID and original receipt
+horizon. A stage has one global pin, cannot be transferred/rebound, and retains its
+operation ID after pin cleanup. Bound bytes are rehashed on internal retrieval.
+Consume requires the same pin/policy/current approved operation and atomically
+clears canonical/thumbnail fields; source chunks and quota remain until garbage.
+No commerce effect, receipt, approval decision or native decode is performed here.
+
+`storeMediaPolicy` writes only direct upload/layout descriptors; catalog policy
+remains reserved DDL. Its hash is SHA256 of canonical JSON with exactly
+`policyId, manifestRoot, graphRevision, codecDigest, pageCount, assetCount,
+effectCount` (shared `MEDIA_POLICY_DESCRIPTOR_FIELDS`). Fixed tool/scopes/capability,
+marker and exact parent times are separately validated. Later manifest/authority
+code must compare the retained descriptor/hash to the hash-bound proposal and
+validate every actual page/asset/effect; storing this header is not that proof.
+
+`maintainMedia` runs only under the trusted cleanup fence, in separate transactions
+with explicit100-row/1MiB byte+metadata reservations. A full maximum stage needs
+multiple passes. Faults roll back its current byte/quota/audit transaction; earlier
+bounded metadata phases can remain committed. Source bytes, canonical/thumbnail
+bytes, stage updates, quota updates and events all count. Slots/reservation are
+released only after every byte is absent. Tombstones retain immutable begin hash,
+idempotency hash, correlation and operation link until the captured receipt horizon.
+Minimal policy waits for parent receipt expiry. Terminal proof children drain in
+RESTRICT order; approved backlog beyond the expiry batch remains untouched.
+Existing operation redaction/expiry/deletions are also bounded by serialized bytes.
+The host cleanup CLI works with switches off and its private suspended-tenant
+hygiene fence, while ordinary suspended business authority remains denied.
+
+Future authenticated challenge refresh must invoke `clearMediaChallenge` within
+its platform-first writer flow before guarded challenge deletion. It atomically
+clears at most58 delivery records and refuses consumed/evidenced or oversized
+challenges. The existing human route is not changed here; media remains unavailable
+until that separate integration is reviewed. Weighted APPEND240calls/12MiB per15min
+constants are reserved for the later persistent limiter class. No new limiter
+storage or exemption from existing HTTP/account/shop budgets is installed.
