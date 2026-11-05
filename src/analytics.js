@@ -2,7 +2,7 @@ import { ApiError } from './http.js';
 import { DAY_MS, SHOP_OFFSET_MS, SALES_STATUSES, SALES_STATUSES_SQL, SALES_CURRENCIES, SALES_TIME_ZONE, SALES_DEFINITION_VERSION, shopDayStart } from './sales-definition.js';
 import { RESERVATION_HOURS, stockAvailability } from './stock-reservation.js';
 
-export const ANALYTICS_LIMITS = Object.freeze({ days: 366, orders: 10000, lines: 50000, products: 10000, bytes: 8 * 1024 * 1024, page: 100, offset: 10000 });
+export const ANALYTICS_LIMITS = Object.freeze({ days: 366, orders: 10000, lines: 50000, products: 10000, bytes: 8 * 1024 * 1024, page: 100, offset: 10000, responseBytes: 64 * 1024 });
 export const ANALYTICS_COVERAGE_NOTE = 'Complete bounded database records for this query; historical/external completeness is unverified. Pages are live reads.';
 const invalid = () => { throw new ApiError(400, 'INVALID_INPUT', 'Invalid analytics filters.'); };
 const limited = () => { throw new ApiError(503, 'ANALYTICS_LIMIT', 'Analytics exceeds its safe data limit. Narrow the range.'); };
@@ -86,7 +86,7 @@ function buckets(bounds, groupBy) {
   }
   return out;
 }
-export async function salesTrend(read, args, now = new Date()) {
+async function querySalesTrend(read, args, now = new Date()) {
   keys(args, ['from', 'toExclusive', 'groupBy', 'currency', 'comparePrevious', 'limit', 'offset'], ['from', 'toExclusive']);
   const bounds = range(args), groupBy = enumeration(args.groupBy, 'day', ['day', 'week', 'month']), currency = selectedCurrency(args), compare = flag(args.comparePrevious, false);
   page(args); const charge = budget(), current = await orders(read, bounds, charge), totals = currencyTable(currency), points = buckets(bounds, groupBy).map(value => ({ ...value, values: currencyTable(currency) }));
@@ -108,7 +108,7 @@ export async function salesTrend(read, args, now = new Date()) {
   return { ...base(now), metricName: 'accepted_order_value', dateRange: { from: args.from, toExclusive: args.toExclusive }, currency, filters: { currency, groupBy, comparePrevious: compare }, groupBy, weekStartsOn: 'MONDAY',
     totals: tableView(totals), comparison, ...paginate(points.map(point => ({ from: date(point.from), toExclusive: date(point.to), sales: tableView(point.values) })), args) };
 }
-export async function topProducts(read, args, now = new Date()) {
+async function queryTopProducts(read, args, now = new Date()) {
   keys(args, ['from', 'toExclusive', 'groupBy', 'currency', 'sortBy', 'limit', 'offset'], ['from', 'toExclusive']);
   const bounds = range(args), groupBy = enumeration(args.groupBy, 'product', ['product', 'category']), currency = selectedCurrency(args), sortBy = enumeration(args.sortBy, 'quantity', ['quantity', 'value']);
   page(args); const charge = budget(), accepted = new Map((await orders(read, bounds, charge, { values: false })).map(row => [row.id, row])), values = await lines(read, bounds, charge, { metadata: true }), groups = new Map(), totals = currencyTable(currency, true);
@@ -129,7 +129,7 @@ export async function topProducts(read, args, now = new Date()) {
   return { ...base(now), metricName: 'accepted_item_value', dateRange: { from: args.from, toExclusive: args.toExclusive }, currency, filters: { currency, groupBy, sortBy }, groupBy, sortBy,
     attribution: 'CURRENT_PRODUCT_AND_CATEGORY', historicalCategoryAvailable: false, totals: tableView(totals), ...paginate(sorted, args) };
 }
-export async function inventoryRisk(read, args, now = new Date()) {
+async function queryInventoryRisk(read, args, now = new Date()) {
   keys(args, ['threshold', 'slowDays', 'mode', 'activeOnly', 'limit', 'offset']);
   const threshold = integer(args.threshold, 5, 0, 1000000), slowDays = integer(args.slowDays, 30, 1, ANALYTICS_LIMITS.days), mode = enumeration(args.mode, 'either', ['low', 'slow', 'either', 'all']), activeOnly = flag(args.activeOnly, true);
   page(args); const charge = budget(), products = checkedRows(await read.all(`SELECT id, sku, name, category, active, CAST(stock_quantity AS TEXT) AS stock_quantity, created_at FROM product${activeOnly ? ' WHERE active = 1' : ''} LIMIT ${ANALYTICS_LIMITS.products + 1}`), ANALYTICS_LIMITS.products, charge);
@@ -153,3 +153,18 @@ export async function inventoryRisk(read, args, now = new Date()) {
       matchedTracked: items.filter(row => row.stockQuantity !== null).length, matchedUnlimited: items.filter(row => row.stockQuantity === null).length,
       matchedLowStock: items.filter(row => row.lowStock).length, matchedSlowMoving: items.filter(row => row.slowMoving === true).length, matchedUnknownSlow: items.filter(row => row.slowMoving === null).length }, ...paginate(items, args) };
 }
+
+
+// Plain business DTOs use the same JSON byte representation as the read registry.
+// Reject an oversized page before the registry's generic serialization guard;
+// full totals remain intact and the caller can explicitly request a smaller page.
+async function checkedResponse(query, read, args, now) {
+  const value = await query(read, args, now);
+  if (Buffer.byteLength(JSON.stringify(value), 'utf8') > ANALYTICS_LIMITS.responseBytes) {
+    throw new ApiError(503, 'ANALYTICS_RESPONSE_LIMIT', 'Analytics page exceeds its safe response limit. Reduce limit.');
+  }
+  return value;
+}
+export const salesTrend = (read, args, now) => checkedResponse(querySalesTrend, read, args, now);
+export const topProducts = (read, args, now) => checkedResponse(queryTopProducts, read, args, now);
+export const inventoryRisk = (read, args, now) => checkedResponse(queryInventoryRisk, read, args, now);
