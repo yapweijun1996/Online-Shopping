@@ -16,3 +16,13 @@ export async function reservedQuantity(database, productId) {
   const row = await database.get(`SELECT ${reservedQuantitySql('?')} AS held`, productId);
   return Number(row.held);
 }
+
+
+// Read presentation only: a shortfall is observable even though available units
+// are clamped at zero. This helper does not reject or mutate stock/order state.
+export function stockAvailability(stockQuantity, reservedQuantity) {
+  if ((stockQuantity !== null && (!Number.isSafeInteger(stockQuantity) || stockQuantity < 0)) ||
+      !Number.isSafeInteger(reservedQuantity) || reservedQuantity < 0) throw new TypeError('Invalid stock quantities.');
+  return { reservedQuantity, availableQuantity: stockQuantity === null ? null : Math.max(0, stockQuantity - reservedQuantity),
+    reservationShortfall: stockQuantity === null ? 0 : Math.max(0, reservedQuantity - stockQuantity) };
+}

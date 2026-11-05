@@ -1,0 +1,41 @@
+# Extended analytics: isolated read implementation
+
+Status: core implemented locally, default registration is a separate checkpoint. Configuration remains default-off, production activation remains blocked, and no migration is introduced. Three server-owned descriptors require fresh `analytics.extended` consent and current `figures.read` permission; they use the existing platform-first lifecycle fence, shared tenant transaction and metadata-only read audit. Returned product text is untrusted data and seller-entered names/SKUs can themselves contain personal data; this is not a PII-free-output claim. The eight v1 descriptors and dashboard DTO remain unchanged.
+
+## Definitions and contracts
+
+`sales-definition.js` is the shared source of dashboard/analytics UTC+8 day boundaries, accepted statuses and supported currencies. Sales use order **submission time** and the order's **current** CONFIRMED/SHIPPED/DELIVERED status. Cancellation/rejection removes an order from these metrics, including an older submitted period. This reports accepted order or item value, not collected cash, cost, profit or a historical reconstruction of status. MYR and SGD are separate, with no conversion, combined monetary total or cross-currency value ranking.
+
+The generated `03-ANALYTICS-IMPLEMENTED.json` contains actual descriptor input/output schemas, fixed policies and clearly synthetic example arguments. Run `node docs/mcp-v2/export-analytics-contracts.mjs` to regenerate it without opening a database/listener or issuing credentials. Real authenticated RPC tests verify exact schema parity and validate every example.
+
+Every result supplies `metricName`, `definitionVersion`, `timeZone`, authoritative server `asOf`, `dateRange`, `filters`, explicit `currency` (`null` means separate currencies or a nonmonetary inventory metric), totals and coverage. `asOf` is the current read/reference clock; it does not reconstruct historical status or freeze subsequent pages. `coverage.databaseComplete` means the bounded query includes all matching existing database records. `historyComplete` is always false: imports, deletion, external sales and historical stock movements have no completeness attestation. `pageComplete` means this page alone includes the entire result (offset0 and no remaining items). Repeated pages are live reads and can change with intervening writers.
+
+### analytics.sales_trend
+
+Arguments: required `from`/`toExclusive` valid YYYY-MM-DD business dates, optional `groupBy` day/week/month, MYR/SGD `currency`, `comparePrevious`, `limit`1–100 and `offset`0–10000. A range is positive and at most366 UTC+8 calendar days. First/last calendar buckets are clipped to the requested custom range; weeks start Monday. Empty buckets show explicit zero values. Daily366 uses pagination rather than weakening registry array bounds.
+
+Totals and each point separately report currency, accepted order count and integer minor-unit value. An optional comparison supplies totals and signed deltas for the immediately preceding **equal-duration** date range. It is not a same-calendar-month conversion or payment comparison. Range totals cover the full requested period even when points are paged.
+
+### analytics.top_products
+
+Arguments: the same bounded dates, optional groupBy product/category, currency, sortBy quantity/value and pagination. Units and values come from immutable order items. `attribution: CURRENT_PRODUCT_AND_CATEGORY` explicitly identifies **current** product SKU/name/category; historical category snapshots are unavailable. The unchanged dashboard continues to use its existing order-item snapshot labels.
+
+Results group by identity **and currency**. Ranking is within each currency, ordered by currency then requested metric, secondary metric and stable identity. Totals report accepted item quantity/value separately for each currency. A current category rename/move can reattribute earlier item sales; the response never claims the historical category. No buyer/recipient/address/contact/note/document columns are selected.
+
+### analytics.inventory_risk
+
+Arguments: threshold0–1000000 (default5), slowDays1–366 (default30), mode low/slow/either/all (default either), activeOnly (default true), plus pagination. The rolling lookback ends at `asOf` and uses the same current accepted statuses/submission attribution. Slow means zero accepted units in these database records **and** a product old enough for the whole lookback; younger products show `slowMoving: null`. Incomplete external/history coverage remains explicit even when an older product has zero observed sales.
+
+Current stock is read without mutation. SUBMITTED holds use the existing strictly-younger-than48-hour cutoff; future submitted timestamps retain the existing reservation rule. Null stock remains unlimited (`availableQuantity: null`, lowStock false). Available tracked stock is clamped at zero **for presentation** and `reservationShortfall` separately reports held units above stock. This does not add a below-hold stock rejection rule, alter order holds/confirmation/cancellation or fabricate movement history. The pure shared `stockAvailability` helper changes no existing writer.
+
+Inventory totals are product counts across the complete filtered result, including tracked/unlimited/low/slow/insufficient-age counts, not a monetary inventory valuation. Product pages are sorted by ID.
+
+## Bounds, data integrity and performance
+
+Business SQL exists only in `analytics.js`; MCP adapters validate the result and delegate to those services. Queries select explicit metadata, never image/thumbnail bytes or contact fields. Existing `shop_order(status, submitted_at)` and delivery/order-item foreign-key-prefix indexes support bounded date/status selection and joins. Inventory's active filter uses existing product metadata; source rows are capped before in-memory grouping/pagination.
+
+Each queried period permits at most10000 orders; item/hold sources at most50000 lines; inventory at most10000 products. Cumulative serialized source metadata is capped at8MiB. Overflow returns controlled503; no sampled or partially aggregated success is returned. Narrowing dates can recover from an order/line cap. Busy inventory sources may need a separately reviewed scalable query strategy. Array schemas remain at most100 items, and output pagination ends at offset10000 with `paginationCapped` when more groups cannot be reached. Full matching totals remain available only after complete bounded source validation.
+
+Integer money is selected as decimal text, accumulated with BigInt and converted only within JavaScript's safe integer range. Unsupported stored currency/date/text or unsafe totals fail closed. This prevents SQL SUM overflow or silent double rounding; currencies are never added together. Item totals are not assumed equal to order totals if unsupported source data differs.
+
+Independent SQLite/PostgreSQL fixtures cover dashboard parity, UTC+8 edges, leap/custom/week/month grouping, exact comparison, state/currency separation, current versus snapshot attribution, strict48-hour cutoffs, unlimited/shortfall/age distinctions, empty results, bounds and unsafe sums. RPC tests cover each tool's fresh consent, scope, role, tenant, revocation, schemas, inert product text and audit rollback without business writes. Separate synthetic30,000-order/line EXPLAIN tests verify status/time and delivery/item join indexes; measured local timing does not establish production capacity or external interoperability. No production data/services, migrations, stock writes or order decisions are part of this checkpoint.

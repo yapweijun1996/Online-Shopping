@@ -1,17 +1,12 @@
 // Numbers for the seller dashboard. "Today" is the calendar day in Malaysia and Singapore (UTC+8, no daylight saving),
 // computed here and passed to SQL as exact UTC instants so SQLite and PostgreSQL agree. Sales never mix currencies:
 // every amount is reported per currency, and only orders the seller accepted count (not rejected or cancelled ones).
-const SHOP_OFFSET_MS = 8 * 60 * 60 * 1000;
-const DAY_MS = 24 * 60 * 60 * 1000;
-const SALES = "('CONFIRMED', 'SHIPPED', 'DELIVERED')";
+import { DAY_MS, SALES_STATUSES_SQL as SALES, shopDayStart } from './sales-definition.js';
+export { shopDayStart } from './sales-definition.js';
 export const TOP_PRODUCTS = 5;
 export const TREND_DAYS = 30;
 
 const iso = (ms) => new Date(ms).toISOString();
-
-export function shopDayStart(nowMs) {
-  return Math.floor((nowMs + SHOP_OFFSET_MS) / DAY_MS) * DAY_MS - SHOP_OFFSET_MS;
-}
 
 export async function dashboardFigures(database, now = new Date()) {
   const todayStart = shopDayStart(now.getTime());
