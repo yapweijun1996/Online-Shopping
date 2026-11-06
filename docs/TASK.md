@@ -1,5 +1,18 @@
 # Executable task ledger
 
+## OAuth locale compatibility repair (2026-11-06) — isolated verification
+
+Baseline `25f8b9b567d6ce677523a91cf39ac78bbee676be`. The reported ChatGPT authorization URL includes `ui_locales=en-US`; the strict authorization parameter allowlist rejected it before consent. Accept optional `ui_locales` as an inert display preference while preserving all eight required parameters, duplicate/unknown rejection, URL bounds, PKCE, exact redirects/resources and explicit fresh seller consent. No UI redesign, schema, permission, feature-flag or deployment-policy change.
+
+- [x] Reproduce the authorization failure with synthetic fresh clients and the exact ChatGPT callback path; the regression failed before the source change.
+- [x] Verify the full14-scope request reaches consent with absent, single, multiple and unsupported locale preferences, and untrusted hint text stays inert. Complete fresh login/consent/code exchange and verify only the selected read scope is issued.
+- [x] Verify missing/duplicate/security-invalid parameters and oversized URLs remain rejected; run the four new API tests on SQLite and isolated PostgreSQL16 (4 passed, 0 failed, 0 skipped).
+- [x] Run `npm run check` and the combined `seller-mcp.test.js` / `mcp-v2-oauth.test.js` regression on both stores (56 passed, 0 failed, 0 skipped).
+- [ ] Manager independent review, full-suite acceptance and any separately authorized release/live verification.
+- [ ] Owner-only real ChatGPT OAuth connection; synthetic tests cannot attest the user's client/account connection.
+
+Rollback: revert the focused source/test/documentation patch; no database migration or data rewrite is involved. Reverting restores the rejection of clients that send the language hint. Test evidence is local and does not claim a production repair.
+
 ## MCP production activation (2026-11-06) — AFBA runtime acceptance complete
 
 Owner option B authorized the full32-tool Seller Operations MCP while preserving explicit seller scope consent and exact-proposal first-party human approval. Original8 contracts and existing grants are unchanged; all new flags still default OFF. Independent local full acceptance at0c15c8a passed2071/2071 with both stores and all browser/native/production-proxy gates; its source/environment limits remain recorded.
