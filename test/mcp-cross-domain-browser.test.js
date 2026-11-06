@@ -9,9 +9,9 @@ import { catalogue, valid } from '../src/mcp/tools.js';
 import { crossDomainBrowserFixture } from './helpers/mcp-cross-domain-fixture.js';
 import { syntheticMediaPng } from './helpers/mcp-media-hooks-fixture.js';
 import { legacyCatalogScopes } from './helpers/mcp-catalog-default-grant.js';
-import { reviewPassword } from './helpers/mcp-review-fixture.js';
 
-const enabled = process.env.MCP_CROSS_DOMAIN_NATIVE_BROWSER_TEST === '1' && Boolean(process.env.QA_PLAYWRIGHT_MODULE);
+const productionProxy = process.env.MCP_CROSS_DOMAIN_PRODUCTION_PROXY_TEST === '1';
+const enabled = (productionProxy || process.env.MCP_CROSS_DOMAIN_NATIVE_BROWSER_TEST === '1') && Boolean(process.env.QA_PLAYWRIGHT_MODULE);
 const expectedNames = [
   'company.get', 'company.preview_update', 'company.commit_update',
   'catalog.preview_create', 'catalog.commit_create', 'catalog.preview_update', 'catalog.commit_update',
@@ -23,12 +23,21 @@ const expectedNames = [
 const day = 86400000;
 const localDate = instant => new Date(instant + 8 * 3600000).toISOString().slice(0, 10);
 
-// Every decision below is made by the actual seller page, including all page/image
+// Synthetic QA human actions use the actual seller page, including all page/image
 // deliveries, browser SHA/decode ACKs, unchecked human confirmation and fresh PW.
 async function approve(f, page, operation) {
+  const responses = [], failures = [], pageErrors = [];
+  const recordResponse = response => responses.push({ path: new URL(response.url()).pathname, status: response.status(), method: response.request().method() });
+  const recordFailure = request => failures.push({ path: new URL(request.url()).pathname, error: request.failure()?.errorText });
+  const recordError = error => pageErrors.push(error.message);
+  page.on('response', recordResponse); page.on('requestfailed', recordFailure); page.on('pageerror', recordError);
+  try {
+  const mediaRequired = (await f.store.get('SELECT media_policy_id FROM mcp_v2_operation WHERE id=?', operation.operationId)).media_policy_id !== null;
   await page.goto(operation.reviewUrl);
   await page.locator('#review').waitFor({ state: 'visible' });
-  if (await page.locator('#media-review').isVisible()) {
+  if (mediaRequired) await page.locator('#media-review').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#media-review').isVisible(), mediaRequired);
+  if (mediaRequired) {
     assert.equal(await page.locator('#media-ack').isChecked(), false);
     const count = Number((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_media_asset_ref WHERE operation_id=?', operation.operationId)).n);
     for (let n = 1; n <= count; n++) {
@@ -41,13 +50,27 @@ async function approve(f, page, operation) {
     assert.equal(Number((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_media_delivery WHERE operation_id=? AND ack_at IS NULL', operation.operationId)).n), 0);
     await page.locator('#media-ack').check();
   }
-  await page.locator('#password').fill(reviewPassword);
+  await page.locator('#password').fill(f.password);
   const response = page.waitForResponse(value => new URL(value.url()).pathname.endsWith('/' + operation.operationId + '/approval') && value.request().method() === 'POST');
   await page.locator('#approve').click();
   assert.equal((await response).status(), 200, 'Actual first-party password/ACK approval');
   await page.locator('#decision').waitFor({ state: 'hidden' });
   assert.equal(await page.locator('#password').inputValue(), '');
   assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?', operation.operationId)).state, 'APPROVED');
+  } catch (error) {
+    const ui = await page.evaluate(() => ({
+      status: document.querySelector('#status')?.textContent,
+      reviewHidden: document.querySelector('#review')?.hidden,
+      mediaHidden: document.querySelector('#media-review')?.hidden,
+      progress: document.querySelector('#media-progress')?.textContent,
+      approveDisabled: document.querySelector('#approve')?.disabled,
+      passwordValid: document.querySelector('#password')?.validity.valid,
+    })).catch(() => null);
+    f.diagnostic('Synthetic review diagnostics: ' + JSON.stringify({ ui, responses, failures, pageErrors }));
+    throw error;
+  } finally {
+    page.off('response', recordResponse); page.off('requestfailed', recordFailure); page.off('pageerror', recordError);
+  }
 }
 
 async function storefront(f, productId) {
@@ -55,11 +78,11 @@ async function storefront(f, productId) {
   assert.equal(response.response.status, 200, JSON.stringify(response.data));
   const hashes = [];
   for (const path of response.data.images) {
-    const url = new URL(path, f.origin); assert.equal(url.origin, f.origin);
+    const url = new URL(path, f.shopOrigin); assert.equal(url.origin, f.shopOrigin);
     const image = await f.context.request.get(url.href); assert.equal(image.status(), 200);
     hashes.push(hash(await image.body()));
   }
-  const main = await f.context.request.get(new URL(response.data.imageUrl, f.origin).href);
+  const main = await f.context.request.get(new URL(response.data.imageUrl, f.shopOrigin).href);
   assert.equal(main.status(), 200);
   return { product: response.data, hashes, mainSha: hash(await main.body()) };
 }
@@ -69,20 +92,22 @@ async function businessState(store) {
   return Promise.all(tables.map(async name => [name, hash(JSON.stringify(await store.all(`SELECT * FROM ${name} ORDER BY ${name === 'inventory_state' ? 'product_id' : 'id'}`)))]));
 }
 
-test('actual default24 cross-domain OAuth/native/HTTPS browser acceptance on SQLite and PostgreSQL',
+test(productionProxy ? 'production profile default32 cross-domain actual Node/Caddy/TLS/OAuth/native/QA browser on SQLite and PostgreSQL' : 'actual default24 cross-domain OAuth/native/HTTPS browser acceptance on SQLite and PostgreSQL',
   { skip: !enabled, timeout: 240000 }, async t => {
     assert.ok(process.env.SHOP_TEST_DATABASE_URL, 'Both disposable databases are required.');
     const image = (await readFile(new URL('../.local/media-codec-image-id', import.meta.url), 'utf8')).trim();
-    const worker = await startContainer(image); t.after(worker.stop);
+    const worker = await startContainer(image, { production: productionProxy }); t.after(worker.stop);
     const { chromium } = await import(process.env.QA_PLAYWRIGHT_MODULE);
-    const browser = await chromium.launch({ headless: true }); t.after(() => browser.close());
+    const browser = productionProxy ? chromium : await chromium.launch({ headless: true });
+    if (!productionProxy) t.after(() => browser.close());
     const inspect = JSON.parse(await docker(['inspect', worker.id]));
     assert.equal(inspect[0].HostConfig.NetworkMode, 'none');
+    if (productionProxy) assert.ok(inspect[0].Config.Env.includes('NODE_ENV=production'), 'Actual native worker must run production policy.');
     assert.equal(inspect[0].HostConfig.Memory, 192 * 1024 * 1024);
     assert.equal(inspect[0].HostConfig.MemorySwap, inspect[0].HostConfig.Memory);
     for (const dialect of ['sqlite', 'postgres']) {
       await t.test(dialect + ': five real cross-domain sequences and all24 successful response schemas', async db => {
-        let f = await crossDomainBrowserFixture(db, dialect, worker, browser);
+        let f = await crossDomainBrowserFixture(db, dialect, worker, browser, { productionProxy });
         assert.equal(Number((await f.store.get('SELECT COUNT(*) AS n FROM oauth_grant')).n), 0);
         assert.equal(Number((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_scope_consent')).n), 0);
         let client = await f.authorize(f.allScopes); const listed = (await client.rpc('tools/list', {})).data.result.tools;
@@ -102,17 +127,17 @@ test('actual default24 cross-domain OAuth/native/HTTPS browser acceptance on SQL
         };
         let page = await f.context.newPage(); const errors = [], external = [];
         page.on('pageerror', error => errors.push(error.message));
-        await f.context.route('**/*', route => new URL(route.request().url()).origin === f.origin ? route.continue() : (external.push(route.request().url()), route.abort()));
+        await f.context.route('**/*', route => [f.origin, f.shopOrigin].includes(new URL(route.request().url()).origin) ? route.continue() : (external.push(route.request().url()), route.abort()));
         // Separate real shops keep every actual address/account approval budget intact.
         // No address rotation, clock edits, limiter clearing or synthetic authority.
         const freshShop = async () => {
-          await f.context.close();
-          f = await crossDomainBrowserFixture(db, dialect, worker, browser);
+          if (f.close) await f.close(); else await f.context.close();
+          f = await crossDomainBrowserFixture(db, dialect, worker, browser, { productionProxy });
           client = await f.authorize(f.allScopes);
           const tools = (await client.rpc('tools/list', {})).data.result.tools;
           assert.deepEqual(tools, listed);
           page = await f.context.newPage(); page.on('pageerror', error => errors.push(error.message));
-          await f.context.route('**/*', route => new URL(route.request().url()).origin === f.origin ? route.continue() : (external.push(route.request().url()), route.abort()));
+          await f.context.route('**/*', route => [f.origin, f.shopOrigin].includes(new URL(route.request().url()).origin) ? route.continue() : (external.push(route.request().url()), route.abort()));
         };
         const seed = async () => createProduct(f.store, { sku: 'CROSS-DOMAIN', name: 'Synthetic cross-domain product', description: 'Synthetic initial fixture', category: 'SYNTHETIC', priceMinor: 1200, stockQuantity: 12, active: true });
         const commit = async (name, op) => {
@@ -152,7 +177,7 @@ test('actual default24 cross-domain OAuth/native/HTTPS browser acceptance on SQL
           await commit('catalog.commit_update', publish);
           const visible = await storefront(f, productId), stored = await f.store.get('SELECT image_data,active FROM product WHERE id=?', productId);
           assert.equal(visible.mainSha, hash(stored.image_data)); assert.equal(stored.active, 1);
-          await page.goto(f.origin + '/shop/'); await page.locator('#catalog-grid .product-name-link').filter({ hasText: 'Synthetic cross-domain product' }).waitFor();
+          await page.goto(f.shopOrigin + '/shop/'); await page.locator('#catalog-grid .product-name-link').filter({ hasText: 'Synthetic cross-domain product' }).waitFor();
           assert.equal(await page.evaluate(() => window.__crossInjected), undefined);
         });
         await db.test('2 replace main bytes -> changed storefront SHA -> restore original SHA/layout; reorder/restore existing gallery', async () => {
@@ -181,7 +206,7 @@ test('actual default24 cross-domain OAuth/native/HTTPS browser acceptance on SQL
           await commit('inventory.commit_adjustment', adjustment);
           const placed = await f.call('/api/v1/orders', 'POST', { buyer: { fullName: 'Synthetic Cross Buyer', whatsappPhone: '+6581234567' }, whatsappOrderContactOptIn: true,
             deliveries: [{ recipient: { fullName: 'Synthetic Cross Recipient', phone: '+60123456789' }, address: { line1: 'Synthetic Street', postcode: '50000', country: 'MY' },
-              items: [{ productId, quantity: 2, expectedPriceMinor: 1200, expectedCurrency: 'MYR' }] }] }, { origin: f.origin, 'idempotency-key': randomUUID() });
+              items: [{ productId, quantity: 2, expectedPriceMinor: 1200, expectedCurrency: 'MYR' }] }] }, { origin: f.shopOrigin, 'idempotency-key': randomUUID() });
           assert.equal(placed.response.status, 201, JSON.stringify(placed.data));
           orderId = (await f.store.get('SELECT id FROM shop_order WHERE order_no=?', placed.data.orderNo)).id;
           decision = await call('orders.preview_decision', { input: { orderId, decision: { action: 'confirm' } }, idempotencyKey: 'cross-order-confirm-0001' });
@@ -247,7 +272,7 @@ test('actual default24 cross-domain OAuth/native/HTTPS browser acceptance on SQL
           }
           assert.deepEqual(await businessState(f.store), state);
           db.diagnostic(JSON.stringify({ dialect, actualSuccessfulResponseSchemas: samples.size, missingBearer: 24, closedInput: 24, readonlyScope: 24,
-            unknownOperation: expectedNames.filter(name => name.includes('.commit_') || name.startsWith('operations.')).length, realOAuth: true, realNative: true, syntheticHumanEvidence: false, nativeImage: image }));
+            unknownOperation: expectedNames.filter(name => name.includes('.commit_') || name.startsWith('operations.')).length, realOAuth: true, realNative: true, syntheticHumanEvidence: false, syntheticQaHumanActions: true, productionProfile: productionProxy, realNodeCaddyTls: productionProxy, backendImageAttested: false, nativeImage: image }));
         });
         assert.deepEqual(errors, []); assert.deepEqual(external, []);
       });
