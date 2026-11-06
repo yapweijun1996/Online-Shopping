@@ -48,7 +48,7 @@ export async function reviewFixture(t, dialect = 'sqlite', options = {}) {
   const cookie = signedIn.response.headers.get('set-cookie').split(';')[0], csrf = signedIn.data.csrfToken;
   const headers = { cookie, origin: config.sellerOrigin, 'x-csrf-token': csrf };
   const account = await store.get('SELECT * FROM seller_account WHERE username_key = ?', 'synthetic_owner');
-  const clientId = secret(), grantId = randomUUID(), now = new Date().toISOString(), later = new Date(Date.now() + 600000).toISOString();
+  const clientId = secret(), grantId = randomUUID(), now = new Date().toISOString(), later = new Date(Date.parse(now) + 600000).toISOString();
   async function seedGrant() {
     await store.run(`INSERT INTO oauth_client(id, tenant_id, issuer, client_name, redirect_uris_json, auth_method, created_at, expires_at)
       VALUES (?, ?, ?, ?, ?, 'none', ?, ?)`, clientId, tenantId, binding.issuer, 'Synthetic client', JSON.stringify(['https://client.example.test/callback']), now, later);
