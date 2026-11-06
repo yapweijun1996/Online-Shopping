@@ -1,5 +1,7 @@
 # MCP v2 final validation report
 
+This report retains the completed isolated implementation's scope. The later default-OFF live release is recorded in [12-LIVE-RELEASE](12-LIVE-RELEASE.md); the new owner-authorized full production activation and its separate verification are recorded in [13-PRODUCTION-ACTIVATION](13-PRODUCTION-ACTIVATION.md). Historical counts below are not successor acceptance.
+
 Completed in isolation on2026-11-06 (UTC+8). This is verified development delivery, not production deployment authorization.
 
 ## A. Baseline

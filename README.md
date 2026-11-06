@@ -4,7 +4,7 @@
 
 Self-hosted setup and verification: [OrbStack deployment](docs/ORBSTACK_DEPLOY.md). The legacy local Compose stack below continues to use SQLite.
 
-The isolated [MCP v2 Seller Operations Engine](docs/mcp-v2/09-IMPLEMENTATION-PROGRESS.md) extends the existing connector with24 new tools while preserving the original8. Changes require current consent/RBAC and first-party approval; analytics and operation audit stay bounded. Full catalog CREATE and UPDATE have independent development/test-only flags, both off by default; production activation is blocked. [Contracts](docs/mcp-v2/03-TOOL-CONTRACTS.md), [validation](docs/mcp-v2/10-FINAL-VALIDATION-REPORT.md) and [rollback](docs/mcp-v2/08-ROLLBACK-PLAN.md) distinguish isolated acceptance from deployment authorization.
+The [MCP v2 Seller Operations Engine](docs/mcp-v2/09-IMPLEMENTATION-PROGRESS.md) extends the existing connector with24 new tools while preserving the original8. Changes require current consent/RBAC and first-party approval; analytics and operation audit stay bounded. All new features default OFF. Independent development flags remain available; production requires a complete named deployment profile, immutable backend/codec identities, isolated image processing and an external restore epoch. The separately authorized [production activation](docs/mcp-v2/13-PRODUCTION-ACTIVATION.md) is undergoing verification; live enablement is not yet claimed. [Contracts](docs/mcp-v2/03-TOOL-CONTRACTS.md), [historical isolated validation](docs/mcp-v2/10-FINAL-VALIDATION-REPORT.md) and [rollback](docs/mcp-v2/08-ROLLBACK-PLAN.md) distinguish each acceptance boundary.
 
 ## Quick start
 
