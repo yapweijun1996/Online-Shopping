@@ -2,7 +2,7 @@ import { mcpOperationRuntimeEnabled } from './deployment-profile.js';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { ApiError } from '../http.js';
 import { canonicalOperationJson } from './operation-envelope.js';
-import { operationEpochHash } from './operation-epoch.js';
+import { operationEpochHash, operationEpochCurrent } from './operation-epoch.js';
 import { verifyOperationControlAuthority } from './operation-authorization.js';
 import { recordMcpAudit, MCP_AUDIT_OUTCOMES, readOperationAuditAnchors } from './audit.js';
 import { recordOperationEvent } from './operation-events.js';
@@ -113,6 +113,7 @@ export function createOperationControls({store,binding,config,tenantGuard,quickL
       // and immutable-record verification before the writer commits its result.
       await verifyOperationControlAuthority(store,options);
       if(name!=='operations.cancel')await invocation(row,name,'OK');
+      if(!operationEpochCurrent(binding.mcpV2))denied();
       return dto;
     }));
   }});
