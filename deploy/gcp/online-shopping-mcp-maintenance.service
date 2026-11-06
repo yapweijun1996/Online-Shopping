@@ -1,0 +1,16 @@
+[Unit]
+Description=Bounded Online Shopping OAuth and operation hygiene
+After=docker.service
+Requires=docker.service
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStart=/usr/bin/python3 /opt/online-shopping-gcp/mcp-maintenance.py --root /opt/online-shopping-gcp
+TimeoutStartSec=2min
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/online-shopping-gcp
