@@ -4,7 +4,7 @@ import { can } from '../roles.js';
 import { hash, stamp } from './credentials.js';
 import { canonicalOperationJson, operationPreviewHash, readStoredOperation } from './operation-envelope.js';
 import { requiresCompanyCurrencyAcknowledgement, COMPANY_CURRENCY_ACKNOWLEDGED } from './company-approval-policy.js';
-import { operationEpochHash } from './operation-epoch.js';
+import { operationEpochHash, operationEpochCurrent } from './operation-epoch.js';
 import { verifyOperationAuthority } from './operation-authorization.js';
 import { MEDIA_LIMITS } from './media-schema.js';
 import { mediaJson, mediaPolicyForTool } from './media-policy.js';
@@ -124,6 +124,11 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
   const withTenant = (work) => tenantGuard.withActiveTenant(binding.tenantId, (tenant) => {
     if (!tenant || !Number.isSafeInteger(tenant.revision) || tenant.revision < 0) denied();
     return work(tenant);
+  });
+  const transaction = work => store.transaction(async () => {
+    const result = await work();
+    if (!operationEpochCurrent(binding.mcpV2)) denied();
+    return result;
   });
   const registered = Object.create(null);
   for (const [name, adapter] of Object.entries(adapters)) {
@@ -270,7 +275,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
     let captured = null, resolved = null, releaseAdmission = null;
     try {
     if (adapter.media) {
-      const initial = await withTenant(tenant => store.transaction(async () => {
+      const initial = await withTenant(tenant => transaction(async () => {
         const authority = await verifyOperationAuthority(store, { bearer, binding, toolName, epochHash, mediaPolicyId: adapter.media.policyId, resourceType: adapter.resourceType, catalogUpdateEnabled, catalogCreateEnabled });
         const originalGrant = await store.get('SELECT absolute_expires_at FROM oauth_grant WHERE id=?', authority.grantId);
         const replayed = await existingState({ authority, originalGrant, toolName, requestHash, idempotencyKey, adapter, tenant });
@@ -288,7 +293,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
       captured = initial.captured;
       resolved = await resolveOutside(adapter, captured.resources);
     }
-    return await withTenant((tenant) => store.transaction(async () => {
+    return await withTenant((tenant) => transaction(async () => {
       const authority = await verifyOperationAuthority(store, { bearer, binding, toolName, epochHash, mediaPolicyId: adapter.media?.policyId ?? null, resourceType: adapter.resourceType, catalogUpdateEnabled, catalogCreateEnabled });
       const originalGrant = await store.get('SELECT absolute_expires_at FROM oauth_grant WHERE id = ?', authority.grantId);
       const receiptExpiry = operationReceiptExpiry(originalGrant.absolute_expires_at), idem = hash(idempotencyKey);
@@ -380,7 +385,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
     }
     let attempted = false;
     try {
-      return await withTenant((tenant) => store.transaction(async () => {
+      return await withTenant((tenant) => transaction(async () => {
         let authority = await verifyOperationAuthority(store, { bearer, binding, toolName, epochHash });
         const row = await store.get('SELECT * FROM mcp_v2_operation WHERE id = ?', operationId);
         const adapter = row && Object.hasOwn(registered, row.tool_name) && registered[row.tool_name];
@@ -514,7 +519,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
         // The mutation and approval consumption rolled back. Best effort records
         // a terminal failure separately; a database outage may prevent it.
         try {
-          await withTenant((tenant) => store.transaction(async () => {
+          await withTenant((tenant) => transaction(async () => {
             const row = await store.get('SELECT * FROM mcp_v2_operation WHERE id = ?', operationId);
             const status = error?.code === 'EXPIRED' ? 'EXPIRED' : 'FAILED';
             const changed = row && row.tenant_revision === tenant.revision && await store.get(`UPDATE mcp_v2_operation SET state = ?

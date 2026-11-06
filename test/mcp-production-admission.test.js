@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mediaHooksFixture} from './helpers/mcp-media-hooks-fixture.js';
+import {mediaHooksFixture,syntheticMediaPng} from './helpers/mcp-media-hooks-fixture.js';
 import {createOperationEngine} from '../src/mcp/operation-engine.js';
 import {readMcpDeploymentProfile} from '../src/mcp/deployment-profile.js';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {withMediaWriter} from '../src/mcp/media-storage.js';
+import {readMediaSnapshot} from '../src/mcp/media-resources.js';
+import {withMediaWriter,mediaHash} from '../src/mcp/media-storage.js';
 import {createMediaCoordinator} from '../src/mcp/media-coordinator.js';
 import {createMediaRuntime} from '../src/mcp/media-runtime.js';
 function profile(){return readMcpDeploymentProfile({NODE_ENV:'production',TRUST_PROXY:'1',MCP_ENABLED:'1',MCP_V2_ENABLED:'1',MCP_V2_MEDIA_ENABLED:'1',MCP_V2_CATALOG_MEDIA_CREATE_ENABLED:'1',MCP_V2_CATALOG_MEDIA_UPDATE_ENABLED:'1',MCP_V2_PRODUCTION_PROFILE:'seller-operations-v1',MCP_V2_BACKEND_IDENTITY:'sha256:'+'a'.repeat(64)},
@@ -34,6 +35,22 @@ for(const dialect of ['sqlite','postgres']){
   const thirdEngine=engine(two,{media:{...two.adapter.media,resolve:async(...args)=>{began3();await held3;return two.adapter.media.resolve(...args);}}});
   const running3=two.prepare(third,'production-media-third',thirdEngine);await started3;
   try{assert.equal((await one.prepare(stage1,'production-media-first',first)).replayed,true);}finally{release3();await running3;}
+ });
+ test(`${dialect}: epoch replacement after claim rolls back validation lease before capture transaction commits`,opts,async t=>{
+  const f=await fixture(t,dialect),stage=await f.startStage(),before=await withMediaWriter(f.store,f.context,w=>w.inspect(stage.stageId));
+  const stale=engine(f,{media:{...f.adapter.media,capture:async(...args)=>{const packet=await f.adapter.media.capture(...args);await writeFile(f.binding.mcpV2.epochFile,Buffer.alloc(32,2).toString('base64url'));return packet;}}});
+  await assert.rejects(f.prepare(stage,'production-stale-capture',stale),{status:403});
+  assert.deepEqual(await withMediaWriter(f.store,f.context,w=>w.inspect(stage.stageId)),before);assert.equal(f.counters.resolve,0);
+  assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_operation')).n,0);
+  await writeFile(f.binding.mcpV2.epochFile,f.options.epoch);assert.equal((await f.prepare(stage,'production-stale-capture',engine(f))).status,'PENDING_APPROVAL');
+ });
+ test(`${dialect}: coordinator final writer fence rolls back appended bytes after observed epoch replacement`,opts,async t=>{
+  const f=await fixture(t,dialect),bytes=syntheticMediaPng(),snapshot=await readMediaSnapshot(f.store,f.productId),
+   coordinator=createMediaCoordinator({...f.options,production:true,profile:f.binding.mcpV2.profile,codec:{digest:'d'.repeat(64),socketPath:'/private/unused.sock',token:Buffer.alloc(32).toString('base64url')}});
+  const stage=await coordinator.begin(f.bearer,{productId:f.productId,targetSlot:'MAIN',expectedRevision:snapshot.revision,sourceSha256:mediaHash(bytes),sourceMime:'image/png',declaredBytes:bytes.length,idempotencyKey:'production-coordinator-stage'}),before=await f.store.get('SELECT * FROM mcp_v2_media_stage WHERE id=?',stage.stageId),run=f.store.run;
+  f.store.run=async(sql,...args)=>{const result=await run(sql,...args);if(sql.startsWith('INSERT INTO mcp_v2_media_chunk'))await writeFile(f.binding.mcpV2.epochFile,Buffer.alloc(32,3).toString('base64url'));return result;};
+  try{await assert.rejects(coordinator.append(f.bearer,{stageId:stage.stageId,offset:0,dataParts:[bytes.toString('base64')]}),{status:403});}finally{f.store.run=run;}
+  assert.deepEqual(await f.store.get('SELECT * FROM mcp_v2_media_stage WHERE id=?',stage.stageId),before);assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_media_chunk WHERE stage_id=?',stage.stageId)).n,0);
  });
  test(`${dialect}: capture, resolver and final persistence failure all release the production admission lease`,opts,async t=>{
   const f=await fixture(t,dialect);

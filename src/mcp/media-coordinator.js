@@ -1,7 +1,7 @@
 import { deploymentProfileAllowsProduction } from './deployment-profile.js';
 import { ApiError } from '../http.js';
 import { SqlLimiter } from '../limiter.js';
-import { operationEpochHash } from './operation-epoch.js';
+import { operationEpochHash, operationEpochCurrent } from './operation-epoch.js';
 import { canonicalOperationJson } from './operation-envelope.js';
 import { verifyMediaAuthority } from './operation-authorization.js';
 import { MEDIA_LIMITS } from './media-schema.js';
@@ -67,7 +67,11 @@ export function createMediaCoordinator({ store, binding, tenantGuard, epoch, bui
   const ordinaryLimiter = new SqlLimiter(store, 'mcp:v2:media-stage', { limit: 120, windowMs: MEDIA_LIMITS.rateWindowMs });
   const guarded = work => tenantGuard.withActiveTenant(binding.tenantId, tenant => {
     if (!Number.isSafeInteger(tenant?.revision) || tenant.revision < 0) denied();
-    return store.transaction(() => work(tenant.revision));
+    return store.transaction(async () => {
+      const result = await work(tenant.revision);
+      if (!operationEpochCurrent(binding.mcpV2)) denied();
+      return result;
+    });
   });
   const authority = (bearer, tenantRevision) => verifyMediaAuthority(store, { bearer, binding, epochHash, buildDigest, tenantRevision });
   // Reservation is a separate committed phase: failed chunks still consume an attempt.
