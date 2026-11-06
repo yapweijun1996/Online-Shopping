@@ -214,7 +214,7 @@ async function main() {
     need((await request('/mcp')).status === 404, 'OFF_MCP');
     const session = await login();
     need((await request('/api/v1/seller/setup', 'POST', { mode: 'production', shopName: 'Synthetic isolated canary' }, session)).status === 200, 'SYNTHETIC_SETUP');
-    need((await query('SELECT version FROM schema_meta WHERE id=1'))[0].version === 34, 'SCHEMA34');
+    need((await query('SELECT version::int AS version FROM schema_meta WHERE id=1'))[0].version === 34, 'SCHEMA_VERSION');
     await business(); evidence.baseline = { schema: 34, products: 0, orders: 0, mcpOff: true };
   } else if (input.action === 'on') {
     await full(); state.legacy = await authorize(legacyScopes);

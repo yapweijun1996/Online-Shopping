@@ -418,13 +418,45 @@ class Manifest(unittest.TestCase):
 
 
 class ClientAssertions(unittest.TestCase):
-    """Pure client assertions/recorded requests only; Node builtins, no app/DB."""
+    """Pure client assertions/recorded requests and pg type parsers; no app/DB."""
     def setUp(self):
         self.source=(ROOT/'scripts/qa-gcp-mcp-canary.mjs').read_text()
 
     def node(self,program):
         result=subprocess.run(['node','--input-type=module','-e',program],capture_output=True,text=True,timeout=10)
         self.assertEqual(result.returncode,0,result.stderr)
+
+    def test_baseline_schema_cast_uses_actual_pg_parser_and_keeps_strict_version_check(self):
+        check=next(line.strip() for line in self.source.splitlines() if "query('SELECT version" in line)
+        self.node("""import pg from'pg';import assert from'node:assert/strict';
+const need=(ok,code)=>{if(!ok)throw Error(code)};
+assert.equal(pg.types.getTypeParser(20)('34'),'34');
+assert.equal(pg.types.getTypeParser(23)('34'),34);
+async function checkSchema(query){"""+check+"""}
+let queried=false;
+await checkSchema(async sql=>{
+  queried=true;assert.equal(sql,'SELECT version::int AS version FROM schema_meta WHERE id=1');
+  return[{version:pg.types.getTypeParser(23)('34')}];
+});assert.equal(queried,true);
+for(const version of [33,35,'34',null]){
+  await assert.rejects(checkSchema(async()=>[{version}]),/SCHEMA_VERSION/);
+}
+""")
+
+    def test_actual_failure_catch_preserves_schema_code_without_exposing_error_details(self):
+        handler=self.source[self.source.rindex('catch (error) {')+len('catch (error) {'):].strip()
+        self.assertTrue(handler.endswith('}'));handler=handler[:-1]
+        self.node("""import assert from'node:assert/strict';
+async function failure(error){let output='';const pool=null;
+const process={stdout:{write:value=>{output+=value}},exitCode:0};
+"""+handler+"""
+assert.equal(process.exitCode,1);return JSON.parse(output);}
+assert.deepEqual(await failure(Error('SCHEMA_VERSION')),{ok:false,code:'SCHEMA_VERSION'});
+assert.deepEqual(await failure(Error('SCHEMA34')),{ok:false,code:'CLIENT_FAILED'});
+for(const message of ['synthetic-password/private-path','database: synthetic-private-detail',JSON.stringify({token:'synthetic-private'})]){
+  assert.deepEqual(await failure(Error(message)),{ok:false,code:'CLIENT_FAILED'});
+}
+""")
 
     def test_full_legacy_definition_hash_rejects_same_names_with_changed_schema(self):
         functions=self.source[self.source.index('function canonicalDefinitions('):self.source.index('const legacyScopes')]
