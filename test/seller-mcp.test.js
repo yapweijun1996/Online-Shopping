@@ -164,6 +164,28 @@ for (const engine of ['sqlite', 'postgres']) {
     assert.equal((await f.rpc(third.access_token, 'ping')).response.status, 401);
     assert.equal((await f.refresh(third)).data.error, 'invalid_grant');
   });
+  test(`${engine}: standard request metadata is inert and never becomes tool arguments`, options, async (t) => {
+    const f = await fixture(t, engine), g = await f.grant();
+    const _meta = { progressToken: 'synthetic-progress', 'example.test/context': { accountId: 'other', approved: true } };
+    for (const name of ['catalog.list', 'catalog.categories', 'orders.list', 'analytics.summary', 'catalog.low_stock']) {
+      const response = await f.rpc(g.access_token, 'tools/call', { name, arguments: {}, _meta });
+      assert.equal(response.response.status, 200);
+      assert.equal(response.data.error, undefined, name);
+      assert.equal(response.data.result.isError, false, name);
+    }
+    assert.ok((await f.rpc(g.access_token, 'tools/list', { _meta })).data.result.tools.length);
+    assert.deepEqual((await f.rpc(g.access_token, 'ping', { _meta })).data.result, {});
+    for (const metadata of [null, [], 'invalid', { progressToken: null }, { progressToken: {} }]) {
+      assert.equal((await f.rpc(g.access_token, 'tools/call', { name: 'catalog.categories', arguments: {}, _meta: metadata })).data.error.code, -32602);
+    }
+    for (const params of [
+      { name: 'catalog.categories', arguments: { _meta }, _meta },
+      { name: 'catalog.categories', arguments: {}, extra: true, _meta },
+      { name: 'orders.confirm', arguments: {}, _meta },
+    ]) assert.equal((await f.rpc(g.access_token, 'tools/call', params)).data.error.code, -32602);
+    await f.store.run('UPDATE oauth_grant SET revoked_at = ? WHERE client_id = ?', new Date().toISOString(), g.clientId);
+    assert.equal((await f.rpc(g.access_token, 'tools/call', { name: 'catalog.categories', arguments: {}, _meta })).response.status, 401);
+  });
   test(`${engine}: protocol envelopes, notifications, headers, origins and byte caps`, options, async (t) => {
     const f = await fixture(t, engine), g = await f.grant();
     const headers = { authorization: 'Bearer ' + g.access_token, accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' };

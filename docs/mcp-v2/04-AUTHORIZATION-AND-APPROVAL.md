@@ -6,6 +6,10 @@ Production proposals bind installed-source digest plus trusted backend identity 
 
 Full catalog CREATE/UPDATE use independent default-off HIGH dual-scope profiles. Commit, human review/delivery/ACK and controls revalidate original-grant authority and immutable revisions. CREATE binds catalog/catalog and a server newborn identity; EMPTY_BEFORE has zero assets but a mandatory PAGE ACK. UPDATE binds a product UUID. Actual default OAuth/native/HTTPS and per-name missing-auth/read-scope/closed-argument results are in [validation](10-FINAL-VALIDATION-REPORT.md); hashes or synthetic frames never authorize writes.
 
+## Consent selection update (2026-11-06)
+
+The owner requested all valid client-requested OAuth permissions selected by default, including write and cancellation scopes. Sellers can uncheck any permission or deny the request. Explicit password verification and consent submission remain required; preselection creates no grant. This supersedes the historical unchecked OAuth selection proposal below only. Write feature flags remain OFF by default, existing grants remain unchanged, and individual-operation acknowledgments and approvals are unaffected.
+
 ## Historical design snapshot
 
 Status: **PARTIAL ISOLATED PROTOTYPE**. The baseline provides read-only OAuth. Unregistered local helpers check explicit v2 consent, current scope/role and an operation-specific seller session, password and preview hash; an unregistered review page renders the complete proposal as text. A generic engine has only been exercised with a synthetic adapter. There is no application route, real business adapter, OAuth consent integration or application migration. The pieces do not yet prove a real human saw a real proposal and must not be exposed on their own. The flow below is not complete.

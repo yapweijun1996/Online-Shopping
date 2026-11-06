@@ -42,6 +42,15 @@ export function createProtocol({ store, config, binding, limit, operationTools =
       return { token, grant };
     };
     const initial = await credentials();
+    // Request metadata is transport-only (MCP 2025-06-18), never tool input or authority.
+    let invalidMetadata = false;
+    if (envelope(body) && body.params && typeof body.params === 'object' && !Array.isArray(body.params) && Object.hasOwn(body.params, '_meta')) {
+      const { _meta, ...params } = body.params;
+      invalidMetadata = !_meta || typeof _meta !== 'object' || Array.isArray(_meta) ||
+        (Object.hasOwn(_meta, 'progressToken') && typeof _meta.progressToken !== 'string' &&
+          !(typeof _meta.progressToken === 'number' && Number.isFinite(_meta.progressToken)));
+      if (!invalidMetadata) body = { ...body, params };
+    }
     // Commit attempt reservations independently of any later denial or read failure.
     // Only a fully recognized, consented, canonical APPEND uses its coordinator's
     // persistent240 class. Malformed/unlisted requests retain ordinary120.
@@ -56,6 +65,7 @@ export function createProtocol({ store, config, binding, limit, operationTools =
     if (!envelope(body)) return rpcError(null, -32600, 'Invalid Request');
     const version = request.headers.get('mcp-protocol-version');
     if ((version && version !== REVISION) || (body.method !== 'initialize' && !version)) fail('invalid_request');
+    if (invalidMetadata) return rpcError(body.id ?? null, -32602, 'Invalid params');
     // Extension dispatch holds the platform fence before the tenant transaction.
     // It must remain outside the v1 serialization block below.
     const extension = body.method === 'tools/call' && operationTools?.find(body.params?.name);

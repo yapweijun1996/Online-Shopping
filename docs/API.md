@@ -427,3 +427,11 @@ integration keys are absent. Backups retain historical personal data until expir
 Schema 27 is unreleased: its thread name/sealed-peer fields now allow NULL for
 erasure on both engines; no audit CHECK expansion or new schema version is needed.
 
+
+### OAuth permission selection (2026-11-06)
+
+The consent form preselects every valid scope requested by the client, including write access and cancellation. Sellers can uncheck any permission or deny the request. Preselection and password verification do not issue a grant: explicit approval with Origin/CSRF protection is still required, and the server grants only the submitted authorized subset. Existing grants do not expand. Write tools still default OFF in configuration and individual business changes retain trusted first-party approval. Cancellation of an uncommitted operation remains the documented exception to per-operation approval.
+
+### Standard MCP request metadata compatibility
+
+The protocol accepts object-valued `params._meta` as transport metadata on requests, validates any progress token as a string or finite number, and ignores its contents before dispatch. It does not become tool arguments, authorization evidence or audit payload. Tool input schemas, unknown parameter rejection, authentication, scopes, body limits and operation approvals remain unchanged. Reference: https://modelcontextprotocol.io/specification/2025-06-18/schema#jsonrpcrequest . Synthetic tests reproduce rejection before the fix, including the five reported read-tool names, and verify valid calls after it. The owner screenshot contains no raw request; attribution of that specific `INVALID_ARGUMENT` failure to metadata remains unconfirmed.

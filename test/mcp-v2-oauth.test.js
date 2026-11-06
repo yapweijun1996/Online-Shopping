@@ -114,7 +114,7 @@ for (const engine of ['sqlite', 'postgres']) {
       const pending = await f.store.get('SELECT * FROM oauth_authorization_request WHERE id = ?', staged.authorizationRequestId);
       assert.equal(pending.scopes, requested.join(' ')); assert.equal(pending.redirect_uri, callback); assert.equal(pending.state, state);
       assert.equal(pending.account_id, null);
-      assert.doesNotMatch(staged.data, /value="[^" ]+" checked/);
+      assert.deepEqual([...staged.data.matchAll(/name="scope" value="([^"]+)" checked/g)].map((match) => match[1]).sort(), [...requested].sort());
       // A display preference grants no identity, scope or business-operation approval.
       const signed = await f.login(staged); assert.equal(signed.response.status, 200);
       const accepted = await f.approve(staged, signed, ['catalog.read']); assert.equal(accepted.response.status, 200);
@@ -127,6 +127,28 @@ for (const engine of ['sqlite', 'postgres']) {
       assert.equal(issued.response.status, 200); assert.equal(issued.data.scope, 'catalog.read');
       assert.equal((await f.rpc(issued.data.access_token, 'tools/list')).data.result.tools.length, 5);
     }
+  });
+  test(`${engine}: all requested scopes default selected but require explicit consent`, options, async (t) => {
+    const f = await fixture(t, engine), clientId = await f.register();
+    const requested = supportedScopes(f.config), staged = await f.stage(clientId, requested.join(' '));
+    const selected = [...staged.data.matchAll(/name="scope" value="([^"]+)" checked/g)].map((match) => match[1]);
+    assert.deepEqual([...selected].sort(), [...requested].sort());
+    assert.match(staged.data, /Uncheck any permissions you do not want/);
+    assert.doesNotMatch(staged.data, /unchecked permission|Each scope is unchecked/);
+    assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM oauth_grant')).n, 0);
+    const signed = await f.login(staged);
+    assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM oauth_grant')).n, 0);
+    const accepted = await f.approve(staged, signed, selected);
+    assert.equal(accepted.response.status, 200);
+    const issued = await f.exchange(clientId, new URL(accepted.data.redirectTo).searchParams.get('code'), staged.verifier);
+    assert.equal(issued.response.status, 200);
+    assert.deepEqual(issued.data.scope.split(' ').sort(), [...requested].sort());
+    const company = await f.rpc(issued.data.access_token, 'tools/call', { name: 'company.get', arguments: {}, _meta: { progressToken: 1, accountId: 'other', approved: true } });
+    assert.equal(company.response.status, 200);
+    assert.equal(company.data.error, undefined);
+    assert.equal(company.data.result.isError, false);
+    const narrowed = await f.stage(clientId, 'catalog.read');
+    assert.deepEqual([...narrowed.data.matchAll(/name="scope" value="([^"]+)" checked/g)].map((match) => match[1]), ['catalog.read']);
   });
   test(`${engine}: optional ui_locales preserves required parameters and authorization rejection paths`, options, async (t) => {
     const f = await fixture(t, engine), clientId = await f.register();
@@ -173,7 +195,9 @@ for (const engine of ['sqlite', 'postgres']) {
     assert.deepEqual((await f.rpc(legacy.access_token, 'tools/list')).data.result.tools, legacyTools);
     const grant = await f.grant('catalog.read orders.read analytics.read catalog.write company.read inventory.adjust');
     assert.match(grant.staged.data, /Read access/); assert.match(grant.staged.data, /Changes to shop data/);
-    assert.doesNotMatch(grant.staged.data, /value="(?:catalog.write|company.read|inventory.adjust)" checked/);
+    for (const scope of ['catalog.read', 'catalog.write', 'company.read', 'inventory.adjust']) {
+      assert.ok(grant.staged.data.includes(`value="${scope}" checked`));
+    }
     assert.match(grant.staged.data, /Scope consent is not approval of an individual change/);
     const listed = (await f.rpc(grant.access_token, 'tools/list')).data.result.tools;
     assert.deepEqual(listed.map((tool) => tool.name), ['catalog.list', 'catalog.get', 'catalog.categories', 'catalog.history', 'catalog.low_stock',
