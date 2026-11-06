@@ -8,6 +8,9 @@ import { operationEpochCurrent, readOperationEpochFile } from '../src/mcp/operat
 import { hash, liveGrant, secret } from '../src/mcp/credentials.js';
 import { companyReadTool, companyMutationTool } from '../src/mcp/company-tools.js';
 import { freshCatalogAccess, legacyCatalogScopes } from './helpers/mcp-catalog-default-grant.js';
+import { coordinatorFixture, stubDecode } from './helpers/mcp-media-coordinator-fixture.js';
+import { syntheticMediaPng } from './helpers/mcp-media-hooks-fixture.js';
+import { createOperationEngine } from '../src/mcp/operation-engine.js';
 import { mediaReviewFixture } from './helpers/mcp-media-review-fixture.js';
 import { reviewFixture, reviewPassword } from './helpers/mcp-review-fixture.js';
 
@@ -123,6 +126,22 @@ for (const dialect of ['sqlite', 'postgres']) {
     finally { f.store.get = get; }
     assert.equal((await f.store.get('SELECT ack_at FROM mcp_v2_media_delivery WHERE operation_id=? AND item_key=?', f.operation.operationId, item.itemKey)).ack_at, null);
     assert.equal(Number((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_media_approval_evidence')).n), 0);
+  });
+
+  test(`${dialect}: epoch rotation during lock-free media resolution denies final engine persistence`, options, async t => {
+    const epoch = epochFixture(t), issuer = 'https://seller.example.test';
+    let decoded = 0, f;
+    f = await coordinatorFixture(t, dialect, { fixtureOptions: { config: { mcpV2: epoch.mcpV2 } },
+      binding: { tenantId: 'default', issuer, resource: issuer + '/mcp', mcpV2: epoch.mcpV2 },
+      decode: async input => { assert.equal(f.depth(), 0); decoded++; epoch.replace(secret()); return stubDecode(input); } });
+    const source = syntheticMediaPng(), stage = await f.coordinator.begin(f.bearer, await f.input(source));
+    await f.coordinator.append(f.bearer, { stageId: stage.stageId, offset: 0, dataParts: [source.toString('base64')] });
+    const engine = createOperationEngine({ ...f.options, adapters: { 'media.prepare_upload': f.coordinator.uploadAdapter } });
+    await assert.rejects(engine.prepare({ bearer: f.bearer, toolName: 'media.prepare_upload', args: { stageId: stage.stageId }, idempotencyKey: 'epoch-resolve-rotation-0001' }), { status: 403 });
+    assert.ok(decoded > 0);
+    assert.equal(Number((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_operation')).n), 0);
+    assert.equal(Number((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_operation_media_policy')).n), 0);
+    assert.equal(Number((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_media_pin')).n), 0);
   });
 
 }
