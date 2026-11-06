@@ -77,3 +77,13 @@ test('build digest covers source, SQL, public approval assets and package conten
   assert.throws(() => operationBuildDigest(second), /regular files/);
   assert.throws(() => operationBuildDigest('/missing-synthetic-source'));
 });
+
+
+test('v2 epoch startup rejects leaf and parent aliases instead of caching a replaceable alias target', t => {
+  const f = fixture(t), leaf = path.join(f.directory, 'leaf-alias'), parent = path.join(f.directory, 'directory-alias');
+  symlinkSync(f.file, leaf);
+  assert.throws(() => readMcpV2Config({ ...f.env, MCP_V2_EPOCH_FILE: leaf }, context), /MCP_V2_EPOCH_FILE/);
+  symlinkSync(f.directory, parent, 'dir');
+  assert.throws(() => readMcpV2Config({ ...f.env, MCP_V2_EPOCH_FILE: path.join(parent, 'epoch') }, context), /MCP_V2_EPOCH_FILE/);
+  assert.equal(readMcpV2Config(f.env, context).epochFile, f.file);
+});

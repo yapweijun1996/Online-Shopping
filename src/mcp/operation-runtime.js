@@ -64,6 +64,9 @@ export function readMcpV2Config(env, { mcpEnabled, sellerOrigin, dbPath, profile
   try {
     if (typeof env.MCP_V2_EPOCH_FILE !== 'string' || !path.isAbsolute(env.MCP_V2_EPOCH_FILE)) throw new Error();
     const file = realpathSync(env.MCP_V2_EPOCH_FILE);
+    // Caching an alias target would hide later replacement of the configured
+    // pathname. Require the operator's actual canonical directory/file path.
+    if (file !== path.resolve(env.MCP_V2_EPOCH_FILE) || !lstatSync(env.MCP_V2_EPOCH_FILE).isFile()) throw new Error();
     const databaseDirectory = path.dirname(path.resolve(dbPath));
     let resolvedDatabaseDirectory = databaseDirectory;
     try { resolvedDatabaseDirectory = realpathSync(databaseDirectory); } catch { /* A fresh database directory may not exist yet. */ }
