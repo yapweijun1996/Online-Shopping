@@ -556,3 +556,132 @@ The manual release retained platform schema2, default-only topology, the Postgre
 Actual owner migration34, rerun and verification passed: platform2 unchanged,0nondefault tenants,35products/0orders,35MIGRATED inventory coverage/state baselines at revision0,0movements, required table DML and both audit-sequence USAGE/SELECT true. Backend/frontend immutable Linux/amd64 digests and labels were verified before activation. Exact-revision health passed at `2026-11-05T22:21:58.385486Z`; public TLS/readiness/host/`script-src 'self'` CSP/auth/OFF checks passed17/17 (image policy permits `data:`). Production verification used read-only HTTP probes; application/data changes were limited to images and the reviewed database migration, with no provider sends. Timer acceptance at22:23:40.468127UTC and independent22:24readback confirmed active/enabled, current0131a286/deployed and no pending/previous/failed/schema-fence recovery targets. Owned restore/probe containers were removed; private backups/scratch retained. Cutover start22:20:31.062 and health22:21:58.385 are milestones, not an exact outage measurement.
 
 The [full live record](mcp-v2/12-LIVE-RELEASE.md) records accepted image digests, the earlier CI timeout and safe failed staging attempt, restore correction and resource observations. This is the initial0131 release; later documentation commits still require their own normal main CI/images/updater acceptance. Rollback after34 requires a compatible34 image or coordinated restore under stopped writers, never schema29 images alone. Restore after new writes requires reconciliation of the backup boundary. These controls do not enable production MCP profiles.
+
+## Reviewed production MCP profile and codec lifecycle
+
+This is a release procedure, not evidence that production has been activated. The
+legacy base `compose.gcp.yaml` deliberately contains no v2 selector, epoch mount,
+codec mount or identity read. Keep `MCP_V2_PRODUCTION_PROFILE` **unset**, not empty,
+while all four v2 flags are zero. Legacy MCP read tools remain independently
+controlled by `MCP_ENABLED` and their existing OAuth grants.
+
+The complete profile requires `MCP_ENABLED=1`, all four v2 flags equal to `1`, and
+`MCP_V2_PRODUCTION_PROFILE=seller-operations-v1`. Install the reviewed
+`deploy/gcp/compose.mcp.yaml` as `/opt/online-shopping-gcp/compose.mcp.yaml` only
+for this mode. The overlay obtains actual backend config ID, codec config ID,
+sealed generation and epoch directory from controller-generated `images.env`;
+those values are not accepted in `runtime.env`. Both directories mount read-only,
+with automatic host-path creation disabled. The epoch is a **directory** mount so
+an atomic replacement is visible to running processes. A cached process never
+adopts a replacement epoch: authority and `/ready` fail closed until recreation.
+
+The codec is a separate image published as
+`ghcr.io/yapweijun1996/online-shopping-backend:media-codec-<full-main-sha>` in the
+existing public package. Backend and frontend tags remain unchanged. A new GHCR
+package initially being private would break anonymous pulls; the distinct tag
+avoids adding registry credentials or changing package visibility. The controller
+pins its own RepoDigest and actual config ID, requires Linux/AMD64, exact revision,
+source and `online-shopping-media-codec` title, and compares wire/client/lock
+hash labels to Git-blob-verified source bytes. The installed supervisor separately
+checks the actual files in the isolated image. These are reviewed artifact identity
+checks, not remote attestation. Publication still requires the successful **latest
+main push Verify run** at the exact revision. Native dependencies stay out of the
+application image.
+
+Host policy is manually installed and reviewed. Neither candidate release files
+nor downloaded Python are executed as root. Install fixed `update.py`,
+`media-codec.py`, `mcp-maintenance.py`, the optional overlay and the two MCP
+service/timer pairs from `deploy/gcp/`; retain root ownership and no group/world
+write permission throughout their ancestors. The local fingerprint includes the
+installed controller, base Compose and runtime, plus the overlay/supervisor/hygiene
+wrapper when the profile is ON. Changes require an explicit reviewed state update.
+`src/mcp/`, `media-codec/`, adapter origin handling and host/release configuration
+are protected source boundaries: the ordinary poller reports manual release
+required when these change. All mounted source and codec hash inputs are checked
+against their individual Git blob hashes. No commit/tree-SHA equivalence is assumed.
+
+Before initial activation, create `/opt/online-shopping-gcp/mcp-control` as
+`root:1000` mode `0710` inside the existing root-only outer directory. Its `epoch`
+file must be a fresh canonical 32-byte base64url value, `root:1000` mode `0440`.
+Never copy an epoch from a database backup or print it. Preserve all existing
+secrets. Atomic rotation must set owner/group/mode **before** rename and fsync the
+file and parent. Ordinary forward deployment and same-build codec recovery keep
+the epoch. Image rollback and coordinated database restore replace it, fencing
+outstanding grants/approvals; seller re-consent and fresh human approval remain
+required. Deployment permission grants no individual business approval.
+
+All lifecycle actions hold the same `update.lock`. Before stopping anything, the
+controller verifies the complete immutable tuple, epoch permissions, installed
+policy and supervisor `preflight(..., reserve_generations=2)`. This reserves one
+fresh generation for the candidate and one for rollback. Rollback uses reserve 1.
+The supervisor checks exact existing ownership and bounded generation inventory;
+unknown owners fail closed. A full 64-generation inventory reports
+`manual_maintenance_required` while the accepted service continues running.
+There is no automatic purge. Manual pruning must first pause all three timers,
+hold `update.lock`, close owned frontend ingress, stop every backend instance and
+retire only the proven-owned worker; retain current/pending generations and
+private failure evidence until their mounts and containers are proven absent.
+Never chmod a sealed directory back to writable or reuse a retired generation.
+
+During a transition the controller writes `mcp-codec/paused`, stops only the
+application frontend, drains/stops **all** Compose backend instances and proves
+none remain. PostgreSQL and the shared gateway are untouched. It retires the
+proven-owned codec, creates a fresh sealed generation, and force-recreates the
+backend while preserving the QR slot policy. It verifies actual backend config
+ID, read-only generation/epoch mounts and private `/ready` revision (which checks
+epoch and authenticated codec readiness) before starting the frontend. Final
+frontend-proxied health must pass before the pause barrier is removed and the
+accepted release is saved. Failure leaves durable pending intent. An interrupted
+codec recovery leaves ingress paused for operator review; it does not silently
+fall back to another image or rotate the epoch.
+
+Initial compatibility rollback to the accepted old disabled image is special:
+it uses base Compose only, explicitly forces `MCP_ENABLED=0`, retires the owned
+worker, rotates the epoch and persists `profile_fallback=true`. Both restarted
+polling and codec recovery then return `manual_profile_resume_required`, even if
+the installed runtime still requests the full profile. They cannot re-enable old
+images under ON selectors. Keep the update/recovery timers stopped until a
+reviewed operator has restored a coherent disabled runtime, or has revalidated a
+complete production tuple and deliberately cleared this quarantine after health.
+Ordinary forward updates cannot silently choose the disabled fallback. Database
+schema compatibility must be checked independently; image rollback never restores
+business data or reverses migrations.
+
+The optional `online-shopping-mcp-recover.timer` invokes the installed controller
+under the same lock. It respects `paused`, uses the accepted build and same epoch,
+and makes at most three fresh-generation attempts per 15 minutes. It never
+restarts a sealed worker directory. Failed recovery or exhausted budget requires
+manual review. Do not use `restart: unless-stopped` for the codec. Start this timer
+only after real production-profile artifact/lifecycle acceptance.
+
+The separately reviewed `online-shopping-mcp-maintenance.timer` runs one bounded
+hygiene pass per five minutes under that lock. It checks the accepted actual
+backend, invokes `node scripts/cleanup-seller-mcp.js --all 1 --limit=20` with a
+private durable UUID cursor, and delegates ACTIVE/SUSPENDED enumeration and
+platform-before-shop fencing to the existing CLI. Its clean maintenance config
+keeps real production/DB identity and removes v2 selectors only in that process;
+no codec or epoch is needed for flag-OFF hygiene. Output is fixed counters/cursor,
+not tenant/customer rows. Enable only after the accepted image contains the CLI;
+old-image fallback requires pausing this timer too. The separate credential
+recovery script is **never** scheduled by these timers and still requires the
+explicit stopped-writer/password-reset recovery procedure.
+
+Acceptance gates remain actual AMD64 artifact mapping, real Node→Caddy→TLS OAuth
+and first-party approval/media delivery, actual native decode, SQLite/PostgreSQL
+synthetic complete-32 flows, cross-tenant/old-grant negatives, and a real isolated
+forward/failed-health/rollback/crash/fresh-generation canary. Offline controller
+tests prove ordering, bounds and state preservation; they do not replace those
+runtime gates. No live customer rows are used for these tests.
+
+
+Initial installation must use `initialize` with the v2 profile OFF. The command
+rejects ON before any image pull, pause marker or container/state mutation. After
+the disabled installation has a stable accepted current release and `images.env`,
+the reviewed manual enable procedure must validate exact main/CI and all
+artifacts, then **save the candidate as durable pending intent before calling
+`activate(candidate)`**. This allows a fresh process to identify a partially
+started codec and apply only the explicit disabled compatibility fallback. Keep
+all timers paused and hold the shared lock throughout. Stopping current services
+always uses base Compose, independent of target ON variables or stale generation
+paths; the mandatory ON overlay is parsed only after verified generation and
+identity values are written. Never supply dummy socket/generation placeholders.

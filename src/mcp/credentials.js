@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { can } from '../roles.js';
 import { OPERATION_SCOPE_CAPABILITIES, OPERATION_RESOURCE_SCOPES } from './operation-policy.js';
-import { operationEpochHash } from './operation-epoch.js';
+import { operationEpochHash, operationEpochCurrent } from './operation-epoch.js';
 import { cleanupMcpAudit } from './audit.js';
 
 export const hash = (value) => createHash('sha256').update(value).digest('hex');
@@ -12,7 +12,7 @@ export const SCOPES = Object.freeze(['catalog.read', 'orders.read', 'analytics.r
 export const V2_SCOPES = Object.freeze(Object.keys(OPERATION_SCOPE_CAPABILITIES).filter((scope) =>
   OPERATION_SCOPE_CAPABILITIES[scope] !== null || OPERATION_RESOURCE_SCOPES.includes(scope)));
 export function v2Epoch(config) {
-  if (config?.mcpV2?.enabled !== true || !/^[0-9a-f]{64}$/.test(config.mcpV2.buildDigest || '')) return null;
+  if (config?.mcpV2?.enabled !== true || !operationEpochCurrent(config.mcpV2) || !/^[0-9a-f]{64}$/.test(config.mcpV2.buildDigest || '')) return null;
   try { return operationEpochHash(config.mcpV2.epoch); } catch { return null; }
 }
 export const supportedScopes = (config) => v2Epoch(config) ? [...SCOPES, ...V2_SCOPES] : [...SCOPES];
@@ -47,6 +47,7 @@ export async function revokeGrant(store, grantId, reason = 'REVOKED') {
 }
 
 export async function liveGrant(store, id, { tenantId, issuer, resource, mcpV2 }, issuedAt = stamp()) {
+  if (!operationEpochCurrent(mcpV2)) return null;
   const grant = await store.get('SELECT * FROM oauth_grant WHERE id = ?', id);
   if (!grant || grant.revoked_at || grant.absolute_expires_at <= stamp() || grant.created_at > stamp() || grant.tenant_id !== tenantId || grant.issuer !== issuer || grant.resource !== resource) return null;
   const account = await store.get('SELECT * FROM seller_account WHERE id = ?', grant.account_id);
@@ -61,5 +62,6 @@ export async function liveGrant(store, id, { tenantId, issuer, resource, mcpV2 }
     grant.id, tenantId, grant.account_id, grant.client_id, grant.account_auth_version, v2Epoch({ mcpV2 }), grant.created_at, issuedAt);
     allowed = allowed.filter((scope) => SCOPES.includes(scope) || evidence.some((row) => row.scope === scope));
   }
+  if (!operationEpochCurrent(mcpV2)) return null;
   return { ...grant, grant_id: grant.id, account, allowed };
 }

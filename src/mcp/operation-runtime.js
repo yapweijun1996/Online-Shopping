@@ -1,8 +1,9 @@
+import { readMcpDeploymentProfile, deploymentProfileAllowsProduction } from './deployment-profile.js';
 import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { operationEpochHash } from './operation-epoch.js';
+import { readOperationEpochFile } from './operation-epoch.js';
 import { operationSchema, operationEventSchema } from './operation-schema.js';
 import { mediaSchema, MEDIA_STORAGE_TABLES, mediaPolicyCheck } from './media-schema.js';
 import { assertMcpAuditStorage, assertMcpAuditUpgradeSource, migrateMcpAuditStorage, resetAuditSequence } from './audit-storage.js';
@@ -44,13 +45,12 @@ export function operationBuildDigest(root = sourceRoot) {
   return hash.digest('hex');
 }
 
-export function readMcpV2Config(env, { mcpEnabled, sellerOrigin, dbPath }) {
+export function readMcpV2Config(env, { mcpEnabled, sellerOrigin, dbPath, profile: suppliedProfile }) {
   const flag = env.MCP_V2_ENABLED ?? '0';
   if (!['0', '1'].includes(flag)) throw new Error('MCP_V2_ENABLED must be 0 or 1.');
   if (flag === '0') return Object.freeze({ enabled: false });
-  // This branch is an isolated implementation, without an operational restore
-  // rehearsal, coordinated epoch rotation, retention policy or release review.
-  if (env.NODE_ENV === 'production') throw new Error('MCP v2 production activation requires a reviewed release.');
+  const profile = readMcpDeploymentProfile(env, { mcpEnabled, sellerOrigin });
+  if (suppliedProfile && JSON.stringify(suppliedProfile) !== JSON.stringify(profile)) throw new Error('MCP v2 deployment profile mismatch.');
   let origin;
   try { origin = new URL(sellerOrigin); } catch { /* Reject missing and malformed origins below. */ }
   if (mcpEnabled !== true || typeof sellerOrigin !== 'string' || origin?.protocol !== 'https:' ||
@@ -60,22 +60,30 @@ export function readMcpV2Config(env, { mcpEnabled, sellerOrigin, dbPath }) {
   if ((env.SHOP_MODE ?? 'manual') !== 'manual' || ![undefined, '0'].includes(env.SELLER_QUICK_LOGIN)) {
     throw new Error('MCP v2 requires a manual shop without quick login.');
   }
-  let epoch;
+  let epoch, epochFile;
   try {
     if (typeof env.MCP_V2_EPOCH_FILE !== 'string' || !path.isAbsolute(env.MCP_V2_EPOCH_FILE)) throw new Error();
     const file = realpathSync(env.MCP_V2_EPOCH_FILE);
+    // Caching an alias target would hide later replacement of the configured
+    // pathname. Require the operator's actual canonical directory/file path.
+    if (file !== path.resolve(env.MCP_V2_EPOCH_FILE) || !lstatSync(env.MCP_V2_EPOCH_FILE).isFile()) throw new Error();
     const databaseDirectory = path.dirname(path.resolve(dbPath));
     let resolvedDatabaseDirectory = databaseDirectory;
     try { resolvedDatabaseDirectory = realpathSync(databaseDirectory); } catch { /* A fresh database directory may not exist yet. */ }
     const publicDirectory = path.join(sourceRoot, 'public');
     if ([databaseDirectory, resolvedDatabaseDirectory, publicDirectory].some((directory) => file === directory || file.startsWith(directory + path.sep)) ||
         !lstatSync(file).isFile()) throw new Error();
-    epoch = readFileSync(file, 'utf8').replace(/\r?\n$/, '');
-    operationEpochHash(epoch);
+    epoch = readOperationEpochFile(file);
+    epochFile = file;
   } catch { throw new Error('MCP_V2_EPOCH_FILE must contain a canonical 32-byte epoch outside the database and public directories.'); }
   // Filesystem separation cannot establish separation from the backup domain.
   // Operators must still coordinate all-instance drain and rotation on restore.
-  return Object.freeze({ enabled: true, epoch, buildDigest: operationBuildDigest() });
+  const sourceDigest = operationBuildDigest();
+  // Trusted operator pin plus installed source. This is not self/hardware attestation.
+  const buildDigest = deploymentProfileAllowsProduction(profile)
+    ? sha256(JSON.stringify({ domain: 'mcp-v2/production-build/v1', backendIdentity: profile.backendIdentity, sourceDigest }))
+    : sourceDigest;
+  return Object.freeze({ enabled: true, epoch, epochFile, buildDigest, profile });
 }
 
 async function extensionObjects(store) {

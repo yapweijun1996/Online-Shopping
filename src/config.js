@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { parseKeyFile } from './secret-box.js';
 import { checkPassword } from './accounts.js';
 import { safeRedirect } from './mcp/oauth.js';
+import { readMcpDeploymentProfile } from './mcp/deployment-profile.js';
 import { readMcpV2Config } from './mcp/operation-runtime.js';
 import { readMcpMediaConfig } from './mcp/media-config.js';
 import { readMcpCatalogMediaUpdateConfig, readMcpCatalogMediaCreateConfig } from './mcp/catalog-media-config.js';
@@ -197,8 +198,9 @@ export function readConfig(env = process.env) {
     try { const url = new URL(value); return url.protocol !== 'https:' || url.origin !== value; } catch { return true; }
   })) throw new Error('Invalid MCP_BROWSER_ORIGINS.');
   if (mcpEnabled && (!sellerOrigin || new URL(sellerOrigin).protocol !== 'https:')) throw new Error('MCP_ENABLED requires an HTTPS SELLER_ORIGIN.');
-  const mcpV2 = readMcpV2Config(env, { mcpEnabled, sellerOrigin, dbPath });
   const shopMode = readShopMode(env), sellerQuickLogin = env.SELLER_QUICK_LOGIN === '1';
+  const profile = readMcpDeploymentProfile(env, { production, mcpEnabled, sellerOrigin, shopMode, sellerQuickLogin });
+  const mcpV2 = readMcpV2Config(env, { mcpEnabled, sellerOrigin, dbPath, profile });
   const mcpMedia = readMcpMediaConfig(env, { production, mcpEnabled, mcpV2, shopMode, sellerQuickLogin, dbPath });
   const mcpCatalogMediaUpdate = readMcpCatalogMediaUpdateConfig(env, { production, mcpEnabled, mcpV2, mcpMedia, shopMode, sellerQuickLogin });
   const mcpCatalogMediaCreate = readMcpCatalogMediaCreateConfig(env, { production, mcpEnabled, mcpV2, mcpMedia, shopMode, sellerQuickLogin });

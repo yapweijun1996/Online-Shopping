@@ -1,3 +1,4 @@
+import { mcpOperationRuntimeEnabled } from './deployment-profile.js';
 import { orderDecisionTool } from './order-tools.js';
 import { operationControlTools } from './operation-control-contracts.js';
 import { inventorySummaryTool, inventoryMovementsTool, inventoryAdjustmentTool } from './inventory-tools.js';
@@ -34,8 +35,7 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
     if (!await limiters.get(bucket).attempt(key)) fail('temporarily_unavailable', 429, { 'Retry-After': '900' });
   };
   const oauth = createOAuth({ store, config, tenantId, limit });
-  const safeV2 = enabled && config.mcpV2?.enabled === true && config.production !== true &&
-    config.shopMode !== 'public-demo' && quickLogin === false && typeof tenantGuard?.withActiveTenant === 'function';
+  const safeV2 = enabled && mcpOperationRuntimeEnabled(config,{quickLogin,tenantGuard});
   const catalogUpdateEnabled = catalogMediaUpdateEnabled(config,{quickLogin,tenantGuard});
   const catalogCreateEnabled = catalogMediaCreateEnabled(config,{quickLogin,tenantGuard});
   if (config.mcpCatalogMediaCreate?.enabled === true && !catalogCreateEnabled) throw new TypeError('Safe catalog media CREATE configuration required.');
@@ -54,7 +54,7 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
   }
   const extensions = createOperationTools({ store, binding: oauth.binding, config, tenantGuard, quickLogin, entries: registrations });
   const maintain = async () => {
-    if (config.mcpV2?.enabled !== true || !enabled || config.production === true || !tenantGuard) return;
+    if (!safeV2) return;
     try { await maintainOperations(store, { enabled: true, tenantGuard, tenantId }); }
     catch { /* Hygiene failure cannot change a decision already recorded. */ }
   };
@@ -74,8 +74,7 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
   };
   async function handle(request, ip) {
     const url = new URL(request.url), path = url.pathname, operation = operationPath(path);
-    if (operation && (!enabled || config.mcpV2?.enabled !== true || config.production === true ||
-        config.shopMode === 'public-demo' || !tenantGuard || url.origin !== config.sellerOrigin)) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+    if (operation && (!safeV2 || url.origin !== config.sellerOrigin)) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
     if (!config.mcpEnabled) return null;
     if (!connectorPath(path)) return null;
     if (!enabled || url.host !== new URL(config.sellerOrigin).host) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
@@ -168,7 +167,7 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
     return response;
   }
   return { handle, initialize: async () => {
-    if (enabled && config.mcpV2?.enabled === true && config.production !== true && config.shopMode !== 'public-demo' && tenantGuard) await operationHandlers();
+    if (safeV2) await operationHandlers();
   }, bindLogin: async (...args) => {
     if (!enabled) return;
     try { await oauth.bindLogin(...args); }

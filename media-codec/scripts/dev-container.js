@@ -16,7 +16,13 @@ export async function docker(args, timeout = 20000) {
   } catch { throw new Error(`Owned codec Docker command failed: ${args[0]}`); }
 }
 let owned;
-export async function startContainer(image, { memoryMiB = 192, command = [] } = {}) {
+// Private QA launcher only. Production host lifecycle belongs to its supervisor.
+export function codecContainerEnvironment(production = false) {
+  if (typeof production !== 'boolean') throw new TypeError('Invalid codec QA mode.');
+  return production ? 'NODE_ENV=production' : 'NODE_ENV=development';
+}
+export async function startContainer(image, { memoryMiB = 192, command = [], production = false } = {}) {
+  const environment = codecContainerEnvironment(production);
   if (owned || !/^sha256:[a-f0-9]{64}$/.test(image) || ![96, 128, 192].includes(memoryMiB)) throw new Error('Invalid owned codec container.');
   if (process.getuid() !== 1000 || process.getgid() !== 1000) throw new Error('Development fixture requires uid/gid1000.');
   const base = await mkdtemp(join(tmpdir(), 'shopping-codec-'));
@@ -30,7 +36,7 @@ export async function startContainer(image, { memoryMiB = 192, command = [] } = 
     '--read-only', '--user=10001:1000', '--cap-drop=ALL', '--security-opt=no-new-privileges:true',
     '--cgroupns=private', '--init', '--memory', `${memoryMiB}m`, '--memory-swap', `${memoryMiB}m`,
     '--cpus=0.5', '--pids-limit=32', '--shm-size=1m', '--ulimit=core=0:0', '--ulimit=nofile=64:64',
-    '--restart=no', '--log-driver=none', '--mount', `type=bind,src=${socketDir},dst=/run/media-codec`,
+    '--restart=no', '--log-driver=none', '--env', environment, '--mount', `type=bind,src=${socketDir},dst=/run/media-codec`,
     '--mount', `type=bind,src=${tokenFile},dst=/run/media-codec-token,readonly`];
   for (const proxy of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy']) args.push('--env', `${proxy}=`);
   args.push(image, ...command);

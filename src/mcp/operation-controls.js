@@ -1,7 +1,8 @@
+import { mcpOperationRuntimeEnabled } from './deployment-profile.js';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { ApiError } from '../http.js';
 import { canonicalOperationJson } from './operation-envelope.js';
-import { operationEpochHash } from './operation-epoch.js';
+import { operationEpochHash, operationEpochCurrent } from './operation-epoch.js';
 import { verifyOperationControlAuthority } from './operation-authorization.js';
 import { recordMcpAudit, MCP_AUDIT_OUTCOMES, readOperationAuditAnchors } from './audit.js';
 import { recordOperationEvent } from './operation-events.js';
@@ -18,7 +19,7 @@ const historicalOutcomes=new Set([...MCP_AUDIT_OUTCOMES,'MEDIA_REVIEW_ACKNOWLEDG
 const cursorKeys='anchors,at,binding,expiresAt,limit,position,version';
 // Only source-owned closures can select a store, scope policy or HMAC key.
 export function createOperationControls({store,binding,config,tenantGuard,quickLogin}) {
-  if(config.mcpEnabled!==true||config.mcpV2?.enabled!==true||config.production===true||config.shopMode==='public-demo'||quickLogin!==false||!tenantGuard?.withActiveTenant)denied();
+  if(!mcpOperationRuntimeEnabled(config,{quickLogin,tenantGuard}))denied();
   const {epoch,buildDigest}=config.mcpV2,epochHash=operationEpochHash(epoch);
   const catalogUpdateEnabled=catalogMediaUpdateEnabled(config,{quickLogin,tenantGuard});
   const catalogCreateEnabled=catalogMediaCreateEnabled(config,{quickLogin,tenantGuard});
@@ -112,6 +113,7 @@ export function createOperationControls({store,binding,config,tenantGuard,quickL
       // and immutable-record verification before the writer commits its result.
       await verifyOperationControlAuthority(store,options);
       if(name!=='operations.cancel')await invocation(row,name,'OK');
+      if(!operationEpochCurrent(binding.mcpV2))denied();
       return dto;
     }));
   }});

@@ -1,3 +1,4 @@
+import { operationEpochCurrent } from './operation-epoch.js';
 import { ApiError, json, readBody } from '../http.js';
 import { audit, hash, liveGrant, stamp, SCOPES, V2_SCOPES } from './credentials.js';
 import { callTool, catalogue, error, valid } from './tools.js';
@@ -83,7 +84,12 @@ export function createProtocol({ store, config, binding, limit, operationTools =
       }
     }
     // No request/network reads inside shared credential serialization.
-    return store.transaction(async () => {
+    const fencedRead = work => store.transaction(async () => {
+      const response = await work();
+      if (!operationEpochCurrent(binding.mcpV2)) fail('invalid_token', 401, { 'WWW-Authenticate': challenge });
+      return response;
+    });
+    return fencedRead(async () => {
       const { token, grant } = await credentials();
       if (!Object.hasOwn(body, 'id')) return new Response(null, { status: 202, headers: { 'Cache-Control': 'no-store' } });
       const args = body.params ?? {};

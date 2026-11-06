@@ -32,6 +32,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: python3 test/auto-update.test.py
+      - run: python3 test/gcp-deploy.test.py
+      - run: python3 test/gcp-mcp-deploy.test.py
+      - run: python3 test/gcp-mcp-canary.test.py
       - run: npm run check
       - run: npm test
         env:
@@ -52,3 +55,37 @@ jobs:
         working-directory: worker/whatsapp-qr
       - run: npm audit --omit=dev --audit-level=high
         working-directory: worker/whatsapp-qr
+  media-codec:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts
+      - run: npm ci --omit=dev --ignore-scripts
+        working-directory: media-codec
+      - name: Test codec with fixed host identity
+        run: |
+          codec_node="$(command -v node)"
+          sudo setpriv --reuid=1000 --regid=1000 --clear-groups \
+            "$codec_node" --input-type=module -e 'import fs from "node:fs";const probe=f=>{try{return f()??true}catch(e){return e.code}};console.log(JSON.stringify({uid:process.getuid(),gid:process.getgid(),cwd:process.cwd(),cwdMode:probe(()=>fs.statSync(".").mode&0o777),cwdEntries:probe(()=>fs.readdirSync(".").length),relativeTest:probe(()=>fs.accessSync("media-codec/test/codec.test.js",fs.constants.R_OK)),absoluteTest:probe(()=>fs.accessSync(process.cwd()+"/media-codec/test/codec.test.js",fs.constants.R_OK))}))'
+          codec_fixture="$(mktemp -d /tmp/mcp-codec-ci.XXXXXXXX)"
+          trap 'sudo rm -rf -- "$codec_fixture"' EXIT
+          mkdir -p "$codec_fixture/public/shared" "$codec_fixture/media-codec" "$codec_fixture/tmp"
+          cp package.json "$codec_fixture/"
+          cp -R src node_modules "$codec_fixture/"
+          cp public/shared/order-status.js public/shared/integration-catalog.js "$codec_fixture/public/shared/"
+          cp -R public/setup "$codec_fixture/public/"
+          cp media-codec/package.json media-codec/package-lock.json media-codec/Dockerfile media-codec/Dockerfile.dockerignore "$codec_fixture/media-codec/"
+          cp -R media-codec/src media-codec/test media-codec/scripts media-codec/node_modules "$codec_fixture/media-codec/"
+          chmod -R a+rX "$codec_fixture"
+          chmod 1777 "$codec_fixture/tmp"
+          cd "$codec_fixture/media-codec"
+          sudo setpriv --reuid=1000 --regid=1000 --clear-groups \
+            /usr/bin/env TMPDIR="$codec_fixture/tmp" "$codec_node" --test --test-concurrency=1 test/codec.test.js test/runtime.test.js
+      - run: npm audit --omit=dev --audit-level=high
+        working-directory: media-codec

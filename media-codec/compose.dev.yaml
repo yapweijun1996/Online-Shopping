@@ -23,6 +23,7 @@ services:
       nofile: 64
     restart: "no"
     environment:
+      NODE_ENV: development
       HTTP_PROXY: ""
       HTTPS_PROXY: ""
       ALL_PROXY: ""

@@ -18,7 +18,7 @@ export async function mediaToolsFixture(t, dialect, options = {}) {
   const runtime = { coordinator:f.coordinator,codecDigest:f.options.codec.digest,
     nativeSession:settings=>createMediaNativeSession(f.options.codec,{...settings,decode:stubDecode}) };
   const entries = [mediaListTool(),mediaUploadTool(runtime),mediaLayoutTool(runtime)];
-  const config = {...f.config,mcpMedia:{enabled:true},...options.config};
+  const config = {...f.config,mcpMedia:{enabled:true,codecDigest:f.options.codec.digest},...options.config};
   const api = await createApi({store:f.store,config,operationTools:Object.hasOwn(options,'entries')?options.entries:entries});
   let serial=0;
   async function call(path,method='GET',body,headers={},address='synthetic-media-tools-address-'+ ++serial){

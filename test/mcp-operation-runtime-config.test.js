@@ -45,6 +45,7 @@ test('v2 config fails closed on unspecified security inputs, unsafe modes and pr
   assert.throws(() => readMcpV2Config(f.env, { ...context, dbPath: path.join(f.directory, 'shop.db') }), /outside the database/);
   const config = readMcpV2Config({ ...f.env, MCP_V2_BUILD_DIGEST: 'a'.repeat(64), APP_REVISION: 'local', SELLER_QUICK_LOGIN: '0' }, context);
   assert.equal(config.enabled, true);
+  assert.equal(config.epochFile, f.file);
   assert.equal(config.epoch, Buffer.alloc(32, 7).toString('base64url'));
   assert.equal(config.buildDigest, operationBuildDigest());
   assert.notEqual(config.buildDigest, 'a'.repeat(64));
@@ -75,4 +76,14 @@ test('build digest covers source, SQL, public approval assets and package conten
   symlinkSync(path.join(first, 'src/roles.js'), path.join(second, 'src/linked.js'));
   assert.throws(() => operationBuildDigest(second), /regular files/);
   assert.throws(() => operationBuildDigest('/missing-synthetic-source'));
+});
+
+
+test('v2 epoch startup rejects leaf and parent aliases instead of caching a replaceable alias target', t => {
+  const f = fixture(t), leaf = path.join(f.directory, 'leaf-alias'), parent = path.join(f.directory, 'directory-alias');
+  symlinkSync(f.file, leaf);
+  assert.throws(() => readMcpV2Config({ ...f.env, MCP_V2_EPOCH_FILE: leaf }, context), /MCP_V2_EPOCH_FILE/);
+  symlinkSync(f.directory, parent, 'dir');
+  assert.throws(() => readMcpV2Config({ ...f.env, MCP_V2_EPOCH_FILE: path.join(parent, 'epoch') }, context), /MCP_V2_EPOCH_FILE/);
+  assert.equal(readMcpV2Config(f.env, context).epochFile, f.file);
 });

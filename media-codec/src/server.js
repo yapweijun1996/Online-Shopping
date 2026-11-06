@@ -2,7 +2,7 @@ import http from 'node:http';
 import { chmod, lstat, readFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
-import { CodecError, MAX_SOURCE, TOTAL_MS, encodeOutput } from './contract.js';
+import { CodecError, MAX_SOURCE, TOTAL_MS, encodeOutput, CODEC_READY_PATH, CODEC_READY_TEXT } from './contract.js';
 
 const ALLOWED_HEADERS = new Set(['authorization', 'content-type', 'content-length', 'x-source-sha256', 'host', 'connection']);
 function reply(response, status, code) {
@@ -25,6 +25,12 @@ export function createCodecServer({ token, decode, fatal = () => process.exit(70
     if (names.length !== new Set(names).size || names.some(name => !ALLOWED_HEADERS.has(name)) ||
         expected.length !== presented.length || !timingSafeEqual(expected, presented)) {
       reply(response, 401, 'UNAUTHORIZED'); return;
+    }
+    if (request.method === 'GET' && request.url === CODEC_READY_PATH) {
+      if (names.some(name => !['authorization', 'host', 'connection'].includes(name))) { reply(response, 400, 'INVALID_READY'); return; }
+      response.writeHead(200, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(CODEC_READY_TEXT),
+        'cache-control': 'no-store', connection: 'close' });
+      response.end(CODEC_READY_TEXT); return;
     }
     if (request.method !== 'POST' || request.url !== '/v1/decode') { reply(response, 404, 'NOT_FOUND'); return; }
     const size = request.headers['content-length'];

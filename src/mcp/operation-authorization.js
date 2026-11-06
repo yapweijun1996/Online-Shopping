@@ -1,3 +1,4 @@
+import { operationEpochCurrent } from './operation-epoch.js';
 import { ApiError } from '../http.js';
 import { can } from '../roles.js';
 import { hash, liveGrant, stamp, SCOPES, V2_SCOPES } from './credentials.js';
@@ -23,6 +24,7 @@ async function authorizePolicy(store, { bearer, binding, epochHash, policy, cons
   if (typeof epochHash !== 'string' || !/^[0-9a-f]{64}$/.test(epochHash) ||
       !binding || typeof binding.tenantId !== 'string' || typeof binding.issuer !== 'string' ||
       typeof binding.resource !== 'string') deny();
+  if (!operationEpochCurrent(binding.mcpV2)) deny();
   const { scope, capability, requiredScopes } = policy;
 
   // Deployment mode is not the shop's persisted setup choice. Require a real
@@ -50,6 +52,7 @@ async function authorizePolicy(store, { bearer, binding, epochHash, policy, cons
   grant.id, binding.tenantId, grant.account_id, grant.client_id, required, grant.account_auth_version, epochHash, grant.created_at, cutoff);
   if (!consent || !mediaInstant(consent.consented_at)) deny();
   }
+  if (!operationEpochCurrent(binding.mcpV2)) deny();
   return { grant, authority: Object.freeze({ tenantId: binding.tenantId, accountId: grant.account_id, clientId: grant.client_id, grantId: grant.id,
     accountAuthVersion: grant.account_auth_version, grantExpiresAt: grant.absolute_expires_at, tokenIssuedAt: token.issued_at,
     scope, requiredScopes }) };

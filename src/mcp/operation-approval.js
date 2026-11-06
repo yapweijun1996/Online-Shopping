@@ -5,7 +5,7 @@ import { SqlLimiter } from '../limiter.js';
 import { can } from '../roles.js';
 import { getShopSetup } from '../shop-setup.js';
 import { readStoredOperation } from './operation-envelope.js';
-import { operationEpochHash } from './operation-epoch.js';
+import { operationEpochHash, operationEpochCurrent } from './operation-epoch.js';
 import { hash, secret, liveGrant, stamp, SCOPES, V2_SCOPES } from './credentials.js';
 import { COMPANY_CURRENCY_ACKNOWLEDGED, COMPANY_CURRENCY_WARNING, requiresCompanyCurrencyAcknowledgement } from './company-approval-policy.js';
 import { OPERATION_APPROVAL_TOOLS, operationAuthorityPolicy, MEDIA_REVIEW_ACKNOWLEDGED } from './operation-policy.js';
@@ -19,6 +19,14 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const digest = /^[0-9a-f]{64}$/;
 const knownScopes = new Set([...SCOPES, ...V2_SCOPES]);
 const forbidden = () => { throw new ApiError(403, 'FORBIDDEN', 'Approval could not be verified.'); };
+async function epochTransaction(store, binding, work) {
+  return store.transaction(async () => {
+    if (!operationEpochCurrent(binding.mcpV2)) forbidden();
+    const result = await work();
+    if (!operationEpochCurrent(binding.mcpV2)) forbidden();
+    return result;
+  });
+}
 function sameSecret(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string') return false;
   const x = Buffer.from(a), y = Buffer.from(b);
@@ -48,6 +56,7 @@ function requireSafeConfig(binding, sellerOrigin, quickLogin, enabled, epoch, bu
 }
 
 async function humanContext(store, binding, tenantRevision, epochHash, buildDigest, session, row, mediaEnabled, catalogUpdateEnabled, catalogCreateEnabled, codecDigest) {
+  if (!operationEpochCurrent(binding.mcpV2)) return null;
   if (session.account.mustChangePassword || !row || row.state !== 'PENDING_APPROVAL' || row.expires_at <= stamp() || row.created_at > stamp() ||
       row.account_id !== session.account.id || row.tenant_revision !== tenantRevision ||
       row.epoch_hash !== epochHash || row.build_digest !== buildDigest) return null;
@@ -83,6 +92,7 @@ async function humanContext(store, binding, tenantRevision, epochHash, buildDige
   const mediaState = media ? await readMediaReviewState(store, row, envelope, mediaContext, {catalogUpdateEnabled,catalogCreateEnabled,codecDigest}) : null;
   let currencyAcknowledgementRequired;
   try { currencyAcknowledgementRequired = requiresCompanyCurrencyAcknowledgement(envelope); } catch { return null; }
+  if (!operationEpochCurrent(binding.mcpV2)) return null;
   return { envelope, grant, policy, shop, currencyAcknowledgementRequired, mediaContext, mediaState };
 }
 
@@ -100,7 +110,7 @@ export function createOperationReview({ store, binding, sellerOrigin, quickLogin
     return tenantGuard.withActiveTenant(binding.tenantId, async (tenant) => {
       const initial = await readSession(store, token);
       if (!initial || !await reviewLimit.attempt(initial.account.id)) forbidden();
-      return store.transaction(async () => {
+      return epochTransaction(store, binding, async () => {
         if (!tenant || !Number.isSafeInteger(tenant.revision) || tenant.revision < 0) forbidden();
         const session = await readSession(store, token);
         if (!session) forbidden();
@@ -151,7 +161,7 @@ export function createMediaReviewDelivery(options) {
       if (!tenant || !Number.isSafeInteger(tenant.revision) || tenant.revision < 0) forbidden();
       const initial = await readSession(store, token);
       if (!initial || !sameSecret(request.headers.get('x-csrf-token'), initial.csrf_token) || !await limiter.attempt(initial.account.id)) forbidden();
-      return store.transaction(async () => {
+      return epochTransaction(store, binding, async () => {
         const session = await readSession(store, token);
         if (!session || !sameSecret(request.headers.get('x-csrf-token'), session.csrf_token)) forbidden();
         const row = await store.get('SELECT * FROM mcp_v2_operation WHERE id=?', input.operationId);
@@ -224,7 +234,7 @@ export function createOperationApproval({ store, binding, sellerOrigin, quickLog
       if (!await addressLimit.attempt(clientAddress) || !await accountLimit.attempt(initial.account.id)) {
         throw new ApiError(429, 'RATE_LIMITED', 'Too many approval attempts.');
       }
-      return store.transaction(async () => {
+      return epochTransaction(store, binding, async () => {
         const session = await readSession(store, token);
         if (!session || !sameSecret(request.headers.get('x-csrf-token'), session.csrf_token)) forbidden();
         const row = await store.get('SELECT * FROM mcp_v2_operation WHERE id = ?', input.operationId);
@@ -244,7 +254,7 @@ export function createOperationApproval({ store, binding, sellerOrigin, quickLog
       });
     });
     if (!await verifyPasswordAsync(input.password, snapshot.passwordHash)) forbidden();
-    return tenantGuard.withActiveTenant(binding.tenantId, (tenant) => store.transaction(async () => {
+    return tenantGuard.withActiveTenant(binding.tenantId, (tenant) => epochTransaction(store, binding, async () => {
       if (!tenant || tenant.revision !== snapshot.tenantRevision) forbidden();
       const session = await readSession(store, token);
       if (!session || session.account.id !== snapshot.accountId || session.token_hash !== snapshot.sessionHash ||

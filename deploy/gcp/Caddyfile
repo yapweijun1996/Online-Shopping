@@ -11,9 +11,9 @@
 	encode gzip
 	header X-Content-Type-Options nosniff
 	header Strict-Transport-Security "max-age=31536000"
-	header Referrer-Policy strict-origin-when-cross-origin
-	header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
-	header Cache-Control no-cache
+	header ?Referrer-Policy strict-origin-when-cross-origin
+	header ?Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+	header ?Cache-Control no-cache
 }
 (tenant) {
 	# API requests retain their prefix; static requests pass the metadata-only gate.
@@ -23,7 +23,19 @@
 	}
 	handle @tenant {
 		route {
-			@tenant_api path_regexp ^/[a-z0-9]{3,30}/(?:api/|{args[0]}/manifest\.webmanifest$|p/|s/|mcp$|oauth/|\.well-known/oauth-)
+			@tenant_connector {
+				host {$SELLER_HOST}
+				path_regexp ^/[a-z0-9]{3,30}/(?:mcp$|oauth/(?:register|authorize|token|revoke|consent\.(?:js|css)|operation|operation-review\.(?:js|css))$|\.well-known/oauth-(?:protected-resource(?:/mcp)?|authorization-server)$)
+			}
+			handle @tenant_connector {
+				header >Cache-Control no-store
+				import proxy
+			}
+			@tenant_connector_denied path_regexp ^/[a-z0-9]{3,30}/(?:mcp(?:/|$)|oauth(?:/|$)|\.well-known/oauth-)
+			handle @tenant_connector_denied {
+				respond 404
+			}
+			@tenant_api path_regexp ^/[a-z0-9]{3,30}/(?:api/|{args[0]}/manifest\.webmanifest$|p/|s/)
 			handle @tenant_api {
 				import proxy
 			}
@@ -135,9 +147,9 @@ http://{$SELLER_HOST} {
 			respond 404
 		}
 		# Seller MCP connector: the backend answers 404 unless MCP_ENABLED=1, and OAuth responses stay no-store.
-		@connector path /mcp /oauth/register /oauth/authorize /oauth/token /oauth/revoke /oauth/consent.js /oauth/consent.css /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/* /.well-known/oauth-authorization-server /.well-known/oauth-authorization-server/*
+		@connector path /mcp /oauth/register /oauth/authorize /oauth/token /oauth/revoke /oauth/consent.js /oauth/consent.css /oauth/operation /oauth/operation-review.js /oauth/operation-review.css /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/* /.well-known/oauth-authorization-server /.well-known/oauth-authorization-server/*
 		handle @connector {
-			header Cache-Control no-store
+			header >Cache-Control no-store
 			import proxy
 		}
 		import tenant seller

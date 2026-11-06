@@ -16,6 +16,7 @@ import { createPlatformRuntime } from './platform/runtime.js';
 import { deploymentPaused } from './deployment-maintenance.js';
 import { ApiError, errorResponse } from './http.js';
 import { createWhatsAppQrInternalApi } from './whatsapp-qr/internal-api.js';
+import { externalRequestUrl } from './request-origin.js';
 
 function clientAddress(request, config) {
   const forwarded = request.headers['x-real-ip'];
@@ -23,7 +24,7 @@ function clientAddress(request, config) {
   return request.socket.remoteAddress || 'unknown';
 }
 
-function toFetchRequest(request, config) {
+export function toFetchRequest(request, config) {
   // WHATWG URLs normalize encoded dot segments. Reject the raw code position before that normalization.
   if (config.platform && /^\/[^/?]*%|^\/\/|\\/.test(request.url)) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
   const headers = new Headers();
@@ -31,7 +32,7 @@ function toFetchRequest(request, config) {
     headers.append(request.rawHeaders[index], request.rawHeaders[index + 1]);
   }
   const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
-  return new Request(new URL(request.url, `http://${request.headers.host || 'localhost'}`), {
+  return new Request(externalRequestUrl(request, config), {
     method: request.method,
     headers,
     body: hasBody ? Readable.toWeb(request) : undefined,
