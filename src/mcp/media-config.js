@@ -1,3 +1,4 @@
+import { deploymentProfileAllowsProduction } from './deployment-profile.js';
 import { constants, closeSync, fstatSync, lstatSync, openSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,7 +9,7 @@ const canonicalPath = value => {
   return path.resolve(value);
 };
 
-/** Fixed development harness policy, not remote worker attestation. Never logs secrets. */
+/** Fixed sealed worker policy, not remote worker attestation. Never logs secrets. */
 export function readMediaCodecToken(config) {
   let descriptor;
   try {
@@ -38,7 +39,8 @@ export function readMcpMediaConfig(env, { production, mcpEnabled, mcpV2, shopMod
   const flag = env.MCP_V2_MEDIA_ENABLED ?? '0';
   if (!['0','1'].includes(flag)) throw new Error('MCP_V2_MEDIA_ENABLED must be 0 or 1.');
   if (flag === '0') return Object.freeze({ enabled: false });
-  if (production === true || !['development','test'].includes(env.NODE_ENV)) throw new Error('MCP media requires explicit development or test mode; production activation is blocked.');
+  const productionProfile = production === true && env.NODE_ENV === 'production' && deploymentProfileAllowsProduction(mcpV2?.profile);
+  if (!productionProfile && (production === true || !['development','test'].includes(env.NODE_ENV))) throw new Error('MCP media requires explicit development or test mode; production activation is blocked without its reviewed profile.');
   if (mcpEnabled !== true || mcpV2?.enabled !== true || shopMode !== 'manual' || sellerQuickLogin !== false) throw new Error('MCP media requires safe MCP v2 and a manual shop without quick login.');
   const identity = env.MCP_V2_MEDIA_CODEC_IDENTITY;
   if (typeof identity !== 'string' || !/^sha256:[a-f0-9]{64}$/.test(identity)) throw new Error('MCP_V2_MEDIA_CODEC_IDENTITY must be a trusted configured sha256 artifact identity.');

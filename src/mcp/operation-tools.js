@@ -1,3 +1,4 @@
+import { mcpOperationRuntimeEnabled, mcpMediaRuntimeEnabled } from './deployment-profile.js';
 import { ApiError } from '../http.js';
 import { randomUUID } from 'node:crypto';
 import { canonicalOperationJson } from './operation-envelope.js';
@@ -96,7 +97,7 @@ function selectOnly(store) {
 
 export function createOperationTools({ store, binding, config, tenantGuard, quickLogin, entries = [] }) {
   if (!Array.isArray(entries) || entries.length > Object.keys(OPERATION_MUTATION_PAIRS).length + readNames.size + 5) invalid();
-  const mediaEnabled = config.mcpMedia?.enabled === true && config.production === false && config.shopMode === 'manual';
+  const mediaEnabled = mcpMediaRuntimeEnabled(config,{quickLogin,tenantGuard});
   const catalogUpdateEnabled = catalogMediaUpdateEnabled(config,{quickLogin,tenantGuard});
   const catalogCreateEnabled = catalogMediaCreateEnabled(config,{quickLogin,tenantGuard});
   const tools = [], byName = new Map(), adapters = Object.create(null), skipped = new Set();
@@ -196,10 +197,9 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
     }
   }
   if (Buffer.byteLength(JSON.stringify(tools)) > 131072) invalid();
-  const enabled = config.mcpEnabled === true && config.mcpV2?.enabled === true && config.production !== true &&
-    config.shopMode !== 'public-demo' && quickLogin === false && Boolean(tenantGuard);
+  const enabled = mcpOperationRuntimeEnabled(config,{quickLogin,tenantGuard});
   if (!enabled || !tools.length) return Object.freeze({ catalogue: Object.freeze([]), find: () => null, requiredScopes: () => null, call: () => { throw new ApiError(404, 'NOT_FOUND', 'Not found.'); } });
-  const engine = Object.keys(adapters).length ? createOperationEngine({ store, binding, adapters, tenantGuard, quickLogin, ...config.mcpV2, catalogUpdateEnabled, catalogCreateEnabled }) : null;
+  const engine = Object.keys(adapters).length ? createOperationEngine({ store, binding, adapters, tenantGuard, quickLogin, ...config.mcpV2, production: config.production, catalogUpdateEnabled, catalogCreateEnabled }) : null;
   const epochHash = operationEpochHash(config.mcpV2.epoch), read = selectOnly(store);
   const controls=tools.some(tool=>Object.hasOwn(OPERATION_CONTROL_CONTRACTS,tool.name))?createOperationControls({store,binding,config,tenantGuard,quickLogin}):null;
   return Object.freeze({ catalogue: Object.freeze(tools), find: name => byName.get(name)?.tool || null,

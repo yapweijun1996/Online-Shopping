@@ -1,3 +1,4 @@
+import { readMcpDeploymentProfile, deploymentProfileAllowsProduction } from './deployment-profile.js';
 import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import path from 'node:path';
@@ -44,13 +45,12 @@ export function operationBuildDigest(root = sourceRoot) {
   return hash.digest('hex');
 }
 
-export function readMcpV2Config(env, { mcpEnabled, sellerOrigin, dbPath }) {
+export function readMcpV2Config(env, { mcpEnabled, sellerOrigin, dbPath, profile: suppliedProfile }) {
   const flag = env.MCP_V2_ENABLED ?? '0';
   if (!['0', '1'].includes(flag)) throw new Error('MCP_V2_ENABLED must be 0 or 1.');
   if (flag === '0') return Object.freeze({ enabled: false });
-  // This branch is an isolated implementation, without an operational restore
-  // rehearsal, coordinated epoch rotation, retention policy or release review.
-  if (env.NODE_ENV === 'production') throw new Error('MCP v2 production activation requires a reviewed release.');
+  const profile = readMcpDeploymentProfile(env, { mcpEnabled, sellerOrigin });
+  if (suppliedProfile && JSON.stringify(suppliedProfile) !== JSON.stringify(profile)) throw new Error('MCP v2 deployment profile mismatch.');
   let origin;
   try { origin = new URL(sellerOrigin); } catch { /* Reject missing and malformed origins below. */ }
   if (mcpEnabled !== true || typeof sellerOrigin !== 'string' || origin?.protocol !== 'https:' ||
@@ -75,7 +75,12 @@ export function readMcpV2Config(env, { mcpEnabled, sellerOrigin, dbPath }) {
   } catch { throw new Error('MCP_V2_EPOCH_FILE must contain a canonical 32-byte epoch outside the database and public directories.'); }
   // Filesystem separation cannot establish separation from the backup domain.
   // Operators must still coordinate all-instance drain and rotation on restore.
-  return Object.freeze({ enabled: true, epoch, buildDigest: operationBuildDigest() });
+  const sourceDigest = operationBuildDigest();
+  // Trusted operator pin plus installed source. This is not self/hardware attestation.
+  const buildDigest = deploymentProfileAllowsProduction(profile)
+    ? sha256(JSON.stringify({ domain: 'mcp-v2/production-build/v1', backendIdentity: profile.backendIdentity, sourceDigest }))
+    : sourceDigest;
+  return Object.freeze({ enabled: true, epoch, buildDigest, profile });
 }
 
 async function extensionObjects(store) {
