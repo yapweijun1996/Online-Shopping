@@ -243,6 +243,24 @@ class Lifecycle(unittest.TestCase):
             with self.assertRaises(RuntimeError):self.f.activate(release())
         self.assertTrue(self.f.paused())
         self.assertFalse(any(c[0]=='docker' and 'up' in c[1] and c[1][-1]=='frontend' for c in self.calls))
+    def test_running_capable_image_with_off_or_mismatched_profile_is_not_healthy(self):
+        env={'NODE_ENV':'production','MCP_ENABLED':'1',**{key:'1' for key in u.MCP_FLAGS},
+             'MCP_V2_PRODUCTION_PROFILE':u.PROFILE,'MCP_V2_BACKEND_IDENTITY':ID,
+             'MCP_V2_MEDIA_CODEC_IDENTITY':ID,'MCP_V2_EPOCH_FILE':'/run/mcp-control/epoch',
+             'MCP_V2_MEDIA_SOCKET_PATH':'/run/mcp-codec/socket/codec.sock','MCP_V2_MEDIA_TOKEN_FILE':'/run/mcp-codec/token',
+             'TRUST_PROXY':'1','SHOP_MODE':'manual','SELLER_QUICK_LOGIN':'0'}
+        info=dict(Image=ID,Config=dict(Env=[k+'='+v for k,v in env.items()]),Mounts=[
+            dict(Type='bind',RW=False,Source=self.sup.probe()['generationPath'],Destination='/run/mcp-codec'),
+            dict(Type='bind',RW=False,Source=str(self.root/'mcp-control'),Destination='/run/mcp-control')])
+        with patch.object(self.f,'docker',return_value=json.dumps(info)):self.f.verify_mcp_backend(release())
+        for key in env:
+            bad=json.loads(json.dumps(info));bad['Config']['Env']=[k+'='+('wrong' if k==key else v) for k,v in env.items()]
+            with self.subTest(key=key),patch.object(self.f,'docker',return_value=json.dumps(bad)):
+                with self.assertRaisesRegex(ValueError,'profile mismatch'):self.f.verify_mcp_backend(release())
+        info['Config']['Env'].append('MCP_V2_ENABLED=0')
+        with patch.object(self.f,'docker',return_value=json.dumps(info)):
+            with self.assertRaisesRegex(ValueError,'backend environment'):self.f.verify_mcp_backend(release())
+
     def test_pre_frontend_gate_checks_identity_and_mounts_before_readiness(self):
         self.f.wait_backend=u.Updater.wait_backend.__get__(self.f)
         with patch.object(self.f,'verify_mcp_backend',side_effect=lambda item:self.calls.append(('bound-tuple',item['sha']))),patch.object(self.f,'backend_probe',side_effect=lambda item:self.calls.append(('ready-rpc',item['sha']))):

@@ -449,6 +449,22 @@ class Updater:
             backend = json.loads(self.docker('inspect', '--format', '{{json .}}', 'online-shopping-gcp-backend-1'))
             if backend.get('Image') != release['mcp']['backendIdentity']:
                 raise ValueError('Running backend identity mismatch')
+            expected_env = {
+                'NODE_ENV': 'production', 'MCP_ENABLED': '1', **{key: '1' for key in MCP_FLAGS},
+                'MCP_V2_PRODUCTION_PROFILE': PROFILE, 'MCP_V2_BACKEND_IDENTITY': release['mcp']['backendIdentity'],
+                'MCP_V2_MEDIA_CODEC_IDENTITY': release['mcp']['codec']['imageId'],
+                'MCP_V2_EPOCH_FILE': '/run/mcp-control/epoch',
+                'MCP_V2_MEDIA_SOCKET_PATH': '/run/mcp-codec/socket/codec.sock',
+                'MCP_V2_MEDIA_TOKEN_FILE': '/run/mcp-codec/token',
+                'TRUST_PROXY': '1', 'SHOP_MODE': 'manual', 'SELLER_QUICK_LOGIN': '0',
+            }
+            actual_env = {}
+            for entry in backend.get('Config', {}).get('Env', []):
+                key, separator, value = entry.partition('=')
+                if not separator or key in actual_env: raise ValueError('Invalid running backend environment')
+                actual_env[key] = value
+            if any(actual_env.get(key) != value for key, value in expected_env.items()):
+                raise ValueError('Running MCP profile mismatch')
             codec = self.supervisor().probe()
             if codec.get('imageId') != release['mcp']['codec']['imageId'] or codec.get('revision') != release['sha']:
                 raise ValueError('Running codec identity mismatch')
