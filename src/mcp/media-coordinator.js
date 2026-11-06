@@ -1,3 +1,4 @@
+import { deploymentProfileAllowsProduction } from './deployment-profile.js';
 import { ApiError } from '../http.js';
 import { SqlLimiter } from '../limiter.js';
 import { operationEpochHash } from './operation-epoch.js';
@@ -46,8 +47,8 @@ const readOnly = store => Object.freeze({ dialect: store.dialect, get: (sql, ...
 
 /** Trusted construction only; bearer is a transport credential, never model input. */
 export function createMediaCoordinator({ store, binding, tenantGuard, epoch, buildDigest, codec,
-  enabled = false, quickLogin, production, decode = decodeViaSocket }) {
-  if (enabled !== true || quickLogin !== false || production !== false || !store?.transaction ||
+  enabled = false, quickLogin, production, profile, decode = decodeViaSocket }) {
+  if (enabled !== true || quickLogin !== false || (![true,false].includes(production) || (production === true && (!deploymentProfileAllowsProduction(profile) || decode !== decodeViaSocket))) || !store?.transaction ||
       typeof tenantGuard?.withActiveTenant !== 'function' || !isMediaHash(buildDigest) || !codec || !isMediaHash(codec.digest) ||
       typeof codec.socketPath !== 'string' || !codec.socketPath.startsWith('/') ||
       !/^[A-Za-z0-9_-]{43}$/.test(codec.token ?? '') || typeof decode !== 'function') throw new TypeError('Explicit safe media coordinator configuration required.');
@@ -56,7 +57,10 @@ export function createMediaCoordinator({ store, binding, tenantGuard, epoch, bui
     if (!binding.tenantId || typeof binding.tenantId !== 'string' || issuer.protocol !== 'https:' || issuer.username ||
         issuer.password || issuer.search || issuer.hash || binding.resource !== binding.issuer + '/mcp') throw 0;
   } catch { throw new TypeError('Secure media binding required.'); }
-  binding = Object.freeze({ tenantId: binding.tenantId, issuer: binding.issuer, resource: binding.resource });
+  if (production === true && (binding?.mcpV2?.enabled !== true || !deploymentProfileAllowsProduction(binding.mcpV2.profile) ||
+      canonicalOperationJson(binding.mcpV2.profile) !== canonicalOperationJson(profile) || binding.mcpV2.epoch !== epoch || binding.mcpV2.buildDigest !== buildDigest ||
+      typeof binding.mcpV2.epochFile !== 'string' || !binding.mcpV2.epochFile.startsWith('/'))) throw new TypeError('Production media requires its validated epoch binding.');
+  binding = Object.freeze({ tenantId: binding.tenantId, issuer: binding.issuer, resource: binding.resource, mcpV2: binding.mcpV2 });
   codec = Object.freeze({ ...codec });
   const epochHash = operationEpochHash(epoch), read = readOnly(store);
   const appendLimiter = new SqlLimiter(store, 'mcp:v2:media-append', { limit: MEDIA_LIMITS.appendCalls, windowMs: MEDIA_LIMITS.rateWindowMs });
