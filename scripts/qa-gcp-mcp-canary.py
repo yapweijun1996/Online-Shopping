@@ -35,6 +35,11 @@ HEX64 = re.compile(r'[0-9a-f]{64}\Z')
 ID = re.compile(r'sha256:[0-9a-f]{64}\Z')
 SHA = re.compile(r'[0-9a-f]{40}\Z')
 SERVICES = ('frontend', 'backend', 'postgres', 'whatsapp-qr', 'whatsapp-qr-slot1')
+RELEASE_BINDS = {
+    ('frontend', '/etc/caddy/Caddyfile'): '${RELEASE_DIR:?Release required}/deploy/gcp/Caddyfile',
+    ('postgres', '/docker-entrypoint-initdb.d/01-schema.sql'): '${RELEASE_DIR:?Release required}/src/postgres/schema.sql',
+    ('postgres', '/docker-entrypoint-initdb.d/02-app-role.sh'): '${RELEASE_DIR:?Release required}/deploy/init-postgres.sh',
+}
 PHASES = ('source', 'A', 'B', 'C', 'E-on', 'D', 'E-off')
 READY_PROGRAM = "fetch('http://127.0.0.1:3000/ready',{signal:AbortSignal.timeout(4000)}).then(async r=>{if(!r.ok)process.exit(1);console.log(await r.text())}).catch(()=>process.exit(1))"
 LEGACY_BASELINE_PROGRAM = "import{createHash}from'node:crypto';import{catalogue}from'./src/mcp/tools.js';const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;const tools=catalogue.map(({scope,...tool})=>tool);if(tools.length!==8)process.exit(1);console.log(JSON.stringify({version:1,count:8,sha256:createHash('sha256').update(JSON.stringify(canonical(tools))).digest('hex')}));"
@@ -133,9 +138,22 @@ def transform_compose(value, ns):
         network.setdefault('labels', {})[OWNER_LABEL] = ns.nonce
     result['volumes']['pg_data']['name'] = ns.project + '_pg_data'
     result['volumes']['pg_data'].setdefault('labels', {})[OWNER_LABEL] = ns.nonce
-    for service in result['services'].values():
+    for name, service in result['services'].items():
         require(not service.get('ports') and not service.get('privileged') and not service.get('container_name'), 'COMPOSE_PORTS')
         service.setdefault('labels', {})[OWNER_LABEL] = ns.nonce
+        for mount in service.get('volumes', []):
+            expected = RELEASE_BINDS.get((name, mount.get('target')))
+            if expected is None:
+                continue
+            require(mount.get('source') == expected and mount.get('read_only') is True and
+                    mount.get('type') in ('volume', 'bind'), 'COMPOSE_RELEASE_BIND')
+            if mount['type'] == 'volume':
+                # Compose --no-interpolate classifies these variable-prefixed
+                # short paths as named volumes. Only these three RO files bind.
+                require(set(mount) == {'type', 'source', 'target', 'read_only', 'volume'} and
+                        mount['volume'] == {}, 'COMPOSE_RELEASE_BIND_OPTIONS')
+                mount['type'] = 'bind'
+                del mount['volume']
     return result
 
 
@@ -731,12 +749,14 @@ class Harness:
 
     def cleanup(self):
         self.step('cleanup_only_nonce_owned_resources')
+        existing=self.raw('ps','-a','--no-trunc','--filter','label='+PROJECT_LABEL+'='+self.ns.project,'--format','{{.Names}}').splitlines()
         if not self.guard.compose_hash:
-            require(not self.raw('ps','-a','--filter','label='+PROJECT_LABEL+'='+self.ns.project,'--format','{{.ID}}').strip(),'UNRENDERED_PROJECT_EXISTS')
-        elif (self.root/'images.env').exists():
+            require(not existing,'UNRENDERED_PROJECT_EXISTS')
+        elif (self.root/'images.env').exists() and (existing or (self.root/'mcp-codec').exists()):
             controller=self.controller()
             if (self.root/'mcp-codec').exists():
-                controller.pause();controller.stop_clients(controller.compose({}))
+                controller.pause()
+                if existing:controller.stop_clients(controller.compose({}))
                 supervisor=controller.supervisor()
                 if supervisor.status().get('status')!='absent':supervisor.stop(drained=True)
             else:controller.stop_clients(controller.compose({}))

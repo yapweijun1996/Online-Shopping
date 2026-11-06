@@ -1,17 +1,45 @@
 #!/usr/bin/env python3
-"""Canary namespace/ownership boundaries only. Never invokes Docker or native code."""
+"""Offline guards by default; --compose-parser-only explicitly tests config parsing."""
+import copy
 import importlib.util
 import json
+import os
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 import subprocess
+import sys
 import unittest
 from unittest.mock import Mock, patch
 
 ROOT=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('canary',ROOT/'scripts/qa-gcp-mcp-canary.py')
 c=importlib.util.module_from_spec(spec);spec.loader.exec_module(c)
+
+
+def namespace_only(value, ns):
+    """Expected pre-fix namespace changes; all other input dictionaries survive."""
+    result=copy.deepcopy(value)
+    for key,network in result['networks'].items():
+        network.pop('external',None);network.pop('ipam',None)
+        network.update(name=ns.project+'_'+key,internal=True)
+        network.setdefault('labels',{})[c.OWNER_LABEL]=ns.nonce
+    result['volumes']['pg_data']['name']=ns.project+'_pg_data'
+    result['volumes']['pg_data'].setdefault('labels',{})[c.OWNER_LABEL]=ns.nonce
+    for service in result['services'].values():service.setdefault('labels',{})[c.OWNER_LABEL]=ns.nonce
+    return result
+
+
+def release_mounts():
+    return {
+        'frontend':[{'type':'volume','source':'${RELEASE_DIR:?Release required}/deploy/gcp/Caddyfile',
+                     'target':'/etc/caddy/Caddyfile','read_only':True,'volume':{}}],
+        'postgres':[{'type':'volume','source':'pg_data','target':'/var/lib/postgresql/data','volume':{}},
+                    {'type':'volume','source':'${RELEASE_DIR:?Release required}/src/postgres/schema.sql',
+                     'target':'/docker-entrypoint-initdb.d/01-schema.sql','read_only':True,'volume':{}},
+                    {'type':'volume','source':'${RELEASE_DIR:?Release required}/deploy/init-postgres.sh',
+                     'target':'/docker-entrypoint-initdb.d/02-app-role.sh','read_only':True,'volume':{}}],
+    }
 
 
 class Tests(unittest.TestCase):
@@ -145,6 +173,48 @@ class Tests(unittest.TestCase):
         value=self.app();value['Config']['Labels']['com.docker.compose.service']='postgres'
         with self.assertRaises(c.Blocked):self.guard.owned(value,self.ns.app('backend'))
 
+    def release_compose(self):
+        value={'name':self.ns.project,'services':{s:{'image':s,'mem_limit':192,'read_only':True,
+                'environment':{'MCP_ENABLED':'${MCP_ENABLED:-0}'}} for s in c.SERVICES},
+               'networks':{'edge':{'external':True},'private':{},'egress':{'ipam':{'config':[{'subnet':'192.168.247.0/24'}]}}},
+               'volumes':{'pg_data':{}}}
+        for name,mounts in release_mounts().items():value['services'][name]['volumes']=mounts
+        return value
+
+    def test_only_three_reviewed_readonly_release_files_become_bind_mounts(self):
+        value=self.release_compose();before=copy.deepcopy(value)
+        expected=namespace_only(value,self.ns)
+        for name,indices in [('frontend',(0,)),('postgres',(1,2))]:
+            for index in indices:
+                mount=expected['services'][name]['volumes'][index]
+                mount['type']='bind';del mount['volume']
+        self.assertEqual(c.transform_compose(value,self.ns),expected)
+        self.assertEqual(value,before)
+        self.assertEqual(expected['services']['postgres']['volumes'][0],before['services']['postgres']['volumes'][0])
+
+    def test_release_bind_source_readonly_and_volume_options_fail_closed(self):
+        changes=[{'source':'/opt/other/Caddyfile'},{'source':'${RELEASE_DIR}/deploy/gcp/Caddyfile'},
+                 {'read_only':False},{'type':'tmpfs'},{'volume':{'nocopy':True}},{'unexpected':True}]
+        for change in changes:
+            value=self.release_compose();value['services']['frontend']['volumes'][0].update(change)
+            with self.subTest(change=change),self.assertRaisesRegex(c.Blocked,'COMPOSE_RELEASE_BIND'):
+                c.transform_compose(value,self.ns)
+
+    def test_unlisted_service_or_target_never_gets_a_bind_conversion(self):
+        value=self.release_compose()
+        unrelated=copy.deepcopy(value['services']['frontend']['volumes'][0])
+        unrelated['target']='/elsewhere/Caddyfile'
+        value['services']['frontend']['volumes'].append(unrelated)
+        value['services']['backend']['volumes']=[copy.deepcopy(value['services']['frontend']['volumes'][0])]
+        result=c.transform_compose(value,self.ns)
+        self.assertEqual(result['services']['frontend']['volumes'][1],unrelated)
+        self.assertEqual(result['services']['backend']['volumes'],value['services']['backend']['volumes'])
+
+    def test_already_bind_release_mounts_keep_existing_bind_options(self):
+        value=self.release_compose();mount=value['services']['frontend']['volumes'][0]
+        mount['type']='bind';mount['bind']={'create_host_path':False};del mount['volume']
+        self.assertEqual(c.transform_compose(value,self.ns)['services']['frontend']['volumes'][0],mount)
+
     def test_compose_refuses_colliding_project_before_mutation(self):
         with tempfile.TemporaryDirectory() as directory:
             self.ns.root=Path(directory);path=self.ns.root/'compose.yaml';path.write_text('{}')
@@ -173,6 +243,73 @@ class Tests(unittest.TestCase):
         self.assertIn(state['container'],self.record['codecs'])
         bad=list(args);bad[bad.index('--network=none')]='--network=host'
         with self.assertRaises(c.Blocked):self.guard.call(bad,self.raw,supervisor=supervisor)
+
+
+class Cleanup(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        self.h=object.__new__(c.Harness);self.h.root=Path(self.temp.name);self.h.ns=c.Namespace('012345abcdef')
+        self.h.ns.root=self.h.root
+        (self.h.root/'compose.yaml').write_text('{"invalid":"rendered fixture"}')
+        (self.h.root/'images.env').write_text('SYNTHETIC_ONLY=1\n')
+        self.h.record={'io':{}};self.h.persist=Mock();self.h.step=Mock();self.h.controller=Mock()
+        self.h.guard=c.DockerGuard(self.h.ns,set(),self.h.record['io'],self.h.persist)
+        self.h.guard.compose_hash=c.digest((self.h.root/'compose.yaml').read_bytes())
+        self.names=[];self.resources={};self.calls=[];self.containers={}
+        self.h.raw=self.raw
+
+    def raw(self,*args,**kwargs):
+        self.calls.append(args)
+        if args[0]=='ps':
+            return '\n'.join(self.names if args[-1]=='{{.Names}}' else [self.containers[n]['Id'] for n in self.names])
+        if args[0]=='inspect':return json.dumps(self.containers[args[-1]])
+        if args[0] in ('network','volume'):
+            kind,action=args[:2]
+            if action=='ls':
+                name=args[3].removeprefix('name=^').removesuffix('$')
+                return name if (kind,name) in self.resources else ''
+            if action=='inspect':return json.dumps([self.resources[(kind,args[2])]])
+            if action=='rm':del self.resources[(kind,args[2])];return ''
+        self.fail('Unexpected Docker dispatch: '+repr(args))
+
+    def resource(self,kind,logical,**labels):
+        name=self.h.ns.project+'_'+logical
+        self.resources[(kind,name)]={'Name':name,'Labels':{c.OWNER_LABEL:self.h.ns.nonce,c.PROJECT_LABEL:self.h.ns.project,**labels}}
+        return name
+
+    def test_rendered_invalid_empty_project_cleans_only_proven_owned_resources(self):
+        network=self.resource('network','edge');volume=self.resource('volume','pg_data')
+        self.h.cleanup()
+        self.h.controller.assert_not_called()
+        self.assertEqual([x for x in self.calls if x[1:2]==('rm',)], [('network','rm',network),('volume','rm',volume)])
+        self.assertEqual(self.resources,{})
+        self.assertEqual(self.h.record['cleanup']['status'],'PASSED')
+        self.assertEqual(self.calls[0][:4],('ps','-a','--no-trunc','--filter'))
+
+    def test_empty_project_does_not_allow_foreign_resource_cleanup(self):
+        self.resource('volume','pg_data',**{c.OWNER_LABEL:'other'})
+        with self.assertRaisesRegex(c.Blocked,'RESOURCE_OWNER'):self.h.cleanup()
+        self.assertFalse(any(x[1:2]==('rm',) for x in self.calls))
+        self.h.controller.assert_not_called()
+
+    def test_existing_project_cannot_skip_stop_or_foreign_container_checks(self):
+        name=self.h.ns.app('backend');self.names=[name]
+        self.containers[name]={'Id':'1'*64,'Name':'/'+name,'Config':{'Labels':{
+            c.OWNER_LABEL:'other',c.PROJECT_LABEL:self.h.ns.project,'com.docker.compose.service':'backend'}}}
+        prefix=['compose','--project-name',self.h.ns.project,'--env-file',str(self.h.root/'runtime.env'),
+                '--env-file',str(self.h.root/'images.env'),'-f',str(self.h.root/'compose.yaml'),
+                '--profile','whatsapp-qr','--profile','whatsapp-qr-slot1']
+        stop=Mock(side_effect=lambda compose:self.h.guard.call(compose+['stop','--timeout','35','frontend'],self.raw))
+        self.h.controller.return_value=SimpleNamespace(compose=lambda release:prefix,stop_clients=stop)
+        with self.assertRaisesRegex(c.Blocked,'OWNER_LABEL'):self.h.cleanup()
+        stop.assert_called_once_with(prefix)
+        self.assertFalse(any(x[0] in ('compose','rm') or x[1:2]==('rm',) for x in self.calls))
+
+    def test_unrendered_project_with_containers_still_fails_closed(self):
+        self.h.guard.compose_hash=None;self.names=[self.h.ns.app('backend')]
+        with self.assertRaisesRegex(c.Blocked,'UNRENDERED_PROJECT_EXISTS'):self.h.cleanup()
+        self.h.controller.assert_not_called()
+        self.assertEqual(len(self.calls),1)
 
 
 class Checkpoints(unittest.TestCase):
@@ -345,4 +482,54 @@ await assert.rejects(passwordApproval('/approval',{},{}),/APPROVAL_BUDGET/);asse
         with self.assertRaisesRegex(c.Blocked,'LEGACY_BASELINE_REQUIRED'):h.legacy_hash()
 
 
-if __name__=='__main__':unittest.main()
+def compose_parser_only():
+    """Opt-in real config parser; an absent Docker socket prevents daemon access."""
+    check=unittest.TestCase();ns=c.Namespace('012345abcdef')
+    with tempfile.TemporaryDirectory(prefix='mcp-canary-compose-parser-') as directory:
+        folder=Path(directory);docker_config=folder/'docker';docker_config.mkdir()
+        (docker_config/'config.json').write_text('{}')
+        release=folder/'nonexistent-release'/c.PREVIOUS
+        environment=folder/'synthetic.env'
+        environment.write_text('SHOP_HOST=shop.example.invalid\nSELLER_HOST=seller.example.invalid\nADMIN_USERNAME=synthetic_owner\n'
+            'APP_REVISION='+c.PREVIOUS+'\nRELEASE_DIR='+str(release)+'\nSECRETS_DIR='+str(folder/'nonexistent-secrets')+'\n'
+            'BACKEND_IMAGE=ghcr.io/yapweijun1996/online-shopping-backend@sha256:'+'1'*64+'\n'
+            'FRONTEND_IMAGE=ghcr.io/yapweijun1996/online-shopping-frontend@sha256:'+'2'*64+'\n')
+        prefix=['docker','--host=unix://'+str(folder/'absent-daemon.sock'),'--config',str(docker_config),'compose',
+                '--project-name',ns.project,'--env-file',str(environment)]
+        def parse(path,unexpanded=False):
+            args=prefix+['-f',str(path),'--profile','whatsapp-qr','--profile','whatsapp-qr-slot1','config']
+            if unexpanded:args+=['--no-interpolate','--no-path-resolution']
+            return subprocess.run(args+['--format','json'],capture_output=True,text=True,timeout=30,
+                env={'PATH':os.environ.get('PATH','/usr/bin:/bin'),'HOME':str(folder),'LC_ALL':'C'})
+        normalized=parse(ROOT/'compose.gcp.yaml',True)
+        check.assertEqual(normalized.returncode,0,normalized.stderr)
+        original=json.loads(normalized.stdout);broken=namespace_only(original,ns)
+        fixed=c.transform_compose(original,ns);expected=copy.deepcopy(broken);changed=0
+        for service,indices in [('frontend',(0,)),('postgres',(1,2))]:
+            for index in indices:
+                check.assertEqual(original['services'][service]['volumes'][index],release_mounts()[service][index])
+                mount=expected['services'][service]['volumes'][index]
+                mount['type']='bind';del mount['volume'];changed+=1
+        check.assertEqual(fixed,expected)  # Every other normalized dictionary is unchanged.
+        for name,value in [('before.json',broken),('after.json',fixed)]:
+            (folder/name).write_text(json.dumps(value))
+        before=parse(folder/'before.json');after=parse(folder/'after.json')
+        check.assertNotEqual(before.returncode,0)
+        check.assertIn('refers to undefined volume',before.stderr)
+        check.assertEqual(after.returncode,0,after.stderr)
+        parsed=json.loads(after.stdout)
+        for service,indices in [('frontend',(0,)),('postgres',(1,2))]:
+            for index in indices:
+                mount=parsed['services'][service]['volumes'][index]
+                check.assertEqual(mount['type'],'bind');check.assertIs(mount['read_only'],True)
+                check.assertTrue(mount['source'].startswith(str(release)+'/'))
+        check.assertEqual(parsed['services']['postgres']['volumes'][0],original['services']['postgres']['volumes'][0])
+        check.assertFalse(release.exists());check.assertFalse((folder/'absent-daemon.sock').exists())
+        print(json.dumps({'status':'PASSED','scope':'COMPOSE_PARSER_ONLY','changedReadonlyMounts':changed,
+            'originalRejected':True,'fixedAccepted':True,'otherDictionariesUnchanged':True,
+            'postgresNamedVolumeUnchanged':True,'releaseFilesAbsent':True,'daemonSocketAbsent':True}))
+
+
+if __name__=='__main__':
+    if sys.argv[1:]==['--compose-parser-only']:compose_parser_only()
+    else:unittest.main()
