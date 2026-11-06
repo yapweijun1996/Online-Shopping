@@ -11,6 +11,17 @@ const need = (ok, code) => { if (!ok) throw new Error(code); };
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const secret = () => randomBytes(32).toString('base64url');
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+function canonicalDefinitions(value) {
+  if (Array.isArray(value)) return value.map(canonicalDefinitions);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonicalDefinitions(value[key])]));
+  return value;
+}
+function assertLegacyDefinitions(tools, trustedHash) {
+  need(typeof trustedHash === 'string' && /^[a-f0-9]{64}$/.test(trustedHash), 'LEGACY_BASELINE_REQUIRED');
+  const actual = hash(JSON.stringify(canonicalDefinitions(tools)));
+  need(actual === trustedHash, 'LEGACY_BASELINE_MISMATCH');
+  return actual;
+}
 const legacyScopes = ['catalog.read', 'orders.read', 'analytics.read'];
 const scopes = [...legacyScopes, 'company.read', 'company.write', 'catalog.write', 'media.read', 'media.write',
   'inventory.read', 'inventory.adjust', 'orders.decide', 'analytics.extended', 'operations.read', 'operations.cancel'];
@@ -102,6 +113,7 @@ async function listed(family, expected) {
   need(response.status === 200 && Array.isArray(response.data.result?.tools), 'TOOLS_LIST');
   const tools = response.data.result.tools;
   need(same(tools.map(x => x.name).sort(), [...expected].sort()), 'EXACT_TOOL_NAMES');
+  if (expected === legacyNames) evidence.legacyDefinitionsSha256 = assertLegacyDefinitions(tools, input.legacyDefinitionsSha256);
   return tools;
 }
 
@@ -120,7 +132,14 @@ async function business() {
   return { marker: rows[0].availability_text, ...counts };
 }
 
-async function company(pending = false) {
+async function passwordApproval(path, body, session) {
+  state.approvalAttempts ??= 0;
+  need(state.approvalAttempts < 5, 'APPROVAL_BUDGET');
+  state.approvalAttempts++;
+  return request(path, 'POST', body, session);
+}
+
+async function company({ pending = false, previewOnly = false, wrongPassword = false } = {}) {
   const before = (await tool(state.full, 'company.get', {})).company;
   const marker = `Synthetic canary ${input.nonce} ${secret().slice(0, 8)}`;
   const op = await tool(state.full, 'company.preview_update', { input: { expectedRevision: before.revision, changes: { availabilityText: marker } }, idempotencyKey: 'synthetic-canary-' + secret() });
@@ -129,12 +148,18 @@ async function company(pending = false) {
   need((await rpc(state.full, 'tools/call', { name: 'company.commit_update', arguments: { operationId: op.operationId } })).status === 403, 'COMMIT_REQUIRES_APPROVAL');
   let review = await request(path, 'GET', undefined, state.full.session);
   need(review.status === 200 && review.data.previewHash === op.previewHash && review.data.proposal.after.availabilityText === marker, 'PROTECTED_REVIEW');
-  const approval = () => ({ operationId: op.operationId, previewHash: op.previewHash, challenge: review.data.challenge, decision: 'approve', password: state.password });
-  need((await request(path + '/approval', 'POST', approval(), { ...state.full.session, 'X-CSRF-Token': 'wrong' })).status === 403, 'APPROVAL_CSRF');
-  need((await request(path + '/approval', 'POST', { ...approval(), password: 'Wrong-synthetic-password-7391!' }, state.full.session)).status === 403, 'APPROVAL_PASSWORD');
-  review = await request(path, 'GET', undefined, state.full.session); need(review.status === 200, 'FRESH_REVIEW');
-  need((await request(path + '/approval', 'POST', approval(), state.full.session)).status === 200, 'SYNTHETIC_PASSWORD_APPROVAL');
   state.pending = op;
+  if (previewOnly) { evidence.company = { previewOnly: true, syntheticApproval: false }; return; }
+  const approval = () => ({ operationId: op.operationId, previewHash: op.previewHash, challenge: review.data.challenge, decision: 'approve', password: state.password });
+  // The real approval route rejects CSRF before its persistent address quota.
+  need((await request(path + '/approval', 'POST', approval(), { ...state.full.session, 'X-CSRF-Token': 'wrong' })).status === 403, 'APPROVAL_CSRF');
+  if (wrongPassword) {
+    need(input.action === 'on' && !state.wrongPasswordTested, 'WRONG_PASSWORD_ONCE');
+    need((await passwordApproval(path + '/approval', { ...approval(), password: 'Wrong-synthetic-password-7391!' }, state.full.session)).status === 403, 'APPROVAL_PASSWORD');
+    state.wrongPasswordTested = true;
+  }
+  review = await request(path, 'GET', undefined, state.full.session); need(review.status === 200, 'FRESH_REVIEW');
+  need((await passwordApproval(path + '/approval', approval(), state.full.session)).status === 200, 'SYNTHETIC_PASSWORD_APPROVAL');
   if (pending) return;
   const first = await tool(state.full, 'company.commit_update', { operationId: op.operationId });
   const replay = await tool(state.full, 'company.commit_update', { operationId: op.operationId });
@@ -143,6 +168,7 @@ async function company(pending = false) {
   const audits = (await query("SELECT COUNT(*)::int AS n FROM mcp_audit WHERE operation_id=$1 AND event='CALL' AND outcome='COMMITTED'", [op.operationId]))[0].n;
   need(lifecycle === 1 && audits === 1 && (await business()).marker === marker, 'EXACTLY_ONCE_DATABASE');
   state.marker = marker; evidence.company = { commitEvents: lifecycle, committedCalls: audits, replayed: true, syntheticApproval: true };
+  state.committed = { operationId: op.operationId, result: first.result };
 }
 
 async function full() {
@@ -150,7 +176,7 @@ async function full() {
   const initialized = await rpc(state.full, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'synthetic-canary', version: '1' } });
   need(initialized.status === 200 && initialized.data.result?.protocolVersion === '2025-06-18', 'PROTOCOL');
   const tools = await listed(state.full, names);
-  evidence.tools = { count: tools.length, namesSha256: hash([...names].sort().join('\n')), explicitConsent: true };
+  evidence.tools = { count: tools.length, namesSha256: hash([...names].sort().join('\n')), exactNames: true, new24ResponseSchemasClaimed: false, explicitConsent: true };
 }
 
 async function native() {
@@ -178,6 +204,7 @@ async function main() {
   const chunks = []; let size = 0;
   for await (const chunk of process.stdin) { size += chunk.length; need(size <= 65536, 'INPUT_BOUND'); chunks.push(chunk); }
   input = JSON.parse(Buffer.concat(chunks)); state = input.state || {};
+  need(/^[a-f0-9]{64}$/.test(input.legacyDefinitionsSha256 || ''), 'LEGACY_BASELINE_REQUIRED');
   need(/^[0-9a-f]{12}$/.test(input.nonce) && input.sellerHost === `seller.${input.nonce}.invalid` &&
     input.origin === 'https://' + input.sellerHost && input.redirect === `https://client.example.com/canary-${input.nonce}` &&
     process.env.NODE_ENV === 'production' && process.env.ADMIN_USERNAME === 'synthetic_owner' &&
@@ -191,22 +218,25 @@ async function main() {
     await business(); evidence.baseline = { schema: 34, products: 0, orders: 0, mcpOff: true };
   } else if (input.action === 'on') {
     await full(); state.legacy = await authorize(legacyScopes);
-    state.legacyDefinitionHash = hash(JSON.stringify(await listed(state.legacy, legacyNames)));
+    await listed(state.legacy, legacyNames);
     need((await rpc(state.legacy, 'tools/call', { name: 'company.preview_update', arguments: { input: { expectedRevision: 'a'.repeat(64), changes: { availabilityText: 'Unconsented' } }, idempotencyKey: 'synthetic-denied-' + secret() } })).status === 403, 'LEGACY_WRITE_DENIED');
-    await company(); await native();
+    await company({ wrongPassword: true }); await native();
   } else if (input.action === 'native') await native();
   else if (input.action === 'readiness-failed') {
     need((await request('/ready')).status === 503, 'CRASH_PRIVATE_READINESS'); evidence.privateReadinessFailed = true;
   }
   else if (input.action === 'grants-live') {
     await listed(state.full, names);
-    need(hash(JSON.stringify(await listed(state.legacy, legacyNames))) === state.legacyDefinitionHash, 'LEGACY_CONTRACT');
+    await listed(state.legacy, legacyNames);
+    const replay = await tool(state.full, 'company.commit_update', { operationId: state.committed.operationId });
+    need(replay.status === 'COMMITTED' && replay.replayed === true && same(replay.result, state.committed.result), 'RECOVERED_COMMIT_REPLAY');
     need((await business()).marker === state.marker, 'COMMERCE_PRESERVED'); evidence.grantsPreserved = true;
-  } else if (input.action === 'pending') await company(true);
+    evidence.committedReplayAcrossRecovery = true;
+  } else if (input.action === 'pending') await company({ pending: true });
   else if (input.action === 'epoch-fenced') {
     need((await rpc(state.full, 'tools/call', { name: 'company.commit_update', arguments: { operationId: state.pending.operationId } })).status === 403, 'EPOCH_PENDING_FENCE');
     await listed(state.legacy, legacyNames); need((await business()).marker === state.marker, 'ROLLBACK_NO_COMMERCE_UNDO');
-    await full(); await company(); evidence.sameBuildEpochFence = true;
+    await full(); await company({ previewOnly: true }); evidence.sameBuildEpochFence = true;
   } else if (input.action === 'restore-prepare') {
     state.restoreFull = state.full; state.restoreLegacy = state.legacy;
     state.restoreCode = await authorize(legacyScopes, false);
@@ -237,12 +267,16 @@ async function main() {
       mcpAuthorization: { authorizationRequestId: state.restoreUnbound.authorizationRequestId, proof: state.restoreUnbound.proof } }, { Origin: input.origin });
     need(unbound.status === 403, 'RESTORED_UNBOUND_DENIED');
     await full(); state.legacy = await authorize(legacyScopes);
-    state.legacyDefinitionHash = hash(JSON.stringify(await listed(state.legacy, legacyNames)));
+    await listed(state.legacy, legacyNames);
     await company(); evidence.restoreHygiene = { staleFamilies: 2, sessionsDenied: 2, codeDenied: true, unboundDenied: true, actualPasswordChange: true };
+  } else if (input.action === 'fallback-marker') {
+    await company(); evidence.fallbackMarkerCommitted = true;
   } else if (input.action === 'off') {
     need((await request('/mcp')).status === 404 && (await business()).marker === state.marker, 'OFF_FALLBACK_COMMERCE');
+    need(state.approvalAttempts === 5 && state.wrongPasswordTested === true, 'COMPLETE_APPROVAL_BUDGET');
     evidence.offFallback = { mcpOff: true, commercePreserved: true };
   } else throw new Error('ACTION');
+  evidence.approvalAttempts = state.approvalAttempts ?? 0;
   if (pool) await pool.end();
   process.stdout.write(JSON.stringify({ ok: true, state, evidence }));
 }

@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
+import subprocess
 import unittest
 from unittest.mock import Mock, patch
 
@@ -72,7 +73,7 @@ class Tests(unittest.TestCase):
             calls.append(args)
             return json.dumps(full) if args[-3:-1]==('--format','{{json .}}') else 'ACTUAL_STATE_BYTES'
         self.assertEqual(self.guard.call(['inspect','--format','{{json .State}}','online-shopping-gcp-backend-1'],actual),'ACTUAL_STATE_BYTES')
-        self.assertEqual(calls[-1][-1],self.ns.app('backend'))
+        self.assertEqual(calls[-1][-1],full['Id'])
 
     def test_mutation_uses_proven_id_and_refuses_foreign_owner(self):
         self.guard.owned(self.app(),self.ns.app('backend'))
@@ -83,6 +84,32 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.calls[-1],('rm','-f','1'*64))
         value=self.app();value['Config']['Labels'][c.OWNER_LABEL]='foreign'
         with self.assertRaises(c.Blocked):self.guard.call(['rm','-f','1'*64],lambda *a,**kw:json.dumps(value))
+
+    def test_name_replacement_cannot_redirect_kill_remove_or_exec(self):
+        self.guard.programs.add('SAFE_PROGRAM')
+        for command,target_index in [(['kill','--signal=KILL',self.ns.app('backend')],2),
+                                     (['rm','-f',self.ns.app('backend')],2),
+                                     (['exec',self.ns.app('backend'),'node','-e','SAFE_PROGRAM'],1)]:
+            calls=[]
+            def actual(*args,**kwargs):
+                calls.append(args)
+                if args[0]=='inspect':return json.dumps(self.app())
+                # The inspected owner disappeared; a foreign container now owns
+                # the same name. Docker must receive the proven old ID only.
+                self.assertEqual(args[target_index],'1'*64)
+                raise c.Blocked('OWNED_ID_GONE')
+            with self.subTest(command=command),self.assertRaisesRegex(c.Blocked,'OWNED_ID_GONE'):
+                self.guard.call(command,actual)
+            self.assertEqual(calls[-1][target_index],'1'*64)
+
+    def test_known_id_is_inspected_by_id_and_cannot_follow_a_reused_name(self):
+        self.guard.owned(self.app(),self.ns.app('backend'))
+        calls=[]
+        def actual(*args,**kwargs):
+            calls.append(args);self.assertEqual(args[-1],'1'*64)
+            raise c.Blocked('OWNED_ID_GONE')
+        with self.assertRaisesRegex(c.Blocked,'OWNED_ID_GONE'):self.guard.call(['rm','-f','1'*64],actual)
+        self.assertEqual(len(calls),1)
 
     def test_supervisor_receipt_binds_name_owner_generation_and_image(self):
         state={'container':'shopping-mcp-codec-'+'2'*32,'generation':'g-'+'2'*32,'owner':'3'*32,'manifest':{'imageId':'sha256:'+'a'*64}}
@@ -152,8 +179,17 @@ class Checkpoints(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         self.h=object.__new__(c.Harness);self.h.root=Path(self.temp.name);self.h.ns=c.Namespace('012345abcdef')
-        self.h.record={'phases':{},'io':{}};self.snapshots=[]
-        self.h.persist=lambda:self.snapshots.append(json.loads(json.dumps(self.h.record)))
+        self.h.manifest={'nonce':self.h.ns.nonce};self.h.base_images=set();self.snapshots=[]
+        self.h.record={'version':1,'nonce':self.h.ns.nonce,'manifestHash':c.digest(json.dumps(self.h.manifest,sort_keys=True).encode()),'phases':{},'io':{}}
+        self.h.guard=c.DockerGuard(self.h.ns,set(),self.h.record['io'],lambda:None)
+        def persist():
+            self.snapshots.append(json.loads(json.dumps(self.h.record)))
+            c.private_json(self.h.root/'canary.json',self.h.record)
+        self.h.persist=persist;self.h.persist()
+        # CI is unprivileged; fixture files are synthetic temp files. The actual
+        # run() lock and disk reload remain real, not an in-memory substitute.
+        self.reader=patch.object(c,'read_private',side_effect=lambda path,*args:json.loads(Path(path).read_text()))
+        self.reader.start();self.addCleanup(self.reader.stop)
 
     def test_missing_prior_phase_never_calls_action(self):
         self.h.phase_B=Mock()
@@ -162,10 +198,11 @@ class Checkpoints(unittest.TestCase):
         self.h.phase_B.assert_not_called();self.assertEqual(self.h.record['phases'],{})
 
     def test_started_and_failed_phase_cannot_silently_restart(self):
-        self.h.record['phases']['source']={'status':'RUNNING'};self.h.source=Mock()
+        self.h.record['phases']['source']={'status':'RUNNING'};self.h.persist();self.h.source=Mock()
         with self.assertRaisesRegex(c.Blocked,'INTERRUPTED_PHASE'):self.h.run('source')
         self.h.source.assert_not_called()
         self.h.record['phases']['source']['status']='BLOCKED'
+        self.h.persist()
         with self.assertRaisesRegex(c.Blocked,'INTERRUPTED_PHASE'):self.h.run('source')
         self.h.source.assert_not_called()
 
@@ -194,6 +231,28 @@ class Checkpoints(unittest.TestCase):
             c.fcntl.flock(handle,c.fcntl.LOCK_EX|c.fcntl.LOCK_NB);self.h.lock_probe()
         with self.assertRaisesRegex(c.Blocked,'SHARED_LOCK_CONTENTION'):self.h.lock_probe()
 
+    def test_two_preconstructed_harnesses_reload_phase_and_io_inside_real_lock(self):
+        self.h.record['phases']['source']={'status':'PASSED'};self.h.persist()
+        first=self.h
+        second=object.__new__(c.Harness)
+        second.root=first.root;second.ns=first.ns;second.manifest=first.manifest;second.base_images=set()
+        second.record=json.loads((first.root/'canary.json').read_text())
+        second.guard=c.DockerGuard(second.ns,set(),second.record['io'],lambda:None)
+        second.persist=lambda:c.private_json(second.root/'canary.json',second.record)
+        actions=[]
+        def phase():
+            actions.append('A');first.record['imageIds']=['sha256:'+'2'*64]
+            first.record['io']['ids']={'3'*64:first.ns.app('backend')};first.record['composeHash']='4'*64
+            return {'fixture':True}
+        first.phase_A=phase;second.phase_A=lambda:actions.append('DUPLICATE')
+        with patch.object(c.os,'uname',return_value=SimpleNamespace(machine='amd64')):
+            first.run('A');second.run('A')
+        self.assertEqual(actions,['A'])
+        self.assertIs(second.guard.record,second.record['io'])
+        self.assertIn('sha256:'+'2'*64,second.guard.images)
+        self.assertEqual(second.guard.compose_hash,'4'*64)
+        self.assertEqual(second.guard.record['ids'],{'3'*64:first.ns.app('backend')})
+
 
 class Manifest(unittest.TestCase):
     def manifest(self):
@@ -219,6 +278,71 @@ class Manifest(unittest.TestCase):
         with self.assertRaises(c.Blocked):c.validate_manifest(value)
         value=self.manifest();value['policyHashes']['deploy/gcp/update.py']='0'*64
         with self.assertRaises(c.Blocked):c.validate_manifest(value)
+
+
+class ClientAssertions(unittest.TestCase):
+    """Pure client assertions/recorded requests only; Node builtins, no app/DB."""
+    def setUp(self):
+        self.source=(ROOT/'scripts/qa-gcp-mcp-canary.mjs').read_text()
+
+    def node(self,program):
+        result=subprocess.run(['node','--input-type=module','-e',program],capture_output=True,text=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stderr)
+
+    def test_full_legacy_definition_hash_rejects_same_names_with_changed_schema(self):
+        functions=self.source[self.source.index('function canonicalDefinitions('):self.source.index('const legacyScopes')]
+        self.node("""import{createHash}from'node:crypto';import assert from'node:assert/strict';
+const need=(ok,code)=>{if(!ok)throw Error(code)};const hash=v=>createHash('sha256').update(v).digest('hex');
+"""+functions+"""
+const tools=Array.from({length:8},(_,i)=>({name:'read.'+i,description:'Frozen definition',inputSchema:{type:'object',additionalProperties:false},outputSchema:{type:'string',maxLength:32}}));
+const baseline=hash(JSON.stringify(canonicalDefinitions(tools)));
+assert.equal(assertLegacyDefinitions(tools,baseline),baseline);
+const changed=structuredClone(tools);changed[0].outputSchema.maxLength=64;
+assert.deepEqual(changed.map(x=>x.name),tools.map(x=>x.name));
+assert.throws(()=>assertLegacyDefinitions(changed,baseline),/LEGACY_BASELINE_MISMATCH/);
+assert.throws(()=>assertLegacyDefinitions(tools,undefined),/LEGACY_BASELINE_REQUIRED/);
+assert.throws(()=>assertLegacyDefinitions(tools,'candidate-self-hash'),/LEGACY_BASELINE_REQUIRED/);
+""")
+
+    def test_actual_company_helper_uses_five_paid_attempts_with_preview_and_replay(self):
+        functions=self.source[self.source.index('async function passwordApproval('):self.source.index('async function full()')]
+        self.node("""import assert from'node:assert/strict';
+const need=(ok,code)=>{if(!ok)throw Error(code)};const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);const secret=()=> 'a'.repeat(43);
+let input={action:'on',nonce:'012345abcdef'},state={password:'correct',full:{session:{'X-CSRF-Token':'valid'}}},evidence={},marker=null,next=0,proposal,paid=0,badCsrf=0;
+const commits=new Map();
+async function business(){return{marker}}
+async function query(){return[{n:1}]}
+async function rpc(){return{status:403}}
+async function tool(family,name,args){
+ if(name==='company.get')return{company:{revision:'r'.repeat(64),availabilityText:marker}};
+ if(name==='company.preview_update'){proposal={operationId:'op'+(++next),previewHash:'h'.repeat(64),status:'PENDING_APPROVAL',marker:args.input.changes.availabilityText};return proposal}
+ if(name==='company.commit_update'){const replayed=commits.has(args.operationId);const result={revision:'receipt-'+args.operationId};commits.set(args.operationId,result);marker=proposal.marker;return{status:'COMMITTED',result,replayed}}
+ throw Error('UNKNOWN_FIXTURE_TOOL');
+}
+async function request(path,method,body,headers){
+ if(method==='GET')return{status:200,data:{previewHash:proposal.previewHash,challenge:'c'.repeat(43),proposal:{after:{availabilityText:proposal.marker}}}};
+ if(headers['X-CSRF-Token']==='wrong'){badCsrf++;return{status:403}}
+ paid++;return{status:body.password==='correct'?200:403};
+}
+"""+functions+"""
+await company({wrongPassword:true});assert.equal(paid,2);assert.equal(state.approvalAttempts,2);
+// C uses the already committed receipt; no company approval is performed.
+await tool(state.full,'company.commit_update',{operationId:state.committed.operationId});assert.equal(paid,2);
+input.action='pending';await company({pending:true});assert.equal(paid,3);
+input.action='epoch-fenced';await company({previewOnly:true});assert.equal(paid,3);
+input.action='restore-finished';await company();assert.equal(paid,4);
+input.action='fallback-marker';await company();assert.equal(paid,5);assert.equal(state.approvalAttempts,5);
+assert.equal(badCsrf,4);assert.equal(state.wrongPasswordTested,true);
+await assert.rejects(passwordApproval('/approval',{},{}),/APPROVAL_BUDGET/);assert.equal(paid,5);
+""")
+
+    def test_missing_or_wrong_published_baseline_has_no_candidate_fallback(self):
+        h=object.__new__(c.Harness);h.record={};h.manifest={'previous':{'backend':'PINNED_OLD_IMAGE'}}
+        with self.assertRaisesRegex(c.Blocked,'LEGACY_BASELINE_REQUIRED'):h.legacy_hash()
+        h.record['legacyContract']={'revision':c.PREVIOUS,'backend':'PINNED_OLD_IMAGE','count':8,'sha256':'a'*64}
+        self.assertEqual(h.legacy_hash(),'a'*64)
+        h.record['legacyContract']['backend']='CANDIDATE_IMAGE'
+        with self.assertRaisesRegex(c.Blocked,'LEGACY_BASELINE_REQUIRED'):h.legacy_hash()
 
 
 if __name__=='__main__':unittest.main()

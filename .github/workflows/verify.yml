@@ -34,6 +34,7 @@ jobs:
       - run: python3 test/auto-update.test.py
       - run: python3 test/gcp-deploy.test.py
       - run: python3 test/gcp-mcp-deploy.test.py
+      - run: python3 test/gcp-mcp-canary.test.py
       - run: npm run check
       - run: npm test
         env:

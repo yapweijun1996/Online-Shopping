@@ -37,6 +37,7 @@ SHA = re.compile(r'[0-9a-f]{40}\Z')
 SERVICES = ('frontend', 'backend', 'postgres', 'whatsapp-qr', 'whatsapp-qr-slot1')
 PHASES = ('source', 'A', 'B', 'C', 'E-on', 'D', 'E-off')
 READY_PROGRAM = "fetch('http://127.0.0.1:3000/ready',{signal:AbortSignal.timeout(4000)}).then(async r=>{if(!r.ok)process.exit(1);console.log(await r.text())}).catch(()=>process.exit(1))"
+LEGACY_BASELINE_PROGRAM = "import{createHash}from'node:crypto';import{catalogue}from'./src/mcp/tools.js';const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;const tools=catalogue.map(({scope,...tool})=>tool);if(tools.length!==8)process.exit(1);console.log(JSON.stringify({version:1,count:8,sha256:createHash('sha256').update(JSON.stringify(canonical(tools))).digest('hex')}));"
 COUNTS_SQL = "SELECT json_build_object('grants',(SELECT COUNT(*) FROM oauth_grant WHERE revoked_at IS NULL),'tokens',(SELECT COUNT(*) FROM oauth_token WHERE revoked_at IS NULL),'codes',(SELECT COUNT(*) FROM oauth_authorization_code WHERE consumed_at IS NULL AND expires_at::timestamptz>clock_timestamp()),'sessions',(SELECT COUNT(*) FROM session),'unbound',(SELECT COUNT(*) FROM oauth_authorization_request WHERE account_id IS NULL AND consumed_at IS NULL AND expires_at::timestamptz>clock_timestamp()))"
 
 
@@ -183,8 +184,10 @@ class DockerGuard:
         return value
 
     def inspect(self, name, raw):
-        name = self._name(name)
-        return self.owned(json.loads(raw('inspect', '--format', '{{json .}}', name)), name)
+        target=name;name=self._name(target)
+        value=self.owned(json.loads(raw('inspect','--format','{{json .}}',target)),name)
+        if HEX64.fullmatch(target):require(value['Id']==target,'CONTAINER_ID')
+        return value
 
     def compose(self, args, raw):
         prefix = ['compose', '--project-name', self.ns.project, '--env-file', str(self.ns.root/'runtime.env'),
@@ -252,23 +255,24 @@ class DockerGuard:
             require(app or codec, 'PS_FILTER')
         elif action == 'inspect':
             require(args[1:-1] in [['--format','{{json .}}'], ['--format','{{json .State}}'], ['--format','{{.Config.Image}}'], ['--format={{json .}}']], 'INSPECT_FORMAT')
-            self.inspect(args[-1], raw)
+            args[-1]=self.inspect(args[-1],raw)['Id']
         elif action == 'exec':
             offset = 2 if args[1:2]==['-i'] else 1
-            self.inspect(args[offset], raw)
+            name=self._name(args[offset]);proved=self.inspect(args[offset],raw)
             command = args[offset+1:]
             if command[:1] == ['node']:
                 allowed = (command[:2] == ['node','-e'] and len(command)==3 and command[2] in self.programs) or (command[:3]==['node','--input-type=module','-e'] and len(command)==4 and command[3] in self.programs)
                 require(allowed, 'EXEC_NODE')
             else:
-                require(args[offset] == self.ns.app('postgres') and command in [
+                require(name == self.ns.app('postgres') and command in [
                     ['pg_dump','-U','online_shopping','-d','online_shopping','--format=custom'],
                     ['pg_restore','-U','online_shopping','-d','online_shopping','--clean','--if-exists','--exit-on-error','--single-transaction'],
                     ['psql','-U','online_shopping','-d','online_shopping','-tA','-v','ON_ERROR_STOP=1','-c',COUNTS_SQL],
                 ], 'EXEC_PG')
+            args[offset]=proved['Id']
         elif action in ('rm','kill'):
             require(args[1:-1] == (['-f'] if action=='rm' else ['--signal=KILL']), 'MUTATION_OPTIONS')
-            self.inspect(args[-1], raw)
+            args[-1]=self.inspect(args[-1],raw)['Id']
         elif action == 'run' and supervisor is not None:
             name = args[args.index('--name')+1]
             labels = [args[i+1] for i,x in enumerate(args[:-1]) if x=='--label']
@@ -383,8 +387,9 @@ class Harness:
             r=manifest[key];images.update(v for k,v in r.items() if k!='sha')
             images.update('ghcr.io/yapweijun1996/online-shopping-'+x+':'+r['sha'] for x in ('backend','frontend'))
         images.add('ghcr.io/yapweijun1996/online-shopping-backend:media-codec-'+manifest['candidate']['sha'])
+        self.base_images=set(images)
         images.update(self.record.get('imageIds',[]))
-        self.guard=DockerGuard(self.ns,images,self.record['io'],self.persist,[READY_PROGRAM,self.module.frontend_probe('shop.'+self.ns.nonce+'.invalid'),self.client_code])
+        self.guard=DockerGuard(self.ns,images,self.record['io'],self.persist,[READY_PROGRAM,LEGACY_BASELINE_PROGRAM,self.module.frontend_probe('shop.'+self.ns.nonce+'.invalid'),self.client_code])
         self.guard.compose_hash=self.record.get('composeHash')
         self.lock=None
 
@@ -397,6 +402,17 @@ class Harness:
 
     def persist(self):
         private_json(self.root/'canary.json',self.record)
+
+    def reload_checkpoint(self):
+        value=read_private(self.root/'canary.json',1048576)
+        require(value.get('version')==1 and value.get('nonce')==self.ns.nonce and
+                value.get('manifestHash')==digest(json.dumps(self.manifest,sort_keys=True).encode()) and
+                isinstance(value.get('phases'),dict) and isinstance(value.get('io'),dict),'CHECKPOINT_IDENTITY')
+        require(isinstance(value.get('imageIds',[]),list) and all(isinstance(x,str) and ID.fullmatch(x) for x in value.get('imageIds',[])),'CHECKPOINT_IMAGES')
+        self.record=value
+        self.guard.record=value['io']
+        self.guard.images=self.base_images|set(value.get('imageIds',[]))
+        self.guard.compose_hash=value.get('composeHash')
 
     def step(self, name):
         self.record['step']=name;self.persist()
@@ -505,7 +521,7 @@ class Harness:
         state=read_private(private) if private.exists() else {}
         data={'nonce':self.ns.nonce,'sellerHost':'seller.'+self.ns.nonce+'.invalid',
               'origin':'https://seller.'+self.ns.nonce+'.invalid','redirect':'https://client.example.com/canary-'+self.ns.nonce,
-              'action':action,'state':state,**extra}
+              'action':action,'state':state,'legacyDefinitionsSha256':self.legacy_hash(),**extra}
         payload=json.dumps(data).encode();require(len(payload)<=65536,'CLIENT_STATE_BOUND')
         result=self.docker('exec','-i',self.ns.app('backend'),'node','--input-type=module','-e',self.client_code,input=payload,timeout=120)
         value=json.loads(result)
@@ -513,6 +529,24 @@ class Harness:
         private_json(private,value['state'])
         self.record.setdefault('evidence',{}).setdefault(self.record['activePhase'],[]).append(value['evidence']);self.persist()
         return value['evidence']
+
+    def legacy_hash(self):
+        oracle=self.record.get('legacyContract')
+        require(isinstance(oracle,dict) and set(oracle)=={'revision','backend','count','sha256'} and
+                oracle['revision']==PREVIOUS and oracle['backend']==self.manifest['previous']['backend'] and
+                type(oracle['count']) is int and oracle['count']==8 and isinstance(oracle['sha256'],str) and
+                HEX64.fullmatch(oracle['sha256']),'LEGACY_BASELINE_REQUIRED')
+        return oracle['sha256']
+
+    def capture_legacy_baseline(self):
+        value=self.guard.inspect(self.ns.app('backend'),self.raw)
+        env=dict(x.split('=',1) for x in value.get('Config',{}).get('Env',[]))
+        require(value['Config']['Image']==self.manifest['previous']['backend'] and env.get('MCP_ENABLED')=='0','LEGACY_BASELINE_IMAGE')
+        actual=json.loads(self.docker('exec',self.ns.app('backend'),'node','--input-type=module','-e',LEGACY_BASELINE_PROGRAM,timeout=15))
+        require(isinstance(actual,dict) and set(actual)=={'version','count','sha256'} and actual['version']==1 and
+                type(actual['count']) is int and actual['count']==8 and HEX64.fullmatch(actual['sha256']),'LEGACY_BASELINE_OUTPUT')
+        self.record['legacyContract']={'revision':PREVIOUS,'backend':self.manifest['previous']['backend'],'count':8,'sha256':actual['sha256']}
+        self.persist();return self.record['legacyContract']
 
     def accept(self,release,previous=None):
         controller=self.controller()
@@ -563,8 +597,8 @@ class Harness:
         self.step('historical_manual_bootstrap')
         controller.activate(old,initial=True);controller.health(old);controller.unpause()
         controller.save('canary_historical_baseline',current=old,previous=None,pending=None,local=controller.local_fingerprint())
-        self.pg_identity();self.client('baseline')
-        return {'historicalManualBootstrap':True,'initializeTrustGateClaimed':False,'sha':old['sha'],'policy':self.policy_readback()}
+        self.capture_legacy_baseline();self.pg_identity();self.client('baseline')
+        return {'historicalManualBootstrap':True,'initializeTrustGateClaimed':False,'sha':old['sha'],'legacyContract':self.record['legacyContract'],'policy':self.policy_readback()}
 
     def phase_B(self):
         trust=self.controller();sha=self.manifest['candidate']['sha']
@@ -667,6 +701,7 @@ class Harness:
                 'actualPackagedCli':True,'trustedSyntheticPasswordReset':True,'productionDataUsed':False}
 
     def phase_E_off(self):
+        self.client('fallback-marker')
         candidate=self.record['releases']['candidate'];old=self.record['releases']['previous'];controller=self.controller()
         epoch=digest((self.root/'mcp-control/epoch').read_bytes())
         controller.save('canary_pending_health_fault',pending=candidate,pending_kind=None)
@@ -729,13 +764,14 @@ class Harness:
                 'executionComplete':all(self.record['phases'].get(x,{}).get('status')=='PASSED' for x in PHASES)}
 
     def run(self,action):
-        if action=='inspect':return self.summary()
-        require(os.uname().machine in ('x86_64','amd64') or action=='source','AMD64_HOST_REQUIRED')
+        require(os.uname().machine in ('x86_64','amd64') or action in ('source','inspect'),'AMD64_HOST_REQUIRED')
         fd=os.open(self.root/'update.lock',os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
         with os.fdopen(fd,'a') as lock:
             try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
             except BlockingIOError:raise Blocked('UPDATE_LOCK_BUSY') from None
             self.lock=lock
+            self.reload_checkpoint()
+            if action=='inspect':return self.summary()
             if action=='cleanup':self.cleanup();return self.summary()
             require(action in PHASES,'PHASE')
             phase=self.record['phases'].get(action,{})
