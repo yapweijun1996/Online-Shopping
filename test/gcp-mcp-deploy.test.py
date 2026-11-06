@@ -3,6 +3,9 @@
 import hashlib
 import importlib.util
 import json
+import os
+import shutil
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -38,6 +41,14 @@ class Tests(unittest.TestCase):
             for value in bad:
                 p.write_text(BASE+value)
                 with self.assertRaises(ValueError): f.runtime()
+
+    def test_initial_bootstrap_rejects_on_before_any_release_or_container_work(self):
+        with tempfile.TemporaryDirectory() as root:
+            f=u.Updater(root);Path(root,'runtime.env').write_text(BASE+ON)
+            with patch.object(f,'head') as head,patch.object(f,'release') as pull,patch.object(f,'docker') as docker:
+                with self.assertRaisesRegex(ValueError,'Initialize requires the disabled'):f.initialize(SHA)
+                head.assert_not_called();pull.assert_not_called();docker.assert_not_called()
+            self.assertFalse(Path(root,'images.env').exists());self.assertFalse(Path(root,'state.json').exists())
 
     def test_closed_codec_and_backend_release_binding(self):
         with tempfile.TemporaryDirectory() as root:
@@ -76,6 +87,24 @@ class Tests(unittest.TestCase):
             self.assertEqual(34,baseline['schema']);self.assertEqual(content,actual)
             with patch.object(u,'api',return_value=dict(tree=entries)),patch.object(u,'request',return_value=b'corrupt'):
                 with self.assertRaisesRegex(ValueError,'Source digest mismatch'): f.source(SHA)
+
+    @unittest.skipUnless(shutil.which('docker'), 'Docker Compose parser is required')
+    def test_real_compose_initial_stop_parses_legacy_images_without_target_generation(self):
+        with tempfile.TemporaryDirectory() as root:
+            f=u.Updater(root)
+            Path(root,'compose.yaml').write_bytes((ROOT/'compose.gcp.yaml').read_bytes())
+            Path(root,'compose.mcp.yaml').write_bytes((ROOT/'deploy/gcp/compose.mcp.yaml').read_bytes())
+            Path(root,'runtime.env').write_text(BASE+ON)
+            Path(root,'images.env').write_text('BACKEND_IMAGE='+release()['backend']+'\nFRONTEND_IMAGE='+release()['frontend']+'\nAPP_REVISION='+SHA+'\nRELEASE_DIR='+root+'/releases/'+SHA+'\n')
+            env={'PATH':os.environ['PATH'],'HOME':root}
+            args=f.compose({})+['config','--format','json']
+            output=subprocess.run(['docker',*args],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=False,timeout=15)
+            self.assertEqual(0,output.returncode)
+            self.assertNotIn('MCP_V2_PRODUCTION_PROFILE',json.loads(output.stdout)['services']['backend']['environment'])
+            self.assertNotIn(str(Path(root,'compose.mcp.yaml')),args)
+            with patch.object(u,'trusted',side_effect=lambda p:Path(p)):
+                target=subprocess.run(['docker',*f.compose(release()),'config','--format','json'],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=False,timeout=15)
+            self.assertNotEqual(0,target.returncode) # Target overlay correctly requires the not-yet-created tuple.
 
     def test_overlay_is_explicit_readonly_directory_mount_and_off_base_has_no_selector(self):
         base=(ROOT/'compose.gcp.yaml').read_text(); overlay=(ROOT/'deploy/gcp/compose.mcp.yaml').read_text()
@@ -135,7 +164,7 @@ class Lifecycle(unittest.TestCase):
         self.f.activate(release())
         pre=self.calls.index(('preflight',2));ret=self.calls.index(('retire',True));prep=self.calls.index(('prepare',ID))
         stops=[(i,c[1]) for i,c in enumerate(self.calls) if c[0]=='docker' and 'stop' in c[1]]
-        self.assertLess(pre,stops[0][0]);self.assertEqual('frontend',stops[0][1][-1]);self.assertEqual('backend',stops[1][1][-1])
+        self.assertLess(pre,stops[0][0]);self.assertNotIn(str(self.root/'compose.mcp.yaml'),stops[0][1]);self.assertNotIn(str(self.root/'compose.mcp.yaml'),stops[1][1]);self.assertEqual('frontend',stops[0][1][-1]);self.assertEqual('backend',stops[1][1][-1])
         self.assertLess(stops[1][0],ret);self.assertLess(ret,prep)
         self.assertNotIn(('epoch',True),self.calls)
         env=(self.root/'images.env').read_text();self.assertIn('MCP_BACKEND_IDENTITY='+ID,env)

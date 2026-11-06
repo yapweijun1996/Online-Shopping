@@ -396,7 +396,7 @@ class Updater:
         if supervisor:
             if media: self._mcp_inflight = media
             self.pause()
-            self.stop_clients(compose)
+            self.stop_clients(self.compose({}))
             if getattr(self, '_rollback', False): self.epoch_control(rotate=True)
             if supervisor.status().get('status') != 'absent': supervisor.stop(drained=True)
             if media:
@@ -588,6 +588,8 @@ class Updater:
     def initialize(self, sha):
         if self.state:
             raise ValueError('Already initialized')
+        if self.mcp_enabled():
+            raise ValueError('Initialize requires the disabled MCP v2 profile')
         if self.head() != revision(sha) or not self.approved(sha):
             raise ValueError('Initial release is not trusted main')
         self.runtime()

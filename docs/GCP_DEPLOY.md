@@ -672,3 +672,16 @@ synthetic complete-32 flows, cross-tenant/old-grant negatives, and a real isolat
 forward/failed-health/rollback/crash/fresh-generation canary. Offline controller
 tests prove ordering, bounds and state preservation; they do not replace those
 runtime gates. No live customer rows are used for these tests.
+
+
+Initial installation must use `initialize` with the v2 profile OFF. The command
+rejects ON before any image pull, pause marker or container/state mutation. After
+the disabled installation has a stable accepted current release and `images.env`,
+the reviewed manual enable procedure must validate exact main/CI and all
+artifacts, then **save the candidate as durable pending intent before calling
+`activate(candidate)`**. This allows a fresh process to identify a partially
+started codec and apply only the explicit disabled compatibility fallback. Keep
+all timers paused and hold the shared lock throughout. Stopping current services
+always uses base Compose, independent of target ON variables or stale generation
+paths; the mandatory ON overlay is parsed only after verified generation and
+identity values are written. Never supply dummy socket/generation placeholders.
