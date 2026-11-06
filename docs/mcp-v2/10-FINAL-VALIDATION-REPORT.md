@@ -1,6 +1,6 @@
 # MCP v2 final validation report
 
-This report retains the completed isolated implementation's scope. The later default-OFF live release is recorded in [12-LIVE-RELEASE](12-LIVE-RELEASE.md); the new owner-authorized full production activation and its separate verification are recorded in [13-PRODUCTION-ACTIVATION](13-PRODUCTION-ACTIVATION.md). Historical counts below are not successor acceptance.
+This report retains the completed isolated implementation's scope. The later default-OFF live release is recorded in [12-LIVE-RELEASE](12-LIVE-RELEASE.md); the new owner-authorized full production activation and its separate verification are recorded in [13-PRODUCTION-ACTIVATION](13-PRODUCTION-ACTIVATION.md). Historical counts below are not successor acceptance. Current source supports a strict complete production profile at schema 34; all new flags remain default OFF. Integrated production-profile business/native/TLS acceptance, artifact/lifecycle canary and exact-main CI/live release remain pending. Owner-only real ChatGPT/Claude account OAuth is NOT RUN. Sections A–G below describe `b8614b4`, including its then-production-blocked behavior and authorization limits; they do not describe the new candidate. [Recovery](PRODUCTION-RECOVERY.md) supplies the current operational gates.
 
 Completed in isolation on2026-11-06 (UTC+8). This is verified development delivery, not production deployment authorization.
 
@@ -60,7 +60,7 @@ Independent bounded source reviews found no confirmed P0/P1/P2; the D3 reviewer 
 ## E. Deployment readiness
 
 - Development: verified complete in isolation at the tested source.
-- Staging: not deployed; configuration/schema/backup/epoch review and explicit environment authorization remain required. Production-mode v2 activation is intentionally rejected by current code.
+- Staging at b8614b4: not deployed; configuration/schema/backup/epoch review and explicit environment authorization remained required. Production-mode v2 activation was intentionally rejected by that tested source.
 - Production: not authorized or activated. Existing installations may automatically deploy/migrate on main merge, so merge is a production-affecting release step.
 - Rollback: transaction and synthetic restore/import checks passed. Use a schema34-compatible disabled binary or an explicitly authorized coordinated restore with external epoch invalidation. Flags cannot downgrade schemas or undo committed commerce. Image restoration is a new reviewed business operation; production multi-instance restore remains unverified.
 

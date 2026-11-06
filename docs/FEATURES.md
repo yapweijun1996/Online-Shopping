@@ -2,6 +2,12 @@
 
 Detailed description of what the shop and seller portal do today. The [README](../README.md) has the short overview; [PROGRESS.md](PROGRESS.md) holds the evidence-based status.
 
+## Seller Operations MCP
+
+Current source implements 32 tools through the existing OAuth/MCP connector, preserving the original 8 read contracts. The 24 additions cover company, full catalog CREATE/UPDATE, media, inventory, order decisions, analytics and operation controls. Existing grants gain no scope automatically. New scope consent and each business operation's authenticated first-party approval are separate requirements; model, product, image and KB content cannot approve an action. Full CREATE/UPDATE always require HIGH approval and both `catalog.write` and `media.write`, including image-free creation and metadata-only updates. Protected review binds complete PAGE/ASSET delivery, SHA/decode checks, one-use ACKs and a fresh password.
+
+All new flags default OFF. Independent development flags remain supported; production accepts only the complete reviewed `seller-operations-v1` profile with actual `NODE_ENV=production`, `TRUST_PROXY=1`, HTTPS/manual setup, quick login disabled, backend identity plus installed-source digest, pinned isolated codec and an external epoch. Its directory is mounted read-only so atomic rotation is visible to current authorization and writer-return checks. The prior `b134f5c` default-OFF release is complete; [full production activation](mcp-v2/13-PRODUCTION-ACTIVATION.md) remains pending integrated business/native/TLS, artifact/lifecycle and exact-main CI/release gates. Real ChatGPT/Claude account OAuth remains owner-only NOT RUN. [Contracts](mcp-v2/03-TOOL-CONTRACTS.md) and [recovery](mcp-v2/PRODUCTION-RECOVERY.md) define the current boundaries; dated sections below retain their original scope.
+
 ## How it works today
 
 Seller login, product management, public catalog/cart, guest checkout, and seller order queue/detail/decision views now run locally against the documented API. A decision uses the current server revision; another tab's decision triggers a 409 and reloads the latest state. The initial super admin username and password come from ignored server configuration: `.env` for direct Node development or an ignored Docker environment file plus Compose secret. There is no built-in credential in source or committed configuration. Production startup rejects known development defaults and missing or weak credentials.
@@ -55,7 +61,7 @@ These exist only when the server runs in `public-demo` mode with a Demo-configur
 
 ### Stock (Shop v109 / Seller v88)
 
-Each product has an optional stock quantity; blank means unlimited, so existing products are unchanged. Pending orders do not reserve stock. The seller's confirmation deducts the quantities and is refused with a clear message if any tracked product is short; rejecting never changes stock. Checkout refuses a quantity above the tracked stock. The shop shows "Out of stock" on cards and disables Add to cart and Buy now on the product page. Seller product cards show the remaining stock. Cancelling a confirmed order returns its quantities to stock.
+Each product has an optional stock quantity; blank means unlimited. Current checkout availability subtracts the computed quantities in `SUBMITTED` orders younger than 48 hours; this creates no separate physical reservation row. Confirmation deducts actual stock and refuses a shortage; rejection or expiry ends the computed hold. The shop shows "Out of stock" and disables purchase when tracked availability is exhausted. Seller product cards show remaining stock. Cancelling a confirmed order restores its quantities. MCP preserves these existing service rules.
 
 ### Fulfilment and new-order alerts (Shop v110 / Seller v90)
 

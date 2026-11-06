@@ -1,5 +1,9 @@
 # Production acceptance denominator — 18 items
 
+Current MCP continuation,2026-11-06: the accepted `b134f5c` [default-OFF release](mcp-v2/12-LIVE-RELEASE.md) installed shop schema 34/platform2. Current source implements all 32 tools and the strict complete production profile; this activation proposes no database schema change. Owner option B separately authorizes reviewed full enablement while preserving explicit seller consent and individual human approval. Integrated production-profile business/native/TLS acceptance, artifact/lifecycle canary, exact-main CI and live release remain pending; real ChatGPT/Claude account OAuth is owner-only NOT RUN. Follow [the activation evidence](mcp-v2/13-PRODUCTION-ACTIVATION.md) and [recovery gates](mcp-v2/PRODUCTION-RECOVERY.md). These checks do not redefine the historical18-item MVP denominator below or certify broader product acceptance.
+
+## Historical MVP reconciliation, 2026-10-02
+
 Reconciled 2026-10-02 against `SPEC.md`, current code/tests and recorded project KB. The denominator remains **18**, not number of features, tests, screenshots or demo deployments. Payment/courier automation stays outside the existing MVP. PR #15 was owner-merged as main `f28c04b1d1655f5002469a98f62c3e65cb73d6bf`; the public Demo still runs Shop v103 / Seller v79 from the earlier `c1d1f688458eaa371b80f56f847ffbfe43612de2` release. This repair candidate is Shop v105 / Seller v81 and is not deployed.
 
 The historical single-company local baseline records AC-01–15 and AC-18 as verified (16/18). AC-16/17 remain open. **Historical production/tenant acceptance ledger: 0/18; it is not a count of the newly verified deployment checks.** A running Cloudflare Demo does not satisfy the future Docker/PostgreSQL Production denominator. The present full regression and focused browser results preserve evidence for the candidate changes; they do not re-certify every historical browser journey or the unimplemented production tenant adapter.

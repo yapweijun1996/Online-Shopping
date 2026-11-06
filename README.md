@@ -4,7 +4,7 @@
 
 Self-hosted setup and verification: [OrbStack deployment](docs/ORBSTACK_DEPLOY.md). The legacy local Compose stack below continues to use SQLite.
 
-The [MCP v2 Seller Operations Engine](docs/mcp-v2/09-IMPLEMENTATION-PROGRESS.md) extends the existing connector with24 new tools while preserving the original8. Changes require current consent/RBAC and first-party approval; analytics and operation audit stay bounded. All new features default OFF. Independent development flags remain available; production requires a complete named deployment profile, immutable backend/codec identities, isolated image processing and an external restore epoch. The separately authorized [production activation](docs/mcp-v2/13-PRODUCTION-ACTIVATION.md) is undergoing verification; live enablement is not yet claimed. [Contracts](docs/mcp-v2/03-TOOL-CONTRACTS.md), [historical isolated validation](docs/mcp-v2/10-FINAL-VALIDATION-REPORT.md) and [rollback](docs/mcp-v2/08-ROLLBACK-PLAN.md) distinguish each acceptance boundary.
+The [MCP v2 Seller Operations Engine](docs/mcp-v2/09-IMPLEMENTATION-PROGRESS.md) implements 32 tools through the existing connector: the original 8 and 24 additions. New scopes require explicit seller consent; business changes require current RBAC and exact-proposal first-party human approval. All new flags default OFF. Production requires the complete `seller-operations-v1` profile, real production mode, HTTPS/manual setup, trusted proxy, quick login disabled, immutable backend/source and codec pins, an isolated native worker and a dynamically checked external epoch. Independent development flags remain available. The accepted `b134f5c` [default-OFF release](docs/mcp-v2/12-LIVE-RELEASE.md) is historical; separately authorized [full production activation](docs/mcp-v2/13-PRODUCTION-ACTIVATION.md) remains pending integrated acceptance and release. See [current contracts](docs/mcp-v2/03-TOOL-CONTRACTS.md), [historical isolated validation](docs/mcp-v2/10-FINAL-VALIDATION-REPORT.md) and [recovery](docs/mcp-v2/PRODUCTION-RECOVERY.md).
 
 ## Quick start
 
@@ -17,7 +17,7 @@ npm run check && npm test
 npm start
 ```
 
-Open `/shop/` for the customer shop and `/seller/` for the seller portal. `/health` is liveness and `/ready` checks the database schema. Full setup, Docker Compose and the Cloudflare Demo are in the [runbook](docs/RUNBOOK.md). The application is for local development only until the release gates in [PROGRESS.md](docs/PROGRESS.md) are resolved. Do not use commands or credentials from `sample/` for the new application.
+Open `/shop/` for the customer shop and `/seller/` for the seller portal. `/health` is liveness; `/ready` checks storage and, under the full MCP production profile, current epoch plus cheap authenticated codec readiness. This quick start is for local development. Production uses the deployment runbooks and remaining acceptance gates in [PROGRESS.md](docs/PROGRESS.md); local/Demo setup is in the [runbook](docs/RUNBOOK.md). Do not use commands or credentials from `sample/` for the new application.
 
 ## Goal
 
