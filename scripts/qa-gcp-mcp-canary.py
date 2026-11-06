@@ -533,6 +533,13 @@ class Harness:
         if supervisor.status().get('status')!='absent':supervisor.stop(drained=True)
         return controller
 
+    def lock_probe(self):
+        program="import fcntl,sys\nf=open(sys.argv[1],'a')\ntry:fcntl.flock(f,fcntl.LOCK_EX|fcntl.LOCK_NB)\nexcept BlockingIOError:sys.exit(0)\nsys.exit(1)"
+        result=subprocess.run([sys.executable,'-c',program,str(self.root/'update.lock')],stdin=subprocess.DEVNULL,
+                              stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=5,close_fds=True,
+                              env={'PATH':'/usr/bin:/bin','HOME':str(self.root)})
+        require(result.returncode==0,'SHARED_LOCK_CONTENTION')
+
     def phase_A(self):
         available=int(next(line.split()[1] for line in Path('/proc/meminfo').read_text().splitlines() if line.startswith('MemAvailable:')))
         require(available>=1100*1024 and shutil.disk_usage(self.root).free>=3*1024**3,'RESOURCE_ADMISSION')
@@ -571,6 +578,7 @@ class Harness:
         return {'fullProfile':True,'pendingFirst':True,'privateHttpOnly':True,'realSellerApprovalClaimed':False,'policy':self.policy_readback()}
 
     def phase_C(self):
+        self.lock_probe()
         controller=self.controller();controller.pause();before_calls=self.guard.call_count;controller.recover_codec()
         require(controller.state.get('status')=='codec_paused' and self.guard.call_count==before_calls,'PAUSED_RECOVERY_BARRIER');controller.unpause()
         before=self.generation();self.step('owned_codec_crash')
@@ -587,7 +595,7 @@ class Harness:
         require((Path(before['generationPath'])/'socket').stat().st_mode&0o777==0o710,'OLD_GENERATION_SEALED')
         self.client('grants-live');self.client('native');self.pg_identity()
         self.record['generation']=after;self.persist()
-        return {'sameBuild':True,'epochUnchanged':True,'freshGeneration':True,'pausedRecoveryDenied':True,'policy':self.policy_readback()}
+        return {'sameBuild':True,'epochUnchanged':True,'freshGeneration':True,'pausedRecoveryDenied':True,'kernelLockContentionDenied':True,'policy':self.policy_readback()}
 
     def phase_E_on(self):
         self.client('pending');controller=self.controller();current=controller.state['current'];before=self.generation()
@@ -619,12 +627,15 @@ class Harness:
 
     def phase_D(self):
         candidate=self.record['releases']['candidate'];self.client('restore-prepare')
-        self.drained();self.step('synthetic_snapshot')
+        # pg_dump takes a consistent synthetic snapshot. No other synthetic HTTP
+        # client runs here; the shared lock excludes host lifecycle changes.
+        # Drain before restore, keeping the real 60-second OAuth code TTL intact.
+        self.step('synthetic_consistent_snapshot')
         dump=self.docker('exec',self.ns.app('postgres'),'pg_dump','-U','online_shopping','-d','online_shopping','--format=custom',binary=True,timeout=90)
         archive=self.root/'backups/synthetic.pgdump';archive.write_bytes(dump);archive.chmod(0o600)
         with archive.open('rb') as handle:os.fsync(handle.fileno())
         self.record['snapshot']={'sha256':digest(dump),'bytes':len(dump)};self.persist()
-        self.accept(candidate,candidate);self.client('restore-revoke')
+        self.client('restore-revoke')
         controller=self.drained();self.step('synthetic_restore_all_writers_stopped')
         require(digest(archive.read_bytes())==self.record['snapshot']['sha256'],'SNAPSHOT_HASH')
         self.docker('exec','-i',self.ns.app('postgres'),'pg_restore','-U','online_shopping','-d','online_shopping','--clean','--if-exists','--exit-on-error','--single-transaction',input=dump,timeout=90)

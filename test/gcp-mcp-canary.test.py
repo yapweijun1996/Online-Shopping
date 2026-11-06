@@ -189,6 +189,11 @@ class Checkpoints(unittest.TestCase):
         for method in ('activate','restore','recover_codec','poll','preflight_mcp','health','epoch_control','stop_clients','source','release'):
             self.assertIs(getattr(type(controller),method),getattr(actual.Updater,method))
 
+    def test_kernel_shared_lock_cannot_be_taken_by_a_second_process(self):
+        with open(self.h.root/'update.lock','w') as handle:
+            c.fcntl.flock(handle,c.fcntl.LOCK_EX|c.fcntl.LOCK_NB);self.h.lock_probe()
+        with self.assertRaisesRegex(c.Blocked,'SHARED_LOCK_CONTENTION'):self.h.lock_probe()
+
 
 class Manifest(unittest.TestCase):
     def manifest(self):
