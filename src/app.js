@@ -43,6 +43,7 @@ import { checkWhatsAppReadiness, disconnectWhatsAppConnection, listWhatsAppConne
 import { MAX_WEBHOOK_BYTES, answerWhatsAppHandshake, receiveWhatsAppWebhook } from './whatsapp-inbound.js';
 import { integrationCatalog } from '../public/shared/integration-catalog.js';
 import { createConnector } from './mcp/routes.js';
+import { mediaCodecReady } from './mcp/media-readiness.js';
 
 const productIdPath = /^\/api\/v1\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
 const sellerProductIdPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
@@ -122,7 +123,8 @@ async function createTenantApi({ store, config, tenantId, tenantGuard, operation
     if (demoResponse) return demoResponse;
     if (method === 'GET' && pathname === '/health') return json(200, { status: 'alive', ...(config.appRevision ? { revision: config.appRevision } : {}) });
     if (method === 'GET' && pathname === '/ready') {
-      const healthy = await ready(store, { mcpV2: config.mcpV2 });
+      const healthy = await ready(store, { mcpV2: config.mcpV2 }) &&
+        (config.mcpMedia?.enabled !== true || await mediaCodecReady(config.mcpMedia));
       return json(healthy ? 200 : 503, { status: healthy ? 'ready' : 'unavailable', ...(config.appRevision ? { revision: config.appRevision } : {}) });
     }
     // WhatsApp Cloud webhook: called by Meta, so no session, origin or CSRF check; the signature over the raw body is the

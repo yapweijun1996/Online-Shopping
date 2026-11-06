@@ -6,10 +6,14 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
-import { docker } from './qa-caddy-fixture.mjs';
+import { docker as contextDocker } from './qa-caddy-fixture.mjs';
 
 const command = promisify(execFile);
-const image = 'caddy:2.10.2-alpine';
+if (process.env.QA_GCP_DOCKER_HOST && process.env.QA_GCP_DOCKER_HOST !== 'unix:///var/run/docker.sock') throw new Error('Only the owned local Unix Docker daemon is supported.');
+const docker = (args) => process.env.QA_GCP_DOCKER_HOST
+  ? command('docker', ['--host=unix:///var/run/docker.sock', ...args], { timeout: 120_000, maxBuffer: 2_000_000 })
+  : contextDocker(args);
+const image = 'caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d';
 const tag = `qa-gcp-${randomBytes(5).toString('hex')}`;
 const scratch = await mkdtemp(join(tmpdir(), tag));
 const names = [tag + '-frontend', tag + '-backend'];
@@ -56,6 +60,13 @@ try {
  route {
   @gate path /alpha/api/v1/tenant-access
   respond @gate "" 200
+  @operation path /oauth/operation /oauth/operation-review.js /oauth/operation-review.css /api/v1/seller/mcp/operations/* /alpha/oauth/operation /alpha/oauth/operation-review.js /alpha/oauth/operation-review.css /alpha/api/v1/seller/mcp/operations/*
+  header @operation {
+   Cache-Control no-store
+   Referrer-Policy no-referrer
+   X-Frame-Options DENY
+   Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+  }
   header Content-Type application/json
   respond \`{"method":"{http.request.method}","path":"{http.request.uri.path}","query":"{http.request.uri.query}","host":"{http.request.host}","ip":"{http.request.header.X-Real-IP}"}\` 200
  }
@@ -121,10 +132,32 @@ try {
       ['/.well-known/oauth-authorization-server', 'GET'], ['/.well-known/oauth-protected-resource/alpha/mcp', 'GET'],
       ['/.well-known/oauth-authorization-server/alpha', 'GET'], ['/alpha/mcp', 'POST'], ['/alpha/oauth/token', 'POST'],
       ['/alpha/.well-known/oauth-authorization-server', 'GET']]) {
-      await check('seller', path, 200, { method }, r => { echo('seller', path, method)(r); if (!path.startsWith('/alpha/')) noStore(r); });
+      await check('seller', path, 200, { method }, r => { echo('seller', path, method)(r); noStore(r); });
     }
     for (const path of ['/mcp', '/oauth/token', '/.well-known/oauth-authorization-server']) await check('shop', path, 404, { method: path === '/oauth/token' ? 'POST' : 'GET' });
     for (const path of ['/oauth/other', '/mcp/x', '/.well-known/other']) await check('seller', path, 404);
+    for (const path of ['/alpha/mcp', '/alpha/oauth/token', '/alpha/oauth/operation', '/alpha/.well-known/oauth-authorization-server']) await check('shop', path, 404);
+    for (const path of ['/alpha/oauth/other', '/alpha/oauth/operation/extra', '/alpha/mcp/x']) await check('seller', path, 404);
+  }));
+  await group('First-party operation proxy privacy', () => measured(async () => {
+    const id = '11111111-1111-1111-1111-111111111111';
+    for (const prefix of ['', '/alpha']) {
+      const api = `${prefix}/api/v1/seller/mcp/operations/${id}`;
+      for (const [path, method] of [[`${prefix}/oauth/operation?operationId=${id}`, 'GET'],
+        [`${prefix}/oauth/operation-review.js`, 'GET'], [`${prefix}/oauth/operation-review.css`, 'GET'],
+        [api, 'GET'], [api + '/approval', 'POST'], [api + '/media/delivery', 'POST'], [api + '/media/ack', 'POST']]) {
+        await check('seller', path, 200, { method }, response => {
+          echo('seller', path, method)(response);
+          assert.equal(response.headers['cache-control'], 'no-store');
+          assert.equal(response.headers['referrer-policy'], 'no-referrer');
+          assert.equal(response.headers['x-frame-options'], 'DENY');
+          assert.match(response.headers['content-security-policy'], /img-src 'self' blob:/);
+          assert.match(response.headers['content-security-policy'], /frame-ancestors 'none'/);
+          assert.doesNotMatch(response.headers['content-security-policy'], /unsafe-inline|unsafe-eval/);
+        });
+        await check('shop', path, 404, { method });
+      }
+    }
   }));
   await group('All crawler host boundaries', () => measured(async () => {
     for (const agent of ['facebookexternalhit', 'facebot', 'whatsapp', 'twitterbot', 'telegrambot', 'slackbot', 'discordbot', 'googlebot', 'bingbot']) {
@@ -139,6 +172,6 @@ finally {
   await docker(['network', 'rm', tag]).catch(() => {});
   await rm(scratch, { recursive: true, force: true });
 }
-console.log('Real GCP Caddy: caddy:2.10.2-alpine (orbstack)');
+console.log(`Real GCP Caddy: caddy:2.10.2-alpine (${process.env.QA_GCP_DOCKER_HOST ? 'local Unix Docker' : 'orbstack'})`);
 for (const row of results) console.log(`${row.status.padEnd(4)} | ${row.name} | ${row.detail}`);
 console.log(`${count} assertions passed; ${results.filter(r => r.status === 'FAIL').length} groups failed.`);
