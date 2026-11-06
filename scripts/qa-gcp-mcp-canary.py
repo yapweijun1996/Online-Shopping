@@ -35,7 +35,13 @@ HEX64 = re.compile(r'[0-9a-f]{64}\Z')
 ID = re.compile(r'sha256:[0-9a-f]{64}\Z')
 SHA = re.compile(r'[0-9a-f]{40}\Z')
 SERVICES = ('frontend', 'backend', 'postgres', 'whatsapp-qr', 'whatsapp-qr-slot1')
+RELEASE_BINDS = {
+    ('frontend', '/etc/caddy/Caddyfile'): '${RELEASE_DIR:?Release required}/deploy/gcp/Caddyfile',
+    ('postgres', '/docker-entrypoint-initdb.d/01-schema.sql'): '${RELEASE_DIR:?Release required}/src/postgres/schema.sql',
+    ('postgres', '/docker-entrypoint-initdb.d/02-app-role.sh'): '${RELEASE_DIR:?Release required}/deploy/init-postgres.sh',
+}
 PHASES = ('source', 'A', 'B', 'C', 'E-on', 'D', 'E-off')
+PG_TCP_READY = ['pg_isready', '-h', '127.0.0.1', '-U', 'online_shopping', '-d', 'online_shopping']
 READY_PROGRAM = "fetch('http://127.0.0.1:3000/ready',{signal:AbortSignal.timeout(4000)}).then(async r=>{if(!r.ok)process.exit(1);console.log(await r.text())}).catch(()=>process.exit(1))"
 LEGACY_BASELINE_PROGRAM = "import{createHash}from'node:crypto';import{catalogue}from'./src/mcp/tools.js';const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;const tools=catalogue.map(({scope,...tool})=>tool);if(tools.length!==8)process.exit(1);console.log(JSON.stringify({version:1,count:8,sha256:createHash('sha256').update(JSON.stringify(canonical(tools))).digest('hex')}));"
 COUNTS_SQL = "SELECT json_build_object('grants',(SELECT COUNT(*) FROM oauth_grant WHERE revoked_at IS NULL),'tokens',(SELECT COUNT(*) FROM oauth_token WHERE revoked_at IS NULL),'codes',(SELECT COUNT(*) FROM oauth_authorization_code WHERE consumed_at IS NULL AND expires_at::timestamptz>clock_timestamp()),'sessions',(SELECT COUNT(*) FROM session),'unbound',(SELECT COUNT(*) FROM oauth_authorization_request WHERE account_id IS NULL AND consumed_at IS NULL AND expires_at::timestamptz>clock_timestamp()))"
@@ -133,9 +139,22 @@ def transform_compose(value, ns):
         network.setdefault('labels', {})[OWNER_LABEL] = ns.nonce
     result['volumes']['pg_data']['name'] = ns.project + '_pg_data'
     result['volumes']['pg_data'].setdefault('labels', {})[OWNER_LABEL] = ns.nonce
-    for service in result['services'].values():
+    for name, service in result['services'].items():
         require(not service.get('ports') and not service.get('privileged') and not service.get('container_name'), 'COMPOSE_PORTS')
         service.setdefault('labels', {})[OWNER_LABEL] = ns.nonce
+        for mount in service.get('volumes', []):
+            expected = RELEASE_BINDS.get((name, mount.get('target')))
+            if expected is None:
+                continue
+            require(mount.get('source') == expected and mount.get('read_only') is True and
+                    mount.get('type') in ('volume', 'bind'), 'COMPOSE_RELEASE_BIND')
+            if mount['type'] == 'volume':
+                # Compose --no-interpolate classifies these variable-prefixed
+                # short paths as named volumes. Only these three RO files bind.
+                require(set(mount) == {'type', 'source', 'target', 'read_only', 'volume'} and
+                        mount['volume'] == {}, 'COMPOSE_RELEASE_BIND_OPTIONS')
+                mount['type'] = 'bind'
+                del mount['volume']
     return result
 
 
@@ -146,6 +165,7 @@ class DockerGuard:
         self.programs = set(programs)
         self.compose_hash = None
         self.call_count = 0
+        self.bootstrap_pg = False
 
     def remember_codec(self, state):
         name = state['container']
@@ -207,7 +227,8 @@ class DockerGuard:
             require(tail[:3] == ['up', '-d', '--no-build'] or tail[:2] == ['run', '--rm'], 'COMPOSE_ACTION')
             if tail[0] == 'up':
                 remainder = [x for x in tail[3:] if x not in ('--force-recreate', '--no-deps')]
-                require(remainder in [['backend','frontend'], ['backend'], ['frontend'], ['backend','frontend','postgres']], 'COMPOSE_SERVICES')
+                require(remainder in [['backend','frontend'], ['backend'], ['frontend'], ['backend','frontend','postgres']] or
+                        (self.bootstrap_pg and tail == ['up','-d','--no-build','postgres']), 'COMPOSE_SERVICES')
             else:
                 require(len(tail)>=8 and tail[2:4] == ['--no-deps', '--name'] and tail[4] in self.record.get('jobs', []), 'JOB_NAME')
                 command = tail[5:]
@@ -264,11 +285,11 @@ class DockerGuard:
                 allowed = (command[:2] == ['node','-e'] and len(command)==3 and command[2] in self.programs) or (command[:3]==['node','--input-type=module','-e'] and len(command)==4 and command[3] in self.programs)
                 require(allowed, 'EXEC_NODE')
             else:
-                require(name == self.ns.app('postgres') and command in [
+                require(name == self.ns.app('postgres') and (command in [
                     ['pg_dump','-U','online_shopping','-d','online_shopping','--format=custom'],
                     ['pg_restore','-U','online_shopping','-d','online_shopping','--clean','--if-exists','--exit-on-error','--single-transaction'],
                     ['psql','-U','online_shopping','-d','online_shopping','-tA','-v','ON_ERROR_STOP=1','-c',COUNTS_SQL],
-                ], 'EXEC_PG')
+                ] or (self.bootstrap_pg and command == PG_TCP_READY)), 'EXEC_PG')
             args[offset]=proved['Id']
         elif action in ('rm','kill'):
             require(args[1:-1] == (['-f'] if action=='rm' else ['--signal=KILL']), 'MUTATION_OPTIONS')
@@ -574,6 +595,31 @@ class Harness:
                               env={'PATH':'/usr/bin:/bin','HOME':str(self.root)})
         require(result.returncode==0,'SHARED_LOCK_CONTENTION')
 
+    def bootstrap_postgres(self, controller):
+        require(self.record.get('activePhase') == 'A' and
+                self.record['phases'].get('A', {}).get('status') == 'RUNNING' and not self.record.get('pg'), 'PG_BOOTSTRAP_PHASE')
+        self.step('historical_postgres_tcp_bootstrap')
+        deadline=time.monotonic()+90
+        def bounded(*args,timeout=180,**kwargs):
+            remaining=deadline-time.monotonic()
+            require(remaining>0,'PG_TCP_DEADLINE')
+            return self.raw(*args,timeout=min(timeout,5,remaining),**kwargs)
+        self.guard.bootstrap_pg=True
+        try:
+            self.guard.call([*controller.compose({}),'up','-d','--no-build','postgres'],bounded)
+            while time.monotonic()<deadline:
+                value=self.guard.inspect(self.ns.app('postgres'),bounded)
+                require(value.get('State',{}).get('Running') is True and
+                        not value['State'].get('OOMKilled'), 'PG_BOOTSTRAP_NOT_RUNNING')
+                try:
+                    self.guard.call(['exec',value['Id'],*PG_TCP_READY],bounded)
+                    return {'containerId':value['Id'],'tcpReady':True}
+                except Blocked as error:
+                    if str(error)!='DOCKER_FAILED':raise
+                time.sleep(min(1,max(0,deadline-time.monotonic())))
+            raise Blocked('PG_TCP_DEADLINE')
+        finally:self.guard.bootstrap_pg=False
+
     def phase_A(self):
         available=int(next(line.split()[1] for line in Path('/proc/meminfo').read_text().splitlines() if line.startswith('MemAvailable:')))
         require(available>=1100*1024 and shutil.disk_usage(self.root).free>=3*1024**3,'RESOURCE_ADMISSION')
@@ -594,11 +640,12 @@ class Harness:
         private_json(self.root/'compose-source-normalized.json',original)
         private_json(self.root/'compose.yaml',transformed)
         self.record['composeHash']=digest((self.root/'compose.yaml').read_bytes());self.guard.compose_hash=self.record['composeHash'];self.persist()
+        bootstrap=self.bootstrap_postgres(controller)
         self.step('historical_manual_bootstrap')
         controller.activate(old,initial=True);controller.health(old);controller.unpause()
         controller.save('canary_historical_baseline',current=old,previous=None,pending=None,local=controller.local_fingerprint())
         self.capture_legacy_baseline();self.pg_identity();self.client('baseline')
-        return {'historicalManualBootstrap':True,'initializeTrustGateClaimed':False,'sha':old['sha'],'legacyContract':self.record['legacyContract'],'policy':self.policy_readback()}
+        return {'historicalManualBootstrap':True,'postgresTcpBootstrap':bootstrap,'initializeTrustGateClaimed':False,'sha':old['sha'],'legacyContract':self.record['legacyContract'],'policy':self.policy_readback()}
 
     def phase_B(self):
         trust=self.controller();sha=self.manifest['candidate']['sha']
@@ -731,12 +778,14 @@ class Harness:
 
     def cleanup(self):
         self.step('cleanup_only_nonce_owned_resources')
+        existing=self.raw('ps','-a','--no-trunc','--filter','label='+PROJECT_LABEL+'='+self.ns.project,'--format','{{.Names}}').splitlines()
         if not self.guard.compose_hash:
-            require(not self.raw('ps','-a','--filter','label='+PROJECT_LABEL+'='+self.ns.project,'--format','{{.ID}}').strip(),'UNRENDERED_PROJECT_EXISTS')
-        elif (self.root/'images.env').exists():
+            require(not existing,'UNRENDERED_PROJECT_EXISTS')
+        elif (self.root/'images.env').exists() and (existing or (self.root/'mcp-codec').exists()):
             controller=self.controller()
             if (self.root/'mcp-codec').exists():
-                controller.pause();controller.stop_clients(controller.compose({}))
+                controller.pause()
+                if existing:controller.stop_clients(controller.compose({}))
                 supervisor=controller.supervisor()
                 if supervisor.status().get('status')!='absent':supervisor.stop(drained=True)
             else:controller.stop_clients(controller.compose({}))
