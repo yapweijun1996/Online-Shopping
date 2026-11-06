@@ -2,7 +2,7 @@
 
 ## MCP production activation (2026-11-06) — in progress
 
-Owner option B authorizes completing and releasing the existing32-tool Seller Operations MCP while preserving explicit seller consent and human approval for writes. Baseline `b134f5c30b316b10c88fc8afedac6479a1cd6d8b`; isolated branch `codex/mcp-v2-production-activation`. Profile, HTTPS transport and codec lifecycle work are in progress; release/controller recovery, integrated acceptance and live activation remain pending. The [activation plan and evidence](mcp-v2/13-PRODUCTION-ACTIVATION.md) define the gates. The previous release below remains a completed default-OFF milestone, not evidence of live MCP enablement.
+Owner option B authorizes completing and releasing the existing32-tool Seller Operations MCP while preserving explicit seller consent and human approval for writes. Baseline `b134f5c30b316b10c88fc8afedac6479a1cd6d8b`; isolated branch `codex/mcp-v2-production-activation`. Profile, HTTPS transport, native lifecycle, external epoch and controller/cleanup/recovery are implemented locally. Independent final whole-suite acceptance at0c15c8a passed2071/2071,0failures/0skips,875.437s with both stores and all browser/native/production-proxy gates enabled. Published AMD64 lifecycle/restore acceptance and live activation remain pending. The [activation plan and evidence](mcp-v2/13-PRODUCTION-ACTIVATION.md) retain the failed-first fixture run and define the remaining gates. The previous release below remains a completed default-OFF milestone, not evidence of live MCP enablement.
 
 ## MCP v2 live release (2026-11-06) — initial release complete
 
