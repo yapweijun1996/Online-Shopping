@@ -312,6 +312,100 @@ class Cleanup(unittest.TestCase):
         self.assertEqual(len(self.calls),1)
 
 
+class PostgresBootstrap(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        self.h=object.__new__(c.Harness);self.h.root=Path(self.temp.name);self.ns=c.Namespace('012345abcdef')
+        self.ns.root=self.h.root;self.h.ns=self.ns
+        self.h.record={'activePhase':'A','phases':{'A':{'status':'RUNNING'}},'io':{},'legacyContract':{}}
+        self.h.persist=Mock();self.h.step=Mock();self.h.runtime=Mock();self.h.secret_file=Mock()
+        self.h.capture_legacy_baseline=Mock();self.h.pg_identity=Mock();self.h.client=Mock();self.h.policy_readback=Mock(return_value={})
+        self.h.module=SimpleNamespace(atomic=Mock());self.h.artifact=Mock(return_value={'sha':c.PREVIOUS,'backend':'old-back','frontend':'old-front'})
+        self.h.guard=c.DockerGuard(self.ns,set(),self.h.record['io'],self.h.persist)
+        self.original=Tests.release_compose(self)
+        path=self.h.root/'compose.yaml';path.write_text('{}');self.h.guard.compose_hash=c.digest(path.read_bytes())
+        self.prefix=['compose','--project-name',self.ns.project,'--env-file',str(self.h.root/'runtime.env'),
+                     '--env-file',str(self.h.root/'images.env'),'-f',str(path),'--profile','whatsapp-qr','--profile','whatsapp-qr-slot1']
+        self.controller=SimpleNamespace(compose=lambda release:self.prefix,docker=lambda *args:json.dumps(self.original),
+            activate=Mock(side_effect=lambda *args,**kwargs:self.assertTrue(self.ready)),health=Mock(),unpause=Mock(),save=Mock(),local_fingerprint=lambda:{})
+        self.h.controller=Mock(return_value=self.controller)
+        self.started=False;self.ready=False;self.running=True;self.owner=self.ns.nonce;self.probes=0;self.accept_after=2;self.calls=[]
+        self.h.raw=self.raw
+
+    def raw(self,*args,**kwargs):
+        self.calls.append((args,kwargs))
+        if kwargs.get('timeout') is not None:self.assertTrue(0<kwargs['timeout']<=5)
+        if args[0]=='ps':return self.ns.app('postgres') if self.started else ''
+        if args[0] in ('network','volume') and args[1]=='ls':return ''
+        if args[0]=='compose':
+            self.assertEqual(list(args),self.prefix+['up','-d','--no-build','postgres']);self.started=True;return ''
+        if args[0]=='inspect':
+            self.assertIn(args[-1],(self.ns.app('postgres'),'1'*64))
+            return json.dumps({'Id':'1'*64,'Name':'/'+self.ns.app('postgres'),
+                'State':{'Running':self.running,'OOMKilled':False},'Config':{'Labels':{
+                    c.OWNER_LABEL:self.owner,c.PROJECT_LABEL:self.ns.project,'com.docker.compose.service':'postgres'}}})
+        if args[0]=='exec':
+            self.assertEqual(list(args),['exec','1'*64,*c.PG_TCP_READY]);self.probes+=1
+            if self.accept_after is None or self.probes<self.accept_after:raise c.Blocked('DOCKER_FAILED')
+            self.ready=True;return '127.0.0.1:5432 - accepting connections\n'
+        self.fail('Unexpected dispatch: '+repr(args))
+
+    def phase(self):
+        with patch.object(Path,'read_text',return_value='MemAvailable: 2048000 kB\n'), \
+             patch.object(c.shutil,'disk_usage',return_value=SimpleNamespace(free=4*1024**3)):
+            return self.h.phase_A()
+
+    def test_tcp_exit_zero_precedes_unchanged_real_activation_call(self):
+        result=self.phase()
+        self.assertEqual(self.probes,2)
+        self.controller.activate.assert_called_once_with(self.h.artifact.return_value,initial=True)
+        self.assertEqual(result['postgresTcpBootstrap'],{'containerId':'1'*64,'tcpReady':True})
+        self.assertFalse(self.h.guard.bootstrap_pg)
+
+    def test_tcp_deadline_never_advances_to_activation_or_client(self):
+        self.accept_after=None;clock=[0]
+        with patch.object(c.time,'monotonic',side_effect=lambda:clock[0]), \
+             patch.object(c.time,'sleep',side_effect=lambda delay:clock.__setitem__(0,clock[0]+delay)):
+            with self.assertRaisesRegex(c.Blocked,'PG_TCP_DEADLINE'):self.phase()
+        self.assertEqual(clock[0],90)
+        self.controller.activate.assert_not_called();self.h.client.assert_not_called()
+        self.assertFalse(self.h.guard.bootstrap_pg)
+
+    def test_failed_or_foreign_pg_never_advances(self):
+        self.running=False
+        with self.assertRaisesRegex(c.Blocked,'PG_BOOTSTRAP_NOT_RUNNING'):self.phase()
+        self.controller.activate.assert_not_called();self.h.client.assert_not_called()
+        self.assertFalse(self.h.guard.bootstrap_pg)
+
+    def test_foreign_pg_ownership_is_checked_before_tcp_probe(self):
+        self.owner='other'
+        with self.assertRaisesRegex(c.Blocked,'OWNER_LABEL'):self.phase()
+        self.assertEqual(self.probes,0);self.controller.activate.assert_not_called()
+        self.assertFalse(self.h.guard.bootstrap_pg)
+
+    def test_bootstrap_is_confined_to_first_running_phase_a(self):
+        for change in ({'activePhase':'B'},{'phases':{'A':{'status':'BLOCKED'}}},{'pg':{'containerId':'1'*64}}):
+            before=copy.deepcopy(self.h.record);self.h.record.update(change)
+            with self.subTest(change=change),self.assertRaisesRegex(c.Blocked,'PG_BOOTSTRAP_PHASE'):
+                self.h.bootstrap_postgres(self.controller)
+            self.h.record=before
+        self.assertFalse(self.calls);self.assertFalse(self.h.guard.bootstrap_pg)
+
+    def test_pg_only_start_and_tcp_command_are_closed_outside_bootstrap(self):
+        with self.assertRaisesRegex(c.Blocked,'COMPOSE_SERVICES'):
+            self.h.guard.call(self.prefix+['up','-d','--no-build','postgres'],self.raw)
+        with self.assertRaisesRegex(c.Blocked,'EXEC_PG'):
+            self.h.guard.call(['exec',self.ns.app('postgres'),*c.PG_TCP_READY],self.raw)
+        self.h.guard.bootstrap_pg=True
+        for tail in (['up','-d','--no-build','--force-recreate','postgres'],['up','-d','--no-build','postgres','backend']):
+            with self.subTest(tail=tail),self.assertRaisesRegex(c.Blocked,'COMPOSE_SERVICES'):
+                self.h.guard.call(self.prefix+tail,self.raw)
+        wrong=list(c.PG_TCP_READY);wrong[2]='localhost'
+        with self.assertRaisesRegex(c.Blocked,'EXEC_PG'):
+            self.h.guard.call(['exec',self.ns.app('postgres'),*wrong],self.raw)
+        self.assertFalse(any(args[0] in ('compose','exec') for args,_ in self.calls))
+
+
 class Checkpoints(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
