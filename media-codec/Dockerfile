@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Development-only codec. No application source, DB credentials or IP listener.
+# Isolated codec artifact. No application source, DB credentials or IP listener.
 FROM node:24.20.0-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf
 WORKDIR /codec
 # Verify the filtered root context itself, not just what subsequent COPY commands use.
@@ -37,5 +37,5 @@ COPY src/mcp/media-codec-wire.js src/mcp/media-codec-client.js /src/mcp/
 RUN chmod -R a+rX /codec /src /package.json && mkdir -p /run/media-codec
 # Distinct from the trusted host owner; shared group permits only socket IPC.
 USER 10001:1000
-ENV NODE_ENV=development NODE_OPTIONS=--max-old-space-size=32
+ENV NODE_ENV=production NODE_OPTIONS=--max-old-space-size=32
 CMD ["node", "src/main.js"]

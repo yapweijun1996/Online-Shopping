@@ -30,7 +30,7 @@ export async function startContainer(image, { memoryMiB = 192, command = [] } = 
     '--read-only', '--user=10001:1000', '--cap-drop=ALL', '--security-opt=no-new-privileges:true',
     '--cgroupns=private', '--init', '--memory', `${memoryMiB}m`, '--memory-swap', `${memoryMiB}m`,
     '--cpus=0.5', '--pids-limit=32', '--shm-size=1m', '--ulimit=core=0:0', '--ulimit=nofile=64:64',
-    '--restart=no', '--log-driver=none', '--mount', `type=bind,src=${socketDir},dst=/run/media-codec`,
+    '--restart=no', '--log-driver=none', '--env', 'NODE_ENV=development', '--mount', `type=bind,src=${socketDir},dst=/run/media-codec`,
     '--mount', `type=bind,src=${tokenFile},dst=/run/media-codec-token,readonly`];
   for (const proxy of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy']) args.push('--env', `${proxy}=`);
   args.push(image, ...command);
