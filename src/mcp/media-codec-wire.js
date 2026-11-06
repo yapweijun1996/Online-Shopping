@@ -8,6 +8,9 @@ export const MAX_HEADER = 2048;
 export const MAX_OUTPUT = 4 + MAX_HEADER + MAX_SOURCE + MAX_THUMBNAIL;
 export const TOTAL_MS = 5000;
 export const CODEC = 'sharp/0.35.5/policy-1';
+export const CODEC_READY_PATH = '/v1/ready';
+export const CODEC_READY_TEXT = JSON.stringify({ version: 1, status: 'ready', codec: CODEC });
+export const CODEC_READY_MAX_BYTES = 256;
 export const MIME = Object.freeze({ png: 'image/png', jpeg: 'image/jpeg', webp: 'image/webp' });
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 export class CodecError extends Error {
