@@ -65,7 +65,14 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
-      - run: npm ci --omit=dev --ignore-scripts && npm test
+      - run: npm ci --ignore-scripts
+      - run: npm ci --omit=dev --ignore-scripts
+        working-directory: media-codec
+      - name: Test codec with fixed host identity
+        run: |
+          codec_node="$(command -v node)"
+          sudo setpriv --reuid=1000 --regid=1000 --clear-groups \
+            /bin/sh -c 'test -x "$1" && test -r test/codec.test.js && test -r test/runtime.test.js && test -r ../node_modules/pg/package.json && exec "$1" --test --test-concurrency=1 test/codec.test.js test/runtime.test.js' sh "$codec_node"
         working-directory: media-codec
       - run: npm audit --omit=dev --audit-level=high
         working-directory: media-codec
