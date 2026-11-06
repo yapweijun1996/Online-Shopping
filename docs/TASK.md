@@ -14,6 +14,8 @@ Baseline `25f8b9b567d6ce677523a91cf39ac78bbee676be`. The reported ChatGPT author
 - [ ] Authorized push, merge and production deployment/live verification; final exact-main CI, artifact and live results belong in the release report/PR and dated KB event after execution.
 - [ ] Owner-only real ChatGPT OAuth connection; synthetic tests cannot attest the user's client/account connection.
 
+Release-gate follow-up: initial merged candidate `d5d4c14` failed main CI `42195657100` (2043 total, 1991 passed, 1 failed, 51 explicit skips) in an unchanged PostgreSQL approval/parallel-commit test; publication was skipped and production was not updated. A controlled clock independently reproduced the same denial stack because the shared synthetic fixture could derive a 600001 ms lifetime from two clock reads. The original CI did not retain row timestamps, so attribution of that particular run remains inferred. Fixture repair `c02caca` derives expiry from the captured creation time; the original controlled test passes on both stores, focused regression passes 46/46 and independent review passes 14/14. A new deterministic test retains rejection of both shorter and longer invalid lifetimes. Production validators and application code are unchanged by this follow-up. Fresh exact-main release gates remain required; the earlier failed run is not a pass.
+
 Rollback: revert the focused source/test/documentation patch; no database migration or data rewrite is involved. Reverting restores the rejection of clients that send the language hint. Test evidence is local and does not claim a production repair.
 
 ## MCP production activation (2026-11-06) — AFBA runtime acceptance complete
