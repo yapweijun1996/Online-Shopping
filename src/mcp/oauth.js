@@ -120,7 +120,9 @@ export function createOAuth({ store, config, tenantId, limit }) {
     await limit('oauth-authorize', ip, 30);
     const url = new URL(request.url), params = Object.create(null);
     for (const [key, value] of url.searchParams) { if (Object.hasOwn(params, key)) fail(); params[key] = value; }
-    fields(params, ['response_type', 'client_id', 'redirect_uri', 'scope', 'state', 'code_challenge', 'code_challenge_method', 'resource']);
+    const required = ['response_type', 'client_id', 'redirect_uri', 'scope', 'state', 'code_challenge', 'code_challenge_method', 'resource'];
+    // Optional display preference only; unsupported locales retain the English consent UI.
+    fields(params, [...required, 'ui_locales'], required);
     const registered = await client(params.client_id);
     if (!JSON.parse(registered.redirect_uris_json).includes(params.redirect_uri)) fail('invalid_redirect_uri');
     if (params.response_type !== 'code') fail('unsupported_response_type');

@@ -89,6 +89,71 @@ async function fixture(t, engine, mcpV2 = enabled()) {
 
 for (const engine of ['sqlite', 'postgres']) {
   const options = { skip: engine === 'postgres' && !base };
+  test(`${engine}: optional ui_locales reaches consent with the ChatGPT callback and all scopes`, options, async (t) => {
+    const f = await fixture(t, engine), callback = 'https://chatgpt.com/connector_platform_oauth_redirect';
+    f.config.mcpRedirectUris.push(callback); await f.recreate();
+    const registered = await f.call('/oauth/register', 'POST', { client_name: 'Synthetic connector', redirect_uris: [callback],
+      grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], token_endpoint_auth_method: 'none' });
+    assert.equal(registered.response.status, 201);
+    const clientId = registered.data.client_id, requested = supportedScopes(f.config);
+    assert.equal(requested.length, 14);
+    for (const locale of [undefined, 'en-US', 'zh-Hans en-US', 'zz-Unknown', '<img src=x onerror=alert(1)>']) {
+      const verifier = secret() + secret(), state = secret();
+      const query = new URLSearchParams({ response_type: 'code', client_id: clientId, redirect_uri: callback,
+        scope: requested.join(' '), state, code_challenge: createHash('sha256').update(verifier).digest('base64url'),
+        code_challenge_method: 'S256', resource: origin + '/mcp' });
+      if (locale !== undefined) query.set('ui_locales', locale);
+      const staged = await f.call('/oauth/authorize?' + query);
+      assert.equal(staged.response.status, 200, JSON.stringify(staged.data));
+      assert.match(staged.response.headers.get('content-type'), /^text\/html/);
+      assert.match(staged.response.headers.get('content-security-policy'), /frame-ancestors 'none'/);
+      assert.equal(staged.response.headers.get('cache-control'), 'no-store');
+      if (locale !== undefined) assert.ok(!staged.data.includes(locale), 'UI preference is not reflected into consent HTML');
+      staged.authorizationRequestId = /data-request="([^"]+)"/.exec(staged.data)[1];
+      staged.proof = /data-proof="([^"]+)"/.exec(staged.data)[1];
+      const pending = await f.store.get('SELECT * FROM oauth_authorization_request WHERE id = ?', staged.authorizationRequestId);
+      assert.equal(pending.scopes, requested.join(' ')); assert.equal(pending.redirect_uri, callback); assert.equal(pending.state, state);
+      assert.equal(pending.account_id, null);
+      assert.doesNotMatch(staged.data, /value="[^" ]+" checked/);
+      // A display preference grants no identity, scope or business-operation approval.
+      const signed = await f.login(staged); assert.equal(signed.response.status, 200);
+      const accepted = await f.approve(staged, signed, ['catalog.read']); assert.equal(accepted.response.status, 200);
+      const redirectTo = new URL(accepted.data.redirectTo);
+      assert.equal(redirectTo.origin + redirectTo.pathname, callback); assert.equal(redirectTo.searchParams.get('state'), state);
+      assert.equal(redirectTo.searchParams.has('ui_locales'), false);
+      const issued = await f.call('/oauth/token', 'POST', new URLSearchParams({ grant_type: 'authorization_code',
+        client_id: clientId, code: redirectTo.searchParams.get('code'), code_verifier: verifier,
+        redirect_uri: callback, resource: origin + '/mcp' }).toString(), { 'content-type': 'application/x-www-form-urlencoded' });
+      assert.equal(issued.response.status, 200); assert.equal(issued.data.scope, 'catalog.read');
+      assert.equal((await f.rpc(issued.data.access_token, 'tools/list')).data.result.tools.length, 5);
+    }
+  });
+  test(`${engine}: optional ui_locales preserves required parameters and authorization rejection paths`, options, async (t) => {
+    const f = await fixture(t, engine), clientId = await f.register();
+    const query = new URLSearchParams({ response_type: 'code', client_id: clientId, redirect_uri: redirect,
+      scope: 'catalog.read', state: secret(), code_challenge: createHash('sha256').update(secret()).digest('base64url'),
+      code_challenge_method: 'S256', resource: origin + '/mcp', ui_locales: 'en-US' });
+    for (const key of ['response_type', 'client_id', 'redirect_uri', 'scope', 'state', 'code_challenge', 'code_challenge_method', 'resource']) {
+      const missing = new URLSearchParams(query); missing.delete(key);
+      assert.equal((await f.call('/oauth/authorize?' + missing)).data.error, 'invalid_request', key);
+    }
+    for (const key of ['ui_locales', 'client_id', 'scope', 'redirect_uri', 'code_challenge', 'resource']) {
+      const duplicate = new URLSearchParams(query); duplicate.append(key, query.get(key));
+      assert.equal((await f.call('/oauth/authorize?' + duplicate)).data.error, 'invalid_request', key);
+    }
+    for (const [key, value, error] of [
+      ['unknown', 'en-US', 'invalid_request'], ['code_challenge_method', 'plain', 'invalid_request'],
+      ['code_challenge', 'short', 'invalid_request'], ['state', 'short', 'invalid_request'],
+      ['response_type', 'token', 'unsupported_response_type'], ['scope', 'catalog.admin', 'invalid_scope'],
+      ['resource', 'https://other.example.com/mcp', 'invalid_target'], ['redirect_uri', redirect + '/other', 'invalid_redirect_uri']
+    ]) {
+      const invalid = new URLSearchParams(query); invalid.set(key, value);
+      assert.equal((await f.call('/oauth/authorize?' + invalid)).data.error, error, key);
+    }
+    const oversized = new URLSearchParams(query); oversized.set('ui_locales', 'x'.repeat(8192));
+    assert.equal((await f.call('/oauth/authorize?' + oversized)).response.status, 414);
+    assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM oauth_authorization_request')).n, 0);
+  });
   test(`${engine}: v2 is default-off and scope strings cannot activate authority`, options, async (t) => {
     const f = await fixture(t, engine, null);
     // Legacy callers have no v2 configuration and no extension tables.

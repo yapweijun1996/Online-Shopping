@@ -1,5 +1,21 @@
 # Executable task ledger
 
+## OAuth locale compatibility repair (2026-11-06) — isolated verification
+
+Baseline `25f8b9b567d6ce677523a91cf39ac78bbee676be`. The reported ChatGPT authorization URL includes `ui_locales=en-US`; the strict authorization parameter allowlist rejected it before consent. Accept optional `ui_locales` as an inert display preference while preserving all eight required parameters, duplicate/unknown rejection, URL bounds, PKCE, exact redirects/resources and explicit fresh seller consent. No UI redesign, schema, permission, feature-flag or deployment-policy change.
+
+- [x] Reproduce the authorization failure with synthetic fresh clients and the exact ChatGPT callback path; the regression failed before the source change.
+- [x] Verify the full14-scope request reaches consent with absent, single, multiple and unsupported locale preferences, and untrusted hint text stays inert. Complete fresh login/consent/code exchange and verify only the selected read scope is issued.
+- [x] Verify missing/duplicate/security-invalid parameters and oversized URLs remain rejected; run the four new API tests on SQLite and isolated PostgreSQL16 (4 passed, 0 failed, 0 skipped).
+- [x] Run `npm run check` and the combined `seller-mcp.test.js` / `mcp-v2-oauth.test.js` regression on both stores (56 passed, 0 failed, 0 skipped).
+- [x] Independent security review of candidate `9c4a7b3322b7b53d3c60b9f6f658198660e96710`: no evidence-based P0/P1/P2 findings; reviewer reran both-store OAuth regression (56 passed, 0 failed, 0 skipped; exit 0).
+- [x] Manager full-suite acceptance at the same exact candidate: `NODE_ENV=test SHOP_TEST_DATABASE_URL=<owned synthetic PostgreSQL16> npm test` exited 0; 2043 tests, 2001 passed, 0 failed, 0 cancelled, 42 explicit opt-in skips; TAP duration 517286.738259 ms. The skipped browser/native opt-ins were not verified by this run. Manager syntax and `npm audit --omit=dev --audit-level=high` also exited 0; audit found 0 vulnerabilities.
+- [x] Owner explicitly authorized commit, push, merge to main and live deployment of this repair after isolated acceptance (2026-11-06).
+- [ ] Authorized push, merge and production deployment/live verification; final exact-main CI, artifact and live results belong in the release report/PR and dated KB event after execution.
+- [ ] Owner-only real ChatGPT OAuth connection; synthetic tests cannot attest the user's client/account connection.
+
+Rollback: revert the focused source/test/documentation patch; no database migration or data rewrite is involved. Reverting restores the rejection of clients that send the language hint. Test evidence is local and does not claim a production repair.
+
 ## MCP production activation (2026-11-06) — AFBA runtime acceptance complete
 
 Owner option B authorized the full32-tool Seller Operations MCP while preserving explicit seller scope consent and exact-proposal first-party human approval. Original8 contracts and existing grants are unchanged; all new flags still default OFF. Independent local full acceptance at0c15c8a passed2071/2071 with both stores and all browser/native/production-proxy gates; its source/environment limits remain recorded.
