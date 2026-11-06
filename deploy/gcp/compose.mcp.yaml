@@ -1,0 +1,27 @@
+# Root-installed optional overlay. Never load this file for the disabled profile.
+services:
+  backend:
+    environment:
+      MCP_V2_ENABLED: "1"
+      MCP_V2_MEDIA_ENABLED: "1"
+      MCP_V2_CATALOG_MEDIA_UPDATE_ENABLED: "1"
+      MCP_V2_CATALOG_MEDIA_CREATE_ENABLED: "1"
+      MCP_V2_PRODUCTION_PROFILE: seller-operations-v1
+      MCP_V2_BACKEND_IDENTITY: ${MCP_BACKEND_IDENTITY:?Verified actual backend image identity required}
+      MCP_V2_EPOCH_FILE: /run/mcp-control/epoch
+      MCP_V2_MEDIA_CODEC_IDENTITY: ${MCP_CODEC_IDENTITY:?Verified codec image identity required}
+      MCP_V2_MEDIA_SOCKET_PATH: /run/mcp-codec/socket/codec.sock
+      MCP_V2_MEDIA_TOKEN_FILE: /run/mcp-codec/token
+    volumes:
+      - type: bind
+        source: ${MCP_GENERATION_PATH:?Verified sealed codec generation required}
+        target: /run/mcp-codec
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${MCP_CONTROL_PATH:?Root-owned epoch directory required}
+        target: /run/mcp-control
+        read_only: true
+        bind:
+          create_host_path: false

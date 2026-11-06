@@ -3,6 +3,7 @@
 import argparse
 import fcntl
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -19,7 +20,11 @@ REPO = 'yapweijun1996/Online-Shopping'
 SHA = re.compile(r'[0-9a-f]{40}')
 DIGEST = re.compile(r'ghcr\.io/yapweijun1996/online-shopping-(backend|frontend|whatsapp-qr)@sha256:[0-9a-f]{64}')
 MOUNTS = ('src/postgres/schema.sql', 'deploy/init-postgres.sh', 'deploy/gcp/Caddyfile')
-PROTECTED = ('deploy/', '.github/workflows/', 'compose', 'Dockerfile', 'src/postgres/', 'src/platform/', 'src/config.js', 'package.json', 'package-lock.json')
+CODEC_FILES = {'wireSha256': 'src/mcp/media-codec-wire.js', 'clientSha256': 'src/mcp/media-codec-client.js', 'lockSha256': 'media-codec/package-lock.json'}
+MCP_FLAGS = ('MCP_V2_ENABLED', 'MCP_V2_MEDIA_ENABLED', 'MCP_V2_CATALOG_MEDIA_UPDATE_ENABLED', 'MCP_V2_CATALOG_MEDIA_CREATE_ENABLED')
+PROFILE = 'seller-operations-v1'
+IMAGE_ID = re.compile(r'sha256:[0-9a-f]{64}')
+PROTECTED = ('src/mcp/', 'media-codec/', 'src/request-origin.js', 'src/server.js', 'src/app.js', 'deploy/', '.github/workflows/', 'compose', 'Dockerfile', 'src/postgres/', 'src/platform/', 'src/config.js', 'package.json', 'package-lock.json')
 
 
 def revision(value):
@@ -111,7 +116,8 @@ def ci_passed(payload, sha):
 
 
 class Updater:
-    def __init__(self, root):
+    def __init__(self, root, lock_file=None):
+        self.lock_file = lock_file
         self.root = Path(root)
         self.state_path = self.root / 'state.json'
         self.state = json.loads(self.state_path.read_text()) if self.state_path.exists() else {}
@@ -134,10 +140,10 @@ class Updater:
             raise ValueError('Incomplete source tree')
         entries = {e['path']: e for e in tree['tree'] if e['type'] == 'blob'}
         protected = {p: [e['sha'], e['mode']] for p, e in entries.items() if p.startswith(PROTECTED)}
-        if not all(p in entries and entries[p]['mode'] in ('100644', '100755') for p in (*MOUNTS, 'src/db.js')):
+        if not all(p in entries and entries[p]['mode'] in ('100644', '100755') for p in (*MOUNTS, 'src/db.js', *CODEC_FILES.values())):
             raise ValueError('Invalid mounted source')
         content = {}
-        for path in (*MOUNTS, 'src/db.js'):
+        for path in (*MOUNTS, 'src/db.js', *CODEC_FILES.values()):
             data = request('https://raw.githubusercontent.com/' + REPO + '/' + sha + '/' + path)
             blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
             if blob != entries[path]['sha']:
@@ -197,7 +203,36 @@ class Updater:
             release['whatsapp-qr'] = self.image('whatsapp-qr', sha)
             if self.runtime().get('WHATSAPP_QR_SLOT1_ENABLED') == '1':
                 release['qr_workers'] = ['whatsapp-qr', 'whatsapp-qr-slot1']
+        if self.mcp_enabled():
+            backend = json.loads(self.docker('image', 'inspect', '--format', '{{json .}}', release['backend']))
+            backend_id = backend.get('Id', '')
+            if not IMAGE_ID.fullmatch(backend_id):
+                raise ValueError('Invalid backend identity')
+            release['mcp'] = {'version': 1, 'profile': PROFILE, 'backendIdentity': backend_id,
+                              'codec': self.codec_image(sha, content)}
         return release
+
+    def codec_image(self, sha, content):
+        if shutil.disk_usage(self.root).free < 3 * 1024 ** 3:
+            raise RuntimeError('Insufficient disk reserve')
+        tag = 'ghcr.io/yapweijun1996/online-shopping-backend:media-codec-' + revision(sha)
+        self.docker('pull', '--platform', 'linux/amd64', tag, timeout=300)
+        info = json.loads(self.docker('image', 'inspect', '--format', '{{json .}}', tag))
+        labels = info.get('Config', {}).get('Labels') or {}
+        digests = [d for d in info.get('RepoDigests', []) if DIGEST.fullmatch(d) and '/online-shopping-backend@' in d]
+        hashes = {key: hashlib.sha256(content[path]).hexdigest() for key, path in CODEC_FILES.items()}
+        if (info.get('Os') != 'linux' or info.get('Architecture') != 'amd64' or len(digests) != 1 or
+                not IMAGE_ID.fullmatch(info.get('Id', '')) or
+                labels.get('org.opencontainers.image.title') != 'online-shopping-media-codec' or
+                labels.get('org.opencontainers.image.source') != 'https://github.com/' + REPO or
+                labels.get('org.opencontainers.image.revision') != sha or
+                any(labels.get('shopping.media.' + name + '.sha256') != hashes[key]
+                    for name, key in [('wire', 'wireSha256'), ('client', 'clientSha256'), ('lock', 'lockSha256')])):
+            raise ValueError('Invalid codec provenance')
+        return dict(version=1, image=digests[0], imageId=info['Id'], revision=sha, platform='linux/amd64', **hashes)
+
+    def mcp_enabled(self):
+        return self.runtime().get('MCP_V2_PRODUCTION_PROFILE') == PROFILE
 
     def activate(self, release, initial=False):
         self.validate_release(release)
@@ -238,6 +273,18 @@ class Updater:
             if not DIGEST.fullmatch(image) or '/online-shopping-' + component + '@' not in image:
                 raise ValueError('Invalid state image')
 
+        profile = release.get('mcp')
+        if profile is not None:
+            if (not isinstance(profile, dict) or set(profile) != {'version', 'profile', 'backendIdentity', 'codec'} or
+                    profile['version'] != 1 or profile['profile'] != PROFILE or not IMAGE_ID.fullmatch(profile['backendIdentity'])):
+                raise ValueError('Invalid MCP release profile')
+            codec = profile['codec']
+            if (not isinstance(codec, dict) or set(codec) != {'version', 'image', 'imageId', 'revision', 'platform', *CODEC_FILES} or
+                    codec['version'] != 1 or codec['revision'] != release['sha'] or codec['platform'] != 'linux/amd64' or
+                    not DIGEST.fullmatch(codec['image']) or '/online-shopping-backend@' not in codec['image'] or
+                    codec['image'] == release['backend'] or not IMAGE_ID.fullmatch(codec['imageId']) or
+                    any(not re.fullmatch(r'[0-9a-f]{64}', codec[key]) for key in CODEC_FILES)):
+                raise ValueError('Invalid MCP codec manifest')
         workers = self.qr_workers(release)
         if workers not in ([], ['whatsapp-qr'], ['whatsapp-qr', 'whatsapp-qr-slot1']):
             raise ValueError('Invalid worker slots')
@@ -278,7 +325,7 @@ class Updater:
             if not line or line.startswith('#'):
                 continue
             key, separator, value = line.partition('=')
-            if not separator or key in values or key not in ('SHOP_HOST', 'SELLER_HOST', 'ADMIN_USERNAME', 'SECRETS_DIR', 'PLATFORM_ENABLED', 'PLATFORM_ADMIN_CLAIM_ENABLED', 'INTEGRATION_KEY_FILE', 'MCP_ENABLED', 'MCP_REDIRECT_URIS', 'AI_ENABLED', 'AI_MODEL', 'WHATSAPP_QR_ENABLED', 'WHATSAPP_QR_SLOT1_ENABLED', 'WHATSAPP_QR_BINDINGS_FILE'):
+            if not separator or key in values or key not in ('SHOP_HOST', 'SELLER_HOST', 'ADMIN_USERNAME', 'SECRETS_DIR', 'PLATFORM_ENABLED', 'PLATFORM_ADMIN_CLAIM_ENABLED', 'INTEGRATION_KEY_FILE', 'MCP_ENABLED', 'MCP_REDIRECT_URIS', 'AI_ENABLED', 'AI_MODEL', 'WHATSAPP_QR_ENABLED', 'WHATSAPP_QR_SLOT1_ENABLED', 'WHATSAPP_QR_BINDINGS_FILE', *MCP_FLAGS, 'MCP_V2_PRODUCTION_PROFILE'):
                 raise ValueError('Invalid runtime configuration')
             values[key] = value
         if not {'SHOP_HOST', 'SELLER_HOST', 'ADMIN_USERNAME', 'SECRETS_DIR'} <= set(values):
@@ -324,6 +371,14 @@ class Updater:
             key = Path(secret_dir) / 'ai-api-key'
             if not key.is_file() or not 20 <= key.stat().st_size <= 400:
                 raise ValueError('AI requires a real API key file')
+        if any(values.get(key, '0') not in ('0', '1') for key in MCP_FLAGS):
+            raise ValueError('Invalid MCP v2 switch')
+        requested = values.get('MCP_V2_PRODUCTION_PROFILE')
+        if requested is not None and requested != PROFILE:
+            raise ValueError('Invalid MCP production profile')
+        if requested is not None or any(values.get(key, '0') == '1' for key in MCP_FLAGS):
+            if requested != PROFILE or values.get('MCP_ENABLED') != '1' or any(values.get(key) != '1' for key in MCP_FLAGS):
+                raise ValueError('Incomplete MCP production profile')
         return values
 
     def local_fingerprint(self):
