@@ -10,7 +10,8 @@ Baseline `25f8b9b567d6ce677523a91cf39ac78bbee676be`. The reported ChatGPT author
 - [x] Run `npm run check` and the combined `seller-mcp.test.js` / `mcp-v2-oauth.test.js` regression on both stores (56 passed, 0 failed, 0 skipped).
 - [x] Independent security review of candidate `9c4a7b3322b7b53d3c60b9f6f658198660e96710`: no evidence-based P0/P1/P2 findings; reviewer reran both-store OAuth regression (56 passed, 0 failed, 0 skipped; exit 0).
 - [x] Manager full-suite acceptance at the same exact candidate: `NODE_ENV=test SHOP_TEST_DATABASE_URL=<owned synthetic PostgreSQL16> npm test` exited 0; 2043 tests, 2001 passed, 0 failed, 0 cancelled, 42 explicit opt-in skips; TAP duration 517286.738259 ms. The skipped browser/native opt-ins were not verified by this run. Manager syntax and `npm audit --omit=dev --audit-level=high` also exited 0; audit found 0 vulnerabilities.
-- [ ] New release authorization, push, merge and production deployment/live verification for this repair; not performed by the isolated verification task.
+- [x] Owner explicitly authorized commit, push, merge to main and live deployment of this repair after isolated acceptance (2026-11-06).
+- [ ] Authorized push, merge and production deployment/live verification; final exact-main CI, artifact and live results belong in the release report/PR and dated KB event after execution.
 - [ ] Owner-only real ChatGPT OAuth connection; synthetic tests cannot attest the user's client/account connection.
 
 Rollback: revert the focused source/test/documentation patch; no database migration or data rewrite is involved. Reverting restores the rejection of clients that send the language hint. Test evidence is local and does not claim a production repair.
