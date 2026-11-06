@@ -45,6 +45,7 @@ test('v2 config fails closed on unspecified security inputs, unsafe modes and pr
   assert.throws(() => readMcpV2Config(f.env, { ...context, dbPath: path.join(f.directory, 'shop.db') }), /outside the database/);
   const config = readMcpV2Config({ ...f.env, MCP_V2_BUILD_DIGEST: 'a'.repeat(64), APP_REVISION: 'local', SELLER_QUICK_LOGIN: '0' }, context);
   assert.equal(config.enabled, true);
+  assert.equal(config.epochFile, f.file);
   assert.equal(config.epoch, Buffer.alloc(32, 7).toString('base64url'));
   assert.equal(config.buildDigest, operationBuildDigest());
   assert.notEqual(config.buildDigest, 'a'.repeat(64));

@@ -4,6 +4,7 @@ import { json, readBody } from '../http.js';
 import { readSession, sessionCookieFrom } from '../auth.js';
 import { audit, effective, eligible, hash, liveGrant, revokeGrant, secret, stamp, supportedScopes, V2_SCOPES, v2Epoch } from './credentials.js';
 import { parseJson } from './json.js';
+import { operationEpochCurrent } from './operation-epoch.js';
 import { cleanupOAuth } from './cleanup.js';
 
 const DAY = 86400000;
@@ -69,10 +70,15 @@ const csp = "default-src 'self'; script-src 'self'; style-src 'self'; connect-sr
 
 export function createOAuth({ store, config, tenantId, limit }) {
   const base = config.basePath || '', issuer = config.sellerOrigin + base, resource = issuer + '/mcp';
-  const binding = { tenantId, issuer, resource, ...(v2Epoch(config) ? { mcpV2: { ...config.mcpV2 } } : {}) };
+  const binding = { tenantId, issuer, resource, ...(config.mcpV2?.enabled === true ? { mcpV2: { ...config.mcpV2 } } : {}) };
+  const fresh = () => { if (!operationEpochCurrent(binding.mcpV2)) fail('access_denied', 403); };
+  const transaction = (work) => store.transaction(async () => {
+    fresh(); const result = await work(); fresh(); return result;
+  });
   const parseScopes = (value) => scopes(value, { mcpV2: binding.mcpV2 });
   const epochHash = v2Epoch({ mcpV2: binding.mcpV2 });
   async function requestEpoch(row) {
+    if (!operationEpochCurrent(binding.mcpV2)) return false;
     if (!row.scopes.split(' ').some((scope) => V2_SCOPES.includes(scope))) return true;
     if (!epochHash) return false;
     const evidence = await store.get('SELECT epoch_hash, created_at FROM mcp_v2_authorization_request WHERE request_id = ?', row.id);
@@ -85,13 +91,14 @@ export function createOAuth({ store, config, tenantId, limit }) {
     return row;
   }
   async function register(request, ip) {
+    fresh();
     await limit('oauth-register', ip, 5); await limit('oauth-register-shop', 'shop', 100);
     const input = fields(await readJson(request, 16384), ['client_name', 'redirect_uris', 'grant_types', 'response_types', 'token_endpoint_auth_method']);
     if (typeof input.client_name !== 'string' || !input.client_name.trim() || input.client_name.length > 80 || /[\u0000-\u001f]/.test(input.client_name) || JSON.stringify(input.grant_types) !== JSON.stringify(['authorization_code', 'refresh_token']) || JSON.stringify(input.response_types) !== '["code"]' || input.token_endpoint_auth_method !== 'none') fail('invalid_client_metadata');
     if (!Array.isArray(input.redirect_uris) || input.redirect_uris.length < 1 || input.redirect_uris.length > 5 || new Set(input.redirect_uris).size !== input.redirect_uris.length || input.redirect_uris.some((uri) => !safeRedirect(uri, config.mcpRedirectUris || []))) fail('invalid_redirect_uri');
     // Reclamation must commit even if an older database still exceeds the hard cap.
     await cleanupOAuth(store);
-    return store.transaction(async () => {
+    return transaction(async () => {
       const { count } = await store.get('SELECT COUNT(*) AS count FROM oauth_client');
       if (count >= 100) {
         const unused = await store.get(`SELECT c.id FROM oauth_client c WHERE c.last_used_at IS NULL
@@ -109,6 +116,7 @@ export function createOAuth({ store, config, tenantId, limit }) {
     });
   }
   async function authorize(request, ip) {
+    fresh();
     await limit('oauth-authorize', ip, 30);
     const url = new URL(request.url), params = Object.create(null);
     for (const [key, value] of url.searchParams) { if (Object.hasOwn(params, key)) fail(); params[key] = value; }
@@ -120,7 +128,7 @@ export function createOAuth({ store, config, tenantId, limit }) {
     if (!/^[A-Za-z0-9_-]{16,512}$/.test(params.state) || !/^[A-Za-z0-9_-]{43}$/.test(params.code_challenge) || params.code_challenge_method !== 'S256') fail();
     const requested = parseScopes(params.scope).join(' '), id = randomUUID(), nonce = secret();
     await cleanupOAuth(store);
-    await store.transaction(async () => {
+    await transaction(async () => {
       const { count } = await store.get('SELECT COUNT(*) AS count FROM oauth_authorization_request WHERE consumed_at IS NULL AND expires_at > ?', stamp());
       if (count >= 100) fail('temporarily_unavailable', 429, { 'Retry-After': '900' });
       await store.run(`INSERT INTO oauth_authorization_request(id, browser_nonce_hash, client_id, tenant_id, resource, redirect_uri, state,
@@ -142,21 +150,24 @@ export function createOAuth({ store, config, tenantId, limit }) {
   // Fresh password login binds it to a session inside the same writer transaction.
   async function bindLogin(input, account, session) {
     if (!input.mcpAuthorization) return;
+    fresh();
     fields(input.mcpAuthorization, ['authorizationRequestId', 'proof']);
     const { authorizationRequestId: id, proof } = input.mcpAuthorization;
     const row = typeof id === 'string' && await store.get('SELECT * FROM oauth_authorization_request WHERE id = ?', id);
     const live = await store.get('SELECT * FROM seller_account WHERE id = ?', account.id);
     if (!eligible(live) || !row || row.consumed_at || row.expires_at <= stamp() || row.created_at > stamp() || row.tenant_id !== tenantId || row.resource !== resource || typeof proof !== 'string' || proof.length !== 43 || hash(proof) !== row.browser_nonce_hash || row.session_proof_hash || !await requestEpoch(row)) fail('access_denied', 403);
     await store.run('UPDATE oauth_authorization_request SET account_id = ?, session_proof_hash = ?, account_auth_version = ? WHERE id = ? AND session_proof_hash IS NULL', account.id, hash(session.token), live.oauth_auth_version, id);
+    fresh();
   }
   async function consent(request) {
+    fresh();
     if (request.headers.get('origin') !== config.sellerOrigin) fail('access_denied', 403);
     const input = fields(await readJson(request, 4096), ['authorizationRequestId', 'decision', 'scopes']);
     if (!['approve', 'deny'].includes(input.decision) || !Array.isArray(input.scopes) || input.scopes.length > supportedScopes({ mcpV2: binding.mcpV2 }).length || input.scopes.some((scope) => !supportedScopes({ mcpV2: binding.mcpV2 }).includes(scope)) || new Set(input.scopes).size !== input.scopes.length) fail();
     const initial = await readSession(store, sessionCookieFrom(request.headers.get('cookie') || ''));
     if (!initial || request.headers.get('x-csrf-token') !== initial.csrf_token) fail('access_denied', 403);
     await limit('oauth-consent', initial.account.id, 20);
-    return store.transaction(async () => {
+    return transaction(async () => {
       const session = await readSession(store, sessionCookieFrom(request.headers.get('cookie') || ''));
       if (!session || request.headers.get('x-csrf-token') !== session.csrf_token) fail('access_denied', 403);
       const row = typeof input.authorizationRequestId === 'string' && await store.get('SELECT * FROM oauth_authorization_request WHERE id = ?', input.authorizationRequestId);
@@ -200,6 +211,7 @@ export function createOAuth({ store, config, tenantId, limit }) {
     return json(200, { access_token: access, token_type: 'Bearer', expires_in: Math.min(900, Math.floor((Date.parse(grant.absolute_expires_at) - Date.now()) / 1000)), refresh_token: refresh, scope, resource });
   }
   async function token(request, ip) {
+    fresh();
     await limit('oauth-token', ip, 60);
     if (request.headers.has('authorization')) fail('invalid_client', 401);
     const input = await form(request);
@@ -209,7 +221,7 @@ export function createOAuth({ store, config, tenantId, limit }) {
     fields(input, refresh ? [...required, 'scope'] : required, required);
     await client(input.client_id); await limit('oauth-token-client', input.client_id, 60);
     if (input.resource !== resource) fail('invalid_target');
-    return store.transaction(async () => {
+    return transaction(async () => {
       await client(input.client_id);
       const value = refresh ? input.refresh_token : input.code;
       if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(value)) fail('invalid_grant');
@@ -242,7 +254,7 @@ export function createOAuth({ store, config, tenantId, limit }) {
     const input = fields(await form(request), ['client_id', 'token', 'token_type_hint'], ['client_id', 'token']);
     if (input.token_type_hint !== undefined && !['access_token', 'refresh_token'].includes(input.token_type_hint)) fail();
     if (input.token.length > 128 || input.client_id.length > 128) fail();
-    return store.transaction(async () => {
+    return transaction(async () => {
       const row = await store.get(`SELECT g.* FROM oauth_token t JOIN oauth_grant g ON g.id = t.grant_id WHERE t.token_hash = ? AND g.client_id = ? AND g.tenant_id = ? AND g.resource = ?`, hash(input.token), input.client_id, tenantId, resource);
       if (row) { await revokeGrant(store, row.id); await audit(store, tenantId, 'REVOKE', row); }
       return new Response(null, { status: 200, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });

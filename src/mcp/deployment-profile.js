@@ -30,7 +30,7 @@ export function readMcpDeploymentProfile(env, { production = env.NODE_ENV === 'p
   }
   if (!enabled && requested === undefined) return Object.freeze({ version: 1, kind: 'disabled', name: NAME });
   if (requested !== NAME || env.NODE_ENV !== 'production' || mcpEnabled !== true ||
-      fullFlags.some(flag => env[flag] !== '1') || !secure(sellerOrigin) || shopMode !== 'manual' ||
+      fullFlags.some(flag => env[flag] !== '1') || env.TRUST_PROXY !== '1' || !secure(sellerOrigin) || shopMode !== 'manual' ||
       sellerQuickLogin !== false || ![undefined, '0'].includes(env.SELLER_QUICK_LOGIN)) fail();
   const backendIdentity = env.MCP_V2_BACKEND_IDENTITY;
   if (typeof backendIdentity !== 'string' || !identity.test(backendIdentity)) fail();

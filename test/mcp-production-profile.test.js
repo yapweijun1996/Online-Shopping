@@ -26,7 +26,7 @@ import { freshCatalogAccess, legacyCatalogScopes } from './helpers/mcp-catalog-d
 const run = promisify(execFile), identity = 'sha256:' + 'a'.repeat(64), codec = 'sha256:' + 'b'.repeat(64);
 const password = 'T7!pQ9xV4mK2rD8zL6nF1cH5jB3sA0wE';
 const common = { production: true, mcpEnabled: true, sellerOrigin: 'https://seller.example.com', shopMode: 'manual', sellerQuickLogin: false };
-const full = { NODE_ENV: 'production', MCP_ENABLED: '1', MCP_V2_ENABLED: '1', MCP_V2_MEDIA_ENABLED: '1',
+const full = { NODE_ENV: 'production', TRUST_PROXY: '1', MCP_ENABLED: '1', MCP_V2_ENABLED: '1', MCP_V2_MEDIA_ENABLED: '1',
   MCP_V2_CATALOG_MEDIA_UPDATE_ENABLED: '1', MCP_V2_CATALOG_MEDIA_CREATE_ENABLED: '1',
   MCP_V2_PRODUCTION_PROFILE: 'seller-operations-v1', MCP_V2_BACKEND_IDENTITY: identity };
 const guard = { withActiveTenant() {} }, context = { quickLogin: false, tenantGuard: guard };
@@ -44,6 +44,7 @@ test('production profile is explicit, closed and frozen; partial mode and invali
     for (const value of [undefined, '0', 'true', 1]) assert.throws(() => readMcpDeploymentProfile({ ...full, [key]: value }, common));
   }
   assert.throws(() => readMcpDeploymentProfile({ ...full, MCP_V2_PRODUCTION_PROFILE: undefined }, { ...common, production: false }));
+  for (const value of [undefined, '0', 'true', 1]) assert.throws(() => readMcpDeploymentProfile({ ...full, TRUST_PROXY: value }, common));
   for (const value of [undefined, '', 'full', 'seller-operations-v2']) assert.throws(() => readMcpDeploymentProfile({ ...full, MCP_V2_PRODUCTION_PROFILE: value }, common));
   for (const value of [undefined, '', 'sha256:' + 'A'.repeat(64), 'sha256:abc', 'a'.repeat(64)]) assert.throws(() => readMcpDeploymentProfile({ ...full, MCP_V2_BACKEND_IDENTITY: value }, common));
   for (const patch of [{ production: false }, { mcpEnabled: false }, { sellerOrigin: 'http://seller.example.com' },
