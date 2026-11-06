@@ -36,6 +36,8 @@ const config={production:true,trustProxy:true,publicOrigin:'https://shop.qa.test
 http.createServer(async(req,res)=>{try{
  const request=toFetchRequest(req,config);const review=/^\\/(?:alpha\\/)?(?:oauth\\/operation|api\\/v1\\/seller\\/mcp\\/operations\\/)/.test(new URL(request.url).pathname);
  res.setHeader('content-type','application/json');res.setHeader('cache-control','no-store');res.setHeader('referrer-policy','no-referrer');
+ // Match the real backend json() response, including its own nosniff policy.
+ res.setHeader('x-content-type-options','nosniff');
  if(review){res.setHeader('x-frame-options','DENY');res.setHeader('content-security-policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");}
  res.end(JSON.stringify({url:request.url,method:request.method,body:await request.text(),ip:request.headers.get('x-real-ip')}));
  }catch(error){req.resume();res.writeHead(error.status||500,{'cache-control':'no-store'});res.end();}}).listen(3000,'0.0.0.0');
