@@ -499,6 +499,8 @@ export async function deleteGalleryImage(database, productId, imageId, mode = 'm
 export async function listProducts(database, params, seller = false, mode = 'manual') {
   const search = boundedText(params.get('search'), 'search', 100, false);
   const category = boundedText(params.get('category'), 'category', 80, false);
+  const status = seller ? (params.get('status') || '') : '';
+  if (seller && !['', 'active', 'inactive'].includes(status)) throw new FieldError('status', 'Choose active or inactive.');
   const parseNumber = (key, fallback, maximum) => {
     const value = params.get(key);
     if (value === null) return fallback;
@@ -520,7 +522,8 @@ export async function listProducts(database, params, seller = false, mode = 'man
           ${siblings('MAX(x.price_minor)')} AS group_max_price, ${siblings('SUM(x.active)')} AS group_active,
           ${siblings('CASE WHEN COUNT(*) <> COUNT(x.stock_quantity) THEN NULL ELSE SUM(x.stock_quantity) END')} AS group_stock
         ${fromProduct} WHERE ${activeClause} ${filters}) listed
-      WHERE group_rank = 1 ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?`, search, search, search, category, category, limit + 1, offset)
+      WHERE group_rank = 1 AND (? = '' OR (? = 'active' AND group_active > 0) OR (? = 'inactive' AND group_active < group_size))
+      ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?`, search, search, search, category, category, status, status, status, limit + 1, offset)
     // Shoppers see one card per product: the variants of a group collapse to its cheapest in-stock variant
     // (the one that matches the search), with the group size and whether its prices differ.
     : await database.all(`SELECT * FROM (

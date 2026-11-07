@@ -242,6 +242,14 @@ test('PostgreSQL public list collapses variant groups to one card with the group
   assert.equal(sellerRows.length, 2, 'the seller list has one row per listing');
   const teeRow = sellerRows.find(p => p.variantGroup === 'TEE');
   assert.deepEqual([teeRow.variantCount, teeRow.activeCount, teeRow.priceFromMinor, teeRow.priceToMinor, teeRow.stockTotal], [3, 3, 1200, 1600, null]);
+  await make('TEE-XL', 1800, { variantGroup: 'TEE', variantLabel: 'XL', active: false });
+  await make('INACTIVE', 800, { active: false });
+  const filtered = async query => (await listProducts(store, new URLSearchParams(query), true)).items;
+  assert.deepEqual((await filtered('status=active')).map(p => p.variantGroup || p.sku).sort(), ['MUG', 'TEE']);
+  assert.deepEqual((await filtered('status=inactive')).map(p => p.variantGroup || p.sku).sort(), ['INACTIVE', 'TEE']);
+  assert.equal((await filtered('status=inactive&search=TEE-L'))[0].variantGroup, 'TEE');
+  assert.equal((await listProducts(store, new URLSearchParams('status=active&limit=1'), true)).nextOffset, 1);
+  await assert.rejects(filtered('status=unknown'), /active or inactive/);
 });
 
 test('PostgreSQL schema 17 upgrades into listings, keeping every product id and order line', {skip:!base}, async t => {
