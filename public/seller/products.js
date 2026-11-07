@@ -793,6 +793,11 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     const query = reset ? search.value.trim() : appliedSearch;
     const queryStatus = reset ? filterStatus : appliedStatus;
     const offset = reset ? 0 : nextOffset;
+    if (reset && (list.hidden || queryStatus !== appliedStatus)) {
+      list.hidden = true;
+      selectBar.hidden = true;
+      bulkBar.hidden = true;
+    }
     more.disabled = true;
     retryList.hidden = true;
     clearSearch.hidden = true;
@@ -817,7 +822,11 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       }
       return false;
     } finally {
-      if (sequence === loadSequence && isCurrent()) more.disabled = false;
+      if (sequence === loadSequence && isCurrent()) {
+        more.disabled = false;
+        list.hidden = false;
+        refreshBulk();
+      }
     }
   }
 
