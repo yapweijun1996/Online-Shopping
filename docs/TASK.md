@@ -1,5 +1,18 @@
 # Executable task ledger
 
+## OAuth consent defaults and MCP request compatibility (2026-11-06)
+
+Baseline `6be1dcc3b5b0775c75aa814c74725d86a5a58bd4`. Owner requested every requested scope selected by default.
+
+- [x] Use the existing shared scope renderer to select read/write/cancel permissions, limited to valid requested scopes.
+- [x] Update consent copy and authorization/security documentation; preserve explicit approval, deselection, denial and all operation review acknowledgments.
+- [x] Reproduce strict rejection of standard request metadata on synthetic read calls; accept inert `params._meta` while retaining tool argument validation. Attribution to the owner screenshot remains unconfirmed without raw request/response.
+- [x] Syntax passed; focused SQLite/PostgreSQL OAuth/protocol60/60 passed,0skips; full suite2049total/2007passed/0failed/42explicit optional skips,523767.6588ms,exit0. Dependency audit found0vulnerabilities. Browser/native opt-ins skipped by this run are not claimed as verified. See [RCA](mcp-v2/14-CHATGPT-INVOCATION-RCA.md).
+- [ ] Release verification, if deployed; local implementation is not live evidence.
+
+Rollback: revert the focused renderer/copy/test/docs patch; no schema or data migration. Existing grants are unchanged.
+
+
 ## OAuth locale compatibility repair (2026-11-06) — isolated verification
 
 Baseline `25f8b9b567d6ce677523a91cf39ac78bbee676be`. The reported ChatGPT authorization URL includes `ui_locales=en-US`; the strict authorization parameter allowlist rejected it before consent. Accept optional `ui_locales` as an inert display preference while preserving all eight required parameters, duplicate/unknown rejection, URL bounds, PKCE, exact redirects/resources and explicit fresh seller consent. No UI redesign, schema, permission, feature-flag or deployment-policy change.
@@ -11,7 +24,7 @@ Baseline `25f8b9b567d6ce677523a91cf39ac78bbee676be`. The reported ChatGPT author
 - [x] Independent security review of candidate `9c4a7b3322b7b53d3c60b9f6f658198660e96710`: no evidence-based P0/P1/P2 findings; reviewer reran both-store OAuth regression (56 passed, 0 failed, 0 skipped; exit 0).
 - [x] Manager full-suite acceptance at the same exact candidate: `NODE_ENV=test SHOP_TEST_DATABASE_URL=<owned synthetic PostgreSQL16> npm test` exited 0; 2043 tests, 2001 passed, 0 failed, 0 cancelled, 42 explicit opt-in skips; TAP duration 517286.738259 ms. The skipped browser/native opt-ins were not verified by this run. Manager syntax and `npm audit --omit=dev --audit-level=high` also exited 0; audit found 0 vulnerabilities.
 - [x] Owner explicitly authorized commit, push, merge to main and live deployment of this repair after isolated acceptance (2026-11-06).
-- [ ] Authorized push, merge and production deployment/live verification; final exact-main CI, artifact and live results belong in the release report/PR and dated KB event after execution.
+- [x] Locale repair released through PR215/216 as main/live `6be1dcc3b5b0775c75aa814c74725d86a5a58bd4`: exact-main Verify42198786158 and publisher42201314892 succeeded; actual private image/revision/health, public28/28, fresh3DB/77table backup/restore proof and all3 managed timers verified. Final operational closure at2026-11-06 11:09:50UTC; detailed historical failures and owner-OAuth limits are retained in the PR release records and dated KB event.
 - [ ] Owner-only real ChatGPT OAuth connection; synthetic tests cannot attest the user's client/account connection.
 
 Release-gate follow-up: initial merged candidate `d5d4c14` failed main CI `42195657100` (2043 total, 1991 passed, 1 failed, 51 explicit skips) in an unchanged PostgreSQL approval/parallel-commit test; publication was skipped and production was not updated. A controlled clock independently reproduced the same denial stack because the shared synthetic fixture could derive a 600001 ms lifetime from two clock reads. The original CI did not retain row timestamps, so attribution of that particular run remains inferred. Fixture repair `c02caca` derives expiry from the captured creation time; the original controlled test passes on both stores, focused regression passes 46/46 and independent review passes 14/14. A new deterministic test retains rejection of both shorter and longer invalid lifetimes. Production validators and application code are unchanged by this follow-up. Fresh exact-main release gates remain required; the earlier failed run is not a pass.
