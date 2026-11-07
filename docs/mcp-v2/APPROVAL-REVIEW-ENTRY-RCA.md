@@ -94,7 +94,7 @@ without horizontal overflow and generic unavailable recovery. The existing revie
 stylesheet remains light under the dark browser preference; no new theme behavior
 is claimed.
 
-Independent final verification: syntax checks passed. Full isolated SQLite and
+Verification of the original candidate based on `edf2dea`: syntax checks passed. Full isolated SQLite and
 PostgreSQL16 regression completed with2064 total,2018 passed,0 failed and46
 explicit optional skips in424512.481428ms. Skips are not passed evidence. A separate
 real HTTPS Chrome run passed5/5 with zero skips in15018.99227ms: the four new
@@ -104,9 +104,13 @@ review found no blocking issue. The exact repeated approval POST was rejected403
 approved commits were independently read back through the genuine OAuth client's
 catalog.get and catalog.list calls.
 
-The candidate is ready for release review (local GO). Production release remains
-HOLD under this task's explicit requirement for separate authorization: no commit,
-push, merge or deployment was performed. These isolated observations do not prove
-a successful seller approval or commit on production, nor establish the unique
-cause of the owner's reported plain-link failure. A separately authorized release
-must use fresh proposals for live verification rather than expired incident URLs.
+The owner subsequently explicitly authorized commit, merge, GitHub main push and
+live deployment. The candidate has been integrated onto `538983b` and committed;
+independent integrated-tree regression and protected release gates are in progress.
+The integrated tree's focused checks passed13/13 and the existing browser case
+passed1/1, including all five browser cases. Release authorization does not replace
+exact-main CI, published-image canary, fresh backup/restore proof or post-deploy
+verification. These isolated observations do not prove a successful seller approval
+or commit on production, nor establish the unique cause of the owner's reported
+plain-link failure. Live approval verification must use fresh proposals rather
+than expired incident URLs and requires genuine first-party seller approval.
