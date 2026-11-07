@@ -26,8 +26,17 @@ const visible = (value) => value.replace(/[\u061c\u200b-\u200f\u202a-\u202e\u206
   (character) => `\\u${character.codePointAt(0).toString(16).padStart(4, '0')}`);
 
 async function load() {
-  if (!path || [...new URL(location.href).searchParams.keys()].length !== 1 || !idPattern.test(id || '')) throw new Error('Invalid operation.');
+  const params = new URL(location.href).searchParams;
+  if (!path || [...params.keys()].some(key => !['operationId', 'utm_source'].includes(key)) ||
+      params.getAll('operationId').length !== 1 || !idPattern.test(id || '') || params.getAll('utm_source').length > 1 ||
+      (params.has('utm_source') && !/^[A-Za-z0-9._~-]{1,128}$/.test(params.get('utm_source')))) throw new Error('Invalid operation.');
   const sessionResponse = await fetch(`${base}/api/v1/seller/session`, { credentials: 'same-origin', cache: 'no-store' });
+  if (sessionResponse.status === 401) {
+    const link = document.querySelector('#seller-link');
+    link.href = `${base}/seller/?reviewOperation=${id}`;
+    link.textContent = 'Sign in to review this proposal';
+    throw new Error('Sign in required.');
+  }
   if (!sessionResponse.ok) throw new Error('Sign in required.');
   const session = await sessionResponse.json();
   if (typeof session.csrfToken !== 'string' || !session.csrfToken) throw new Error('Invalid session.');
@@ -387,7 +396,9 @@ form.addEventListener('submit', async (event) => {
   }
 });
 
-load().catch(() => {
+load().catch(error => {
   reviewSection.hidden = true;
-  statusNode.textContent = 'The proposal is unavailable. Sign in to Seller Studio and reload this page.';
+  statusNode.textContent = error.message === 'Sign in required.'
+    ? 'Sign in to Seller Studio to review this proposal. No change has been approved.'
+    : 'The proposal is unavailable. Ask the connected app to prepare a new preview.';
 });
