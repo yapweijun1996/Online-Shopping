@@ -22,6 +22,19 @@ Source review at `41407a7bda20adf167e2825900a268f3949316cc`: [CODEBASE_BUG_REVIE
 
 ## 1. Scope
 
+### Host-authorized shop configuration promotion
+
+The explicit host-only `src/shop-promotion-cli.js` repair can promote a previously
+configured demo shop to production while preserving its business rows. It requires
+production/manual configuration with quick login disabled, an exact reviewed plan
+bound to database/origin identity and schema, expected current setup and destination,
+and a private durable operator receipt. The operator must separately stop writers
+and verify a fresh restorable backup. No web/MCP handler invokes it; it creates no
+grant, consent or commerce approval, and MCP's production-mode guard remains intact.
+An ambiguous DB acknowledgment or receipt failure retains PREPARED evidence for an
+exact idempotent retry. Host/database-owner authority and local journal tampering
+remain outside the seller/MCP trust boundary. See [promotion runbook](SHOP_PRODUCTION_PROMOTION.md).
+
 ### Currently implemented
 
 | Component | Evidence | Notes |
