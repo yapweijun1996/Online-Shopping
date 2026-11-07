@@ -27,6 +27,14 @@ export const connectorPath = (path) => /^\/(?:mcp$|oauth\/(?:register|authorize|
 const operationPath = (path) => path === '/oauth/operation' || /^\/oauth\/operation-review\.(?:js|css)$/.test(path) || /^\/api\/v1\/seller\/mcp\/(?:operations(?:\/|$)|approval(?:\/|$))/.test(path);
 const reviewCsp = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+function validReviewQuery(params) {
+  // Attribution belongs only to the public shell; it never reaches authority or API arguments.
+  const keys = [...params.keys()];
+  return keys.every(key => ['operationId', 'utm_source'].includes(key)) &&
+    params.getAll('operationId').length === 1 && uuid.test(params.get('operationId') || '') &&
+    params.getAll('utm_source').length <= 1 &&
+    (!params.has('utm_source') || /^[A-Za-z0-9._~-]{1,128}$/.test(params.get('utm_source')));
+}
 export function createConnector({ store, config, tenantId, tenantGuard, quickLogin, operationTools }) {
   const enabled = config.mcpEnabled === true && !quickLogin && Boolean(config.sellerOrigin) && new URL(config.sellerOrigin).protocol === 'https:';
   const limiters = new Map();
@@ -95,7 +103,7 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
         if (!page && !asset && (!match || !uuid.test(match[1]))) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
         const method = match?.[2] ? 'POST' : 'GET';
         if (request.method !== method) fail('invalid_request', 405, { Allow: method });
-        if (page ? [...url.searchParams.keys()].length !== 1 || !uuid.test(url.searchParams.get('operationId') || '') : Boolean(url.search)) fail('invalid_request', 400);
+        if (page ? !validReviewQuery(url.searchParams) : Boolean(url.search)) fail('invalid_request', 400);
         if (page || asset) {
           // This public shell carries no proposal or proof. Session cookies keep
           // the existing narrow authenticated API path.

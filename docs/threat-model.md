@@ -22,6 +22,19 @@ Source review at `41407a7bda20adf167e2825900a268f3949316cc`: [CODEBASE_BUG_REVIE
 
 ## 1. Scope
 
+### Seller approval page entry and sign-in continuation
+
+The public operation-review shell permits only a single UUID operationId plus an
+optional bounded single utm_source. Attribution stays inert and is never reflected
+or used for authorization; API and asset query policies remain strict. A session401
+can link to same-shop Seller Studio using a single-purpose reviewOperation UUID.
+After real password sign-in/session restoration (and any required password change),
+the client constructs a fixed same-shop review path; it accepts no arbitrary return
+URL or tenant prefix. Quick-login sessions do not use this continuation. The review
+API still enforces current session/account/tenant/original grant/scope/consent and
+operation state, and unavailable references reveal no proposal. See
+[entry investigation](mcp-v2/APPROVAL-REVIEW-ENTRY-RCA.md) for evidence and limits.
+
 ### Host-authorized shop configuration promotion
 
 The explicit host-only `src/shop-promotion-cli.js` repair can promote a previously

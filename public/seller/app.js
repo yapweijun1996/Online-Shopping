@@ -1,6 +1,6 @@
 import { icon } from '../shared/icons.js';
 import { storageKey } from '../shared/storage-scope.js';
-import { apiUrl } from '../shared/base-path.js';
+import { apiUrl, basePath } from '../shared/base-path.js';
 import { formatDate, formatMoney, locale, setupLanguageMenu, t } from '../shared/i18n.js';
 import { registerWorker } from '../shared/pwa.js';
 import { createTopbarUpdate, topbarMode } from '../shared/topbar-update.js';
@@ -25,6 +25,13 @@ import { mountOptions } from './options.js';
 import { mountTabIcon } from '../shared/tab-icon.js';
 
 const byId = (id) => document.getElementById(id);
+// Single-purpose first-party continuation. Never accept a URL, hostname or arbitrary return path.
+const reviewLoginUrl = new URL(location.href);
+const reviewLoginParams = reviewLoginUrl.searchParams;
+const reviewOperation = reviewLoginParams.size === 1 && !reviewLoginUrl.hash &&
+  reviewLoginParams.getAll('reviewOperation').length === 1 &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(reviewLoginParams.get('reviewOperation') || '')
+  ? reviewLoginParams.get('reviewOperation') : null;
 containDialogFocus(byId('profile-dialog'));
 const loginView = byId('login-view');
 mountDemoEntry(byId('demo-entry'), { onSignedIn: () => sessionHint(true) });
@@ -249,6 +256,13 @@ function showLogin(messageKey = '', clearHint = true) {
 }
 
 function showWorkspace(session) {
+  if (reviewOperation && session.quickLogin !== true && session.mustChangePassword !== true) {
+    // The destination API still verifies this session's shop, account and grant ownership.
+    byId('password').value = '';
+    sessionHint(true);
+    location.replace(`${basePath()}/oauth/operation?operationId=${reviewOperation}`);
+    return;
+  }
   sessionViewSequence++;
   sessionHint(true);
   messageBadge?.dispose();
@@ -773,7 +787,7 @@ document.addEventListener('localechange', () => {
   if (byId('profile-dialog').open) byId('profile-role').textContent = roleLabel();
 });
 
-if (sessionHint()) {
+if (sessionHint() || reviewOperation) {
   showLogin('loading', false);
   const restoreView = sessionViewSequence;
   const ownsRestore = () => restoreView === sessionViewSequence;
