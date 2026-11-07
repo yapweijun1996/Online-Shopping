@@ -115,9 +115,9 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   listRecovery.append(clearSearch, retryList);
   const listHeading = document.createElement('div');
   listHeading.className = 'product-list-heading';
-  listHeading.setAttribute('aria-hidden', 'true');
   for (const key of ['product', 'sku', 'price', 'orderStatus', 'actions']) {
     const label = document.createElement('span');
+    label.setAttribute('aria-hidden', 'true');
     label.dataset.i18n = key;
     label.textContent = t(key);
     listHeading.append(label);
@@ -580,7 +580,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   const variantsNote = document.createElement('span');
   variantsNote.className = 'product-select-note';
   variantsNote.dataset.i18n = 'bulkVariantsNote';
-  selectBar.append(selectLabel, variantsNote);
+  selectBar.append(selectLabel);
   selectAll.addEventListener('change', () => {
     for (const product of items) {
       if (product.variantCount <= 1) {
@@ -604,12 +604,14 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   const bulkClear = button(t('bulkClear'), () => { selected.clear(); renderList(); });
   bulkClear.dataset.labelKey = 'bulkClear';
   bulkBar.append(bulkCount, ...bulkButtons, bulkClear, bulkMessage);
-  list.before(selectBar, bulkBar);
+  listHeading.prepend(selectBar);
+  list.before(variantsNote, bulkBar);
   function refreshBulk() {
     const eligible = items.filter((product) => product.variantCount <= 1);
     const selectedCount = eligible.filter((product) => selected.has(product.id)).length;
+    listHeading.hidden = !items.length;
     selectBar.hidden = list.hidden || !items.length;
-    variantsNote.hidden = !items.some((product) => product.variantCount > 1);
+    variantsNote.hidden = list.hidden || !items.some((product) => product.variantCount > 1);
     variantsNote.textContent = t('bulkVariantsNote');
     selectAll.disabled = bulkBusy || !eligible.length;
     selectAll.checked = eligible.length > 0 && selectedCount === eligible.length;
@@ -796,6 +798,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     if (reset && (list.hidden || queryStatus !== appliedStatus)) {
       list.hidden = true;
       selectBar.hidden = true;
+      variantsNote.hidden = true;
       bulkBar.hidden = true;
     }
     more.disabled = true;

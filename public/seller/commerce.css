@@ -272,6 +272,24 @@ body{background:var(--ui-canvas)}
 @media(max-width:360px){
  .product-card{grid-template-columns:44px 44px minmax(0,1fr)}
 }
+/* Select-all is part of the list heading and lines up with each row's checkbox. */
+.product-list-heading[hidden]{display:none}
+.product-list-heading{position:relative}
+.product-list-heading .product-select-all{position:absolute;left:20px;top:50%;transform:translateY(-50%);width:44px;padding:0}
+.product-list-heading .product-select-all label{width:44px;justify-content:center}
+.product-list-heading .product-select-all label span{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.product-select-note{display:block;padding:8px 12px}
+.product-select-note[hidden]{display:none}
+@media(max-width:1050px){
+ .product-list-heading{display:flex;align-items:center;padding:0 20px}
+ .product-list-heading>span{display:none}
+ .product-list-heading .product-select-all{position:static;transform:none;width:auto}
+ .product-list-heading .product-select-all label{width:auto;justify-content:flex-start;gap:0}
+ .product-list-heading .product-select-all input{margin:0 10px 0 12px}
+ .product-list-heading .product-select-all label span{position:static;width:auto;height:auto;margin:0;overflow:visible;clip:auto;white-space:normal}
+}
+@media(max-width:760px){.product-list-heading{padding-left:15px}}
+@media(max-width:360px){.product-list-heading{padding-left:12px}}
 /* Product form: a field never stretches taller than its neighbour, so rows line up. */
 .product-fields label:not(.check-row){align-content:start}
 /* Keep Save / Cancel in reach on a long form (desktop; phones already pin them). */
