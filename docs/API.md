@@ -311,7 +311,7 @@ All implemented schemas and export checks are linked from [current contracts](mc
 
 | Method | Path | Contract |
 | --- | --- | --- |
-| GET | `/oauth/operation?operationId=<uuid>` | First-party review shell; no proof in URL. Assets: `/oauth/operation-review.js` and `.css`. |
+| GET | `/oauth/operation?operationId=<uuid>` | First-party review shell; accepts one optional bounded, inert `utm_source`. Signed-out sellers can sign in and return to the same shop's review using the single-purpose `reviewOperation` UUID. No proof in URL. Assets: `/oauth/operation-review.js` and `.css`. |
 | GET | `/api/v1/seller/mcp/operations/<uuid>` | Current seller session/live original grant; immutable proposal and short-lived session/hash-bound challenge. |
 | POST | `/api/v1/seller/mcp/operations/<uuid>/media/delivery` | Protected first-party PAGE/ASSET delivery bound to operation/session/challenge/revision; exact Origin/CSRF, no AI-client CORS. Browser verifies SHA and full-image decode. |
 | POST | `/api/v1/seller/mcp/operations/<uuid>/media/ack` | One-use server nonce ACK for the exact delivered PAGE/ASSET/hash. All pages and unique full images must be acknowledged; empty CREATE still requires PAGE proof. |
