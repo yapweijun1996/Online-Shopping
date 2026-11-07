@@ -622,6 +622,19 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       const card = document.createElement('article');
       card.className = 'product-card';
       card.dataset.productId = product.id;
+      const grouped = product.variantCount > 1;
+      const pick = document.createElement(grouped ? 'span' : 'label');
+      pick.className = 'product-select';
+      if (grouped) {
+        pick.setAttribute('aria-hidden', 'true');
+      } else {
+        const box = document.createElement('input');
+        box.type = 'checkbox'; box.checked = selected.has(product.id); box.dataset.action = 'select';
+        box.setAttribute('aria-label', t('bulkSelectProduct').replace('{name}', `${product.name} (${product.sku})`));
+        box.addEventListener('change', () => { if (box.checked) selected.add(product.id); else selected.delete(product.id); bulkMessageKey = ''; refreshBulk(); });
+        pick.append(box);
+      }
+      card.append(pick);
       if (product.imageUrl) {
         const image = document.createElement('img');
         revealImage(image);
@@ -645,7 +658,6 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       identity.className = 'product-row-identity';
       detail.textContent = product.category;
       identity.append(title, detail);
-      const grouped = product.variantCount > 1;
       const sku = document.createElement('p');
       sku.className = 'product-row-sku';
       sku.textContent = grouped ? t('variantsCountFormat').replace('{count}', product.variantCount) : product.sku;
@@ -677,14 +689,6 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       actions.append(button(t('editProduct'), () => onNavigate(`products/${product.id}`), `${t('editProduct')}: ${product.name} (${product.sku})`));
       if (!grouped) {
         actions.append(toggleButton);
-        const pick = document.createElement('label');
-        pick.className = 'product-select';
-        const box = document.createElement('input');
-        box.type = 'checkbox'; box.checked = selected.has(product.id); box.dataset.action = 'select';
-        box.setAttribute('aria-label', t('bulkSelectProduct').replace('{name}', `${product.name} (${product.sku})`));
-        box.addEventListener('change', () => { if (box.checked) selected.add(product.id); else selected.delete(product.id); bulkMessageKey = ''; refreshBulk(); });
-        pick.append(box);
-        actions.prepend(pick);
       }
       card.append(main, actions);
       const undo = undoStates.get(product.id);
