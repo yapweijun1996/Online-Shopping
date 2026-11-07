@@ -309,6 +309,18 @@ test('the public list shows one card per variant group (cheapest in-stock varian
       'inactive variants count but are not active; unlimited stock on any variant makes the total unlimited');
     assert.ok(['TEE-S', 'TEE-M', 'TEE-L', 'GONE'].includes(teeRow.sku));
     assert.deepEqual((await list('search=TEE-L', true)).map((p) => [p.sku, p.variantCount]), [['TEE-L', 4]], 'a seller search finds the listing by any variant SKU');
+    await make('INACTIVE', 800, { active: false });
+    const active = await list('status=active', true);
+    const inactive = await list('status=inactive', true);
+    assert.equal(active.length, 3);
+    assert.deepEqual(inactive.map((p) => p.variantGroup || p.sku).sort(), ['INACTIVE', 'TEE']);
+    assert.ok(active.some((p) => p.variantGroup === 'TEE'), 'mixed listing appears in both filters');
+    assert.equal((await list('status=inactive&search=TEE-L', true))[0].variantGroup, 'TEE');
+    const filteredPage = await listProducts(store, new URLSearchParams('status=active&limit=1'), true);
+    assert.equal(filteredPage.items.length, 1);
+    assert.equal(filteredPage.nextOffset, 1);
+    assert.equal((await list('status=active&limit=1&offset=1', true)).length, 1);
+    await assert.rejects(list('status=unknown', true), /active or inactive/);
     assert.equal((await list('limit=2')).length, 2);
     const page = await listProducts(store, new URLSearchParams('limit=2'), false);
     assert.notEqual(page.nextOffset, null);

@@ -122,6 +122,31 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     label.textContent = t(key);
     listHeading.append(label);
   }
+  const statusFilter = document.createElement('div');
+  statusFilter.className = 'product-status-filter';
+  statusFilter.setAttribute('role', 'group');
+  statusFilter.setAttribute('aria-label', t('productStatusFilter'));
+  const statusButtons = [['', 'allProductStatuses'], ['active', 'active'], ['inactive', 'inactive']].map(([value, key]) => {
+    const control = button(t(key), () => {
+      if (filterStatus === value) return;
+      filterStatus = value;
+      selected.clear();
+      renderList();
+      refreshStatusFilter();
+      load();
+    });
+    control.dataset.i18n = key;
+    control.dataset.status = value;
+    return control;
+  });
+  statusFilter.append(...statusButtons);
+  function refreshStatusFilter() {
+    statusFilter.setAttribute('aria-label', t('productStatusFilter'));
+    for (const control of statusButtons) {
+      control.setAttribute('aria-pressed', String(control.dataset.status === filterStatus));
+      control.setAttribute('aria-label', t(control.dataset.i18n));
+    }
+  }
   const formFields = find('.product-fields');
   const group = (key, className) => {
     const fieldset = document.createElement('fieldset');
@@ -190,7 +215,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   editorActions.append(find('#product-cancel'), find('#product-save'));
   form.append(editorActions);
   find('.product-form-heading').remove();
-  listView.append(find('.product-toolbar'), status, listRecovery, listHeading, list, more);
+  listView.append(find('.product-toolbar'), statusFilter, status, listRecovery, listHeading, list, more);
   // Change history is secondary: a compact disclosure after the cards, not a full-width bar above them.
   editorActions.before(find('#product-history'));
   editorView.append(back, editorStatus, form);
@@ -214,6 +239,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   let items = [];
   let nextOffset = null;
   let appliedSearch = '';
+  let filterStatus = '', appliedStatus = '';
   let loadSequence = 0;
   let editingId = null;
   let statusKey = '';
@@ -542,6 +568,28 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
 
   // Several products at once: tick the products, then switch them on or off together. All or nothing on the server.
   const selected = new Set();
+  const selectBar = document.createElement('div');
+  selectBar.className = 'product-select-all';
+  const selectLabel = document.createElement('label');
+  const selectAll = document.createElement('input');
+  selectAll.type = 'checkbox';
+  const selectText = document.createElement('span');
+  selectText.dataset.i18n = 'bulkSelectLoaded';
+  selectText.textContent = t('bulkSelectLoaded');
+  selectLabel.append(selectAll, selectText);
+  const variantsNote = document.createElement('span');
+  variantsNote.className = 'product-select-note';
+  variantsNote.dataset.i18n = 'bulkVariantsNote';
+  selectBar.append(selectLabel, variantsNote);
+  selectAll.addEventListener('change', () => {
+    for (const product of items) {
+      if (product.variantCount <= 1) {
+        if (selectAll.checked) selected.add(product.id); else selected.delete(product.id);
+      }
+    }
+    bulkMessageKey = '';
+    renderList();
+  });
   const bulkBar = document.createElement('div');
   bulkBar.className = 'product-bulk'; bulkBar.hidden = true;
   const bulkCount = document.createElement('strong');
@@ -556,13 +604,25 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   const bulkClear = button(t('bulkClear'), () => { selected.clear(); renderList(); });
   bulkClear.dataset.labelKey = 'bulkClear';
   bulkBar.append(bulkCount, ...bulkButtons, bulkClear, bulkMessage);
-  list.before(bulkBar);
+  list.before(selectBar, bulkBar);
   function refreshBulk() {
+    const eligible = items.filter((product) => product.variantCount <= 1);
+    const selectedCount = eligible.filter((product) => selected.has(product.id)).length;
+    selectBar.hidden = !items.length;
+    variantsNote.hidden = !items.some((product) => product.variantCount > 1);
+    variantsNote.textContent = t('bulkVariantsNote');
+    selectAll.disabled = bulkBusy || !eligible.length;
+    selectAll.checked = eligible.length > 0 && selectedCount === eligible.length;
+    selectAll.indeterminate = selectedCount > 0 && selectedCount < eligible.length;
+    selectText.textContent = t('bulkSelectLoaded');
+    for (const box of list.querySelectorAll('[data-action="select"]')) box.disabled = bulkBusy;
     bulkBar.hidden = selected.size === 0 && !bulkMessageKey;
     bulkCount.textContent = selected.size ? t('bulkSelected').replace('{count}', selected.size) : '';
     for (const control of [...bulkButtons, bulkClear]) { control.textContent = t(control.dataset.labelKey); control.hidden = selected.size === 0; control.disabled = bulkBusy; }
-    bulkMessage.textContent = bulkMessageKey ? Object.entries(bulkMessageValues ?? { count: bulkMessageCount }).reduce((text, [name, value]) => text.replace(`{${name}}`, value), t(bulkMessageKey)) : '';
-    bulkMessage.classList.toggle('is-error', ['bulkFailed', 'exportFailed', 'exportTooMany'].includes(bulkMessageKey));
+    const tooMany = selected.size > 100;
+    if (tooMany) for (const control of bulkButtons) control.disabled = true;
+    bulkMessage.textContent = tooMany ? t('bulkLimit') : bulkMessageKey ? Object.entries(bulkMessageValues ?? { count: bulkMessageCount }).reduce((text, [name, value]) => text.replace(`{${name}}`, value), t(bulkMessageKey)) : '';
+    bulkMessage.classList.toggle('is-error', tooMany || ['bulkFailed', 'exportFailed', 'exportTooMany'].includes(bulkMessageKey));
   }
   find('#product-import').addEventListener('click', (event) => {
     openImportDialog({ trigger: event.currentTarget, onUnauthorized,
@@ -600,7 +660,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   });
 
   async function runBulk(action) {
-    if (!selected.size || bulkBusy) return;
+    if (!selected.size || selected.size > 100 || bulkBusy) return;
     bulkBusy = true; bulkMessageKey = ''; refreshBulk();
     try {
       const result = await api('POST', apiUrl('v1/seller/products/bulk'), { ids: [...selected], action });
@@ -731,6 +791,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     if (!reset && nextOffset === null) return false;
     const sequence = ++loadSequence;
     const query = reset ? search.value.trim() : appliedSearch;
+    const queryStatus = reset ? filterStatus : appliedStatus;
     const offset = reset ? 0 : nextOffset;
     more.disabled = true;
     retryList.hidden = true;
@@ -738,17 +799,19 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     setStatus('loading');
     try {
       const params = new URLSearchParams({ limit: '24', offset: String(offset), search: query });
+      if (queryStatus) params.set('status', queryStatus);
       const result = await api('GET', apiUrl(`v1/seller/products?${params}`));
       if (sequence !== loadSequence || !isCurrent()) return false;
       items = reset ? result.items : [...items, ...result.items];
-      if (reset) appliedSearch = query;
+      if (reset) { appliedSearch = query; appliedStatus = queryStatus; }
       nextOffset = result.nextOffset;
-      setStatus(items.length ? '' : appliedSearch ? 'noMatchingProducts' : 'noProducts');
+      setStatus(items.length ? '' : appliedSearch ? 'noMatchingProducts' : appliedStatus ? 'noProductsInStatus' : 'noProducts');
       clearSearch.hidden = Boolean(items.length) || !appliedSearch;
       renderList();
       return true;
     } catch {
       if (sequence === loadSequence && isCurrent()) {
+        if (reset) { filterStatus = appliedStatus; refreshStatusFilter(); }
         setStatus('networkError');
         retryList.hidden = false;
       }
@@ -1101,12 +1164,14 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   });
 
   const settingsPromise = loadSettings();
+  refreshStatusFilter();
   settingsPromise.then(() => { if (isCurrent() && loadSequence === 0) load(); });
   search.placeholder = t('searchNameOrSkuHint');
   return {
     showRoute,
     refreshLocale() {
       translate(root);
+      refreshStatusFilter();
       renderList();
       renderGallery();
       populateCategories(form.elements.category.value);

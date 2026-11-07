@@ -17,7 +17,7 @@
 | `GET` | `/api/v1/products/{id}` | Public active-only product detail. |
 | `GET` | `/api/v1/products/{id}/gallery/{imageId}` | Active-only additional product image; immutable cache with its matching `v` token. |
 | `GET` | `/api/v1/products/{id}/image` | Bounded image bytes for an active product; returns 404 for absent/inactive images. Cacheable for a year when `v` matches the `imageUrl` version token. |
-| `GET` | `/api/v1/seller/products` | Authorized seller list, including inactive products; `search`, `category`, `limit`, `offset`. |
+| `GET` | `/api/v1/seller/products` | Authorized seller list, including inactive products; `search`, `category`, `status` (`active` or `inactive`), `limit`, `offset`. A listing with both active and inactive variants appears under both statuses. |
 | `POST` | `/api/v1/seller/products` | Authorized same-origin/CSRF product create in MYR or SGD with a managed category code. |
 | `PATCH` | `/api/v1/seller/products/{id}` | Authorized same-origin/CSRF partial edit or availability change. |
 | `GET` | `/api/v1/seller/products/{id}/image` | Authorized image read, including inactive products. |
