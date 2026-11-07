@@ -608,7 +608,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   function refreshBulk() {
     const eligible = items.filter((product) => product.variantCount <= 1);
     const selectedCount = eligible.filter((product) => selected.has(product.id)).length;
-    selectBar.hidden = !items.length;
+    selectBar.hidden = list.hidden || !items.length;
     variantsNote.hidden = !items.some((product) => product.variantCount > 1);
     variantsNote.textContent = t('bulkVariantsNote');
     selectAll.disabled = bulkBusy || !eligible.length;
@@ -616,7 +616,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     selectAll.indeterminate = selectedCount > 0 && selectedCount < eligible.length;
     selectText.textContent = t('bulkSelectLoaded');
     for (const box of list.querySelectorAll('[data-action="select"]')) box.disabled = bulkBusy;
-    bulkBar.hidden = selected.size === 0 && !bulkMessageKey;
+    bulkBar.hidden = list.hidden || (selected.size === 0 && !bulkMessageKey);
     bulkCount.textContent = selected.size ? t('bulkSelected').replace('{count}', selected.size) : '';
     for (const control of [...bulkButtons, bulkClear]) { control.textContent = t(control.dataset.labelKey); control.hidden = selected.size === 0; control.disabled = bulkBusy; }
     const tooMany = selected.size > 100;
