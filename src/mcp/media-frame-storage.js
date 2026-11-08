@@ -25,7 +25,7 @@ async function parent(store, context, operationId) {
   const operation = await store.get('SELECT * FROM mcp_v2_operation WHERE id=?', operationId);
   return { operation, policy };
 }
-async function pins(store, context, operation, manifest) {
+async function pins(store, context, operation, manifest, committed = false) {
   const stageAssets = new Map();
   for (const page of manifest.pages) for (const record of JSON.parse(page.page_json).records) {
     if (record.kind === 'ASSET') for (const ref of record.stage_refs) stageAssets.set(ref.stage_id, record);
@@ -38,21 +38,22 @@ async function pins(store, context, operation, manifest) {
       if (pin.stage_id !== expected.stage_id || pin.canonical_sha256 !== expected.canonical_sha256 ||
           pin.codec_digest !== expected.codec_digest || pin.expires_at !== operation.expires_at ||
           pin.created_at < operation.created_at || pin.created_at >= operation.expires_at ||
-          stage.state !== 'BOUND' || stage.operationId !== operation.id || stage.productId !== expected.source_product_id ||
-          stage.canonicalSha256 !== expected.canonical_sha256 || stage.codecDigest !== expected.codec_digest ||
-          !asset || stage.canonicalMime !== asset.mime || stage.canonicalBytes !== asset.byte_length ||
+          stage.state !== (committed ? 'CONSUMED' : 'BOUND') || stage.operationId !== operation.id || stage.productId !== expected.source_product_id ||
+          !committed && (stage.canonicalSha256 !== expected.canonical_sha256 || stage.canonicalMime !== asset?.mime || stage.canonicalBytes !== asset?.byte_length) ||
+          stage.codecDigest !== expected.codec_digest || !asset ||
           stage.boundExpiresAt !== operation.expires_at || stage.correlationId !== operation.correlation_id) integrity();
     }
   });
 }
-async function readFrame(store, context, operationId, proposalDescriptor) {
+async function readFrame(store, context, operationId, proposalDescriptor, committed = false) {
   const { operation, policy } = await parent(store, context, operationId);
+  if(committed && operation.state !== 'COMMITTED')conflict();
   const pages = await store.all(`SELECT ${pageColumns} FROM mcp_v2_media_manifest_page WHERE operation_id=? ORDER BY page_index LIMIT 17`, operationId);
   const assets = await store.all(`SELECT ${assetColumns} FROM mcp_v2_media_asset_ref WHERE operation_id=? ORDER BY asset_key LIMIT 43`, operationId);
   let manifest;
   try { manifest = readMediaManifest({ policy, pages, assets }, operation, proposalDescriptor); } catch { integrity(); }
   catalogBinding(operation, context, manifest);
-  await pins(store, context, operation, manifest);
+  await pins(store, context, operation, manifest, committed);
   return manifest;
 }
 
@@ -82,4 +83,12 @@ export async function persistMediaFrame(store, trustedContext, operationId, mani
 export async function readMediaFrame(store, trustedContext, operationId, proposalDescriptor = undefined) {
   const context = mediaContext(trustedContext);
   return store.transaction(() => readFrame(store, context, operationId, proposalDescriptor));
+}
+
+// Read-back only, never approval evidence. Consumed stage bytes are deliberately
+// erased; immutable pin hashes and the committed operation identify the frame.
+// The caller must compare it with freshly hashed physical product image bytes.
+export async function readCommittedMediaFrame(store, trustedContext, operationId, proposalDescriptor) {
+  const context = mediaContext(trustedContext);
+  return store.transaction(() => readFrame(store, context, operationId, proposalDescriptor, true));
 }

@@ -5,7 +5,7 @@ import { hash, stamp } from './credentials.js';
 import { canonicalOperationJson, operationPreviewHash, readStoredOperation } from './operation-envelope.js';
 import { requiresCompanyCurrencyAcknowledgement, COMPANY_CURRENCY_ACKNOWLEDGED } from './company-approval-policy.js';
 import { operationEpochHash, operationEpochCurrent } from './operation-epoch.js';
-import { verifyOperationAuthority } from './operation-authorization.js';
+import { verifyOperationAuthority, verifySellerOperationAuthority, verifySellerPreparationAuthority } from './operation-authorization.js';
 import { MEDIA_LIMITS } from './media-schema.js';
 import { mediaJson, mediaPolicyForTool } from './media-policy.js';
 import { mediaManifestRows } from './media-manifest.js';
@@ -254,12 +254,15 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
     if (Number(tenant.n) >= maxPendingPerTenant || Number(client.n) >= maxPendingPerClient) fail(429, 'RATE_LIMITED', 'Too many pending operations.');
   }
 
-  async function prepare(input) {
+  async function prepare(input, sellerContext = null) {
     if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length !== 4 ||
         !['bearer', 'toolName', 'args', 'idempotencyKey'].every((key) => Object.hasOwn(input, key))) {
       fail(400, 'INVALID_INPUT', 'Invalid operation request.');
     }
     const { bearer, toolName, args, idempotencyKey } = input;
+    const authorize = options => sellerContext
+      ? verifySellerPreparationAuthority(store, { ...options, request: sellerContext.request, operationId: sellerContext.operationId })
+      : verifyOperationAuthority(store, options);
     const adapter = typeof toolName === 'string' && Object.hasOwn(registered, toolName) && registered[toolName];
     if (!adapter || !args || typeof args !== 'object' || Array.isArray(args) ||
         ['tenantId', 'shopId', 'accountId', 'approved', 'mediaReviewed', 'requiredScopes', 'mediaPolicyId', 'catalogUpdateEnabled', 'mcpCatalogMediaUpdate', 'catalogCreateEnabled', 'mcpCatalogMediaCreate'].some((key) => Object.hasOwn(args, key)) ||
@@ -276,7 +279,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
     try {
     if (adapter.media) {
       const initial = await withTenant(tenant => transaction(async () => {
-        const authority = await verifyOperationAuthority(store, { bearer, binding, toolName, epochHash, mediaPolicyId: adapter.media.policyId, resourceType: adapter.resourceType, catalogUpdateEnabled, catalogCreateEnabled });
+        const authority = await authorize({ bearer, binding, toolName, epochHash, mediaPolicyId: adapter.media.policyId, resourceType: adapter.resourceType, catalogUpdateEnabled, catalogCreateEnabled });
         const originalGrant = await store.get('SELECT absolute_expires_at FROM oauth_grant WHERE id=?', authority.grantId);
         const replayed = await existingState({ authority, originalGrant, toolName, requestHash, idempotencyKey, adapter, tenant });
         if (replayed) return { replayed };
@@ -294,7 +297,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
       resolved = await resolveOutside(adapter, captured.resources);
     }
     return await withTenant((tenant) => transaction(async () => {
-      const authority = await verifyOperationAuthority(store, { bearer, binding, toolName, epochHash, mediaPolicyId: adapter.media?.policyId ?? null, resourceType: adapter.resourceType, catalogUpdateEnabled, catalogCreateEnabled });
+      const authority = await authorize({ bearer, binding, toolName, epochHash, mediaPolicyId: adapter.media?.policyId ?? null, resourceType: adapter.resourceType, catalogUpdateEnabled, catalogCreateEnabled });
       const originalGrant = await store.get('SELECT absolute_expires_at FROM oauth_grant WHERE id = ?', authority.grantId);
       const receiptExpiry = operationReceiptExpiry(originalGrant.absolute_expires_at), idem = hash(idempotencyKey);
       const context = contextFor(authority, tenant.revision);
@@ -358,7 +361,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
       if (!await metadata(row, adapter, tenant.revision, originalGrant, authority)) denied();
       if (adapter.media) {
         await mediaResources(row, adapter, immutableEnvelope, context);
-        const finalAuthority = await verifyOperationAuthority(store, { bearer, binding, toolName, epochHash, mediaPolicyId: adapter.media.policyId, resourceType: adapter.resourceType, catalogUpdateEnabled, catalogCreateEnabled });
+        const finalAuthority = await authorize({ bearer, binding, toolName, epochHash, mediaPolicyId: adapter.media.policyId, resourceType: adapter.resourceType, catalogUpdateEnabled, catalogCreateEnabled });
         if (mediaJson(contextFor(finalAuthority, tenant.revision)) !== mediaJson(context)) denied();
         const current = await withRead(read => adapter.currentRevision(read, immutableEnvelope));
         if (!current || current.exists !== true || current.revision !== captured.expectedRevision) fail(409, 'STALE_REVISION', 'The resource changed.');
@@ -374,7 +377,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
     } finally { releaseAdmission?.(); }
   }
 
-  async function commit(input) {
+  async function commit(input, sellerRequest = null) {
     if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length !== 3 ||
         !['bearer', 'toolName', 'operationId'].every((key) => Object.hasOwn(input, key))) {
       fail(400, 'INVALID_INPUT', 'Invalid operation request.');
@@ -383,13 +386,16 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
     if (typeof operationId !== 'string' || !uuid.test(operationId) || typeof toolName !== 'string') {
       fail(400, 'INVALID_INPUT', 'Invalid operation request.');
     }
+    const authorize = options => sellerRequest
+      ? verifySellerOperationAuthority(store, { ...options, request: sellerRequest, operationId })
+      : verifyOperationAuthority(store, options);
     let attempted = false;
     try {
       return await withTenant((tenant) => transaction(async () => {
-        let authority = await verifyOperationAuthority(store, { bearer, binding, toolName, epochHash });
+        let authority = await authorize({ bearer, binding, toolName, epochHash });
         const row = await store.get('SELECT * FROM mcp_v2_operation WHERE id = ?', operationId);
         const adapter = row && Object.hasOwn(registered, row.tool_name) && registered[row.tool_name];
-        if (row?.media_policy_id) authority = await verifyOperationAuthority(store, { bearer, binding, toolName, epochHash, mediaPolicyId: row.media_policy_id, resourceType: row.resource_type, catalogUpdateEnabled, catalogCreateEnabled });
+        if (row?.media_policy_id) authority = await authorize({ bearer, binding, toolName, epochHash, mediaPolicyId: row.media_policy_id, resourceType: row.resource_type, catalogUpdateEnabled, catalogCreateEnabled });
         const originalGrant = await store.get('SELECT absolute_expires_at FROM oauth_grant WHERE id = ?', authority.grantId);
         const stored = row?.redacted_at === null && readStoredOperation(row, binding);
         const envelope = stored && freezeJson(stored);
@@ -491,7 +497,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
         });
         // Long-running adapters cannot turn an expired token or approval into
         // a successful commit. An error here rolls all domain changes back.
-        const finalAuthority = await verifyOperationAuthority(store, { bearer, binding, toolName, epochHash, mediaPolicyId: adapter.media?.policyId ?? null, resourceType: adapter.resourceType, catalogUpdateEnabled, catalogCreateEnabled });
+        const finalAuthority = await authorize({ bearer, binding, toolName, epochHash, mediaPolicyId: adapter.media?.policyId ?? null, resourceType: adapter.resourceType, catalogUpdateEnabled, catalogCreateEnabled });
         if (finalAuthority.grantId !== authority.grantId || finalAuthority.accountId !== authority.accountId ||
             finalAuthority.clientId !== authority.clientId) denied();
         if (approval.expires_at <= stamp() || row.expires_at <= stamp()) {
@@ -538,5 +544,9 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
       throw error;
     }
   }
-  return Object.freeze({ prepare, commit });
+  return Object.freeze({ prepare, commit,
+    prepareForSeller: (request, operationId, toolName, args, idempotencyKey) => prepare({bearer:null,toolName,args,idempotencyKey},{request,operationId}),
+    // Trusted in-process capability; it is never registered as an MCP tool.
+    commitForSeller: (request, toolName, operationId) => commit({ bearer: null, toolName, operationId }, request),
+  });
 }

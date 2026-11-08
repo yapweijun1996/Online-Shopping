@@ -583,3 +583,26 @@ At the owner’s explicit request, all valid client-requested scope checkboxes n
 ### Standard MCP request metadata compatibility
 
 The protocol accepts object-valued `params._meta` as transport metadata on requests, validates any progress token as a string or finite number, and ignores its contents before dispatch. It does not become tool arguments, authorization evidence or audit payload. Tool input schemas, unknown parameter rejection, authentication, scopes, body limits and operation approvals remain unchanged. Reference: https://modelcontextprotocol.io/specification/2025-06-18/schema#jsonrpcrequest . Synthetic tests reproduce rejection before the fix, including the five reported read-tool names, and verify valid calls after it. The owner screenshot contains no raw request; attribution of that specific `INVALID_ARGUMENT` failure to metadata remains unconfirmed.
+
+## Isolated one-click approval and execution development boundary (2026-11-08)
+
+Default-OFF `MCP_V2_FINISH_ENABLED` is rejected in production. In isolated mode,
+the seller review page can approve and invoke a trusted first-party engine
+capability under its seller session, CSRF and original live OAuth grant. It
+never mints a token or exposes the capability through an MCP tool. The existing
+engine retains full fresh approval, exact image evidence, consent, ownership,
+revision, CAS and audit enforcement. Each individual write is atomic; a batch
+may partially succeed. Jobs record progress only, never approval authority.
+Consumed upload bytes remain erased; post-commit verification reads the retained
+committed manifest/pins and freshly hashes the product's physical images, while
+pre-commit frame verification still requires BOUND stage bytes.
+
+Jobs bind the original session, account, client/grant, tenant revision, epoch and
+build. A changed intent conflicts with its idempotency key; stale catalog
+revalidation makes a new proposal and never transfers old approval. Raw errors,
+passwords and proposal bodies are excluded from job events. The development
+extension has a per-account job cap, but production schema-manifest, retention,
+capacity, parent intent and independent security gates remain incomplete.
+Consequently this is **HOLD**, not production eligibility or a unified
+create/new-image/publish authorization. See [the implementation contract and
+explicit limitations](mcp-v2/ONE-CLICK-FINISH.md).

@@ -8,7 +8,12 @@ const form = document.querySelector('#decision');
 const password = document.querySelector('#password');
 const path = /^\/(?:([a-z0-9]{3,30})\/)?oauth\/operation\/?$/.exec(location.pathname);
 const base = path?.[1] ? `/${path[1]}` : '';
-const id = new URL(location.href).searchParams.get('operationId');
+const reviewParams = new URL(location.href).searchParams;
+const operationIds = reviewParams.has('operationIds') ? reviewParams.get('operationIds').split(',') : [reviewParams.get('operationId')];
+let id = operationIds[0], batchIndex = 0, finishEnabled = false, finishJob = null;
+const reviewedProposals = [];
+const finishKey = `seller-mcp-finish:${operationIds.join(',')}`;
+let earliestExpiry = Infinity;
 const idPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const hashPattern = /^[0-9a-f]{64}$/;
 document.querySelector('#seller-link').href = `${base}/seller/`;
@@ -51,6 +56,7 @@ function updateReviewControls() {
   const disabled = checkExpiry() || decisionPending || !csrf || !previewHash || !challenge;
   for (const control of form.querySelectorAll('input, button')) control.disabled = disabled;
   document.querySelector('#approve').disabled = disabled || Boolean(mediaReview && !mediaComplete);
+  for(const selector of ['#approve-finish','#review-next'])document.querySelector(selector).disabled=disabled || Boolean(mediaReview && !mediaComplete);
   imageAck.disabled = disabled || !selectedImage || reviewedImages.has(selectedImage.item.itemKey);
   imageRetry.disabled = disabled;
   for (const control of document.querySelectorAll('.media-reference')) control.disabled = disabled;
@@ -132,8 +138,8 @@ function renderBusinessSummary(value) {
 
 async function load() {
   const params = new URL(location.href).searchParams;
-  if (!path || [...params.keys()].some(key => !['operationId', 'utm_source'].includes(key)) ||
-      params.getAll('operationId').length !== 1 || !idPattern.test(id || '') || params.getAll('utm_source').length > 1 ||
+  if (!path || [...params.keys()].some(key => !['operationId', 'operationIds', 'utm_source'].includes(key)) ||
+      (params.has('operationIds') ? params.has('operationId') || params.getAll('operationIds').length !== 1 : params.getAll('operationId').length !== 1) || operationIds.length > 5 || new Set(operationIds).size !== operationIds.length || !operationIds.every(value=>idPattern.test(value||'')) || params.getAll('utm_source').length > 1 ||
       (params.has('utm_source') && !/^[A-Za-z0-9._~-]{1,128}$/.test(params.get('utm_source')))) throw new Error('Invalid operation.');
   const sessionResponse = await fetch(`${base}/api/v1/seller/session`, { credentials: 'same-origin', cache: 'no-store' });
   if (sessionResponse.status === 401) {
@@ -145,6 +151,14 @@ async function load() {
   if (!sessionResponse.ok) throw new Error('Sign in required.');
   const session = await sessionResponse.json();
   if (typeof session.csrfToken !== 'string' || !session.csrfToken) throw new Error('Invalid session.');
+  csrf=session.csrfToken;
+  if(batchIndex===0){
+    let saved=null;try{saved=sessionStorage.getItem(finishKey);}catch{/* Storage is optional. */}
+    if(saved && idPattern.test(saved)){
+      const progress=await fetch(`${base}/api/v1/seller/mcp/finishes/${saved}`,{credentials:'same-origin',cache:'no-store'});
+      if(progress.ok){finishJob=saved;showFinish(await progress.json());return;}
+    }
+  }
   const response = await fetch(`${base}/api/v1/seller/mcp/operations/${id}`, { credentials: 'same-origin', cache: 'no-store' });
   if (!response.ok) throw new Error('Proposal unavailable.');
   const value = await response.json();
@@ -159,6 +173,8 @@ async function load() {
       !value.proposal || typeof value.proposal !== 'object' || Array.isArray(value.proposal)) {
     throw new Error('Invalid proposal.');
   }
+  finishEnabled=value.finishEnabled === true && ['catalog.preview_create','catalog.preview_update','media.prepare_upload','media.preview_layout'].includes(value.toolName);
+  if(operationIds.length>1 && !finishEnabled)throw new Error('Batch finish unavailable.');
   renderBusinessSummary(value);
   document.querySelector('#operation-id').textContent = id;
   csrf = session.csrfToken;
@@ -182,8 +198,20 @@ async function load() {
   document.querySelector('#fingerprint').textContent = value.previewHash;
   document.querySelector('#proposal').textContent = visible(JSON.stringify(value.proposal, null, 2));
   reviewSection.hidden = false;
-  expiresAt = expiryDate.getTime();
+  earliestExpiry=Math.min(earliestExpiry,expiryDate.getTime());
+  expiresAt = earliestExpiry;
   document.querySelector('#pending-state').textContent = 'Pending your decision — not applied';
+  const last=batchIndex===operationIds.length-1;
+  document.querySelector('#metadata-warning').hidden=!finishEnabled;
+  document.querySelector('#metadata-ack').checked=false;
+  document.querySelector('#approve').hidden=finishEnabled;
+  document.querySelector('#approve-finish').hidden=!finishEnabled || !last;
+  document.querySelector('#review-next').hidden=!finishEnabled || last;
+  for(const node of [password,document.querySelector('#password-label'),document.querySelector('#password-help')])node.hidden=finishEnabled && !last;
+  password.required=!finishEnabled || last;
+  document.querySelector('#batch-progress').hidden=operationIds.length<2;
+  document.querySelector('#batch-progress').textContent=`Review ${batchIndex+1} of ${operationIds.length}. Approval applies only to the exact reviewed content.`;
+  if(finishEnabled)document.querySelector('#decision-help').textContent='Approve & Finish approves and applies this exact content, then checks the product. A changed or expired proposal stops for a new review.';
   scheduleExpiry(); updateReviewControls();
   reviewStatus('Review the complete proposal, then explicitly approve or reject it.');
   if (mediaReview) {
@@ -541,4 +569,75 @@ load().catch(error => {
   statusNode.textContent = error.message === 'Sign in required.'
     ? 'Sign in to Seller Studio to review this proposal. No change has been approved.'
     : 'The proposal is unavailable. Ask the connected app to prepare a new preview.';
+});
+
+function reviewedProof(){
+  if(checkExpiry() || !csrf || !previewHash || !challenge || !document.querySelector('#metadata-ack').checked ||
+    mediaReview && (!mediaComplete || !mediaAck.checked)) {
+    reviewStatus('Review all metadata and exact images, then check both acknowledgments.');return null;
+  }
+  return {operationId:id,previewHash,challenge,...(mediaReview?{mediaReviewed:true}:{})};
+}
+async function finishPost(suffix,input){
+  const response=await fetch(`${base}/api/v1/seller/mcp/finishes${suffix}`,{method:'POST',credentials:'same-origin',cache:'no-store',
+    headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify(input)});
+  if(!response.ok)throw new Error('Finish unavailable.');return response.json();
+}
+function showFinish(value){
+  if(value.jobId!==finishJob || !Array.isArray(value.items))throw new Error('Invalid progress.');
+  reviewSection.hidden=true;form.hidden=true;document.querySelector('#finish-progress').hidden=false;
+  document.querySelector('#finish-summary').textContent=`${value.completed} of ${value.total} verified. ${value.status==='FINISHED'?'Finished.':value.status==='PARTIAL'?'Some items need a new review.':'Work is saved. Resume to continue.'}`;
+  const list=document.querySelector('#finish-items');list.replaceChildren();
+  for(const item of value.items){
+    const line=document.createElement('li');line.textContent=`${item.operationId}: ${item.state}${item.error?' — '+item.error:''}`;
+    if(item.receipt?.productId){const link=document.createElement('a');link.href=`${base}/seller/`;link.textContent=' Open Seller Studio';line.append(link);}
+    if(item.state==='NEEDS_REVIEW'){
+      const button=document.createElement('button');button.type='button';button.className='secondary';button.textContent='Revalidate and review again';
+      button.addEventListener('click',async()=>{button.disabled=true;try{
+        const result=await finishPost(`/${finishJob}/revalidate`,{operationId:item.operationId,idempotencyKey:`finish-revalidate-${finishJob}-${item.operationId}`});
+        // A new review link cannot inherit old approval or image acknowledgments.
+        location.assign(result.reviewUrl);
+      }catch{statusNode.textContent='Fresh staging or a new proposal is required. No changed content was approved.';button.disabled=false;}});line.append(button);
+    }
+    list.append(line);
+  }
+  document.querySelector('#finish-resume').hidden=value.status==='FINISHED';
+  statusNode.textContent=value.status==='FINISHED'?'Approved changes committed and verified.':'Progress saved. Items needing review will not be committed automatically.';
+  clearTimeout(expiryTimer);expiresAt=null;password.value='';releaseMediaImage();
+}
+document.querySelector('#review-next').addEventListener('click',async()=>{
+  if(decisionPending)return;const proof=reviewedProof();if(!proof)return;
+  reviewedProposals.push(proof);
+  const line=document.createElement('li');line.textContent=document.querySelector('#summary-fields').textContent || document.querySelector('#operation-heading').textContent;
+  document.querySelector('#batch-reviewed').append(line);document.querySelector('#batch-reviewed').hidden=false;
+  releaseMediaImage();reviewedImages.clear();mediaComplete=false;mediaReview=null;selectedImage=null;retryImage=null;
+  document.querySelector('#media-review').hidden=true;document.querySelector('#media-warning').hidden=true;
+  batchIndex++;id=operationIds[batchIndex];password.value='';decisionPending=true;
+  try{await load();}catch{reviewSection.hidden=true;statusNode.textContent='The next proposal is unavailable. Prepare a fresh review; no approval was made.';}
+  finally{decisionPending=false;updateReviewControls();}
+});
+document.querySelector('#approve-finish').addEventListener('click',async()=>{
+  if(!finishEnabled || decisionPending)return;const proof=reviewedProof();if(!proof)return;
+  if(!password.value){password.focus();statusNode.textContent='Confirm your seller password to approve and finish.';return;}
+  decisionPending=true;updateReviewControls();
+  try{
+    const items=[...reviewedProposals,proof];
+    const job=await finishPost('',{items:items.map(({operationId,previewHash})=>({operationId,previewHash})),idempotencyKey:`finish-${await sha256(new TextEncoder().encode(operationIds.join(',')))}`});
+    finishJob=job.jobId;try{sessionStorage.setItem(finishKey,finishJob);}catch{/* Server progress remains durable. */}
+    const pending=finishPost(`/${finishJob}/approve`,{items,password:password.value});password.value='';
+    statusNode.textContent='Approving and applying the reviewed content. Progress is saved.';
+    let stopped=false;
+    const poll=async()=>{if(stopped)return;try{const response=await fetch(`${base}/api/v1/seller/mcp/finishes/${finishJob}`,{credentials:'same-origin',cache:'no-store'});
+      if(response.ok){const value=await response.json();if(stopped)return;document.querySelector('#finish-progress').hidden=false;
+        document.querySelector('#finish-summary').textContent=`${value.completed} of ${value.total} verified. Applying reviewed content…`;}
+      }catch{/* A failed progress read is not a failed commit. */}if(!stopped)setTimeout(poll,1000);};
+    void poll();
+    try{const result=await pending;showFinish(result);}finally{stopped=true;}
+  }catch{statusNode.textContent='The result could not be confirmed. Reload to inspect saved progress. No retry approves changed content.';}
+  finally{password.value='';decisionPending=false;updateReviewControls();}
+});
+document.querySelector('#finish-resume').addEventListener('click',async event=>{
+  event.currentTarget.disabled=true;
+  try{showFinish(await finishPost(`/${finishJob}/resume`,{}));}catch{statusNode.textContent='Resume is unavailable. Sign in again or request a fresh review if approval expired.';}
+  finally{event.currentTarget.disabled=false;}
 });

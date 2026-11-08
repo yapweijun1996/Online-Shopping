@@ -1,6 +1,8 @@
 import { operationEpochCurrent } from './operation-epoch.js';
 import { ApiError } from '../http.js';
 import { can } from '../roles.js';
+import { readSession, sessionCookieFrom } from '../auth.js';
+import { timingSafeEqual } from 'node:crypto';
 import { hash, liveGrant, stamp, SCOPES, V2_SCOPES } from './credentials.js';
 import { operationAuthorityPolicy, OPERATION_RESOURCE_CONTROLS } from './operation-policy.js';
 import { mediaInstant } from './media-policy.js';
@@ -98,3 +100,49 @@ export async function verifyMediaAuthority(store, { bearer, binding, epochHash, 
     grantId: authority.grantId, accountAuthVersion: authority.accountAuthVersion, epochHash, buildDigest,
     issuer: binding.issuer, resource: binding.resource, grantExpiresAt: authority.grantExpiresAt });
 }
+
+// First-party execution never mints or impersonates an OAuth access token. The
+// seller must own the original live grant and the approval's exact session.
+// The engine still rechecks the full approval, media evidence and revision.
+async function sellerAuthority(store, { request, operationId, binding, toolName, epochHash,
+  mediaPolicyId = null, resourceType = null, catalogUpdateEnabled = false, catalogCreateEnabled = false }, requireApproval) {
+  const origin = new URL(binding.issuer).origin;
+  if (!(request instanceof Request) || request.method !== 'POST' || new URL(request.url).origin !== origin ||
+      request.headers.get('origin') !== origin || request.headers.has('authorization') || !operationEpochCurrent(binding.mcpV2)) deny();
+  const cookie = request.headers.get('cookie') || '';
+  if (cookie.split(';').filter(part => part.trim().startsWith('seller_session=')).length !== 1) deny();
+  const token = sessionCookieFrom(cookie);
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token || '')) deny();
+  const session = await readSession(store, token), csrf = request.headers.get('x-csrf-token');
+  if (!session || session.account.mustChangePassword || typeof csrf !== 'string' ||
+      Buffer.byteLength(csrf) !== Buffer.byteLength(session.csrf_token) ||
+      !timingSafeEqual(Buffer.from(csrf), Buffer.from(session.csrf_token))) deny();
+  let policy;
+  try { policy = operationAuthorityPolicy(toolName, mediaPolicyId); } catch { deny(); }
+  if (policy.flow === 'RESERVED' && !catalogMediaAllowed({catalogUpdateEnabled,catalogCreateEnabled}, {toolName,mediaPolicyId,resourceType})) deny();
+  const row = await store.get('SELECT * FROM mcp_v2_operation WHERE id=?', operationId);
+  const grant = row && await liveGrant(store, row.grant_id, binding);
+  const approval = row && await store.get('SELECT * FROM mcp_v2_approval WHERE operation_id=?', row.id);
+  const setup = await store.get('SELECT mode FROM shop_setup WHERE id=1');
+  if (setup?.mode !== 'production' || !row || row.account_id !== session.account.id || !grant ||
+      grant.account_id !== session.account.id || grant.client_id !== row.client_id ||
+      row.tenant_id !== binding.tenantId || row.epoch_hash !== epochHash ||
+      requireApproval && (!approval || approval.decision !== 'APPROVED' || approval.session_hash !== session.token_hash ||
+      approval.approver_id !== session.account.id || approval.preview_hash !== row.preview_hash) ||
+      !mediaInstant(grant.created_at) || !mediaInstant(grant.absolute_expires_at) || !mediaInstant(row.created_at) ||
+      !Number.isSafeInteger(grant.account_auth_version) || !can(grant.account.role, policy.capability) ||
+      !policy.requiredScopes.every(scope => scopes(grant.scopes).includes(scope))) deny();
+  for (const scope of policy.requiredScopes) {
+    const consent = await store.get(`SELECT consented_at FROM mcp_v2_scope_consent WHERE grant_id=? AND tenant_id=?
+      AND account_id=? AND client_id=? AND scope=? AND account_auth_version=? AND epoch_hash=? AND consented_at>=? AND consented_at<=?`,
+    grant.id, binding.tenantId, grant.account_id, grant.client_id, scope, grant.account_auth_version, epochHash, grant.created_at, row.created_at);
+    if (!consent || !mediaInstant(consent.consented_at)) deny();
+  }
+  if (!operationEpochCurrent(binding.mcpV2)) deny();
+  return Object.freeze({ tenantId: binding.tenantId, accountId: grant.account_id, clientId: grant.client_id, grantId: grant.id,
+    accountAuthVersion: grant.account_auth_version, grantExpiresAt: grant.absolute_expires_at,
+    tokenIssuedAt: row.created_at, scope: policy.scope, requiredScopes: policy.requiredScopes });
+}
+
+export const verifySellerOperationAuthority = (store, options) => sellerAuthority(store, options, true);
+export const verifySellerPreparationAuthority = (store, options) => sellerAuthority(store, options, false);

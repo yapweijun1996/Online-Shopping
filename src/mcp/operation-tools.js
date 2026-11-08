@@ -1,7 +1,7 @@
 import { mcpOperationRuntimeEnabled, mcpMediaRuntimeEnabled } from './deployment-profile.js';
 import { ApiError } from '../http.js';
 import { randomUUID } from 'node:crypto';
-import { canonicalOperationJson } from './operation-envelope.js';
+import { canonicalOperationJson, readStoredOperation } from './operation-envelope.js';
 import { createOperationEngine } from './operation-engine.js';
 import { OPERATION_MUTATION_PAIRS, OPERATION_SCOPE_POLICIES, operationAuthorityPolicy } from './operation-policy.js';
 import { valid } from './tools.js';
@@ -204,6 +204,30 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
   const controls=tools.some(tool=>Object.hasOwn(OPERATION_CONTROL_CONTRACTS,tool.name))?createOperationControls({store,binding,config,tenantGuard,quickLogin}):null;
   return Object.freeze({ catalogue: Object.freeze(tools), find: name => byName.get(name)?.tool || null,
     requiredScopes: name => byName.get(name)?.requiredScopes || null,
+    async revalidateForSeller(request, operationId, idempotencyKey) {
+      if(config.mcpFinish?.enabled !== true || !engine)throw new ApiError(404,'NOT_FOUND','Not found.');
+      const row=await store.get('SELECT * FROM mcp_v2_operation WHERE id=?',operationId),envelope=row&&readStoredOperation(row,binding);
+      if(!envelope || !['catalog.preview_create','catalog.preview_update'].includes(row.tool_name)) {
+        throw new ApiError(409,'RESTAGE_REQUIRED','Fresh image staging and review are required.');
+      }
+      const args=row.tool_name==='catalog.preview_create'?envelope.proposal.normalizedInput:
+        {id:row.resource_id,changes:envelope.proposal.normalizedInput};
+      if(!args)throw new ApiError(409,'REPREPARE_REQUIRED','Prepare a fresh proposal.');
+      const result=await engine.prepareForSeller(request,operationId,row.tool_name,args,idempotencyKey);
+      return {...result,reviewUrl:binding.issuer+'/oauth/operation?operationId='+result.operationId};
+    },
+    async finishForSeller(request, operationId) {
+      if (config.mcpFinish?.enabled !== true || !engine) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+      const row = await store.get('SELECT tool_name FROM mcp_v2_operation WHERE id=?', operationId);
+      const registered = row && byName.get(row.tool_name);
+      const commitName = registered?.kind === 'stage' ? registered.tool.name.replace('prepare_', 'commit_')
+        : registered?.kind === 'preview' ? row.tool_name.replace('preview_', 'commit_') : null;
+      if (!commitName || byName.get(commitName)?.kind !== 'commit' ||
+          !['catalog.commit_create','catalog.commit_update','media.commit_upload','media.commit_layout'].includes(commitName)) {
+        throw new ApiError(403, 'FORBIDDEN', 'Operation is not eligible for finishing.');
+      }
+      return engine.commitForSeller(request, commitName, operationId);
+    },
     async isMediaAppend(name, args, bearer) {
       const entry = byName.get(name);
       if (entry?.kind !== 'stage' || name !== 'media.prepare_upload' || !valid(args,entry.tool.inputSchema) || args.input.action !== 'append') return false;

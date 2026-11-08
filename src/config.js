@@ -204,5 +204,10 @@ export function readConfig(env = process.env) {
   const mcpMedia = readMcpMediaConfig(env, { production, mcpEnabled, mcpV2, shopMode, sellerQuickLogin, dbPath });
   const mcpCatalogMediaUpdate = readMcpCatalogMediaUpdateConfig(env, { production, mcpEnabled, mcpV2, mcpMedia, shopMode, sellerQuickLogin });
   const mcpCatalogMediaCreate = readMcpCatalogMediaCreateConfig(env, { production, mcpEnabled, mcpV2, mcpMedia, shopMode, sellerQuickLogin });
-  return { mcpV2, mcpMedia, mcpCatalogMediaUpdate, mcpCatalogMediaCreate, production, username, password, dbPath, databaseUrl, publicOrigin, sellerOrigin, appRevision, integrationKeys, whatsappQr, ai, mcpEnabled, mcpRedirectUris, mcpBrowserOrigins, platform: readPlatformConfig(env, integrationKeys), port, trustProxy, shopMode, sellerQuickLogin, demoRevision: readDemoRevision(env) };
+  const finishFlag = env.MCP_V2_FINISH_ENABLED ?? '0';
+  if (!['0','1'].includes(finishFlag) || finishFlag === '1' && (production || mcpV2.enabled !== true)) {
+    throw new Error('MCP_V2_FINISH_ENABLED requires isolated nonproduction v2.');
+  }
+  const mcpFinish = Object.freeze({enabled:finishFlag === '1'});
+  return { mcpFinish, mcpV2, mcpMedia, mcpCatalogMediaUpdate, mcpCatalogMediaCreate, production, username, password, dbPath, databaseUrl, publicOrigin, sellerOrigin, appRevision, integrationKeys, whatsappQr, ai, mcpEnabled, mcpRedirectUris, mcpBrowserOrigins, platform: readPlatformConfig(env, integrationKeys), port, trustProxy, shopMode, sellerQuickLogin, demoRevision: readDemoRevision(env) };
 }
