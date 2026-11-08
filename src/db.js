@@ -1,3 +1,4 @@
+import { migrateProductDetail, productDetailStorageReady, assertProductDetailStorage } from './product-detail-schema.js';
 import { migrateInventory, inventoryStorageReady, migrateInventoryOrderIndex } from './inventory-schema.js';
 import { migrateAi } from './ai/schema.js';
 import { migrateAiStudio } from './ai-studio/schema.js';
@@ -11,7 +12,7 @@ import { migrateSharedGalleries } from './product-gallery.js';
 import { migrateOAuth } from './mcp/schema.js';
 import { initializeOperationStorage, operationStorageReady, upgradeMediaStorage, assertOperationStorageForUpgrade, upgradeOperationAuditStorage } from './mcp/operation-runtime.js';
 
-export const SCHEMA_VERSION = 34;
+export const SCHEMA_VERSION = 35;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -655,7 +656,12 @@ export async function migrateStore(store) {
     await store.transaction(async () => { await upgradeOperationAuditStorage(store); await store.setSchemaVersion(34); });
     version = 34;
   }
+  if (version === 34) {
+    await store.transaction(async () => { await migrateProductDetail(store); await store.setSchemaVersion(35); });
+    version = 35;
+  }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
+  await assertProductDetailStorage(store);
 }
 
 async function addThumbnailColumns(store) {
@@ -668,13 +674,15 @@ async function addThumbnailColumns(store) {
 
 export async function ready(store) {
   try {
-    return await operationStorageReady(store) && await inventoryStorageReady(store) &&
+    return await operationStorageReady(store) && await inventoryStorageReady(store) && await productDetailStorageReady(store) &&
       await store.schemaVersion() === SCHEMA_VERSION &&
       Array.isArray(await store.all('SELECT stock_quantity, gallery_layout_json FROM product LIMIT 0')) &&
       Array.isArray(await store.all('SELECT tracking_carrier, tracking_no, contact_erased_at, contact_erased_by FROM shop_order LIMIT 0')) &&
       Array.isArray(await store.all('SELECT availability_text, shipping_text, returns_text, sender_name, sender_phone, sender_address_line1, sender_address_line2, sender_city, sender_state, sender_postcode, sender_country FROM company_setting LIMIT 0')) &&
       Array.isArray(await store.all('SELECT id FROM option_type LIMIT 0')) &&
       Array.isArray(await store.all('SELECT id FROM listing LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT listing_id, revision, document_json FROM listing_detail LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT id, listing_id, committed FROM listing_detail_image LIMIT 0')) &&
       Array.isArray(await store.all('SELECT listing_id FROM product LIMIT 0')) &&
       Array.isArray(await store.all('SELECT id FROM option_value LIMIT 0')) &&
       Array.isArray(await store.all('SELECT product_id FROM product_option LIMIT 0')) &&

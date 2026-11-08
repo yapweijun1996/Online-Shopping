@@ -1,3 +1,4 @@
+import { assertNoProtectedRichDetail } from '../product-detail.js';
 import { createHash } from 'node:crypto';
 import { ApiError } from '../http.js';
 import { validateProductInput } from '../product-input.js';
@@ -85,6 +86,7 @@ export async function readCatalogMediaMetadata(read,input){
  if(identity&&identity.targetCode!==group)invalid();
  const targetId=moved?(target?.id??null):source.listing_id;
  const listingIds=[...new Set([source.listing_id,...(targetId?[targetId]:[])])].sort();
+ await assertNoProtectedRichDetail(read,listingIds);
  const placeholders=listingIds.map(()=>'?').join(','),scope=`listing_id IN (${placeholders})`;
  const groups=[...new Set([source.variant_group,group].filter(value=>value!==null))];
  if(groups.length&&await read.get(`SELECT 1 AS found FROM product WHERE variant_group IN (${groups.map(()=>'?').join(',')}) AND (listing_id IS NULL OR listing_id NOT IN (${placeholders})) LIMIT 1`,...groups,...listingIds))unsupported();

@@ -1,3 +1,4 @@
+import { assertNoProtectedRichDetail } from '../product-detail.js';
 import { createHash } from 'node:crypto';
 import { ApiError } from '../http.js';
 import { validateProductInput } from '../product-input.js';
@@ -67,6 +68,7 @@ export function catalogCreateMetadataRevision({request,predicates,rows}){
  * running preparation, adopting a target or swallowing validation errors. */
 export async function readCatalogCreateMediaMetadata(read,input){
  const request=intent(input),identity=request.creationIdentity;
+ if(identity.targetListingId)await assertNoProtectedRichDetail(read,[identity.targetListingId]);
  const {rows}=await readBoundedCatalogMetadata(read,definitions(),Buffer.byteLength(json(request))+4096);
  if(rows.company_setting.length!==1)changed();
  const predicates={identity,productId:rows.product.find(row=>row.id===identity.productId)?.id??null,

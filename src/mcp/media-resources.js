@@ -1,3 +1,4 @@
+import { assertNoProtectedRichDetail } from '../product-detail.js';
 import { createHash } from 'node:crypto';
 import { ApiError } from '../http.js';
 import { decodeProductImage, decodeThumbnail } from '../product-image.js';
@@ -62,6 +63,7 @@ async function collect(read, productId, targetListingId = null, expectedCapture 
   if (!target) missing(); id(target.listing_id);
   if (targetListingId !== null) id(targetListingId);
   const listingIds = [...new Set([target.listing_id, ...(targetListingId === null ? [] : [targetListingId])])].sort();
+  await assertNoProtectedRichDetail(read, listingIds);
   const capture = listingIds.length > 1 ? { sourceListingId: target.listing_id, listingIds } : null;
   if (expectedCapture && canonicalOperationJson(capture) !== canonicalOperationJson(expectedCapture)) changed();
   if (capture && !await read.get('SELECT id FROM listing WHERE id = ?', targetListingId)) { if (expectedCapture) changed(); missing(); }

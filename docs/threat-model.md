@@ -583,3 +583,29 @@ At the owner’s explicit request, all valid client-requested scope checkboxes n
 ### Standard MCP request metadata compatibility
 
 The protocol accepts object-valued `params._meta` as transport metadata on requests, validates any progress token as a string or finite number, and ignores its contents before dispatch. It does not become tool arguments, authorization evidence or audit payload. Tool input schemas, unknown parameter rejection, authentication, scopes, body limits and operation approvals remain unchanged. Reference: https://modelcontextprotocol.io/specification/2025-06-18/schema#jsonrpcrequest . Synthetic tests reproduce rejection before the fix, including the five reported read-tool names, and verify valid calls after it. The owner screenshot contains no raw request; attribution of that specific `INVALID_ARGUMENT` failure to metadata remains unconfirmed.
+
+## Listing-owned rich product detail (schema 35)
+
+New first-party seller GET/PUT detail and staged-image POST/GET routes require the
+tenant's authenticated `catalog.write` capability; mutations require Origin/CSRF.
+The strict versioned block format permits inert text and listing-owned asset UUIDs,
+never arbitrary HTML, executable attributes, external image URLs or remote fetches.
+Short description, price, stock, order and AI provider boundaries are unchanged.
+
+Document CAS binds listing identity, persisted sequence and member IDs under the
+common store writer lock. Successful save commits selected stages and removes only
+explicitly deselected formerly committed assets. Ownership, bounded quotas, stage
+expiry and recorded byte hashes constrain image lifecycle. Uploads reuse existing
+512 KiB canonical PNG/JPEG/WebP validation and add bounded encoded dimensions;
+this is not full native pixel validation. Public access requires an active requested
+variant and a current committed document reference. Missing, foreign, expired and
+hash-mismatched assets fail closed; images carry nosniff and no-store.
+
+Protected catalog review does not yet include rich-detail media. Affected rich
+listings are denied during catalog prepare/revalidation and media-graph snapshots;
+main/gallery acknowledgments cannot authorize rich assets. No new MCP write scope
+or acknowledgment is added. Actual membership moves involving nonempty rich detail
+are rejected atomically rather than silently losing a shared document. Existing
+inventory/MCP extension manifests remain frozen while global schema becomes35.
+Operator deployment/restore must use matching binaries and schema recovery rules;
+see [product rich detail](PRODUCT_RICH_DETAIL.md) for contracts and limitations.

@@ -1,4 +1,4 @@
--- PostgreSQL baseline matching SQLite schema 34. Timestamps stay ISO text to preserve API snapshots.
+-- PostgreSQL baseline matching SQLite schema 35. Timestamps stay ISO text to preserve API snapshots.
 CREATE TABLE admin (
         id BIGINT PRIMARY KEY CHECK (id = 1),
         username TEXT NOT NULL UNIQUE,
@@ -327,7 +327,7 @@ CREATE TABLE ai_studio_image (
  created_by TEXT NOT NULL, created_at TEXT NOT NULL
 );
 CREATE INDEX ai_studio_image_product ON ai_studio_image(product_id);
-INSERT INTO schema_meta VALUES (1, 34);
+INSERT INTO schema_meta VALUES (1, 35);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 INSERT INTO shop_setup(id, mode, shop_name) VALUES (1, NULL, 'Online Shopping');
@@ -744,3 +744,26 @@ INSERT INTO inventory_schema VALUES(1,1,'c90eabcdd202fccdb3790a23748c61f0b8b6ae6
 
 -- Inventory33 bounded per-product order source lookup.
 CREATE INDEX order_item_inventory ON order_item(product_id, id, delivery_id);
+
+-- Listing-owned rich product detail (schema 35).
+
+CREATE TABLE IF NOT EXISTS listing_detail (
+ listing_id TEXT PRIMARY KEY REFERENCES listing(id) ON DELETE CASCADE,
+ revision BIGINT NOT NULL CHECK (revision >= 1),
+ document_json TEXT NOT NULL CHECK (document_json::jsonb IS NOT NULL AND length(document_json) <= 160000),
+ updated_by TEXT NOT NULL CHECK (length(updated_by) BETWEEN 1 AND 64),
+ updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS listing_detail_image (
+ id TEXT PRIMARY KEY,
+ listing_id TEXT NOT NULL REFERENCES listing(id) ON DELETE CASCADE,
+ mime TEXT NOT NULL CHECK (mime IN ('image/png','image/jpeg','image/webp')),
+ data BYTEA NOT NULL CHECK (length(data) BETWEEN 1 AND 524288),
+ width BIGINT NOT NULL CHECK (width BETWEEN 1 AND 32768),
+ height BIGINT NOT NULL CHECK (height BETWEEN 1 AND 32768),
+ sha256 TEXT NOT NULL CHECK (length(sha256) = 64),
+ committed BIGINT NOT NULL DEFAULT 0 CHECK (committed IN (0,1)),
+ created_at TEXT NOT NULL,
+ CHECK (width * height <= 40000000)
+);
+CREATE INDEX IF NOT EXISTS listing_detail_image_owner ON listing_detail_image(listing_id, committed, created_at);

@@ -435,3 +435,14 @@ The consent form preselects every valid scope requested by the client, including
 ### Standard MCP request metadata compatibility
 
 The protocol accepts object-valued `params._meta` as transport metadata on requests, validates any progress token as a string or finite number, and ignores its contents before dispatch. It does not become tool arguments, authorization evidence or audit payload. Tool input schemas, unknown parameter rejection, authentication, scopes, body limits and operation approvals remain unchanged. Reference: https://modelcontextprotocol.io/specification/2025-06-18/schema#jsonrpcrequest . Synthetic tests reproduce rejection before the fix, including the five reported read-tool names, and verify valid calls after it. The owner screenshot contains no raw request; attribution of that specific `INVALID_ARGUMENT` failure to metadata remains unconfirmed.
+
+### Listing rich detail (schema 35)
+
+Optional listing-shared structured text/image detail has independent seller
+GET/PUT `/api/v1/seller/products/:id/detail` and staged POST `/detail/images`, plus
+owned GET `/detail/images/:assetId`. All seller routes require `catalog.write`;
+mutations require Origin/CSRF. Public GET counterparts expose only an active
+variant's saved document and referenced committed images. The short description,
+CSV and existing MCP write schemas remain unchanged. See
+[the full contract and limits](PRODUCT_RICH_DETAIL.md), including opaque revision
+CAS, safe membership conflicts and protected MCP fail-closed policy.

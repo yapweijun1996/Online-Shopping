@@ -9,6 +9,7 @@ import { productShareURL, shareProduct } from './product-share.js';
 import { renderOptionSelector } from './option-selector.js';
 import { attachImageZoom } from './image-zoom.js';
 import { containDialogFocus } from '../shared/modal.js';
+import { renderProductDetail } from '../shared/product-detail.js';
 
 export function sellerChatURL(phone) {
   return typeof phone === 'string' && /^[1-9]\d{7,14}$/.test(phone)
@@ -52,6 +53,22 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
   let errorKey = '';
   let localePending = false;
   let activeImageIndex = 0;
+  let richDetail = null;
+
+  function renderDescription() {
+    const target = root.querySelector('.product-rich-content');
+    if (!target || !product) return;
+    target.replaceChildren(renderProductDetail(richDetail?.document, richDetail?.assets, { fallbackText: product.description }));
+  }
+
+  async function loadRichDetail(id, version) {
+    try {
+      const result = await api(apiUrl(`v1/products/${id}/detail`));
+      if (version !== request || product?.id !== id) return;
+      richDetail = result;
+      renderDescription();
+    } catch { /* The saved plain-text description remains available if optional rich detail cannot load. */ }
+  }
 
   function syncFloatingNavigation() {
     const gallery = root.querySelector('.product-image-button');
@@ -470,11 +487,11 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     for (const [key, value] of [[t('category'), product.category]]) {
       specs.append(node('dt', '', key), node('dd', '', value));
     }
-    description.append(specs, node('h3', 'description-heading', t('description')),
-      node('p', 'detail-description', product.description));
+    description.append(specs, node('h3', 'description-heading', t('description')), node('div', 'product-rich-content'));
     const reviews = node('details', 'product-reviews');
     reviews.append(node('summary', '', t('reviews')), node('p', '', t('reviewsUnavailable')));
     root.append(layout, description, reviews, zoom);
+    renderDescription();
     root.append(node('section', 'related-products'));
     renderRelated();
     requestAnimationFrame(syncFloatingNavigation);
@@ -511,7 +528,7 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
     currentId = id;
     const version = ++request;
     if (!sibling) {
-      product = null; related = []; quantityValue = '1'; activeImageIndex = 0; busy = false; statusKey = ''; errorKey = id ? '' : 'productUnavailable';
+      product = null; related = []; richDetail = null; quantityValue = '1'; activeImageIndex = 0; busy = false; statusKey = ''; errorKey = id ? '' : 'productUnavailable';
       render(true);
     }
     if (!id) return;
@@ -519,11 +536,13 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
       const result = await api(apiUrl(`v1/products/${id}`));
       if (version !== request) return;
       product = result;
+      richDetail = null;
       const savedPhoto = history.state?.shopGallery;
       if (savedPhoto?.id === id && Number.isInteger(savedPhoto.index)) activeImageIndex = Math.max(0, Math.min(savedPhoto.index, productMedia(result).length - 1));
       if (previousGroup && result.variantGroup === previousGroup) quantityValue = previousQuantity;
       activeImageIndex = sibling ? 0 : activeImageIndex; statusKey = '';
       render(!sibling);
+      void loadRichDetail(id, version);
       const params = new URLSearchParams({ category: result.category, limit: '5' });
       // Recommendations are optional and must never block purchase or reset quantity/focus.
       try {

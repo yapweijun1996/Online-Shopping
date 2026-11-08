@@ -44,5 +44,5 @@ test('actual immutable PostgreSQL32 baseline reaches33 without changing any inve
  const base=process.env.SHOP_TEST_DATABASE_URL,pool=new pg.Pool({connectionString:base}),name='shopping_test_inventory33_'+randomUUID().replaceAll('-','');await pool.query(`CREATE DATABASE ${name}`);const url=new URL(base);url.pathname='/'+name;const store=openPostgresStore(url.href);t.after(async()=>{await store.close();await pool.query(`DROP DATABASE ${name} WITH (FORCE)`);await pool.end();});
  const old=await readFile(new URL('./fixtures/postgres-schema32.sql',import.meta.url),'utf8');assert.match(old,/INSERT INTO schema_meta VALUES \(1, 32\)/);assert.doesNotMatch(old,/CREATE INDEX order_item_inventory/);await store.exec(old);const before=await store.get('SELECT * FROM inventory_schema');
  await store.transaction(()=>upgradePostgres(store,32));assert.equal(await inventoryStorageReady(store),true);assert.deepEqual(await store.get('SELECT * FROM inventory_schema'),before);
- const fresh=await readFile(new URL('../src/postgres/schema.sql',import.meta.url),'utf8');assert.ok(fresh.endsWith(INVENTORY_ORDER_INDEX_SQL+'\n'));
+ const fresh=await readFile(new URL('../src/postgres/schema.sql',import.meta.url),'utf8');assert.equal(fresh.split(INVENTORY_ORDER_INDEX_SQL).length,2);
 });

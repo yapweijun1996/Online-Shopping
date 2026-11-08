@@ -1,3 +1,4 @@
+import { requireSafeDetailMembershipMove } from './product-detail.js';
 import { randomUUID } from 'node:crypto';
 import { ApiError } from './http.js';
 
@@ -147,6 +148,7 @@ export async function moveToListing(database, productId, previousListingId, fiel
         identity.targetCode !== plan.target.code || !plan.target.create || plan.target.listing.id !== null ||
         await database.get('SELECT id FROM listing WHERE id = ?', identity.newListingId)) plannedConflict();
   }
+  await requireSafeDetailMembershipMove(database, previousListingId, plan.target.listing.id);
   const listing = await applyListingForPlan(database, plan.target, now, identity?.newListingId ?? null);
   const product = { ...plan.productAfter, listingId: listing.id };
   await database.run('UPDATE product SET listing_id = ?, name = ?, description = ?, category = ? WHERE id = ?',
