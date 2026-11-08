@@ -281,7 +281,7 @@ test('catalog revision scans stop at explicit product and member caps', async ()
   await assert.rejects(catalogCreateRevision(root), { status: 503, code: 'CATALOG_REVIEW_TOO_LARGE' });
   assert.equal(returned, 10001); assert.equal(productCalls, 51);
   let memberQueries = 0;
-  const component = { get: async () => ({ id: 'target', listing_id: 'listing', variant_group: 'group' }), all: async (sql, ...args) => {
+  const component = { get: async sql => sql.includes('FROM listing_detail') ? undefined : ({ id: 'target', listing_id: 'listing', variant_group: 'group' }), all: async (sql, ...args) => {
     memberQueries++; assert.match(sql, /FROM product WHERE listing_id/); assert.equal(args.at(-1), 301);
     return Array.from({ length: 301 }, (_, i) => ({ id: String(i) }));
   } };

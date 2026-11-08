@@ -7,6 +7,8 @@ import { makeThumbnail, thumbUrl } from '../shared/image-thumb.js';
 import { inputFailure, priceToMinor, stockFromInput } from './product-fields.js';
 import './ops-copy.js';
 import { openImportDialog } from './product-import.js';
+import { editorText } from './product-editor-copy.js';
+import { mountProductDetailEditor } from './product-detail-editor.js';
 
 function readImage(file) {
   if (!file) return Promise.resolve(undefined);
@@ -189,6 +191,9 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   formFields.before(editorLayout);
   details.append(formFields);
   editorLayout.append(details, pricing, imageColumn);
+  const summaryLabel = form.elements.description.closest('label');
+  const summaryTitle = summaryLabel.querySelector('span'); summaryTitle.dataset.i18n = 'pedit_summary'; summaryTitle.textContent = editorText('summary');
+  const summaryHelp = document.createElement('small'); summaryHelp.id = 'product-summary-help'; summaryHelp.dataset.i18n = 'pedit_summaryHelp'; summaryHelp.textContent = editorText('summaryHelp'); summaryLabel.append(summaryHelp); form.elements.description.setAttribute('aria-describedby', summaryHelp.id);
   const nameLabel = form.elements.name.closest('label');
   nameLabel.classList.add('full');
   formFields.prepend(nameLabel, form.elements.sku.closest('label'), form.elements.category.closest('label'), form.elements.description.closest('label'));
@@ -209,7 +214,56 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   variantHelp.classList.remove('full');
   for (const input of variantInputs) input.setAttribute('aria-describedby', 'product-variant-help');
   variantConfig.append(variantTitle, variantPair, variantHelp, find('#product-options'));
-  formFields.append(variantConfig);
+  // Keep each panel mounted: switching sections never resets file inputs or drafts.
+  const richEditor = mountProductDetailEditor({ api, isCurrent: () => isCurrent(), fallbackText: () => form.elements.description.value });
+  const identity = document.createElement('section'); identity.className = 'product-editor-identity';
+  const identityImage = document.createElement('img'); identityImage.alt = ''; identityImage.hidden = true;
+  const identityText = document.createElement('div');
+  const identityName = document.createElement('h2'); const identityMeta = document.createElement('p'); identityMeta.className = 'shop-note';
+  identityText.append(identityName, identityMeta); identity.append(identityImage, identityText);
+  const sharedHint = document.createElement('p'); sharedHint.className = 'shop-note product-editor-shared'; sharedHint.dataset.i18n = 'pedit_shared'; sharedHint.textContent = editorText('shared');
+  const tabs = document.createElement('div'); tabs.className = 'product-editor-tabs'; tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', editorText('tabs'));
+  const panels = new Map(), tabButtons = new Map(); let selectedTab = 'basic';
+  for (const key of ['basic', 'images', 'detail', 'variants']) {
+    const panel = document.createElement('section'); panel.className = 'product-editor-tabpanel'; panel.id = `product-editor-panel-${key}`; panel.dataset.productTab = key; panel.setAttribute('role', 'tabpanel'); panel.setAttribute('aria-labelledby', `product-editor-tab-${key}`); panel.tabIndex = 0;
+    const tab = button(editorText(key), () => selectTab(key)); tab.id = `product-editor-tab-${key}`; tab.dataset.i18n = `pedit_${key}`; tab.dataset.i18nAria = `pedit_${key}`; tab.setAttribute('role', 'tab'); tab.setAttribute('aria-controls', panel.id);
+    panels.set(key, panel); tabButtons.set(key, tab); tabs.append(tab);
+    tab.addEventListener('keydown', (event) => {
+      const keys = [...tabButtons.keys()]; const index = keys.indexOf(key);
+      const target = event.key === 'Home' ? 0 : event.key === 'End' ? keys.length - 1 : event.key === 'ArrowRight' ? (index + 1) % keys.length : event.key === 'ArrowLeft' ? (index + keys.length - 1) % keys.length : null;
+      if (target === null) return; event.preventDefault(); selectTab(keys[target]); tabButtons.get(keys[target]).focus();
+    });
+  }
+  function selectTab(key) {
+    selectedTab = key;
+    form.querySelector('.product-editor-actions')?.toggleAttribute('hidden', key === 'detail');
+    for (const [name, panel] of panels) { panel.hidden = name !== key; const tab = tabButtons.get(name); tab.setAttribute('aria-selected', String(name === key)); tab.tabIndex = name === key ? 0 : -1; }
+    if (key === 'detail') richEditor.refreshPreview();
+  }
+  panels.get('basic').append(editorLayout);
+  panels.get('images').append(imageColumn);
+  panels.get('detail').append(richEditor.root);
+  panels.get('variants').append(find('#product-variants'), variantConfig);
+  variantConfig.classList.remove('full');
+  const aiPanel = document.createElement('section'); aiPanel.className = 'product-editor-ai';
+  const aiTitle = document.createElement('h3'); aiTitle.dataset.i18n = 'pedit_ai'; aiTitle.textContent = editorText('ai');
+  const aiHelp = document.createElement('p'); aiHelp.className = 'shop-note'; aiHelp.dataset.i18n = 'pedit_aiHelp'; aiHelp.textContent = editorText('aiHelp');
+  const aiHint = document.createElement('p'); aiHint.className = 'shop-note';
+  const openAI = button(editorText('ai'), () => { if (editingId) onNavigate(`aistudio/${editingId}`); }); openAI.id = 'product-open-ai'; openAI.dataset.i18n = 'pedit_ai'; openAI.dataset.i18nAria = 'pedit_ai';
+  aiPanel.append(aiTitle, aiHelp, aiHint, openAI); imageColumn.append(aiPanel);
+  form.prepend(identity, sharedHint, tabs, ...panels.values());
+  selectTab('basic');
+  function refreshIdentity() {
+    identityName.textContent = form.elements.name.value || editorText('new');
+    identityMeta.textContent = [form.elements.sku.value, form.elements.active.checked ? t('active') : t('inactive')].filter(Boolean).join(' · ');
+    identityImage.hidden = !originalImageUrl; if (originalImageUrl) identityImage.src = originalImageUrl; else identityImage.removeAttribute('src');
+    aiHint.textContent = !editingId ? editorText('saveFirst') : !galleryEditable ? editorText('aiHolder') : '';
+    aiHint.hidden = !aiHint.textContent; openAI.disabled = !editingId || !galleryLoaded || !galleryEditable || saving || richEditor.busy();
+  }
+  form.addEventListener('invalid', (event) => { const panel = event.target.closest('[data-product-tab]'); if (panel) selectTab(panel.dataset.productTab); }, true);
+  form.elements.name.addEventListener('input', refreshIdentity);
+  form.elements.sku.addEventListener('input', refreshIdentity);
+  form.elements.active.addEventListener('change', refreshIdentity);
   const editorActions = document.createElement('div');
   editorActions.className = 'product-editor-actions';
   editorActions.append(find('#product-cancel'), find('#product-save'));
@@ -281,7 +335,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     };
   }
   function captureBaseline() { formBaseline = JSON.stringify(formState()); }
-  function hasUnsavedChanges() { return saving || readingGallery || (!form.hidden && formBaseline !== JSON.stringify(formState())); }
+  function hasUnsavedChanges() { return saving || readingGallery || richEditor.busy() || richEditor.dirty() || (!form.hidden && formBaseline !== JSON.stringify(formState())); }
   function confirmDiscard() { return !hasUnsavedChanges() || window.confirm(t('unsavedChangesConfirm')); }
 
   function showImage(state, source = null) {
@@ -430,6 +484,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     expectedUpdatedAt = detail.updatedAt;
     galleryLoaded = true;
     renderGallery();
+    refreshIdentity();
     if (capture) captureBaseline();
     else if (formBaseline) {
       // Only the fetched gallery joins the confirmed baseline. Metadata typed
@@ -838,7 +893,8 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     }
   }
 
-  function resetForm() {
+  function resetForm({ keepDetail = false } = {}) {
+    if (!keepDetail) { richEditor.load(null); selectTab('basic'); }
     editorLoadSequence++;
     readingGallery = false;
     find('#product-save').disabled = saving;
@@ -855,13 +911,14 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     sharedGallery = false; galleryEditable = true; galleryHolderId = null;
     expectedUpdatedAt = null;
     showImage('none');
+    refreshIdentity();
     renderGallery();
     setError('');
     setFormSuccess('');
     document.dispatchEvent(new Event('updateguardchange'));
   }
 
-  async function edit(product, { skipGuard = false, detailLoaded = false } = {}) {
+  async function edit(product, { skipGuard = false, detailLoaded = false, preserveDetail = false } = {}) {
     if (!skipGuard && !confirmDiscard()) return;
     const sequence = ++editorLoadSequence;
     editingId = product.id;
@@ -891,6 +948,8 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     setError('');
     setFormSuccess('');
     captureBaseline();
+    refreshIdentity();
+    richEditor.load(product.id, { preserve: preserveDetail });
     if (!detailLoaded) {
       form.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
       form.elements.sku.focus();
@@ -948,6 +1007,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       currencyHelp.dataset.i18n = 'currencyInherited';
       currencyHelp.textContent = t('currencyInherited');
       captureBaseline();
+      refreshIdentity();
       return;
     }
     const id = route.slice('products/'.length);
@@ -1103,7 +1163,8 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   form.addEventListener('input', (event) => event.target.removeAttribute?.('aria-invalid'));
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (saving || readingGallery || (editingId && !galleryLoaded)) return;
+    if (saving || readingGallery || richEditor.busy() || (editingId && !galleryLoaded)) return;
+    if (richEditor.dirty() && formBaseline && form.elements.variantGroup.value !== JSON.parse(formBaseline).values.variantGroup) { setError('pedit_membership'); selectTab('detail'); return; }
     const save = find('#product-save');
     const productId = editingId;
     const sequence = routeSequence;
@@ -1152,10 +1213,13 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       if (!ownsRoute()) return;
       const saved = await api(productId ? 'PATCH' : 'POST', productId ? apiUrl(`v1/seller/products/${productId}`) : apiUrl('v1/seller/products'), payload);
       if (!ownsRoute()) return;
-      resetForm();
+      const savedTab = selectedTab;
+      const preserveDetail = Boolean(productId && formBaseline && payload.variantGroup === JSON.parse(formBaseline).values.variantGroup);
+      resetForm({ keepDetail: preserveDetail });
       await load();
       if (!ownsRoute()) return;
-      await edit(saved, { skipGuard: true, detailLoaded: true });
+      await edit(saved, { skipGuard: true, detailLoaded: true, preserveDetail });
+      selectTab(savedTab);
       if (!ownsRoute()) return;
       onSaved(saved.id);
       setFormSuccess('productSaved');
@@ -1168,16 +1232,16 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       if (optionKey) { optionsError.textContent = t(optionKey); optionsError.hidden = false; }
       // Price and stock are checked here before anything is sent: say what a valid value looks like.
       const inputKey = failure.code ? null : failure.field === 'price' ? 'priceInvalid' : failure.field === 'stockQuantity' ? 'stockInvalid' : null;
-      setError(optionKey || inputKey || (failure.code === 'PRODUCT_CHANGED' ? 'productChangedReopen' : failure.code === 'STOCK_TRACKING_CONFLICT' ? 'stockTrackingConflict' : failure.field === 'gallery' ? 'galleryLimit' : galleryConflict ? 'removeGalleryFirst' : failure.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : failure.code === 'DUPLICATE_SKU' ? 'duplicateSku' : failure.code === 'DUPLICATE_VARIANT' ? 'duplicateVariant' : failure.code === 'VARIANT_CATEGORY_MISMATCH' ? 'variantCategoryMismatch' : 'productError'));
+      setError(optionKey || inputKey || (failure.code === 'DETAIL_MEMBERSHIP_CONFLICT' ? 'pedit_membershipConflict' : failure.code === 'PRODUCT_CHANGED' ? 'productChangedReopen' : failure.code === 'STOCK_TRACKING_CONFLICT' ? 'stockTrackingConflict' : failure.field === 'gallery' ? 'galleryLimit' : galleryConflict ? 'removeGalleryFirst' : failure.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : failure.code === 'DUPLICATE_SKU' ? 'duplicateSku' : failure.code === 'DUPLICATE_VARIANT' ? 'duplicateVariant' : failure.code === 'VARIANT_CATEGORY_MISMATCH' ? 'variantCategoryMismatch' : 'productError'));
       if (galleryConflict && productId && editingId === productId) {
         // A rejected write owns no new baseline. Preserve all draft metadata,
         // image removals and order so retry and navigation guards remain truthful.
         galleryPanel.scrollIntoView({ block: 'nearest' });
       } else {
         const field = failure.code === 'DUPLICATE_SKU' ? 'sku' : failure.field === 'priceMinor' ? 'price' : failure.field === 'imageDataUrl' ? 'image' : failure.field;
-        if (field && form.elements[field]) { form.elements[field].setAttribute('aria-invalid', 'true'); form.elements[field].focus(); }
+        if (field && form.elements[field]) { const panel = form.elements[field].closest('[data-product-tab]'); if (panel) selectTab(panel.dataset.productTab); form.elements[field].setAttribute('aria-invalid', 'true'); form.elements[field].focus(); }
       }
-    } finally { saving = false; finish(); if (isCurrent()) { save.disabled = false; renderGallery(); } document.dispatchEvent(new Event('updateguardchange')); }
+    } finally { saving = false; finish(); if (isCurrent()) { save.disabled = false; renderGallery(); refreshIdentity(); } document.dispatchEvent(new Event('updateguardchange')); }
   });
 
   const settingsPromise = loadSettings();
@@ -1188,6 +1252,9 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     showRoute,
     refreshLocale() {
       translate(root);
+      richEditor.refreshLocale();
+      refreshIdentity();
+      tabs.setAttribute('aria-label', editorText('tabs'));
       refreshStatusFilter();
       renderList();
       renderGallery();
@@ -1201,7 +1268,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       editorStatus.textContent = editorStatusKey ? t(editorStatusKey) : '';
     },
     hasUnsavedChanges,
-    draftSignature: () => JSON.stringify([editingId, form.hidden, formState()]),
-    isBusy: () => saving || readingGallery || mutations > 0,
+    draftSignature: () => JSON.stringify([editingId, form.hidden, formState(), richEditor.signature()]),
+    isBusy: () => saving || readingGallery || richEditor.busy() || mutations > 0,
   };
 }

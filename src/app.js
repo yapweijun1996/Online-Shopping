@@ -1,3 +1,4 @@
+import { getProductDetail, saveProductDetail, stageProductDetailImage, getProductDetailImage, discardProductDetailImage } from './product-detail.js';
 import { getAiSettings, updateAiSettings } from './ai/settings.js';
 import { keyStatus, saveKey, deleteKey } from './ai-studio/credential.js';
 import { getStudioSetting, updateStudioSetting, callsToday } from './ai-studio/usage.js';
@@ -48,6 +49,7 @@ import { operationEpochCurrent } from './mcp/operation-epoch.js';
 
 const productIdPath = /^\/api\/v1\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
 const sellerProductIdPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/(image))?$/;
+const detailPath = /^\/api\/v1\/(seller\/)?products\/([0-9a-f-]{36})\/detail(?:\/(images)(?:\/([0-9a-f-]{36}))?)?$/;
 const thumbnailPath = /^\/api\/v1\/seller\/products\/([0-9a-f-]{36})(?:\/gallery\/([0-9a-f-]{36}))?\/thumbnail$/;
 const optionTypePath = /^\/api\/v1\/seller\/option-types(?:\/([0-9a-f-]{36})(?:(\/values)(?:\/([0-9a-f-]{36}))?)?)?$/;
 const productGalleryPath = /^\/api\/v1\/(seller\/)?products\/([0-9a-f-]{36})\/gallery\/([0-9a-f-]{36})$/;
@@ -196,6 +198,11 @@ async function createTenantApi({ store, config, tenantId, tenantGuard, operation
       });
     }
     if (method === 'GET' && pathname === '/api/v1/products') return json(200, await listProducts(store, url.searchParams, false, config.shopMode));
+    const detail = detailPath.exec(pathname);
+    if (method === 'GET' && detail && !detail[1]) {
+      if (detail[4]) return image(await getProductDetailImage(store, detail[2], detail[4]));
+      if (!detail[3]) return json(200, await getProductDetail(store, detail[2]));
+    }
     const galleryImage = productGalleryPath.exec(pathname);
     if (method === 'GET' && galleryImage && !galleryImage[1]) {
       const value = await getGalleryImage(store, galleryImage[2], galleryImage[3], false, url.searchParams.get('size') === 'thumb');
@@ -383,6 +390,23 @@ async function createTenantApi({ store, config, tenantId, tenantGuard, operation
       const body = await readJson(request, 1024);
       if (Object.keys(body).length !== 1 || body.confirm !== true) throw new FieldError('confirm', 'Confirm the reset.');
       return json(200, await resetDemo(store));
+    }
+    if (detail?.[1]) {
+      allow('catalog.write');
+      if (method === 'GET' && detail[4]) return image(await getProductDetailImage(store, detail[2], detail[4], true));
+      if (method === 'GET' && !detail[3]) return json(200, await getProductDetail(store, detail[2], true));
+      if (method === 'DELETE' && detail[4]) {
+        requireOrigin(request, expectedOrigin);
+        requireCsrf(request, session);
+        return json(200, await discardProductDetailImage(store, detail[2], detail[4]));
+      }
+      if (method === 'PUT' && !detail[3] || method === 'POST' && detail[3] && !detail[4]) {
+        requireOrigin(request, expectedOrigin);
+        requireCsrf(request, session);
+        const body = await readJson(request, detail[3] ? 750000 : 700000);
+        return detail[3] ? json(201, await stageProductDetailImage(store, detail[2], body))
+          : json(200, await saveProductDetail(store, detail[2], body, account.username));
+      }
     }
     if (method === 'GET' && pathname === '/api/v1/seller/products') {
       return json(200, await listProducts(store, url.searchParams, true, config.shopMode));

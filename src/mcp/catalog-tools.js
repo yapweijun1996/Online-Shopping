@@ -1,3 +1,4 @@
+import { assertNoProtectedRichDetail } from '../product-detail.js';
 import { withInventoryContext } from '../inventory.js';
 import { createHash } from 'node:crypto';
 import { ApiError } from '../http.js';
@@ -91,6 +92,7 @@ export async function catalogCreateRevision(read) {
   const hash = fingerprint(); addRows(hash, 'companyCurrency', [await currency(read)]);
   const products = await scan(read, hash, 'product', productColumns, ['id'], CATALOG_LIMITS.products);
   await scan(read, hash, 'listing', listingColumns, ['id'], CATALOG_LIMITS.products);
+  await scan(read, hash, 'listing_detail', 'listing_id, revision, updated_at', ['listing_id'], CATALOG_LIMITS.products);
   await scan(read, hash, 'general_code', categoryColumns, ['code'], CATALOG_LIMITS.dictionaryRows, "type = 'PRODUCT_CATEGORY'");
   await scan(read, hash, 'option_type', typeColumns, ['id'], CATALOG_LIMITS.dictionaryRows);
   await scan(read, hash, 'option_value', valueColumns, ['id'], CATALOG_LIMITS.dictionaryRows);
@@ -113,6 +115,7 @@ async function rowsFor(read, table, columns, key, ids, cap, predicate = '') {
 async function component(read, id, patch = {}) {
   const target = await read.get(`SELECT ${productColumns} FROM product WHERE id = ?`, id);
   if (!target) return null;
+  await assertNoProtectedRichDetail(read, [target.listing_id]);
   const members = await read.all(`SELECT ${productColumns} FROM product WHERE listing_id = ? OR variant_group = ? ORDER BY id LIMIT ?`,
     target.listing_id, target.variant_group, CATALOG_LIMITS.members + 1);
   if (members.length > CATALOG_LIMITS.members) tooLarge();
@@ -205,6 +208,7 @@ async function draftCreate(read, input) {
   await requireUniqueVariantLabel(read, normalized.variantGroup, normalized.variantLabel);
   if (normalized.variantGroup && await read.get('SELECT id FROM product WHERE variant_group = ? LIMIT 1', normalized.variantGroup)) unsupported();
   const listing = normalized.variantGroup && await read.get('SELECT id, name, description, category FROM listing WHERE code = ?', normalized.variantGroup);
+  if (listing) await assertNoProtectedRichDetail(read, [listing.id]);
   const selected = await prepareProductOptions(read, null, normalized.variantGroup, normalized.options || [], { newProduct: true });
   await requireGroupOptions(read, null, normalized.variantGroup, selected.options.length > 0);
   const normalizedInput = { ...normalized, stockQuantity: normalized.stockQuantity ?? null,
@@ -288,6 +292,10 @@ function registration(kind) {
       async apply(store, proposal, context) {
         checkedProposal(proposal, kind);
         const actor = await author(store, context);
+        if (kind === 'create' && proposal.normalizedInput.variantGroup) {
+          const listing = await store.get('SELECT id FROM listing WHERE code = ?', proposal.normalizedInput.variantGroup);
+          if (listing) await assertNoProtectedRichDetail(store, [listing.id]);
+        }
         const product = await withInventoryContext({ source: 'MCP_CATALOG', actorKind: 'SELLER', actorId: context.accountId,
           clientId: context.clientId, grantId: context.grantId, operationId: context.operationId, correlationId: context.correlationId }, async () => kind === 'create' ? await trackCreate(store, actor, () => createProduct(store, proposal.normalizedInput))
           : await trackUpdate(store, proposal.before.id, actor, () => updateProduct(store, proposal.before.id, proposal.normalizedInput)));

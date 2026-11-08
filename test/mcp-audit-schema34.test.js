@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import pg from 'pg';
-import { openDatabase, migrateStore } from '../src/db.js';
+import { openDatabase, migrateStore, SCHEMA_VERSION } from '../src/db.js';
 import { openPostgresStore } from '../src/postgres-store.js';
 import { upgradePostgres } from '../src/postgres/upgrade.js';
 import { operationEventSchema } from '../src/mcp/operation-schema.js';
@@ -62,7 +62,7 @@ for (const dialect of ['sqlite','postgres']) {
   });
   test(`${dialect}: strict33 audit upgrade preserves all UUIDs and fields and allocates nonreused insertion sequences`, async t => {
     const { store, migrate } = await legacyFixture(t, dialect), before = await history(store);
-    await migrate(); assert.equal(await store.schemaVersion(), 34); assert.equal(await operationStorageReady(store), true); await assertMcpAuditStorage(store);
+    await migrate(); assert.equal(await store.schemaVersion(), SCHEMA_VERSION); assert.equal(await operationStorageReady(store), true); await assertMcpAuditStorage(store);
     assert.equal((await store.get('SELECT version FROM mcp_v2_schema')).version, 3);
     const mcp = await store.all('SELECT * FROM mcp_audit ORDER BY sequence'), lifecycle = await store.all('SELECT * FROM mcp_v2_event ORDER BY sequence');
     assert.deepEqual(mcp.map(({ sequence, operation_id, ...row }) => row), before.mcp.map(row => ({ ...row })));

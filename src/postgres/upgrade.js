@@ -1,3 +1,4 @@
+import { migrateProductDetail } from '../product-detail-schema.js';
 import { migrateInventory, inventoryStorageReady, migrateInventoryOrderIndex, inventoryOrderIndexReady } from '../inventory-schema.js';
 import { migrateAi } from '../ai/schema.js';
 import { migrateAiStudio } from '../ai-studio/schema.js';
@@ -18,7 +19,7 @@ const legacyApplicationGrant = `current_database() !~ '^t_[a-z0-9]{3,30}_[0-9a-f
 
 // Called only by an explicit operator/test opt-in, inside the store-owned transaction.
 export async function upgradePostgres(store, version) {
-  if (![10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33].includes(version)) {
+  if (![10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34].includes(version)) {
     throw new Error(`Unsupported PostgreSQL schema version ${version}.`);
   }
   if (await store.schemaVersion() === SCHEMA_VERSION) {
@@ -40,9 +41,10 @@ export async function upgradePostgres(store, version) {
     await migrateInventoryOrderIndex(store);
     await store.setSchemaVersion(33);
   } else if (!await inventoryOrderIndexReady(store)) throw new Error('Incompatible inventory order index.');
-  await upgradeOperationAuditStorage(store);
+  if (version < 34) await upgradeOperationAuditStorage(store);
+  await migrateProductDetail(store);
   await store.exec(`DO $$ BEGIN IF ${legacyApplicationGrant} THEN
-    GRANT SELECT, INSERT, UPDATE, DELETE ON ${[OPERATION_STORAGE_META, ...OPERATION_STORAGE_TABLES, 'mcp_audit', 'inventory_schema', 'inventory_coverage', 'inventory_state', 'inventory_movement'].join(', ')} TO online_shopping_app;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ${[OPERATION_STORAGE_META, ...OPERATION_STORAGE_TABLES, 'mcp_audit', 'inventory_schema', 'inventory_coverage', 'inventory_state', 'inventory_movement', 'listing_detail', 'listing_detail_image'].join(', ')} TO online_shopping_app;
     GRANT USAGE, SELECT ON SEQUENCE mcp_audit_sequence_seq, mcp_v2_event_sequence_seq TO online_shopping_app;
     END IF; END $$;`);
   await store.setSchemaVersion(SCHEMA_VERSION);
