@@ -91,6 +91,23 @@ test('Unavailable decoded images remove the whole dependent figure without orpha
   assert.equal(bare.children.length, 0);
 });
 
+test('Late image failures show one summary only after all images fail and preserve surviving detail text', () => {
+  const multiple = render([image, image], [asset], { fallbackText: 'Saved summary' });
+  const first = multiple.children[0].children[0], second = multiple.children[1].children[0];
+  first.events.error();
+  assert.equal(multiple.children.length, 1);
+  assert.equal(multiple.children[0].tagName, 'figure', 'a surviving image prevents early fallback');
+  assert.doesNotMatch(multiple.textContent, /Saved summary/);
+  second.events.error();
+  assert.equal(multiple.children.length, 1); assert.equal(multiple.textContent, 'Saved summary');
+  second.events.error();
+  assert.equal(multiple.children.length, 1, 'a repeated failure cannot duplicate the summary');
+  const mixed = render([{ type: 'paragraph', text: 'Existing detail text' }, image], [asset], { fallbackText: 'Saved summary' });
+  mixed.children[1].children[0].events.error();
+  assert.equal(mixed.textContent, 'Existing detail text');
+  assert.equal(mixed.children.length, 1, 'existing detail content remains authoritative');
+});
+
 test('Untrusted detail shape and collections are bounded during rendering', () => {
   assert.equal(render(Array(100).fill({ type: 'paragraph', text: 'x' })).children.length, 40);
   assert.equal(render([{ type: 'heading', text: 'x'.repeat(1000) }]).textContent.length, 240);
@@ -99,6 +116,37 @@ test('Untrusted detail shape and collections are bounded during rendering', () =
 });
 
 const modulePath = process.env.QA_PLAYWRIGHT_MODULE;
+test('Storefront image-only details fall back to the saved summary when the last real image fails', { skip: !modulePath }, async (t) => {
+  const { chromium } = await import(modulePath);
+  const browser = await chromium.launch({ headless: true, executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', '--disable-gpu'] });
+  t.after(() => browser.close());
+  const f = await sellerFixture(); t.after(() => f.close());
+  const context = await browser.newContext({ viewport: { width: 375, height: 812 }, serviceWorkers: 'block' });
+  const photoPath = `/api/v1/products/${f.product.id}/detail/images/${assetId}`;
+  await context.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (url.origin !== f.origin) return route.abort();
+    if (url.pathname === `/api/v1/products/${f.product.id}/detail`) return route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify({
+        revision: '1', document: { version: 1, blocks: [image] }, assets: [{ ...asset, src: photoPath }],
+      }),
+    });
+    if (url.pathname === photoPath) return route.fulfill({ status: 404 });
+    return route.continue();
+  });
+  const page = await context.newPage();
+  const unavailablePhoto = page.waitForResponse(response => new URL(response.url()).pathname === photoPath && response.status() === 404);
+  await page.goto(`${f.origin}/shop/#product/${f.product.id}`);
+  await page.locator('.product-rich-content').scrollIntoViewIfNeeded();
+  await unavailablePhoto;
+  await page.waitForFunction(() => !document.querySelector('.product-rich-content figure'));
+  assert.equal(await page.locator('.product-rich-content').innerText(), 'Fictional item');
+  assert.equal(await page.locator('.product-rich-content .detail-description').count(), 1);
+  assert.equal(await page.locator('.product-rich-content img').count(), 0);
+  assert.equal(await page.getByText('Back panel', { exact: true }).count(), 0);
+  assert.equal(await page.locator('.product-purchase .product-add').isEnabled(), true);
+});
+
 test('Storefront keeps purchase usable while rich detail loads and renders safe long content at phone/desktop widths', { skip: !modulePath }, async (t) => {
   const { chromium } = await import(modulePath);
   const browser = await chromium.launch({ headless: true, executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', '--disable-gpu'] });
