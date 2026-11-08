@@ -9,6 +9,9 @@ import { operationAuthorityPolicy } from './operation-policy.js';
 import { can } from '../roles.js';
 import { readCommittedMediaFrame } from './media-frame-storage.js';
 import { readMediaSnapshot } from './media-resources.js';
+import { isCreationParent } from './catalog-create-parent-wire.js';
+import { readCatalogCreateMediaMetadata } from './catalog-create-media-state.js';
+import { catalogCreateParentResultRevision } from './catalog-create-parent-result.js';
 import { describeOptions } from './catalog-tools.js';
 import { mcpFinishRuntimeEnabled } from './deployment-profile.js';
 
@@ -157,6 +160,12 @@ export function createFinishWorkflow({store, binding, config, tenantGuard, appro
       const envelope=readStoredOperation(row,binding),receipt=JSON.parse(row.result_json);
       if(!envelope)throw new ApiError(409,'VERIFY_UNAVAILABLE','Proposal is no longer available.');
       const productId=receipt.productId??row.resource_id,proposal=envelope.proposal;
+      if(isCreationParent(proposal)){
+        const catalog=await readCatalogCreateMediaMetadata(store,{normalizedInput:proposal.normalizedInput,creationIdentity:proposal.creationIdentity});
+        const media=await readMediaSnapshot(store,productId);
+        const actual=catalogCreateParentResultRevision({catalogRevision:catalog.revision,mediaRevision:media.revision,manifestRoot:proposal.media.manifestRoot});
+        if(actual!==receipt.revision)throw new ApiError(409,'VERIFY_CHANGED','Reviewed parent result changed after commit.');
+      }
       const expectedProducts=Array.isArray(proposal.catalogReview?.products) ? proposal.catalogReview.products.map(effect=>({productId:effect.productId,after:effect.after}))
         : [{productId,after:proposal.after??proposal.product}];
       if(!expectedProducts.length || expectedProducts.length>300)throw new ApiError(409,'VERIFY_CHANGED','Reviewed product set is unavailable.');

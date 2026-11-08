@@ -44,7 +44,11 @@ No background daemon is installed: the backend request performs execution and a
 later explicit Resume reconciles an interrupted request from durable receipts.
 Committed operations are read back, never reapplied; stock and commit audit must
 not duplicate. If current content differs from the committed expected projection,
-verification returns `VERIFY_CHANGED` rather than claiming completion.
+verification returns `VERIFY_CHANGED` rather than claiming completion. Parent
+CREATE first verification compares the atomic receipt result fingerprint against
+fresh complete catalog metadata and the shared image graph using the same pure
+source helper. This conservatively rejects even unrelated catalog changes in
+that crash window; it never replays a commit or transfers approval.
 
 A renewed login can inspect its own job with the original grant still valid.
 An approval bound to another seller session becomes

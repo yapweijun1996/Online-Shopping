@@ -1,5 +1,6 @@
 import { FieldError } from '../validation.js';
 import { ApiError } from '../http.js';
+import { catalogCreateParentResultRevision } from './catalog-create-parent-result.js';
 import { createHash } from 'node:crypto';
 import { canonicalOperationJson } from './operation-envelope.js';
 import { readCreateDraft } from './catalog-create-draft-storage.js';
@@ -46,7 +47,7 @@ async function finalAfter(store,prepared,context,results){
 
  for(const image of results){const item=prepared.proposal.creationMedia.images.find(value=>value.stageId===image.stageId),asset=after.sources.find(value=>value.source_product_id===item.productId&&value.byte_sha256===item.canonicalSha256&&value.mime===item.mime);
   if(!asset||asset.byte_length!==item.byteLength||asset.thumbnail?.byte_sha256!==item.thumbnailSha256||asset.thumbnail?.byte_length!==item.thumbnailBytes)changed();}
- return {productId,listingId:desired.listingId,revision:hash({version:1,kind:'catalog-create-parent-result',catalogRevision:metadata.revision,mediaRevision:after.revision,manifestRoot:manifest.descriptor.manifestRoot})};
+ return {productId,listingId:desired.listingId,revision:catalogCreateParentResultRevision({catalogRevision:metadata.revision,mediaRevision:after.revision,manifestRoot:manifest.descriptor.manifestRoot})};
 }
 /** A strict source-owned composite branch. Legacy image-free CREATE delegates
  * unchanged, and original standalone upload remains unchanged. */
