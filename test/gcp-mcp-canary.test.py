@@ -245,6 +245,61 @@ class Tests(unittest.TestCase):
         with self.assertRaises(c.Blocked):self.guard.call(bad,self.raw,supervisor=supervisor)
 
 
+class FinishActivation(unittest.TestCase):
+    def test_backend_image_explicitly_copies_reviewed_installers(self):
+        line=next(line for line in (ROOT/'Dockerfile.backend').read_text().splitlines() if line.startswith('COPY scripts/'))
+        for path in ('scripts/upgrade-database.mjs','scripts/install-seller-mcp-finish.js'):self.assertIn(path,line)
+
+    def test_policy_pins_match_reviewed_sources(self):
+        for path,expected in c.SOURCE_PINS.items():
+            self.assertEqual(c.digest((ROOT/path).read_bytes()),expected,path)
+
+    def test_runtime_finish_requires_full_on_and_writes_explicit_off(self):
+        with tempfile.TemporaryDirectory() as directory:
+            h=object.__new__(c.Harness);h.root=Path(directory);h.ns=c.Namespace('012345abcdef')
+            h.module=SimpleNamespace(MCP_FLAGS=('MCP_V2_ENABLED','MCP_V2_MEDIA_ENABLED','MCP_V2_CATALOG_MEDIA_UPDATE_ENABLED','MCP_V2_CATALOG_MEDIA_CREATE_ENABLED'),PROFILE='seller-operations-v1',atomic=lambda path,data:path.write_bytes(data))
+            h.runtime(False);self.assertIn('MCP_V2_FINISH_ENABLED=0', (h.root/'runtime.env').read_text())
+            with self.assertRaises(c.Blocked):h.runtime(False,finish=True)
+            h.runtime(True,finish=True);text=(h.root/'runtime.env').read_text()
+            self.assertIn('MCP_V2_FINISH_ENABLED=1',text);self.assertIn('MCP_V2_PRODUCTION_PROFILE=seller-operations-v1',text)
+
+    def test_installer_allows_only_exact_nonce_secret_mount_and_bound_contract(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ns=c.Namespace('012345abcdef');ns.root=Path(directory);(ns.root/'secrets').mkdir()
+            secret=ns.root/'secrets/finish-owner-password';secret.write_text('Synthetic-private-owner-secret\n');secret.chmod(0o600)
+            if os.getuid()==0:os.chown(secret,1000,1000)
+            elif os.getuid()!=1000:self.skipTest('Owner file fixture needs UID1000 or root.')
+            compose=ns.root/'compose.yaml';compose.write_text('{}')
+            name=ns.project+'-job-finish-install';record={'jobs':[name]}
+            guard=c.DockerGuard(ns,set(),record,lambda:None);guard.compose_hash=c.digest(compose.read_bytes())
+            prefix=['compose','--project-name',ns.project,'--env-file',str(ns.root/'runtime.env'),'--env-file',str(ns.root/'images.env'),'-f',str(compose),'--profile','whatsapp-qr','--profile','whatsapp-qr-slot1','run','--rm','--no-deps','--name',name]
+            command=c.finish_install_command(ns,'install')
+            self.assertEqual(guard.compose(prefix+command,lambda *args:''),prefix+command)
+            upgrade=c.schema_upgrade_command(ns)
+            self.assertEqual(guard.compose(prefix+upgrade,lambda *args:''),prefix+upgrade)
+            probe=['backend','node','--input-type=module','-e',c.IMAGE_INSTALLER_PROGRAM]
+            self.assertEqual(guard.compose(prefix+probe,lambda *args:''),prefix+probe)
+            with self.assertRaises(c.Blocked):guard.compose(prefix+[value.replace('OWNER_PASSWORD_FILE=/run/secrets/owner','OWNER_PASSWORD_FILE=/tmp/other') for value in upgrade],lambda *args:'')
+            verify=c.finish_install_command(ns,'verify');self.assertNotIn('-v',verify)
+            self.assertEqual(guard.compose(prefix+verify,lambda *args:''),prefix+verify)
+            for old,new in [(str(secret)+':/run/secrets/finish-owner-password:ro','/opt/online-shopping-gcp/private:/run/secrets/finish-owner-password:ro'),('--expected-schema=35','--expected-schema=34'),('--tenant=default','--tenant=other'),('--expected-database=online_shopping','--expected-database=production'),('MCP_V2_FINISH_ENABLED=1','MCP_V2_FINISH_ENABLED=0')]:
+                bad=[new if value==old else value for value in command]
+                with self.subTest(new=new),self.assertRaises(c.Blocked):guard.compose(prefix+bad,lambda *args:'')
+            secret.chmod(0o644)
+            with self.assertRaisesRegex(c.Blocked,'FINISH_OWNER_FILE'):guard.compose(prefix+command,lambda *args:'')
+
+    def test_failed_installer_removes_private_owner_copy_and_never_enables_runtime(self):
+        with tempfile.TemporaryDirectory() as directory:
+            h=object.__new__(c.Harness);h.root=Path(directory);h.ns=c.Namespace('012345abcdef');h.ns.root=h.root
+            (h.root/'secrets').mkdir();(h.root/'secrets/postgres-owner-password').write_text('Synthetic-secret\n')
+            h.record={'io':{}};h.persist=Mock();h.controller=Mock();h.controller.return_value.compose.return_value=['synthetic-compose']
+            h.docker=Mock(side_effect=c.Blocked('SYNTHETIC_INSTALL_FAILURE'));h.runtime=Mock()
+            h.secret_file=lambda name,text,**kwargs:(h.root/'secrets'/name).write_text(text)
+            with self.assertRaisesRegex(c.Blocked,'SYNTHETIC_INSTALL_FAILURE'):h.install_finish({'sha':'a'*40})
+            self.assertFalse((h.root/'secrets/finish-owner-password').exists());h.runtime.assert_not_called()
+            h.controller.return_value.stop_clients.assert_called_once()
+
+
 class Cleanup(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
@@ -488,8 +543,8 @@ class Checkpoints(unittest.TestCase):
 class Manifest(unittest.TestCase):
     def manifest(self):
         image=lambda component,n:'ghcr.io/yapweijun1996/online-shopping-'+component+'@sha256:'+n*64
-        return {'version':1,'nonce':'012345abcdef','candidate':{'sha':'a'*40,'backend':image('backend','1'),'frontend':image('frontend','2'),'codec':image('backend','3')},
-                'previous':{'sha':c.PREVIOUS,'backend':image('backend','4'),'frontend':image('frontend','5')},'verifyRunId':1,'publicationRunId':2,
+        return {'version':2,'nonce':'012345abcdef','candidate':{'sha':'a'*40,'backend':image('backend','1'),'frontend':image('frontend','2'),'codec':image('backend','3')},
+                'previous':{'sha':c.PREVIOUS,'backend':image('backend','4'),'frontend':image('frontend','5')},'fallback':{'sha':c.FALLBACK,'backend':image('backend','a'),'frontend':image('frontend','b'),'codec':image('backend','c')},'verifyRunId':1,'publicationRunId':2,
                 'policyHashes':{**c.SOURCE_PINS,'compose.gcp.yaml':'6'*64,'deploy/gcp/compose.mcp.yaml':'7'*64},
                 'helperHashes':{'qa-gcp-mcp-canary.py':'8'*64,'qa-gcp-mcp-canary.mjs':'9'*64}}
 
@@ -504,6 +559,12 @@ class Manifest(unittest.TestCase):
 
     def test_codec_is_separate_and_old_revision_policy_cannot_be_replaced(self):
         value=self.manifest();value['candidate']['codec']=value['candidate']['backend']
+        with self.assertRaises(c.Blocked):c.validate_manifest(value)
+        value=self.manifest();del value['fallback']
+        with self.assertRaises(c.Blocked):c.validate_manifest(value)
+        value=self.manifest();del value['fallback']['codec']
+        with self.assertRaises(c.Blocked):c.validate_manifest(value)
+        value=self.manifest();value['fallback']['sha']='b'*40
         with self.assertRaises(c.Blocked):c.validate_manifest(value)
         value=self.manifest();value['previous']['sha']='b'*40
         with self.assertRaises(c.Blocked):c.validate_manifest(value)
@@ -521,7 +582,7 @@ class ClientAssertions(unittest.TestCase):
         self.assertEqual(result.returncode,0,result.stderr)
 
     def test_baseline_schema_cast_uses_actual_pg_parser_and_keeps_strict_version_check(self):
-        check=next(line.strip() for line in self.source.splitlines() if "query('SELECT version" in line)
+        check=next(line.strip() for line in self.source.splitlines() if "query('SELECT version" in line and 'SCHEMA_VERSION' in line)
         self.node("""import pg from'pg';import assert from'node:assert/strict';
 const need=(ok,code)=>{if(!ok)throw Error(code)};
 assert.equal(pg.types.getTypeParser(20)('34'),'34');
@@ -568,7 +629,7 @@ assert.throws(()=>assertLegacyDefinitions(tools,'candidate-self-hash'),/LEGACY_B
 """)
 
     def test_actual_company_helper_uses_five_paid_attempts_with_preview_and_replay(self):
-        functions=self.source[self.source.index('async function passwordApproval('):self.source.index('async function full()')]
+        functions=self.source[self.source.index('async function sessionApproval('):self.source.index('async function full()')]
         self.node("""import assert from'node:assert/strict';
 const need=(ok,code)=>{if(!ok)throw Error(code)};const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);const secret=()=> 'a'.repeat(43);
 let input={action:'on',nonce:'012345abcdef'},state={password:'correct',full:{session:{'X-CSRF-Token':'valid'}}},evidence={},marker=null,next=0,proposal,paid=0,badCsrf=0;
@@ -585,18 +646,18 @@ async function tool(family,name,args){
 async function request(path,method,body,headers){
  if(method==='GET')return{status:200,data:{previewHash:proposal.previewHash,challenge:'c'.repeat(43),proposal:{after:{availabilityText:proposal.marker}}}};
  if(headers['X-CSRF-Token']==='wrong'){badCsrf++;return{status:403}}
- paid++;return{status:body.password==='correct'?200:403};
+ assert.equal(Object.hasOwn(body,'password'),false);assert.match(body.challenge,/^[A-Za-z0-9_-]{43}$/);paid++;return{status:body.challenge==='c'.repeat(43)?200:403};
 }
 """+functions+"""
-await company({wrongPassword:true});assert.equal(paid,2);assert.equal(state.approvalAttempts,2);
+await company({invalidChallenge:true});assert.equal(paid,2);assert.equal(state.approvalAttempts,2);
 // C uses the already committed receipt; no company approval is performed.
 await tool(state.full,'company.commit_update',{operationId:state.committed.operationId});assert.equal(paid,2);
 input.action='pending';await company({pending:true});assert.equal(paid,3);
 input.action='epoch-fenced';await company({previewOnly:true});assert.equal(paid,3);
 input.action='restore-finished';await company();assert.equal(paid,4);
 input.action='fallback-marker';await company();assert.equal(paid,5);assert.equal(state.approvalAttempts,5);
-assert.equal(badCsrf,4);assert.equal(state.wrongPasswordTested,true);
-await assert.rejects(passwordApproval('/approval',{},{}),/APPROVAL_BUDGET/);assert.equal(paid,5);
+assert.equal(badCsrf,4);assert.equal(state.invalidChallengeTested,true);
+await assert.rejects(sessionApproval('/approval',{},{}),/APPROVAL_BUDGET/);assert.equal(paid,5);
 """)
 
     def test_missing_or_wrong_published_baseline_has_no_candidate_fallback(self):

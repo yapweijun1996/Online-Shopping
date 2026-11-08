@@ -1,5 +1,15 @@
 # Online Shopping Threat Model
 
+Current owner-selected operation approval policy, 2026-11-08: a valid signed-in
+seller session authorizes an explicit first-party MCP approval/rejection without
+another password prompt. Exact preview/image review, Origin/CSRF, current
+session/auth-version, original grant/consent, ownership, tenant/epoch/build,
+expiry/revision, CAS and audit remain mandatory. Login, OAuth consent and account
+password flows are unchanged. Earlier per-operation fresh-password descriptions
+below are historical and superseded for this action only. A stolen live seller
+session no longer faces a separate password step-up; see
+[the session approval contract](mcp-v2/SESSION-BASED-APPROVAL.md).
+
 Production activation candidate,2026-11-06: the owner authorized a separate full Seller Operations MCP activation after the accepted default-OFF release. The candidate uses one strict named production profile, immutable backend/codec pins, dynamic external epoch fences, canonical configured HTTPS origins and protected review proxy policy. The trusted host supervisor owns isolated codec generations; backend mounts are read-only and a process-wide permit precedes large captures. Cleanup/recovery commands retain private hygiene-only tenant fences and do not grant business authority. Local integrated acceptance and recorded EF7/AFBA main CI/publications passed; published-AMD64 canaries and private cutovers passed; AFBA public verification and all three managed timers were accepted at07:49:20UTC; the later QA/docs merge/normal forward release remains pending; [the current activation record](mcp-v2/13-PRODUCTION-ACTIVATION.md) distinguishes this candidate from historical production-blocked descriptions. The milestone evidence below retains its original dates and scope.
 
 Current production eligibility requires complete `seller-operations-v1` flags with actual `NODE_ENV=production`, `TRUST_PROXY=1`, HTTPS/manual setup and quick login disabled. Partial requested profiles fail closed; coherent all-v2-OFF without the selector retains legacy behavior. Installed-source digest and trusted backend identity bind proposals; codec configID is distinct from its separately pinned RepoDigest/revision/wire/client/lock hashes. External canonical epoch-directory mounts are read-only; authority and final writer-return fences reread the current file and deny stale runtimes without adopting a replacement. These are deployment pins and protocol checks, not hardware or human-eyesight attestation.
@@ -583,6 +593,48 @@ At the owner’s explicit request, all valid client-requested scope checkboxes n
 ### Standard MCP request metadata compatibility
 
 The protocol accepts object-valued `params._meta` as transport metadata on requests, validates any progress token as a string or finite number, and ignores its contents before dispatch. It does not become tool arguments, authorization evidence or audit payload. Tool input schemas, unknown parameter rejection, authentication, scopes, body limits and operation approvals remain unchanged. Reference: https://modelcontextprotocol.io/specification/2025-06-18/schema#jsonrpcrequest . Synthetic tests reproduce rejection before the fix, including the five reported read-tool names, and verify valid calls after it. The owner screenshot contains no raw request; attribution of that specific `INVALID_ARGUMENT` failure to metadata remains unconfirmed.
+
+## One-click approval and execution boundary (2026-11-08)
+
+Default-OFF `MCP_V2_FINISH_ENABLED` requires the complete trusted production MCP
+profile and explicit owner-installed optional storage. Production startup asserts
+source and actual structural manifests and app permissions; it performs no DDL.
+The authenticated seller explicitly approves exact reviewed content under the
+existing login session, Origin/CSRF, session-bound challenge, original live grant,
+consent and capability. Operation approval does not prompt for another password.
+Revision, exact PAGE/ASSET review, tenant, epoch, build, CAS and audit fences remain.
+The backend never mints a bearer token or exposes first-party authority as a tool.
+
+Jobs record progress only. Individual writes are atomic and a batch may partially
+succeed. Resume reconciles committed receipts without reapplying commerce writes;
+read-back checks all affected product/listing metadata and freshly hashed image
+roles. Changed content cannot be reported as verified. A renewed seller session
+may inspect its own job, but cannot execute approval from the old session:
+revalidation creates a new proposal and requires renewed exact review and explicit
+approval. No old hash or approval is transferred. Bounded tenant cleanup and rate
+limits constrain resumable metadata. The unified parent binds new product input,
+exact native-decoded image bytes/order and publication in one immutable proposal;
+execution requires that parent's genuine seller approval.
+
+Code and isolated evidence do not prove production deployment or seller product
+changes. Final release needs integrated security/browser and published-artifact
+acceptance. See [the finish contract](mcp-v2/ONE-CLICK-FINISH.md) and
+[production installer/rollback gates](mcp-v2/FINISH-PRODUCTION-RELEASE.md).
+
+The source-owned parent draft allocates provisional IDs without commerce rows.
+Quota/lease-owned native staging, complete version2 metadata/options/stock and
+inherited/new exact image/ordered-gallery review precede its genuine approval.
+One local transaction creates inactive, applies images, publishes last, verifies
+all effects and consumes stages once. Legacy image-free CREATE, UPDATE and
+existing-product uploads retain their closed policies; no public missing-product
+exemption or synthetic child approval exists. Stale parent renewal preserves
+original provisional IDs, revalidates exact sources with fresh native leases and
+requires complete new review. Missing/expired sources and quota limits fail closed.
+
+Keeping finish OFF preserves the original review/commit APIs and does not expose
+draft staging or install optional tables. Production extension installation uses
+the explicitly verified database-owner connection, with fixed app DML and
+SELECT-only metadata grants. See the [strict unified parent contract](mcp-v2/UNIFIED-CREATE-PARENT.md).
 
 ## Listing-owned rich product detail (schema 35)
 

@@ -1,3 +1,4 @@
+import { isCreationParent,assertCreationParentManifest } from './catalog-create-parent-wire.js';
 import { ApiError } from '../http.js';
 import { canonicalOperationJson } from './operation-envelope.js';
 import { MEDIA_LIMITS } from './media-schema.js';
@@ -82,16 +83,16 @@ export function catalogMediaReviewBinding(input){
 }
 
 // Fixed CREATE relationships only; this is not authority or a business planner.
-export function catalogCreateEffects(effects,identity=undefined){
+export function catalogCreateEffects(effects,identity=undefined,creationParent=false){
  const products=effects.filter(row=>row.kind==='PRODUCT'),listings=effects.filter(row=>row.kind==='LISTING'),created=products.filter(row=>row.before===null);
  if(created.length!==1||listings.length!==1)invalid();
  const fresh=created[0],listing=listings[0];
- if(!fresh.after||fresh.after.mainAssetKey!==null||fresh.after.ownMainVisible!==false||fresh.labels.before!==null||listing.after===null||fresh.after.listingId!==listing.listingId)invalid();
+ if(!fresh.after||(!creationParent&&(fresh.after.mainAssetKey!==null||fresh.after.ownMainVisible!==false))||fresh.labels.before!==null||listing.after===null||fresh.after.listingId!==listing.listingId)invalid();
  for(const row of products){
   if(row.after===null||row.after.listingId!==listing.listingId||(row.before===null)!==(row.labels.before===null))invalid();
   if(row.before!==null&&(row.before.listingId!==listing.listingId||row.before.mainAssetKey!==row.after.mainAssetKey||canonicalOperationJson(row.labels.before)!==canonicalOperationJson(row.labels.after)))invalid();
  }
- if(listing.before===null?(products.length!==1||fresh.after.role!=='single'||listing.after.holderId!==null||listing.after.galleryAssetKeys.length!==0):products.length<2)invalid();
+ if(listing.before===null?(products.length!==1||fresh.after.role!=='single'||listing.after.holderId!==null||!creationParent&&listing.after.galleryAssetKeys.length!==0):products.length<2)invalid();
  if(identity!==undefined){const context=creationIdentity(identity);if(fresh.productId!==context.productId||listing.listingId!==(context.targetListingId??context.newListingId)||
   (listing.before===null)!==(context.targetListingId===null))invalid();}
  return {product:fresh,listing};
@@ -123,19 +124,19 @@ export function catalogMediaGraphBytes(value){
 
 // Integrity only. Real product/scope/graph/approval checks stay outside this helper.
 export function assertCatalogReviewBinding(envelope,manifest){
- const create=envelope?.toolName==='catalog.preview_create';
+ const create=envelope?.toolName==='catalog.preview_create',parent=create&&isCreationParent(envelope.proposal);
  if((create?envelope.resourceType!=='catalog'||envelope.resourceId!=='catalog':envelope?.toolName!=='catalog.preview_update'||envelope.resourceType!=='product'||!uuid.test(envelope.resourceId||''))||envelope.risk!=='HIGH'||
   manifest?.descriptor?.policyId!=='catalog-media-v1'||manifest.descriptor.graphRevision!==envelope.expectedRevision||
-  canonicalOperationJson(envelope.proposal?.media)!==canonicalOperationJson(manifest.descriptor)||manifest.stages.length!==0||manifest.assets.some(row=>row.source_kind==='STAGE'))invalid();
+  canonicalOperationJson(envelope.proposal?.media)!==canonicalOperationJson(manifest.descriptor)||!parent&&(manifest.stages.length!==0||manifest.assets.some(row=>row.source_kind==='STAGE')))invalid();
  const identity=create?creationIdentity(envelope.proposal.creationIdentity):null;
  if(reviewRevision(envelope.resourceId,envelope.proposal.reviewBinding,identity)!==envelope.expectedRevision)invalid();
  let proposal;try{proposal=canonicalOperationJson(envelope.proposal);}catch{large();}if(Buffer.byteLength(proposal)>49152)large();
  const labels=catalogReviewLabels(envelope.proposal.reviewLabels,envelope.toolName),products=manifest.effects.filter(row=>row.kind==='PRODUCT');
  if(products.length!==labels.length||!products.some(row=>row.productId===(create?identity.productId:envelope.resourceId)))invalid();
- if(create){const {product}=catalogCreateEffects(manifest.effects,identity),after=envelope.proposal.after;
+ if(create){const {product}=catalogCreateEffects(manifest.effects,identity,parent),after=envelope.proposal.after;
   if(envelope.proposal.before!==null||!after||after.id!==identity.productId||after.listingId!==product.after.listingId||
    canonicalOperationJson(label({sku:after.sku,name:after.name}))!==canonicalOperationJson(product.labels.after))invalid();
-  catalogCreateOptions(envelope.proposal);}
+  catalogCreateOptions(envelope.proposal);if(parent)assertCreationParentManifest(envelope.proposal,manifest);}
  for(let n=0;n<labels.length;n++){
   const row=products[n],expected=labels[n];if(!row||row.productId!==expected.productId||(!create&&row.before===null)||row.after===null||
    canonicalOperationJson(catalogProductLabels(row.labels,envelope.toolName))!==canonicalOperationJson({before:expected.before,after:expected.after}))invalid();

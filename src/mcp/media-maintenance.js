@@ -1,3 +1,4 @@
+import { createDraftStorageExists } from './catalog-create-draft-storage.js';
 import { randomUUID } from 'node:crypto';
 import { MEDIA_LIMITS } from './media-schema.js';
 import { MEDIA_STAGE_COLUMNS, checkMediaStage } from './media-storage.js';
@@ -82,7 +83,8 @@ export async function maintainMedia(store,{enabled=false,tenantGuard,tenantId,no
     AND NOT EXISTS(SELECT 1 FROM mcp_v2_media_manifest_page m WHERE m.operation_id=o.id) AND NOT EXISTS(SELECT 1 FROM mcp_v2_media_delivery d WHERE d.operation_id=o.id)
     AND NOT EXISTS(SELECT 1 FROM mcp_v2_media_approval_evidence e WHERE e.operation_id=o.id) ORDER BY o.receipt_expires_at,o.id LIMIT 100`);
   await phase(async(b,now)=>{
-    const rows=await store.all(`SELECT ${MEDIA_STAGE_COLUMNS} FROM mcp_v2_media_stage s WHERE tenant_id=? AND reserved_bytes=0 AND receipt_expires_at<=? AND state IN (${stageTerminal})
+    const draftFilter=await createDraftStorageExists(store)?'AND NOT EXISTS(SELECT 1 FROM seller_mcp_create_draft_stage d WHERE d.stage_id=s.id)':'';
+    const rows=await store.all(`SELECT ${MEDIA_STAGE_COLUMNS} FROM mcp_v2_media_stage s WHERE tenant_id=? AND reserved_bytes=0 AND receipt_expires_at<=? AND state IN (${stageTerminal}) ${draftFilter}
       AND NOT EXISTS(SELECT 1 FROM mcp_v2_media_pin p WHERE p.stage_id=s.id) AND NOT EXISTS(SELECT 1 FROM mcp_v2_media_chunk c WHERE c.stage_id=s.id) ORDER BY receipt_expires_at,id LIMIT 100`,tenantId,now);
     for(const row of rows){if(!b.take(row))break;await store.run('DELETE FROM mcp_v2_media_stage WHERE id=?',row.id);counts.metadata++;}
   });

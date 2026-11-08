@@ -9,7 +9,7 @@ import { mediaReviewFixture, sharedReviewGraph } from './helpers/mcp-media-revie
 import { reviewPassword } from './helpers/mcp-review-fixture.js';
 
 const modulePath = process.env.QA_PLAYWRIGHT_MODULE;
-for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: real HTTPS Chromium decodes and explicitly reviews every exact image before password approval`,
+for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: real HTTPS Chromium decodes and explicitly reviews every exact image before authenticated-session approval`,
   { skip: !modulePath, timeout: 60000 }, async t => {
     const directory = await mkdtemp(join(tmpdir(), 'shopping-media-browser-'));
     t.after(() => rm(directory, { recursive: true, force: true }));
@@ -79,12 +79,12 @@ for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: real HTTPS Chrom
     await page.locator('#media-image-retry').click();
     await page.waitForFunction(() => document.querySelector('#media-image').naturalWidth > 0 && !document.querySelector('#media-image').hidden);
     assert.equal(await page.locator('#media-image-ack').isDisabled(), true);
-    await page.locator('#password').fill(reviewPassword); await page.locator('#approve').click();
+    await page.locator('#approve').click();
     assert.match(await page.locator('#status').textContent(), /check the image acknowledgment/);
     await page.locator('#media-ack').check(); await page.locator('#approve').click(); await page.locator('#decision').waitFor({ state: 'hidden' });
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?', f.operation.operationId)).state, 'APPROVED');
     assert.equal((await f.commit()).replayed, false); assert.equal((await f.commit()).replayed, true);
-    assert.equal(await page.locator('#password').inputValue(), '');
+    assert.equal(await page.locator('#password').count(),0);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     assert.deepEqual(errors, []); assert.deepEqual(external, []);
   });

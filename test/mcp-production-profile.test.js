@@ -157,3 +157,24 @@ for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: actual productio
   api = await createApi({ store, config, operationTools: entries });
   assert.deepEqual((await current.rpc('tools/list', {})).data.result.tools, catalogue.map(({ scope: _scope, ...value }) => value));
 });
+
+for(const dialect of ['sqlite','postgres'])test(dialect+': enabled production finish asserts preinstalled storage and never creates or repairs tables at startup',
+ {skip:physicalOptions.skip || dialect==='postgres'&&!process.env.SHOP_TEST_DATABASE_URL},async t=>{
+  const physical=await sealed(t),config=readConfig({...physical.env,MCP_V2_FINISH_ENABLED:'1'});
+  let store,admin,name;
+  if(dialect==='sqlite')store=await openDatabase(':memory:');
+  else{admin=new pg.Pool({connectionString:process.env.SHOP_TEST_DATABASE_URL});name='shopping_test_finish_start_'+randomUUID().replaceAll('-','');
+   await admin.query(`CREATE DATABASE ${name}`);const url=new URL(process.env.SHOP_TEST_DATABASE_URL);url.pathname='/'+name;store=await openPostgresDatabase(url.href);}
+  t.after(async()=>{await store.close();if(admin){await admin.query(`DROP DATABASE ${name} WITH(FORCE)`);await admin.end();}});
+  await ensureAdmin(store,config.username,password);await setupShop(store,{mode:'production',shopName:'Synthetic finish production'});
+  const original=store.exec;let ddl=0;
+  const denyDdl=async sql=>{if(/^\s*(CREATE|ALTER|DROP)\b/i.test(sql)){ddl++;throw new Error('Unexpected production DDL');}return original(sql);};
+  const probe=async()=>{const api=await createApi({store,config,operationTools:[]});return api(new Request(config.sellerOrigin+'/health'));};
+  store.exec=denyDdl;assert.equal((await probe()).status,500);assert.equal(ddl,0);
+  store.exec=original;const{initializeFinishStorage}=await import('../src/mcp/finish-storage.js');await initializeFinishStorage(store);
+  const {initializeCreateDraftStorage}=await import('../src/mcp/catalog-create-draft-storage.js');await initializeCreateDraftStorage(store);
+  // Health constructs tenant routes without probing the synthetic codec socket.
+  store.exec=denyDdl;assert.equal((await probe()).status,200);assert.equal(ddl,0);
+  store.exec=original;await store.exec('DROP INDEX seller_mcp_finish_retention');store.exec=denyDdl;
+  assert.equal((await probe()).status,500);assert.equal(ddl,0);
+ });

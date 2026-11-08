@@ -5,10 +5,14 @@
 const statusNode = document.querySelector('#status');
 const reviewSection = document.querySelector('#review');
 const form = document.querySelector('#decision');
-const password = document.querySelector('#password');
 const path = /^\/(?:([a-z0-9]{3,30})\/)?oauth\/operation\/?$/.exec(location.pathname);
 const base = path?.[1] ? `/${path[1]}` : '';
-const id = new URL(location.href).searchParams.get('operationId');
+const reviewParams = new URL(location.href).searchParams;
+let operationIds = reviewParams.has('operationIds') ? reviewParams.get('operationIds').split(',') : [reviewParams.get('operationId')];
+let id = operationIds[0], batchIndex = 0, finishEnabled = false, finishJob = null;
+const reviewedProposals = [];
+const finishKey = `seller-mcp-finish:${operationIds.join(',')}`;
+let earliestExpiry = Infinity, savedProgressRead = false;
 const idPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const hashPattern = /^[0-9a-f]{64}$/;
 document.querySelector('#seller-link').href = `${base}/seller/`;
@@ -38,7 +42,6 @@ function checkExpiry() {
     for (const control of form.querySelectorAll('input, button')) control.disabled = true;
     imageAck.disabled = true; imageRetry.disabled = true;
     for (const control of document.querySelectorAll('.media-reference')) control.disabled = true;
-    password.value = '';
   }
   return expired;
 }
@@ -51,6 +54,7 @@ function updateReviewControls() {
   const disabled = checkExpiry() || decisionPending || !csrf || !previewHash || !challenge;
   for (const control of form.querySelectorAll('input, button')) control.disabled = disabled;
   document.querySelector('#approve').disabled = disabled || Boolean(mediaReview && !mediaComplete);
+  for(const selector of ['#approve-finish','#review-next'])document.querySelector(selector).disabled=disabled || Boolean(mediaReview && !mediaComplete);
   imageAck.disabled = disabled || !selectedImage || reviewedImages.has(selectedImage.item.itemKey);
   imageRetry.disabled = disabled;
   for (const control of document.querySelectorAll('.media-reference')) control.disabled = disabled;
@@ -132,19 +136,38 @@ function renderBusinessSummary(value) {
 
 async function load() {
   const params = new URL(location.href).searchParams;
-  if (!path || [...params.keys()].some(key => !['operationId', 'utm_source'].includes(key)) ||
-      params.getAll('operationId').length !== 1 || !idPattern.test(id || '') || params.getAll('utm_source').length > 1 ||
+  if (!path || [...params.keys()].some(key => !['operationId', 'operationIds', 'utm_source'].includes(key)) ||
+      (params.has('operationIds') ? params.has('operationId') || params.getAll('operationIds').length !== 1 : params.getAll('operationId').length !== 1) || operationIds.length > 5 || new Set(operationIds).size !== operationIds.length || !operationIds.every(value=>idPattern.test(value||'')) || params.getAll('utm_source').length > 1 ||
       (params.has('utm_source') && !/^[A-Za-z0-9._~-]{1,128}$/.test(params.get('utm_source')))) throw new Error('Invalid operation.');
   const sessionResponse = await fetch(`${base}/api/v1/seller/session`, { credentials: 'same-origin', cache: 'no-store' });
   if (sessionResponse.status === 401) {
     const link = document.querySelector('#seller-link');
-    link.href = `${base}/seller/?reviewOperation=${id}`;
+    link.href = `${base}/seller/?${reviewParams.has('operationIds') ? 'reviewOperations='+operationIds.join(',') : 'reviewOperation='+id}`;
     link.textContent = 'Sign in to review this proposal';
     throw new Error('Sign in required.');
   }
   if (!sessionResponse.ok) throw new Error('Sign in required.');
   const session = await sessionResponse.json();
   if (typeof session.csrfToken !== 'string' || !session.csrfToken) throw new Error('Invalid session.');
+  csrf=session.csrfToken;
+  if(batchIndex===0 && !savedProgressRead){
+    savedProgressRead=true;
+    let saved=null;try{saved=sessionStorage.getItem(finishKey);}catch{/* Storage is optional. */}
+    if(saved && idPattern.test(saved)){
+      const progress=await fetch(`${base}/api/v1/seller/mcp/finishes/${saved}`,{credentials:'same-origin',cache:'no-store'});
+      if(progress.ok){
+        const value=await progress.json();
+        if(value.jobId!==saved || !Array.isArray(value.items))throw new Error('Invalid progress.');
+        finishJob=saved;
+        const pending=value.items.filter(item=>item.operationState==='PENDING_APPROVAL').map(item=>item.operationId);
+        if(!pending.length){showFinish(value);return;}
+        if(pending.length>5 || new Set(pending).size!==pending.length || !pending.every(value=>idPattern.test(value||'')))throw new Error('Invalid progress.');
+        // A lost approval request never becomes approval. Rebuild every pending
+        // review/challenge and require exact-image acknowledgment again.
+        operationIds=pending;id=operationIds[0];
+      }
+    }
+  }
   const response = await fetch(`${base}/api/v1/seller/mcp/operations/${id}`, { credentials: 'same-origin', cache: 'no-store' });
   if (!response.ok) throw new Error('Proposal unavailable.');
   const value = await response.json();
@@ -159,6 +182,8 @@ async function load() {
       !value.proposal || typeof value.proposal !== 'object' || Array.isArray(value.proposal)) {
     throw new Error('Invalid proposal.');
   }
+  finishEnabled=value.finishEnabled === true && ['catalog.preview_create','catalog.preview_update','media.prepare_upload','media.preview_layout'].includes(value.toolName);
+  if(operationIds.length>1 && !finishEnabled)throw new Error('Batch finish unavailable.');
   renderBusinessSummary(value);
   document.querySelector('#operation-id').textContent = id;
   csrf = session.csrfToken;
@@ -182,8 +207,18 @@ async function load() {
   document.querySelector('#fingerprint').textContent = value.previewHash;
   document.querySelector('#proposal').textContent = visible(JSON.stringify(value.proposal, null, 2));
   reviewSection.hidden = false;
-  expiresAt = expiryDate.getTime();
+  earliestExpiry=Math.min(earliestExpiry,expiryDate.getTime());
+  expiresAt = earliestExpiry;
   document.querySelector('#pending-state').textContent = 'Pending your decision — not applied';
+  const last=batchIndex===operationIds.length-1;
+  document.querySelector('#metadata-warning').hidden=!finishEnabled;
+  document.querySelector('#metadata-ack').checked=false;
+  document.querySelector('#approve').hidden=finishEnabled;
+  document.querySelector('#approve-finish').hidden=!finishEnabled || !last;
+  document.querySelector('#review-next').hidden=!finishEnabled || last;
+  document.querySelector('#batch-progress').hidden=operationIds.length<2;
+  document.querySelector('#batch-progress').textContent=`Review ${batchIndex+1} of ${operationIds.length}. Approval applies only to the exact reviewed content.`;
+  if(finishEnabled)document.querySelector('#decision-help').textContent='Approve & Finish approves and applies this exact content, then checks the product. A changed or expired proposal stops for a new review.';
   scheduleExpiry(); updateReviewControls();
   reviewStatus('Review the complete proposal, then explicitly approve or reject it.');
   if (mediaReview) {
@@ -221,7 +256,8 @@ async function acknowledgeMedia(item, nonce) {
 async function loadMedia(toolName, proposal, resourceId, resourceType, risk) {
   const { descriptor, items, labels } = mediaReview;
   const catalog = descriptor?.policyId === 'catalog-media-v1';
-  const create = catalog && toolName === 'catalog.preview_create';
+  const create = catalog && toolName === 'catalog.preview_create', parent=create&&Object.hasOwn(proposal,'creationMedia');
+  if(parent)catalogParentImages(proposal.creationMedia);
   if (catalog) {
     const binding = proposal.reviewBinding;
     const identity = create ? catalogCreationIdentity(proposal.creationIdentity) : null;
@@ -252,20 +288,20 @@ async function loadMedia(toolName, proposal, resourceId, resourceType, risk) {
   for (const [index, item] of pages.entries()) {
     const packet = await receiveMedia(item), text = new TextDecoder('utf-8', { fatal: true }).decode(packet.bytes), body = JSON.parse(text);
     if (canonical(body) !== text || Object.keys(body).sort().join(',') !== 'codecDigest,graphBytes,graphRevision,pageIndex,records,toolName,version' ||
-        item.pageIndex !== index || body.pageIndex !== index || body.version !== 1 || body.toolName !== toolName || body.graphRevision !== descriptor.graphRevision ||
+        item.pageIndex !== index || body.pageIndex !== index || body.version !== (parent?2:1) || body.toolName !== toolName || body.graphRevision !== descriptor.graphRevision ||
         body.codecDigest !== descriptor.codecDigest || !Array.isArray(body.records) || body.records.length < 1 || body.records.length > 32) throw new Error('Invalid image page.');
-    const common = canonical({ graphBytes: body.graphBytes, graphRevision: body.graphRevision, codecDigest: body.codecDigest, toolName: body.toolName });
+    const common = canonical({ version:body.version,graphBytes: body.graphBytes, graphRevision: body.graphRevision, codecDigest: body.codecDigest, toolName: body.toolName });
     if (header && header !== common) throw new Error('Mismatched image page.'); header = common;
     records.push(...body.records); if (records.length > 512) throw new Error('Image graph too large.');
     pageDigests.push({ index, hash: item.hash, recordCount: body.records.length });
     await acknowledgeMedia(item, packet.nonce);
   }
-  const common = JSON.parse(header), root = { version: 1, policyId: descriptor.policyId, codecDigest: descriptor.codecDigest,
+  const common = JSON.parse(header), root = { version: common.version, policyId: descriptor.policyId, codecDigest: descriptor.codecDigest,
     graphRevision: descriptor.graphRevision, graphBytes: common.graphBytes, pages: pageDigests, assetCount: descriptor.assetCount, effectCount: descriptor.effectCount };
   if (await sha256(new TextEncoder().encode(canonical(root))) !== descriptor.manifestRoot) throw new Error('Image manifest root failed.');
   const assets = records.filter(value => value.kind === 'ASSET'), effects = records.filter(value => ['PRODUCT', 'LISTING'].includes(value.kind));
   if (assets.length !== descriptor.assetCount || effects.length !== descriptor.effectCount || assets.length + effects.length !== records.length) throw new Error('Incomplete image effects.');
-  if (catalog && (common.graphBytes?.newBytes !== 0 || assets.some(asset => !['PRODUCT_MAIN','GALLERY'].includes(asset.source_kind) ||
+  if (catalog && !parent && (common.graphBytes?.newBytes !== 0 || assets.some(asset => !['PRODUCT_MAIN','GALLERY'].includes(asset.source_kind) ||
       !Array.isArray(asset.stage_refs) || asset.stage_refs.length !== 0))) throw new Error('Invalid catalog image source.');
   mediaReview.assets = new Map(assets.map(value => [value.asset_key, value]));
   mediaReview.assetItems = items.filter(value => value.kind === 'ASSET');
@@ -282,7 +318,7 @@ async function loadMedia(toolName, proposal, resourceId, resourceType, risk) {
   document.querySelector('#media-viewer').hidden = empty;
   document.querySelector('#media-empty').hidden = !empty;
   updateMediaProgress();
-  if (mediaReview.assetItems.length) await showMediaImage(mediaReview.assetItems[0]);
+  if (mediaReview.assetItems.length) await showMediaImage(mediaReview.assetItems[0],true);
 }
 function updateMediaProgress() {
   mediaComplete = reviewedImages.size === mediaReview.assetItems.length;
@@ -296,8 +332,10 @@ function releaseMediaImage() {
   selectedImage = null; imageAck.disabled = true;
   document.querySelector('#media-image-details').textContent = '';
 }
-async function showMediaImage(item) {
-  if (checkExpiry() || decisionPending || !csrf) return;
+async function showMediaImage(item,initialLoad=false) {
+  // Batch navigation keeps decision buttons disabled while loading the next
+  // exact manifest; its initial image still needs to be fetched and decoded.
+  if (checkExpiry() || decisionPending&&!initialLoad || !csrf) return;
   releaseMediaImage();
   retryImage = item; imageRetry.hidden = true;
   imageStatus.textContent = 'Loading and verifying the exact image…';
@@ -398,8 +436,26 @@ function catalogLabels(rows, create = false) {
   }
   return names;
 }
+function catalogParentImages(value){
+  if(!exactKeys(value,['version','draftId','intentHash','images'])||value.version!==1||!idPattern.test(value.draftId||'')||!hashPattern.test(value.intentHash||'')||!Array.isArray(value.images)||value.images.length<1||value.images.length>10)throw new Error('Invalid creation image binding.');
+  const seen=new Set(),hashes=new Set();for(const [position,row]of value.images.entries()){
+    if(!exactKeys(row,['stageId','productId','targetSlot','sourceSha256','canonicalSha256','thumbnailSha256','mime','byteLength','thumbnailBytes','width','height'])||!idPattern.test(row.stageId||'')||!idPattern.test(row.productId||'')||seen.has(row.stageId)||hashes.has(row.canonicalSha256)||row.targetSlot!==(position===0?'MAIN':'GALLERY')||![row.sourceSha256,row.canonicalSha256,row.thumbnailSha256].every(item=>hashPattern.test(item||''))||!['image/png','image/jpeg','image/webp'].includes(row.mime)||![row.byteLength,row.thumbnailBytes,row.width,row.height].every(Number.isInteger)||row.byteLength<1||row.byteLength>524288||row.thumbnailBytes<1||row.thumbnailBytes>81920||row.width<1||row.height<1||row.width>8192||row.height>8192||row.width*row.height>4194304)throw new Error('Invalid creation image.');seen.add(row.stageId);hashes.add(row.canonicalSha256);
+  }return value.images;
+}
+function assertCatalogParentImages(proposal,products,listing,owners){
+  const images=catalogParentImages(proposal.creationMedia),assets=[...mediaReview.assets.values()],refs=assets.flatMap(asset=>{if(!Array.isArray(asset.stage_refs))throw new Error('Invalid creation stages.');return asset.stage_refs.map(ref=>({asset,ref}));});
+  if(refs.length!==images.length)throw new Error('Incomplete creation stages.');
+  const fresh=products.find(row=>row.before===null),ordered=[];
+  for(const [position,image]of images.entries()){
+    const matches=refs.filter(({asset,ref})=>exactKeys(ref,['stage_id','source_product_id','canonical_sha256'])&&ref.stage_id===image.stageId&&ref.source_product_id===image.productId&&ref.canonical_sha256===image.canonicalSha256&&asset.byte_sha256===image.canonicalSha256&&asset.mime===image.mime&&asset.byte_length===image.byteLength);
+    if(matches.length!==1)throw new Error('Mismatched creation image.');const key=matches[0].asset.asset_key;
+    if(position===0?image.productId!==fresh.productId||fresh.after.mainAssetKey!==key||!fresh.after.ownMainVisible:image.productId!==(listing.after.holderId??fresh.productId))throw new Error('Invalid creation image owner.');if(position)ordered.push(key);
+  }
+  if(ordered.length&&canonical(listing.after.galleryAssetKeys.slice(-ordered.length))!==canonical(ordered))throw new Error('Mismatched creation gallery order.');
+  for(const asset of assets){if(asset.source_kind==='STAGE'){if(!images.some(image=>asset.stage_id===image.stageId&&asset.source_id===image.stageId&&asset.source_product_id===image.productId&&asset.byte_sha256===image.canonicalSha256))throw new Error('Invalid draft image source.');}else if(!['PRODUCT_MAIN','GALLERY'].includes(asset.source_kind)||asset.stage_id!==null||!owners.has(asset.source_product_id))throw new Error('Invalid inherited image owner.');}
+}
 function renderCatalogMediaEffects(effects, labels, creationProposal = null) {
-  const identity = creationProposal ? catalogCreationIdentity(creationProposal.creationIdentity) : null;
+  const identity = creationProposal ? catalogCreationIdentity(creationProposal.creationIdentity) : null,parent=identity&&Object.hasOwn(creationProposal,'creationMedia');
   const names = catalogLabels(labels, Boolean(identity)), listings = new Map(), seen = new Set();
   for (const effect of effects) {
     if (!idPattern.test(effect.productId || effect.listingId || '')) throw new Error('Invalid catalog image identity.');
@@ -427,15 +483,15 @@ function renderCatalogMediaEffects(effects, labels, creationProposal = null) {
   if (seen.size !== names.size) throw new Error('Incomplete catalog labels.');
   if (identity) {
     const products = effects.filter(row => row.kind === 'PRODUCT'), fresh = products.find(row => row.productId === identity.productId), listing = [...listings.values()][0], after = creationProposal.after;
-    if (listings.size !== 1 || !fresh || fresh.before !== null || fresh.labels.before !== null || fresh.after.mainAssetKey !== null || fresh.after.ownMainVisible !== false ||
+    if (listings.size !== 1 || !fresh || fresh.before !== null || fresh.labels.before !== null || !parent&&(fresh.after.mainAssetKey !== null || fresh.after.ownMainVisible !== false) ||
         !listing?.after || listing.listingId !== (identity.targetListingId ?? identity.newListingId) || (listing.before === null) !== (identity.targetListingId === null) ||
         creationProposal.before !== null || !after || after.id !== identity.productId || after.listingId !== listing.listingId || canonical({sku:after.sku,name:after.name}) !== canonical(fresh.labels.after)) throw new Error('Invalid CREATE effects.');
     for (const product of products) if (product.after.listingId !== listing.listingId || product !== fresh && (!product.before || product.before.listingId !== listing.listingId ||
         product.before.mainAssetKey !== product.after.mainAssetKey || canonical(product.labels.before) !== canonical(product.labels.after))) throw new Error('Unsupported existing-product change.');
-    if (listing.before === null ? products.length !== 1 || fresh.after.role !== 'single' || listing.after.holderId !== null || listing.after.galleryAssetKeys.length !== 0 : products.length < 2) throw new Error('Invalid CREATE membership.');
+    if (listing.before === null ? products.length !== 1 || fresh.after.role !== 'single' || listing.after.holderId !== null || !parent&&listing.after.galleryAssetKeys.length !== 0 : products.length < 2) throw new Error('Invalid CREATE membership.');
     const owners = new Set(products.filter(row => row.before !== null).map(row => row.productId));
-    if ([...mediaReview.assets.values()].some(row => row.stage_id !== null || !owners.has(row.source_product_id))) throw new Error('Invalid CREATE source owner.');
-    catalogCreateOptions(creationProposal);
+    if (!parent&&[...mediaReview.assets.values()].some(row => row.stage_id !== null || !owners.has(row.source_product_id))) throw new Error('Invalid CREATE source owner.');
+    catalogCreateOptions(creationProposal);if(parent)assertCatalogParentImages(creationProposal,products,listing,owners);
   }
   renderCatalogStates(effects,names,listings,creationProposal);
 }
@@ -503,7 +559,7 @@ form.addEventListener('submit', async (event) => {
   event.preventDefault();
   if (checkExpiry() || decisionPending) return;
   const decision = event.submitter?.value;
-  if (!csrf || !previewHash || !challenge || !['approve', 'reject'].includes(decision) || !password.value) return;
+  if (!csrf || !previewHash || !challenge || !['approve', 'reject'].includes(decision)) return;
   if (decision === 'approve' && mediaReview && (!mediaComplete || !mediaAck.checked)) {
     statusNode.textContent = 'Review every exact image and check the image acknowledgment before approving.';
     mediaAck.focus(); return;
@@ -517,7 +573,7 @@ form.addEventListener('submit', async (event) => {
     const response = await fetch(`${base}/api/v1/seller/mcp/operations/${id}/approval`, {
       method: 'POST', credentials: 'same-origin', cache: 'no-store',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-      body: JSON.stringify({ operationId: id, previewHash, challenge, decision, password: password.value,
+      body: JSON.stringify({ operationId: id, previewHash, challenge, decision,
         ...(currencyAcknowledgementRequired && decision === 'approve' ? { currencyAcknowledged: true } : {}),
         ...(mediaReview && decision === 'approve' ? { mediaReviewed: true } : {}),
       }),
@@ -532,7 +588,7 @@ form.addEventListener('submit', async (event) => {
   } catch {
     reviewStatus('The decision could not be verified. Reload the proposal and try again.');
   } finally {
-    decisionPending = false; password.value = ''; updateReviewControls();
+    decisionPending = false; updateReviewControls();
   }
 });
 
@@ -541,4 +597,74 @@ load().catch(error => {
   statusNode.textContent = error.message === 'Sign in required.'
     ? 'Sign in to Seller Studio to review this proposal. No change has been approved.'
     : 'The proposal is unavailable. Ask the connected app to prepare a new preview.';
+});
+
+function reviewedProof(){
+  if(checkExpiry() || !csrf || !previewHash || !challenge || !document.querySelector('#metadata-ack').checked ||
+    mediaReview && (!mediaComplete || !mediaAck.checked)) {
+    reviewStatus('Review all metadata and exact images, then check both acknowledgments.');return null;
+  }
+  return {operationId:id,previewHash,challenge,...(mediaReview?{mediaReviewed:true}:{})};
+}
+async function finishPost(suffix,input){
+  const response=await fetch(`${base}/api/v1/seller/mcp/finishes${suffix}`,{method:'POST',credentials:'same-origin',cache:'no-store',
+    headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify(input)});
+  if(!response.ok)throw new Error('Finish unavailable.');return response.json();
+}
+function showFinish(value){
+  if(value.jobId!==finishJob || !Array.isArray(value.items))throw new Error('Invalid progress.');
+  reviewSection.hidden=true;form.hidden=true;document.querySelector('#finish-progress').hidden=false;
+  document.querySelector('#finish-summary').textContent=`${value.completed} of ${value.total} verified. ${value.status==='FINISHED'?'Finished.':value.status==='PARTIAL'?'Some items need a new review.':'Work is saved. Resume to continue.'}`;
+  const list=document.querySelector('#finish-items');list.replaceChildren();
+  for(const item of value.items){
+    const line=document.createElement('li');line.textContent=`${item.operationId}: ${item.state}${item.error?' — '+item.error:''}`;
+    if(item.receipt?.productId){const link=document.createElement('a');link.href=`${base}/seller/`;link.textContent=' Open Seller Studio';line.append(link);}
+    if(item.state==='NEEDS_REVIEW'){
+      const button=document.createElement('button');button.type='button';button.className='secondary';button.textContent='Revalidate and review again';
+      button.addEventListener('click',async()=>{button.disabled=true;try{
+        const result=await finishPost(`/${finishJob}/revalidate`,{operationId:item.operationId,idempotencyKey:`finish-revalidate-${finishJob}-${item.operationId}`});
+        // A new review link cannot inherit old approval or image acknowledgments.
+        location.assign(result.reviewUrl);
+      }catch{statusNode.textContent='Fresh staging or a new proposal is required. No changed content was approved.';button.disabled=false;}});line.append(button);
+    }
+    list.append(line);
+  }
+  document.querySelector('#finish-resume').hidden=value.status==='FINISHED';
+  statusNode.textContent=value.status==='FINISHED'?'Approved changes committed and verified.':'Progress saved. Items needing review will not be committed automatically.';
+  clearTimeout(expiryTimer);expiresAt=null;releaseMediaImage();
+}
+document.querySelector('#review-next').addEventListener('click',async()=>{
+  if(decisionPending)return;const proof=reviewedProof();if(!proof)return;
+  reviewedProposals.push(proof);
+  const line=document.createElement('li');line.textContent=document.querySelector('#summary-fields').textContent || document.querySelector('#operation-heading').textContent;
+  document.querySelector('#batch-reviewed').append(line);document.querySelector('#batch-reviewed').hidden=false;
+  releaseMediaImage();reviewedImages.clear();mediaComplete=false;mediaReview=null;selectedImage=null;retryImage=null;
+  document.querySelector('#media-review').hidden=true;document.querySelector('#media-warning').hidden=true;
+  batchIndex++;id=operationIds[batchIndex];decisionPending=true;
+  try{await load();}catch{reviewSection.hidden=true;statusNode.textContent='The next proposal is unavailable. Prepare a fresh review; no approval was made.';}
+  finally{decisionPending=false;updateReviewControls();}
+});
+document.querySelector('#approve-finish').addEventListener('click',async()=>{
+  if(!finishEnabled || decisionPending)return;const proof=reviewedProof();if(!proof)return;
+  decisionPending=true;updateReviewControls();
+  try{
+    const items=[...reviewedProposals,proof];
+    const job=finishJob?{jobId:finishJob}:await finishPost('',{items:items.map(({operationId,previewHash})=>({operationId,previewHash})),idempotencyKey:`finish-${await sha256(new TextEncoder().encode(operationIds.join(',')))}`});
+    finishJob=job.jobId;try{sessionStorage.setItem(finishKey,finishJob);}catch{/* Server progress remains durable. */}
+    const pending=finishPost(`/${finishJob}/approve`,{items});
+    statusNode.textContent='Approving and applying the reviewed content. Progress is saved.';
+    let stopped=false;
+    const poll=async()=>{if(stopped)return;try{const response=await fetch(`${base}/api/v1/seller/mcp/finishes/${finishJob}`,{credentials:'same-origin',cache:'no-store'});
+      if(response.ok){const value=await response.json();if(stopped)return;document.querySelector('#finish-progress').hidden=false;
+        document.querySelector('#finish-summary').textContent=`${value.completed} of ${value.total} verified. Applying reviewed content…`;}
+      }catch{/* A failed progress read is not a failed commit. */}if(!stopped)setTimeout(poll,1000);};
+    void poll();
+    try{const result=await pending;showFinish(result);}finally{stopped=true;}
+  }catch{statusNode.textContent='The result could not be confirmed. Reload to inspect saved progress. No retry approves changed content.';}
+  finally{decisionPending=false;updateReviewControls();}
+});
+document.querySelector('#finish-resume').addEventListener('click',async event=>{
+  event.currentTarget.disabled=true;
+  try{showFinish(await finishPost(`/${finishJob}/resume`,{}));}catch{statusNode.textContent='Resume is unavailable. Sign in again or request a fresh review if approval expired.';}
+  finally{event.currentTarget.disabled=false;}
 });

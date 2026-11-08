@@ -75,9 +75,9 @@ export async function approveCatalogInBrowser(f,page,operation){
  }
  await page.waitForFunction(()=>!document.querySelector('#approve').disabled);
  assert.equal((await f.store.get("SELECT COUNT(*) AS n FROM mcp_v2_media_delivery WHERE operation_id=? AND ack_at IS NULL",operation.operationId)).n,0);
- await page.locator('#password').fill(reviewPassword);await page.locator('#approve').click();
+ await page.locator('#approve').click();
  assert.match(await page.locator('#status').textContent(),/check the image acknowledgment/);
  await page.locator('#media-ack').check();await page.locator('#approve').click();await page.locator('#decision').waitFor({state:'hidden'});
  assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?',operation.operationId)).state,'APPROVED');
- assert.equal(await page.locator('#password').inputValue(),'');
+ assert.equal(await page.locator('#password').count(),0);
 }

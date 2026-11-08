@@ -82,12 +82,12 @@ async function reviewInBrowser(f,page,operation){
   await page.waitForFunction(expected=>document.querySelector('#media-progress').textContent.startsWith(expected+' of '),index);
  }
  assert.equal((await f.store.get("SELECT COUNT(*) AS n FROM mcp_v2_media_delivery WHERE operation_id=? AND kind='ASSET' AND ack_at IS NOT NULL",operation.operationId)).n,assets);
- await page.locator('#password').fill(reviewPassword);await page.locator('#approve').click();
+ await page.locator('#approve').click();
  assert.match(await page.locator('#status').textContent(),/check the image acknowledgment/);
  assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?',operation.operationId)).state,'PENDING_APPROVAL');
  await page.locator('#media-ack').check();await page.locator('#approve').click();await page.locator('#decision').waitFor({state:'hidden'});
  assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?',operation.operationId)).state,'APPROVED');
- assert.equal(await page.locator('#password').inputValue(),'');
+ assert.equal(await page.locator('#password').count(),0);
  assert.equal(await page.evaluate(()=>window.__mediaInjected),undefined);
 }
 async function upload(client,productId,bytes,mime,slot,key){
@@ -105,9 +105,9 @@ async function upload(client,productId,bytes,mime,slot,key){
 async function reviewMetadata(f,page,operation){
  await page.goto(operation.reviewUrl);await page.locator('#review').waitFor({state:'visible'});
  assert.equal(await page.evaluate(()=>window.__mediaInjected),undefined);
- await page.locator('#password').fill(reviewPassword);await page.locator('#approve').click();await page.locator('#decision').waitFor({state:'hidden'});
+ await page.locator('#approve').click();await page.locator('#decision').waitFor({state:'hidden'});
  assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?',operation.operationId)).state,'APPROVED');
- assert.equal(await page.locator('#password').inputValue(),'');
+ assert.equal(await page.locator('#password').count(),0);
 }
 async function authorized(f){
  assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM oauth_grant')).n,0);

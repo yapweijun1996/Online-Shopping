@@ -32,6 +32,12 @@ const reviewOperation = reviewLoginParams.size === 1 && !reviewLoginUrl.hash &&
   reviewLoginParams.getAll('reviewOperation').length === 1 &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(reviewLoginParams.get('reviewOperation') || '')
   ? reviewLoginParams.get('reviewOperation') : null;
+const reviewBatchIds = reviewLoginParams.getAll('reviewOperations').length === 1
+  ? reviewLoginParams.get('reviewOperations').split(',') : [];
+const reviewBatch = reviewLoginParams.size === 1 && !reviewLoginUrl.hash && reviewBatchIds.length >= 1 && reviewBatchIds.length <= 5 &&
+  new Set(reviewBatchIds).size === reviewBatchIds.length && reviewBatchIds.every(id => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id))
+  ? reviewBatchIds.join(',') : null;
+const reviewReturnQuery = reviewOperation ? `operationId=${reviewOperation}` : reviewBatch ? `operationIds=${reviewBatch}` : null;
 containDialogFocus(byId('profile-dialog'));
 const loginView = byId('login-view');
 mountDemoEntry(byId('demo-entry'), { onSignedIn: () => sessionHint(true) });
@@ -256,11 +262,11 @@ function showLogin(messageKey = '', clearHint = true) {
 }
 
 function showWorkspace(session) {
-  if (reviewOperation && session.quickLogin !== true && session.mustChangePassword !== true) {
+  if (reviewReturnQuery && session.quickLogin !== true && session.mustChangePassword !== true) {
     // The destination API still verifies this session's shop, account and grant ownership.
     byId('password').value = '';
     sessionHint(true);
-    location.replace(`${basePath()}/oauth/operation?operationId=${reviewOperation}`);
+    location.replace(`${basePath()}/oauth/operation?${reviewReturnQuery}`);
     return;
   }
   sessionViewSequence++;
@@ -787,7 +793,7 @@ document.addEventListener('localechange', () => {
   if (byId('profile-dialog').open) byId('profile-role').textContent = roleLabel();
 });
 
-if (sessionHint() || reviewOperation) {
+if (sessionHint() || reviewReturnQuery) {
   showLogin('loading', false);
   const restoreView = sessionViewSequence;
   const ownsRestore = () => restoreView === sessionViewSequence;

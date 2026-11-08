@@ -60,23 +60,32 @@
           <button id="media-image-ack" type="button" disabled>I reviewed this exact image</button>
         </section>
       </section>
+      <p id="batch-progress" role="status" hidden></p>
+      <ol id="batch-reviewed" hidden></ol>
       <form id="decision" method="post">
         <h2>Your decision</h2>
-        <p class="notice">Approval only authorizes this exact proposal. The connected app must still commit it; approval does not apply the change.</p>
+        <p id="decision-help" class="notice">Approval only authorizes this exact proposal. The connected app must still commit it; approval does not apply the change.</p>
         <label id="media-warning" class="currency-acknowledgement" hidden><input id="media-ack" type="checkbox">I reviewed every exact image and the complete before and after roles and ordered galleries.</label>
         <div id="currency-warning" class="currency-warning" hidden role="group" aria-label="Company currency change">
           <strong>Company currency change</strong>
           <p id="currency-warning-text"></p>
           <label class="currency-acknowledgement" for="currency-ack"><input id="currency-ack" type="checkbox">I understand that existing prices and historical orders will not be converted.</label>
         </div>
-        <label for="password">Confirm your seller password</label>
-        <input id="password" type="password" autocomplete="current-password" required maxlength="256" aria-describedby="password-help">
-        <p id="password-help" class="muted">Your password is required for either decision. It is sent only to Seller Studio, not the connected app.</p>
+        <label id="metadata-warning" class="currency-acknowledgement" hidden><input id="metadata-ack" type="checkbox">I reviewed all metadata, prices, stock, and intended publication state shown above.</label>
+        <p class="muted">Your current signed-in seller session verifies this decision. Review the exact proposal before approving.</p>
         <div class="actions">
+          <button id="review-next" type="button" hidden>Reviewed — next product</button>
+          <button id="approve-finish" type="button" hidden>Approve &amp; Finish</button>
           <button id="approve" type="submit" name="decision" value="approve">Approve proposal</button>
           <button type="submit" name="decision" value="reject" class="secondary">Reject this change</button>
         </div>
       </form>
+    </section>
+    <section id="finish-progress" hidden aria-labelledby="finish-title">
+      <h2 id="finish-title">Approval and execution progress</h2>
+      <p id="finish-summary" role="status" aria-live="polite"></p>
+      <ol id="finish-items"></ol>
+      <button id="finish-resume" type="button" class="secondary">Resume verified work</button>
     </section>
     <p><a id="seller-link" href="/seller/">Open Seller Studio</a></p>
   </main>

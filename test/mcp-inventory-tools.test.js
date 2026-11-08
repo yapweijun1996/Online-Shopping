@@ -89,9 +89,9 @@ for(const dialect of ['sqlite','postgres']){
   const existing=await f.store.get("SELECT id,revision FROM shop_order WHERE status='SUBMITTED'");await decideSellerOrder(f.store,existing.id,'confirm',{expectedRevision:existing.revision},'synthetic_owner');
   assert.equal((await f.preview(p,null)).data.error.code,-32009);
  });
- test(`${dialect}: wrong password/hash/client or revoked grant cannot authorize an otherwise valid proposal`,options,async t=>{
+ test(`${dialect}: wrong challenge/hash/client or revoked grant cannot authorize an otherwise valid proposal`,options,async t=>{
   const f=await inventoryToolFixture(t,dialect),p=await f.product(),op=dto(await f.preview(p,3));
-  assert.equal((await f.approve(op,{password:'WrongSyntheticPassword123!'})).response.status,403);
+  assert.equal((await f.approve(op,{challenge:'A'.repeat(43)})).response.status,403);
   assert.equal((await f.approve(op,{previewHash:'0'.repeat(64)})).response.status,403);
   assert.equal((await f.commit(op)).response.status,403);assert.equal((await f.approve(op)).response.status,200);
   const other=await freshCatalogAccess(f,legacyCatalogScopes+' inventory.read inventory.adjust');assert.equal((await other.call('inventory.commit_adjustment',{operationId:op.operationId})).response.status,403);

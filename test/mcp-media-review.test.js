@@ -35,10 +35,10 @@ for (const dialect of ['sqlite', 'postgres']) {
     const other = { origin: f.config.sellerOrigin, cookie: login.response.headers.get('set-cookie').split(';')[0], 'x-csrf-token': login.data.csrfToken };
     assert.equal((await f.deliver(fresh, item, other)).status, 403);
   });
-  test(`${dialect}: reject needs fresh password but no image ACK and leaves image data unchanged`, async t => {
+  test(`${dialect}: reject requires the seller session but no image ACK and leaves image data unchanged`, async t => {
     const f = await mediaReviewFixture(t, dialect), review = await f.review();
     const before = await f.store.get('SELECT image_data FROM product WHERE id=?', f.product.id);
-    const bad = await f.approve(review, { password: 'Incorrect synthetic password' }, 'reject'); assert.equal(bad.status, 403);
+    const denied = await f.call('/api/v1/seller/mcp/operations/'+f.operation.operationId+'/approval','POST',{operationId:f.operation.operationId,previewHash:f.operation.previewHash,challenge:review.challenge,decision:'reject'},{origin:f.config.sellerOrigin}); assert.equal(denied.response.status,403);
     const rejected = await f.approve(review, {}, 'reject'); assert.equal(rejected.status, 200, await rejected.text());
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?', f.operation.operationId)).state, 'REJECTED');
     assert.equal(await f.store.get('SELECT operation_id FROM mcp_v2_media_approval_evidence'), undefined);
@@ -66,19 +66,10 @@ for (const dialect of ['sqlite', 'postgres']) {
     assert.equal((await f.deliver(review, item)).status, 403);
     assert.equal((await f.approve(review, { mediaReviewed: true })).status, 403);
   });
-  test(`${dialect}: password work releases writer lock and a concurrent portal edit invalidates all prior image ACKs`, async t => {
+  test(`${dialect}: a concurrent portal edit invalidates all image ACKs before a session decision`, async t => {
     const f = await mediaReviewFixture(t, dialect), review = await f.review(); await f.complete(review);
-    const get = f.store.get; let edited, scheduled = false;
-    const changed = new Promise((resolve, reject) => { edited = { resolve, reject }; });
-    f.store.get = async (sql, ...args) => {
-      const result = await get(sql, ...args);
-      if (!scheduled && /SELECT password_hash, oauth_auth_version/.test(sql)) {
-        scheduled = true; setImmediate(() => updateProduct(f.store, f.product.id, { name: 'Concurrent synthetic portal edit' }).then(edited.resolve, edited.reject));
-      }
-      return result;
-    };
-    const approving = f.approve(review, { mediaReviewed: true }); await changed;
-    const response = await approving; f.store.get = get;
+    await updateProduct(f.store, f.product.id, { name: 'Concurrent synthetic portal edit' });
+    const response = await f.approve(review, { mediaReviewed: true });
     assert.equal(response.status, 403);
     assert.equal(await f.store.get('SELECT operation_id FROM mcp_v2_approval WHERE operation_id=?', f.operation.operationId), undefined);
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?', f.operation.operationId)).state, 'PENDING_APPROVAL');

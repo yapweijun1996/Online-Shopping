@@ -1,5 +1,5 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
-import { verifyPasswordAsync, readSession, sessionCookieFrom } from '../auth.js';
+import { readSession, sessionCookieFrom } from '../auth.js';
 import { ApiError } from '../http.js';
 import { SqlLimiter } from '../limiter.js';
 import { can } from '../roles.js';
@@ -205,25 +205,27 @@ export function createMediaReviewDelivery(options) {
   return Object.freeze({ deliver: (request, input) => child(request, input, false), ack: (request, input) => child(request, input, true) });
 }
 
-// First-party seller approval only. Password verification runs without a database
-// lock; a second platform fence and tenant transaction revalidate every snapshot.
+// First-party explicit seller approval uses the authenticated browser session.
+// Both lifecycle fences revalidate session, grant, exact proposal and review proof.
 export function createOperationApproval({ store, binding, sellerOrigin, quickLogin, epoch, buildDigest, tenantGuard, mcpMedia, enabled = false, catalogUpdateEnabled = false, catalogCreateEnabled = false }) {
   const epochHash = requireSafeConfig(binding, sellerOrigin, quickLogin, enabled, epoch, buildDigest, tenantGuard);
   binding = Object.freeze({ tenantId: binding.tenantId, issuer: binding.issuer, resource: binding.resource, mcpV2: binding.mcpV2 });
   const addressLimit = new SqlLimiter(store, 'mcp-v2-approval-address', { limit: 5, windowMs: 900000 });
   const accountLimit = new SqlLimiter(store, 'mcp-v2-approval-account', { limit: 20, windowMs: 900000 });
+  // Older first-party clients may still send a password field. It is bounded
+  // compatibility data only: session authority and exact review bind the decision.
   return async function approve(request, input, clientAddress) {
     if (request.method !== 'POST' || new URL(request.url).origin !== sellerOrigin || request.headers.get('origin') !== sellerOrigin ||
         !input || typeof input !== 'object' || Array.isArray(input) ||
         Object.keys(input).some(key => !['operationId', 'previewHash', 'challenge', 'decision', 'password', 'currencyAcknowledged', 'mediaReviewed'].includes(key)) ||
-        !['operationId', 'previewHash', 'challenge', 'decision', 'password'].every((key) => Object.hasOwn(input, key)) ||
+        !['operationId', 'previewHash', 'challenge', 'decision'].every((key) => Object.hasOwn(input, key)) ||
         (Object.hasOwn(input, 'currencyAcknowledged') && input.currencyAcknowledged !== true) ||
         (Object.hasOwn(input, 'mediaReviewed') && input.mediaReviewed !== true) ||
         typeof input.operationId !== 'string' || !uuid.test(input.operationId) ||
         typeof input.previewHash !== 'string' || !digest.test(input.previewHash) ||
         typeof input.challenge !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(input.challenge) ||
         !['approve', 'reject'].includes(input.decision) ||
-        typeof input.password !== 'string' || !input.password.length || input.password.length > 256 ||
+        (Object.hasOwn(input, 'password') && (typeof input.password !== 'string' || input.password.length > 256)) ||
         typeof clientAddress !== 'string' || !clientAddress.length || clientAddress.length > 200) forbidden();
     const token = sellerToken(request);
     const snapshot = await tenantGuard.withActiveTenant(binding.tenantId, async (tenant) => {
@@ -242,25 +244,24 @@ export function createOperationApproval({ store, binding, sellerOrigin, quickLog
         if (!context || !sameSecret(row.preview_hash, input.previewHash) ||
             (Boolean(context.mediaState) && input.decision === 'approve') !== Object.hasOwn(input, 'mediaReviewed') ||
             (context.currencyAcknowledgementRequired && input.decision === 'approve') !== Object.hasOwn(input, 'currencyAcknowledged')) forbidden();
-        const account = await store.get('SELECT password_hash, oauth_auth_version FROM seller_account WHERE id = ?', session.account.id);
+        const account = await store.get('SELECT oauth_auth_version FROM seller_account WHERE id = ?', session.account.id);
         if (!account || !Number.isSafeInteger(account.oauth_auth_version)) forbidden();
         const challenge = await store.get(`SELECT * FROM mcp_v2_approval_challenge WHERE operation_id = ? AND nonce_hash = ?
           AND account_id = ? AND session_hash = ? AND account_auth_version = ? AND consumed_at IS NULL AND expires_at > ?`,
         row.id, hash(input.challenge + ':' + row.preview_hash), session.account.id, session.token_hash, account.oauth_auth_version, stamp());
         if (!challenge) forbidden();
         if (context.mediaState && input.decision === 'approve') await readMediaAcknowledgements(store, { operation: row, manifest: context.mediaState.manifest, challenge });
-        return { passwordHash: account.password_hash, authVersion: account.oauth_auth_version,
+        return { authVersion: account.oauth_auth_version,
           accountId: session.account.id, sessionHash: session.token_hash, tenantRevision: tenant.revision, challengeId: challenge.id };
       });
     });
-    if (!await verifyPasswordAsync(input.password, snapshot.passwordHash)) forbidden();
     return tenantGuard.withActiveTenant(binding.tenantId, (tenant) => epochTransaction(store, binding, async () => {
       if (!tenant || tenant.revision !== snapshot.tenantRevision) forbidden();
       const session = await readSession(store, token);
       if (!session || session.account.id !== snapshot.accountId || session.token_hash !== snapshot.sessionHash ||
           !sameSecret(request.headers.get('x-csrf-token'), session.csrf_token)) forbidden();
-      const account = await store.get('SELECT password_hash, oauth_auth_version FROM seller_account WHERE id = ?', session.account.id);
-      if (!account || account.oauth_auth_version !== snapshot.authVersion || !sameSecret(account.password_hash, snapshot.passwordHash)) forbidden();
+      const account = await store.get('SELECT oauth_auth_version FROM seller_account WHERE id = ?', session.account.id);
+      if (!account || account.oauth_auth_version !== snapshot.authVersion) forbidden();
       const row = await store.get('SELECT * FROM mcp_v2_operation WHERE id = ?', input.operationId);
       const context = await humanContext(store, binding, tenant.revision, epochHash, buildDigest, session, row, mcpMedia?.enabled, catalogUpdateEnabled, catalogCreateEnabled, mcpMedia?.codecDigest);
       if (!context || !sameSecret(row.preview_hash, input.previewHash) ||

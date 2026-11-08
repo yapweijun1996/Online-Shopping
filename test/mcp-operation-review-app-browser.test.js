@@ -49,11 +49,10 @@ test('real HTTPS app and seller session review and reject a complete proposal in
     assert.ok((await page.locator('#proposal').textContent()).includes('\\u202e'));
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id = ?', op.value.operationId)).state, 'PENDING_APPROVAL');
-    await page.locator('#password').fill(reviewPassword);
     await page.locator('button[value="reject"]').click();
     await page.locator('#decision').waitFor({ state: 'hidden' });
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id = ?', op.value.operationId)).state, 'REJECTED');
-    assert.equal(await page.locator('#password').inputValue(), '');
+    assert.equal(await page.locator('#password').count(),0);
     await f.store.run("UPDATE oauth_grant SET scopes = 'catalog.write company.write' WHERE id = ?", f.grantId);
     await f.store.run(`INSERT INTO mcp_v2_scope_consent(grant_id, tenant_id, account_id, client_id, scope, account_auth_version, epoch_hash, consented_at)
       SELECT grant_id, tenant_id, account_id, client_id, 'company.write', account_auth_version, epoch_hash, consented_at
@@ -65,7 +64,6 @@ test('real HTTPS app and seller session review and reject a complete proposal in
     await page.locator('#currency-warning').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#currency-ack').isChecked(), false);
     assert.match(await page.locator('#currency-warning-text').textContent(), /not converted/);
-    await page.locator('#password').fill(reviewPassword);
     await page.locator('button[value="approve"]').click();
     assert.match(await page.locator('#status').textContent(), /check the acknowledgment/);
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id = ?', company.value.operationId)).state, 'PENDING_APPROVAL');

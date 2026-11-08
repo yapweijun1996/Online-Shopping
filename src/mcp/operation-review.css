@@ -93,3 +93,7 @@ input[type='checkbox'] { width: 24px; height: 24px; min-height: 24px; margin: 0;
   .summary-grid.has-before > dd:nth-of-type(even)::before { content: 'After'; }
   .summary-grid:not(.has-before) > dd::before { content: 'New product'; }
 }
+
+#finish-progress { margin-top: 24px; border-top: 1px solid var(--review-border); padding-top: 24px; }
+#finish-items li, #batch-reviewed li { margin-block: 16px; overflow-wrap: anywhere; line-height: 1.5; }
+#finish-items button { display: block; margin-top: 12px; max-width: 100%; }

@@ -1,4 +1,4 @@
-import { mcpOperationRuntimeEnabled } from './deployment-profile.js';
+import { mcpOperationRuntimeEnabled, mcpFinishRuntimeEnabled } from './deployment-profile.js';
 import { orderDecisionTool } from './order-tools.js';
 import { operationControlTools } from './operation-control-contracts.js';
 import { inventorySummaryTool, inventoryMovementsTool, inventoryAdjustmentTool } from './inventory-tools.js';
@@ -21,19 +21,26 @@ import { MEDIA_TOOLS_ACCEPTED, mediaTools } from './media-tools.js';
 import { catalogMediaUpdateEnabled, catalogMediaCreateEnabled } from './catalog-media-config.js';
 import { catalogMediaUpdateTool } from './catalog-media-adapter.js';
 import { catalogMediaCreateTool } from './catalog-media-create-adapter.js';
+import { catalogCreateDraftTool } from './catalog-create-draft.js';
+import { initializeCreateDraftStorage, assertCreateDraftStorage } from './catalog-create-draft-storage.js';
 import { createMediaRuntime } from './media-runtime.js';
+import { createFinishWorkflow } from './finish-workflow.js';
+import { initializeFinishStorage, assertFinishStorage } from './finish-storage.js';
 
 export const connectorPath = (path) => /^\/(?:mcp$|oauth\/(?:register|authorize|token|revoke|consent\.js|consent\.css|operation|operation-review\.(?:js|css))$|\.well-known\/oauth-(?:protected-resource|authorization-server)(?:\/|$)|api\/v1\/seller\/mcp(?:\/|$))/.test(path);
-const operationPath = (path) => path === '/oauth/operation' || /^\/oauth\/operation-review\.(?:js|css)$/.test(path) || /^\/api\/v1\/seller\/mcp\/(?:operations(?:\/|$)|approval(?:\/|$))/.test(path);
+const operationPath = (path) => path === '/oauth/operation' || /^\/oauth\/operation-review\.(?:js|css)$/.test(path) || /^\/api\/v1\/seller\/mcp\/(?:finishes(?:\/|$)|operations(?:\/|$)|approval(?:\/|$))/.test(path);
 const reviewCsp = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-function validReviewQuery(params) {
-  // Attribution belongs only to the public shell; it never reaches authority or API arguments.
-  const keys = [...params.keys()];
-  return keys.every(key => ['operationId', 'utm_source'].includes(key)) &&
-    params.getAll('operationId').length === 1 && uuid.test(params.get('operationId') || '') &&
-    params.getAll('utm_source').length <= 1 &&
-    (!params.has('utm_source') || /^[A-Za-z0-9._~-]{1,128}$/.test(params.get('utm_source')));
+function validReviewQuery(params,finishEnabled=false) {
+  const keys=[...params.keys()];
+  if(!keys.every(key=>['operationId','operationIds','utm_source'].includes(key)) || params.getAll('utm_source').length>1 ||
+    params.has('utm_source') && !/^[A-Za-z0-9._~-]{1,128}$/.test(params.get('utm_source')))return false;
+  if(params.has('operationIds')){
+    if(!finishEnabled || params.has('operationId') || params.getAll('operationIds').length!==1)return false;
+    const ids=params.get('operationIds').split(',');
+    return ids.length>=1 && ids.length<=5 && new Set(ids).size===ids.length && ids.every(id=>uuid.test(id));
+  }
+  return params.getAll('operationId').length===1 && uuid.test(params.get('operationId')||'');
 }
 export function createConnector({ store, config, tenantId, tenantGuard, quickLogin, operationTools }) {
   const enabled = config.mcpEnabled === true && !quickLogin && Boolean(config.sellerOrigin) && new URL(config.sellerOrigin).protocol === 'https:';
@@ -44,6 +51,8 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
   };
   const oauth = createOAuth({ store, config, tenantId, limit });
   const safeV2 = enabled && mcpOperationRuntimeEnabled(config,{quickLogin,tenantGuard});
+  const safeFinish = enabled && mcpFinishRuntimeEnabled(config,{quickLogin,tenantGuard});
+  if(config.mcpFinish?.enabled === true && !safeFinish)throw new TypeError('Safe finish runtime configuration required.');
   const catalogUpdateEnabled = catalogMediaUpdateEnabled(config,{quickLogin,tenantGuard});
   const catalogCreateEnabled = catalogMediaCreateEnabled(config,{quickLogin,tenantGuard});
   if (config.mcpCatalogMediaCreate?.enabled === true && !catalogCreateEnabled) throw new TypeError('Safe catalog media CREATE configuration required.');
@@ -54,7 +63,7 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
     else {
       const mediaOptions = {store,binding:oauth.binding,config,tenantGuard,quickLogin};
       const runtime = (MEDIA_TOOLS_ACCEPTED && config.mcpMedia?.enabled === true) || catalogUpdateEnabled || catalogCreateEnabled ? createMediaRuntime(mediaOptions) : null;
-      registrations = [companyReadTool(),companyMutationTool(),catalogCreateEnabled ? catalogMediaCreateTool(runtime) : catalogCreateTool(),
+      registrations = [companyReadTool(),companyMutationTool(),...(runtime?.creation ? [catalogCreateDraftTool(runtime)] : []),catalogCreateEnabled ? catalogMediaCreateTool(runtime) : catalogCreateTool(),
         catalogUpdateEnabled ? catalogMediaUpdateTool(runtime) : catalogUpdateTool(),
         analyticsSalesTrendTool(),analyticsTopProductsTool(),analyticsInventoryRiskTool(),inventorySummaryTool(),inventoryMovementsTool(),inventoryAdjustmentTool(),orderDecisionTool(),...operationControlTools(),
         ...(MEDIA_TOOLS_ACCEPTED && config.mcpMedia?.enabled === true ? mediaTools(mediaOptions,runtime) : [])];
@@ -75,7 +84,17 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
           quickLogin, ...config.mcpV2, tenantGuard, mcpMedia: config.mcpMedia, catalogUpdateEnabled, catalogCreateEnabled };
         const review = createOperationReview(options), approve = createOperationApproval(options), media = createMediaReviewDelivery(options);
         await tenantGuard.withActiveTenant(tenantId, () => initializeOperationStorage(store, { enabled: true }));
-        return { review, approve, media };
+        let finish = null;
+        if (safeFinish) {
+          await tenantGuard.withActiveTenant(tenantId, async () => {
+            if(config.production === true){await assertFinishStorage(store);await assertCreateDraftStorage(store);}
+            else{await initializeFinishStorage(store);await initializeCreateDraftStorage(store);}
+          });
+          finish = createFinishWorkflow({store,binding:{...oauth.binding,mcpV2:config.mcpV2},config,tenantGuard,approve,
+            execute:(request,id)=>extensions.finishForSeller(request,id),
+            reprepare:(request,id,key)=>extensions.revalidateForSeller(request,id,key)});
+        }
+        return { review, approve, media, finish };
       })().catch((error) => { operations = null; throw error; });
     }
     return operations;
@@ -98,12 +117,30 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
       }
       if (request.url.length > 8192) fail('invalid_request', 414);
       if (operation) {
+        const finishMatch = /^\/api\/v1\/seller\/mcp\/finishes(?:\/([0-9a-f-]+)(\/(?:approve|resume|revalidate))?)?$/.exec(path);
+        if (finishMatch) {
+          const handlers=await operationHandlers();
+          if(!handlers.finish)throw new ApiError(404,'NOT_FOUND','Not found.');
+          if(url.search || finishMatch[1] && !uuid.test(finishMatch[1]))fail('invalid_request',400);
+          const method=!finishMatch[1] || finishMatch[2]?'POST':'GET';
+          if(request.method!==method)fail('invalid_request',405,{Allow:method});
+          if(method==='GET')response=json(200,await handlers.finish.status(request,finishMatch[1]));
+          else {
+            if(origin!==config.sellerOrigin)fail('access_denied',403);
+            if(request.headers.get('content-type')?.split(';')[0].trim().toLowerCase()!=='application/json')fail('invalid_request',415);
+            let input;try{input=parseJson(new TextDecoder('utf-8',{fatal:true}).decode(await readBody(request,8192,5000)));}catch{fail('invalid_request',400);}
+            if(!finishMatch[1])response=json(200,await handlers.finish.prepare(request,input));
+            else if(finishMatch[2]==='/revalidate')response=json(200,await handlers.finish.revalidate(request,finishMatch[1],input));
+            else if(finishMatch[2]==='/approve')response=json(200,await handlers.finish.approveAndRun(request,finishMatch[1],input,ip));
+            else {if(!input || typeof input!=='object' || Array.isArray(input) || Object.keys(input).length)fail('invalid_request',400);response=json(200,await handlers.finish.run(request,finishMatch[1]));}
+          }
+        } else {
         const match = /^\/api\/v1\/seller\/mcp\/operations\/([0-9a-f-]+)(\/(?:approval|media\/(?:delivery|ack)))?$/.exec(path);
         const page = path === '/oauth/operation', asset = /^\/oauth\/operation-review\.(js|css)$/.exec(path);
         if (!page && !asset && (!match || !uuid.test(match[1]))) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
         const method = match?.[2] ? 'POST' : 'GET';
         if (request.method !== method) fail('invalid_request', 405, { Allow: method });
-        if (page ? !validReviewQuery(url.searchParams) : Boolean(url.search)) fail('invalid_request', 400);
+        if (page ? !validReviewQuery(url.searchParams,safeFinish) : Boolean(url.search)) fail('invalid_request', 400);
         if (page || asset) {
           // This public shell carries no proposal or proof. Session cookies keep
           // the existing narrow authenticated API path.
@@ -123,7 +160,11 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
             if (match[2] === '/media/delivery') response = await handlers.media.deliver(request, input);
             else if (match[2] === '/media/ack') response = json(200, await handlers.media.ack(request, input));
             else response = json(200, await handlers.approve(request, input, ip));
-          } else response = json(200, await handlers.review(request, match[1]));
+          } else {
+            const value=await handlers.review(request,match[1]);
+            response=json(200,{...value,...(handlers.finish?{finishEnabled:true}:{})});
+          }
+        }
         }
       } else if (request.method === 'OPTIONS') {
         const requested = (request.headers.get('access-control-request-headers') || '').toLowerCase().split(',').map((s) => s.trim()).filter(Boolean);
@@ -166,7 +207,12 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
           await store.transaction(() => audit(store, tenantId, 'DENY', {}, e.error));
         } catch { /* Denial never releases data; an unavailable audit cannot turn it into success. */ }
       }
-      response = json(e instanceof OAuthError ? e.status : e instanceof ApiError ? e.status : 503, { error: e instanceof OAuthError ? e.error : 'temporarily_unavailable' }, e.headers || {});
+      const finishError = path.startsWith('/api/v1/seller/mcp/finishes') && e instanceof ApiError;
+      const finishCodes = new Set(['INVALID_INPUT','IDEMPOTENCY_CONFLICT','RATE_LIMITED','FINISH_LIMIT','REVIEW_NOT_REQUIRED',
+        'REVIEW_REQUIRED','REVALIDATION_CONFLICT','RESTAGE_REQUIRED','REPREPARE_REQUIRED']);
+      const errorCode = e instanceof OAuthError ? e.error : finishError && e.status === 403 ? 'access_denied'
+        : finishError && finishCodes.has(e.code) ? e.code : 'temporarily_unavailable';
+      response = json(e instanceof OAuthError ? e.status : e instanceof ApiError ? e.status : 503, { error: errorCode }, e.headers || {});
     }
     if (operation && response.ok && path.startsWith('/api/')) await maintain();
     response.headers.set('Referrer-Policy', 'no-referrer'); response.headers.set('X-Content-Type-Options', 'nosniff'); response.headers.set('Cache-Control', 'no-store');

@@ -50,12 +50,11 @@ async function approve(f, page, operation) {
     assert.equal(Number((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_media_delivery WHERE operation_id=? AND ack_at IS NULL', operation.operationId)).n), 0);
     await page.locator('#media-ack').check();
   }
-  await page.locator('#password').fill(f.password);
   const response = page.waitForResponse(value => new URL(value.url()).pathname.endsWith('/' + operation.operationId + '/approval') && value.request().method() === 'POST');
   await page.locator('#approve').click();
-  assert.equal((await response).status(), 200, 'Actual first-party password/ACK approval');
+  assert.equal((await response).status(), 200, 'Actual first-party session/ACK approval');
   await page.locator('#decision').waitFor({ state: 'hidden' });
-  assert.equal(await page.locator('#password').inputValue(), '');
+  assert.equal(await page.locator('#password').count(),0);
   assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?', operation.operationId)).state, 'APPROVED');
   } catch (error) {
     const ui = await page.evaluate(() => ({
@@ -64,7 +63,7 @@ async function approve(f, page, operation) {
       mediaHidden: document.querySelector('#media-review')?.hidden,
       progress: document.querySelector('#media-progress')?.textContent,
       approveDisabled: document.querySelector('#approve')?.disabled,
-      passwordValid: document.querySelector('#password')?.validity.valid,
+      passwordPromptAbsent: !document.querySelector('#password'),
     })).catch(() => null);
     f.diagnostic('Synthetic review diagnostics: ' + JSON.stringify({ ui, responses, failures, pageErrors }));
     throw error;

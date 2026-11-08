@@ -1,3 +1,5 @@
+import { creationMediaBinding } from './catalog-create-parent-wire.js';
+import { createParentAdapter } from './catalog-create-parent-adapter.js';
 import { randomUUID,createHash } from 'node:crypto';
 import { ApiError } from '../http.js';
 import { FieldError } from '../validation.js';
@@ -53,7 +55,7 @@ function warningShape(value){
 }
 /** Closed integrity DTO only. This does not authorize a CREATE operation. */
 export function parseCatalogMediaCreateProposal(value){
- const text=bytes(value);shape(value,['kind','normalizedInput','creationIdentity','before','after','optionReview','sourceRevision','reviewLabels','reviewBinding','media','warnings']);
+ const text=bytes(value);shape(value,['kind','normalizedInput','creationIdentity','before','after','optionReview','sourceRevision','reviewLabels','reviewBinding','media','warnings',...(Object.hasOwn(value,'creationMedia')?['creationMedia']:[])]);
  input(value.normalizedInput);let normalized;try{normalized=validateProductInput(value.normalizedInput,['MYR','SGD']);}catch{invalid();}
  if(!same(normalized,value.normalizedInput)||value.kind!=='create'||value.before!==null||!valid(value.after,catalogProductMetadataSchema()))invalid();
  const identity=plannedProductCreationIdentity(value.creationIdentity),labels=catalogReviewLabels(value.reviewLabels,'catalog.preview_create');
@@ -61,7 +63,7 @@ export function parseCatalogMediaCreateProposal(value){
   labels.filter(row=>row.before===null).length!==1||labels.find(row=>row.before===null)?.productId!==identity.productId||!same(labels.find(row=>row.productId===identity.productId).after,{sku:value.after.sku,name:value.after.name}))invalid();
  shape(value.sourceRevision,['catalogRevision','mediaRevision']);shape(value.reviewBinding,['version','baseRevision','reviewProjectionHash']);
  if(![value.sourceRevision.catalogRevision,value.sourceRevision.mediaRevision,value.reviewBinding.baseRevision,value.reviewBinding.reviewProjectionHash].every(item=>sha.test(item||''))||value.reviewBinding.version!==1)invalid();
- catalogCreateOptions(value);warningShape(value);validateMediaDescriptor(value.media,'catalog.preview_create');return freeze(JSON.parse(text));
+ if(Object.hasOwn(value,'creationMedia'))creationMediaBinding(value.creationMedia);catalogCreateOptions(value);warningShape(value);validateMediaDescriptor(value.media,'catalog.preview_create');return freeze(JSON.parse(text));
 }
 function usedRefs(prepared){return prepared.manifest.assets.map(row=>Object.fromEntries(refFields.map(key=>[key,row[key]])));}
 
@@ -87,7 +89,7 @@ function assertResolved(prepared,resolved,codecDigest,context){
  const refs=usedRefs(prepared);
  if(!Array.isArray(resolved.sources)||resolved.sources.length!==refs.length||refs.some(ref=>!resolved.sources.some(row=>refFields.every(key=>row[key]===ref[key])&&Number.isSafeInteger(row.width)&&row.width>0&&Number.isSafeInteger(row.height)&&row.height>0)))changed();
 }
-async function captureIntent(read,args){
+export async function captureCatalogCreateIntent(read,args){
  input(args);
  const company=await read.get('SELECT substr(default_currency,1,4) AS currency FROM company_setting WHERE id=1');
  if(!company||!['MYR','SGD'].includes(company.currency))changed();
@@ -99,7 +101,7 @@ async function captureIntent(read,args){
 const sameRows=(a,b)=>a.length===b.length&&a.every((row,n)=>same(row,b[n]));
 const omit=(value,keys)=>Object.fromEntries(Object.entries(value).filter(([key])=>!keys.includes(key)));
 const instant=value=>typeof value==='string'&&value.length===24&&!Number.isNaN(Date.parse(value))&&new Date(value).toISOString()===value;
-async function actualAfter(read,prepared,context,actor){
+export async function assertCatalogCreateInitialAfter(read,prepared,context,actor){
  const {state,projection}=prepared,identity=state.creationIdentity;
  const metadata=await readCatalogCreateMediaMetadata(read,{normalizedInput:state.normalizedInput,creationIdentity:identity});
  const before=state.metadata.rows,after=metadata.rows,snapshot=await readMediaSnapshot(read,identity.productId);
@@ -129,12 +131,12 @@ async function actualAfter(read,prepared,context,actor){
  return {metadata,snapshot,revision:hash({version:1,kind:'catalog-media-create-result',productId:identity.productId,listingId:desired.listingId,catalogRevision:metadata.revision,mediaRevision:snapshot.revision})};
 }
 
-/** Constructor-private hooks. Current runtime authority still rejects CREATE. */
+/** Constructor-private image-free CREATE hooks; runtime registration owns eligibility. */
 export function catalogMediaCreateAdapter(runtime){
  if(!sha.test(runtime?.codecDigest||'')||typeof runtime.nativeSession!=='function')throw new TypeError('Trusted catalog media runtime required.');
  const {codecDigest,nativeSession}=runtime;
  const media=Object.freeze({policyId:'catalog-media-v1',codecDigest,
-  async capture(read,args,context){mediaContext(context);const intent=await captureIntent(read,args),prepared=await readCatalogMediaCreateReview(read,intent,codecDigest),old=[];
+  async capture(read,args,context){mediaContext(context);const intent=await captureCatalogCreateIntent(read,args),prepared=await readCatalogMediaCreateReview(read,intent,codecDigest),old=[];
    for(const ref of usedRefs(prepared))old.push({ref,bytes:(await loadOldMediaAsset(read,prepared.state.source.snapshot,ref)).data});
    return {resourceId:'catalog',expectedRevision:prepared.revision,resources:{context:mediaContext(context),requestHash:hash(args),...intent,sourceRevision:prepared.proposal.sourceRevision,revision:prepared.revision,codecDigest,old}};
   },
@@ -164,11 +166,15 @@ export function catalogMediaCreateAdapter(runtime){
     const actor=await store.get('SELECT username FROM seller_account WHERE id=?',identity.accountId);if(!actor)invalid();
     const result=await withInventoryContext({source:'MCP_CATALOG',actorKind:'SELLER',actorId:identity.accountId,clientId:identity.clientId,grantId:identity.grantId,operationId:context.operationId,correlationId:context.correlationId},
      ()=>trackCreate(store,actor.username,()=>applyPlannedProductCreate(store,value.normalizedInput,value.creationIdentity)));
-    if(!result||result.id!==value.creationIdentity.productId||result.listingId!==value.after.listingId)changed();const after=await actualAfter(store,prepared,context,actor.username);
+    if(!result||result.id!==value.creationIdentity.productId||result.listingId!==value.after.listingId)changed();const after=await assertCatalogCreateInitialAfter(store,prepared,context,actor.username);
     return {productId:result.id,listingId:result.listingId,revision:after.revision};
    });
   },
   validResult:value=>valid(value,descriptor.receiptSchema),toReceipt:value=>({productId:value.productId,listingId:value.listingId,revision:value.revision}),validReceipt:value=>valid(value,descriptor.receiptSchema),
  });
 }
-export function catalogMediaCreateTool(runtime){return Object.freeze({...catalogCreateTool(),adapter:catalogMediaCreateAdapter(runtime)});}
+export function catalogMediaCreateTool(runtime){
+ const legacy=catalogMediaCreateAdapter(runtime);
+ if(!runtime.creation)return Object.freeze({...catalogCreateTool(),adapter:legacy});
+ const base=catalogCreateTool();return Object.freeze({...base,inputSchema:{...base.inputSchema,properties:{...base.inputSchema.properties,draftId:{type:'string',minLength:36,maxLength:36,pattern:'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'}}},adapter:createParentAdapter(runtime,legacy)});
+}

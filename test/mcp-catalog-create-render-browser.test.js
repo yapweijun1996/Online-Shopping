@@ -55,9 +55,9 @@ test('SYNTHETIC transport CREATE renderer verifies null BEFORE/options/page ACK,
   else {assert.equal(await page.locator('#media-viewer').isVisible(),false);assert.equal(await page.locator('#media-empty').isVisible(),true);assert.match(await page.locator('#media-empty').textContent(),/No images/);assert.equal(acknowledgements.slice(ackStart).some(row=>row.kind==='ASSET'),false);}
   if(process.env.QA_APPROVAL_SCREENSHOT_DIR){await mkdir(process.env.QA_APPROVAL_SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:join(process.env.QA_APPROVAL_SCREENSHOT_DIR,existing?'approval-create-exact-image-390.png':'approval-create-no-images-1280.png'),fullPage:true});}
   await page.waitForFunction(()=>!document.querySelector('#approve').disabled);const before=approvals.length;
-  await page.locator('#media-ack').check();await page.locator('#approve').click();assert.equal(approvals.length,before);assert.equal(await page.locator('#password').evaluate(input=>input.validity.valueMissing),true);
-  await page.locator('#media-ack').uncheck();await page.locator('#password').fill('Synthetic-render-password');await page.locator('#approve').click();assert.equal(approvals.length,before);
-  await page.locator('#media-ack').check();await page.locator('#approve').click();await page.locator('#decision').waitFor({state:'hidden'});assert.equal(approvals.length,before+1);assert.equal(approvals.at(-1).mediaReviewed,true);assert.equal(await page.locator('#password').inputValue(),'');assert.deepEqual(errors,[]);assert.deepEqual(external,[]);await context.close();
+  assert.equal(await page.locator('#password').count(),0);
+  await page.locator('#media-ack').uncheck();await page.locator('#approve').click();assert.equal(approvals.length,before);
+  await page.locator('#media-ack').check();await page.locator('#approve').click();await page.locator('#decision').waitFor({state:'hidden'});assert.equal(approvals.length,before+1);assert.equal(approvals.at(-1).mediaReviewed,true);assert.equal(await page.locator('#password').count(),0);assert.deepEqual(errors,[]);assert.deepEqual(external,[]);await context.close();
  }
  corrupt=true;const context=await browser.newContext();t.after(()=>context.close());const page=await context.newPage();await page.goto(origin+'/oauth/operation?operationId='+wireId(99));await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Image verification failed'));
  assert.equal(await page.locator('#approve').isDisabled(),true);assert.equal(approvals.length,2);

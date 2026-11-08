@@ -15,7 +15,7 @@ async function commerce(store){const result={};for(const table of ['product','li
  const order=table==='product_option'?'product_id,option_type_id':table==='inventory_state'?'product_id':'id';result[table]=rowsDigest(await store.all('SELECT * FROM '+table+' ORDER BY '+order));}return result;}
 for(const dialect of ['sqlite','postgres']){
  const options={skip:dialect==='postgres'&&!process.env.SHOP_TEST_DATABASE_URL};
- test(`${dialect}: real RPC CREATE EMPTY_BEFORE requires PAGE ACK/password, commits initial stock and replays without absent-ID reread`,options,async t=>{
+ test(`${dialect}: real RPC CREATE EMPTY_BEFORE requires PAGE ACK/authenticated session, commits initial stock and replays without absent-ID reread`,options,async t=>{
   const f=await catalogCreateRuntimeFixture(t,dialect),before=await commerce(f.store),op=await f.prepare(input(),'create-empty-page-only'),value=await f.review(op);
   assert.deepEqual(await commerce(f.store),before);assert.equal(f.decodes(),0);
   assert.equal(value.proposal.before,null);assert.equal(value.proposal.creationIdentity.targetListingId,null);
@@ -24,8 +24,8 @@ for(const dialect of ['sqlite','postgres']){
   const decision={operationId:op.operationId,previewHash:op.previewHash,challenge:value.challenge,decision:'approve',password:reviewPassword,mediaReviewed:true};
   assert.equal((await f.post(op,'/approval',decision)).status,403);await f.acknowledge(op,value);
   assert.equal((await f.post(op,'/approval',{...decision,mediaReviewed:false})).status,403);
-  assert.equal((await f.post(op,'/approval',{...decision,password:'wrong-password'})).status,403);
-  assert.equal((await f.post(op,'/approval',decision)).status,200);
+  assert.equal((await f.call(f.path(op)+'/approval','POST',decision,{origin:f.config.sellerOrigin})).response.status,403);
+  const {password:_unusedPassword,...sessionDecision}=decision;assert.equal((await f.post(op,'/approval',sessionDecision)).status,200);
   const committed=await f.commit(op);assert.equal(dto(committed)?.status,'COMMITTED',JSON.stringify(committed.data));
   const id=value.proposal.creationIdentity.productId,p=await getProduct(f.store,id,true);assert.equal(p.stockQuantity,0);assert.equal(p.sku,'NEW-SKU');
   const movement=await f.store.get('SELECT * FROM inventory_movement WHERE product_id=?',id);assert.equal(movement.source,'MCP_CATALOG');assert.equal(movement.operation_id,op.operationId);assert.equal(movement.actor_id,f.account?.id??row.account_id);

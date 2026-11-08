@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { parseKeyFile } from './secret-box.js';
 import { checkPassword } from './accounts.js';
 import { safeRedirect } from './mcp/oauth.js';
-import { readMcpDeploymentProfile } from './mcp/deployment-profile.js';
+import { readMcpDeploymentProfile, deploymentProfileAllowsProduction } from './mcp/deployment-profile.js';
 import { readMcpV2Config } from './mcp/operation-runtime.js';
 import { readMcpMediaConfig } from './mcp/media-config.js';
 import { readMcpCatalogMediaUpdateConfig, readMcpCatalogMediaCreateConfig } from './mcp/catalog-media-config.js';
@@ -204,5 +204,10 @@ export function readConfig(env = process.env) {
   const mcpMedia = readMcpMediaConfig(env, { production, mcpEnabled, mcpV2, shopMode, sellerQuickLogin, dbPath });
   const mcpCatalogMediaUpdate = readMcpCatalogMediaUpdateConfig(env, { production, mcpEnabled, mcpV2, mcpMedia, shopMode, sellerQuickLogin });
   const mcpCatalogMediaCreate = readMcpCatalogMediaCreateConfig(env, { production, mcpEnabled, mcpV2, mcpMedia, shopMode, sellerQuickLogin });
-  return { mcpV2, mcpMedia, mcpCatalogMediaUpdate, mcpCatalogMediaCreate, production, username, password, dbPath, databaseUrl, publicOrigin, sellerOrigin, appRevision, integrationKeys, whatsappQr, ai, mcpEnabled, mcpRedirectUris, mcpBrowserOrigins, platform: readPlatformConfig(env, integrationKeys), port, trustProxy, shopMode, sellerQuickLogin, demoRevision: readDemoRevision(env) };
+  const finishFlag = env.MCP_V2_FINISH_ENABLED ?? '0';
+  if (!['0','1'].includes(finishFlag) || finishFlag === '1' && (mcpV2.enabled !== true || production && !deploymentProfileAllowsProduction(mcpV2.profile))) {
+    throw new Error('MCP_V2_FINISH_ENABLED requires enabled v2 and the reviewed full production profile.');
+  }
+  const mcpFinish = Object.freeze({enabled:finishFlag === '1'});
+  return { mcpFinish, mcpV2, mcpMedia, mcpCatalogMediaUpdate, mcpCatalogMediaCreate, production, username, password, dbPath, databaseUrl, publicOrigin, sellerOrigin, appRevision, integrationKeys, whatsappQr, ai, mcpEnabled, mcpRedirectUris, mcpBrowserOrigins, platform: readPlatformConfig(env, integrationKeys), port, trustProxy, shopMode, sellerQuickLogin, demoRevision: readDemoRevision(env) };
 }

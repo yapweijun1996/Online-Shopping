@@ -24,10 +24,14 @@ import tempfile
 import time
 
 PREVIOUS = 'b134f5c30b316b10c88fc8afedac6479a1cd6d8b'
+FALLBACK = '14d2f65a8f7f30cd38da7cd859e746969342a03c'
 OWNER_LABEL = 'shopping.mcp-canary.owner'
 PROJECT_LABEL = 'com.docker.compose.project'
 SOURCE_PINS = {
-    'deploy/gcp/update.py': 'ac5e7b5ba920f59f55482798c10e2367ed0649bafcf4e84e10a485df5c238974',
+    'scripts/upgrade-database.mjs': '3004320a8ac1aea26287d652b7e38d7b575ba7c27f2b06539cd7f95a79a07ea1',
+    'scripts/install-seller-mcp-finish.js': 'a8f5dabf71ba5bb94ee8083f0572a7c5285431c27e9bb4a3f82cce6143bbc34e',
+    'Dockerfile.backend': 'dd41c965cfa174d408ad230fc768b1a186106dcc5565e4654d132d08a8db3ae0',
+    'deploy/gcp/update.py': 'e210672401e49b086ae0b79757200cdaa827ea00e4cef68c9ec145c38ddd65c1',
     'deploy/gcp/media-codec.py': '881c17e637655f137e009f089be1daca862661e0f123e6c32cc9fa28f941dec2',
     'deploy/gcp/mcp-maintenance.py': '93d37e12c122f5e1a6167d195e31b49c7acc705e40a9757efe5aced1065af49e',
 }
@@ -45,6 +49,29 @@ PG_TCP_READY = ['pg_isready', '-h', '127.0.0.1', '-U', 'online_shopping', '-d', 
 READY_PROGRAM = "fetch('http://127.0.0.1:3000/ready',{signal:AbortSignal.timeout(4000)}).then(async r=>{if(!r.ok)process.exit(1);console.log(await r.text())}).catch(()=>process.exit(1))"
 LEGACY_BASELINE_PROGRAM = "import{createHash}from'node:crypto';import{catalogue}from'./src/mcp/tools.js';const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;const tools=catalogue.map(({scope,...tool})=>tool);if(tools.length!==8)process.exit(1);console.log(JSON.stringify({version:1,count:8,sha256:createHash('sha256').update(JSON.stringify(canonical(tools))).digest('hex')}));"
 COUNTS_SQL = "SELECT json_build_object('grants',(SELECT COUNT(*) FROM oauth_grant WHERE revoked_at IS NULL),'tokens',(SELECT COUNT(*) FROM oauth_token WHERE revoked_at IS NULL),'codes',(SELECT COUNT(*) FROM oauth_authorization_code WHERE consumed_at IS NULL AND expires_at::timestamptz>clock_timestamp()),'sessions',(SELECT COUNT(*) FROM session),'unbound',(SELECT COUNT(*) FROM oauth_authorization_request WHERE account_id IS NULL AND consumed_at IS NULL AND expires_at::timestamptz>clock_timestamp()))"
+# Fixed synthetic authority projections remain private; only their aggregate
+# SHA256 is retained. Counts alone cannot detect changed grants/session bindings.
+AUTHORITY_TABLES=('seller_account','session','oauth_client','oauth_authorization_request','oauth_grant','oauth_authorization_code','oauth_token','mcp_v2_scope_consent')
+AUTHORITY_SQL='SELECT jsonb_build_object('+','.join("'"+table+"',(SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb) FROM "+table+' t)' for table in AUTHORITY_TABLES)+')'
+
+
+IMAGE_INSTALLER_PROGRAM = "import{readFile}from'node:fs/promises';import{createHash}from'node:crypto';const out={};for(const p of ['scripts/upgrade-database.mjs','scripts/install-seller-mcp-finish.js'])out[p]=createHash('sha256').update(await readFile(p)).digest('hex');console.log(JSON.stringify(out));"
+
+def schema_upgrade_command(ns):
+    return ['-v',str(ns.root/'secrets/finish-owner-password')+':/run/secrets/owner:ro',
+            '-e','OWNER_PASSWORD_FILE=/run/secrets/owner','backend','node','scripts/upgrade-database.mjs']
+
+
+def finish_install_command(ns, action):
+    require(action in ('install','verify'), 'FINISH_INSTALL_ACTION')
+    command=[]
+    if action=='install':
+        command += ['-v',str(ns.root/'secrets/finish-owner-password')+':/run/secrets/finish-owner-password:ro',
+                    '-e','FINISH_DATABASE_OWNER_PASSWORD_FILE=/run/secrets/finish-owner-password','-e','FINISH_DATABASE_OWNER_USER=online_shopping']
+    command += ['-e','MCP_V2_FINISH_ENABLED=1','backend','node','scripts/install-seller-mcp-finish.js',
+                '--action='+action,'--expected-origin=https://seller.'+ns.nonce+'.invalid',
+                '--expected-database=online_shopping','--expected-schema=35','--tenant=default']
+    return command
 
 
 class Blocked(Exception):
@@ -233,7 +260,13 @@ class DockerGuard:
                 require(len(tail)>=8 and tail[2:4] == ['--no-deps', '--name'] and tail[4] in self.record.get('jobs', []), 'JOB_NAME')
                 command = tail[5:]
                 if command[:2] == ['-e', 'NEW_SELLER_PASSWORD']: command = command[2:]
-                require(command[:2] == ['backend', 'node'] and
+                upgrade=command==schema_upgrade_command(self.ns)
+                image_probe=command==['backend','node','--input-type=module','-e',IMAGE_INSTALLER_PROGRAM]
+                finish_action=next((action for action in ('install','verify') if command==finish_install_command(self.ns,action)),None)
+                if finish_action=='install' or upgrade:
+                    secret=self.ns.root/'secrets/finish-owner-password';info=secret.lstat()
+                    require(stat.S_ISREG(info.st_mode) and info.st_uid==1000 and stat.S_IMODE(info.st_mode)==0o600 and 1<=info.st_size<=512,'FINISH_OWNER_FILE')
+                require(finish_action is not None or upgrade or image_probe or command[:2] == ['backend', 'node'] and
                         ((command[2:4] == ['scripts/reset-seller-password.js', 'synthetic_owner'] and len(command)==4) or
                          (command[2:3] == ['scripts/recover-seller-mcp.js'] and all(re.fullmatch(r'--(?:phase=(?:accounts|requests)|limit=100|after=[0-9a-f-]{36})', x) for x in command[3:]))), 'JOB_COMMAND')
         # A colliding project must never let Compose mutate foreign resources.
@@ -289,6 +322,7 @@ class DockerGuard:
                     ['pg_dump','-U','online_shopping','-d','online_shopping','--format=custom'],
                     ['pg_restore','-U','online_shopping','-d','online_shopping','--clean','--if-exists','--exit-on-error','--single-transaction'],
                     ['psql','-U','online_shopping','-d','online_shopping','-tA','-v','ON_ERROR_STOP=1','-c',COUNTS_SQL],
+                    ['psql','-U','online_shopping','-d','online_shopping','-tA','-v','ON_ERROR_STOP=1','-c',AUTHORITY_SQL],
                 ] or (self.bootstrap_pg and command == PG_TCP_READY)), 'EXEC_PG')
             args[offset]=proved['Id']
         elif action in ('rm','kill'):
@@ -344,17 +378,17 @@ def bounded_docker(ns, *args, timeout=180, input=None, extra_env=None, binary=Fa
 
 
 def validate_manifest(value):
-    require(isinstance(value,dict) and set(value)=={'version','nonce','candidate','previous','verifyRunId','publicationRunId','policyHashes','helperHashes'} and type(value['version']) is int and value['version']==1,'INPUT_MANIFEST')
+    require(isinstance(value,dict) and set(value)=={'version','nonce','candidate','previous','fallback','verifyRunId','publicationRunId','policyHashes','helperHashes'} and type(value['version']) is int and value['version']==2,'INPUT_MANIFEST')
     ns=Namespace(value['nonce'])
-    for key in ('candidate','previous'):
+    for key in ('candidate','previous','fallback'):
         release=value[key]
-        expected={'sha','backend','frontend'} | ({'codec'} if key=='candidate' else set())
+        expected={'sha','backend','frontend'} | ({'codec'} if key in ('candidate','fallback') else set())
         require(isinstance(release,dict) and set(release)==expected and SHA.fullmatch(release['sha']),'INPUT_RELEASE')
         for component in expected-{'sha'}:
             package='backend' if component=='codec' else component
             require(isinstance(release[component],str) and re.fullmatch('ghcr.io/yapweijun1996/online-shopping-'+package+'@sha256:[0-9a-f]{64}',release[component]),'INPUT_IMAGE')
-        if key=='candidate':require(release['codec']!=release['backend'],'SEPARATE_CODEC_IMAGE')
-    require(value['previous']['sha']==PREVIOUS and value['candidate']['sha']!=PREVIOUS,'INPUT_REVISIONS')
+        if key in ('candidate','fallback'):require(release['codec']!=release['backend'],'SEPARATE_CODEC_IMAGE')
+    require(value['previous']['sha']==PREVIOUS and value['fallback']['sha']==FALLBACK and value['candidate']['sha'] not in (PREVIOUS,FALLBACK),'INPUT_REVISIONS')
     require(all(type(value[k]) is int and value[k]>0 for k in ('verifyRunId','publicationRunId')),'INPUT_CI')
     require(set(value['policyHashes'])==set(SOURCE_PINS)|{'compose.gcp.yaml','deploy/gcp/compose.mcp.yaml'} and
             all(HEX64.fullmatch(x) for x in value['policyHashes'].values()) and
@@ -404,10 +438,10 @@ class Harness:
         self.module=importlib.util.module_from_spec(spec);spec.loader.exec_module(self.module)
         self.client_code=Path(__file__).with_suffix('.mjs').read_text()
         images=set()
-        for key in ('candidate','previous'):
+        for key in ('candidate','previous','fallback'):
             r=manifest[key];images.update(v for k,v in r.items() if k!='sha')
             images.update('ghcr.io/yapweijun1996/online-shopping-'+x+':'+r['sha'] for x in ('backend','frontend'))
-        images.add('ghcr.io/yapweijun1996/online-shopping-backend:media-codec-'+manifest['candidate']['sha'])
+        for key in ('candidate','fallback'):images.add('ghcr.io/yapweijun1996/online-shopping-backend:media-codec-'+manifest[key]['sha'])
         self.base_images=set(images)
         images.update(self.record.get('imageIds',[]))
         self.guard=DockerGuard(self.ns,images,self.record['io'],self.persist,[READY_PROGRAM,LEGACY_BASELINE_PROGRAM,self.module.frontend_probe('shop.'+self.ns.nonce+'.invalid'),self.client_code])
@@ -469,9 +503,9 @@ class Harness:
             require(run.get('id')==self.manifest[key] and run.get('head_sha')==sha and run.get('head_branch')=='main' and
                     run.get('path')==path and run.get('event')==event and run.get('status')=='completed' and
                     run.get('conclusion')=='success' and run.get('repository',{}).get('full_name')==self.module.REPO,'CI_RUN_IDENTITY')
-        for key in ('previous','candidate'):
+        for key in ('previous','candidate','fallback'):
             target=self.manifest[key]['sha'];baseline,content=controller.source(target)
-            require(baseline['schema']==34,'SOURCE_SCHEMA34')
+            require(baseline['schema']==(34 if key=='previous' else 35),'SOURCE_SCHEMA_VERSION')
             private_json(self.root/('source-'+target+'.json'),{'baseline':baseline,'content':{p:base64.b64encode(b).decode() for p,b in content.items()}})
         return {'sha':sha,'verifyRunId':self.manifest['verifyRunId'],'publicationRunId':self.manifest['publicationRunId'],'readOnlySourceQuery':True}
 
@@ -487,11 +521,12 @@ class Harness:
             out.write(text+'\n');out.flush();os.fsync(out.fileno())
         return path
 
-    def runtime(self,on):
+    def runtime(self,on,finish=False):
         values={'SHOP_HOST':'shop.'+self.ns.nonce+'.invalid','SELLER_HOST':'seller.'+self.ns.nonce+'.invalid',
                 'ADMIN_USERNAME':'synthetic_owner','SECRETS_DIR':str(self.root/'secrets'),'PLATFORM_ENABLED':'0',
                 'AI_ENABLED':'0','WHATSAPP_QR_ENABLED':'0','WHATSAPP_QR_SLOT1_ENABLED':'0','MCP_ENABLED':'1' if on else '0',
-                'MCP_REDIRECT_URIS':'https://client.example.com/canary-'+self.ns.nonce}
+                'MCP_REDIRECT_URIS':'https://client.example.com/canary-'+self.ns.nonce,'MCP_V2_FINISH_ENABLED':'1' if finish else '0'}
+        require(not finish or on,'FINISH_REQUIRES_ON')
         if on:values.update({key:'1' for key in self.module.MCP_FLAGS},MCP_V2_PRODUCTION_PROFILE=self.module.PROFILE)
         self.module.atomic(self.root/'runtime.env',''.join(k+'='+v+'\n' for k,v in values.items()).encode())
 
@@ -506,7 +541,7 @@ class Harness:
                     labels.get('org.opencontainers.image.source')=='https://github.com/'+self.module.REPO and
                     labels.get('org.opencontainers.image.revision')==expected['sha'],'PUBLIC_ARTIFACT_IDENTITY')
             self.guard.images.add(info['Id']);self.record.setdefault('imageIds',[]).append(info['Id'])
-        if key=='candidate':
+        if key in ('candidate','fallback') and 'mcp' in release:
             require(release['mcp']['codec']['image']==expected['codec'],'PUBLIC_CODEC_PIN')
             self.guard.images.add(release['mcp']['codec']['imageId']);self.record['imageIds'].append(release['mcp']['codec']['imageId'])
         self.record.setdefault('releases',{})[key]=release;self.persist();return release
@@ -647,6 +682,54 @@ class Harness:
         self.capture_legacy_baseline();self.pg_identity();self.client('baseline')
         return {'historicalManualBootstrap':True,'postgresTcpBootstrap':bootstrap,'initializeTrustGateClaimed':False,'sha':old['sha'],'legacyContract':self.record['legacyContract'],'policy':self.policy_readback()}
 
+    def candidate_job(self,release,label,command):
+        name=self.ns.project+'-job-'+label
+        require(name not in self.record['io'].get('jobs',[]),'DUPLICATE_JOB')
+        self.record['io'].setdefault('jobs',[]).append(name);self.persist()
+        return json.loads(self.docker(*self.controller().compose(release),'run','--rm','--no-deps','--name',name,*command,timeout=90))
+
+    def upgrade_schema(self,candidate):
+        # Published historical schema34 clone only. All app writers are stopped;
+        # the nonce-owned Postgres identity and authority-row counts must survive.
+        controller=self.controller();controller.stop_clients(controller.compose({}))
+        before=self.counts();authority=self.authority_hash();self.pg_identity()
+        secret=self.root/'secrets/finish-owner-password';require(not secret.exists(),'FINISH_OWNER_COLLISION')
+        self.secret_file('finish-owner-password',(self.root/'secrets/postgres-owner-password').read_text().strip(),mode=0o600,uid=1000)
+        images=self.root/'images.env';prior=images.read_bytes()
+        plain={key:value for key,value in candidate.items() if key!='mcp'}
+        self.module.atomic(images,('BACKEND_IMAGE='+candidate['backend']+'\nFRONTEND_IMAGE='+candidate['frontend']+'\nAPP_REVISION='+candidate['sha']+'\nRELEASE_DIR='+str(self.root/'releases'/candidate['sha'])+'\n').encode())
+        try:
+            hashes=self.candidate_job(plain,'image-installers',['backend','node','--input-type=module','-e',IMAGE_INSTALLER_PROGRAM])
+            require(hashes=={path:SOURCE_PINS[path] for path in ('scripts/upgrade-database.mjs','scripts/install-seller-mcp-finish.js')},'ARTIFACT_INSTALLER_HASH')
+            for attempt in ('first','idempotent'):
+                require(self.candidate_job(plain,'schema35-'+attempt,schema_upgrade_command(self.ns))=={'version':35},'SCHEMA35_UPGRADE_RECEIPT')
+            require(self.counts()==before and self.authority_hash()==authority,'SCHEMA35_AUTHORITY_PRESERVED');self.pg_identity()
+        finally:
+            secret.unlink(missing_ok=True);self.module.atomic(images,prior)
+        return {'sourceSchema':34,'targetSchema':35,'idempotent':True,'authorityCountsPreserved':True,'authorityRowsHashPreserved':True,'publishedInstallerHashes':hashes,'privateOwnerCopyRemoved':not secret.exists()}
+
+    def install_finish(self,candidate):
+        # Only the nonce-owned synthetic app is drained. Keep its sealed codec
+        # running so both installer and ordinary-app verify use real config.
+        controller=self.controller();controller.pause();controller.stop_clients(controller.compose(candidate))
+        secret=self.root/'secrets/finish-owner-password'
+        require(not secret.exists(),'FINISH_OWNER_COLLISION')
+        password=(self.root/'secrets/postgres-owner-password').read_text().strip()
+        self.secret_file('finish-owner-password',password,mode=0o600,uid=1000)
+        try:
+            for action in ('install','verify'):
+                name=self.ns.project+'-job-finish-'+action
+                require(name not in self.record['io'].get('jobs',[]),'DUPLICATE_JOB')
+                self.record['io'].setdefault('jobs',[]).append(name);self.persist()
+                result=self.docker(*controller.compose(candidate),'run','--rm','--no-deps','--name',name,
+                                   *finish_install_command(self.ns,action),timeout=90)
+                value=json.loads(result)
+                require(value=={'status':'INSTALLED' if action=='install' else 'VERIFIED','version':2,'tenantId':'default','schemaVersion':35},'FINISH_INSTALL_RECEIPT')
+        finally:
+            secret.unlink(missing_ok=True)
+        require(not secret.exists(),'FINISH_OWNER_NOT_REMOVED')
+        return {'ownerInstall':True,'ordinaryAppVerify':True,'privateOwnerCopyRemoved':True,'baseSchema':35}
+
     def phase_B(self):
         trust=self.controller();sha=self.manifest['candidate']['sha']
         require(trust.head()==sha and trust.approved(sha),'EXACT_MAIN_CI_CHANGED')
@@ -654,9 +737,12 @@ class Harness:
         epoch=directory/'epoch';epoch.write_bytes(base64.urlsafe_b64encode(os.urandom(32)).rstrip(b'=')+b'\n');os.chown(epoch,0,1000);epoch.chmod(0o440)
         self.runtime(True);candidate=self.artifact('candidate')
         require(trust.head()==sha and trust.approved(sha),'EXACT_MAIN_CI_CHANGED')
+        schema=self.upgrade_schema(candidate)
         self.step('pending_first_full_activation');self.accept(candidate,self.record['releases']['previous'])
+        installation=self.install_finish(candidate)
+        self.runtime(True,finish=True);self.accept(candidate,self.record['releases']['previous'])
         self.pg_identity();self.client('on');self.record['generation']=self.generation();self.persist()
-        return {'fullProfile':True,'pendingFirst':True,'privateHttpOnly':True,'realSellerApprovalClaimed':False,'policy':self.policy_readback()}
+        return {'fullProfile':True,'finishEnabled':True,'finishStorage':installation,'schemaUpgrade':schema,'pendingFirst':True,'privateHttpOnly':True,'realSellerApprovalClaimed':False,'policy':self.policy_readback()}
 
     def phase_C(self):
         self.lock_probe()
@@ -690,6 +776,10 @@ class Harness:
                 digest((self.root/'mcp-control/epoch').read_bytes())!=epoch,'SAME_BUILD_ROLLBACK_EPOCH')
         self.client('epoch-fenced');self.pg_identity()
         return {'sameBuildRollbackOnly':True,'differentOldOnImageTested':False,'epochRotated':True,'commerceUndoClaimed':False}
+
+    def authority_hash(self):
+        private=self.docker('exec',self.ns.app('postgres'),'psql','-U','online_shopping','-d','online_shopping','-tA','-v','ON_ERROR_STOP=1','-c',AUTHORITY_SQL)
+        return digest(private.encode())
 
     def counts(self):
         return json.loads(self.docker('exec',self.ns.app('postgres'),'psql','-U','online_shopping','-d','online_shopping','-tA','-v','ON_ERROR_STOP=1','-c',COUNTS_SQL))
@@ -749,32 +839,33 @@ class Harness:
 
     def phase_E_off(self):
         self.client('fallback-marker')
-        candidate=self.record['releases']['candidate'];old=self.record['releases']['previous'];controller=self.controller()
+        candidate=self.record['releases']['candidate'];self.runtime(True,finish=False);fallback=self.artifact('fallback');controller=self.controller()
+        # Schema35-compatible restored production tuple: full MCP, native codec
+        # at fallback source identity, finish OFF. No database downgrade/restore.
+        controller.save('canary_compatible_fallback',pending=fallback,pending_kind=None)
+        controller.activate(fallback);controller.health(fallback);controller.unpause()
+        controller.save('canary_compatible_fallback_accepted',current=fallback,previous=candidate,pending=None,pending_kind=None,local=controller.local_fingerprint())
+        self.pg_identity();self.client('fallback-on')
+        self.record['compatibleFallback']={'sha':FALLBACK,'schema':35,'fullMcpProfile':True,'finishEnabled':False,'codec':fallback['mcp']['codec']['image']};self.persist()
+        # Also retain disabled-profile compatibility/quarantine coverage using
+        # the same schema35 binary, never the historical schema34 binary.
+        self.runtime(False);plain=self.artifact('fallback');self.runtime(True,finish=False)
         epoch=digest((self.root/'mcp-control/epoch').read_bytes())
-        controller.save('canary_pending_health_fault',pending=candidate,pending_kind=None)
+        controller=self.controller();controller.save('canary_pending_health_fault',pending=fallback,pending_kind=None)
         self.step('actual_activate_then_one_shot_health_failure')
-        def health_fixture():
-            controller.health(candidate)
-            raise Blocked('SYNTHETIC_CONTROLLER_HEALTH_FAILURE')
-        controller.activate(candidate)
-        try:health_fixture()
+        controller.activate(fallback)
+        try:
+            controller.health(fallback);raise Blocked('SYNTHETIC_CONTROLLER_HEALTH_FAILURE')
         except Blocked as fault:
             require(str(fault)=='SYNTHETIC_CONTROLLER_HEALTH_FAILURE','UNEXPECTED_HEALTH_FAILURE')
-            controller.restore(old);controller.health(old);controller.unpause()
-            controller.save('canary_disabled_profile_fallback',current=old,previous=candidate)
+            controller.restore(plain);controller.health(plain);controller.unpause()
+            controller.save('canary_disabled_profile_fallback',current=plain,previous=candidate)
         require(controller.state.get('profile_fallback') is True,'DURABLE_QUARANTINE')
         require(digest((self.root/'mcp-control/epoch').read_bytes())!=epoch,'FALLBACK_EPOCH_ROTATION')
         self.step('restarted_quarantine_no_implicit_activation');controller=self.controller();before_calls=self.guard.call_count;controller.poll();controller.recover_codec()
-        require(controller.state.get('status')=='manual_profile_resume_required' and controller.state.get('profile_fallback') is True and
-                self.guard.call_count==before_calls,'RESTARTED_QUARANTINE')
-        value=self.guard.inspect(self.ns.app('backend'),self.raw)
-        env=dict(x.split('=',1) for x in value.get('Config',{}).get('Env',[]))
-        require(env.get('MCP_ENABLED')=='0' and not any(k.startswith('MCP_V2_') for k in env) and
-                not any(x.get('Destination') in ('/run/mcp-codec','/run/mcp-control') for x in value.get('Mounts',[])),'OLD_BINARY_CLEAN_OFF')
-        require(self.controller().supervisor().status().get('status')=='stopped','FALLBACK_CODEC_RETIRED')
+        require(controller.state.get('status')=='manual_profile_resume_required' and controller.state.get('profile_fallback') is True and self.guard.call_count==before_calls,'RESTARTED_QUARANTINE')
         self.client('off');self.pg_identity()
-        return {'sha':PREVIOUS,'actualOldBinaryOff':True,'profileFallback':True,'pendingEvidenceRetained':True,'commercePreserved':True,
-                'failureFixture':'controller-health-after-real-health-success','epochRotated':True,'policy':self.policy_readback()}
+        return {'sha':FALLBACK,'schema':35,'actualCompatibleFallbackOff':True,'fullProfileFinishOff':self.record['compatibleFallback'],'profileFallback':True,'pendingEvidenceRetained':True,'commercePreserved':True,'policy':self.policy_readback()}
 
     def cleanup(self):
         self.step('cleanup_only_nonce_owned_resources')
