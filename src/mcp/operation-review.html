@@ -6,43 +6,63 @@
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'">
   <title>Review seller operation</title>
+  <link rel="stylesheet" href="operation-review-tokens.css">
   <link rel="stylesheet" href="operation-review.css">
   <script src="operation-review.js" defer></script>
 </head>
 <body>
   <main>
-    <p class="eyebrow">SELLER APPROVAL</p>
-    <h1>Review this proposed change</h1>
-    <p>This change was prepared by a connected app. Check the entire proposal before choosing an action.</p>
-    <p id="status" role="status" aria-live="polite">Loading the proposal…</p>
-    <section id="review" hidden aria-labelledby="proposal-title">
-      <dl>
+    <header>
+      <p class="eyebrow">SELLER STUDIO · CONNECTED APP REQUEST</p>
+      <h1 id="operation-heading">Review this proposed change</h1>
+      <p class="intro">Check what the connected app is asking to change. Nothing is applied by this review page.</p>
+      <p id="status" role="status" aria-live="polite">Loading the proposal…</p>
+    </header>
+    <section id="review" hidden aria-label="Operation review">
+      <dl class="identity">
         <div><dt>Shop</dt><dd id="shop"></dd></div>
         <div><dt>Seller account</dt><dd id="account"></dd></div>
         <div><dt>Connected app (unverified name)</dt><dd id="client"></dd></div>
-        <div><dt>Client ID</dt><dd id="client-id"></dd></div>
-        <div><dt>Operation</dt><dd id="tool"></dd></div>
-        <div><dt>Target</dt><dd id="target"></dd></div>
-        <div><dt>Risk</dt><dd id="risk"></dd></div>
+        <div><dt>Review status</dt><dd id="pending-state"></dd></div>
         <div><dt>Expires (UTC)</dt><dd id="expires"></dd></div>
-        <div><dt>Preview fingerprint</dt><dd id="fingerprint"></dd></div>
       </dl>
-      <h2 id="proposal-title">Complete proposal</h2>
-      <p>All text below is data supplied by the shop or connected app.</p>
-      <pre id="proposal" tabindex="0"></pre>
+      <section id="business-summary" hidden aria-labelledby="summary-title">
+        <h2 id="summary-title">Proposed catalog change</h2>
+        <p class="muted">A readable summary, not a replacement for the complete proposal. Review all affected products, image roles and technical details before deciding.</p>
+        <div id="summary-fields"></div>
+      </section>
+      <details id="technical-details">
+        <summary>Complete proposal &amp; technical details</summary>
+        <p>All proposal text is data supplied by the shop or connected app. This is the full proposal, including fields not shown in the summary.</p>
+        <dl class="technical">
+          <div><dt>Approval policy</dt><dd id="risk"></dd></div>
+          <div><dt>Operation ID</dt><dd id="operation-id"></dd></div>
+          <div><dt>Client ID</dt><dd id="client-id"></dd></div>
+          <div><dt>Internal tool</dt><dd id="tool"></dd></div>
+          <div><dt>Target</dt><dd id="target"></dd></div>
+          <div><dt>Preview fingerprint</dt><dd id="fingerprint"></dd></div>
+        </dl>
+        <h2 id="proposal-title">Complete proposal</h2>
+        <pre id="proposal" tabindex="0" aria-labelledby="proposal-title"></pre>
+      </details>
       <section id="media-review" hidden aria-labelledby="media-title">
         <h2 id="media-title">Complete image changes</h2>
         <p>Review every before and after role and gallery position below. An identical byte hash may appear in several roles; each unique image is reviewed once.</p>
         <p id="media-progress" role="status"></p>
+        <p id="media-empty" class="notice" hidden>No images are included in this proposal. Review the complete before and after roles and galleries below.</p>
         <div id="media-effects"></div>
         <section id="media-viewer" aria-labelledby="media-view-title">
           <h3 id="media-view-title">Exact image</h3>
           <p id="media-image-details"></p>
-          <img id="media-image" alt="Protected image for the selected change">
+          <p id="media-image-status" role="status" aria-live="polite"></p>
+          <img id="media-image" alt="Protected image for the selected change" hidden>
+          <button id="media-image-retry" type="button" class="secondary" hidden>Retry image verification</button>
           <button id="media-image-ack" type="button" disabled>I reviewed this exact image</button>
         </section>
       </section>
       <form id="decision" method="post">
+        <h2>Your decision</h2>
+        <p class="notice">Approval only authorizes this exact proposal. The connected app must still commit it; approval does not apply the change.</p>
         <label id="media-warning" class="currency-acknowledgement" hidden><input id="media-ack" type="checkbox">I reviewed every exact image and the complete before and after roles and ordered galleries.</label>
         <div id="currency-warning" class="currency-warning" hidden role="group" aria-label="Company currency change">
           <strong>Company currency change</strong>
@@ -50,9 +70,10 @@
           <label class="currency-acknowledgement" for="currency-ack"><input id="currency-ack" type="checkbox">I understand that existing prices and historical orders will not be converted.</label>
         </div>
         <label for="password">Confirm your seller password</label>
-        <input id="password" type="password" autocomplete="current-password" required maxlength="256">
+        <input id="password" type="password" autocomplete="current-password" required maxlength="256" aria-describedby="password-help">
+        <p id="password-help" class="muted">Your password is required for either decision. It is sent only to Seller Studio, not the connected app.</p>
         <div class="actions">
-          <button id="approve" type="submit" name="decision" value="approve">Approve this change</button>
+          <button id="approve" type="submit" name="decision" value="approve">Approve proposal</button>
           <button type="submit" name="decision" value="reject" class="secondary">Reject this change</button>
         </div>
       </form>

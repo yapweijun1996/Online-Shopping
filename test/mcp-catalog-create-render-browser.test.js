@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import { buildMediaManifest,mediaAssetKey } from '../src/mcp/media-manifest.js';
 import { mediaHash } from '../src/mcp/media-storage.js';
 import { createWireInput,createWireIdentity,createWireBinding,createWireProposal } from './helpers/mcp-catalog-create-wire-fixture.js';
@@ -9,12 +10,14 @@ import { wireId } from './helpers/mcp-catalog-wire-fixture.js';
 test('SYNTHETIC transport CREATE renderer verifies null BEFORE/options/page ACK, not actual CREATE authorization',
  {skip:!process.env.QA_PLAYWRIGHT_MODULE,timeout:60000},async t=>{
  const assets=Object.fromEntries(await Promise.all(['html','js','css'].map(async extension=>[extension,await readFile(new URL('../src/mcp/operation-review.'+extension,import.meta.url))]))),png=await readFile(new URL('../public/shop/icons/icon-192.png',import.meta.url));
+ const styles={tokens:await readFile(new URL('../public/shop/tokens.css',import.meta.url))};
  let current,corrupt=false;const acknowledgements=[],approvals=[];
  const server=createServer(async(request,response)=>{
   const path=new URL(request.url,'http://localhost').pathname.replace(/^\/alpha(?=\/)/,'');
   const json=value=>{response.writeHead(200,{'Content-Type':'application/json'});response.end(JSON.stringify(value));};
   if(path==='/oauth/operation'){response.writeHead(200,{'Content-Type':'text/html'});response.end(assets.html);return;}
   if(/^\/oauth\/operation-review\.(js|css)$/.test(path)){const extension=path.endsWith('.js')?'js':'css';response.writeHead(200,{'Content-Type':extension==='js'?'text/javascript':'text/css'});response.end(assets[extension]);return;}
+  const style=/^\/oauth\/operation-review-(tokens)\.css$/.exec(path);if(style){response.writeHead(200,{'Content-Type':'text/css'});response.end(styles[style[1]]);return;}
   if(path==='/api/v1/seller/session'){json({csrfToken:'synthetic-csrf'});return;}
   if(path==='/api/v1/seller/mcp/operations/'+wireId(99)&&request.method==='GET'){
    const proposal=structuredClone(current.proposal);if(corrupt)proposal.reviewLabels.find(row=>row.before===null).after.name='Unbound current name';
@@ -39,16 +42,21 @@ test('SYNTHETIC transport CREATE renderer verifies null BEFORE/options/page ACK,
    for(const row of input.effects)for(const side of ['before','after'])if(row[side]){if(row.kind==='PRODUCT'&&row[side].mainAssetKey!==null)row[side].mainAssetKey=key;if(row.kind==='LISTING')row[side].galleryAssetKeys=row[side].galleryAssetKeys.map(()=>key);}}
   input.graphRevision=createWireBinding(input.effects,identity).revision;const manifest=buildMediaManifest(input),proposal=createWireProposal(manifest,identity);
   proposal.after.options=[{typeId:wireId(50),valueId:wireId(51)}];proposal.optionReview.after=[{typeId:wireId(50),valueId:wireId(51),typeName:'Colour',typeCode:'colour',valueLabel:'Blue',valueCode:'blue',typeActive:true,valueActive:true}];
+  Object.assign(proposal.after,{priceMinor:1299,currency:'MYR',stockQuantity:12,active:true,category:'Create category',description:'Create description'});
   current={manifest,proposal,items:[...manifest.pages.map(page=>({kind:'PAGE',itemKey:String(page.page_index),hash:page.page_hash,pageIndex:page.page_index,assetKey:null})),...manifest.assets.map(asset=>({kind:'ASSET',itemKey:asset.asset_key,hash:asset.byte_sha256,pageIndex:null,assetKey:asset.asset_key}))]};
   const context=await browser.newContext({viewport:{width,height:900}});t.after(()=>context.close());const page=await context.newPage(),errors=[],external=[];
   page.on('pageerror',error=>errors.push(error.message));await context.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():(external.push(route.request().url()),route.abort()));
   const ackStart=acknowledgements.length;await page.goto(origin+base+'/oauth/operation?operationId='+wireId(99));await page.waitForFunction(()=>document.querySelector('#media-effects').textContent.includes('Not yet created.'));
   const text=await page.locator('#media-effects').textContent();assert.match(text,/Not yet created\./);assert.match(text,/Options: Colour: Blue/);assert.ok(text.includes('<script>window.__DInjected=true</script>'));assert.ok(text.includes('\\u202e'));
   assert.equal(await page.evaluate(()=>window.__DInjected),undefined);assert.equal(await page.locator('#media-effects script').count(),0);assert.ok(acknowledgements.slice(ackStart).some(row=>row.kind==='PAGE'));
+  const summary=await page.locator('#summary-fields').textContent();for(const value of [fresh.labels.after.sku,'MYR 12.99','12','Create category','Create description','Colour','Blue'])assert.ok(summary.includes(value),value);
   assert.equal(await page.locator('#media-ack').isChecked(),false);
   if(existing){await page.waitForFunction(()=>!document.querySelector('#media-image-ack').disabled);await page.locator('#media-image-ack').click();}
-  else {assert.equal(await page.locator('#media-image-ack').isDisabled(),true);assert.equal(acknowledgements.slice(ackStart).some(row=>row.kind==='ASSET'),false);}
-  await page.waitForFunction(()=>!document.querySelector('#approve').disabled);const before=approvals.length;await page.locator('#password').fill('Synthetic-render-password');await page.locator('#approve').click();assert.equal(approvals.length,before);
+  else {assert.equal(await page.locator('#media-viewer').isVisible(),false);assert.equal(await page.locator('#media-empty').isVisible(),true);assert.match(await page.locator('#media-empty').textContent(),/No images/);assert.equal(acknowledgements.slice(ackStart).some(row=>row.kind==='ASSET'),false);}
+  if(process.env.QA_APPROVAL_SCREENSHOT_DIR){await mkdir(process.env.QA_APPROVAL_SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:join(process.env.QA_APPROVAL_SCREENSHOT_DIR,existing?'approval-create-exact-image-390.png':'approval-create-no-images-1280.png'),fullPage:true});}
+  await page.waitForFunction(()=>!document.querySelector('#approve').disabled);const before=approvals.length;
+  await page.locator('#media-ack').check();await page.locator('#approve').click();assert.equal(approvals.length,before);assert.equal(await page.locator('#password').evaluate(input=>input.validity.valueMissing),true);
+  await page.locator('#media-ack').uncheck();await page.locator('#password').fill('Synthetic-render-password');await page.locator('#approve').click();assert.equal(approvals.length,before);
   await page.locator('#media-ack').check();await page.locator('#approve').click();await page.locator('#decision').waitFor({state:'hidden'});assert.equal(approvals.length,before+1);assert.equal(approvals.at(-1).mediaReviewed,true);assert.equal(await page.locator('#password').inputValue(),'');assert.deepEqual(errors,[]);assert.deepEqual(external,[]);await context.close();
  }
  corrupt=true;const context=await browser.newContext();t.after(()=>context.close());const page=await context.newPage();await page.goto(origin+'/oauth/operation?operationId='+wireId(99));await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Image verification failed'));

@@ -22,8 +22,83 @@ const imageNode = document.querySelector('#media-image');
 const imageAck = document.querySelector('#media-image-ack');
 const reviewedImages = new Set();
 const currencyAck = document.querySelector('#currency-ack');
+const imageStatus = document.querySelector('#media-image-status');
+const imageRetry = document.querySelector('#media-image-retry');
+let retryImage = null;
+let expiryTimer = null;
 const visible = (value) => value.replace(/[\u061c\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/g,
   (character) => `\\u${character.codePointAt(0).toString(16).padStart(4, '0')}`);
+
+function summaryText(value) {
+  if (value === undefined) return 'Not provided';
+  if (value === null) return 'None';
+  return visible(typeof value === 'string' ? value || 'Empty' : JSON.stringify(value));
+}
+function catalogSummaryFields(row, optionReview) {
+  if (!row || typeof row !== 'object') return null;
+  let price = 'Not provided';
+  if (Number.isSafeInteger(row.priceMinor)) {
+    price = ['MYR', 'SGD'].includes(row.currency)
+      ? `${row.currency} ${(row.priceMinor / 100).toFixed(2)}`
+      : `${row.priceMinor} minor units (${typeof row.currency === 'string' && row.currency ? visible(row.currency) + '; scale not provided' : 'currency not provided'})`;
+  }
+  const options = optionReview ?? row.options;
+  const optionText = !Array.isArray(options) ? 'Not provided' : !options.length ? 'None'
+    : options.every(option => typeof option.typeName === 'string' && typeof option.valueLabel === 'string')
+      ? visible(options.map(option => `${option.typeName}: ${option.valueLabel}${option.typeActive === false || option.valueActive === false ? ' (inactive)' : ''}`).join('; '))
+      : `${options.length} selection(s); labels not provided — see complete proposal`;
+  const category = row.category && typeof row.category === 'object'
+    ? `${summaryText(row.category.label)} (${summaryText(row.category.code)})${row.category.active === false ? ' (inactive)' : ''}`
+    : summaryText(row.categoryCode ?? row.category);
+  return [
+    ['Name', summaryText(row.name)], ['SKU', summaryText(row.sku)], ['Price', price],
+    ['Stock', row.stockQuantity === null ? 'Unlimited' : summaryText(row.stockQuantity)],
+    ['Active', row.active === true ? 'Yes' : row.active === false ? 'No' : 'Not provided'],
+    ['Category', category], ['Description', summaryText(row.description)], ['Options', optionText],
+    ['Variant group', summaryText(row.variantGroup)], ['Variant label', summaryText(row.variantLabel)],
+  ];
+}
+function renderBusinessSummary(value) {
+  const titles = {
+    'catalog.preview_create': 'Review product creation',
+    'catalog.preview_update': 'Review product changes',
+    'company.preview_update': 'Review company changes',
+    'inventory.preview_adjustment': 'Review stock adjustment',
+    'orders.preview_decision': 'Review order decision',
+  };
+  const title = titles[value.toolName] || 'Review proposed seller operation';
+  document.querySelector('#operation-heading').textContent = title;
+  document.title = `${title} · Seller Studio`;
+  if (!['catalog.preview_create', 'catalog.preview_update'].includes(value.toolName)) return;
+  const proposal = value.proposal, root = document.querySelector('#summary-fields');
+  const products = Array.isArray(proposal.catalogReview?.products) ? proposal.catalogReview.products
+    : [{ before: proposal.before, after: proposal.after }];
+  root.replaceChildren();
+  for (const [index, product] of products.entries()) {
+    const before = catalogSummaryFields(product.before, proposal.optionReview?.before);
+    const after = catalogSummaryFields(product.after, proposal.optionReview?.after);
+    if (!after) continue;
+    const article = document.createElement('article'); article.className = 'summary-product';
+    if (products.length > 1) {
+      const heading = document.createElement('h3');
+      heading.textContent = `Affected product ${index + 1} · ${summaryText(product.after?.sku)}`; article.append(heading);
+    }
+    const grid = document.createElement('dl'); grid.className = `summary-grid${before ? ' has-before' : ''}`;
+    const append = (tag, text, className = '') => {
+      const node = document.createElement(tag); node.textContent = text; node.className = className; grid.append(node);
+    };
+    append('dt', 'Field', 'column-title');
+    if (before) append('dd', 'Before', 'column-title');
+    append('dd', before ? 'After' : 'New product', 'column-title');
+    for (const [fieldIndex, [label, text]] of after.entries()) {
+      append('dt', label);
+      if (before) append('dd', before[fieldIndex][1]);
+      append('dd', text, before && before[fieldIndex][1] !== text ? 'changed' : '');
+    }
+    article.append(grid); root.append(article);
+  }
+  document.querySelector('#business-summary').hidden = root.childElementCount === 0;
+}
 
 async function load() {
   const params = new URL(location.href).searchParams;
@@ -50,9 +125,12 @@ async function load() {
       typeof value.clientId !== 'string' ||
       typeof value.toolName !== 'string' || typeof value.resourceType !== 'string' ||
       !(value.resourceId === null || typeof value.resourceId === 'string') || !['LOW', 'MEDIUM', 'HIGH'].includes(value.risk) ||
-      typeof value.expiresAt !== 'string' || !value.proposal || typeof value.proposal !== 'object' || Array.isArray(value.proposal)) {
+      typeof value.expiresAt !== 'string' || !Number.isFinite(Date.parse(value.expiresAt)) ||
+      !value.proposal || typeof value.proposal !== 'object' || Array.isArray(value.proposal)) {
     throw new Error('Invalid proposal.');
   }
+  renderBusinessSummary(value);
+  document.querySelector('#operation-id').textContent = id;
   csrf = session.csrfToken;
   previewHash = value.previewHash;
   challenge = value.challenge;
@@ -72,6 +150,13 @@ async function load() {
   document.querySelector('#fingerprint').textContent = value.previewHash;
   document.querySelector('#proposal').textContent = visible(JSON.stringify(value.proposal, null, 2));
   reviewSection.hidden = false;
+  const expiry = Date.parse(value.expiresAt) - Date.now();
+  const expire = () => { document.querySelector('#pending-state').textContent = 'Proposal expired. Ask the connected app for a new preview.'; };
+  if (expiry <= 0) expire();
+  else {
+    document.querySelector('#pending-state').textContent = 'Pending your decision — not applied';
+    expiryTimer = setTimeout(expire, Math.min(expiry, 2147483647));
+  }
   statusNode.textContent = 'Review the complete proposal, then explicitly approve or reject it.';
   if (mediaReview) {
     document.querySelector('#approve').disabled = true;
@@ -164,6 +249,9 @@ async function loadMedia(toolName, proposal, resourceId, resourceType, risk) {
   }
   if (catalog) renderCatalogMediaEffects(effects, proposal.reviewLabels, create ? proposal : null);
   else renderMediaEffects(effects, labels);
+  const empty = mediaReview.assetItems.length === 0;
+  document.querySelector('#media-viewer').hidden = empty;
+  document.querySelector('#media-empty').hidden = !empty;
   updateMediaProgress();
   if (mediaReview.assetItems.length) await showMediaImage(mediaReview.assetItems[0]);
 }
@@ -174,20 +262,40 @@ function updateMediaProgress() {
 }
 function releaseMediaImage() {
   if (imageJob) imageJob.abort(); imageJob = null;
-  imageNode.removeAttribute('src'); if (imageUrl) URL.revokeObjectURL(imageUrl); imageUrl = null; selectedImage = null; imageAck.disabled = true;
+  imageNode.hidden = true; imageNode.removeAttribute('src');
+  if (imageUrl) URL.revokeObjectURL(imageUrl); imageUrl = null;
+  selectedImage = null; imageAck.disabled = true;
+  document.querySelector('#media-image-details').textContent = '';
 }
 async function showMediaImage(item) {
-  releaseMediaImage(); imageAck.disabled = true;
+  releaseMediaImage();
+  retryImage = item; imageRetry.hidden = true;
+  imageStatus.textContent = 'Loading and verifying the exact image…';
   const job = new AbortController(); imageJob = job;
-  const packet = await receiveMedia(item, job.signal), asset = mediaReview.assets.get(item.assetKey);
-  if (job.signal.aborted) return;
-  if (!asset || packet.mime !== asset.mime || packet.bytes.byteLength !== asset.byte_length) throw new Error('Image type failed.');
-  imageUrl = URL.createObjectURL(new Blob([packet.bytes], { type: asset.mime })); imageNode.src = imageUrl;
-  await imageNode.decode();
-  if (job.signal.aborted) return;
-  document.querySelector('#media-image-details').textContent = `${asset.mime} · ${asset.byte_length} bytes · SHA256 ${item.hash}`;
-  selectedImage = { item, nonce: packet.nonce }; imageAck.disabled = reviewedImages.has(item.itemKey);
+  try {
+    const packet = await receiveMedia(item, job.signal), asset = mediaReview.assets.get(item.assetKey);
+    if (job.signal.aborted) return;
+    if (!asset || packet.mime !== asset.mime || packet.bytes.byteLength !== asset.byte_length) throw new Error('Image type failed.');
+    imageUrl = URL.createObjectURL(new Blob([packet.bytes], { type: asset.mime })); imageNode.src = imageUrl;
+    await imageNode.decode();
+    if (job.signal.aborted) return;
+    imageNode.hidden = false;
+    document.querySelector('#media-image-details').textContent = `${asset.mime} · ${asset.byte_length} bytes · SHA256 ${item.hash}`;
+    selectedImage = { item, nonce: packet.nonce }; imageAck.disabled = reviewedImages.has(item.itemKey);
+    imageStatus.textContent = reviewedImages.has(item.itemKey)
+      ? 'Exact image verified and already reviewed.' : 'Exact image verified. Inspect it, then confirm below.';
+    if (statusNode.textContent.startsWith('Image verification failed')) {
+      statusNode.textContent = 'Review the complete proposal, then explicitly approve or reject it.';
+    }
+  } catch {
+    if (job.signal.aborted) return;
+    releaseMediaImage();
+    imageStatus.textContent = 'Image verification failed. This image cannot be acknowledged. Retry to load and verify it again.';
+    statusNode.textContent = 'Image verification failed. Retry the image, reload this review or reject the proposal.';
+    imageRetry.hidden = false;
+  }
 }
+imageRetry.addEventListener('click', () => { if (retryImage) void showMediaImage(retryImage); });
 function renderMediaEffects(effects, labels) {
   const names = new Map();
   for (const label of labels) {
@@ -354,6 +462,7 @@ imageAck.addEventListener('click', async () => {
   const current = selectedImage; imageAck.disabled = true;
   try {
     await acknowledgeMedia(current.item, current.nonce); reviewedImages.add(current.item.itemKey); updateMediaProgress();
+    if (selectedImage === current) imageStatus.textContent = 'Exact image verified and reviewed.';
     const next = mediaReview.assetItems.find(item => !reviewedImages.has(item.itemKey)); if (next) await showMediaImage(next);
   } catch { statusNode.textContent = 'Image confirmation failed. Reload this review or reject the proposal.'; }
 });
@@ -386,6 +495,8 @@ form.addEventListener('submit', async (event) => {
     const result = await response.json();
     if (result.operationId !== id || result.status !== (decision === 'approve' ? 'APPROVED' : 'REJECTED')) throw new Error('Invalid result.');
     csrf = null; previewHash = null; challenge = null; form.hidden = true; releaseMediaImage();
+    clearTimeout(expiryTimer);
+    document.querySelector('#pending-state').textContent = decision === 'approve' ? 'Approved — app commit still required' : 'Rejected — not applied';
     statusNode.textContent = decision === 'approve' ? 'Approved. The connected app must still commit this change.' : 'Rejected. The change was not applied.';
   } catch {
     statusNode.textContent = 'The decision could not be verified. Reload the proposal and try again.';

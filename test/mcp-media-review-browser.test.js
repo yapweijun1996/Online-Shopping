@@ -47,7 +47,9 @@ for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: real HTTPS Chrom
     await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Image verification failed'));
     assert.equal(await page.locator('#approve').isDisabled(), true); assert.equal(await page.locator('#media-image-ack').isDisabled(), true);
     assert.equal(Number((await f.store.get("SELECT COUNT(*) n FROM mcp_v2_media_delivery WHERE operation_id=? AND kind='ASSET' AND ack_at IS NOT NULL", f.operation.operationId)).n), 0);
-    await page.unroute('**/media/delivery', corruptImage); await page.reload();
+    assert.equal(await page.locator('#media-image').isVisible(), false);
+    await page.unroute('**/media/delivery', corruptImage);
+    await page.locator('#media-image-retry').click();
     await page.locator('#media-review').waitFor({ state: 'visible' });
     await page.waitForFunction(() => !document.querySelector('#media-image-ack').disabled);
     assert.equal(await page.locator('#approve').isDisabled(), true); assert.equal(await page.locator('#media-ack').isChecked(), false);
@@ -61,6 +63,21 @@ for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: real HTTPS Chrom
     assert.equal(await page.locator('#approve').isDisabled(), false);
     const repeated = page.locator('.media-reference').first(); await repeated.click();
     await page.waitForFunction(() => document.querySelector('#media-image').complete && document.querySelector('#media-image').naturalWidth > 0);
+    await page.evaluate(() => {
+      const decode = HTMLImageElement.prototype.decode;
+      HTMLImageElement.prototype.decode = function () {
+        HTMLImageElement.prototype.decode = decode;
+        return Promise.reject(new DOMException('Synthetic decoder failure', 'EncodingError'));
+      };
+    });
+    await page.locator('.media-reference').last().click();
+    assert.equal(await page.locator('#media-image').isVisible(), false);
+    assert.equal(await page.locator('#media-image-ack').isDisabled(), true);
+    await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Image verification failed'));
+    assert.equal(await page.locator('#media-image').isVisible(), false);
+    assert.equal(await page.locator('#media-image-ack').isDisabled(), true);
+    await page.locator('#media-image-retry').click();
+    await page.waitForFunction(() => document.querySelector('#media-image').naturalWidth > 0 && !document.querySelector('#media-image').hidden);
     assert.equal(await page.locator('#media-image-ack').isDisabled(), true);
     await page.locator('#password').fill(reviewPassword); await page.locator('#approve').click();
     assert.match(await page.locator('#status').textContent(), /check the image acknowledgment/);
