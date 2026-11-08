@@ -1,3 +1,4 @@
+import { assertProductDetailStorage } from './product-detail-schema.js';
 import { inventoryStorageReady } from './inventory-schema.js';
 import { readFile } from 'node:fs/promises';
 import { openPostgresStore } from './postgres-store.js';
@@ -22,6 +23,7 @@ export async function openPostgresDatabase(url, options) {
         version = await store.schemaVersion();
       }
       if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
+      await assertProductDetailStorage(store);
       if (!await inventoryStorageReady(store)) throw new Error('Incompatible inventory storage.');
     });
     return store;

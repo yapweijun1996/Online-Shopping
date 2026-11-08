@@ -301,6 +301,17 @@ body:has(.variant-dialog[open]){overflow:hidden}
 .product-description-section{margin-top:24px;padding:clamp(20px,3vw,36px);background:white;border:1px solid var(--ui-border);border-radius:16px}
 .product-description-section h2,.related-products h2{font-size:22px;margin:0 0 20px}
 .product-description-section .detail-specifications{max-width:650px}
+.rich-product-detail{display:grid;gap:20px;min-width:0;max-width:100%;line-height:1.65;overflow-wrap:anywhere}
+.rich-product-detail>h3,.rich-product-detail>p,.rich-product-detail>ul,.rich-product-detail>dl,.rich-product-detail>figure{margin:0}
+.rich-product-detail>h3{font-size:19px;color:var(--ui-ink)}
+.rich-product-detail>p,.rich-product-detail li{white-space:pre-wrap;color:var(--ui-muted)}
+.rich-product-detail>ul{padding-inline-start:24px}
+.rich-product-detail figure{min-width:0}
+.rich-product-detail img{display:block;max-width:100%;height:auto;margin-inline:auto}
+.rich-product-detail figcaption{font-size:14px;color:var(--ui-muted);padding-top:8px;text-align:center;white-space:pre-wrap}
+.rich-product-specs{display:grid;grid-template-columns:minmax(90px,1fr) minmax(0,2fr);gap:10px 16px;padding:16px;background:var(--ui-hover-surface);border-radius:8px}
+.rich-product-specs dt{color:var(--ui-muted)}
+.rich-product-specs dd{margin:0;white-space:pre-wrap}
 .description-heading{font-size:17px;margin:24px 0 10px;padding-top:20px;border-top:1px solid var(--ui-divider)}
 .related-products{margin-top:32px}
 .related-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}

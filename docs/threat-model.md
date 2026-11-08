@@ -594,25 +594,55 @@ At the owner’s explicit request, all valid client-requested scope checkboxes n
 
 The protocol accepts object-valued `params._meta` as transport metadata on requests, validates any progress token as a string or finite number, and ignores its contents before dispatch. It does not become tool arguments, authorization evidence or audit payload. Tool input schemas, unknown parameter rejection, authentication, scopes, body limits and operation approvals remain unchanged. Reference: https://modelcontextprotocol.io/specification/2025-06-18/schema#jsonrpcrequest . Synthetic tests reproduce rejection before the fix, including the five reported read-tool names, and verify valid calls after it. The owner screenshot contains no raw request; attribution of that specific `INVALID_ARGUMENT` failure to metadata remains unconfirmed.
 
-## Isolated one-click approval and execution development boundary (2026-11-08)
+## One-click approval and execution boundary (2026-11-08)
 
-Default-OFF `MCP_V2_FINISH_ENABLED` is rejected in production. In isolated mode,
-the seller review page can approve and invoke a trusted first-party engine
-capability under its seller session, CSRF and original live OAuth grant. It
-never mints a token or exposes the capability through an MCP tool. The existing
-engine retains full fresh approval, exact image evidence, consent, ownership,
-revision, CAS and audit enforcement. Each individual write is atomic; a batch
-may partially succeed. Jobs record progress only, never approval authority.
-Consumed upload bytes remain erased; post-commit verification reads the retained
-committed manifest/pins and freshly hashes the product's physical images, while
-pre-commit frame verification still requires BOUND stage bytes.
+Default-OFF `MCP_V2_FINISH_ENABLED` requires the complete trusted production MCP
+profile and explicit owner-installed optional storage. Production startup asserts
+source and actual structural manifests and app permissions; it performs no DDL.
+The authenticated seller explicitly approves exact reviewed content under the
+existing login session, Origin/CSRF, session-bound challenge, original live grant,
+consent and capability. Operation approval does not prompt for another password.
+Revision, exact PAGE/ASSET review, tenant, epoch, build, CAS and audit fences remain.
+The backend never mints a bearer token or exposes first-party authority as a tool.
 
-Jobs bind the original session, account, client/grant, tenant revision, epoch and
-build. A changed intent conflicts with its idempotency key; stale catalog
-revalidation makes a new proposal and never transfers old approval. Raw errors,
-passwords and proposal bodies are excluded from job events. The development
-extension has a per-account job cap, but production schema-manifest, retention,
-capacity, parent intent and independent security gates remain incomplete.
-Consequently this is **HOLD**, not production eligibility or a unified
-create/new-image/publish authorization. See [the implementation contract and
-explicit limitations](mcp-v2/ONE-CLICK-FINISH.md).
+Jobs record progress only. Individual writes are atomic and a batch may partially
+succeed. Resume reconciles committed receipts without reapplying commerce writes;
+read-back checks all affected product/listing metadata and freshly hashed image
+roles. Changed content cannot be reported as verified. A renewed seller session
+may inspect its own job, but cannot execute approval from the old session:
+revalidation creates a new proposal and requires renewed exact review and explicit
+approval. No old hash or approval is transferred. Bounded tenant cleanup and rate
+limits constrain resumable metadata. The unified parent binds new product input,
+exact native-decoded image bytes/order and publication in one immutable proposal;
+execution requires that parent's genuine seller approval.
+
+Code and isolated evidence do not prove production deployment or seller product
+changes. Final release needs integrated security/browser and published-artifact
+acceptance. See [the finish contract](mcp-v2/ONE-CLICK-FINISH.md) and
+[production installer/rollback gates](mcp-v2/FINISH-PRODUCTION-RELEASE.md).
+
+## Listing-owned rich product detail (schema 35)
+
+New first-party seller GET/PUT detail and staged-image POST/GET routes require the
+tenant's authenticated `catalog.write` capability; mutations require Origin/CSRF.
+The strict versioned block format permits inert text and listing-owned asset UUIDs,
+never arbitrary HTML, executable attributes, external image URLs or remote fetches.
+Short description, price, stock, order and AI provider boundaries are unchanged.
+
+Document CAS binds listing identity, persisted sequence and member IDs under the
+common store writer lock. Successful save commits selected stages and removes only
+explicitly deselected formerly committed assets. Ownership, bounded quotas, stage
+expiry and recorded byte hashes constrain image lifecycle. Uploads reuse existing
+512 KiB canonical PNG/JPEG/WebP validation and add bounded encoded dimensions;
+this is not full native pixel validation. Public access requires an active requested
+variant and a current committed document reference. Missing, foreign, expired and
+hash-mismatched assets fail closed; images carry nosniff and no-store.
+
+Protected catalog review does not yet include rich-detail media. Affected rich
+listings are denied during catalog prepare/revalidation and media-graph snapshots;
+main/gallery acknowledgments cannot authorize rich assets. No new MCP write scope
+or acknowledgment is added. Actual membership moves involving nonempty rich detail
+are rejected atomically rather than silently losing a shared document. Existing
+inventory/MCP extension manifests remain frozen while global schema becomes35.
+Operator deployment/restore must use matching binaries and schema recovery rules;
+see [product rich detail](PRODUCT_RICH_DETAIL.md) for contracts and limitations.

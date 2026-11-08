@@ -35,7 +35,7 @@ export async function resetDemo(store) {
       throw new ApiError(409, 'NOT_DEMO', 'Only a Demo shop can be reset.');
     }
     for (const table of ['inventory_movement', 'inventory_state', 'inventory_coverage', 'message_inbound', 'message_outbox', 'order_note', 'order_event', 'order_item', 'delivery', 'checkout_idempotency', 'shop_order',
-      'product_gallery_image', 'product_option', 'product_event', 'product', 'option_value', 'option_type', 'general_code']) await store.run(`DELETE FROM ${table}`);
+      'listing_detail_image', 'listing_detail', 'product_gallery_image', 'product_option', 'product_event', 'product', 'option_value', 'option_type', 'general_code']) await store.run(`DELETE FROM ${table}`);
     await store.run('UPDATE order_sequence SET value = 0 WHERE id = 1');
     await seedDemo(store);
     return { reset: true, products: catalog.length };
