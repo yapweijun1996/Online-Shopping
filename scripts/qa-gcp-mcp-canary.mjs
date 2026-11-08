@@ -128,7 +128,7 @@ async function query(sql, values = []) {
 async function business() {
   const rows = await query('SELECT availability_text FROM company_setting WHERE id=1');
   const counts = (await query('SELECT (SELECT COUNT(*) FROM product)::int AS products,(SELECT COUNT(*) FROM shop_order)::int AS orders'))[0];
-  need(counts.products === 0 && counts.orders === 0, 'SYNTHETIC_EMPTY_COMMERCE');
+  need(counts.products === (state.parentProductId ? 1 : 0) && counts.orders === 0, 'SYNTHETIC_EMPTY_COMMERCE');
   return { marker: rows[0].availability_text, ...counts };
 }
 
@@ -172,6 +172,7 @@ async function company({ pending = false, previewOnly = false, invalidChallenge 
 }
 
 async function full() {
+  need((await query('SELECT version::int AS version FROM schema_meta WHERE id=1'))[0].version === 35,'SCHEMA35_ON');
   need(process.env.MCP_V2_FINISH_ENABLED === '1', 'FINISH_RUNTIME_ON');
   const extensions=await query("SELECT (SELECT version FROM seller_mcp_finish_schema WHERE id=1)::int AS finish,(SELECT version FROM seller_mcp_create_draft_schema WHERE id=1)::int AS draft,has_table_privilege(current_user,'seller_mcp_create_draft_event','INSERT') AS draft_audit,has_table_privilege(current_user,'seller_mcp_finish','UPDATE') AS finish_dml,has_table_privilege(current_user,'seller_mcp_finish_schema','UPDATE') OR has_table_privilege(current_user,'seller_mcp_create_draft_schema','UPDATE') AS metadata_write");
   need(extensions[0].finish === 2 && extensions[0].draft === 1 && extensions[0].draft_audit && extensions[0].finish_dml && !extensions[0].metadata_write,'FINISH_STORAGE_PERMISSIONS');
@@ -204,6 +205,47 @@ async function native() {
     thumbnailBytes: value.thumbnailBytes, thumbnailSha256: value.thumbnailSha256, negativeCases: 2 };
 }
 
+// Insert before main() in qa-gcp-mcp-canary.mjs; call only in a nonce-owned
+// isolated published-artifact database with finish enabled and full genuine
+// OAuth consent. This is API/native acceptance; real Chrome is separately tested.
+async function unifiedParentFinish() {
+  const session=state.full.session;
+  const category=await request('/api/v1/seller/categories','POST',{code:'CANARY-PARENT',label:'Synthetic parent canary'},session);
+  need(category.status===201,'PARENT_CATEGORY');
+  const product={sku:'PARENT-'+input.nonce,name:'Synthetic parent product',description:'Published artifact exact image review',category:'CANARY-PARENT',priceMinor:140,stockQuantity:100,active:true};
+  const sources=["iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGMwton6DwADOAHJ7yz8uAAAAABJRU5ErkJggg==", "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGMwsYn6DwADPAHKFU1oFwAAAABJRU5ErkJggg=="].map(value=>Buffer.from(value,'base64'));
+  const images=sources.map(bytes=>({sourceSha256:hash(bytes),sourceMime:'image/png',declaredBytes:bytes.length}));
+  const draft=await tool(state.full,'catalog.prepare_create',{input:{action:'begin',product,images,idempotencyKey:'parent-draft-'+input.nonce}});
+  need((await query('SELECT id FROM product WHERE id=$1',[draft.productId])).length===0,'PARENT_DRAFT_NO_COMMERCE');
+  for(const [index,bytes]of sources.entries())await tool(state.full,'catalog.prepare_create',{input:{action:'append',draftId:draft.draftId,index,offset:0,dataParts:[bytes.toString('base64')]}});
+  const op=await tool(state.full,'catalog.preview_create',{input:{...product,draftId:draft.draftId},idempotencyKey:'parent-preview-'+input.nonce});
+  need(op.status==='PENDING_APPROVAL'&&(await query('SELECT id FROM product WHERE id=$1',[draft.productId])).length===0,'PARENT_PREVIEW_NO_COMMERCE');
+  need((await rpc(state.full,'tools/call',{name:'catalog.commit_create',arguments:{operationId:op.operationId}})).status===403,'PARENT_UNAPPROVED_DENIED');
+  const path='/api/v1/seller/mcp/operations/'+op.operationId,review=await request(path,'GET',undefined,session);
+  need(review.status===200&&review.data.proposal.after.active===true&&review.data.proposal.creationMedia.images.length===2,'PARENT_EXACT_REVIEW');
+  for(const item of review.data.mediaReview.items){
+    const identity={operationId:op.operationId,previewHash:op.previewHash,challenge:review.data.challenge,kind:item.kind,itemKey:item.itemKey};
+    const delivered=await request(path+'/media/delivery','POST',identity,session);
+    need(delivered.status===200&&hash(delivered.bytes)===item.hash,'PARENT_DELIVERY');
+    if(item.kind==='PAGE')need(JSON.parse(delivered.bytes.toString('utf8')).version===2,'PARENT_PAGE_VERSION');
+    const ack=await request(path+'/media/ack','POST',{...identity,expectedHash:item.hash,nonce:delivered.headers['x-media-nonce']},session);
+    need(ack.status===200&&ack.data.acknowledged===true,'PARENT_ACK');
+  }
+  const prepared=await request('/api/v1/seller/mcp/finishes','POST',{items:[{operationId:op.operationId,previewHash:op.previewHash}],idempotencyKey:'parent-finish-'+input.nonce},session);
+  need(prepared.status===200&&prepared.data.jobId,'PARENT_FINISH_PREPARED');
+  const done=await sessionApproval('/api/v1/seller/mcp/finishes/'+prepared.data.jobId+'/approve','POST',{items:[{operationId:op.operationId,previewHash:op.previewHash,challenge:review.data.challenge,mediaReviewed:true}]},session);
+  need(done.status===200&&done.data.status==='FINISHED'&&done.data.completed===1,'PARENT_FINISH_VERIFIED');
+  const row=(await query('SELECT id,sku,price_minor,stock_quantity,active FROM product WHERE id=$1',[draft.productId]))[0];
+  need(row?.sku===product.sku&&row.price_minor===140&&row.stock_quantity===100&&row.active===1,'PARENT_READBACK');
+  const readback=await tool(state.full,'catalog.get',{id:draft.productId});
+  need(readback.product.id===draft.productId&&readback.product.active===true&&readback.product.priceMinor===140&&readback.product.stockQuantity===100,'PARENT_CATALOG_READBACK');
+  const stages=await query('SELECT s.state,s.canonical_data,s.thumbnail_data FROM seller_mcp_create_draft_stage d JOIN mcp_v2_media_stage s ON s.id=d.stage_id WHERE d.draft_id=$1',[draft.draftId]);
+  need(stages.length===2&&stages.every(row=>row.state==='CONSUMED'&&row.canonical_data===null&&row.thumbnail_data===null),'PARENT_CONSUMED');
+  const replay=await tool(state.full,'catalog.commit_create',{operationId:op.operationId});need(replay.replayed===true&&replay.result.productId===draft.productId,'PARENT_IDEMPOTENT');
+  evidence.parent={draftNoCommerce:true,previewNoCommerce:true,unapprovedDenied:true,exactNewImages:2,pageVersion:2,authenticatedSessionApproval:true,freshPassword:false,finished:true,catalogReadback:true,stagesConsumed:true,replay:true};
+  state.parentProductId=draft.productId;
+}
+
 async function main() {
   const chunks = []; let size = 0;
   for await (const chunk of process.stdin) { size += chunk.length; need(size <= 65536, 'INPUT_BOUND'); chunks.push(chunk); }
@@ -225,7 +267,7 @@ async function main() {
     await full(); state.legacy = await authorize(legacyScopes);
     await listed(state.legacy, legacyNames);
     need((await rpc(state.legacy, 'tools/call', { name: 'company.preview_update', arguments: { input: { expectedRevision: 'a'.repeat(64), changes: { availabilityText: 'Unconsented' } }, idempotencyKey: 'synthetic-denied-' + secret() } })).status === 403, 'LEGACY_WRITE_DENIED');
-    await company({ invalidChallenge: true }); await native();
+    await company({ invalidChallenge: true }); await native(); await unifiedParentFinish();
   } else if (input.action === 'native') await native();
   else if (input.action === 'readiness-failed') {
     need((await request('/ready')).status === 503, 'CRASH_PRIVATE_READINESS'); evidence.privateReadinessFailed = true;
@@ -275,7 +317,13 @@ async function main() {
     await listed(state.legacy, legacyNames);
     await company(); evidence.restoreHygiene = { staleFamilies: 2, sessionsDenied: 2, codeDenied: true, unboundDenied: true, actualPasswordChange: true };
   } else if (input.action === 'fallback-marker') {
-    await company(); evidence.fallbackMarkerCommitted = true;
+    need((await business()).marker === state.marker,'FALLBACK_MARKER_PRESERVED'); evidence.fallbackMarkerPreserved = true;
+  } else if (input.action === 'fallback-on') {
+    need(process.env.MCP_V2_FINISH_ENABLED !== '1' && process.env.MCP_V2_ENABLED === '1','FALLBACK_FINISH_OFF');
+    need((await request('/ready')).status === 200 && (await business()).marker === state.marker,'FALLBACK35_READY');
+    const access=await authorize(scopes);await listed(access,names);need(names.length === 32,'FALLBACK_LEGACY32');
+    need((await query('SELECT version::int AS version FROM schema_meta WHERE id=1'))[0].version === 35,'FALLBACK_SCHEMA35');
+    evidence.compatibleFallback={schema:35,fullMcpProfile:true,finishEnabled:false,exactTools:32,commercePreserved:true};
   } else if (input.action === 'off') {
     need((await request('/mcp')).status === 404 && (await business()).marker === state.marker, 'OFF_FALLBACK_COMMERCE');
     need(state.approvalAttempts === 5 && state.invalidChallengeTested === true, 'COMPLETE_APPROVAL_BUDGET');

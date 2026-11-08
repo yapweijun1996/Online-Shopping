@@ -246,6 +246,10 @@ class Tests(unittest.TestCase):
 
 
 class FinishActivation(unittest.TestCase):
+    def test_backend_image_explicitly_copies_reviewed_installers(self):
+        line=next(line for line in (ROOT/'Dockerfile.backend').read_text().splitlines() if line.startswith('COPY scripts/'))
+        for path in ('scripts/upgrade-database.mjs','scripts/install-seller-mcp-finish.js'):self.assertIn(path,line)
+
     def test_policy_pins_match_reviewed_sources(self):
         for path,expected in c.SOURCE_PINS.items():
             self.assertEqual(c.digest((ROOT/path).read_bytes()),expected,path)
@@ -271,9 +275,14 @@ class FinishActivation(unittest.TestCase):
             prefix=['compose','--project-name',ns.project,'--env-file',str(ns.root/'runtime.env'),'--env-file',str(ns.root/'images.env'),'-f',str(compose),'--profile','whatsapp-qr','--profile','whatsapp-qr-slot1','run','--rm','--no-deps','--name',name]
             command=c.finish_install_command(ns,'install')
             self.assertEqual(guard.compose(prefix+command,lambda *args:''),prefix+command)
+            upgrade=c.schema_upgrade_command(ns)
+            self.assertEqual(guard.compose(prefix+upgrade,lambda *args:''),prefix+upgrade)
+            probe=['backend','node','--input-type=module','-e',c.IMAGE_INSTALLER_PROGRAM]
+            self.assertEqual(guard.compose(prefix+probe,lambda *args:''),prefix+probe)
+            with self.assertRaises(c.Blocked):guard.compose(prefix+[value.replace('OWNER_PASSWORD_FILE=/run/secrets/owner','OWNER_PASSWORD_FILE=/tmp/other') for value in upgrade],lambda *args:'')
             verify=c.finish_install_command(ns,'verify');self.assertNotIn('-v',verify)
             self.assertEqual(guard.compose(prefix+verify,lambda *args:''),prefix+verify)
-            for old,new in [(str(secret)+':/run/secrets/finish-owner-password:ro','/opt/online-shopping-gcp/private:/run/secrets/finish-owner-password:ro'),('--expected-schema=34','--expected-schema=35'),('--tenant=default','--tenant=other'),('--expected-database=online_shopping','--expected-database=production'),('MCP_V2_FINISH_ENABLED=1','MCP_V2_FINISH_ENABLED=0')]:
+            for old,new in [(str(secret)+':/run/secrets/finish-owner-password:ro','/opt/online-shopping-gcp/private:/run/secrets/finish-owner-password:ro'),('--expected-schema=35','--expected-schema=34'),('--tenant=default','--tenant=other'),('--expected-database=online_shopping','--expected-database=production'),('MCP_V2_FINISH_ENABLED=1','MCP_V2_FINISH_ENABLED=0')]:
                 bad=[new if value==old else value for value in command]
                 with self.subTest(new=new),self.assertRaises(c.Blocked):guard.compose(prefix+bad,lambda *args:'')
             secret.chmod(0o644)
@@ -534,8 +543,8 @@ class Checkpoints(unittest.TestCase):
 class Manifest(unittest.TestCase):
     def manifest(self):
         image=lambda component,n:'ghcr.io/yapweijun1996/online-shopping-'+component+'@sha256:'+n*64
-        return {'version':1,'nonce':'012345abcdef','candidate':{'sha':'a'*40,'backend':image('backend','1'),'frontend':image('frontend','2'),'codec':image('backend','3')},
-                'previous':{'sha':c.PREVIOUS,'backend':image('backend','4'),'frontend':image('frontend','5')},'verifyRunId':1,'publicationRunId':2,
+        return {'version':2,'nonce':'012345abcdef','candidate':{'sha':'a'*40,'backend':image('backend','1'),'frontend':image('frontend','2'),'codec':image('backend','3')},
+                'previous':{'sha':c.PREVIOUS,'backend':image('backend','4'),'frontend':image('frontend','5')},'fallback':{'sha':c.FALLBACK,'backend':image('backend','a'),'frontend':image('frontend','b'),'codec':image('backend','c')},'verifyRunId':1,'publicationRunId':2,
                 'policyHashes':{**c.SOURCE_PINS,'compose.gcp.yaml':'6'*64,'deploy/gcp/compose.mcp.yaml':'7'*64},
                 'helperHashes':{'qa-gcp-mcp-canary.py':'8'*64,'qa-gcp-mcp-canary.mjs':'9'*64}}
 
@@ -550,6 +559,12 @@ class Manifest(unittest.TestCase):
 
     def test_codec_is_separate_and_old_revision_policy_cannot_be_replaced(self):
         value=self.manifest();value['candidate']['codec']=value['candidate']['backend']
+        with self.assertRaises(c.Blocked):c.validate_manifest(value)
+        value=self.manifest();del value['fallback']
+        with self.assertRaises(c.Blocked):c.validate_manifest(value)
+        value=self.manifest();del value['fallback']['codec']
+        with self.assertRaises(c.Blocked):c.validate_manifest(value)
+        value=self.manifest();value['fallback']['sha']='b'*40
         with self.assertRaises(c.Blocked):c.validate_manifest(value)
         value=self.manifest();value['previous']['sha']='b'*40
         with self.assertRaises(c.Blocked):c.validate_manifest(value)
@@ -567,7 +582,7 @@ class ClientAssertions(unittest.TestCase):
         self.assertEqual(result.returncode,0,result.stderr)
 
     def test_baseline_schema_cast_uses_actual_pg_parser_and_keeps_strict_version_check(self):
-        check=next(line.strip() for line in self.source.splitlines() if "query('SELECT version" in line)
+        check=next(line.strip() for line in self.source.splitlines() if "query('SELECT version" in line and 'SCHEMA_VERSION' in line)
         self.node("""import pg from'pg';import assert from'node:assert/strict';
 const need=(ok,code)=>{if(!ok)throw Error(code)};
 assert.equal(pg.types.getTypeParser(20)('34'),'34');
