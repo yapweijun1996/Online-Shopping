@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { readFile,mkdir } from 'node:fs/promises';
 import { startContainer } from '../media-codec/scripts/dev-container.js';
 import { catalogCreateRuntimeBrowserFixture } from './helpers/mcp-catalog-create-runtime-browser-fixture.js';
-import { reviewPassword } from './helpers/mcp-review-fixture.js';
 import { createProduct, getProduct, getProductImage } from '../src/products.js';
 import { syntheticMediaPng } from './helpers/mcp-media-hooks-fixture.js';
 import { readMediaSnapshot } from '../src/mcp/media-resources.js';
@@ -28,8 +27,8 @@ async function review(f,page,op,{navigate=true}={}){
  }
  await page.locator('#media-ack').check();await page.locator('#metadata-ack').check();
 }
-async function finish(page,password=reviewPassword){
- await page.locator('#password').fill(password);await page.locator('#approve-finish').click();
+async function finish(page){
+ assert.equal(await page.locator('#password').count(),0);await page.locator('#approve-finish').click();
 }
 async function finished(page){
  await page.waitForFunction(()=>document.querySelector('#finish-items').children.length>0);
@@ -40,21 +39,18 @@ async function fixture(t,dialect,worker,browser){
  const client=await f.authorize(f.allScopes),page=await f.context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
  return {...f,client,page,errors};
 }
-test('one-click finish uses actual HTTPS, OAuth, password, native image decoding and browser review',{skip:!enabled,timeout:240000},async t=>{
+test('one-click finish uses actual HTTPS, OAuth, session, native image decoding and browser review',{skip:!enabled,timeout:240000},async t=>{
  const image=(await readFile(new URL('../.local/media-codec-image-id',import.meta.url),'utf8')).trim(),worker=await startContainer(image);t.after(worker.stop);
  const {chromium}=await import(process.env.QA_PLAYWRIGHT_MODULE),browser=await chromium.launch({headless:true,...(process.env.QA_BROWSER_EXECUTABLE?{executablePath:process.env.QA_BROWSER_EXECUTABLE}:{})});t.after(()=>browser.close());
  const dialects=process.env.SHOP_TEST_DATABASE_URL?['sqlite','postgres']:['sqlite'];
  for(const dialect of dialects){
-  await t.test(dialect+': zero-image create; missing acknowledgment and wrong password deny; one click and reload finish once',async child=>{
+  await t.test(dialect+': zero-image create; missing acknowledgment denies without repeated password; one click and reload finish once',async child=>{
    const f=await fixture(child,dialect,worker,browser),op=await prepare(f.client,'BROWSER-EMPTY','finish-browser-empty-01');
    await f.page.goto(op.reviewUrl);await f.page.locator('#approve-finish').waitFor({state:'visible'});
    await f.page.waitForFunction(()=>!document.querySelector('#approve-finish').disabled);
    await finish(f.page);assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM product')).n,0);
    assert.match(await f.page.locator('#status').textContent(),/check both acknowledgments/);
-   await review(f,f.page,op,{navigate:false});await finish(f.page,'wrong-password');
-   await f.page.waitForFunction(()=>document.querySelector('#status').textContent.includes('could not be confirmed'));
-   assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?',op.operationId)).state,'PENDING_APPROVAL');
-   await finish(f.page);await finished(f.page);
+   await review(f,f.page,op,{navigate:false});await finish(f.page);await finished(f.page);
    assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?',op.operationId)).state,'COMMITTED');
    const product=await f.store.get('SELECT id FROM product WHERE sku=?','BROWSER-EMPTY');
    const catalog=await f.client.call('catalog.get',{id:product.id});assert.equal(catalog.response.status,200);assert.ok(content(catalog));
@@ -92,7 +88,7 @@ test('one-click finish uses actual HTTPS, OAuth, password, native image decoding
    const prepared=await f.call('/api/v1/seller/mcp/finishes','POST',{items:[{operationId:op.operationId,previewHash:op.previewHash}],idempotencyKey:'finish-unreviewed-image-01'},headers);
    assert.equal(prepared.response.status,200);
    const denied=await f.call('/api/v1/seller/mcp/finishes/'+prepared.data.jobId+'/approve','POST',{
-    password:reviewPassword,items:[{operationId:op.operationId,previewHash:op.previewHash,challenge:unreviewed.data.challenge,mediaReviewed:true}]},headers);
+    items:[{operationId:op.operationId,previewHash:op.previewHash,challenge:unreviewed.data.challenge,mediaReviewed:true}]},headers);
    assert.equal(denied.response.status,403);assert.equal((await f.store.get('SELECT image_mime FROM product WHERE id=?',p.id)).image_mime,null);
    await review(f,f.page,op);await finish(f.page);await finished(f.page);
    const image=await getProductImage(f.store,p.id,true);assert.ok(image?.data?.length);
@@ -107,7 +103,7 @@ test('one-click finish uses actual HTTPS, OAuth, password, native image decoding
   await t.test(dialect+': batch reviews once, finishes first CREATE, holds stale second and requires fresh review',async child=>{
    const f=await fixture(child,dialect,worker,browser),a=await prepare(f.client,'BATCH-A','finish-browser-batch-a01'),b=await prepare(f.client,'BATCH-B','finish-browser-batch-b01');
    await f.page.goto(f.origin+'/oauth/operation?operationIds='+a.operationId+','+b.operationId);
-   await review(f,f.page,a,{navigate:false});assert.equal(await f.page.locator('#password').isVisible(),false);await f.page.locator('#review-next').click();
+   await review(f,f.page,a,{navigate:false});assert.equal(await f.page.locator('#password').count(),0);await f.page.locator('#review-next').click();
    await f.page.waitForFunction(()=>document.querySelector('#batch-progress').textContent.startsWith('Review 2'));
    await review(f,f.page,b,{navigate:false});await finish(f.page);
    await f.page.waitForFunction(()=>document.querySelector('#finish-summary').textContent.includes('Some items need'));

@@ -82,7 +82,7 @@ export async function mediaReviewFixture(t, dialect, options = {}) {
     }
   };
   const approve = (value, extra = {}, decision = 'approve') => request('/approval', { operationId: operation.operationId,
-    previewHash: operation.previewHash, challenge: value.challenge, decision, password: reviewPassword, ...extra });
+    previewHash: operation.previewHash, challenge: value.challenge, decision, ...extra });
   const commit = () => engine.commit({ bearer: f.bearer, toolName: 'media.commit_upload', operationId: operation.operationId });
   return { ...f, source, stage: begun, engine, operation, path, request, review, deliver, acknowledge, complete, approve, commit };
 }

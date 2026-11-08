@@ -51,7 +51,7 @@ test('default CREATE factory actual native/OAuth/MCP/HTTPS browser gate on both 
  const image=(await readFile(new URL('../.local/media-codec-image-id',import.meta.url),'utf8')).trim(),worker=await startContainer(image);t.after(worker.stop);
  const {chromium}=await import(process.env.QA_PLAYWRIGHT_MODULE),browser=await chromium.launch({headless:true});t.after(()=>browser.close());
  for(const dialect of ['sqlite','postgres']){
-  await t.test(dialect+': EMPTY_BEFORE zero assets still requires actual PAGE and fresh password browser approval',async child=>{
+  await t.test(dialect+': EMPTY_BEFORE zero assets still requires actual PAGE and authenticated-session browser approval',async child=>{
    const f=await catalogCreateRuntimeBrowserFixture(child,dialect,worker,browser),{client,page,errors,external}=await clientAndPage(f);
    for(const scope of ['catalog.write','media.write']){const partial=await f.authorize(legacyCatalogScopes+' '+scope),listed=await partial.rpc('tools/list',{});
     assert.equal(listed.data.result.tools.some(row=>['catalog.preview_create','catalog.commit_create'].includes(row.name)),false);

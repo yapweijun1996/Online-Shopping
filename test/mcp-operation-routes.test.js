@@ -34,7 +34,7 @@ for (const dialect of ['sqlite', 'postgres']) {
       await deny(op.input, { ...f.headers, cookie: f.cookie + '; ' + f.cookie });
       await deny(op.input, { ...f.headers, authorization: 'Bearer synthetic' });
       await deny({ ...op.input, challenge: secret() });
-      await deny({ ...op.input, password: 'wrong' });
+      await deny(op.input, { ...f.headers, cookie: '' });
       await deny({ ...op.input, previewHash: 'f'.repeat(64) });
       await deny(op.input, { ...f.headers, 'x-csrf-token': 'forged' });
       await deny(op.input, { ...f.headers, origin: 'null' });
@@ -257,7 +257,7 @@ for (const dialect of ['sqlite', 'postgres']) {
           assert.equal((await f.call(path)).response.status, 200);
         }
         assert.equal((await f.call(op.path)).response.status, 403);
-        assert.equal((await f.call(op.path + '/approval', 'POST', { ...op.input, password: 'wrong' }, f.headers)).response.status, 403);
+        assert.equal((await f.call(op.path + '/approval', 'POST', op.input, { ...f.headers, cookie: '' })).response.status, 403);
       } finally { f.store.all = originalAll; }
       assert.equal(maintenanceQueries, 0);
       assert.deepEqual(await f.store.all('SELECT * FROM mcp_v2_operation ORDER BY id'), before);

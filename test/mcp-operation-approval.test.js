@@ -81,13 +81,13 @@ async function fixture(t, engine) {
     const challenge = secret();
     await store.run(`INSERT INTO mcp_v2_approval_challenge(id, operation_id, nonce_hash, created_at, expires_at, account_id, session_hash, account_auth_version, bound_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, randomUUID(), value.operationId, hash(challenge + ':' + previewHash), now, later, account.id, hash(session.token), account.oauth_auth_version, now);
-    return { value, previewHash, input: { operationId: value.operationId, previewHash, challenge, decision: 'approve', password } };
+    return { value, previewHash, input: { operationId: value.operationId, previewHash, challenge, decision: 'approve' } };
   }
   return { store, account, session, binding, grantId, epoch, buildDigest, tenantGuard, request, operation };
 }
 
 for (const engine of ['sqlite', 'postgres']) {
-  test(`${engine}: approval requires current seller session, fresh password, exact preview and live grant`,
+  test(`${engine}: approval requires current seller session, exact preview and live grant`,
     { skip: engine === 'postgres' && !base }, async (t) => {
       const f = await fixture(t, engine);
       const config = { store: f.store, binding: f.binding, sellerOrigin: f.binding.issuer, quickLogin: false,
@@ -115,7 +115,7 @@ for (const engine of ['sqlite', 'postgres']) {
       await denied(approve(f.request({ origin: 'https://other.example.test' }), op.input, 'ip-origin'));
       await denied(approve(f.request({ 'x-csrf-token': 'wrong' }), op.input, 'ip-csrf'));
       await denied(approve(f.request(), { ...op.input, approved: true }, 'ip-model'));
-      await denied(approve(f.request(), { ...op.input, password: 'wrong-password' }, 'ip-password'));
+      await denied(approve(f.request({cookie:''}), op.input, 'ip-no-session'));
       await denied(approve(f.request(), { ...op.input, previewHash: 'b'.repeat(64) }, 'ip-hash'));
       const commitAsProposal = await f.operation(false, 'catalog.commit_update');
       await denied(approve(f.request(), commitAsProposal.input, 'ip-commit-name'));
@@ -180,5 +180,27 @@ for (const engine of ['sqlite', 'postgres']) {
       await denied(approve(f.request(), consentRemoved.input, 'ip-consent'));
       await deleteSession(f.store, f.session.token);
       await denied(approve(f.request(), consentRemoved.input, 'ip-signed-out'));
+    });
+}
+
+for (const engine of ['sqlite', 'postgres']) {
+  test(`${engine}: session-only approval succeeds without password and rejects a session invalidated between fences`,
+    {skip:engine==='postgres'&&!base},async t=>{
+      const f=await fixture(t,engine),config={store:f.store,binding:f.binding,sellerOrigin:f.binding.issuer,quickLogin:false,
+        epoch:f.epoch,buildDigest:f.buildDigest,tenantGuard:f.tenantGuard,enabled:true};
+      const op=await f.operation(),review=await createOperationReview(config)(new Request(f.binding.issuer+'/api/v1/seller/mcp/operations/'+op.value.operationId,
+        {headers:{cookie:`seller_session=${f.session.token}`}}),op.value.operationId);
+      const input={...op.input,challenge:review.challenge};assert.equal(Object.hasOwn(input,'password'),false);
+      assert.equal((await createOperationApproval(config)(f.request(),input,'session-only-success')).status,'APPROVED');
+      const legacy=await f.operation(),legacyReview=await createOperationReview(config)(new Request(f.binding.issuer+'/api/v1/seller/mcp/operations/'+legacy.value.operationId,
+        {headers:{cookie:`seller_session=${f.session.token}`}}),legacy.value.operationId);
+      assert.equal((await createOperationApproval(config)(f.request(),{...legacy.input,challenge:legacyReview.challenge,password:'Ignored legacy compatibility value'},'session-only-legacy')).status,'APPROVED');
+      const next=await f.operation(),nextReview=await createOperationReview(config)(new Request(f.binding.issuer+'/api/v1/seller/mcp/operations/'+next.value.operationId,
+        {headers:{cookie:`seller_session=${f.session.token}`}}),next.value.operationId);
+      let fences=0;
+      const guard={async withActiveTenant(id,work){if(++fences===2)await deleteSession(f.store,f.session.token);return f.tenantGuard.withActiveTenant(id,work);}};
+      await assert.rejects(createOperationApproval({...config,tenantGuard:guard})(f.request(),{...next.input,challenge:nextReview.challenge},'session-invalidated'),{status:403});
+      assert.equal(fences,2);assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?',next.value.operationId)).state,'PENDING_APPROVAL');
+      assert.equal(await f.store.get('SELECT operation_id FROM mcp_v2_approval WHERE operation_id=?',next.value.operationId),undefined);
     });
 }

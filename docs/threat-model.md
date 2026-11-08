@@ -1,5 +1,15 @@
 # Online Shopping Threat Model
 
+Current owner-selected operation approval policy, 2026-11-08: a valid signed-in
+seller session authorizes an explicit first-party MCP approval/rejection without
+another password prompt. Exact preview/image review, Origin/CSRF, current
+session/auth-version, original grant/consent, ownership, tenant/epoch/build,
+expiry/revision, CAS and audit remain mandatory. Login, OAuth consent and account
+password flows are unchanged. Earlier per-operation fresh-password descriptions
+below are historical and superseded for this action only. A stolen live seller
+session no longer faces a separate password step-up; see
+[the session approval contract](mcp-v2/SESSION-BASED-APPROVAL.md).
+
 Production activation candidate,2026-11-06: the owner authorized a separate full Seller Operations MCP activation after the accepted default-OFF release. The candidate uses one strict named production profile, immutable backend/codec pins, dynamic external epoch fences, canonical configured HTTPS origins and protected review proxy policy. The trusted host supervisor owns isolated codec generations; backend mounts are read-only and a process-wide permit precedes large captures. Cleanup/recovery commands retain private hygiene-only tenant fences and do not grant business authority. Local integrated acceptance and recorded EF7/AFBA main CI/publications passed; published-AMD64 canaries and private cutovers passed; AFBA public verification and all three managed timers were accepted at07:49:20UTC; the later QA/docs merge/normal forward release remains pending; [the current activation record](mcp-v2/13-PRODUCTION-ACTIVATION.md) distinguishes this candidate from historical production-blocked descriptions. The milestone evidence below retains its original dates and scope.
 
 Current production eligibility requires complete `seller-operations-v1` flags with actual `NODE_ENV=production`, `TRUST_PROXY=1`, HTTPS/manual setup and quick login disabled. Partial requested profiles fail closed; coherent all-v2-OFF without the selector retains legacy behavior. Installed-source digest and trusted backend identity bind proposals; codec configID is distinct from its separately pinned RepoDigest/revision/wire/client/lock hashes. External canonical epoch-directory mounts are read-only; authority and final writer-return fences reread the current file and deny stale runtimes without adopting a replacement. These are deployment pins and protocol checks, not hardware or human-eyesight attestation.

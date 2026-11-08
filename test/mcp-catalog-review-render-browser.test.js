@@ -58,9 +58,9 @@ test('SYNTHETIC transport C renderer verifies page labels and safely displays nu
    assert.equal(await page.locator('#media-ack').isChecked(),false);assert.equal(await page.locator('#approve').isDisabled(),true);
    const image=await page.locator('#media-image').evaluate(value=>({width:value.naturalWidth,height:value.naturalHeight}));assert.ok(image.width>0&&image.height>0);
    await page.locator('#media-image-ack').click();await page.waitForFunction(()=>!document.querySelector('#approve').disabled);
-   const before=approvals.length;await page.locator('#password').fill('Synthetic-render-password');await page.locator('#approve').click();assert.equal(approvals.length,before);
+   const before=approvals.length;await page.locator('#approve').click();assert.equal(approvals.length,before);
    await page.locator('#media-ack').check();await page.locator('#approve').click();await page.locator('#decision').waitFor({state:'hidden'});
-   assert.equal(approvals.length,before+1);assert.equal(approvals.at(-1).mediaReviewed,true);assert.equal(await page.locator('#password').inputValue(),'');
+   assert.equal(approvals.length,before+1);assert.equal(approvals.at(-1).mediaReviewed,true);assert.equal(await page.locator('#password').count(),0);
    assert.ok(acknowledgements.some(value=>value.kind==='ASSET'));assert.deepEqual(errors,[]);assert.deepEqual(external,[]);await context.close();
   }
   corrupt=true;const context=await browser.newContext();t.after(()=>context.close());const page=await context.newPage();

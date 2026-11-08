@@ -106,14 +106,13 @@ test('first-party review prototype renders all untrusted data as text and requir
         await page.screenshot({ path: join(process.env.QA_APPROVAL_SCREENSHOT_DIR, `approval-${width}-${colorScheme}.png`), fullPage: true });
       }
       assert.equal(await page.locator('#seller-link').getAttribute('href'), `${base}/seller/`);
-      await page.locator('#password').fill('Synthetic-password-only');
       await page.locator(`button[value="${decision}"]`).click();
       await page.locator('#decision').waitFor({ state: 'hidden' });
       const call = calls.at(-1);
       assert.equal(call.path, `${base}/api/v1/seller/mcp/operations/${id}/approval`);
       assert.equal(call.csrf, 'synthetic-csrf');
-      assert.deepEqual(call.body, { operationId: id, previewHash: digest, challenge: 'a'.repeat(43), decision, password: 'Synthetic-password-only' });
-      assert.equal(await page.locator('#password').inputValue(), '');
+      assert.deepEqual(call.body, { operationId: id, previewHash: digest, challenge: 'a'.repeat(43), decision });
+      assert.equal(await page.locator('#password').count(),0);
       await context.close();
     }
   });

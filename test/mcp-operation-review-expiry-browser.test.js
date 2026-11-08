@@ -107,7 +107,7 @@ test('review expiry disables decisions despite pending media and late errors',
     async function assertDisabled(page) {
       assert.equal(await page.locator('#pending-state').textContent(), expiredMessage);
       assert.equal(await page.locator('#status').textContent(), expiredMessage);
-      for (const selector of ['#approve', 'button[value="reject"]', '#password', '#media-ack', '#currency-ack', '#media-image-ack', '#media-image-retry']) {
+      for (const selector of ['#approve', 'button[value="reject"]', '#media-ack', '#currency-ack', '#media-image-ack', '#media-image-retry']) {
         assert.equal(await page.locator(selector).isDisabled(), true, selector);
       }
     }
@@ -115,7 +115,6 @@ test('review expiry disables decisions despite pending media and late errors',
       const count = approvalRequests.get(page).length;
       await page.evaluate(() => {
         for (const decision of ['approve', 'reject']) {
-          document.querySelector('#password').value = 'Synthetic-password-only';
           document.querySelector('#media-ack').checked = true;
           document.querySelector('#decision').dispatchEvent(new SubmitEvent('submit', {
             bubbles: true, cancelable: true, submitter: document.querySelector(`button[value="${decision}"]`),
@@ -190,10 +189,9 @@ test('review expiry disables decisions despite pending media and late errors',
         await route.fulfill({ status: 500, body: 'Synthetic decision failure' });
       });
       await navigate(); await page.locator('#review').waitFor({ state: 'visible' });
-      await page.locator('#password').fill('Synthetic-password-only'); await page.locator('#approve').click(); await pending.promise;
+      await page.locator('#approve').click(); await pending.promise;
       await page.clock.runFor(60001); await assertDisabled(page);
-      await page.evaluate(() => { document.querySelector('#password').value = 'Awaiting decision completion'; });
-      release.resolve(); await page.waitForFunction(() => document.querySelector('#password').value === '', null, { polling: 10 });
+      release.resolve(); await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Proposal expired'), null, { polling: 10 });
       await assertDisabled(page); await scriptedDecisions(page);
       assert.deepEqual(errors, []); await context.close();
     });

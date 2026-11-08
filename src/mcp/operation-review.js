@@ -5,15 +5,14 @@
 const statusNode = document.querySelector('#status');
 const reviewSection = document.querySelector('#review');
 const form = document.querySelector('#decision');
-const password = document.querySelector('#password');
 const path = /^\/(?:([a-z0-9]{3,30})\/)?oauth\/operation\/?$/.exec(location.pathname);
 const base = path?.[1] ? `/${path[1]}` : '';
 const reviewParams = new URL(location.href).searchParams;
-const operationIds = reviewParams.has('operationIds') ? reviewParams.get('operationIds').split(',') : [reviewParams.get('operationId')];
+let operationIds = reviewParams.has('operationIds') ? reviewParams.get('operationIds').split(',') : [reviewParams.get('operationId')];
 let id = operationIds[0], batchIndex = 0, finishEnabled = false, finishJob = null;
 const reviewedProposals = [];
 const finishKey = `seller-mcp-finish:${operationIds.join(',')}`;
-let earliestExpiry = Infinity;
+let earliestExpiry = Infinity, savedProgressRead = false;
 const idPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const hashPattern = /^[0-9a-f]{64}$/;
 document.querySelector('#seller-link').href = `${base}/seller/`;
@@ -43,7 +42,6 @@ function checkExpiry() {
     for (const control of form.querySelectorAll('input, button')) control.disabled = true;
     imageAck.disabled = true; imageRetry.disabled = true;
     for (const control of document.querySelectorAll('.media-reference')) control.disabled = true;
-    password.value = '';
   }
   return expired;
 }
@@ -144,7 +142,7 @@ async function load() {
   const sessionResponse = await fetch(`${base}/api/v1/seller/session`, { credentials: 'same-origin', cache: 'no-store' });
   if (sessionResponse.status === 401) {
     const link = document.querySelector('#seller-link');
-    link.href = `${base}/seller/?reviewOperation=${id}`;
+    link.href = `${base}/seller/?${reviewParams.has('operationIds') ? 'reviewOperations='+operationIds.join(',') : 'reviewOperation='+id}`;
     link.textContent = 'Sign in to review this proposal';
     throw new Error('Sign in required.');
   }
@@ -152,11 +150,22 @@ async function load() {
   const session = await sessionResponse.json();
   if (typeof session.csrfToken !== 'string' || !session.csrfToken) throw new Error('Invalid session.');
   csrf=session.csrfToken;
-  if(batchIndex===0){
+  if(batchIndex===0 && !savedProgressRead){
+    savedProgressRead=true;
     let saved=null;try{saved=sessionStorage.getItem(finishKey);}catch{/* Storage is optional. */}
     if(saved && idPattern.test(saved)){
       const progress=await fetch(`${base}/api/v1/seller/mcp/finishes/${saved}`,{credentials:'same-origin',cache:'no-store'});
-      if(progress.ok){finishJob=saved;showFinish(await progress.json());return;}
+      if(progress.ok){
+        const value=await progress.json();
+        if(value.jobId!==saved || !Array.isArray(value.items))throw new Error('Invalid progress.');
+        finishJob=saved;
+        const pending=value.items.filter(item=>item.operationState==='PENDING_APPROVAL').map(item=>item.operationId);
+        if(!pending.length){showFinish(value);return;}
+        if(pending.length>5 || new Set(pending).size!==pending.length || !pending.every(value=>idPattern.test(value||'')))throw new Error('Invalid progress.');
+        // A lost approval request never becomes approval. Rebuild every pending
+        // review/challenge and require exact-image acknowledgment again.
+        operationIds=pending;id=operationIds[0];
+      }
     }
   }
   const response = await fetch(`${base}/api/v1/seller/mcp/operations/${id}`, { credentials: 'same-origin', cache: 'no-store' });
@@ -207,8 +216,6 @@ async function load() {
   document.querySelector('#approve').hidden=finishEnabled;
   document.querySelector('#approve-finish').hidden=!finishEnabled || !last;
   document.querySelector('#review-next').hidden=!finishEnabled || last;
-  for(const node of [password,document.querySelector('#password-label'),document.querySelector('#password-help')])node.hidden=finishEnabled && !last;
-  password.required=!finishEnabled || last;
   document.querySelector('#batch-progress').hidden=operationIds.length<2;
   document.querySelector('#batch-progress').textContent=`Review ${batchIndex+1} of ${operationIds.length}. Approval applies only to the exact reviewed content.`;
   if(finishEnabled)document.querySelector('#decision-help').textContent='Approve & Finish approves and applies this exact content, then checks the product. A changed or expired proposal stops for a new review.';
@@ -531,7 +538,7 @@ form.addEventListener('submit', async (event) => {
   event.preventDefault();
   if (checkExpiry() || decisionPending) return;
   const decision = event.submitter?.value;
-  if (!csrf || !previewHash || !challenge || !['approve', 'reject'].includes(decision) || !password.value) return;
+  if (!csrf || !previewHash || !challenge || !['approve', 'reject'].includes(decision)) return;
   if (decision === 'approve' && mediaReview && (!mediaComplete || !mediaAck.checked)) {
     statusNode.textContent = 'Review every exact image and check the image acknowledgment before approving.';
     mediaAck.focus(); return;
@@ -545,7 +552,7 @@ form.addEventListener('submit', async (event) => {
     const response = await fetch(`${base}/api/v1/seller/mcp/operations/${id}/approval`, {
       method: 'POST', credentials: 'same-origin', cache: 'no-store',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-      body: JSON.stringify({ operationId: id, previewHash, challenge, decision, password: password.value,
+      body: JSON.stringify({ operationId: id, previewHash, challenge, decision,
         ...(currencyAcknowledgementRequired && decision === 'approve' ? { currencyAcknowledged: true } : {}),
         ...(mediaReview && decision === 'approve' ? { mediaReviewed: true } : {}),
       }),
@@ -560,7 +567,7 @@ form.addEventListener('submit', async (event) => {
   } catch {
     reviewStatus('The decision could not be verified. Reload the proposal and try again.');
   } finally {
-    decisionPending = false; password.value = ''; updateReviewControls();
+    decisionPending = false; updateReviewControls();
   }
 });
 
@@ -603,7 +610,7 @@ function showFinish(value){
   }
   document.querySelector('#finish-resume').hidden=value.status==='FINISHED';
   statusNode.textContent=value.status==='FINISHED'?'Approved changes committed and verified.':'Progress saved. Items needing review will not be committed automatically.';
-  clearTimeout(expiryTimer);expiresAt=null;password.value='';releaseMediaImage();
+  clearTimeout(expiryTimer);expiresAt=null;releaseMediaImage();
 }
 document.querySelector('#review-next').addEventListener('click',async()=>{
   if(decisionPending)return;const proof=reviewedProof();if(!proof)return;
@@ -612,19 +619,18 @@ document.querySelector('#review-next').addEventListener('click',async()=>{
   document.querySelector('#batch-reviewed').append(line);document.querySelector('#batch-reviewed').hidden=false;
   releaseMediaImage();reviewedImages.clear();mediaComplete=false;mediaReview=null;selectedImage=null;retryImage=null;
   document.querySelector('#media-review').hidden=true;document.querySelector('#media-warning').hidden=true;
-  batchIndex++;id=operationIds[batchIndex];password.value='';decisionPending=true;
+  batchIndex++;id=operationIds[batchIndex];decisionPending=true;
   try{await load();}catch{reviewSection.hidden=true;statusNode.textContent='The next proposal is unavailable. Prepare a fresh review; no approval was made.';}
   finally{decisionPending=false;updateReviewControls();}
 });
 document.querySelector('#approve-finish').addEventListener('click',async()=>{
   if(!finishEnabled || decisionPending)return;const proof=reviewedProof();if(!proof)return;
-  if(!password.value){password.focus();statusNode.textContent='Confirm your seller password to approve and finish.';return;}
   decisionPending=true;updateReviewControls();
   try{
     const items=[...reviewedProposals,proof];
-    const job=await finishPost('',{items:items.map(({operationId,previewHash})=>({operationId,previewHash})),idempotencyKey:`finish-${await sha256(new TextEncoder().encode(operationIds.join(',')))}`});
+    const job=finishJob?{jobId:finishJob}:await finishPost('',{items:items.map(({operationId,previewHash})=>({operationId,previewHash})),idempotencyKey:`finish-${await sha256(new TextEncoder().encode(operationIds.join(',')))}`});
     finishJob=job.jobId;try{sessionStorage.setItem(finishKey,finishJob);}catch{/* Server progress remains durable. */}
-    const pending=finishPost(`/${finishJob}/approve`,{items,password:password.value});password.value='';
+    const pending=finishPost(`/${finishJob}/approve`,{items});
     statusNode.textContent='Approving and applying the reviewed content. Progress is saved.';
     let stopped=false;
     const poll=async()=>{if(stopped)return;try{const response=await fetch(`${base}/api/v1/seller/mcp/finishes/${finishJob}`,{credentials:'same-origin',cache:'no-store'});
@@ -634,7 +640,7 @@ document.querySelector('#approve-finish').addEventListener('click',async()=>{
     void poll();
     try{const result=await pending;showFinish(result);}finally{stopped=true;}
   }catch{statusNode.textContent='The result could not be confirmed. Reload to inspect saved progress. No retry approves changed content.';}
-  finally{password.value='';decisionPending=false;updateReviewControls();}
+  finally{decisionPending=false;updateReviewControls();}
 });
 document.querySelector('#finish-resume').addEventListener('click',async event=>{
   event.currentTarget.disabled=true;
