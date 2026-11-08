@@ -15,7 +15,7 @@ function png(width = 64, height = 48) {
 
 test('AI Studio page: key, photo to draft, independent styled images, phone width', { skip: !modulePath }, async (t) => {
   const { chromium } = await import(modulePath);
-  const browser = await chromium.launch({ headless: true, channel: 'chrome' }); t.after(() => browser.close());
+  const browser = await chromium.launch({ headless: true, executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', '--disable-gpu'] }); t.after(() => browser.close());
   const f = await sellerFixture(); t.after(() => f.close());
   const context = await browser.newContext({ viewport: { width: 375, height: 812 }, serviceWorkers: 'block' });
   const status = { available: true, configured: false, provider: 'OPENAI', dailyCallCap: 20, usedToday: 0, last4: null, keyRevision: 0, settingRevision: 1 };
@@ -53,7 +53,9 @@ test('AI Studio page: key, photo to draft, independent styled images, phone widt
   await page.locator('.nav-item[data-view=aistudio]').click();
   await page.locator('.ai-studio').waitFor();
   assert.equal(await page.locator('#page-title').innerText(), 'AI Studio');
-  assert.equal(await page.locator('.ai-studio-card').nth(1).isHidden(), true, 'photo card stays hidden until a key exists');
+  assert.equal(await page.getByRole('tab', {name:'Create Product'}).getAttribute('aria-selected'), 'true');
+  assert.equal(await page.getByRole('button', {name:/Read photo/}).isDisabled(), true);
+  await page.getByRole('tab', {name:'Settings',exact:true}).click();
   assert.equal(await page.locator('input[name=apiKey]').getAttribute('type'), 'password');
   await shot('1-no-key-375');
   // Save the key
@@ -75,6 +77,7 @@ test('AI Studio page: key, photo to draft, independent styled images, phone widt
   await page.getByText('Key saved, ending in WXYZ.').waitFor();
   assert.ok(await overflow() <= 0, 'no horizontal scroll at 375px');
   await shot('2-key-saved-375');
+  await page.getByRole('tab', {name:'Create Product'}).click();
   // Photo to draft
   await page.locator('.ai-studio-file').setInputFiles({ name: 'tote.png', mimeType: 'image/png', buffer: png(900, 700) });
   await page.locator('.ai-studio-preview').waitFor();
@@ -89,8 +92,11 @@ test('AI Studio page: key, photo to draft, independent styled images, phone widt
   await locale('en');
   await page.locator('input[name=sku]').fill('TOTE-UI-1'); await page.locator('input[name=price]').fill('49.90');
   await page.locator('input[name=name]').fill('Canvas tote');
+  await page.getByRole('tab', {name:'Settings',exact:true}).click();
+  await page.getByRole('tab', {name:'Create Product'}).click();
+  assert.equal(await page.locator('input[name=sku]').inputValue(), 'TOTE-UI-1');
   await page.getByRole('button', { name: 'Save as draft' }).click();
-  await page.getByText('Draft saved. It is not published.').waitFor();
+  await page.waitForFunction(() => document.querySelector('#ai-studio-tab-images')?.getAttribute('aria-selected') === 'true');
   assert.equal(await page.locator('form:has(input[name=sku])').isHidden(), true, 'the suggestion cannot be saved twice');
   const list = await (await fetch(`${f.origin}/api/v1/seller/products?search=TOTE-UI-1`, { headers: (await f.login()).headers })).json();
   assert.equal(list.items.length, 1); assert.equal(list.items[0].active, false, 'the new product is an unpublished draft');
@@ -106,6 +112,8 @@ test('AI Studio page: key, photo to draft, independent styled images, phone widt
   assert.equal(await page.getByRole('button', { name: 'Generate images' }).isDisabled(), true, 'no second batch while one runs');
   assert.equal(await page.locator('.ai-studio-style input[value=macro]').isDisabled(), true);
   assert.equal(await page.locator('.ai-studio-search input').isDisabled(), true, 'the product cannot change during a batch');
+  await page.getByRole('tab',{name:'Create Product'}).click();
+  await page.getByRole('tab',{name:'Generate Images'}).click();
   releaseFirst();
   await page.locator('.ai-studio-result[data-style=studio] .ai-studio-badge', { hasText: 'AI-generated' }).waitFor();
   await page.getByText('AI review: check the details').waitFor();
@@ -117,7 +125,7 @@ test('AI Studio page: key, photo to draft, independent styled images, phone widt
   assert.deepEqual(seen.images, ['studio', 'hero'], 'a timeout stops the rest of the batch');
   assert.equal(await page.locator('.ai-studio-result[data-style=macro]').count(), 0);
   assert.ok(await overflow() <= 0);
-  assert.match(await page.locator('.ai-studio-usage').last().innerText(), /Used today: 5 of 20/);   // 1 photo + 2 for the first image + 2 for the timed-out one
+  assert.match(await page.locator('.ai-studio-usage').last().textContent(), /Used today: 5 of 20/);   // 1 photo + 2 for the first image + 2 for the timed-out one
   await shot('4-results-375');
   // Desktop layout and language switch keep working
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -126,6 +134,30 @@ test('AI Studio page: key, photo to draft, independent styled images, phone widt
   await locale('zh-Hans');
   await page.getByRole('button', { name: '生成图片' }).waitFor();
   assert.equal(await page.locator('#page-title').innerText(), 'AI 工作室');
-  assert.match(await page.locator('.ai-studio-usage').last().innerText(), /今日已用：5/);
+  assert.match(await page.locator('.ai-studio-usage').last().textContent(), /今日已用：5/);
   assert.ok(await overflow() <= 0);
+});
+
+test('AI Studio tabs: keyboard, direct routes, settings disclosure and role presentation', {skip: !modulePath}, async t => {
+  const {chromium} = await import(modulePath);
+  const browser = await chromium.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox','--disable-gpu']});t.after(()=>browser.close());
+  const f=await sellerFixture();t.after(()=>f.close());
+  const context=await browser.newContext({viewport:{width:390,height:900},serviceWorkers:'block'});t.after(()=>context.close());
+  let configured=true,available=true;
+  await context.route('**/*',route=>{
+    const u=new URL(route.request().url());if(u.origin!==f.origin)return route.abort();
+    if(u.pathname.endsWith('/api/v1/seller/ai-studio'))return route.fulfill({json:{available,configured,last4:'TEST',usedToday:3,dailyCallCap:20,keyRevision:1,settingRevision:1}});
+    return route.continue();
+  });
+  const p=await context.newPage();await p.goto(f.origin+'/seller/#aistudio');await p.locator('#username').fill(f.config.username);await p.locator('#password').fill(f.config.password);await p.locator('#password').press('Enter');
+  await p.getByText('AI connected',{exact:true}).waitFor();
+  const create=p.getByRole('tab',{name:'Create Product'});await create.focus();await p.keyboard.press('ArrowRight');assert.equal(await p.getByRole('tab',{name:'Generate Images'}).getAttribute('aria-selected'),'true');
+  await p.keyboard.press('End');assert.equal(await p.getByRole('tab',{name:'Settings',exact:true}).getAttribute('aria-selected'),'true');assert.equal(await p.locator('.ai-studio-key-editor').getAttribute('open'),null);
+  await p.locator('.ai-studio-key-editor summary').click();assert.equal(await p.locator('input[name=apiKey]').isVisible(),true);
+  await p.reload();await p.getByText('AI connected',{exact:true}).waitFor();assert.equal(await p.getByRole('tab',{name:'Settings',exact:true}).getAttribute('aria-selected'),'true');
+  for(const width of [390,1280]){await p.setViewportSize({width,height:900});for(const tab of ['Create Product','Generate Images','Settings']){await p.getByRole('tab',{name:tab,exact:true}).click();assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));if(process.env.AI_STUDIO_SHOTS)await p.screenshot({path:`${process.env.AI_STUDIO_SHOTS}/tabs-${width}-${tab.replaceAll(' ','-')}.png`});}}
+  configured=false;await p.reload();await p.getByRole('tab',{name:'Create Product'}).click();await p.getByRole('button',{name:'Go to Settings'}).click();assert.equal(await p.locator('input[name=apiKey]').isVisible(),true);
+  await p.evaluate(async()=>{const {mountAiStudio}=await import('/seller/ai-studio.js');mountAiStudio(document.querySelector('#workspace-content'),{csrfToken:()=>'',onUnauthorized:()=>{},role:'MANAGER'});});
+  await p.getByRole('tab',{name:'Settings',exact:true}).click();await p.getByText('Only the Owner can change the key and the daily limit.').waitFor();assert.equal(await p.locator('input[name=apiKey]').count(),0);
+  available=false;await p.reload();await p.locator('.ai-studio-summary').getByText('AI Studio is not set up on this server.').waitFor();assert.equal(await p.getByRole('button',{name:/Read photo/}).isVisible(),false);
 });

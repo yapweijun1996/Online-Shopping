@@ -85,7 +85,7 @@ const ORDER_ROUTE = /^(?:orders|confirmations)\/[0-9a-f-]{36}$/;
 function routeFromHash() {
   // `review` was the old address of the queue of orders waiting for a decision, which is now Sales Orders.
   const route = location.hash.slice(1).replace(/^review(?=\/|$)/, 'orders');
-  return (VALID_VIEWS.has(route) || PRODUCT_ROUTE.test(route) || ORDER_ROUTE.test(route)) && allowedRoute(route) ? route : 'dashboard';
+  return (VALID_VIEWS.has(route) || /^aistudio\/(?:tab\/(?:create|images|settings)|[0-9a-f-]{36})$/.test(route) || PRODUCT_ROUTE.test(route) || ORDER_ROUTE.test(route)) && allowedRoute(route) ? route : 'dashboard';
 }
 
 function viewFromRoute(route) { return route.split('/')[0]; }
@@ -380,7 +380,7 @@ function renderView() {
     return;
   }
   if (currentView === 'aistudio') {
-    settingsPage = mountAiStudio(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError'), role, onNavigate: navigate, initialProductId: currentRoute.split('/')[1] || null });
+    settingsPage = mountAiStudio(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError'), role, onNavigate: navigate, initialProductId: currentRoute.split('/')[1] === 'tab' ? null : currentRoute.split('/')[1] || null, initialTab: currentRoute.split('/')[1] === 'tab' ? currentRoute.split('/')[2] : null, onTabChange: tab => { currentRoute = `aistudio/tab/${tab}`; history.replaceState(null, '', `#${currentRoute}`); } });
     return;
   }
   if (currentView === 'team') {
