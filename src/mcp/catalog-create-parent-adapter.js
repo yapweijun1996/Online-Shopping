@@ -66,6 +66,7 @@ export function createParentAdapter(runtime,legacy){
   const native=nativeSession(options),results=[],images=[];
   for(const lease of captured.leases){const packet=await native.decode(lease.source,lease.sourceMime,lease.sourceSha256),result={sourceSha256:packet.sourceSha256,image:Buffer.from(packet.image),thumbnail:Buffer.from(packet.thumbnail),mime:packet.mime,width:packet.width,height:packet.height,codecDigest};
    results.push({stageId:lease.stage_id,leaseToken:lease.leaseToken,version:lease.version,result});images.push({stageId:lease.stage_id,productId:lease.target_product_id,targetSlot:lease.target_slot,sourceSha256:result.sourceSha256,canonicalSha256:mediaHash(result.image),thumbnailSha256:mediaHash(result.thumbnail),mime:result.mime,byteLength:result.image.length,thumbnailBytes:result.thumbnail.length,width:result.width,height:result.height});}
+  if(new Set(images.map(row=>row.canonicalSha256)).size!==images.length)throw new ApiError(400,'CREATE_IMAGE_DUPLICATE','Use distinct images for each new image position.');
   // Preserve the original aggregate native session call and deadline budget.
   for(const row of captured.old)await native.decode(row.bytes,row.ref.mime,row.ref.byte_sha256);
   return {parent:true,context:captured.context,requestDraftId:captured.requestDraftId,draftId:captured.draftId,intentHash:captured.intentHash,requestHash:captured.requestHash,sourceRevision:captured.sourceRevision,correlationId:captured.correlationId,images,results};
