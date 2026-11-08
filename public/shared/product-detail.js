@@ -13,6 +13,13 @@ export function renderProductDetail(documentData, assets = [], { fallbackText = 
   };
   const root = element('div');
   root.className = 'rich-product-detail';
+  function showFallbackIfEmpty() {
+    if (!root.children.length && typeof fallbackText === 'string' && fallbackText) {
+      const paragraph = element('p', fallbackText.slice(0, 2000));
+      paragraph.className = 'detail-description';
+      root.append(paragraph);
+    }
+  }
   const pathname = ownerDocument.location?.pathname || globalThis.location?.pathname || '/shop/';
   const prefix = `${basePath(pathname)}/api/v1/`;
   const available = new Map();
@@ -57,17 +64,13 @@ export function renderProductDetail(documentData, assets = [], { fallbackText = 
       image.loading = 'lazy';
       image.decoding = 'async';
       // Failed/protected assets never leave a broken-image icon in the detail page.
-      image.addEventListener('error', () => figure.remove(), { once: true });
+      image.addEventListener('error', () => { figure.remove(); showFallbackIfEmpty(); }, { once: true });
       image.src = asset.src;
       figure.append(image);
       if (text(block.caption, 1000).trim()) figure.append(element('figcaption', text(block.caption, 1000)));
       root.append(figure);
     }
   }
-  if (!root.children.length && typeof fallbackText === 'string' && fallbackText) {
-    const paragraph = element('p', fallbackText.slice(0, 2000));
-    paragraph.className = 'detail-description';
-    root.append(paragraph);
-  }
+  showFallbackIfEmpty();
   return root;
 }
