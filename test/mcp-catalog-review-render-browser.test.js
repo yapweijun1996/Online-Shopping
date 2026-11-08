@@ -10,6 +10,7 @@ const enabled=Boolean(process.env.QA_PLAYWRIGHT_MODULE);
 test('SYNTHETIC transport C renderer verifies page labels and safely displays nullable listings; this is not C authorization proof',
  {skip:!enabled,timeout:60000},async t=>{
   const assets=Object.fromEntries(await Promise.all(['html','js','css'].map(async extension=>[extension,await readFile(new URL('../src/mcp/operation-review.'+extension,import.meta.url))])));
+  const styles={'/shop/tokens.css':await readFile(new URL('../public/shop/tokens.css',import.meta.url)),'/shared/appearance.css':await readFile(new URL('../public/shared/appearance.css',import.meta.url))};
   const png=await readFile(new URL('../public/shop/icons/icon-192.png',import.meta.url)),input=catalogWireInput();
   input.assets[0].byte_sha256=mediaHash(png);input.assets[0].byte_length=png.length;input.graphBytes.oldBytes=png.length;
   const key=mediaAssetKey('image/png',mediaHash(png));input.effects[0].before.mainAssetKey=input.effects[0].after.mainAssetKey=key;input.effects[1].before.galleryAssetKeys=[key];
@@ -23,9 +24,11 @@ test('SYNTHETIC transport C renderer verifies page labels and safely displays nu
    const json=value=>{response.writeHead(200,{'Content-Type':'application/json'});response.end(JSON.stringify(value));};
    if(path==='/oauth/operation'){response.writeHead(200,{'Content-Type':'text/html'});response.end(assets.html);return;}
    if(/^\/oauth\/operation-review\.(js|css)$/.test(path)){const extension=path.endsWith('.js')?'js':'css';response.writeHead(200,{'Content-Type':extension==='js'?'text/javascript':'text/css'});response.end(assets[extension]);return;}
+   if(styles[path]){response.writeHead(200,{'Content-Type':'text/css'});response.end(styles[path]);return;}
    if(path==='/api/v1/seller/session'){json({csrfToken:'synthetic-csrf'});return;}
    if(path==='/api/v1/seller/mcp/operations/'+wireId(1)&&request.method==='GET'){
     const proposal=structuredClone(wireProposal(manifest));if(corrupt)proposal.reviewLabels[0].after.name='Unbound latest name';
+    proposal.catalogReview={products:[{productId:wireId(1),before:{name:'Before product',sku:'BEFORE-SKU',priceMinor:1234,currency:'MYR',stockQuantity:8,active:true,category:'Before category',description:'Before description',options:[]},after:{name:'After product',sku:'AFTER-SKU',priceMinor:5678,currency:'SGD',stockQuantity:0,active:false,category:'After category',description:'After description',options:[]}}]};
     json({operationId:wireId(1),shopName:'Synthetic transport shop',accountName:'synthetic_owner',clientName:'Synthetic render client',clientId:'synthetic-client',
      toolName:'catalog.preview_update',resourceType:'product',resourceId:wireId(1),risk:'HIGH',expiresAt:new Date(Date.now()+600000).toISOString(),previewHash:'c'.repeat(64),challenge:'A'.repeat(43),
      currencyAcknowledgementRequired:false,currencyWarning:null,proposal,mediaReview:{descriptor:manifest.descriptor,items,labels:[]}});return;
@@ -51,6 +54,7 @@ test('SYNTHETIC transport C renderer verifies page labels and safely displays nu
    const text=await page.locator('#media-effects').textContent();assert.match(text,/Did not exist before this change/);assert.match(text,/Removed by this change/);
    assert.match(text,/Stored own main is hidden/);assert.match(text,/Old literal name/);assert.ok(text.includes('<script>window.__CInjected=true</script>'));assert.ok(text.includes('\\u202e'));
    assert.equal(await page.evaluate(()=>window.__CInjected),undefined);assert.equal(await page.locator('#media-effects script').count(),0);
+   const summary=await page.locator('#summary-fields').textContent();for(const value of ['Before product','After product','BEFORE-SKU','AFTER-SKU','MYR 12.34','SGD 56.78','Before category','After category','Before description','After description'])assert.ok(summary.includes(value),value);
    assert.equal(await page.locator('#media-ack').isChecked(),false);assert.equal(await page.locator('#approve').isDisabled(),true);
    const image=await page.locator('#media-image').evaluate(value=>({width:value.naturalWidth,height:value.naturalHeight}));assert.ok(image.width>0&&image.height>0);
    await page.locator('#media-image-ack').click();await page.waitForFunction(()=>!document.querySelector('#approve').disabled);

@@ -63,11 +63,30 @@ for (const dialect of ['sqlite', 'postgres']) for (const base of ['', '/alpha'])
         viewport: { width: base ? 1280 : 390, height: 900 }, colorScheme: base ? 'light' : 'dark', serviceWorkers: 'block' });
       t.after(() => context.close());
       const page = await context.newPage(), external = [], errors = [];
+      const styles = new Map([
+        [base + '/shop/tokens.css', await readFile(new URL('../public/shop/tokens.css', import.meta.url), 'utf8')],
+      ]);
+      const styleResponses = [];
+      page.on('response', response => {
+        const path = new URL(response.url()).pathname;
+        if (styles.has(path)) styleResponses.push({ path, status: response.status() });
+      });
+      for (const [path, bytes] of styles) {
+        const response = await context.request.get(origin + path);
+        assert.equal(response.status(), 200, path);
+        assert.match(response.headers()['content-type'], /^text\/css\b/, path);
+        assert.equal(await response.text(), bytes, path);
+      }
       page.setDefaultTimeout(8000);
       page.on('pageerror', error => errors.push(error.message));
       await context.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : (external.push(route.request().url()), route.abort()));
       await page.goto(op.reviewUrl + '&utm_source=chatgpt.com');
       await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Sign in to Seller Studio'));
+      for (const path of styles.keys()) {
+        assert.ok(styleResponses.some(response => response.path === path && response.status === 200), path);
+        assert.equal(await page.evaluate(href => [...document.styleSheets].some(sheet =>
+          sheet.href === href && sheet.cssRules.length > 0), origin + path), true, path);
+      }
       assert.equal(await page.locator('#review').isVisible(), false);
       assert.equal(await page.locator('#seller-link').getAttribute('href'), `${base}/seller/?reviewOperation=${op.operationId}`);
       await page.locator('#seller-link').click();

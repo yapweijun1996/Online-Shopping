@@ -6,6 +6,7 @@ import { openPostgresDatabase } from '../../src/postgres-db.js';
 import { ensureAdmin } from '../../src/auth.js';
 import { setupShop } from '../../src/shop-setup.js';
 import { createApi } from '../../src/app.js';
+import { serveStatic } from '../../src/static.js';
 import { hash, secret } from '../../src/mcp/credentials.js';
 import { operationEpochHash } from '../../src/mcp/operation-epoch.js';
 import { canonicalOperationJson, operationPreviewHash } from '../../src/mcp/operation-envelope.js';
@@ -31,7 +32,7 @@ export async function reviewFixture(t, dialect = 'sqlite', options = {}) {
   const tenantId = options.tenantId || 'default', tenantRevision = options.tenantRevision ?? 0;
   const binding = { tenantId, issuer: config.sellerOrigin + (config.basePath || ''), resource: config.sellerOrigin + (config.basePath || '') + '/mcp' };
   const registrations = Object.hasOwn(options, 'operationTools') ? options.operationTools : [];
-  const api = await createApi({ store, config, ...(registrations === undefined ? {} : { operationTools: registrations }),
+  const api = await createApi({ store, config, serveStatic, ...(registrations === undefined ? {} : { operationTools: registrations }),
     ...(options.registry ? { registry: options.registry(store, config) } : {}) });
   let seq = 0;
   async function call(path, method = 'GET', body, headers = {}, requestOrigin = config.sellerOrigin) {
