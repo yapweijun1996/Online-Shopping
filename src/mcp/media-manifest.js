@@ -62,11 +62,11 @@ function effect(value, reserved, catalogTool = null) {
     : value.before.holderId !== value.after.holderId)) invalid();
   return JSON.parse(mediaJson(value));
 }
-function graph(effects, assets, aliases) {
+function graph(effects, assets, aliases, creationParent=false) {
   const products = effects.filter(item => item.kind === 'PRODUCT'), listings = effects.filter(item => item.kind === 'LISTING');
   if (!products.length || products.length > MEDIA_LIMITS.products || !listings.length || listings.length > MEDIA_LIMITS.listings) invalid();
   const before = new Set(), after = new Set();
-  const productIds = new Set(products.filter(item => item.before !== null).map(item => item.productId));
+  const productIds = new Set(products.filter(item => creationParent || item.before !== null).map(item => item.productId));
   for (const candidate of aliases) if (!productIds.has(candidate.source_product_id)) invalid();
   for (const side of ['before', 'after']) {
     const used = side === 'before' ? before : after;
@@ -111,12 +111,16 @@ function graph(effects, assets, aliases) {
     value.before_needed = Number(before.has(key)); value.after_needed = Number(after.has(key));
   }
 }
-function pageHeader(input, index) {
-  return { version: 1, toolName: input.toolName, graphRevision: input.graphRevision, codecDigest: input.codecDigest,
+function pageHeader(input, index, version) {
+  return { version, toolName: input.toolName, graphRevision: input.graphRevision, codecDigest: input.codecDigest,
     graphBytes: input.graphBytes, pageIndex: index };
 }
 /** Closed metadata only; real ownership/bytes/grants/revision/approval must be checked elsewhere. */
-export function buildMediaManifest(input) {
+export function buildMediaManifest(input) { return build(input,1); }
+export function buildCatalogParentMediaManifest(input) { return build(input,2); }
+function build(input,version) {
+  const creationParent=version===2;
+  if(creationParent&&input?.toolName!=='catalog.preview_create')invalid();
   shape(input, ['toolName', 'graphRevision', 'codecDigest', 'graphBytes', 'assets', 'effects']);
   const policy = mediaPolicyForTool(input.toolName);
   if (input.toolName !== policy.previewTool || ![input.graphRevision, input.codecDigest].every(isMediaHash)) invalid();
@@ -127,7 +131,8 @@ export function buildMediaManifest(input) {
   array(input.assets, MEDIA_LIMITS.records); array(input.effects, MEDIA_LIMITS.records);
   const aliases = input.assets.map(asset), assets = new Map(), sources = new Map(), stages = new Map(), old = new Map();
   const catalogTool = ['catalog.preview_update','catalog.preview_create'].includes(input.toolName) && policy.policyId === 'catalog-media-v1' ? input.toolName : null;
-  if (catalogTool && (newBytes !== 0 || aliases.some(value => value.source_kind === 'STAGE'))) invalid();
+  if (catalogTool && !creationParent && (newBytes !== 0 || aliases.some(value => value.source_kind === 'STAGE'))) invalid();
+  if(creationParent&&(!aliases.some(value=>value.source_kind==='STAGE')||newBytes===0))invalid();
   const sourceOrder = value => `${value.source_kind === 'STAGE' ? '1' : '0'}:${value.source_kind}:${value.source_product_id}:${value.source_id}`;
   for (const value of aliases) {
     const source = `${value.source_kind}:${value.source_id}`, priorSource = sources.get(source);
@@ -148,16 +153,16 @@ export function buildMediaManifest(input) {
   const effects = input.effects.map(value => effect(value, policy.flow === 'RESERVED', catalogTool));
   if (catalogTool) catalogReviewLabels(effects.filter(value => value.kind === 'PRODUCT')
     .map(value => ({ productId: value.productId, ...value.labels })).sort((a,b) => compare(a.productId,b.productId)),catalogTool);
-  if (catalogTool==='catalog.preview_create') catalogCreateEffects(effects);
+  if (catalogTool==='catalog.preview_create') catalogCreateEffects(effects,undefined,creationParent);
   const ids = effects.map(value => `${value.kind}:${value.productId ?? value.listingId}`);
   if (!effects.length || new Set(ids).size !== ids.length || effects.length + assets.size > MEDIA_LIMITS.records) invalid();
-  graph(effects, assets, aliases);
+  graph(effects, assets, aliases,creationParent);
   const assetRecords = [...assets.values()].sort((a, b) => compare(a.asset_key, b.asset_key)).map(value => ({ kind: 'ASSET', ...value,
     stage_refs: [...stages.values()].filter(stage => stage.asset_key === value.asset_key).sort((a, b) => compare(a.stage_id, b.stage_id))
       .map(stage => ({ stage_id: stage.stage_id, source_product_id: stage.source_product_id, canonical_sha256: stage.byte_sha256 })) }));
   effects.sort((a, b) => compare(`${a.kind}:${a.productId ?? a.listingId}`, `${b.kind}:${b.productId ?? b.listingId}`));
   const records = [...assetRecords, ...effects], pages = []; let pending = [];
-  const json = records => mediaJson({ ...pageHeader(input, pages.length), records });
+  const json = records => mediaJson({ ...pageHeader(input, pages.length,version), records });
   const flush = () => {
     const page_json = json(pending); pages.push({ page_index: pages.length, page_json,
       page_hash: mediaHash(page_json), record_count: pending.length }); pending = [];
@@ -170,7 +175,7 @@ export function buildMediaManifest(input) {
   }
   if (pending.length) flush();
   if (pages.length > MEDIA_LIMITS.pages || pages.reduce((sum, page) => sum + Buffer.byteLength(page.page_json), 0) > MEDIA_LIMITS.pages * MEDIA_LIMITS.pageBytes) invalid();
-  const root = { version: 1, policyId: policy.policyId, codecDigest: input.codecDigest, graphRevision: input.graphRevision,
+  const root = { version, policyId: policy.policyId, codecDigest: input.codecDigest, graphRevision: input.graphRevision,
     graphBytes: { ...input.graphBytes }, pages: pages.map(page => ({ index: page.page_index, hash: page.page_hash, recordCount: page.record_count })),
     assetCount: assets.size, effectCount: effects.length };
   const descriptor = makeMediaDescriptor(input.toolName, { manifestRoot: mediaHash(mediaJson(root)), graphRevision: input.graphRevision,
@@ -203,7 +208,7 @@ export function readMediaManifest(frame, operation, proposalDescriptor = undefin
     if (mediaJson(body) !== page.page_json) invalid();
     shape(body, ['version', 'toolName', 'graphRevision', 'codecDigest', 'graphBytes', 'pageIndex', 'records']);
     array(body.records, MEDIA_LIMITS.pageRecords);
-    if (body.version !== 1 || body.pageIndex !== index || body.toolName !== operation.tool_name || body.records.length !== page.record_count) invalid();
+    if (![1,2].includes(body.version) || body.version===2&&operation.tool_name!=='catalog.preview_create' || body.pageIndex !== index || body.toolName !== operation.tool_name || body.records.length !== page.record_count) invalid();
     const { records: _records, pageIndex: _index, ...common } = body;
     if (header && mediaJson(header) !== mediaJson(common)) invalid(); header = common;
     records.push(...body.records);
@@ -221,8 +226,8 @@ export function readMediaManifest(frame, operation, proposalDescriptor = undefin
         source_product_id: stage.source_product_id, byte_sha256: stage.canonical_sha256, mime: record.mime, byte_length: record.byte_length });
     }
   }
-  const rebuilt = buildMediaManifest({ toolName: header.toolName, graphRevision: header.graphRevision, codecDigest: header.codecDigest,
-    graphBytes: header.graphBytes, assets: inputAssets, effects });
+  const rebuilt = build({ toolName: header.toolName, graphRevision: header.graphRevision, codecDigest: header.codecDigest,
+    graphBytes: header.graphBytes, assets: inputAssets, effects },header.version);
   const expected = rowsFor(rebuilt, { operationId: frame.policy.operation_id, toolName: operation.tool_name,
     createdAt: frame.policy.created_at, expiresAt: frame.policy.expires_at });
   // Each bounded row is checked separately: a paged manifest can exceed the envelope64KiB cap.

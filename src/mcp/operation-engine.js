@@ -1,3 +1,4 @@
+import { isCreationParent,assertCreationParentManifest } from './catalog-create-parent-wire.js';
 import { randomUUID } from 'node:crypto';
 import { ApiError } from '../http.js';
 import { can } from '../roles.js';
@@ -189,18 +190,19 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
     if (catalogMediaCreateAllowed(catalogCreateEnabled,{toolName:row.tool_name,mediaPolicyId:row.media_policy_id,resourceType:row.resource_type})) {
       try {
         const value = parseCatalogMediaCreateProposal(envelope.proposal);
-        catalogCreateEffects(manifest.effects,value.creationIdentity);
-        targetMatches = row.resource_id === 'catalog' && manifest.stages.length === 0;
+        catalogCreateEffects(manifest.effects,value.creationIdentity,isCreationParent(value));
+        if(isCreationParent(value))assertCreationParentManifest(value,manifest);
+        targetMatches = row.resource_id === 'catalog' && (isCreationParent(value)||manifest.stages.length === 0);
       } catch { denied(); }
     } else targetMatches = manifest.effects.some(effect => effect.kind === 'PRODUCT' && effect.productId === row.resource_id);
     if (manifest.descriptor.codecDigest !== adapter.media.codecDigest || manifest.descriptor.graphRevision !== row.expected_revision ||
         !targetMatches ||
-        (adapter.media.policyId === 'media-upload-v1' ? manifest.stages.length !== 1 : manifest.stages.length !== 0)) denied();
+        (adapter.media.policyId === 'media-upload-v1' ? manifest.stages.length !== 1 : !isCreationParent(envelope.proposal)&&manifest.stages.length !== 0)) denied();
     await withMediaWriter(store, context, async writer => {
       for (const expected of manifest.stages) {
         const stage = await writer.inspect(expected.stage_id), bytes = await writer.boundBytes(expected.stage_id, row.id);
         if (adapter.media.policyId === 'media-upload-v1') assertUploadThumbnail(envelope.proposal.thumbnail, bytes.thumbnail);
-        if (stage.productId !== row.resource_id || stage.expectedRevision !== row.expected_revision ||
+        if (stage.productId !== (isCreationParent(envelope.proposal)?expected.source_product_id:row.resource_id) || stage.expectedRevision !== (isCreationParent(envelope.proposal)?envelope.proposal.creationMedia.intentHash:row.expected_revision) ||
             stage.receiptExpiresAt !== row.receipt_expires_at || stage.correlationId !== row.correlation_id ||
             bytes.codecDigest !== adapter.media.codecDigest || bytes.canonicalSha256 !== expected.canonical_sha256) denied();
         const asset = manifest.assets.find(asset => asset.mime === bytes.mime && asset.byte_sha256 === bytes.canonicalSha256);
@@ -316,18 +318,22 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
       if (!proposal || Array.isArray(proposal) || Object.hasOwn(proposal, 'media')) throw new TypeError('Invalid server operation proposal.');
       if (adapter.media) {
         const manifest = draft.mediaManifest;
-        if (draft.expectedRevision !== captured.expectedRevision) fail(409, 'STALE_REVISION', 'The resource changed.');
+        const creationParent=toolName==='catalog.preview_create'&&isCreationParent(draft.proposal);
+        if ((creationParent?draft.proposal.reviewBinding.baseRevision:draft.expectedRevision) !== captured.expectedRevision) fail(409, 'STALE_REVISION', 'The resource changed.');
         if (!manifest || manifest.descriptor?.policyId !== adapter.media.policyId || manifest.descriptor.codecDigest !== adapter.media.codecDigest ||
             draft.resourceId !== captured.resourceId ||
             manifest.descriptor.graphRevision !== draft.expectedRevision ||
-            (adapter.media.policyId === 'media-upload-v1' ? manifest.stages?.length !== 1 : manifest.stages?.length !== 0)) denied();
+            (adapter.media.policyId === 'media-upload-v1' ? manifest.stages?.length !== 1 : !creationParent&&manifest.stages?.length !== 0)) denied();
         proposal = { ...proposal, media: manifest.descriptor };
         if (manifest.stages.length) {
-          const stage = await withMediaWriter(store, context, writer => writer.inspect(manifest.stages[0].stage_id));
-          if (stage.productId !== draft.resourceId || stage.expectedRevision !== draft.expectedRevision || stage.state !== 'VALIDATING' ||
-              stage.codecDigest !== adapter.media.codecDigest || stage.receiptExpiresAt !== receiptExpiry || stage.leaseUntil <= now ||
-              stage.absoluteExpiresAt < new Date(Date.parse(now) + ttl).toISOString()) denied();
-          correlationId = stage.correlationId;
+          if(creationParent)assertCreationParentManifest({...proposal,media:manifest.descriptor},manifest);
+          for(const [index,expected] of manifest.stages.entries()){
+            const stage = await withMediaWriter(store, context, writer => writer.inspect(expected.stage_id));
+            if (stage.productId !== (creationParent?expected.source_product_id:draft.resourceId) || stage.expectedRevision !== (creationParent?proposal.creationMedia.intentHash:draft.expectedRevision) || stage.state !== 'VALIDATING' ||
+                stage.codecDigest !== adapter.media.codecDigest || stage.receiptExpiresAt !== receiptExpiry || stage.leaseUntil <= now ||
+                stage.absoluteExpiresAt < new Date(Date.parse(now) + ttl).toISOString()||index>0&&stage.correlationId!==correlationId) denied();
+            correlationId = stage.correlationId;
+          }
         }
       }
       const envelope = {
@@ -340,7 +346,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
       if (adapter.media) {
         mediaManifestRows(draft.mediaManifest, { operationId: envelope.operationId, toolName, createdAt: now, expiresAt: envelope.expiresAt });
         const current = await withRead(read => adapter.currentRevision(read, freezeJson(JSON.parse(canonicalOperationJson(envelope)))));
-        if (!current || current.exists !== true || current.revision !== captured.expectedRevision) fail(409, 'STALE_REVISION', 'The resource changed.');
+        if (!current || current.exists !== true || current.revision !== draft.expectedRevision) fail(409, 'STALE_REVISION', 'The resource changed.');
       }
       const previewHash = operationPreviewHash(envelope), serialized = canonicalOperationJson(envelope);
       const immutableEnvelope = freezeJson(JSON.parse(serialized));
@@ -364,7 +370,7 @@ export function createOperationEngine({ store, binding, adapters, epoch, buildDi
         const finalAuthority = await authorize({ bearer, binding, toolName, epochHash, mediaPolicyId: adapter.media.policyId, resourceType: adapter.resourceType, catalogUpdateEnabled, catalogCreateEnabled });
         if (mediaJson(contextFor(finalAuthority, tenant.revision)) !== mediaJson(context)) denied();
         const current = await withRead(read => adapter.currentRevision(read, immutableEnvelope));
-        if (!current || current.exists !== true || current.revision !== captured.expectedRevision) fail(409, 'STALE_REVISION', 'The resource changed.');
+        if (!current || current.exists !== true || current.revision !== envelope.expectedRevision) fail(409, 'STALE_REVISION', 'The resource changed.');
       }
       await event(store, row, 'PREPARE', 'PREPARED');
       const changed = await store.get(`UPDATE mcp_v2_operation SET state = 'PENDING_APPROVAL'

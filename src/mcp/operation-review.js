@@ -256,7 +256,8 @@ async function acknowledgeMedia(item, nonce) {
 async function loadMedia(toolName, proposal, resourceId, resourceType, risk) {
   const { descriptor, items, labels } = mediaReview;
   const catalog = descriptor?.policyId === 'catalog-media-v1';
-  const create = catalog && toolName === 'catalog.preview_create';
+  const create = catalog && toolName === 'catalog.preview_create', parent=create&&Object.hasOwn(proposal,'creationMedia');
+  if(parent)catalogParentImages(proposal.creationMedia);
   if (catalog) {
     const binding = proposal.reviewBinding;
     const identity = create ? catalogCreationIdentity(proposal.creationIdentity) : null;
@@ -287,20 +288,20 @@ async function loadMedia(toolName, proposal, resourceId, resourceType, risk) {
   for (const [index, item] of pages.entries()) {
     const packet = await receiveMedia(item), text = new TextDecoder('utf-8', { fatal: true }).decode(packet.bytes), body = JSON.parse(text);
     if (canonical(body) !== text || Object.keys(body).sort().join(',') !== 'codecDigest,graphBytes,graphRevision,pageIndex,records,toolName,version' ||
-        item.pageIndex !== index || body.pageIndex !== index || body.version !== 1 || body.toolName !== toolName || body.graphRevision !== descriptor.graphRevision ||
+        item.pageIndex !== index || body.pageIndex !== index || body.version !== (parent?2:1) || body.toolName !== toolName || body.graphRevision !== descriptor.graphRevision ||
         body.codecDigest !== descriptor.codecDigest || !Array.isArray(body.records) || body.records.length < 1 || body.records.length > 32) throw new Error('Invalid image page.');
-    const common = canonical({ graphBytes: body.graphBytes, graphRevision: body.graphRevision, codecDigest: body.codecDigest, toolName: body.toolName });
+    const common = canonical({ version:body.version,graphBytes: body.graphBytes, graphRevision: body.graphRevision, codecDigest: body.codecDigest, toolName: body.toolName });
     if (header && header !== common) throw new Error('Mismatched image page.'); header = common;
     records.push(...body.records); if (records.length > 512) throw new Error('Image graph too large.');
     pageDigests.push({ index, hash: item.hash, recordCount: body.records.length });
     await acknowledgeMedia(item, packet.nonce);
   }
-  const common = JSON.parse(header), root = { version: 1, policyId: descriptor.policyId, codecDigest: descriptor.codecDigest,
+  const common = JSON.parse(header), root = { version: common.version, policyId: descriptor.policyId, codecDigest: descriptor.codecDigest,
     graphRevision: descriptor.graphRevision, graphBytes: common.graphBytes, pages: pageDigests, assetCount: descriptor.assetCount, effectCount: descriptor.effectCount };
   if (await sha256(new TextEncoder().encode(canonical(root))) !== descriptor.manifestRoot) throw new Error('Image manifest root failed.');
   const assets = records.filter(value => value.kind === 'ASSET'), effects = records.filter(value => ['PRODUCT', 'LISTING'].includes(value.kind));
   if (assets.length !== descriptor.assetCount || effects.length !== descriptor.effectCount || assets.length + effects.length !== records.length) throw new Error('Incomplete image effects.');
-  if (catalog && (common.graphBytes?.newBytes !== 0 || assets.some(asset => !['PRODUCT_MAIN','GALLERY'].includes(asset.source_kind) ||
+  if (catalog && !parent && (common.graphBytes?.newBytes !== 0 || assets.some(asset => !['PRODUCT_MAIN','GALLERY'].includes(asset.source_kind) ||
       !Array.isArray(asset.stage_refs) || asset.stage_refs.length !== 0))) throw new Error('Invalid catalog image source.');
   mediaReview.assets = new Map(assets.map(value => [value.asset_key, value]));
   mediaReview.assetItems = items.filter(value => value.kind === 'ASSET');
@@ -433,8 +434,26 @@ function catalogLabels(rows, create = false) {
   }
   return names;
 }
+function catalogParentImages(value){
+  if(!exactKeys(value,['version','draftId','intentHash','images'])||value.version!==1||!idPattern.test(value.draftId||'')||!hashPattern.test(value.intentHash||'')||!Array.isArray(value.images)||value.images.length<1||value.images.length>10)throw new Error('Invalid creation image binding.');
+  const seen=new Set(),hashes=new Set();for(const [position,row]of value.images.entries()){
+    if(!exactKeys(row,['stageId','productId','targetSlot','sourceSha256','canonicalSha256','thumbnailSha256','mime','byteLength','thumbnailBytes','width','height'])||!idPattern.test(row.stageId||'')||!idPattern.test(row.productId||'')||seen.has(row.stageId)||hashes.has(row.canonicalSha256)||row.targetSlot!==(position===0?'MAIN':'GALLERY')||![row.sourceSha256,row.canonicalSha256,row.thumbnailSha256].every(item=>hashPattern.test(item||''))||!['image/png','image/jpeg','image/webp'].includes(row.mime)||![row.byteLength,row.thumbnailBytes,row.width,row.height].every(Number.isInteger)||row.byteLength<1||row.byteLength>524288||row.thumbnailBytes<1||row.thumbnailBytes>81920||row.width<1||row.height<1||row.width>8192||row.height>8192||row.width*row.height>4194304)throw new Error('Invalid creation image.');seen.add(row.stageId);hashes.add(row.canonicalSha256);
+  }return value.images;
+}
+function assertCatalogParentImages(proposal,products,listing,owners){
+  const images=catalogParentImages(proposal.creationMedia),assets=[...mediaReview.assets.values()],refs=assets.flatMap(asset=>{if(!Array.isArray(asset.stage_refs))throw new Error('Invalid creation stages.');return asset.stage_refs.map(ref=>({asset,ref}));});
+  if(refs.length!==images.length)throw new Error('Incomplete creation stages.');
+  const fresh=products.find(row=>row.before===null),ordered=[];
+  for(const [position,image]of images.entries()){
+    const matches=refs.filter(({asset,ref})=>exactKeys(ref,['stage_id','source_product_id','canonical_sha256'])&&ref.stage_id===image.stageId&&ref.source_product_id===image.productId&&ref.canonical_sha256===image.canonicalSha256&&asset.byte_sha256===image.canonicalSha256&&asset.mime===image.mime&&asset.byte_length===image.byteLength);
+    if(matches.length!==1)throw new Error('Mismatched creation image.');const key=matches[0].asset.asset_key;
+    if(position===0?image.productId!==fresh.productId||fresh.after.mainAssetKey!==key||!fresh.after.ownMainVisible:image.productId!==(listing.after.holderId??fresh.productId))throw new Error('Invalid creation image owner.');if(position)ordered.push(key);
+  }
+  if(ordered.length&&canonical(listing.after.galleryAssetKeys.slice(-ordered.length))!==canonical(ordered))throw new Error('Mismatched creation gallery order.');
+  for(const asset of assets){if(asset.source_kind==='STAGE'){if(!images.some(image=>asset.stage_id===image.stageId&&asset.source_id===image.stageId&&asset.source_product_id===image.productId&&asset.byte_sha256===image.canonicalSha256))throw new Error('Invalid draft image source.');}else if(!['PRODUCT_MAIN','GALLERY'].includes(asset.source_kind)||asset.stage_id!==null||!owners.has(asset.source_product_id))throw new Error('Invalid inherited image owner.');}
+}
 function renderCatalogMediaEffects(effects, labels, creationProposal = null) {
-  const identity = creationProposal ? catalogCreationIdentity(creationProposal.creationIdentity) : null;
+  const identity = creationProposal ? catalogCreationIdentity(creationProposal.creationIdentity) : null,parent=identity&&Object.hasOwn(creationProposal,'creationMedia');
   const names = catalogLabels(labels, Boolean(identity)), listings = new Map(), seen = new Set();
   for (const effect of effects) {
     if (!idPattern.test(effect.productId || effect.listingId || '')) throw new Error('Invalid catalog image identity.');
@@ -462,15 +481,15 @@ function renderCatalogMediaEffects(effects, labels, creationProposal = null) {
   if (seen.size !== names.size) throw new Error('Incomplete catalog labels.');
   if (identity) {
     const products = effects.filter(row => row.kind === 'PRODUCT'), fresh = products.find(row => row.productId === identity.productId), listing = [...listings.values()][0], after = creationProposal.after;
-    if (listings.size !== 1 || !fresh || fresh.before !== null || fresh.labels.before !== null || fresh.after.mainAssetKey !== null || fresh.after.ownMainVisible !== false ||
+    if (listings.size !== 1 || !fresh || fresh.before !== null || fresh.labels.before !== null || !parent&&(fresh.after.mainAssetKey !== null || fresh.after.ownMainVisible !== false) ||
         !listing?.after || listing.listingId !== (identity.targetListingId ?? identity.newListingId) || (listing.before === null) !== (identity.targetListingId === null) ||
         creationProposal.before !== null || !after || after.id !== identity.productId || after.listingId !== listing.listingId || canonical({sku:after.sku,name:after.name}) !== canonical(fresh.labels.after)) throw new Error('Invalid CREATE effects.');
     for (const product of products) if (product.after.listingId !== listing.listingId || product !== fresh && (!product.before || product.before.listingId !== listing.listingId ||
         product.before.mainAssetKey !== product.after.mainAssetKey || canonical(product.labels.before) !== canonical(product.labels.after))) throw new Error('Unsupported existing-product change.');
-    if (listing.before === null ? products.length !== 1 || fresh.after.role !== 'single' || listing.after.holderId !== null || listing.after.galleryAssetKeys.length !== 0 : products.length < 2) throw new Error('Invalid CREATE membership.');
+    if (listing.before === null ? products.length !== 1 || fresh.after.role !== 'single' || listing.after.holderId !== null || !parent&&listing.after.galleryAssetKeys.length !== 0 : products.length < 2) throw new Error('Invalid CREATE membership.');
     const owners = new Set(products.filter(row => row.before !== null).map(row => row.productId));
-    if ([...mediaReview.assets.values()].some(row => row.stage_id !== null || !owners.has(row.source_product_id))) throw new Error('Invalid CREATE source owner.');
-    catalogCreateOptions(creationProposal);
+    if (!parent&&[...mediaReview.assets.values()].some(row => row.stage_id !== null || !owners.has(row.source_product_id))) throw new Error('Invalid CREATE source owner.');
+    catalogCreateOptions(creationProposal);if(parent)assertCatalogParentImages(creationProposal,products,listing,owners);
   }
   renderCatalogStates(effects,names,listings,creationProposal);
 }

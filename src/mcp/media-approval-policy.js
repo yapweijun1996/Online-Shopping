@@ -1,3 +1,5 @@
+import { isCreationParent } from './catalog-create-parent-wire.js';
+import { readCatalogCreateParentReview } from './catalog-create-parent-review.js';
 import { ApiError } from '../http.js';
 import { stamp } from './credentials.js';
 import { MEDIA_LIMITS } from './media-schema.js';
@@ -75,9 +77,9 @@ async function readCatalogCreateReviewState(store,operation,envelope,context,cod
   try {
     const value = parseCatalogMediaCreateProposal(envelope.proposal);
     if (operation.risk !== 'HIGH' || operation.resource_id !== 'catalog' || operation.resource_type !== 'catalog') deny();
-    const fresh = await readCatalogMediaCreateReview(store,{normalizedInput:value.normalizedInput,
+    const parent=isCreationParent(value),fresh = parent?await readCatalogCreateParentReview(store,{draftId:value.creationMedia.draftId,images:value.creationMedia.images},codecDigest,context,value.sourceRevision):await readCatalogMediaCreateReview(store,{normalizedInput:value.normalizedInput,
       creationIdentity:value.creationIdentity},codecDigest,value.sourceRevision);
-    if (fresh.revision !== operation.expected_revision || manifest.descriptor.graphRevision !== fresh.revision || manifest.stages.length !== 0 ||
+    if (fresh.revision !== operation.expected_revision || manifest.descriptor.graphRevision !== fresh.revision || !parent&&manifest.stages.length !== 0 ||
         canonicalOperationJson(fresh.proposal) !== canonicalOperationJson(value) ||
         canonicalOperationJson(fresh.manifest.descriptor) !== canonicalOperationJson(manifest.descriptor) ||
         fresh.manifest.pages.length !== manifest.pages.length || fresh.manifest.pages.some((page,n) => page.page_json !== manifest.pages[n].page_json)) deny();
@@ -85,7 +87,7 @@ async function readCatalogCreateReviewState(store,operation,envelope,context,cod
     const labels = value.reviewLabels.map(({productId,after}) => ({productId,sku:after.sku,name:after.name}));
     if (source.kind === 'EXISTING_TARGET') return {manifest,snapshot:source.snapshot,labels};
     // EMPTY_BEFORE is not a database capture. Its PAGE proof is still mandatory.
-    if (source.kind !== 'EMPTY_BEFORE' || manifest.assets.length !== 0 || manifest.stages.length !== 0 || manifest.pages.length < 1) deny();
+    if (source.kind !== 'EMPTY_BEFORE' || !parent&&(manifest.assets.length !== 0 || manifest.stages.length !== 0) || manifest.pages.length < 1) deny();
     return {manifest,snapshot:null,labels};
   } catch (error) {
     if (error instanceof ApiError && error.status === 503) throw error;

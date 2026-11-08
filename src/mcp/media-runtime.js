@@ -10,7 +10,7 @@ export function createMediaRuntime({ store, binding, config, tenantGuard, quickL
   const media = config.mcpMedia;
   const codec = Object.freeze({ socketPath: media.socketPath, token: readMediaCodecToken(media), digest: media.codecDigest });
   const coordinator = createMediaCoordinator({ store, binding, tenantGuard, epoch: config.mcpV2.epoch,
-    buildDigest: config.mcpV2.buildDigest, codec, enabled: true, production: config.production, profile: config.mcpV2.profile, quickLogin, decode });
-  return Object.freeze({ coordinator, codecDigest: codec.digest,
+    buildDigest: config.mcpV2.buildDigest, codec, enabled: true, production: config.production, profile: config.mcpV2.profile, quickLogin, creationEnabled:config.mcpFinish?.enabled===true, decode });
+  return Object.freeze({ coordinator, ...(coordinator.creation?{creation:coordinator.creation}:{}), codecDigest: codec.digest,
     nativeSession: options => createMediaNativeSession(codec, { ...options, ...(decode ? { decode } : {}) }) });
 }

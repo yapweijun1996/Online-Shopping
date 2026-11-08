@@ -3,6 +3,7 @@ import { ApiError } from '../http.js';
 import { canonicalOperationJson } from './operation-envelope.js';
 import { operationInstant, operationReceiptExpiry } from './operation-maintenance.js';
 import { MEDIA_LIMITS, MEDIA_POLICY_DESCRIPTOR_FIELDS } from './media-schema.js';
+import { creationStageBinding } from './catalog-create-draft-storage.js';
 import { catalogMediaAllowed, catalogMediaCreateAllowed } from './catalog-media-config.js';
 export const mediaHash = value => createHash('sha256').update(value).digest('hex');
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -87,7 +88,7 @@ export async function withMediaWriter(store, trustedContext, work, { now: suppli
       return owner;
     };
     const writer = {
-      async begin(input) {
+      async begin(input, creationDraft = null) {
         alive(); keys(input,['productId','targetSlot','expectedRevision','sourceSha256','sourceMime','declaredBytes','codecDigest','idempotencyKey']);
         if (!isUuid(input.productId) || !['MAIN','GALLERY'].includes(input.targetSlot) || !isSha(input.expectedRevision) || !isSha(input.sourceSha256) ||
             !isSha(input.codecDigest) || !['image/png','image/jpeg','image/webp'].includes(input.sourceMime) || !integer(input.declaredBytes,1,MEDIA_LIMITS.sourceBytes) ||
@@ -101,7 +102,15 @@ export async function withMediaWriter(store, trustedContext, work, { now: suppli
           await store.run('INSERT INTO mcp_v2_media_quota(tenant_id,kind,owner_key,reserved_bytes,active_slots)VALUES(?,?,?,0,0) ON CONFLICT DO NOTHING',context.tenantId,kind,key);
           if(!await store.get('UPDATE mcp_v2_media_quota SET reserved_bytes=reserved_bytes+?,active_slots=active_slots+1 WHERE tenant_id=? AND kind=? AND owner_key=? AND reserved_bytes<=? AND active_slots<? RETURNING owner_key',reserved,context.tenantId,kind,key,bytes-reserved,slots))throw new ApiError(429,'MEDIA_QUOTA','Media upload quota exceeded.');
         }
-        const id=randomUUID(), correlation=randomUUID();
+        let correlation=randomUUID();
+        if(creationDraft!==null){
+          const draft=await store.get("SELECT * FROM seller_mcp_create_draft WHERE id=? AND state='OPEN'",creationDraft);
+          if(!draft||draft.context_json!==canonicalOperationJson(context)||draft.intent_hash!==input.expectedRevision||draft.expires_at<=now)conflict();
+          const identity=JSON.parse(draft.identity_json);
+          if(input.targetSlot==='MAIN'?input.productId!==identity.productId:input.productId!==(identity.targetListingId?await store.get('SELECT id FROM product WHERE listing_id=? ORDER BY created_at,id LIMIT 1',identity.targetListingId).then(row=>row?.id):identity.productId))conflict();
+          correlation=draft.correlation_id;
+        }
+        const id=randomUUID();
         await store.run(`INSERT INTO mcp_v2_media_stage(id,tenant_id,tenant_revision,account_id,client_id,grant_id,account_auth_version,epoch_hash,build_digest,issuer,resource,
           product_id,target_slot,expected_revision,begin_request_hash,idempotency_hash,source_sha256,codec_digest,source_mime,declared_bytes,next_offset,reserved_bytes,quota_owner_key,state,version,validation_attempts,correlation_id,created_at,upload_expires_at,absolute_expires_at,receipt_expires_at)
           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,'UPLOADING',0,0,?,?,?,?,?)`,id,context.tenantId,context.tenantRevision,context.accountId,context.clientId,context.grantId,context.accountAuthVersion,context.epochHash,context.buildDigest,context.issuer,context.resource,
@@ -152,9 +161,10 @@ export async function withMediaWriter(store, trustedContext, work, { now: suppli
             result.thumbnail.byteLength<1||result.thumbnail.byteLength>MEDIA_LIMITS.thumbnailBytes||result.sourceSha256!==row.source_sha256||result.mime!==row.source_mime||result.codecDigest!==row.codec_digest||
             !integer(result.width,1,8192)||!integer(result.height,1,8192)||result.width*result.height>4194304)invalid();
         const operation=await store.get('SELECT * FROM mcp_v2_operation WHERE id=?',operationId),policy=await readMediaPolicy(store,context,operationId);
-        if(!operation||!matchesOperation(operation,context)||operation.media_policy_id!=='media-upload-v1'||!policy||policy.policy_id!==operation.media_policy_id||policy.codec_digest!==row.codec_digest||
+        const creation=operation?.tool_name==='catalog.preview_create'&&operation.media_policy_id==='catalog-media-v1'?await creationStageBinding(store,id,context,operation):null;
+        if(!operation||!matchesOperation(operation,context)||(!creation&&operation.media_policy_id!=='media-upload-v1')||!policy||policy.policy_id!==operation.media_policy_id||policy.codec_digest!==row.codec_digest||
             !['PREPARED','PENDING_APPROVAL'].includes(operation.state)||operation.expires_at<=now||operation.expires_at>row.absolute_expires_at||
-            Date.parse(operation.expires_at)-Date.parse(now)>600000||operation.created_at>now||operation.receipt_expires_at!==row.receipt_expires_at||operation.correlation_id!==row.correlation_id||operation.tool_name!=='media.prepare_upload'||policy.created_at!==operation.created_at||policy.expires_at!==operation.expires_at)conflict();
+            Date.parse(operation.expires_at)-Date.parse(now)>600000||operation.created_at>now||operation.receipt_expires_at!==row.receipt_expires_at||operation.correlation_id!==row.correlation_id||(!creation&&operation.tool_name!=='media.prepare_upload')||policy.created_at!==operation.created_at||policy.expires_at!==operation.expires_at)conflict();
         const image=Buffer.from(result.image),thumbnail=Buffer.from(result.thumbnail),digest=mediaHash(image);
         await store.run('INSERT INTO mcp_v2_media_pin(stage_id,operation_id,canonical_sha256,codec_digest,created_at,expires_at)VALUES(?,?,?,?,?,?)',id,operationId,digest,row.codec_digest,now,operation.expires_at);
         if(!await store.get(`UPDATE mcp_v2_media_stage SET state='BOUND',version=version+1,lease_hash=NULL,lease_until=NULL,operation_id=?,bound_expires_at=?,canonical_data=?,canonical_sha256=?,canonical_bytes=?,canonical_mime=?,width=?,height=?,thumbnail_data=?,thumbnail_sha256=?,thumbnail_bytes=? WHERE id=? AND version=? AND state='VALIDATING' RETURNING id`,
@@ -164,10 +174,11 @@ export async function withMediaWriter(store, trustedContext, work, { now: suppli
       async boundBytes(id,operationId) {
         const row=await load(id),pin=await store.get('SELECT * FROM mcp_v2_media_pin WHERE stage_id=? AND operation_id=?',id,operationId);
         const operation=await store.get('SELECT * FROM mcp_v2_operation WHERE id=?',operationId),policy=await readMediaPolicy(store,context,operationId);
+        const creation=operation?.tool_name==='catalog.preview_create'&&operation.media_policy_id==='catalog-media-v1'?await creationStageBinding(store,id,context,operation):null;
         if(row.state!=='BOUND'||row.operation_id!==operationId||!pin||pin.canonical_sha256!==row.canonical_sha256||pin.codec_digest!==row.codec_digest||
             !operation||!matchesOperation(operation,context)||!['PREPARED','PENDING_APPROVAL','APPROVED'].includes(operation.state)||operation.correlation_id!==row.correlation_id||
             operation.expires_at<=now||pin.expires_at!==operation.expires_at||row.bound_expires_at!==operation.expires_at||row.absolute_expires_at<=now||
-            !policy||policy.policy_id!=='media-upload-v1'||policy.codec_digest!==row.codec_digest)conflict();
+            !policy||(!creation&&policy.policy_id!=='media-upload-v1')||policy.codec_digest!==row.codec_digest)conflict();
         const payload=await store.get('SELECT canonical_data,thumbnail_data FROM mcp_v2_media_stage WHERE id=?',id);
         const image=Buffer.from(payload.canonical_data),thumbnail=Buffer.from(payload.thumbnail_data);
         if(image.length!==row.canonical_bytes||thumbnail.length!==row.thumbnail_bytes||mediaHash(image)!==row.canonical_sha256||mediaHash(thumbnail)!==row.thumbnail_sha256)integrity();

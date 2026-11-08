@@ -1,3 +1,4 @@
+import { createDraftCoordinator } from './catalog-create-draft.js';
 import { deploymentProfileAllowsProduction } from './deployment-profile.js';
 import { ApiError } from '../http.js';
 import { SqlLimiter } from '../limiter.js';
@@ -47,7 +48,7 @@ const readOnly = store => Object.freeze({ dialect: store.dialect, get: (sql, ...
 
 /** Trusted construction only; bearer is a transport credential, never model input. */
 export function createMediaCoordinator({ store, binding, tenantGuard, epoch, buildDigest, codec,
-  enabled = false, quickLogin, production, profile, decode = decodeViaSocket }) {
+  enabled = false, quickLogin, production, profile, creationEnabled=false, decode = decodeViaSocket }) {
   if (enabled !== true || quickLogin !== false || (![true,false].includes(production) || (production === true && (!deploymentProfileAllowsProduction(profile) || decode !== decodeViaSocket))) || !store?.transaction ||
       typeof tenantGuard?.withActiveTenant !== 'function' || !isMediaHash(buildDigest) || !codec || !isMediaHash(codec.digest) ||
       typeof codec.socketPath !== 'string' || !codec.socketPath.startsWith('/') ||
@@ -170,7 +171,8 @@ export function createMediaCoordinator({ store, binding, tenantGuard, epoch, bui
       await writer.consume(envelope.proposal.stageId, envelope.operationId);
     },
   });
-  const coordinator = Object.freeze({ begin, append, discard, uploadAdapter: makeUploadAdapter({ hooks }) });
+  const creation=creationEnabled===true?createDraftCoordinator({store,write,reserve,codecDigest:codec.digest}):null;
+  const coordinator = Object.freeze({ begin, append, discard, uploadAdapter: makeUploadAdapter({ hooks }), ...(creation?{creation}:{}) });
   coordinators.add(coordinator);
   return coordinator;
 }
