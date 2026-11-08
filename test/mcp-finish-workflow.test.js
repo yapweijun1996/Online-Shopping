@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { catalogRuntimeFixture } from './helpers/mcp-catalog-runtime-fixture.js';
 import { catalogCreateRuntimeFixture } from './helpers/mcp-catalog-create-runtime-fixture.js';
 import { reviewPassword } from './helpers/mcp-review-fixture.js';
 import { maintainOperations } from '../src/mcp/operation-maintenance.js';
@@ -7,16 +8,19 @@ import { singleTenantRegistry } from '../src/tenants.js';
 import { createApi } from '../src/app.js';
 import { serveStatic } from '../src/static.js';
 import { createAccount } from '../src/accounts.js';
-import { createProduct } from '../src/products.js';
+import { createProduct, updateProduct } from '../src/products.js';
 const input=(sku)=>({sku,name:sku,description:'Synthetic finish fixture',category:'SYNTHETIC',priceMinor:140,active:true,stockQuantity:100});
 async function setup(t){
  const f=await catalogCreateRuntimeFixture(t,t.name.startsWith('postgres:')?'postgres':'sqlite',{config:{mcpFinish:{enabled:true}}});
+ return finishFixture(f);
+}
+function finishFixture(f){
  const prepare=async(ops,key='finish-test-idempotency-001')=>{
   const response=await f.call('/api/v1/seller/mcp/finishes','POST',{items:ops.map(op=>({operationId:op.operationId,previewHash:op.previewHash})),idempotencyKey:key},f.headers);
   assert.equal(response.response.status,200,JSON.stringify(response.data));return response.data;
  };
  const proof=async op=>{const value=await f.review(op);await f.acknowledge(op,value);return{operationId:op.operationId,previewHash:op.previewHash,challenge:value.challenge,mediaReviewed:true};};
- const approve=async(job,items,password=reviewPassword,headers=f.headers)=>f.call('/api/v1/seller/mcp/finishes/'+job.jobId+'/approve','POST',{items,password},headers);
+ const approve=async(job,items,password=undefined,headers=f.headers)=>f.call('/api/v1/seller/mcp/finishes/'+job.jobId+'/approve','POST',{items,...(password===undefined?{}:{password})},headers);
  const resume=job=>f.call('/api/v1/seller/mcp/finishes/'+job.jobId+'/resume','POST',{},f.headers);
  return {...f,prepareJob:prepare,proof,finish:approve,resume};
 }
@@ -43,10 +47,10 @@ runTest('batch isolates stale CREATE, preserves committed product and never appr
  assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM product WHERE sku=?','FINISH-B')).n,0);
  assert.deepEqual((await f.resume(job)).data,result.data);
 });
-for(const negative of ['password','unreviewed','csrf','bearer','grant','scope','tenant','hash'])runTest('finish rejects '+negative+' without product writes',async t=>{
+for(const negative of ['session','unreviewed','csrf','bearer','grant','scope','tenant','hash'])runTest('finish rejects '+negative+' without product writes',async t=>{
  const f=await setup(t),op=await f.prepare(input('NEGATIVE'),'finish-negative-operation-01'),proof=await f.proof(op),job=await f.prepareJob([op]);
  let headers={...f.headers},password=reviewPassword;
- if(negative==='password')password='incorrect-password';
+ if(negative==='session')delete headers.cookie;
  if(negative==='unreviewed')await f.store.run('DELETE FROM mcp_v2_media_delivery WHERE operation_id=?',op.operationId);
  if(negative==='csrf')headers['x-csrf-token']='wrong';
  if(negative==='bearer')headers.authorization='Bearer '+f.client.bearer;
@@ -78,7 +82,7 @@ runTest('stale revision revalidation prepares a new exact review; old approval i
  assert.equal(replay.response.status,200,JSON.stringify(replay.data));assert.equal(replay.data.operationId,replacement.data.operationId);assert.equal(replay.data.replayed,true);
  assert.notEqual(replacement.data.operationId,op.operationId);
  assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_approval WHERE operation_id=?',replacement.data.operationId)).n,0);
- assert.equal((await f.resume(job)).data.items[0].error,'APPROVAL_REQUIRED');
+ assert.equal((await f.resume(job)).data.items[0].error,'RENEWED_APPROVAL_REQUIRED');
  assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM product WHERE sku=?','STALE-RENEW')).n,0);
  const newProof=await f.proof(replacement.data),result=await f.finish(job,[newProof]);
  assert.equal(result.data.status,'FINISHED',JSON.stringify(result.data));
@@ -158,4 +162,43 @@ runTest('malformed approval packets return actionable invalid input and never ap
  const response=await f.call('/api/v1/seller/mcp/finishes/'+job.jobId+'/resume','POST',[],f.headers);assert.equal(response.response.status,400);
  assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?',op.operationId)).state,'PENDING_APPROVAL');
  assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM product')).n,0);
+});
+
+for(const field of ['priceMinor','description','stockQuantity','active'])for(const affected of ['target','sibling'])runTest(`UPDATE resume checks ${affected} ${field} after a genuine commit and later portal write`,async t=>{
+ const raw=await catalogRuntimeFixture(t,t.name.startsWith('postgres:')?'postgres':'sqlite',{config:{mcpFinish:{enabled:true}}}),f=finishFixture(raw);
+ const a=await f.product({sku:'UPDATE-A',variantGroup:'UPDATE-GROUP',variantLabel:'A'}),b=await f.product({sku:'UPDATE-B',variantGroup:'UPDATE-GROUP',variantLabel:'B'});
+ const op=await f.prepare(a.id,{description:'Reviewed shared description',priceMinor:2400,active:false},'finish-update-readback-01');
+ await f.approve(op);const job=await f.prepareJob([op]);
+ const result=await f.commit(op);assert.equal(result.data.result.structuredContent.status,'COMMITTED');
+ const id=affected==='target'?a.id:b.id;
+ const values={priceMinor:2500,description:'Later authorized shared description',stockQuantity:8,active:affected==='target'};
+ await updateProduct(f.store,id,{[field]:values[field]});
+ const resumed=await f.resume(job);assert.equal(resumed.response.status,200,JSON.stringify(resumed.data));
+ assert.equal(resumed.data.status,'PARTIAL');assert.equal(resumed.data.items[0].error,'VERIFY_CHANGED',JSON.stringify(resumed.data));
+ assert.equal((await f.store.get("SELECT COUNT(*) AS n FROM mcp_v2_event WHERE operation_id=? AND event='COMMIT'",op.operationId)).n,1);
+});
+
+runTest('approval accepts only pending-item proofs when earlier items already have genuine approval',async t=>{
+ const f=await setup(t),a=await f.prepare(input('PENDING-A'),'finish-pending-a-001'),b=await f.prepare(input('PENDING-B'),'finish-pending-b-001');
+ const proofB=await f.proof(b),job=await f.prepareJob([a,b]);await f.approve(a);
+ const response=await f.finish(job,[proofB]);assert.equal(response.response.status,200,JSON.stringify(response.data));
+ assert.equal(response.data.items[0].operationState,'COMMITTED');assert.equal(response.data.items[1].error,'STALE_REVISION');
+ const replacement=await f.call('/api/v1/seller/mcp/finishes/'+job.jobId+'/revalidate','POST',{operationId:b.operationId,idempotencyKey:'finish-pending-b-revalidate'},f.headers);
+ assert.equal(replacement.response.status,200,JSON.stringify(replacement.data));
+ const done=await f.finish(job,[await f.proof(replacement.data)]);
+ assert.equal(done.data.status,'FINISHED',JSON.stringify(done.data));assert.equal(done.data.completed,2);
+ for(const op of [a,replacement.data])assert.equal((await f.store.get("SELECT COUNT(*) AS n FROM mcp_v2_event WHERE operation_id=? AND event='COMMIT'",op.operationId)).n,1);
+});
+
+runTest('renewed seller session sees progress but cannot execute old session approval',async t=>{
+ const f=await setup(t),op=await f.prepare(input('RELOGIN'),'finish-relogin-operation1');await f.approve(op);const job=await f.prepareJob([op]);
+ const login=await f.call('/api/v1/seller/session','POST',{username:'synthetic_owner',password:reviewPassword},{origin:f.config.sellerOrigin});
+ assert.equal(login.response.status,200);Object.assign(f.headers,{cookie:login.response.headers.get('set-cookie').split(';')[0],'x-csrf-token':login.data.csrfToken});
+ const held=await f.resume(job);assert.equal(held.data.items[0].error,'RENEWED_APPROVAL_REQUIRED',JSON.stringify(held.data));
+ assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM product')).n,0);
+ const replacement=await f.call('/api/v1/seller/mcp/finishes/'+job.jobId+'/revalidate','POST',{operationId:op.operationId,idempotencyKey:'finish-relogin-revalidation'},f.headers);
+ assert.equal(replacement.response.status,200,JSON.stringify(replacement.data));
+ assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_approval WHERE operation_id=?',replacement.data.operationId)).n,0);
+ const done=await f.finish(job,[await f.proof(replacement.data)]);assert.equal(done.data.status,'FINISHED',JSON.stringify(done.data));
+ assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM product')).n,1);
 });

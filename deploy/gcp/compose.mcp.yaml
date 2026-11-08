@@ -6,6 +6,7 @@ services:
       MCP_V2_MEDIA_ENABLED: "1"
       MCP_V2_CATALOG_MEDIA_UPDATE_ENABLED: "1"
       MCP_V2_CATALOG_MEDIA_CREATE_ENABLED: "1"
+      MCP_V2_FINISH_ENABLED: ${MCP_V2_FINISH_ENABLED:-0}
       MCP_V2_PRODUCTION_PROFILE: seller-operations-v1
       MCP_V2_BACKEND_IDENTITY: ${MCP_BACKEND_IDENTITY:?Verified actual backend image identity required}
       MCP_V2_EPOCH_FILE: /run/mcp-control/epoch

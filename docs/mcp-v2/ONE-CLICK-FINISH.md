@@ -1,170 +1,89 @@
-# One-click Approve & Finish — isolated implementation
+# One-click Approve & Finish
 
-Date: 2026-11-08. Base: `15e78646aa62afb86ac8a6e7d5aa9b43e46bb5ee`.
-Status: development implementation; production HOLD. No production data or deployment changes.
+Updated 2026-11-08. This document describes the prepared-operation coordinator.
+The unified new-product/new-image parent contract is documented separately.
+Implementation and local validation do not establish that a production release
+or a particular seller operation has completed.
 
-## Implemented contract
+## Seller review and approval
 
-`MCP_V2_FINISH_ENABLED=1` opts into development only, with MCP v2 enabled.
-Production configuration rejects the flag. Default is OFF. The ordinary
-approval-only and MCP bearer tool contracts remain available and unchanged.
+An authenticated seller opens the first-party operation review page, reviews
+all metadata, price, stock, publication state and exact physical images, then
+explicitly clicks **Approve & Finish**. The existing seller login session is
+sufficient; operation approval does not request another password. Session and
+account validity, Origin/CSRF, expiring session-bound challenge, preview hash,
+PAGE/ASSET evidence, original live OAuth grant and consent, capability, tenant,
+epoch and build are still mandatory. A job or progress marker grants no authority.
 
-An authenticated seller opens the existing operation review URL. The opted-in
-page shows an initially unchecked metadata acknowledgment alongside the existing
-exact-image review controls. After review and fresh password entry,
-**Approve & Finish** requests approval, then invokes the existing operation
-engine, reads back metadata and freshly hashed physical image roles, and records
-progress. An `active:true` catalog proposal publishes through the existing
-catalog service as part of its approved commit. There is no external marketplace
-publishing and no Shopee API call.
+The backend approves each exact pending proposal, executes its existing atomic
+operation engine, reads back all affected product/listing projections and freshly
+hashed image roles, then records a receipt and progress. This includes metadata
+of affected sibling variants, not only the selected product. `active:true`
+publishes through the existing catalog service; no Shopee listing is changed.
 
-The service processes prepared catalog CREATE/UPDATE and staged upload/layout
-operations. It does not take arbitrary tool names, SQL, URLs, scope selectors,
-seller identities, replacement content or approval flags from an orchestration
-request. Product bytes still pass through the native codec before review.
+## Batch, failure and recovery
 
-### Batch
+`/oauth/operation?operationIds=<uuid>,<uuid>` accepts one to five distinct
+operations under one original client/grant. Each proposal receives an explicit
+review acknowledgment. Execution is a sequence of atomic individual commits;
+earlier successes survive a later failure. Responses contain `FINISHED`,
+`PARTIAL` or `IN_PROGRESS` and per-item state/error/receipt.
 
-`/oauth/operation?operationIds=<uuid>,<uuid>` accepts one to five distinct IDs in
-the isolated feature. The seller reviews each complete proposal and every unique
-exact image for that proposal, advances with an explicit acknowledgment, then
-enters their password once and clicks Approve & Finish. Each existing approval
-handler independently verifies that password and its full challenge/evidence
-outside its writer lock. Five is the bounded batch limit, consistent with the
-existing address approval limit. Jobs require one original client and grant.
-The earliest proposal expiry also fences the browser's entire batch.
-
-The batch is a sequence of individual atomic commits, not an all-or-nothing
-bulk transaction. Earlier successes remain committed when another item fails.
-Progress reports `FINISHED`, `PARTIAL` or `IN_PROGRESS`, with each item's receipt,
-operation state and fixed error code. A successful verification is recorded once.
-
-### First-party execution authority
-
-The browser does not receive, save or manufacture an OAuth bearer token.
-The new trusted engine entry points authenticate the seller session and CSRF,
-require the operation's original live OAuth grant, current account capability,
-original explicit consent, tenant, epoch and build, and recheck these at commit.
-Execution additionally requires the original approval's exact seller session.
-The operation engine still validates fresh approval expiry, stored preview hash,
-all PAGE/ASSET evidence, current revision, native-stage integrity, CAS and audit.
-Public bearer verification continues through the original unchanged verifier.
-
-Job rows and successful progress markers confer no authority. A resumed write
-passes the full operation engine again. A repeated committed operation returns
-its existing receipt and cannot duplicate products, stock movements or uploads.
-Only job IDs are stored in sessionStorage; passwords and challenges are not
-persisted by this feature. Challenges remain in page memory only. The server
-never persists the submitted password in job data, progress events or receipts.
-
-### APIs (same origin, seller cookie; mutations also require CSRF)
+Same-origin seller-cookie APIs (mutations also require CSRF):
 
 - `POST /api/v1/seller/mcp/finishes`: `{items:[{operationId,previewHash}],idempotencyKey}`.
-- `GET /api/v1/seller/mcp/finishes/:jobId`: bounded progress and minimal receipts.
-- `POST .../:jobId/approve`: `{items:[{operationId,previewHash,challenge,mediaReviewed:true}],password}`.
-- `POST .../:jobId/resume`: `{}`. Never grants missing approval.
-- `POST .../:jobId/revalidate`: `{operationId,idempotencyKey}`. Catalog intents only.
+- `GET .../finishes/:jobId`: bounded owner progress and receipts.
+- `POST .../:jobId/approve`: `{items:[{operationId,previewHash,challenge,mediaReviewed:true}]}`. This must be the exact ordered set of currently pending operations; approved or committed items are omitted.
+- `POST .../:jobId/resume`: `{}`. Missing approval is never granted.
+- `POST .../:jobId/revalidate`: `{operationId,idempotencyKey}`. Prepares a replacement catalog proposal requiring renewed review.
 
-Prepare idempotency binds the ordered operation IDs/hashes and original client,
-account, tenant and session. Changed requests conflict. Revalidation stores an
-idempotent source/replacement mapping. Jobs survive application reconstruction;
-no background daemon or cron is installed. Execution proceeds in the backend
-request; another browser request can poll progress. A lost request or restart is
-reconciled by explicit Resume, using the operation receipt as authority for what
-committed. No password is needed to resume an approval that is still genuinely
-fresh and valid. Expired approval requires a new review and fresh password.
+Prepare idempotency binds ordered operation IDs/hashes, original client/grant,
+account and tenant. Only job IDs enter browser sessionStorage. Challenges stay in
+page memory. An optional legacy password field is inert, never used or stored.
+No background daemon is installed: the backend request performs execution and a
+later explicit Resume reconciles an interrupted request from durable receipts.
+Committed operations are read back, never reapplied; stock and commit audit must
+not duplicate. If current content differs from the committed expected projection,
+verification returns `VERIFY_CHANGED` rather than claiming completion.
 
-### State and approval flow
+A renewed login can inspect its own job with the original grant still valid.
+An approval bound to another seller session becomes
+`RENEWED_APPROVAL_REQUIRED`; Resume cannot execute it. Revalidation prepares a
+new unapproved operation, and the current session must review and explicitly
+approve it. Existing committed receipts may be reconciled under current authority.
+Expired/revoked sessions, grants or consent never gain authority from saved jobs.
 
-```mermaid
-flowchart TD
-  Review[Review metadata and exact images] --> Password[Fresh password and explicit approval]
-  Password --> Engine[Existing operation engine]
-  Engine -->|Current revision| Commit[Atomic individual commit and receipt]
-  Commit --> Verify[Read back metadata and freshly hashed images]
-  Verify --> Progress[Durable item progress]
-  Engine -->|STALE_REVISION| Stop[Hold only this item]
-  Stop --> Revalidate[Reprepare original intent under original live grant]
-  Revalidate --> New[New pending proposal without approval]
-  New --> Review
-  Progress -->|Lost response or restart| Resume[Explicit resume and receipt reconciliation]
-  Resume --> Engine
-```
+## Stale revisions
 
-### STALE_REVISION
+A catalog change can invalidate another prepared operation's base revision.
+`STALE_REVISION` holds that item. Revalidation reruns the original normalized
+intent under its original live grant/native path and stores a new proposal and
+source/replacement audit mapping. Every replacement requires complete new review,
+image acknowledgments and approval. No old approval or preview hash is changed
+or transferred. This implementation makes no content-equivalence auto-rebase
+claim. Expired/consumed media requires safe restaging, never resurrection.
 
-CREATE currently hashes whole-catalog metadata. Committing one previously
-prepared CREATE can stale another independent CREATE. This is security
-invalidation, not permission to rewrite an approved envelope.
+## Production storage and gates
 
-The job stops that item with `STALE_REVISION`. Revalidate re-runs the original
-normalized intent through the existing engine/native path under the original
-grant, stores a NEW proposal, links old and new operation IDs in progress audit,
-and requires complete fresh review, image acknowledgments and password approval.
-It never transfers old approval or mutates an old preview hash. This version
-conservatively requests renewed approval for every stale revision; it does not
-claim a proven content-equivalence rebase. Media-stage revalidation returns a
-restaging requirement instead of attempting to revive consumed/expired bytes.
+`MCP_V2_FINISH_ENABLED` defaults to `0`. Enabling requires safe MCP v2 and, in
+production, the existing complete trusted seller-operations profile and native
+media configuration. Production startup asserts preinstalled optional storage
+and permissions; it does not create, repair, migrate or grant tables.
 
-The user-reported SPL2 COMMITTED / Petal Nut M5 and SPL3 STALE_REVISION case is
-historical input. It was reproduced using fictional local products. Those live
-operations/products have not been queried, changed, reapproved or recommitted.
+See [FINISH-PRODUCTION-RELEASE.md](FINISH-PRODUCTION-RELEASE.md) for the explicit
+owner-run SQLite/PostgreSQL extension installer, structural manifests, exact app
+DML grants, backups and rollback. Base schema remains 34. Source DDL and actual
+structural fingerprints are both checked. Bounded tenant cleanup retires finish
+metadata after 90 days; linked operation receipt removal still cascades progress.
+Batches cap at five, jobs at 1,000/account, mutations at 120/account/15 minutes,
+and progress reads at 600/account/15 minutes.
 
-## Storage and release boundary
+## Validation and release evidence
 
-An explicit feature opt-in initializes an independently versioned development
-extension (`seller_mcp_finish*`) on SQLite and PostgreSQL. It does not change base
-schema 34, the existing operation storage fingerprint or production migration
-paths. Extension metadata checks its source DDL identity; production adoption
-requires a reviewed migration and actual schema-manifest validation. Jobs are
-bound to tenant revision, original grant, account, session, epoch and build.
-There is a 1,000-job cap per seller; a production retention/cleanup policy is not
-implemented. Existing operation redaction and receipt retention continue; jobs
-do not preserve private proposal content beyond those policies. Operation-linked progress,
-revalidation mappings and progress events cascade at existing operation receipt
-removal, so development jobs cannot pin expired operation receipts indefinitely.
-
-## GO / HOLD
-
-**HOLD for the complete requested feature and production.** The isolated
-prepared-operation flow is implemented; the following acceptance work remains:
-
-1. One immutable parent plan combining a new product, all not-yet-staged images,
-   final gallery order and publication. Existing upload stages require an
-   already-created product. Consequently a new product followed by new uploads
-   still requires separate proposals/reviews today. Do not create placeholder
-   live products or auto-approve derived children to hide this gap.
-2. A content-equivalence proof over all metadata, prices, stock, options, sibling
-   effects, exact image bytes/roles and publication state before any transparent
-   rebase. Any material difference must create renewed review evidence.
-3. One parent batch review that deduplicates identical images across child
-   proposals, retains the full final intent and can safely derive execution
-   children under that exact approval.
-4. Durable worker scheduling and recovery across expired or replaced seller
-   sessions, with a renewed authentication/approval flow. Current resume is
-   explicit and bound to the approval's still-live original session.
-5. Production migration, manifest and retention gates, load/capacity acceptance,
-   independent security review and a separately authorized deployment.
-
-Do not merge this isolated implementation into an automatically deployed main
-branch or advertise it as the unified product/image/publish workflow.
-
-## Validation
-
-Final isolated validation: full suite 2,108 tests, 2,060 passed, 0 failed,
-48 optional tests skipped. The explicitly enabled API/security suite passed
-42/42 with no skips. The explicitly enabled browser/regression suite passed
-22/22 with no skips (including the native finish flow's 9 tests).
-Syntax and diff checks passed. Evidence is retained under
-`/srv/agent-workstation/artifacts/shop-finish-20261108/`.
-These results validate the implemented subset, not the incomplete unified parent workflow. Browser tests
-use real loopback HTTPS, default application factory, genuine OAuth consent,
-seller cookies, real password verification and a capped native codec container.
-They cover both databases, metadata/image acknowledgments, wrong password,
-CREATE, inherited exact images, staged upload, catalog read-back, batch partial
-failure, revalidation and explicit new approval, plus 320/390/1440 light/dark
-screenshots. API/security tests cover revoked grants, missing consent, wrong
-seller/tenant/CSRF/hash, bearer rejection, expiry, unapproved resume, concurrency,
-idempotency and a labelled synthetic post-commit progress failure followed by
-application reconstruction. This is not independent external security review,
-physical-device or screen-reader certification.
+The original isolated implementation's historical suite counts remain in
+`/srv/agent-workstation/artifacts/shop-finish-20261108/`; they predate the current
+session policy and production hardening. Current scoped hardening evidence is in
+`/srv/agent-workstation/artifacts/shop-finish-production-hardening-20261108/`.
+Final integrated browser/security acceptance and live release receipts must be
+reported separately. The historical SPL2 committed/Petal Nut M5 and SPL3 stale
+case has not been changed or independently live-verified by these local tests.

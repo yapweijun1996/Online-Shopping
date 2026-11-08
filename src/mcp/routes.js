@@ -1,4 +1,4 @@
-import { mcpOperationRuntimeEnabled } from './deployment-profile.js';
+import { mcpOperationRuntimeEnabled, mcpFinishRuntimeEnabled } from './deployment-profile.js';
 import { orderDecisionTool } from './order-tools.js';
 import { operationControlTools } from './operation-control-contracts.js';
 import { inventorySummaryTool, inventoryMovementsTool, inventoryAdjustmentTool } from './inventory-tools.js';
@@ -23,7 +23,7 @@ import { catalogMediaUpdateTool } from './catalog-media-adapter.js';
 import { catalogMediaCreateTool } from './catalog-media-create-adapter.js';
 import { createMediaRuntime } from './media-runtime.js';
 import { createFinishWorkflow } from './finish-workflow.js';
-import { initializeFinishStorage } from './finish-storage.js';
+import { initializeFinishStorage, assertFinishStorage } from './finish-storage.js';
 
 export const connectorPath = (path) => /^\/(?:mcp$|oauth\/(?:register|authorize|token|revoke|consent\.js|consent\.css|operation|operation-review\.(?:js|css))$|\.well-known\/oauth-(?:protected-resource|authorization-server)(?:\/|$)|api\/v1\/seller\/mcp(?:\/|$))/.test(path);
 const operationPath = (path) => path === '/oauth/operation' || /^\/oauth\/operation-review\.(?:js|css)$/.test(path) || /^\/api\/v1\/seller\/mcp\/(?:finishes(?:\/|$)|operations(?:\/|$)|approval(?:\/|$))/.test(path);
@@ -49,6 +49,8 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
   };
   const oauth = createOAuth({ store, config, tenantId, limit });
   const safeV2 = enabled && mcpOperationRuntimeEnabled(config,{quickLogin,tenantGuard});
+  const safeFinish = enabled && mcpFinishRuntimeEnabled(config,{quickLogin,tenantGuard});
+  if(config.mcpFinish?.enabled === true && !safeFinish)throw new TypeError('Safe finish runtime configuration required.');
   const catalogUpdateEnabled = catalogMediaUpdateEnabled(config,{quickLogin,tenantGuard});
   const catalogCreateEnabled = catalogMediaCreateEnabled(config,{quickLogin,tenantGuard});
   if (config.mcpCatalogMediaCreate?.enabled === true && !catalogCreateEnabled) throw new TypeError('Safe catalog media CREATE configuration required.');
@@ -81,9 +83,8 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
         const review = createOperationReview(options), approve = createOperationApproval(options), media = createMediaReviewDelivery(options);
         await tenantGuard.withActiveTenant(tenantId, () => initializeOperationStorage(store, { enabled: true }));
         let finish = null;
-        if (config.mcpFinish?.enabled === true) {
-          if (config.production !== false) throw new TypeError('Finish requires isolated development.');
-          await tenantGuard.withActiveTenant(tenantId, () => initializeFinishStorage(store));
+        if (safeFinish) {
+          await tenantGuard.withActiveTenant(tenantId, () => config.production === true ? assertFinishStorage(store) : initializeFinishStorage(store));
           finish = createFinishWorkflow({store,binding:{...oauth.binding,mcpV2:config.mcpV2},config,tenantGuard,approve,
             execute:(request,id)=>extensions.finishForSeller(request,id),
             reprepare:(request,id,key)=>extensions.revalidateForSeller(request,id,key)});
@@ -134,7 +135,7 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
         if (!page && !asset && (!match || !uuid.test(match[1]))) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
         const method = match?.[2] ? 'POST' : 'GET';
         if (request.method !== method) fail('invalid_request', 405, { Allow: method });
-        if (page ? !validReviewQuery(url.searchParams,config.mcpFinish?.enabled===true && config.production===false) : Boolean(url.search)) fail('invalid_request', 400);
+        if (page ? !validReviewQuery(url.searchParams,safeFinish) : Boolean(url.search)) fail('invalid_request', 400);
         if (page || asset) {
           // This public shell carries no proposal or proof. Session cookies keep
           // the existing narrow authenticated API path.

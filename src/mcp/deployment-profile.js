@@ -52,3 +52,10 @@ export function mcpMediaRuntimeEnabled(config, context) {
     (config.production === false || deploymentProfileAllowsProduction(config.mcpV2.profile)) &&
     config.mcpMedia?.enabled === true && /^[0-9a-f]{64}$/.test(config.mcpMedia.codecDigest ?? '');
 }
+
+// Finish is optional within the reviewed full profile, never a substitute for
+// it. Production storage must already be installed and structurally verified.
+export function mcpFinishRuntimeEnabled(config, context = {}) {
+  return config?.mcpFinish?.enabled === true && mcpOperationRuntimeEnabled(config, context) &&
+    (config.production === false || deploymentProfileAllowsProduction(config.mcpV2.profile));
+}

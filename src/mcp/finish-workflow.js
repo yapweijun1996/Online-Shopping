@@ -9,6 +9,8 @@ import { operationAuthorityPolicy } from './operation-policy.js';
 import { can } from '../roles.js';
 import { readCommittedMediaFrame } from './media-frame-storage.js';
 import { readMediaSnapshot } from './media-resources.js';
+import { describeOptions } from './catalog-tools.js';
+import { mcpFinishRuntimeEnabled } from './deployment-profile.js';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const digest = /^[0-9a-f]{64}$/;
@@ -21,8 +23,9 @@ const finished = item => item.state === 'VERIFIED';
 // Job state is progress only. Every business write still crosses the existing
 // operation engine's session/grant/consent/approval/image/revision/audit checks.
 export function createFinishWorkflow({store, binding, config, tenantGuard, approve, execute, reprepare}) {
-  if (config.production !== false || config.mcpFinish?.enabled !== true) throw new TypeError('Finish is isolated-development only.');
-  const epochHash = operationEpochHash(config.mcpV2.epoch), limiter = new SqlLimiter(store,'mcp-finish-account',{limit:20,windowMs:900000});
+  if (!mcpFinishRuntimeEnabled(config,{quickLogin:false,tenantGuard})) throw new TypeError('Safe finish runtime configuration required.');
+  const epochHash = operationEpochHash(config.mcpV2.epoch), limiter = new SqlLimiter(store,'mcp-finish-account',{limit:120,windowMs:900000});
+  const readLimiter = new SqlLimiter(store,'mcp-finish-read-account',{limit:600,windowMs:900000});
   async function guarded(request, mutate, work) {
     const origin = config.sellerOrigin;
     if (!(request instanceof Request) || new URL(request.url).origin !== origin || request.headers.has('authorization') ||
@@ -40,6 +43,13 @@ export function createFinishWorkflow({store, binding, config, tenantGuard, appro
       if (!operationEpochCurrent(config.mcpV2)) deny();
       return result;
     }));
+  }
+  async function admit(request,mutate=true) {
+    // A separate committed reservation survives later validation/transaction
+    // failures. Internal progress updates do not spend additional reservations.
+    return guarded(request,mutate,async session=>{
+      if(!await (mutate?limiter:readLimiter).attempt(session.account.id))throw new ApiError(429,'RATE_LIMITED','Too many finish requests.');
+    });
   }
   async function operation(session,tenant,id,previewHash) {
     const row = await store.get('SELECT * FROM mcp_v2_operation WHERE id=?',id);
@@ -59,8 +69,8 @@ export function createFinishWorkflow({store, binding, config, tenantGuard, appro
   }
   async function owned(session,tenant,id) {
     if (!uuid.test(id || '')) invalid();
-    const job = await store.get(`SELECT * FROM seller_mcp_finish WHERE id=? AND tenant_id=? AND account_id=? AND session_hash=?
-      AND epoch_hash=? AND build_digest=? AND tenant_revision=?`,id,binding.tenantId,session.account.id,session.token_hash,epochHash,config.mcpV2.buildDigest,tenant.revision);
+    const job = await store.get(`SELECT * FROM seller_mcp_finish WHERE id=? AND tenant_id=? AND account_id=?
+      AND epoch_hash=? AND build_digest=? AND tenant_revision=?`,id,binding.tenantId,session.account.id,epochHash,config.mcpV2.buildDigest,tenant.revision);
     if (!job) deny();
     const items=await store.all('SELECT * FROM seller_mcp_finish_item WHERE job_id=? ORDER BY position',id);
     if (!items.length || items.length>5) deny();
@@ -80,14 +90,20 @@ export function createFinishWorkflow({store, binding, config, tenantGuard, appro
     });
   }
   async function status(request,id,mutate=false) {
+    if(!mutate)await admit(request,false);
     return guarded(request,mutate,async(session,tenant)=>{
       const {items}=await owned(session,tenant,id);
       const outcomes=[];
-      for(const item of items){const row=await operation(session,tenant,item.operation_id,item.preview_hash);
-        outcomes.push({operationId:row.id,state:item.state,operationState:row.state,error:item.error_code,
-          receipt:row.state==='COMMITTED'&&row.result_json?JSON.parse(row.result_json):null});}
-      const complete=items.every(finished),blocked=items.some(item=>['FAILED','NEEDS_REVIEW'].includes(item.state));
-      return {jobId:id,status:complete?'FINISHED':blocked?'PARTIAL':'IN_PROGRESS',completed:items.filter(finished).length,total:items.length,items:outcomes};
+      for(const item of items){
+        const row=await operation(session,tenant,item.operation_id,item.preview_hash);
+        const approval=row.state==='APPROVED'?await store.get('SELECT session_hash FROM mcp_v2_approval WHERE operation_id=?',row.id):null;
+        const changedSession=approval && approval.session_hash!==session.token_hash;
+        outcomes.push({operationId:row.id,state:changedSession?'NEEDS_REVIEW':item.state,operationState:row.state,
+          error:changedSession?'RENEWED_APPROVAL_REQUIRED':item.error_code,
+          receipt:row.state==='COMMITTED'&&row.result_json?JSON.parse(row.result_json):null});
+      }
+      const complete=outcomes.every(finished),blocked=outcomes.some(item=>['FAILED','NEEDS_REVIEW'].includes(item.state));
+      return {jobId:id,status:complete?'FINISHED':blocked?'PARTIAL':'IN_PROGRESS',completed:outcomes.filter(finished).length,total:outcomes.length,items:outcomes};
     });
   }
   async function prepare(request,input) {
@@ -95,13 +111,13 @@ export function createFinishWorkflow({store, binding, config, tenantGuard, appro
        !/^[A-Za-z0-9._~-]{16,128}$/.test(input.idempotencyKey||'') || !Array.isArray(input.items) ||
        input.items.length<1 || input.items.length>5 || new Set(input.items.map(item=>item?.operationId)).size!==input.items.length)invalid();
     for(const item of input.items)if(!item || Object.keys(item).sort().join(',')!=='operationId,previewHash' || !uuid.test(item.operationId||'') || !digest.test(item.previewHash||''))invalid();
+    await admit(request);
     return guarded(request,true,async(session,tenant)=>{
-      if(!await limiter.attempt(session.account.id))throw new ApiError(429,'RATE_LIMITED','Too many finish requests.');
       const rows=[];for(const item of input.items)rows.push(await operation(session,tenant,item.operationId,item.previewHash));
       const first=rows[0];if(rows.some(row=>row.client_id!==first.client_id||row.grant_id!==first.grant_id))deny();
       const requestHash=hash(canonicalOperationJson(input.items)),key=hash(input.idempotencyKey);
       const old=await store.get('SELECT * FROM seller_mcp_finish WHERE tenant_id=? AND account_id=? AND client_id=? AND idempotency_hash=?',binding.tenantId,session.account.id,first.client_id,key);
-      if(old){if(old.request_hash!==requestHash||old.session_hash!==session.token_hash)throw new ApiError(409,'IDEMPOTENCY_CONFLICT','Finish request changed.');return{jobId:old.id,replayed:true};}
+      if(old){if(old.request_hash!==requestHash)throw new ApiError(409,'IDEMPOTENCY_CONFLICT','Finish request changed.');return{jobId:old.id,replayed:true};}
       const count=await store.get('SELECT COUNT(*) AS count FROM seller_mcp_finish WHERE account_id=?',session.account.id);
       if(count.count>=1000)throw new ApiError(429,'FINISH_LIMIT','Finish retention limit reached.');
       const id=randomUUID(),now=stamp();
@@ -114,36 +130,84 @@ export function createFinishWorkflow({store, binding, config, tenantGuard, appro
       return {jobId:id,replayed:false};
     });
   }
+  // Fixed read-back projections; IDs are values only. Batch metadata reads keep
+  // a 300-sibling proposal from making hundreds of round trips under the fence.
+  async function readBackRows(table,ids){
+    const definitions={
+      product:['id','id,listing_id,sku,name,description,category,price_minor,currency,stock_quantity,active,variant_group,variant_label,created_at',300],
+      product_option:['product_id','product_id,option_type_id,option_value_id',1800],
+      option_type:['id','id,code,name,active',1800],
+      option_value:['id','id,option_type_id,code,label,active',1800],
+      general_code:['code','code,label,active',300],
+    };
+    const definition=definitions[table];if(!definition)throw new TypeError('Invalid read-back projection.');
+    const [key,columns,cap]=definition,unique=[...new Set(ids)].sort(),rows=[];
+    if(unique.length>cap)throw new ApiError(409,'VERIFY_CHANGED','Read-back exceeds its reviewed bound.');
+    for(let offset=0;offset<unique.length;offset+=200){
+      const part=unique.slice(offset,offset+200),predicate=table==='general_code'?"type='PRODUCT_CATEGORY' AND ":'';
+      rows.push(...await store.all(`SELECT ${columns} FROM ${table} WHERE ${predicate}${key} IN (${part.map(()=>'?').join(',')}) ORDER BY ${key}${table==='product_option'?',option_type_id,option_value_id':''} LIMIT ${cap+1-rows.length}`,...part));
+      if(rows.length>cap)throw new ApiError(409,'VERIFY_CHANGED','Read-back exceeds its reviewed bound.');
+    }
+    return rows;
+  }
   async function verify(request,id,operationId){
     return guarded(request,true,async(session,tenant)=>{
       await owned(session,tenant,id);const row=await operation(session,tenant,operationId);
       if(row.state!=='COMMITTED'||!row.result_json)throw new ApiError(409,'VERIFY_PENDING','Commit is not verified.');
       const envelope=readStoredOperation(row,binding),receipt=JSON.parse(row.result_json);
       if(!envelope)throw new ApiError(409,'VERIFY_UNAVAILABLE','Proposal is no longer available.');
-      const productId=receipt.productId??row.resource_id;
-      const product=await store.get('SELECT id,listing_id,sku,name,description,category,price_minor,currency,stock_quantity,active,variant_group,variant_label FROM product WHERE id=?',productId);
-      if(!product)throw new ApiError(409,'VERIFY_CHANGED','Product read-back failed.');
-      const after=envelope.proposal.after??envelope.proposal.product;
-      const fields={id:product.id,listingId:product.listing_id,sku:product.sku,name:product.name,description:product.description,
-        categoryCode:product.category,priceMinor:product.price_minor,currency:product.currency,stockQuantity:product.stock_quantity,
-        active:product.active===1,variantGroup:product.variant_group,variantLabel:product.variant_label};
-      if(after?.options)fields.options=(await store.all('SELECT option_type_id,option_value_id FROM product_option WHERE product_id=? ORDER BY option_type_id,option_value_id LIMIT 7',productId))
-        .map(value=>({typeId:value.option_type_id,valueId:value.option_value_id}));
-      if(after && Object.entries(after).some(([key,value])=>Object.hasOwn(fields,key) && canonicalOperationJson(fields[key])!==canonicalOperationJson(value))){
-        throw new ApiError(409,'VERIFY_CHANGED','Product changed after commit.');
+      const productId=receipt.productId??row.resource_id,proposal=envelope.proposal;
+      const expectedProducts=Array.isArray(proposal.catalogReview?.products) ? proposal.catalogReview.products.map(effect=>({productId:effect.productId,after:effect.after}))
+        : [{productId,after:proposal.after??proposal.product}];
+      if(!expectedProducts.length || expectedProducts.length>300)throw new ApiError(409,'VERIFY_CHANGED','Reviewed product set is unavailable.');
+      const actualProducts=new Map((await readBackRows('product',expectedProducts.map(value=>value.productId))).map(row=>[row.id,row]));
+      const mappings=await readBackRows('product_option',[...actualProducts.keys()]);
+      const types=await readBackRows('option_type',mappings.map(value=>value.option_type_id));
+      const values=await readBackRows('option_value',mappings.map(value=>value.option_value_id));
+      const categories=new Map((await readBackRows('general_code',[...actualProducts.values()].map(value=>value.category))).map(row=>[row.code,row]));
+      for(const expected of expectedProducts){
+        const product=actualProducts.get(expected.productId);
+        if(!product || !expected.after)throw new ApiError(409,'VERIFY_CHANGED','Product read-back failed.');
+        const fields={id:product.id,listingId:product.listing_id,sku:product.sku,name:product.name,description:product.description,
+          categoryCode:product.category,priceMinor:product.price_minor,currency:product.currency,stockQuantity:product.stock_quantity,
+          active:product.active===1,variantGroup:product.variant_group,variantLabel:product.variant_label,createdAt:product.created_at};
+        if(expected.after.options){
+          const options=mappings.filter(value=>value.product_id===product.id).map(value=>({typeId:value.option_type_id,valueId:value.option_value_id}));
+          fields.options=proposal.catalogReview ? await describeOptions(store,options,{types,values}) : options;
+        }
+        if(expected.after.category){
+          const category=categories.get(product.category);
+          fields.category=category?{code:category.code,label:category.label,active:category.active===1}:null;
+        }
+        if(Object.entries(expected.after).some(([key,value])=>!Object.hasOwn(fields,key) || canonicalOperationJson(fields[key])!==canonicalOperationJson(value))){
+          throw new ApiError(409,'VERIFY_CHANGED','Reviewed product metadata changed after commit.');
+        }
+      }
+      for(const expected of proposal.catalogReview?.listings??[]){
+        const listing=await store.get('SELECT id,code,name,description,category FROM listing WHERE id=?',expected.listingId);
+        const actual=listing?{id:listing.id,code:listing.code,name:listing.name,description:listing.description,categoryCode:listing.category}:null;
+        if(canonicalOperationJson(actual)!==canonicalOperationJson(expected.after))throw new ApiError(409,'VERIFY_CHANGED','Reviewed listing changed after commit.');
       }
       if(row.media_policy_id){
         const grant=await liveGrant(store,row.grant_id,binding);
         const context={tenantId:binding.tenantId,tenantRevision:tenant.revision,accountId:session.account.id,clientId:row.client_id,
           grantId:row.grant_id,accountAuthVersion:grant.account_auth_version,epochHash,buildDigest:config.mcpV2.buildDigest,
           issuer:binding.issuer,resource:binding.resource,grantExpiresAt:grant.absolute_expires_at};
-        const manifest=await readCommittedMediaFrame(store,context,row.id,envelope.proposal.media),snapshot=await readMediaSnapshot(store,productId);
+        const manifest=await readCommittedMediaFrame(store,context,row.id,envelope.proposal.media),snapshots=[];
+        const listingIds=new Set();
+        for(const product of actualProducts.values())if(!listingIds.has(product.listing_id)){
+          listingIds.add(product.listing_id);snapshots.push(await readMediaSnapshot(store,product.id));
+        }
+        // UPDATE may affect both the old and new listing groups. Every reviewed
+        // after-state must exist in a freshly hashed current graph, not just the
+        // target's group; deleted listing after-states must remain absent.
         for(const effect of manifest.effects){
-          const target=effect.kind==='PRODUCT'?snapshot.before.products.find(value=>value.productId===effect.productId):
-            snapshot.before.listings.find(value=>value.listingId===effect.listingId);
-          if(!target)continue; // Other affected groups were verified atomically by the domain adapter.
-          for(const [key,value]of Object.entries(effect.after??{})){
-            const actual=key==='ownMainVisible'?Boolean(snapshot.views.find(value=>value.productId===effect.productId)?.visible.some(value=>value.id==='main')):target[key];
+          const target=effect.kind==='PRODUCT'?snapshots.flatMap(value=>value.before.products).find(value=>value.productId===effect.productId):
+            snapshots.flatMap(value=>value.before.listings).find(value=>value.listingId===effect.listingId);
+          if(effect.after===null){if(target)throw new ApiError(409,'VERIFY_CHANGED','Removed image role reappeared.');continue;}
+          if(!target)throw new ApiError(409,'VERIFY_CHANGED','Reviewed image role is missing.');
+          for(const [key,value]of Object.entries(effect.after)){
+            const actual=key==='ownMainVisible'?Boolean(snapshots.flatMap(value=>value.views).find(value=>value.productId===effect.productId)?.visible.some(value=>value.id==='main')):target[key];
             if(canonicalOperationJson(actual)!==canonicalOperationJson(value))throw new ApiError(409,'VERIFY_CHANGED','Exact image roles changed after commit.');
           }
         }
@@ -151,17 +215,18 @@ export function createFinishWorkflow({store, binding, config, tenantGuard, appro
       return true;
     });
   }
-  async function run(request,id){
+  async function run(request,id,admitted=false){
+    if(!admitted)await admit(request);
     const initial=await status(request,id,true);
     for(const item of initial.items){
-      if(item.state==='VERIFIED' || ['NEEDS_REVIEW','FAILED'].includes(item.state) && !['APPROVED','COMMITTED'].includes(item.operationState))continue;
+      if(item.state==='VERIFIED' || item.error==='RENEWED_APPROVAL_REQUIRED' || ['NEEDS_REVIEW','FAILED'].includes(item.state) && !['APPROVED','COMMITTED'].includes(item.operationState))continue;
       try{
         const row=await guarded(request,true,(session,tenant)=>operation(session,tenant,item.operationId));
         if(row.state==='PENDING_APPROVAL'){await update(request,id,row.id,'NEEDS_REVIEW','APPROVAL_REQUIRED');continue;}
         if(['CONFLICT','EXPIRED','CANCELLED','REJECTED','FAILED'].includes(row.state)){
           await update(request,id,row.id,'NEEDS_REVIEW',row.state==='CONFLICT'?'STALE_REVISION':row.state);continue;
         }
-        const result=await execute(request,row.id);
+        const result=row.state==='COMMITTED'?{status:'COMMITTED'}:await execute(request,row.id);
         if(result.error){await update(request,id,row.id,'NEEDS_REVIEW',result.error);continue;}
         await update(request,id,row.id,'COMMITTED');
         await verify(request,id,row.id);await update(request,id,row.id,'VERIFIED');
@@ -174,27 +239,31 @@ export function createFinishWorkflow({store, binding, config, tenantGuard, appro
     return status(request,id,true);
   }
   async function approveAndRun(request,id,input,ip){
-    if(!input||Object.keys(input).sort().join(',')!=='items,password'||typeof input.password!=='string'||!input.password.length||input.password.length>256||!Array.isArray(input.items))invalid();
+    if(!input || Object.keys(input).some(key=>!['items','password'].includes(key)) || !Array.isArray(input.items) ||
+      Object.hasOwn(input,'password') && (typeof input.password!=='string' || input.password.length>256))invalid();
+    await admit(request);
     const packet=JSON.parse(canonicalOperationJson(input.items));
     const current=await status(request,id,true);
-    if(packet.length!==current.total||packet.some((item,n)=>!item || typeof item!=='object' || Array.isArray(item) || item.operationId!==current.items[n].operationId ||
+    const pending=current.items.filter(item=>item.operationState==='PENDING_APPROVAL');
+    if(packet.length!==pending.length||packet.some((item,n)=>!item || typeof item!=='object' || Array.isArray(item) || item.operationId!==pending[n].operationId ||
        !digest.test(item.previewHash||'') || !/^[A-Za-z0-9_-]{43}$/.test(item.challenge||'') ||
        Object.hasOwn(item,'mediaReviewed') && item.mediaReviewed!==true ||
        Object.keys(item).some(key=>!['operationId','previewHash','challenge','mediaReviewed'].includes(key))))invalid();
-    // No password is stored in jobs, receipts, logs, or retry packets. Each
-    // existing approval verifies it outside its own writer transaction.
+    // The already-authenticated seller explicitly approves each exact reviewed
+    // proposal. A legacy password field is inert and is never forwarded/stored.
     for(const item of packet){
       const row=await guarded(request,true,(session,tenant)=>operation(session,tenant,item.operationId,item.previewHash));
       if(['APPROVED','COMMITTED'].includes(row.state))continue;
       if(row.state!=='PENDING_APPROVAL'){await update(request,id,row.id,'NEEDS_REVIEW',row.state);continue;}
-      try{await approve(request,{...item,password:input.password,decision:'approve'},ip);await update(request,id,row.id,'APPROVED');}
+      try{await approve(request,{...item,decision:'approve'},ip);await update(request,id,row.id,'APPROVED');}
       catch(error){if(error?.status===403)throw error;await update(request,id,row.id,'RETRY','APPROVAL_RETRY_REQUIRED');}
     }
-    return run(request,id);
+    return run(request,id,true);
   }
   async function revalidate(request,id,input){
     if(!input || Object.keys(input).sort().join(',')!=='idempotencyKey,operationId' || !uuid.test(input.operationId||'') ||
       !/^[A-Za-z0-9._~-]{16,128}$/.test(input.idempotencyKey||''))invalid();
+    await admit(request);
     const prior=await guarded(request,true,async(session,tenant)=>{
       const {items}=await owned(session,tenant,id);
       const prior=await store.get('SELECT * FROM seller_mcp_finish_revalidation WHERE job_id=? AND idempotency_hash=?',id,hash(input.idempotencyKey));
@@ -205,6 +274,15 @@ export function createFinishWorkflow({store, binding, config, tenantGuard, appro
           reviewUrl:binding.issuer+'/oauth/operation?operationId='+row.id,jobId:id,renewedApprovalRequired:true};
       }
       const item=items.find(value=>value.operation_id===input.operationId);
+      const original=item&&await operation(session,tenant,input.operationId);
+      if(original?.state==='APPROVED'){
+        const approval=await store.get('SELECT session_hash FROM mcp_v2_approval WHERE operation_id=?',original.id);
+        if(approval && approval.session_hash!==session.token_hash){
+          await store.run("UPDATE seller_mcp_finish_item SET state='NEEDS_REVIEW',error_code='RENEWED_APPROVAL_REQUIRED',updated_at=? WHERE job_id=? AND operation_id=?",stamp(),id,original.id);
+          item.state='NEEDS_REVIEW';
+        }
+      }
+      if(original?.state==='COMMITTED')throw new ApiError(409,'REVIEW_NOT_REQUIRED','A committed item is reconciled, never recreated.');
       if(!item || !['NEEDS_REVIEW','RETRY'].includes(item.state))throw new ApiError(409,'REVIEW_NOT_REQUIRED','This item does not need revalidation.');
     });
     if(prior)return prior;

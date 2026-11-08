@@ -465,6 +465,8 @@ class Updater:
                 actual_env[key] = value
             if any(actual_env.get(key) != value for key, value in expected_env.items()):
                 raise ValueError('Running MCP profile mismatch')
+            if actual_env.get('MCP_V2_FINISH_ENABLED', '0') != self.runtime().get('MCP_V2_FINISH_ENABLED', '0'):
+                raise ValueError('Running finish profile mismatch')
             codec = self.supervisor().probe()
             if codec.get('imageId') != release['mcp']['codec']['imageId'] or codec.get('revision') != release['sha']:
                 raise ValueError('Running codec identity mismatch')
@@ -540,7 +542,7 @@ class Updater:
             if not line or line.startswith('#'):
                 continue
             key, separator, value = line.partition('=')
-            if not separator or key in values or key not in ('SHOP_HOST', 'SELLER_HOST', 'ADMIN_USERNAME', 'SECRETS_DIR', 'PLATFORM_ENABLED', 'PLATFORM_ADMIN_CLAIM_ENABLED', 'INTEGRATION_KEY_FILE', 'MCP_ENABLED', 'MCP_REDIRECT_URIS', 'AI_ENABLED', 'AI_MODEL', 'WHATSAPP_QR_ENABLED', 'WHATSAPP_QR_SLOT1_ENABLED', 'WHATSAPP_QR_BINDINGS_FILE', *MCP_FLAGS, 'MCP_V2_PRODUCTION_PROFILE'):
+            if not separator or key in values or key not in ('SHOP_HOST', 'SELLER_HOST', 'ADMIN_USERNAME', 'SECRETS_DIR', 'PLATFORM_ENABLED', 'PLATFORM_ADMIN_CLAIM_ENABLED', 'INTEGRATION_KEY_FILE', 'MCP_ENABLED', 'MCP_REDIRECT_URIS', 'AI_ENABLED', 'AI_MODEL', 'WHATSAPP_QR_ENABLED', 'WHATSAPP_QR_SLOT1_ENABLED', 'WHATSAPP_QR_BINDINGS_FILE', *MCP_FLAGS, 'MCP_V2_PRODUCTION_PROFILE', 'MCP_V2_FINISH_ENABLED'):
                 raise ValueError('Invalid runtime configuration')
             values[key] = value
         if not {'SHOP_HOST', 'SELLER_HOST', 'ADMIN_USERNAME', 'SECRETS_DIR'} <= set(values):
@@ -588,12 +590,16 @@ class Updater:
                 raise ValueError('AI requires a real API key file')
         if any(values.get(key, '0') not in ('0', '1') for key in MCP_FLAGS):
             raise ValueError('Invalid MCP v2 switch')
+        if values.get('MCP_V2_FINISH_ENABLED', '0') not in ('0', '1'):
+            raise ValueError('Invalid MCP finish switch')
         requested = values.get('MCP_V2_PRODUCTION_PROFILE')
         if requested is not None and requested != PROFILE:
             raise ValueError('Invalid MCP production profile')
         if requested is not None or any(values.get(key, '0') == '1' for key in MCP_FLAGS):
             if requested != PROFILE or values.get('MCP_ENABLED') != '1' or any(values.get(key) != '1' for key in MCP_FLAGS):
                 raise ValueError('Incomplete MCP production profile')
+        if values.get('MCP_V2_FINISH_ENABLED', '0') == '1' and requested != PROFILE:
+            raise ValueError('Finish requires full MCP production profile')
         return values
 
     def local_fingerprint(self):

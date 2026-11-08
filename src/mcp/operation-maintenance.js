@@ -1,6 +1,7 @@
 import { expireOperations } from './operation-expiry.js';
 import { stamp } from './credentials.js';
 import { cleanupMcpAudit } from './audit.js';
+import { maintainFinishStorage } from './finish-storage.js';
 
 export const OPERATION_AUDIT_RETENTION_MS = 90 * 86400000;
 export const OPERATION_TERMINAL_STATES = Object.freeze(['COMMITTED', 'REJECTED', 'EXPIRED', 'CANCELLED', 'CONFLICT', 'FAILED']);
@@ -38,6 +39,7 @@ export async function maintainOperations(store, { enabled = false, tenantGuard, 
     });
     await new Promise(resolve=>setImmediate(resolve));
   };
+  await phase(()=>maintainFinishStorage(store,{tenantId,now,limit:100}));
   counts.expired=(await expireOperations({store,tenantGuard,tenantId,limit:33})).expired;
   // Media proof is drained only for terminal operations, after the33-row expiry
   // batch. Approved backlog outside that batch retains every bound proof row.
