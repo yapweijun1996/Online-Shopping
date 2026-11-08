@@ -22,6 +22,8 @@ closed; they are never silently collapsed or reordered.
 
 The coordinator requires the original live `catalog.write` and `media.write`
 grant, consent, account/auth version, tenant/lifecycle fence, epoch and build.
+Both consents are rechecked inside the rate-reservation transaction and again
+inside the actual writer transaction; earlier protocol admission is insufficient.
 A draft contains server-generated provisional product/listing IDs and immutable
 normalized intent; it creates no commerce rows. Its stages use the existing
 quotas, sequential chunks, upload/absolute expiry, validation leases, native

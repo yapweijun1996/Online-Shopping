@@ -88,6 +88,18 @@ test('unified CREATE parent default factory actual native/session/browser/commit
   const f=await catalogCreateRuntimeBrowserFixture(child,dialect,worker,browser);await f.configure({mcpFinish:{enabled:true}});const client=await f.authorize(f.allScopes),value=product({sku:'NEGATIVE-PARENT'});
   const partial=await f.authorize('catalog.read catalog.write'),partialTools=await partial.rpc('tools/list',{});assert.equal(partialTools.data.result.tools.some(tool=>tool.name==='catalog.prepare_create'),false);
   const partialDenied=await partial.call('catalog.prepare_create',{input:{action:'begin',product:value,images:[{sourceSha256:'a'.repeat(64),sourceMime:'image/png',declaredBytes:100}],idempotencyKey:'parent-partial-consent'}});assert.equal(partialDenied.response.status,403);
+  // Reproduce the independent advisor's TOCTOU counterexample in the actual
+  // default factory. A source-owned hook withdraws catalog consent after the
+  // protocol check, first during reservation and then during the real writer.
+  // Fault withdrawal shares the test transaction and rolls back on denial;
+  // the assertion proves the fence rechecked consent before any draft write.
+  const sourceBytes=syntheticMediaPng(60),revokeInput={action:'begin',product:value,images:[{sourceSha256:mediaHash(sourceBytes),sourceMime:'image/png',declaredBytes:sourceBytes.length}],idempotencyKey:'negative-consent-race-reserve'};
+  for(const [phase,modeRead]of [['reservation',1],['writer',3]]){
+    const get=f.store.get;let reads=0,revoked=false;
+    f.store.get=async(sql,...args)=>{if(sql==='SELECT mode FROM shop_setup WHERE id = 1'&&++reads===modeRead){revoked=true;await f.store.run("DELETE FROM mcp_v2_scope_consent WHERE scope='catalog.write'");}return get(sql,...args);};
+    let denied;try{denied=await client.call('catalog.prepare_create',{input:{...revokeInput,idempotencyKey:'negative-consent-race-'+phase}});}finally{f.store.get=get;}
+    assert.equal(revoked,true,phase);assert.equal(denied.response.status,403,phase);assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM seller_mcp_create_draft')).n,0);assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_media_stage')).n,0);assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM product')).n,0);
+  }
   const created=await draft(f,client,value,[61,62],'negative-draft-original');
   const crossGrant=await f.authorize(f.allScopes),crossDenied=await crossGrant.call('catalog.preview_create',{input:{...value,draftId:created.draftId},idempotencyKey:'negative-cross-grant'});assert.equal(crossDenied.data.error?.code,-32009);
   const changed=await client.call('catalog.preview_create',{input:{...value,priceMinor:999,draftId:created.draftId},idempotencyKey:'negative-changed-intent'});assert.equal(changed.data.error?.code,-32602);assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_operation')).n,0);

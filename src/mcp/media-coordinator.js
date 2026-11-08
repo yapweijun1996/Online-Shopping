@@ -4,7 +4,7 @@ import { ApiError } from '../http.js';
 import { SqlLimiter } from '../limiter.js';
 import { operationEpochHash, operationEpochCurrent } from './operation-epoch.js';
 import { canonicalOperationJson } from './operation-envelope.js';
-import { verifyMediaAuthority } from './operation-authorization.js';
+import { verifyMediaAuthority,verifyOperationAuthority } from './operation-authorization.js';
 import { MEDIA_LIMITS } from './media-schema.js';
 import { mediaContext, withMediaWriter } from './media-storage.js';
 import { readMediaSnapshot, loadOldMediaAsset } from './media-resources.js';
@@ -74,15 +74,26 @@ export function createMediaCoordinator({ store, binding, tenantGuard, epoch, bui
       return result;
     });
   });
-  const authority = (bearer, tenantRevision) => verifyMediaAuthority(store, { bearer, binding, epochHash, buildDigest, tenantRevision });
+  const authority = async (bearer, tenantRevision, creation=false) => {
+    const context=await verifyMediaAuthority(store,{bearer,binding,epochHash,buildDigest,tenantRevision});
+    if(creation){
+      // Protocol scope checks precede this fence. Creation stages must recheck
+      // BOTH original consents inside each reservation/writer transaction;
+      // ordinary existing-product upload retains its original media policy.
+      const catalog=await verifyOperationAuthority(store,{bearer,binding,epochHash,toolName:'catalog.preview_create',
+        mediaPolicyId:'catalog-media-v1',resourceType:'catalog',catalogCreateEnabled:true});
+      if(['tenantId','accountId','clientId','grantId','accountAuthVersion','grantExpiresAt'].some(key=>catalog[key]!==context[key]))denied();
+    }
+    return context;
+  };
   // Reservation is a separate committed phase: failed chunks still consume an attempt.
-  const reserve = (bearer, append) => guarded(async revision => {
-    const context = await authority(bearer, revision);
+  const reserve = (bearer, append,creation=false) => guarded(async revision => {
+    const context = await authority(bearer, revision,creation);
     const key = JSON.stringify([context.tenantId, context.accountId, context.clientId]);
     if (!await (append ? appendLimiter : ordinaryLimiter).attempt(key)) throw new ApiError(429, 'MEDIA_RATE_LIMIT', 'Media upload rate exceeded.');
   });
-  const write = (bearer, work) => guarded(async revision => {
-    const context = await authority(bearer, revision);
+  const write = (bearer, work,creation=false) => guarded(async revision => {
+    const context = await authority(bearer, revision,creation);
     return withMediaWriter(store, context, writer => work(writer, context, read));
   });
   const shape = (value, fields) => { try { mediaObject(value, fields); } catch { invalid(); } };
@@ -171,7 +182,7 @@ export function createMediaCoordinator({ store, binding, tenantGuard, epoch, bui
       await writer.consume(envelope.proposal.stageId, envelope.operationId);
     },
   });
-  const creation=creationEnabled===true?createDraftCoordinator({store,write,reserve,codecDigest:codec.digest}):null;
+  const creation=creationEnabled===true?createDraftCoordinator({store,write:(bearer,work)=>write(bearer,work,true),reserve:(bearer,append)=>reserve(bearer,append,true),codecDigest:codec.digest}):null;
   const coordinator = Object.freeze({ begin, append, discard, uploadAdapter: makeUploadAdapter({ hooks }), ...(creation?{creation}:{}) });
   coordinators.add(coordinator);
   return coordinator;
