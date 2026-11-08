@@ -4,6 +4,19 @@ import { messages } from '../shared/i18n.js';
 // One row per key: English, Malay, Simplified Chinese, Vietnamese, Thai, Japanese, Korean.
 const LOCALES = ['en', 'ms', 'zh-Hans', 'vi', 'th', 'ja', 'ko'];
 const rows = [
+  ['productResultsFormat', 'Showing {count} of {total} products', 'Menunjukkan {count} daripada {total} produk', '显示 {count} / {total} 件商品', 'Hiện {count} trong {total} sản phẩm', 'แสดง {count} จาก {total} สินค้า', '{total} 件中 {count} 件の商品を表示', '총 {total}개 중 {count}개 상품 표시'],
+  ["showInactiveProducts","Show inactive products","Tunjukkan produk tidak aktif","显示停用商品","Hiện sản phẩm ngừng bán","แสดงสินค้าที่ปิดใช้งาน","無効な商品を表示","비활성 상품 표시"],
+  ["productStatistics","Product statistics","Statistik produk","商品统计","Thống kê sản phẩm","สถิติสินค้า","商品統計","상품 통계"],
+  ["activeProducts","Active products","Produk aktif","上架商品","Sản phẩm đang bán","สินค้าที่เปิดใช้งาน","有効な商品","활성 상품"],
+  ["inactiveProducts","Inactive products","Produk tidak aktif","停用商品","Sản phẩm ngừng bán","สินค้าที่ปิดใช้งาน","無効な商品","비활성 상품"],
+  ["totalProducts","Total products","Jumlah produk","全部商品","Tổng sản phẩm","สินค้าทั้งหมด","商品合計","전체 상품"],
+  ["stockAll","All stock","Semua stok","全部库存","Mọi tồn kho","สต็อกทั้งหมด","すべての在庫","전체 재고"],
+  ["inStock","In stock","Ada stok","有货","Còn hàng","มีสินค้า","在庫あり","재고 있음"],
+  ["productSort","Sort","Susun","排序","Sắp xếp","เรียงลำดับ","並び順","정렬"],
+  ["productSortUpdated","Recently updated","Terkini dikemas kini","最近更新","Mới cập nhật","อัปเดตล่าสุด","更新順","최근 수정"],
+  ["productSortName","Product name","Nama produk","商品名称","Tên sản phẩm","ชื่อสินค้า","商品名","상품명"],
+  ["productSortPriceAsc","Price: low to high","Harga: rendah ke tinggi","价格：从低到高","Giá: thấp đến cao","ราคา: ต่ำไปสูง","価格の安い順","가격 낮은순"],
+  ["productSortPriceDesc","Price: high to low","Harga: tinggi ke rendah","价格：从高到低","Giá: cao đến thấp","ราคา: สูงไปต่ำ","価格の高い順","가격 높은순"],
   ['eraseContact', 'Erase contact data', 'Padam data hubungan', '删除联系方式', 'Xóa dữ liệu liên hệ', 'ลบข้อมูลติดต่อ', '連絡先データを削除', '연락처 데이터 삭제'],
   ['eraseIntro', 'This permanently removes the buyer name, phone, email, delivery names and addresses, and buyer reply texts for this order. The order number, items, amounts and history stay. It cannot be undone.',
     'Ini memadam nama, telefon, e-mel, nama dan alamat penghantaran serta teks balasan pembeli bagi pesanan ini secara kekal. Nombor pesanan, item, jumlah dan sejarah kekal. Tindakan ini tidak boleh dibatalkan.',

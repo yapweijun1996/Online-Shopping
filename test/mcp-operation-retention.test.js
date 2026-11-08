@@ -9,6 +9,7 @@ import { ensureAdmin, createSession } from '../src/auth.js';
 import { hash, secret, stamp } from '../src/mcp/credentials.js';
 import { operationEpochHash } from '../src/mcp/operation-epoch.js';
 import { createOperationEngine } from '../src/mcp/operation-engine.js';
+import { OPERATION_APPROVAL_MS } from '../src/mcp/operation-policy.js';
 import { initializeOperationStorage } from '../src/mcp/operation-runtime.js';
 import { maintainOperations, operationReceiptExpiry, OPERATION_AUDIT_RETENTION_MS } from '../src/mcp/operation-maintenance.js';
 
@@ -72,9 +73,11 @@ async function fixture(t, dialect) {
   const prepare = (key = `synthetic-retention-${String(++serial).padStart(8, '0')}`) => engine.prepare({ bearer, toolName: 'catalog.preview_update', args: { id: productId, name: 'PRIVATE_PROPOSED_NAME' }, idempotencyKey: key });
   // Synthetic proof fixture only; actual first-party approval has separate HTTP tests.
   const approve = async (op) => {
+    const approvedAt = stamp();
+    const expiresAt = new Date(Math.min(Date.parse(op.expiresAt), Date.parse(approvedAt) + OPERATION_APPROVAL_MS)).toISOString();
     await store.run("UPDATE mcp_v2_operation SET state = 'APPROVED' WHERE id = ?", op.operationId);
     await store.run(`INSERT INTO mcp_v2_approval(operation_id,approver_id,session_hash,preview_hash,decision,approved_at,expires_at)
-      VALUES (?, ?, ?, ?, 'APPROVED', ?, ?)`, op.operationId, account.id, hash(session.token), op.previewHash, stamp(), stamp(300000));
+      VALUES (?, ?, ?, ?, 'APPROVED', ?, ?)`, op.operationId, account.id, hash(session.token), op.previewHash, approvedAt, expiresAt);
   };
   const commit = (op, target = engine) => target.commit({ bearer, toolName: 'catalog.commit_update', operationId: op.operationId });
   const maintenanceOptions = { enabled: true, tenantGuard, tenantId: binding.tenantId };
@@ -83,6 +86,24 @@ async function fixture(t, dialect) {
 }
 for (const dialect of ['sqlite', 'postgres']) {
   const options = { skip: dialect === 'postgres' && !base };
+  test(`${dialect}: synthetic approval stays valid when the clock advances between timestamp reads`, options, async (t) => {
+    const f = await fixture(t, dialect), op = await f.prepare();
+    let instant = Date.now();
+    t.mock.method(Date, 'now', () => instant++);
+    await f.approve(op);
+    await assert.doesNotReject(f.commit(op));
+    const proof = await f.store.get('SELECT approved_at, expires_at FROM mcp_v2_approval WHERE operation_id = ?', op.operationId);
+    assert.ok(Date.parse(proof.expires_at) - Date.parse(proof.approved_at) <= OPERATION_APPROVAL_MS);
+    assert.ok(proof.expires_at <= op.expiresAt);
+  });
+  test(`${dialect}: synthetic approval never outlives a nearly expired operation`, options, async (t) => {
+    const f = await fixture(t, dialect), op = await f.prepare();
+    t.mock.timers.enable({ apis: ['Date'], now: Date.parse(op.expiresAt) - 1000 });
+    await f.approve(op);
+    const proof = await f.store.get('SELECT expires_at FROM mcp_v2_approval WHERE operation_id = ?', op.operationId);
+    assert.equal(proof.expires_at, op.expiresAt);
+    await assert.doesNotReject(f.commit(op));
+  });
   test(`${dialect}: committed receipt excludes proposal text and remains replayable after scrub`, options, async (t) => {
     const f = await fixture(t, dialect), key = 'synthetic-retention-fixed-key', op = await f.prepare(key);
     await f.approve(op);

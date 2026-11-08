@@ -1,11 +1,11 @@
 {
   "platform": {
-    "version": "v24",
-    "fingerprint": "cd21aaf3b4399de783522fe3b1176dec97f2a8594055937109cea2322784b307"
+    "version": "v25",
+    "fingerprint": "7a013dfc215a8e6a22da2aa951e2f1a73a63f822fa52d1bcbd601adf3f3fa2e7"
   },
   "seller": {
-    "version": "v171",
-    "fingerprint": "9448f4e071a810e5e04a1290719c1a9c2ca163ec31f8347abd751f2d41439aa9"
+    "version": "v172",
+    "fingerprint": "75087e44d5ef16c46e02a9299eb8ca5576ec5bf4aa519c1b9c15027e745fd16a"
   },
   "shop": {
     "version": "v157",
