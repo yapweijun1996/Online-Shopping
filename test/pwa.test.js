@@ -62,22 +62,26 @@ test('a controlled renamed-shop navigation propagates the same-origin alias inst
   assert.equal(response.status, 308); assert.equal(response.headers.get('location'), 'https://shop.example.test/newcode/shop/?q=fixture'); assert.notEqual(response, shell);
 });
 
-test('Seller activation defers reload for primary-image removal and newly opened order decisions without an unload prompt', async () => {
+test('Seller activation defers reload for image removal, rich-detail changes and newly opened order decisions without an unload prompt', async () => {
   const seller = readFileSync(new URL('../public/seller/app.js', import.meta.url), 'utf8');
   const product = readFileSync(new URL('../public/seller/products.js', import.meta.url), 'utf8');
   const orders = readFileSync(new URL('../public/seller/orders.js', import.meta.url), 'utf8');
-  for (const scenario of ['remove clean image', 'remove image in accepted dirty form', 'open order decision']) {
+  for (const scenario of ['remove clean image', 'remove image in accepted dirty form', 'edit rich detail', 'edit rich detail in accepted dirty form', 'start rich image upload', 'open order decision']) {
     const elements = Object.fromEntries(['sku', 'name', 'description', 'category', 'price', 'currency', 'variantGroup', 'variantLabel', 'stockQuantity']
       .map(name => [name, { name, type: 'text', value: name }]));
     elements.active = { name: 'active', type: 'checkbox', checked: true };
     elements.image = { name: 'image', type: 'file', value: '', files: [] };
     const handlers = new Map();
     let state, actions, reloads = 0, accepted = true;
+    const detailDocument = { version: 1, blocks: [] }, detailBaseline = JSON.stringify(detailDocument);
+    let detailBusy = false;
+    const richEditor = { busy: () => detailBusy, dirty: () => JSON.stringify(detailDocument) !== detailBaseline,
+      signature: () => JSON.stringify(['synthetic-product', detailDocument]) };
     const worker = version => ({ state: 'installed', addEventListener(type, fn) { handlers.set(type, fn); },
       postMessage(message, ports) { if (message.type === 'GET_VERSION') ports[0].reply({ version }); } });
     const waiting = worker('next'), active = worker('current');
     const registration = { waiting, active, addEventListener() {}, async update() {} };
-    const context = { optionTypes: [], selectedOptions: () => [], form: { hidden: false, elements }, saving: false, readingGallery: false, pendingRemove: false, formBaseline: null,
+    const context = { richEditor, mutations: 0, optionTypes: [], selectedOptions: () => [], form: { hidden: false, elements }, saving: false, readingGallery: false, pendingRemove: false, formBaseline: null,
       galleryLoaded: true, galleryImages: [], galleryEditable: true, sharedGallery: false, originalImageUrl: '/synthetic-primary-image', editingId: 'synthetic-product',
       showImage() {}, renderGallery() {}, dialog: { open: false }, trackingDialog: null, dialogAction: null, selectedId: 'synthetic-order',
       currentRoute: scenario.startsWith('open') ? 'review' : 'products/synthetic-product', t: key => key,
@@ -92,7 +96,11 @@ test('Seller activation defers reload for primary-image removal and newly opened
     vm.runInContext(product.slice(product.indexOf('  function formState()'), product.indexOf('  function confirmDiscard()')), context);
     const pageSource = scenario.startsWith('open') ? orders : product;
     const fingerprint = pageSource.match(/draftSignature: ([^\n]+),/)?.[1];
-    context.activePage = () => ({ draftSignature: fingerprint ? () => vm.runInContext(`(${fingerprint})()`, context) : undefined });
+    const busyState = pageSource === product ? product.match(/isBusy: ([^\n]+),/)?.[1] : null;
+    assert.ok(fingerprint, 'the scenario exercises the actual page draft fingerprint');
+    if (pageSource === product) assert.ok(busyState, 'the scenario exercises the actual product busy guard');
+    context.activePage = () => ({ draftSignature: fingerprint ? () => vm.runInContext(`(${fingerprint})()`, context) : undefined,
+      ...(busyState ? { isBusy: () => vm.runInContext(`(${busyState})()`, context) } : {}) });
     const productDirty = vm.runInContext('hasUnsavedChanges', context);
     context.hasUnsavedChanges = () => scenario.startsWith('open') ? context.dialog.open : productDirty();
     vm.runInContext('captureBaseline()', context);
@@ -106,6 +114,8 @@ test('Seller activation defers reload for primary-image removal and newly opened
       confirmUpdate: async () => accepted, onState(next, commands) { state = next; actions = commands; } });
     await actions.update(); assert.equal(state.applying, true);
     if (scenario.startsWith('open')) { context.dialog.open = true; context.dialogAction = 'reject'; }
+    else if (scenario.startsWith('edit rich')) detailDocument.blocks.push({ type: 'paragraph', text: 'A detail draft typed while activation waits.' });
+    else if (scenario === 'start rich image upload') detailBusy = true;
     else {
       const body = product.match(/removeImage\.addEventListener\('click', \(\) => \{([\s\S]*?)\n  \}\);/)[1];
       vm.runInContext(`(() => { ${body} })()`, context);
@@ -115,6 +125,11 @@ test('Seller activation defers reload for primary-image removal and newly opened
     waiting.state = 'activated'; handlers.get('statechange')();
     assert.equal(reloads, 0, scenario);
     assert.equal(state.applying, false); assert.equal(state.ready, true);
+    if (scenario === 'start rich image upload') {
+      assert.equal(guard().busy, true, 'the product page exposes a rich-image upload as busy');
+      detailBusy = false;
+      detailDocument.blocks.push({ type: 'image', assetId: 'synthetic-stage', alt: 'New staged image', caption: '' });
+    }
     accepted = false; await actions.update(); assert.equal(reloads, 0);
     accepted = true; await actions.update(); assert.equal(reloads, 1);
   }

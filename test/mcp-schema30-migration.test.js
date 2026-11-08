@@ -39,7 +39,7 @@ const admin = ['synthetic_owner', 'synthetic-historical-hash', '2026-11-01T00:00
 test('fresh PostgreSQL baseline embeds exact shared operation DDL and self-contained metadata SQL', () => {
   const sql = readFileSync(new URL('../src/postgres/schema.sql', import.meta.url), 'utf8');
   assert.ok(sql.includes(operationStorageDdl('postgres') + '\n' + operationStorageMetaSchema('postgres') + '\n' + operationStorageSeedSql() + '\n'));
-  assert.match(sql, /INSERT INTO schema_meta VALUES \(1, 34\)/);
+  assert.ok(sql.includes(`INSERT INTO schema_meta VALUES (1, ${SCHEMA_VERSION});`));
 });
 
 test('SQLite29 to30 migration preserves historical rows, rolls back final DDL failure and is repeatable', async (t) => {

@@ -111,6 +111,13 @@ are unchanged; their compatibility guards accept global35. The cleanup runner us
 the global version and must run the matched candidate binary. The old application
 expects global34 and refuses35; updating only the application image is insufficient.
 
+The existing `scripts/qa-gcp-mcp-canary.mjs` harness is a historical schema34
+canary and does not certify schema35. Schema35 requires the exact published
+candidate image to upgrade a restored schema34 clone, rerun idempotently, revert
+only empty additive tables and prove the actual old image ready again. The new
+protected operator must additionally verify the live full MCP profile and public
+health after cutover; changing the old harness version constant is not acceptance.
+
 Release uses the protected GCP runbook, stopped-writer fresh backups, isolated
 restore proof and matching backend/codec/controller pins. A no-traffic rollback to
 the old binary is possible only after proving the new tables have no rows, dropping
