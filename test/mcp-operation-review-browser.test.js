@@ -13,14 +13,16 @@ test('first-party review prototype renders all untrusted data as text and requir
     const assets = Object.fromEntries(await Promise.all(['html', 'js', 'css'].map(async (extension) =>
       [extension, await readFile(new URL(`../src/mcp/operation-review.${extension}`, import.meta.url))])));
     const calls = [];
-    const styles = { tokens: await readFile(new URL('../public/shop/tokens.css', import.meta.url)) };
+    const styles = {
+      '/shop/tokens.css': await readFile(new URL('../public/shop/tokens.css', import.meta.url)),
+      '/shared/appearance.css': await readFile(new URL('../public/shared/appearance.css', import.meta.url)),
+    };
     const server = createServer(async (request, response) => {
       const path = new URL(request.url, 'http://localhost').pathname.replace(/^\/alpha(?=\/)/, '');
       if (path === '/oauth/operation') {
         response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); response.end(assets.html); return;
       }
-      const style = /^\/oauth\/operation-review-(tokens)\.css$/.exec(path);
-      if (style) { response.writeHead(200, { 'Content-Type': 'text/css' }); response.end(styles[style[1]]); return; }
+      if (styles[path]) { response.writeHead(200, { 'Content-Type': 'text/css' }); response.end(styles[path]); return; }
       if (/^\/oauth\/operation-review\.(js|css)$/.test(path)) {
         const extension = path.endsWith('.js') ? 'js' : 'css';
         response.writeHead(200, { 'Content-Type': extension === 'js' ? 'text/javascript' : 'text/css' }); response.end(assets[extension]); return;
@@ -48,7 +50,7 @@ test('first-party review prototype renders all untrusted data as text and requir
     const browser = await chromium.launch({ headless: true });
     t.after(() => browser.close());
     const backgrounds = new Map();
-    const scenarios = [320, 390, 768, 1440].flatMap(width => ['light', 'dark'].map(colorScheme => [width, width === 390 ? '/alpha' : '', colorScheme === 'dark' ? 'reject' : 'approve', colorScheme]));
+    const scenarios = [320, 360, 379, 380, 390, 768, 1440].flatMap(width => ['light', 'dark'].map(colorScheme => [width, width === 390 ? '/alpha' : '', colorScheme === 'dark' ? 'reject' : 'approve', colorScheme]));
     for (const [index, [width, base, decision, colorScheme]] of scenarios.entries()) {
       const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme });
       t.after(() => context.close());
@@ -69,6 +71,22 @@ test('first-party review prototype renders all untrusted data as text and requir
       for (const value of ['Old synthetic', 'OLD', '123', 'USD', '7', 'Old category', 'Old description', 'NEW', '456', 'New category', 'New description']) assert.ok(summary.includes(value), value);
       assert.match(summary, /minor units/i);
       assert.match(summary, /currency not provided/i);
+      for (const label of ['Category', 'Description']) {
+        const field = page.locator('.summary-grid > dt').filter({ hasText: new RegExp(`^${label}$`) });
+        const labelBox = await field.boundingBox();
+        if (width >= 390) assert.ok(labelBox.width >= 90, `${label} field width at ${width}px`);
+        assert.equal(await field.evaluate(node => {
+          const range = document.createRange(); range.selectNodeContents(node);
+          return range.getClientRects().length;
+        }), 1, `${label} stays readable without midword wrapping at ${width}px`);
+        if (width < 380) {
+          const beforeBox = await field.locator('xpath=following-sibling::dd[1]').boundingBox();
+          const afterBox = await field.locator('xpath=following-sibling::dd[2]').boundingBox();
+          assert.ok(beforeBox.y >= labelBox.y + labelBox.height, `${label} values below field label`);
+          assert.equal(beforeBox.y, afterBox.y);
+          assert.ok(Math.abs(labelBox.width - beforeBox.width - afterBox.width) < 1, `${label} spans both values`);
+        }
+      }
       await page.locator('#technical-details > summary').click();
       assert.equal(await page.locator('#proposal').isVisible(), true);
       const displayed = await page.locator('#proposal').textContent();

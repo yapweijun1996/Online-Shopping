@@ -18,7 +18,7 @@ test('real Node adapter through GCP Caddy and verified local TLS preserves origi
  }
  for(const prefix of ['', '/alpha']){
   const api=prefix+'/api/v1/seller/mcp/operations/'+id;
-  for(const[path,method]of [[prefix+'/oauth/operation?operationId='+id,'GET'],[prefix+'/oauth/operation-review.js','GET'],[prefix+'/oauth/operation-review.css','GET'],[prefix+'/oauth/operation-review-tokens.css','GET'],[api,'GET'],[api+'/approval','POST'],[api+'/media/delivery','POST'],[api+'/media/ack','POST']]){
+  for(const[path,method]of [[prefix+'/oauth/operation?operationId='+id,'GET'],[prefix+'/oauth/operation-review.js','GET'],[prefix+'/oauth/operation-review.css','GET'],[api,'GET'],[api+'/approval','POST'],[api+'/media/delivery','POST'],[api+'/media/ack','POST']]){
    const body=method==='POST'?'{"synthetic":"transport metadata only"}':undefined;
    const r=await f.request(path,{method,body,headers:{'x-forwarded-proto':'http','forwarded':'host=attacker.invalid;proto=http','x-real-ip':'198.51.100.5'}});
    assert.equal(r.status,200,r.body);const value=JSON.parse(r.body);assert.equal(value.url,f.origin+path);assert.equal(value.method,method);assert.equal(value.body,body??'');assert.notEqual(value.ip,'198.51.100.5');

@@ -103,7 +103,7 @@ for (const dialect of ['sqlite', 'postgres']) {
 test('missing optional v2 configuration keeps v1 healthy and review disabled with no operation authority', async (t) => {
   const f = await reviewFixture(t, 'sqlite', { config: { mcpV2: undefined } });
   const id = '00000000-0000-4000-8000-000000000001';
-  for (const path of ['/oauth/operation?operationId=' + id, '/oauth/operation-review.js', '/oauth/operation-review-tokens.css', '/api/v1/seller/mcp/operations/' + id]) {
+  for (const path of ['/oauth/operation?operationId=' + id, '/oauth/operation-review.js', '/api/v1/seller/mcp/operations/' + id]) {
     assert.equal((await f.call(path, 'GET', undefined, f.headers)).response.status, 404);
   }
   assert.equal((await f.call('/.well-known/oauth-authorization-server')).response.status, 200);

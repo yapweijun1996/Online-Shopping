@@ -25,7 +25,7 @@
 		route {
 			@tenant_connector {
 				host {$SELLER_HOST}
-				path_regexp ^/[a-z0-9]{3,30}/(?:mcp$|oauth/(?:register|authorize|token|revoke|consent\.(?:js|css)|operation|operation-review(?:\.(?:js|css)|-tokens\.css))$|\.well-known/oauth-(?:protected-resource(?:/mcp)?|authorization-server)$)
+				path_regexp ^/[a-z0-9]{3,30}/(?:mcp$|oauth/(?:register|authorize|token|revoke|consent\.(?:js|css)|operation|operation-review\.(?:js|css))$|\.well-known/oauth-(?:protected-resource(?:/mcp)?|authorization-server)$)
 			}
 			handle @tenant_connector {
 				header >Cache-Control no-store
@@ -147,7 +147,7 @@ http://{$SELLER_HOST} {
 			respond 404
 		}
 		# Seller MCP connector: the backend answers 404 unless MCP_ENABLED=1, and OAuth responses stay no-store.
-		@connector path /mcp /oauth/register /oauth/authorize /oauth/token /oauth/revoke /oauth/consent.js /oauth/consent.css /oauth/operation /oauth/operation-review.js /oauth/operation-review.css /oauth/operation-review-tokens.css /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/* /.well-known/oauth-authorization-server /.well-known/oauth-authorization-server/*
+		@connector path /mcp /oauth/register /oauth/authorize /oauth/token /oauth/revoke /oauth/consent.js /oauth/consent.css /oauth/operation /oauth/operation-review.js /oauth/operation-review.css /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/* /.well-known/oauth-authorization-server /.well-known/oauth-authorization-server/*
 		handle @connector {
 			header >Cache-Control no-store
 			import proxy

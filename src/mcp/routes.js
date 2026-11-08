@@ -23,8 +23,8 @@ import { catalogMediaUpdateTool } from './catalog-media-adapter.js';
 import { catalogMediaCreateTool } from './catalog-media-create-adapter.js';
 import { createMediaRuntime } from './media-runtime.js';
 
-export const connectorPath = (path) => /^\/(?:mcp$|oauth\/(?:register|authorize|token|revoke|consent\.js|consent\.css|operation|operation-review(?:\.(?:js|css)|-tokens\.css))$|\.well-known\/oauth-(?:protected-resource|authorization-server)(?:\/|$)|api\/v1\/seller\/mcp(?:\/|$))/.test(path);
-const operationPath = (path) => path === '/oauth/operation' || /^\/oauth\/operation-review(?:\.(?:js|css)|-tokens\.css)$/.test(path) || /^\/api\/v1\/seller\/mcp\/(?:operations(?:\/|$)|approval(?:\/|$))/.test(path);
+export const connectorPath = (path) => /^\/(?:mcp$|oauth\/(?:register|authorize|token|revoke|consent\.js|consent\.css|operation|operation-review\.(?:js|css))$|\.well-known\/oauth-(?:protected-resource|authorization-server)(?:\/|$)|api\/v1\/seller\/mcp(?:\/|$))/.test(path);
+const operationPath = (path) => path === '/oauth/operation' || /^\/oauth\/operation-review\.(?:js|css)$/.test(path) || /^\/api\/v1\/seller\/mcp\/(?:operations(?:\/|$)|approval(?:\/|$))/.test(path);
 const reviewCsp = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 function validReviewQuery(params) {
@@ -99,7 +99,7 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
       if (request.url.length > 8192) fail('invalid_request', 414);
       if (operation) {
         const match = /^\/api\/v1\/seller\/mcp\/operations\/([0-9a-f-]+)(\/(?:approval|media\/(?:delivery|ack)))?$/.exec(path);
-        const page = path === '/oauth/operation', asset = /^\/oauth\/operation-review(?:\.(js|css)|(-tokens\.css))$/.exec(path);
+        const page = path === '/oauth/operation', asset = /^\/oauth\/operation-review\.(js|css)$/.exec(path);
         if (!page && !asset && (!match || !uuid.test(match[1]))) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
         const method = match?.[2] ? 'POST' : 'GET';
         if (request.method !== method) fail('invalid_request', 405, { Allow: method });
@@ -107,9 +107,8 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
         if (page || asset) {
           // This public shell carries no proposal or proof. Session cookies keep
           // the existing narrow authenticated API path.
-          const extension = page ? 'html' : asset[1] || 'css';
-          const source = asset?.[2] ? '../../public/shop/tokens.css' : `./operation-review.${extension}`;
-          response = new Response(await readFile(new URL(source, import.meta.url)), {
+          const extension = page ? 'html' : asset[1];
+          response = new Response(await readFile(new URL(`./operation-review.${extension}`, import.meta.url)), {
             headers: { 'Content-Type': ({ html: 'text/html', js: 'text/javascript', css: 'text/css' })[extension] + '; charset=utf-8' },
           });
         } else {

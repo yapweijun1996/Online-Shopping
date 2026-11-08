@@ -35,12 +35,6 @@ API still enforces current session/account/tenant/original grant/scope/consent a
 operation state, and unavailable references reveal no proposal. See
 [entry investigation](mcp-v2/APPROVAL-REVIEW-ENTRY-RCA.md) for evidence and limits.
 
-The review shell loads canonical shop design tokens through the exact root or
-tenant-prefixed `/oauth/operation-review-tokens.css` connector route. This inert
-stylesheet shares the review CSP, no-store/no-referrer and frame-denial headers;
-it accepts no query parameters and does not broaden seller-host shop routes or
-load appearance scripts, browser preferences, proposal data or approval proofs.
-
 ### Host-authorized shop configuration promotion
 
 The explicit host-only `src/shop-promotion-cli.js` repair can promote a previously

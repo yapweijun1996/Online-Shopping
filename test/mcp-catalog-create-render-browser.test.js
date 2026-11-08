@@ -10,14 +10,14 @@ import { wireId } from './helpers/mcp-catalog-wire-fixture.js';
 test('SYNTHETIC transport CREATE renderer verifies null BEFORE/options/page ACK, not actual CREATE authorization',
  {skip:!process.env.QA_PLAYWRIGHT_MODULE,timeout:60000},async t=>{
  const assets=Object.fromEntries(await Promise.all(['html','js','css'].map(async extension=>[extension,await readFile(new URL('../src/mcp/operation-review.'+extension,import.meta.url))]))),png=await readFile(new URL('../public/shop/icons/icon-192.png',import.meta.url));
- const styles={tokens:await readFile(new URL('../public/shop/tokens.css',import.meta.url))};
+ const styles={'/shop/tokens.css':await readFile(new URL('../public/shop/tokens.css',import.meta.url)),'/shared/appearance.css':await readFile(new URL('../public/shared/appearance.css',import.meta.url))};
  let current,corrupt=false;const acknowledgements=[],approvals=[];
  const server=createServer(async(request,response)=>{
   const path=new URL(request.url,'http://localhost').pathname.replace(/^\/alpha(?=\/)/,'');
   const json=value=>{response.writeHead(200,{'Content-Type':'application/json'});response.end(JSON.stringify(value));};
   if(path==='/oauth/operation'){response.writeHead(200,{'Content-Type':'text/html'});response.end(assets.html);return;}
   if(/^\/oauth\/operation-review\.(js|css)$/.test(path)){const extension=path.endsWith('.js')?'js':'css';response.writeHead(200,{'Content-Type':extension==='js'?'text/javascript':'text/css'});response.end(assets[extension]);return;}
-  const style=/^\/oauth\/operation-review-(tokens)\.css$/.exec(path);if(style){response.writeHead(200,{'Content-Type':'text/css'});response.end(styles[style[1]]);return;}
+  if(styles[path]){response.writeHead(200,{'Content-Type':'text/css'});response.end(styles[path]);return;}
   if(path==='/api/v1/seller/session'){json({csrfToken:'synthetic-csrf'});return;}
   if(path==='/api/v1/seller/mcp/operations/'+wireId(99)&&request.method==='GET'){
    const proposal=structuredClone(current.proposal);if(corrupt)proposal.reviewLabels.find(row=>row.before===null).after.name='Unbound current name';
