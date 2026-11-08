@@ -14,7 +14,7 @@ export function parseFinishInstallationArguments(args){
     const match=/^--(action|expected-origin|expected-database|expected-schema|tenant)=(.+)$/.exec(arg);
     if(!match || Object.hasOwn(values,match[1]))unavailable();values[match[1]]=match[2];
   }
-  if(Object.keys(values).length!==5 || !['install','verify'].includes(values.action) || values['expected-schema']!=='34' ||
+  if(Object.keys(values).length!==5 || !['install','verify'].includes(values.action) || values['expected-schema']!=='35' ||
     !/^(?:default|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.test(values.tenant))unavailable();
   try{const origin=new URL(values['expected-origin']);if(origin.origin!==values['expected-origin']||origin.protocol!=='https:')unavailable();}catch{unavailable();}
   return values;
@@ -26,7 +26,7 @@ export async function finishOwnerConnection(config,env=process.env){
   if(!config.databaseUrl || !path.isAbsolute(env.FINISH_DATABASE_OWNER_PASSWORD_FILE))unavailable();
   const info=await lstat(env.FINISH_DATABASE_OWNER_PASSWORD_FILE);
   if(!info.isFile() || info.isSymbolicLink() || info.size<1 || info.size>512 || info.mode&0o077)unavailable();
-  const owner=env.FINISH_DATABASE_OWNER_USER??'postgres';if(!/^[a-z_][a-z0-9_]{0,62}$/.test(owner))unavailable();
+  const owner=env.FINISH_DATABASE_OWNER_USER??'online_shopping';if(!/^[a-z_][a-z0-9_]{0,62}$/.test(owner))unavailable();
   const password=(await readFile(env.FINISH_DATABASE_OWNER_PASSWORD_FILE,'utf8')).replace(/\r?\n$/,'');
   if(!password || password.includes('\n') || password.includes('\r'))unavailable();
   const url=new URL(config.databaseUrl);url.username=owner;url.password=password;return url.href;
@@ -48,7 +48,7 @@ export async function runFinishInstallation(config,args,{ownerUrl=null}={}){
       if(path.resolve(config.dbPath)!==options['expected-database'] || !(await lstat(config.dbPath)).isFile())unavailable();
       store=openNodeStore(config.dbPath);
     }
-    if(await store.schemaVersion()!==34 || !await operationStorageReady(store) || (await store.get('SELECT mode FROM shop_setup WHERE id=1'))?.mode!=='production')unavailable();
+    if(await store.schemaVersion()!==35 || !await operationStorageReady(store) || (await store.get('SELECT mode FROM shop_setup WHERE id=1'))?.mode!=='production')unavailable();
     for(const table of ['oauth_client','oauth_grant','mcp_v2_operation','mcp_v2_scope_consent','mcp_v2_media_stage'])
       if(await store.get(`SELECT tenant_id FROM ${table} WHERE tenant_id<>? LIMIT 1`,options.tenant))unavailable();
     if(options.action==='install'){
@@ -69,6 +69,6 @@ export async function runFinishInstallation(config,args,{ownerUrl=null}={}){
         }
       });
     }else {await assertFinishStorage(store);await assertCreateDraftStorage(store);}
-    return {status:options.action==='install'?'INSTALLED':'VERIFIED',version:2,tenantId:options.tenant,schemaVersion:34};
+    return {status:options.action==='install'?'INSTALLED':'VERIFIED',version:2,tenantId:options.tenant,schemaVersion:35};
   }finally{await store?.close();}
 }

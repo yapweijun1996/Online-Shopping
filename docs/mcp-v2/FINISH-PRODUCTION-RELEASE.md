@@ -1,6 +1,6 @@
 # Approve & Finish production extension release
 
-This is an optional, explicitly installed storage extension over shop schema 34.
+This is an optional, explicitly installed storage extension over shop schema 35.
 It does not change the global base schema or silently migrate every tenant. The
 existing SQLite/PostgreSQL base migration and operation storage contract remain
 unchanged when finish is OFF. Both dialects use the same separately versioned
@@ -24,7 +24,7 @@ OFF. Missing/incompatible tables and missing app DML deny enabled startup.
 ## Installer and SQL boundary
 
 `node scripts/install-seller-mcp-finish.js` is host-only. It opens an EXISTING
-shop store directly, verifies base schema 34 and operation storage, requires
+shop store directly, verifies base schema 35 and operation storage, requires
 production shop setup, matches exact expected HTTPS seller origin and database,
 and checks that stored OAuth/operation/media identities match `--tenant`.
 It never calls application bootstrap, account creation, grant issuance, consent,
@@ -36,12 +36,12 @@ private network, app environment and required read-only media/epoch mounts:
 ```
 node scripts/install-seller-mcp-finish.js --action=install \
   --expected-origin=https://seller.pomelostem.com \
-  --expected-database=online_shopping --expected-schema=34 --tenant=default
+  --expected-database=online_shopping --expected-schema=35 --tenant=default
 ```
 
 For PostgreSQL production installation, additionally supply
 `FINISH_DATABASE_OWNER_PASSWORD_FILE` as a private regular read-only file with
-no group/world permission, and `FINISH_DATABASE_OWNER_USER=postgres` (or the
+no group/world permission, and `FINISH_DATABASE_OWNER_USER=online_shopping` (or the
 reviewed database-owner role). These settings belong only to the one-off
 installer, never the running app. The owner URL reuses the app URL's exact host,
 port and database, but loads the separate owner secret file. The connected role
@@ -148,3 +148,15 @@ to 100 total draft mutations; it must preserve active/bound stages and the
 operation receipt/audit horizon. Never enable finish with only finish tables
 installed. The optional `catalog.prepare_create` registration is present only
 when the native runtime has the gated creation coordinator.
+
+Schema35 integration: the finish installer does not upgrade the global base schema.
+Run the candidate image's reviewed `scripts/upgrade-database.mjs` first, with all
+app writers stopped and a private read-only owner file, then rerun it idempotently.
+Its fixed target is owner `online_shopping` at private `postgres:5432`, database
+`online_shopping`; receipt is `{"version":35}`. Prove the published script hashes.
+The explicit compatible fallback is `14d2f65a8f7f30cd38da7cd859e746969342a03c`
+with finish OFF, preserving schema35 and rich detail. Never restore a schema34-only
+binary against35, drop populated rich tables, or treat a DB restore as routine
+rollback. The artifact canary keeps a historical34 baseline, upgrades its isolated
+clone twice with authority counts/PG identity unchanged, then runs finish ON and
+finally the schema35-compatible OFF fallback.

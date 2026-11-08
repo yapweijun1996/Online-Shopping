@@ -40,9 +40,9 @@ for(const dialect of process.env.SHOP_TEST_DATABASE_URL?['sqlite','postgres']:['
  });
 }
 test('host installer binds action, origin, existing database, tenant and schema',()=>{
- const values=['--action=install','--expected-origin=https://seller.example.test','--expected-database=online_shopping','--tenant=default','--expected-schema=34'];
+ const values=['--action=install','--expected-origin=https://seller.example.test','--expected-database=online_shopping','--tenant=default','--expected-schema=35'];
  assert.equal(parseFinishInstallationArguments(values).action,'install');
- for(const args of [[],values.slice(1),[...values,'--action=verify'],values.map(value=>value==='--expected-schema=34'?'--expected-schema=35':value),values.map(value=>value==='--tenant=default'?'--tenant=invalid':value)])assert.throws(()=>parseFinishInstallationArguments(args));
+ for(const args of [[],values.slice(1),[...values,'--action=verify'],values.map(value=>value==='--expected-schema=35'?'--expected-schema=34':value),values.map(value=>value==='--tenant=default'?'--tenant=invalid':value)])assert.throws(()=>parseFinishInstallationArguments(args));
 });
 if(process.env.SHOP_TEST_DATABASE_URL)test('postgres: host installer uses owner connection and grants only required extension app DML',async t=>{
  const f=await reviewFixture(t,'postgres'),name=(await f.store.get('SELECT current_database() AS name')).name;
@@ -54,7 +54,7 @@ if(process.env.SHOP_TEST_DATABASE_URL)test('postgres: host installer uses owner 
   await f.store.exec(`GRANT USAGE ON SCHEMA public TO "${role}"`);
   await f.store.exec(`GRANT SELECT ON ALL TABLES IN SCHEMA public TO "${role}"`);
   const config={...f.config,databaseUrl:appUrl,mcpV2:{enabled:true},sellerQuickLogin:false};
-  const args=['--action=install','--expected-origin='+f.config.sellerOrigin,'--expected-database='+name,'--tenant=default','--expected-schema=34'];
+  const args=['--action=install','--expected-origin='+f.config.sellerOrigin,'--expected-database='+name,'--tenant=default','--expected-schema=35'];
   const result=await runFinishInstallation(config,args,{ownerUrl});assert.equal(result.status,'INSTALLED');
   const {openPostgresStore}=await import('../src/postgres-store.js'),app=openPostgresStore(appUrl,{max:1});
   try{

@@ -72,7 +72,7 @@ and permissions; it does not create, repair, migrate or grant tables.
 
 See [FINISH-PRODUCTION-RELEASE.md](FINISH-PRODUCTION-RELEASE.md) for the explicit
 owner-run SQLite/PostgreSQL extension installer, structural manifests, exact app
-DML grants, backups and rollback. Base schema remains 34. Source DDL and actual
+DML grants, backups and rollback. Base schema remains 35. Source DDL and actual
 structural fingerprints are both checked. Bounded tenant cleanup retires finish
 metadata after 90 days; linked operation receipt removal still cascades progress.
 Batches cap at five, jobs at 1,000/account, mutations at 120/account/15 minutes,
