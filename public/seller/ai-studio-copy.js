@@ -2,6 +2,13 @@ import { messages, t } from '../shared/i18n.js';
 const locales = ['en','ms','zh-Hans','vi','th','ja','ko'];
 // key, en, ms, zh-Hans, vi, th, ja, ko. Placeholders such as {used} are replaced by aiStudioText.
 const rows = [
+['tabCreate','Create Product','Cipta Produk','创建商品','Tạo sản phẩm','สร้างสินค้า','商品を作成','상품 만들기'],
+['tabImages','Generate Images','Jana Gambar','生成图片','Tạo ảnh','สร้างภาพ','画像を生成','이미지 생성'],
+['tabSettings','Settings','Tetapan','设置','Cài đặt','ตั้งค่า','設定','설정'],
+['connected','AI connected','AI disambungkan','AI 已连接','AI đã kết nối','เชื่อมต่อ AI แล้ว','AI接続済み','AI 연결됨'],
+['usageShort','Today: {used} / {cap} calls','Hari ini: {used} / {cap} panggilan','今日：{used} / {cap} 次','Hôm nay: {used} / {cap} lượt','วันนี้: {used} / {cap} ครั้ง','本日: {used} / {cap} 回','오늘: {used} / {cap}회'],
+['goSettings','Go to Settings','Buka Tetapan','前往设置','Mở cài đặt','ไปที่การตั้งค่า','設定を開く','설정 열기'],
+['replaceKey','Add or replace API key','Tambah atau tukar kunci API','添加或更换 API 密钥','Thêm hoặc đổi khóa API','เพิ่มหรือเปลี่ยนคีย์ API','APIキーを追加・変更','API 키 추가 또는 변경'],
 ['nav','AI Studio','AI Studio','AI 工作室','AI Studio','AI Studio','AIスタジオ','AI 스튜디오'],
 ['unavailable','AI Studio is not set up on this server.','AI Studio belum disediakan pada pelayan ini.','此服务器尚未启用 AI 工作室。','AI Studio chưa được thiết lập trên máy chủ này.','เซิร์ฟเวอร์นี้ยังไม่ได้ตั้งค่า AI Studio','このサーバーではAIスタジオが設定されていません。','이 서버에는 AI 스튜디오가 설정되어 있지 않습니다.'],
 ['keyTitle','OpenAI API key','Kunci API OpenAI','OpenAI API 密钥','Khóa API OpenAI','คีย์ API ของ OpenAI','OpenAI APIキー','OpenAI API 키'],
