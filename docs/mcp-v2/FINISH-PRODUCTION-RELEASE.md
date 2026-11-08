@@ -49,7 +49,7 @@ must own that database or be a database superuser. No password is put in an
 argument, output, source or receipt.
 
 The installer creates all extension objects and grants in one transaction.
-The existing app role receives SELECT/INSERT/UPDATE/DELETE on the six fixed
+The existing app role receives SELECT/INSERT/UPDATE/DELETE on the seven fixed
 finish/draft data tables and SELECT only on `seller_mcp_finish_schema` and
 `seller_mcp_create_draft_schema`. It receives
 no CREATE, role, function, sequence or database ownership privilege. Role names
@@ -142,7 +142,7 @@ transfers approval authority.
 
 Unified parent integration: the same installer transaction creates and verifies
 `seller_mcp_create_draft*` alongside finish storage. Application DML grants cover
-the two draft data tables; both schema metadata tables are SELECT-only. Production
+the three draft data tables; both schema metadata tables are SELECT-only. Production
 startup asserts both structural manifests. Cleanup is tenant-fenced and bounded
 to 100 total draft mutations; it must preserve active/bound stages and the
 operation receipt/audit horizon. Never enable finish with only finish tables

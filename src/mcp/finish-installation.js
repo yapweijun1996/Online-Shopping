@@ -63,7 +63,7 @@ export async function runFinishInstallation(config,args,{ownerUrl=null}={}){
         if(ownerUrl){
           const role=decodeURIComponent(new URL(config.databaseUrl).username);if(!/^[a-z_][a-z0-9_]{0,62}$/.test(role))unavailable();
           if(!await store.get('SELECT rolname FROM pg_roles WHERE rolname=?',role))unavailable();
-          for(const table of ['seller_mcp_finish','seller_mcp_finish_item','seller_mcp_finish_event','seller_mcp_finish_revalidation','seller_mcp_create_draft','seller_mcp_create_draft_stage'])
+          for(const table of ['seller_mcp_finish','seller_mcp_finish_item','seller_mcp_finish_event','seller_mcp_finish_revalidation','seller_mcp_create_draft','seller_mcp_create_draft_stage','seller_mcp_create_draft_event'])
             await store.exec(`GRANT SELECT,INSERT,UPDATE,DELETE ON TABLE ${table} TO "${role}"`);
           await store.exec(`GRANT SELECT ON TABLE seller_mcp_finish_schema,seller_mcp_create_draft_schema TO "${role}"`);
         }

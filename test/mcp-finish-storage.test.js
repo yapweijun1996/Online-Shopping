@@ -63,6 +63,7 @@ if(process.env.SHOP_TEST_DATABASE_URL)test('postgres: host installer uses owner 
    assert.equal((await app.get("SELECT has_table_privilege(current_user,'seller_mcp_finish_schema','UPDATE') AS allowed")).allowed,false);
    assert.equal((await app.get("SELECT has_table_privilege(current_user,'seller_mcp_create_draft','INSERT') AS allowed")).allowed,true);
    assert.equal((await app.get("SELECT has_table_privilege(current_user,'seller_mcp_create_draft_stage','DELETE') AS allowed")).allowed,true);
+   assert.equal((await app.get("SELECT has_table_privilege(current_user,'seller_mcp_create_draft_event','INSERT') AS allowed")).allowed,true);
    assert.equal((await app.get("SELECT has_table_privilege(current_user,'seller_mcp_create_draft_schema','UPDATE') AS allowed")).allowed,false);
    assert.equal((await app.get("SELECT has_schema_privilege(current_user,'public','CREATE') AS allowed")).allowed,false);
    await assert.rejects(app.run('UPDATE seller_mcp_finish_schema SET version=2 WHERE id=1'));
