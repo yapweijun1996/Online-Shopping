@@ -132,14 +132,14 @@ async function business() {
   return { marker: rows[0].availability_text, ...counts };
 }
 
-async function passwordApproval(path, body, session) {
+async function sessionApproval(path, body, session) {
   state.approvalAttempts ??= 0;
   need(state.approvalAttempts < 5, 'APPROVAL_BUDGET');
   state.approvalAttempts++;
   return request(path, 'POST', body, session);
 }
 
-async function company({ pending = false, previewOnly = false, wrongPassword = false } = {}) {
+async function company({ pending = false, previewOnly = false, invalidChallenge = false } = {}) {
   const before = (await tool(state.full, 'company.get', {})).company;
   const marker = `Synthetic canary ${input.nonce} ${secret().slice(0, 8)}`;
   const op = await tool(state.full, 'company.preview_update', { input: { expectedRevision: before.revision, changes: { availabilityText: marker } }, idempotencyKey: 'synthetic-canary-' + secret() });
@@ -150,16 +150,16 @@ async function company({ pending = false, previewOnly = false, wrongPassword = f
   need(review.status === 200 && review.data.previewHash === op.previewHash && review.data.proposal.after.availabilityText === marker, 'PROTECTED_REVIEW');
   state.pending = op;
   if (previewOnly) { evidence.company = { previewOnly: true, syntheticApproval: false }; return; }
-  const approval = () => ({ operationId: op.operationId, previewHash: op.previewHash, challenge: review.data.challenge, decision: 'approve', password: state.password });
+  const approval = () => ({ operationId: op.operationId, previewHash: op.previewHash, challenge: review.data.challenge, decision: 'approve' });
   // The real approval route rejects CSRF before its persistent address quota.
   need((await request(path + '/approval', 'POST', approval(), { ...state.full.session, 'X-CSRF-Token': 'wrong' })).status === 403, 'APPROVAL_CSRF');
-  if (wrongPassword) {
-    need(input.action === 'on' && !state.wrongPasswordTested, 'WRONG_PASSWORD_ONCE');
-    need((await passwordApproval(path + '/approval', { ...approval(), password: 'Wrong-synthetic-password-7391!' }, state.full.session)).status === 403, 'APPROVAL_PASSWORD');
-    state.wrongPasswordTested = true;
+  if (invalidChallenge) {
+    need(input.action === 'on' && !state.invalidChallengeTested, 'INVALID_CHALLENGE_ONCE');
+    need((await sessionApproval(path + '/approval', { ...approval(), challenge: review.data.challenge === 'f'.repeat(43) ? 'g'.repeat(43) : 'f'.repeat(43) }, state.full.session)).status === 403, 'APPROVAL_CHALLENGE');
+    state.invalidChallengeTested = true;
   }
   review = await request(path, 'GET', undefined, state.full.session); need(review.status === 200, 'FRESH_REVIEW');
-  need((await passwordApproval(path + '/approval', approval(), state.full.session)).status === 200, 'SYNTHETIC_PASSWORD_APPROVAL');
+  need((await sessionApproval(path + '/approval', approval(), state.full.session)).status === 200, 'SYNTHETIC_SESSION_APPROVAL');
   if (pending) return;
   const first = await tool(state.full, 'company.commit_update', { operationId: op.operationId });
   const replay = await tool(state.full, 'company.commit_update', { operationId: op.operationId });
@@ -220,7 +220,7 @@ async function main() {
     await full(); state.legacy = await authorize(legacyScopes);
     await listed(state.legacy, legacyNames);
     need((await rpc(state.legacy, 'tools/call', { name: 'company.preview_update', arguments: { input: { expectedRevision: 'a'.repeat(64), changes: { availabilityText: 'Unconsented' } }, idempotencyKey: 'synthetic-denied-' + secret() } })).status === 403, 'LEGACY_WRITE_DENIED');
-    await company({ wrongPassword: true }); await native();
+    await company({ invalidChallenge: true }); await native();
   } else if (input.action === 'native') await native();
   else if (input.action === 'readiness-failed') {
     need((await request('/ready')).status === 503, 'CRASH_PRIVATE_READINESS'); evidence.privateReadinessFailed = true;
@@ -273,7 +273,7 @@ async function main() {
     await company(); evidence.fallbackMarkerCommitted = true;
   } else if (input.action === 'off') {
     need((await request('/mcp')).status === 404 && (await business()).marker === state.marker, 'OFF_FALLBACK_COMMERCE');
-    need(state.approvalAttempts === 5 && state.wrongPasswordTested === true, 'COMPLETE_APPROVAL_BUDGET');
+    need(state.approvalAttempts === 5 && state.invalidChallengeTested === true, 'COMPLETE_APPROVAL_BUDGET');
     evidence.offFallback = { mcpOff: true, commercePreserved: true };
   } else throw new Error('ACTION');
   evidence.approvalAttempts = state.approvalAttempts ?? 0;

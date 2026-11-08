@@ -568,7 +568,7 @@ assert.throws(()=>assertLegacyDefinitions(tools,'candidate-self-hash'),/LEGACY_B
 """)
 
     def test_actual_company_helper_uses_five_paid_attempts_with_preview_and_replay(self):
-        functions=self.source[self.source.index('async function passwordApproval('):self.source.index('async function full()')]
+        functions=self.source[self.source.index('async function sessionApproval('):self.source.index('async function full()')]
         self.node("""import assert from'node:assert/strict';
 const need=(ok,code)=>{if(!ok)throw Error(code)};const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);const secret=()=> 'a'.repeat(43);
 let input={action:'on',nonce:'012345abcdef'},state={password:'correct',full:{session:{'X-CSRF-Token':'valid'}}},evidence={},marker=null,next=0,proposal,paid=0,badCsrf=0;
@@ -585,18 +585,18 @@ async function tool(family,name,args){
 async function request(path,method,body,headers){
  if(method==='GET')return{status:200,data:{previewHash:proposal.previewHash,challenge:'c'.repeat(43),proposal:{after:{availabilityText:proposal.marker}}}};
  if(headers['X-CSRF-Token']==='wrong'){badCsrf++;return{status:403}}
- paid++;return{status:body.password==='correct'?200:403};
+ assert.equal(Object.hasOwn(body,'password'),false);assert.match(body.challenge,/^[A-Za-z0-9_-]{43}$/);paid++;return{status:body.challenge==='c'.repeat(43)?200:403};
 }
 """+functions+"""
-await company({wrongPassword:true});assert.equal(paid,2);assert.equal(state.approvalAttempts,2);
+await company({invalidChallenge:true});assert.equal(paid,2);assert.equal(state.approvalAttempts,2);
 // C uses the already committed receipt; no company approval is performed.
 await tool(state.full,'company.commit_update',{operationId:state.committed.operationId});assert.equal(paid,2);
 input.action='pending';await company({pending:true});assert.equal(paid,3);
 input.action='epoch-fenced';await company({previewOnly:true});assert.equal(paid,3);
 input.action='restore-finished';await company();assert.equal(paid,4);
 input.action='fallback-marker';await company();assert.equal(paid,5);assert.equal(state.approvalAttempts,5);
-assert.equal(badCsrf,4);assert.equal(state.wrongPasswordTested,true);
-await assert.rejects(passwordApproval('/approval',{},{}),/APPROVAL_BUDGET/);assert.equal(paid,5);
+assert.equal(badCsrf,4);assert.equal(state.invalidChallengeTested,true);
+await assert.rejects(sessionApproval('/approval',{},{}),/APPROVAL_BUDGET/);assert.equal(paid,5);
 """)
 
     def test_missing_or_wrong_published_baseline_has_no_candidate_fallback(self):
