@@ -169,12 +169,11 @@ for(const dialect of ['sqlite','postgres'])test(dialect+': enabled production fi
   await ensureAdmin(store,config.username,password);await setupShop(store,{mode:'production',shopName:'Synthetic finish production'});
   const original=store.exec;let ddl=0;
   const denyDdl=async sql=>{if(/^\s*(CREATE|ALTER|DROP)\b/i.test(sql)){ddl++;throw new Error('Unexpected production DDL');}return original(sql);};
-  const probe=async()=>{const api=await createApi({store,config,operationTools:[]});return api(new Request(config.sellerOrigin+'/ready'));};
+  const probe=async()=>{const api=await createApi({store,config,operationTools:[]});return api(new Request(config.sellerOrigin+'/health'));};
   store.exec=denyDdl;assert.equal((await probe()).status,500);assert.equal(ddl,0);
   store.exec=original;const{initializeFinishStorage}=await import('../src/mcp/finish-storage.js');await initializeFinishStorage(store);
-  // Synthetic sealed codec socket closes requests, so readiness remains 503;
-  // successful tenant construction is distinguished from the missing/drifted 500.
-  store.exec=denyDdl;assert.equal((await probe()).status,503);assert.equal(ddl,0);
+  // Health constructs tenant routes without probing the synthetic codec socket.
+  store.exec=denyDdl;assert.equal((await probe()).status,200);assert.equal(ddl,0);
   store.exec=original;await store.exec('DROP INDEX seller_mcp_finish_retention');store.exec=denyDdl;
   assert.equal((await probe()).status,500);assert.equal(ddl,0);
  });
