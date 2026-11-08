@@ -220,8 +220,7 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
       if(!envelope || !['catalog.preview_create','catalog.preview_update'].includes(row.tool_name)) {
         throw new ApiError(409,'RESTAGE_REQUIRED','Fresh image staging and review are required.');
       }
-      if(isCreationParent(envelope.proposal))throw new ApiError(409,'RESTAGE_REQUIRED','Stage the original draft images again and review the renewed complete proposal.');
-      const args=row.tool_name==='catalog.preview_create'?envelope.proposal.normalizedInput:
+      const args=row.tool_name==='catalog.preview_create'?{...envelope.proposal.normalizedInput,...(isCreationParent(envelope.proposal)?{draftId:envelope.proposal.creationMedia.draftId}:{})}:
         {id:row.resource_id,changes:envelope.proposal.normalizedInput};
       if(!args)throw new ApiError(409,'REPREPARE_REQUIRED','Prepare a fresh proposal.');
       const result=await engine.prepareForSeller(request,operationId,row.tool_name,args,idempotencyKey);

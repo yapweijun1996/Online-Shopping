@@ -26,6 +26,26 @@ export function createDraftCoordinator({store,write,reserve,codecDigest}){
   images:await Promise.all(draft.stages.map(async stage=>({index:stage.position,stageId:stage.stage_id,nextOffset:(await writer.inspect(stage.stage_id)).nextOffset}))),replayed});
  const audit=async(context,draft,action)=>store.run('INSERT INTO seller_mcp_create_draft_event(id,draft_id,tenant_id,at,event) VALUES(?,?,?,?,?)',randomUUID(),draft.id,context.tenantId,new Date().toISOString(),action);
  const coordinator=Object.freeze({
+ async renewParentDraft(id,context,writer){
+  const original=await readCreateDraft(store,id,context);
+  if(original.state!=='BOUND'||!original.operation_id)throw new ApiError(409,'RESTAGE_REQUIRED','Stage the original images again.');
+  const operation=await store.get('SELECT state FROM mcp_v2_operation WHERE id=?',original.operation_id);
+  if(!operation||operation.state==='COMMITTED')throw new ApiError(409,'REVIEW_NOT_REQUIRED','A committed creation cannot be recreated.');
+  const sources=[];
+  for(const row of original.stages){
+   const stage=await writer.inspect(row.stage_id),chunks=await store.all('SELECT "offset",byte_length,sha256,data FROM mcp_v2_media_chunk WHERE stage_id=? ORDER BY "offset" LIMIT 16',row.stage_id);let offset=0;const parts=[];
+   for(const chunk of chunks){const bytes=Buffer.from(chunk.data);if(chunk.offset!==offset||chunk.byte_length!==bytes.length||hash(bytes)!==chunk.sha256)throw new ApiError(409,'RESTAGE_REQUIRED','The original source images must be staged again.');offset+=bytes.length;parts.push(bytes);}
+   const bytes=Buffer.concat(parts);if(offset!==stage.declaredBytes||hash(bytes)!==stage.sourceSha256)throw new ApiError(409,'RESTAGE_REQUIRED','The original source images must be staged again.');
+   sources.push({row,stage,bytes});
+  }
+  const draftId=randomUUID(),now=new Date().toISOString();
+  await store.run(`INSERT INTO seller_mcp_create_draft(id,context_json,input_json,identity_json,tenant_id,account_id,client_id,grant_id,idempotency_hash,intent_hash,correlation_id,state,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,'OPEN',?,?)`,draftId,original.context_json,original.input_json,original.identity_json,context.tenantId,context.accountId,context.clientId,context.grantId,hash(draftId),original.intent_hash,randomUUID(),now,new Date(Date.parse(now)+1500000).toISOString());
+  for(const {row,stage,bytes}of sources){const fresh=await writer.begin({productId:row.target_product_id,targetSlot:row.target_slot,expectedRevision:original.intent_hash,sourceSha256:stage.sourceSha256,sourceMime:stage.sourceMime,declaredBytes:stage.declaredBytes,codecDigest,idempotencyKey:hash(json([draftId,row.position]))},draftId);
+   await store.run('INSERT INTO seller_mcp_create_draft_stage(draft_id,position,stage_id,target_product_id,target_slot) VALUES(?,?,?,?,?)',draftId,row.position,fresh.stageId,row.target_product_id,row.target_slot);
+   for(let offset=0;offset<bytes.length;offset+=36864)await writer.append(fresh.stageId,offset,bytes.subarray(offset,offset+36864));
+  }
+  const draft=await readCreateDraft(store,draftId,context);await audit(context,draft,'BEGIN');return draft;
+ },
  async bindParent(envelope,resolved,context){
   const draft=await readCreateDraft(store,resolved.draftId,context,{open:true});
   if(draft.correlation_id!==envelope.correlationId||draft.intent_hash!==envelope.proposal.creationMedia.intentHash||

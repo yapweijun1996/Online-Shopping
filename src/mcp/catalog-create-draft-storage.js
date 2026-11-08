@@ -73,7 +73,7 @@ export async function creationStageBinding(read,stageId,context,operation=undefi
 export async function cleanupCreateDrafts(store,{tenantId,now=new Date().toISOString(),limit=50}={}){
  if(typeof tenantId!=='string'||!tenantId||!Number.isInteger(limit)||limit<1||limit>100||typeof now!=='string'||new Date(now).toISOString()!==now)throw new TypeError('Bounded tenant draft cleanup required.');
  if(!await createDraftStorageExists(store))return {removed:0};
- return store.transaction(async()=>{const rows=await store.all(`SELECT d.id FROM seller_mcp_create_draft d LEFT JOIN mcp_v2_operation o ON o.id=d.operation_id WHERE d.tenant_id=? AND d.expires_at<? AND (d.operation_id IS NULL OR o.receipt_expires_at<=?)
+ return store.transaction(async()=>{const rows=await store.all(`SELECT d.id FROM seller_mcp_create_draft d LEFT JOIN mcp_v2_operation o ON o.id=d.operation_id WHERE d.tenant_id=? AND d.expires_at<? AND (d.operation_id IS NULL OR o.receipt_expires_at<=? AND o.state IN ('COMMITTED','REJECTED','EXPIRED','CANCELLED','CONFLICT','FAILED'))
  AND NOT EXISTS(SELECT 1 FROM seller_mcp_create_draft_stage ds JOIN mcp_v2_media_stage s ON s.id=ds.stage_id WHERE ds.draft_id=d.id AND s.scrubbed_at IS NULL) ORDER BY d.id LIMIT ?`,tenantId,now,now,limit);let removed=0;
  for(const row of rows){
   const events=await store.all('SELECT id FROM seller_mcp_create_draft_event WHERE draft_id=? ORDER BY at,id LIMIT ?',row.id,limit-removed);

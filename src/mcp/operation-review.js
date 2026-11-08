@@ -318,7 +318,7 @@ async function loadMedia(toolName, proposal, resourceId, resourceType, risk) {
   document.querySelector('#media-viewer').hidden = empty;
   document.querySelector('#media-empty').hidden = !empty;
   updateMediaProgress();
-  if (mediaReview.assetItems.length) await showMediaImage(mediaReview.assetItems[0]);
+  if (mediaReview.assetItems.length) await showMediaImage(mediaReview.assetItems[0],true);
 }
 function updateMediaProgress() {
   mediaComplete = reviewedImages.size === mediaReview.assetItems.length;
@@ -332,8 +332,10 @@ function releaseMediaImage() {
   selectedImage = null; imageAck.disabled = true;
   document.querySelector('#media-image-details').textContent = '';
 }
-async function showMediaImage(item) {
-  if (checkExpiry() || decisionPending || !csrf) return;
+async function showMediaImage(item,initialLoad=false) {
+  // Batch navigation keeps decision buttons disabled while loading the next
+  // exact manifest; its initial image still needs to be fetched and decoded.
+  if (checkExpiry() || decisionPending&&!initialLoad || !csrf) return;
   releaseMediaImage();
   retryImage = item; imageRetry.hidden = true;
   imageStatus.textContent = 'Loading and verifying the exact image…';
