@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { reviewFixture } from './helpers/mcp-review-fixture.js';
 import { initializeFinishStorage, assertFinishStorage, maintainFinishStorage, finishStorageExists } from '../src/mcp/finish-storage.js';
+import { assertCreateDraftStorage } from '../src/mcp/catalog-create-draft-storage.js';
 import { runFinishInstallation, parseFinishInstallationArguments } from '../src/mcp/finish-installation.js';
 
 for(const dialect of process.env.SHOP_TEST_DATABASE_URL?['sqlite','postgres']:['sqlite']){
@@ -57,9 +58,12 @@ if(process.env.SHOP_TEST_DATABASE_URL)test('postgres: host installer uses owner 
   const result=await runFinishInstallation(config,args,{ownerUrl});assert.equal(result.status,'INSTALLED');
   const {openPostgresStore}=await import('../src/postgres-store.js'),app=openPostgresStore(appUrl,{max:1});
   try{
-   await assertFinishStorage(app);
+   await assertFinishStorage(app);await assertCreateDraftStorage(app);
    assert.equal((await app.get("SELECT has_table_privilege(current_user,'seller_mcp_finish','INSERT') AS allowed")).allowed,true);
    assert.equal((await app.get("SELECT has_table_privilege(current_user,'seller_mcp_finish_schema','UPDATE') AS allowed")).allowed,false);
+   assert.equal((await app.get("SELECT has_table_privilege(current_user,'seller_mcp_create_draft','INSERT') AS allowed")).allowed,true);
+   assert.equal((await app.get("SELECT has_table_privilege(current_user,'seller_mcp_create_draft_stage','DELETE') AS allowed")).allowed,true);
+   assert.equal((await app.get("SELECT has_table_privilege(current_user,'seller_mcp_create_draft_schema','UPDATE') AS allowed")).allowed,false);
    assert.equal((await app.get("SELECT has_schema_privilege(current_user,'public','CREATE') AS allowed")).allowed,false);
    await assert.rejects(app.run('UPDATE seller_mcp_finish_schema SET version=2 WHERE id=1'));
   }finally{await app.close();}

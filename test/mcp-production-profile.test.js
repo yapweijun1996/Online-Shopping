@@ -172,6 +172,7 @@ for(const dialect of ['sqlite','postgres'])test(dialect+': enabled production fi
   const probe=async()=>{const api=await createApi({store,config,operationTools:[]});return api(new Request(config.sellerOrigin+'/health'));};
   store.exec=denyDdl;assert.equal((await probe()).status,500);assert.equal(ddl,0);
   store.exec=original;const{initializeFinishStorage}=await import('../src/mcp/finish-storage.js');await initializeFinishStorage(store);
+  const {initializeCreateDraftStorage}=await import('../src/mcp/catalog-create-draft-storage.js');await initializeCreateDraftStorage(store);
   // Health constructs tenant routes without probing the synthetic codec socket.
   store.exec=denyDdl;assert.equal((await probe()).status,200);assert.equal(ddl,0);
   store.exec=original;await store.exec('DROP INDEX seller_mcp_finish_retention');store.exec=denyDdl;
