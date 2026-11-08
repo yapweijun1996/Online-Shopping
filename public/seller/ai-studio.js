@@ -50,13 +50,14 @@ export function priceToMinor(text) {
   return minor >= 1 && minor <= 1_000_000_000 ? minor : null;
 }
 
-export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigate = () => {}, initialProductId = null }) {
+export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigate = () => {}, initialProductId = null, initialTab = null, onTabChange = () => {} }) {
   const owner = role === 'OWNER';
   const identity = csrfToken();
   const live = () => !disposed && root.isConnected && identity === csrfToken();
   const refreshers = [];
   const state = { available: false, configured: false, last4: null, usedToday: 0, dailyCallCap: 20, keyRevision: 0, settingRevision: 1 };
   let chosenProduct = null, photoData = null, currency = 'MYR', categories = [];
+  let analyzing = false;
   let busy = 0, dirty = false, running = false, disposed = false, photoToken = 0;
   function text(tag, key, className, values) {
     const node = document.createElement(tag); if (className) node.className = className;
@@ -131,6 +132,7 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
   const fileName = text('p', 'noFile', 'ai-studio-note ai-studio-filename');
   const preview = document.createElement('img'); preview.className = 'ai-studio-preview'; preview.alt = ''; preview.hidden = true;
   const readButton = button('readPhoto', 'primary-button', 'M4 7h3l2-3h6l2 3h3v13H4zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z');
+  readButton.disabled = true;
   const photoStatus = liveLine();
   const draftForm = document.createElement('form'); draftForm.className = 'settings-form ai-studio-form'; draftForm.hidden = true;
   const inputs = { name: document.createElement('input'), description: document.createElement('textarea'), category: document.createElement('select'), sku: document.createElement('input'), price: document.createElement('input') };
@@ -167,17 +169,50 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
   genCard.append(genNote, searchRow, hits, chosen, styleBox, cost, generate, genStatus, results, openProduct);
   photoCard.hidden = true; genCard.hidden = true;   // shown only once the server reports a saved key
   keyForm.hidden = true; capForm.hidden = true; removeKey.hidden = true;
-  page.append(intro, unavailable, usageCard, photoCard, genCard);
+  const summary = document.createElement('div'); summary.className = 'ai-studio-summary'; summary.setAttribute('role', 'status');
+  const connection = text('strong', 'keyNone'); const summaryUsage = text('span', 'usageShort', '', () => ({ used: state.usedToday, cap: state.dailyCallCap }));
+  summary.append(connection, summaryUsage);
+  const tabs = document.createElement('div'); tabs.className = 'ai-studio-tabs'; tabs.setAttribute('role', 'tablist');
+  const panels = [photoCard, genCard, usageCard];
+  const names = ['create', 'images', 'settings'];
+  let activeTab = names.includes(initialTab) ? initialTab : initialProductId ? 'images' : 'create';
+  const tabButtons = ['tabCreate', 'tabImages', 'tabSettings'].map((key, i) => {
+    const control = button(key); control.id = `ai-studio-tab-${names[i]}`; control.setAttribute('role', 'tab');
+    panels[i].id = `ai-studio-panel-${names[i]}`; panels[i].setAttribute('role', 'tabpanel'); panels[i].setAttribute('aria-labelledby', control.id); panels[i].tabIndex = 0;
+    control.setAttribute('aria-controls', panels[i].id);
+    control.addEventListener('click', () => selectTab(names[i]));
+    control.addEventListener('keydown', event => {
+      const delta = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+      const index = event.key === 'Home' ? 0 : event.key === 'End' ? 2 : delta ? (i + delta + 3) % 3 : null;
+      if (index === null) return; event.preventDefault(); selectTab(names[index]); tabButtons[index].focus();
+    }); return control;
+  });
+  function selectTab(name, notify = true) {
+    activeTab = name;
+    setup.hidden = state.available && state.configured || name === 'settings';
+    panels.forEach((panel, i) => { const selected = names[i] === name; panel.hidden = !selected; tabButtons[i].setAttribute('aria-selected', String(selected)); tabButtons[i].tabIndex = selected ? 0 : -1; });
+    if (notify) onTabChange(name);
+  }
+  tabs.append(...tabButtons);
+  const setup = document.createElement('div'); setup.className = 'ai-studio-setup';
+  const setupButton = button('goSettings'); setupButton.addEventListener('click', () => { selectTab('settings'); tabButtons[2].focus(); }); setup.append(text('span', 'keyNone'), setupButton);
+  const keyEditor = document.createElement('details'); keyEditor.className = 'ai-studio-key-editor'; const keySummary = text('summary', 'replaceKey');
+  keyEditor.append(keySummary, keyForm); keyActions.removeChild(removeKey); usageCard.insertBefore(keyEditor, owner ? capForm : null); keyEditor.after(keyStatus);
+  if (owner) usageCard.append(removeKey); else keyEditor.remove();
+  photoCard.insertBefore(text('p', 'reviewNote', 'ai-studio-note'), draftForm); genCard.insertBefore(intro, results);
+  page.append(summary, unavailable, tabs, setup, ...panels);
+  selectTab(activeTab, false);
   root.replaceChildren(page);
 
-  function paintCost() { cost.textContent = studioText('cost', (() => { const n = styleInputs.filter((input) => input.checked).length; return { n, calls: n * 2, left: Math.max(0, state.dailyCallCap - state.usedToday) }; })()); generate.disabled = running || !state.configured || !chosenProduct; }
+  function paintCost() { cost.textContent = studioText('cost', (() => { const n = styleInputs.filter((input) => input.checked).length; return { n, calls: n * 2, left: Math.max(0, state.dailyCallCap - state.usedToday) }; })()); generate.disabled = running || !state.available || !state.configured || !chosenProduct || chosenProduct.active; }
+  let keyEditorInitialized = false;
   function paintState() {
     unavailable.hidden = state.available;
-    for (const card of [photoCard, genCard]) card.hidden = !state.available || !state.configured;
+    selectTab(activeTab, false); setup.hidden = state.available && state.configured || activeTab === 'settings'; connection.textContent = studioText(!state.available ? 'unavailable' : state.configured ? 'connected' : 'keyNone'); summaryUsage.textContent = studioText('usageShort', { used: state.usedToday, cap: state.dailyCallCap }); if (!keyEditorInitialized) { keyEditor.open = !state.configured; keyEditorInitialized = true; } readButton.disabled = !state.available || !state.configured || analyzing;
     usageLine.textContent = state.configured ? studioText('keySaved', { last4: state.last4 ?? '' }) : studioText('keyNone');
     usageCount.textContent = studioText('usage', { used: state.usedToday, cap: state.dailyCallCap });
     removeKey.hidden = !state.configured; keyForm.hidden = !state.available; capForm.hidden = !state.available;
-    capInput.value = state.dailyCallCap; paintCost();
+    if (!capInput.matches(':focus') && !capInput.dataset.edited) capInput.value = state.dailyCallCap; paintCost();
   }
   async function load() {
     try {
@@ -199,7 +234,7 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
     try {
       const data = await api('PUT', 'ai-studio/key', { apiKey, expectedRevision: state.keyRevision });
       Object.assign(state, { configured: true, last4: data.last4, keyRevision: data.revision });
-      keyStatus.show('keyOk'); paintState();
+      keyEditor.open = false; keyStatus.show('keyOk'); paintState();
     } catch (error) { keyStatus.show(error.status === 422 ? 'eKeyRejected' : errorKey(error), {}, true); }
     finally { saveKey.disabled = false; }
   });
@@ -208,9 +243,10 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
     try {
       const data = await api('DELETE', 'ai-studio/key', { expectedRevision: state.keyRevision });
       Object.assign(state, { configured: false, last4: null, keyRevision: data.revision });
-      keyStatus.show('keyRemoved'); paintState();
+      keyEditor.open = true; keyStatus.show('keyRemoved'); paintState();
     } catch (error) { keyStatus.show(errorKey(error), {}, true); }
   });
+  capInput.addEventListener('input', () => { capInput.dataset.edited = 'true'; });
   capForm.addEventListener('submit', async (event) => {
     event.preventDefault(); if (!owner || !live()) return;
     const cap = Number(capInput.value);
@@ -218,7 +254,7 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
     capInput.removeAttribute('aria-invalid');
     try {
       const data = await api('PATCH', 'ai-studio/settings', { dailyCallCap: cap, expectedRevision: state.settingRevision });
-      Object.assign(state, { dailyCallCap: data.dailyCallCap, settingRevision: data.revision }); capStatus.show('capSaved'); paintState();
+      delete capInput.dataset.edited; Object.assign(state, { dailyCallCap: data.dailyCallCap, settingRevision: data.revision }); capStatus.show('capSaved'); paintState();
     } catch (error) { capStatus.show(errorKey(error), {}, true); }
   });
 
@@ -237,7 +273,7 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
   readButton.addEventListener('click', async () => {
     if (!live() || readButton.disabled) return;
     if (!photoData) { photoStatus.show('eNoPhoto', {}, true); return; }
-    readButton.disabled = true; photoStatus.show('working');
+    analyzing = true; readButton.disabled = true; photoStatus.show('working');
     const mine = photoToken, sent = photoData;
     try {
       const [suggestion, settings, list] = await Promise.all([api('POST', 'ai-studio/analyze', { imageDataUrl: photoData }),
@@ -249,9 +285,9 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
       const tidy = (value) => String(value ?? '').replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ').replace(/\s+/g, ' ').trim();   // the product form accepts single-line text only
       inputs.name.value = tidy(suggestion.name); inputs.description.value = tidy(suggestion.description); inputs.category.value = suggestion.category || '';
       inputs.sku.value = ''; inputs.price.value = ''; dirty = true;
-      draftForm.hidden = false; photoStatus.show(null); inputs.name.focus(); reloadCounts();
+      draftForm.hidden = false; photoStatus.show(null); if (activeTab === 'create') inputs.name.focus(); reloadCounts();
     } catch (error) { photoStatus.show(errorKey(error), {}, true); reloadCounts(); }
-    finally { readButton.disabled = false; }
+    finally { analyzing = false; readButton.disabled = !state.available || !state.configured; }
   });
   draftForm.addEventListener('submit', async (event) => {
     event.preventDefault(); if (!live() || saveDraft.disabled) return;
@@ -264,6 +300,7 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
       dirty = false; photoStatus.show('draftSaved');
       draftForm.hidden = true; photoData = null; photoToken += 1; photoInput.value = ''; preview.hidden = true; fileName.textContent = studioText('noFile');   // no second save of the same suggestion
       choose({ id: product.id, name: product.name, active: false });
+      selectTab('images'); tabButtons[1].focus();
       genCard.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
     } catch (error) { draftStatus.show(errorKey(error), {}, true); if (error.field && inputs[error.field]) inputs[error.field].setAttribute('aria-invalid', 'true'); }
     finally { saveDraft.disabled = false; }
@@ -337,7 +374,8 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
   return {
     dispose() { disposed = true; page.remove(); },
     refreshLocale() { translate(page); refreshers.forEach((paint) => paint()); if (chosenProduct) chosen.textContent = studioText('selected', { name: chosenProduct.name }); paintState(); },
-    hasUnsavedChanges: () => dirty && !draftForm.hidden,
+    hasUnsavedChanges: () => Boolean(photoData) || dirty && !draftForm.hidden || Boolean(keyInput.value) || Boolean(capInput.dataset.edited),
+    draftSignature: () => JSON.stringify([activeTab, photoToken, ...Object.values(inputs).map(input => input.value), chosenProduct?.id, styleInputs.map(input => input.checked)]),
     isBusy: () => busy > 0,
   };
 }
