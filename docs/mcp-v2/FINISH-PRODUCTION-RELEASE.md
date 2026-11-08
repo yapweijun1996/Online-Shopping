@@ -50,7 +50,8 @@ argument, output, source or receipt.
 
 The installer creates all extension objects and grants in one transaction.
 The existing app role receives SELECT/INSERT/UPDATE/DELETE on the six fixed
-finish data tables and SELECT only on `seller_mcp_finish_schema`. It receives
+finish/draft data tables and SELECT only on `seller_mcp_finish_schema` and
+`seller_mcp_create_draft_schema`. It receives
 no CREATE, role, function, sequence or database ownership privilege. Role names
 are source-bounded identifiers; table names are fixed source constants. No
 `GRANT ON ALL TABLES`, ALTER DEFAULT PRIVILEGES or password reset is performed.
