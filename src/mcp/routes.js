@@ -21,6 +21,8 @@ import { MEDIA_TOOLS_ACCEPTED, mediaTools } from './media-tools.js';
 import { catalogMediaUpdateEnabled, catalogMediaCreateEnabled } from './catalog-media-config.js';
 import { catalogMediaUpdateTool } from './catalog-media-adapter.js';
 import { catalogMediaCreateTool } from './catalog-media-create-adapter.js';
+import { catalogCreateDraftTool } from './catalog-create-draft.js';
+import { initializeCreateDraftStorage, assertCreateDraftStorage } from './catalog-create-draft-storage.js';
 import { createMediaRuntime } from './media-runtime.js';
 import { createFinishWorkflow } from './finish-workflow.js';
 import { initializeFinishStorage, assertFinishStorage } from './finish-storage.js';
@@ -61,7 +63,7 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
     else {
       const mediaOptions = {store,binding:oauth.binding,config,tenantGuard,quickLogin};
       const runtime = (MEDIA_TOOLS_ACCEPTED && config.mcpMedia?.enabled === true) || catalogUpdateEnabled || catalogCreateEnabled ? createMediaRuntime(mediaOptions) : null;
-      registrations = [companyReadTool(),companyMutationTool(),catalogCreateEnabled ? catalogMediaCreateTool(runtime) : catalogCreateTool(),
+      registrations = [companyReadTool(),companyMutationTool(),...(runtime?.creation ? [catalogCreateDraftTool(runtime)] : []),catalogCreateEnabled ? catalogMediaCreateTool(runtime) : catalogCreateTool(),
         catalogUpdateEnabled ? catalogMediaUpdateTool(runtime) : catalogUpdateTool(),
         analyticsSalesTrendTool(),analyticsTopProductsTool(),analyticsInventoryRiskTool(),inventorySummaryTool(),inventoryMovementsTool(),inventoryAdjustmentTool(),orderDecisionTool(),...operationControlTools(),
         ...(MEDIA_TOOLS_ACCEPTED && config.mcpMedia?.enabled === true ? mediaTools(mediaOptions,runtime) : [])];
@@ -84,7 +86,10 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
         await tenantGuard.withActiveTenant(tenantId, () => initializeOperationStorage(store, { enabled: true }));
         let finish = null;
         if (safeFinish) {
-          await tenantGuard.withActiveTenant(tenantId, () => config.production === true ? assertFinishStorage(store) : initializeFinishStorage(store));
+          await tenantGuard.withActiveTenant(tenantId, async () => {
+            if(config.production === true){await assertFinishStorage(store);await assertCreateDraftStorage(store);}
+            else{await initializeFinishStorage(store);await initializeCreateDraftStorage(store);}
+          });
           finish = createFinishWorkflow({store,binding:{...oauth.binding,mcpV2:config.mcpV2},config,tenantGuard,approve,
             execute:(request,id)=>extensions.finishForSeller(request,id),
             reprepare:(request,id,key)=>extensions.revalidateForSeller(request,id,key)});

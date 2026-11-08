@@ -49,7 +49,7 @@ must own that database or be a database superuser. No password is put in an
 argument, output, source or receipt.
 
 The installer creates all extension objects and grants in one transaction.
-The existing app role receives SELECT/INSERT/UPDATE/DELETE on the four fixed
+The existing app role receives SELECT/INSERT/UPDATE/DELETE on the six fixed
 finish data tables and SELECT only on `seller_mcp_finish_schema`. It receives
 no CREATE, role, function, sequence or database ownership privilege. Role names
 are source-bounded identifiers; table names are fixed source constants. No
@@ -138,3 +138,12 @@ Old-session APPROVED items are held with RENEWED_APPROVAL_REQUIRED and require
 a new proposal, complete review and explicit current-session approval. Committed
 receipts are reconciled without reapplying operations. A job marker never
 transfers approval authority.
+
+Unified parent integration: the same installer transaction creates and verifies
+`seller_mcp_create_draft*` alongside finish storage. Application DML grants cover
+the two draft data tables; both schema metadata tables are SELECT-only. Production
+startup asserts both structural manifests. Cleanup is tenant-fenced and bounded
+to 100 total draft mutations; it must preserve active/bound stages and the
+operation receipt/audit horizon. Never enable finish with only finish tables
+installed. The optional `catalog.prepare_create` registration is present only
+when the native runtime has the gated creation coordinator.

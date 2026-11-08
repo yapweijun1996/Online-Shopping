@@ -5,6 +5,7 @@ import { lstat, readFile } from 'node:fs/promises';
 import { deploymentProfileAllowsProduction } from './deployment-profile.js';
 import { operationStorageReady } from './operation-runtime.js';
 import { assertFinishStorage, initializeFinishStorage } from './finish-storage.js';
+import { assertCreateDraftStorage, initializeCreateDraftStorage } from './catalog-create-draft-storage.js';
 
 const unavailable=()=>{throw new TypeError('Finish storage installation contract is not satisfied.');};
 export function parseFinishInstallationArguments(args){
@@ -58,15 +59,16 @@ export async function runFinishInstallation(config,args,{ownerUrl=null}={}){
 
       await store.transaction(async()=>{
         await initializeFinishStorage(store);
+        await initializeCreateDraftStorage(store);
         if(ownerUrl){
           const role=decodeURIComponent(new URL(config.databaseUrl).username);if(!/^[a-z_][a-z0-9_]{0,62}$/.test(role))unavailable();
           if(!await store.get('SELECT rolname FROM pg_roles WHERE rolname=?',role))unavailable();
-          for(const table of ['seller_mcp_finish','seller_mcp_finish_item','seller_mcp_finish_event','seller_mcp_finish_revalidation'])
+          for(const table of ['seller_mcp_finish','seller_mcp_finish_item','seller_mcp_finish_event','seller_mcp_finish_revalidation','seller_mcp_create_draft','seller_mcp_create_draft_stage'])
             await store.exec(`GRANT SELECT,INSERT,UPDATE,DELETE ON TABLE ${table} TO "${role}"`);
-          await store.exec(`GRANT SELECT ON TABLE seller_mcp_finish_schema TO "${role}"`);
+          await store.exec(`GRANT SELECT ON TABLE seller_mcp_finish_schema,seller_mcp_create_draft_schema TO "${role}"`);
         }
       });
-    }else await assertFinishStorage(store);
+    }else {await assertFinishStorage(store);await assertCreateDraftStorage(store);}
     return {status:options.action==='install'?'INSTALLED':'VERIFIED',version:2,tenantId:options.tenant,schemaVersion:34};
   }finally{await store?.close();}
 }

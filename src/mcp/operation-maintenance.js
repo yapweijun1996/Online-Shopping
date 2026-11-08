@@ -2,6 +2,7 @@ import { expireOperations } from './operation-expiry.js';
 import { stamp } from './credentials.js';
 import { cleanupMcpAudit } from './audit.js';
 import { maintainFinishStorage } from './finish-storage.js';
+import { cleanupCreateDrafts, createDraftStorageExists, assertCreateDraftStorage } from './catalog-create-draft-storage.js';
 
 export const OPERATION_AUDIT_RETENTION_MS = 90 * 86400000;
 export const OPERATION_TERMINAL_STATES = Object.freeze(['COMMITTED', 'REJECTED', 'EXPIRED', 'CANCELLED', 'CONFLICT', 'FAILED']);
@@ -31,6 +32,7 @@ export async function maintainOperations(store, { enabled = false, tenantGuard, 
   if (!tenantGuard || typeof tenantGuard.withActiveTenant !== 'function' || typeof tenantId !== 'string' || !tenantId) {
     throw new TypeError('Operation maintenance requires a trusted tenant fence.');
   }
+  const hasDraftStorage=await createDraftStorageExists(store);
   const now=stamp(),cutoff=new Date(Date.parse(now)-OPERATION_AUDIT_RETENTION_MS).toISOString();
   const phase=async work=>{
     await tenantGuard.withActiveTenant(tenantId,tenant=>{
@@ -40,6 +42,7 @@ export async function maintainOperations(store, { enabled = false, tenantGuard, 
     await new Promise(resolve=>setImmediate(resolve));
   };
   await phase(()=>maintainFinishStorage(store,{tenantId,now,limit:100}));
+  await phase(async()=>{if(await createDraftStorageExists(store)){await assertCreateDraftStorage(store);await cleanupCreateDrafts(store,{tenantId,now,limit:100});}});
   counts.expired=(await expireOperations({store,tenantGuard,tenantId,limit:33})).expired;
   // Media proof is drained only for terminal operations, after the33-row expiry
   // batch. Approved backlog outside that batch retains every bound proof row.
@@ -65,6 +68,7 @@ export async function maintainOperations(store, { enabled = false, tenantGuard, 
       AND NOT EXISTS(SELECT 1 FROM mcp_v2_media_approval_evidence e WHERE e.operation_id=a.operation_id)
     ORDER BY a.expires_at,a.operation_id LIMIT 100`,[tenantId],'approvals');
   await erase('mcp_v2_operation','id',`SELECT o.* FROM mcp_v2_operation o WHERE o.tenant_id=? AND o.redacted_at IS NOT NULL AND o.receipt_expires_at<=?
+    ${hasDraftStorage ? 'AND NOT EXISTS(SELECT 1 FROM seller_mcp_create_draft d WHERE d.operation_id=o.id)' : ''}
     AND NOT EXISTS(SELECT 1 FROM mcp_v2_approval a WHERE a.operation_id=o.id)
     AND NOT EXISTS(SELECT 1 FROM mcp_v2_approval_challenge c WHERE c.operation_id=o.id)
     AND NOT EXISTS(SELECT 1 FROM mcp_v2_operation_media_policy p WHERE p.operation_id=o.id)
