@@ -621,6 +621,21 @@ changes. Final release needs integrated security/browser and published-artifact
 acceptance. See [the finish contract](mcp-v2/ONE-CLICK-FINISH.md) and
 [production installer/rollback gates](mcp-v2/FINISH-PRODUCTION-RELEASE.md).
 
+The source-owned parent draft allocates provisional IDs without commerce rows.
+Quota/lease-owned native staging, complete version2 metadata/options/stock and
+inherited/new exact image/ordered-gallery review precede its genuine approval.
+One local transaction creates inactive, applies images, publishes last, verifies
+all effects and consumes stages once. Legacy image-free CREATE, UPDATE and
+existing-product uploads retain their closed policies; no public missing-product
+exemption or synthetic child approval exists. Stale parent renewal preserves
+original provisional IDs, revalidates exact sources with fresh native leases and
+requires complete new review. Missing/expired sources and quota limits fail closed.
+
+Keeping finish OFF preserves the original review/commit APIs and does not expose
+draft staging or install optional tables. Production extension installation uses
+the explicitly verified database-owner connection, with fixed app DML and
+SELECT-only metadata grants. See the [strict unified parent contract](mcp-v2/UNIFIED-CREATE-PARENT.md).
+
 ## Listing-owned rich product detail (schema 35)
 
 New first-party seller GET/PUT detail and staged-image POST/GET routes require the

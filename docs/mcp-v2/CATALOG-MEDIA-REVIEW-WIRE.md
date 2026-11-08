@@ -1,5 +1,7 @@
 # Catalog media review metadata foundation
 
+The image-free version1 contract below remains unchanged. Finish-enabled unified creation uses a separate strict [version2 parent branch](UNIFIED-CREATE-PARENT.md) with draft-owned staged sources and one complete approval.
+
 ## Exact CREATE metadata
 
 CREATE uses the same closed labels/visibility records, canonical pages, bounded record stream, physical byte mapper and frame/proposal comparison as UPDATE. Exactly one new PRODUCT has `before: null` and `labels.before: null`; its AFTER has no own main and `ownMainVisible: false`. Every old product retains its listing, stored main and literal SKU/name. Exactly one target LISTING is included. Fresh/private creation has a null BEFORE listing and two effects with zero assets, still requiring at least one hashed page. Old aliases must be DB sources owned BEFORE; stages and new-product source owners reject.

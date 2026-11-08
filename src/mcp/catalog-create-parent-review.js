@@ -35,7 +35,7 @@ export async function readCatalogCreateParentReview(read,{draftId,images},codecD
  const inherited=listing.after.galleryAssetKeys;
  // Duplicates have service-dependent associations/order. Reject instead of
  // presenting a plan whose actual service effects might differ.
- if(keys.slice(1).some(key=>inherited.includes(key))||new Set(keys).size!==keys.length)throw new ApiError(400,'CREATE_IMAGE_DUPLICATE','Use distinct images for each new image position.');
+ if(keys.some(key=>inherited.includes(key))||new Set(keys).size!==keys.length)throw new ApiError(400,'CREATE_IMAGE_DUPLICATE','Use distinct images for each new image position.');
  fresh.after.mainAssetKey=keys[0];fresh.after.ownMainVisible=true;
  if(listing.before===null)listing.after.galleryAssetKeys=[...keys];else listing.after.galleryAssetKeys=[...inherited,...keys.slice(1)];
  if(listing.after.galleryAssetKeys.length>10)throw new ApiError(400,'MEDIA_GALLERY_LIMIT','The complete gallery exceeds ten images.');

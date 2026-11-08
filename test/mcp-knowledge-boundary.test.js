@@ -82,10 +82,14 @@ for (const dialect of ['sqlite', 'postgres']) {
       const commit = await f.client.call('catalog.commit_update', { operationId: op.operationId, [field]: value });
       assert.deepEqual(commit.data.error, { code: -32602, message: 'Invalid params' });
     }
-    const input = { operationId: op.operationId, previewHash: op.previewHash, challenge: reviewed.data.challenge, decision: 'approve', password: reviewPassword };
-    for (const patch of [{ password: claim.password }, { previewHash: claim.previewHash }, { challenge: claim.challenge }, { tenantId: claim.tenantId }, { role: claim.role }, { approved: true }]) {
+    const input = { operationId: op.operationId, previewHash: op.previewHash, challenge: reviewed.data.challenge, decision: 'approve' };
+    for (const patch of [{ previewHash: claim.previewHash }, { challenge: claim.challenge }, { tenantId: claim.tenantId }, { role: claim.role }, { approved: true }]) {
       assert.equal((await f.approval(op, { ...input, ...patch })).response.status, 403);
     }
+    // A password string from KB is inert under session-based approval. It
+    // cannot replace either the actual browser session or its bound challenge.
+    assert.equal((await f.approval(op,{...input,password:claim.password},{origin:f.config.sellerOrigin,'x-csrf-token':f.client.headers['x-csrf-token']})).response.status,403);
+    assert.equal((await f.approval(op,{...input,password:claim.password,challenge:claim.challenge})).response.status,403);
     assert.equal((await f.approval(op, input, { origin: f.config.sellerOrigin, authorization: 'Bearer ' + f.client.bearer })).response.status, 403);
     await pendingWithoutApproval(f, op); assert.equal((await f.commit(op)).response.status, 403);
     assert.equal((await f.store.get('SELECT description FROM product WHERE id = ?', f.product.id)).description, 'Synthetic live description');

@@ -1,3 +1,4 @@
+import { FieldError } from '../validation.js';
 import { ApiError } from '../http.js';
 import { createHash } from 'node:crypto';
 import { canonicalOperationJson } from './operation-envelope.js';
@@ -17,7 +18,7 @@ const json=canonicalOperationJson,same=(a,b)=>json(a)===json(b),hash=value=>crea
 const changed=()=>{throw new ApiError(409,'STALE_REVISION','Creation dependencies changed. Review the complete proposal again.');};
 const invalid=()=>{throw new ApiError(400,'CREATE_DRAFT_INPUT','Invalid creation draft request.');};
 const dataUrl=(mime,bytes)=>`data:${mime};base64,${Buffer.from(bytes).toString('base64')}`;
-function checkedArgs(args,draft){const {draftId,...input}=args;if(draftId!==draft.id||!same(validateProductInput({currency:draft.normalizedInput.currency,...input},[draft.normalizedInput.currency]),draft.normalizedInput))invalid();}
+function checkedArgs(args,draft){const {draftId,...input}=args;let normalized;try{normalized=validateProductInput({currency:draft.normalizedInput.currency,...input},[draft.normalizedInput.currency]);}catch(error){if(error instanceof FieldError)invalid();throw error;}if(draftId!==draft.id||!same(normalized,draft.normalizedInput))invalid();}
 async function finalizeDraft(writer,envelope,resolved,context){
  if(!same(mediaContext(context),resolved.context)||!same(envelope.proposal.creationMedia.images,resolved.images)||envelope.correlationId!==resolved.correlationId)changed();
  for(const row of resolved.results)await writer.bind(row.stageId,row.leaseToken,row.version,row.result,envelope.operationId);

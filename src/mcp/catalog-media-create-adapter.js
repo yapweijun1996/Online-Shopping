@@ -131,7 +131,7 @@ export async function assertCatalogCreateInitialAfter(read,prepared,context,acto
  return {metadata,snapshot,revision:hash({version:1,kind:'catalog-media-create-result',productId:identity.productId,listingId:desired.listingId,catalogRevision:metadata.revision,mediaRevision:snapshot.revision})};
 }
 
-/** Constructor-private hooks. Current runtime authority still rejects CREATE. */
+/** Constructor-private image-free CREATE hooks; runtime registration owns eligibility. */
 export function catalogMediaCreateAdapter(runtime){
  if(!sha.test(runtime?.codecDigest||'')||typeof runtime.nativeSession!=='function')throw new TypeError('Trusted catalog media runtime required.');
  const {codecDigest,nativeSession}=runtime;

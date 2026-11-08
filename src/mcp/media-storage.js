@@ -107,7 +107,7 @@ export async function withMediaWriter(store, trustedContext, work, { now: suppli
           const draft=await store.get("SELECT * FROM seller_mcp_create_draft WHERE id=? AND state='OPEN'",creationDraft);
           if(!draft||draft.context_json!==canonicalOperationJson(context)||draft.intent_hash!==input.expectedRevision||draft.expires_at<=now)conflict();
           const identity=JSON.parse(draft.identity_json);
-          if(input.targetSlot==='MAIN'?input.productId!==identity.productId:input.productId!==(identity.targetListingId?await store.get('SELECT id FROM product WHERE listing_id=? ORDER BY created_at,id LIMIT 1',identity.targetListingId).then(row=>row?.id):identity.productId))conflict();
+          if(input.targetSlot==='MAIN'?input.productId!==identity.productId:input.productId!==(identity.targetListingId?await store.get('SELECT id FROM product WHERE listing_id=? ORDER BY created_at,sku,id LIMIT 1',identity.targetListingId).then(row=>row?.id):identity.productId))conflict();
           correlation=draft.correlation_id;
         }
         const id=randomUUID();

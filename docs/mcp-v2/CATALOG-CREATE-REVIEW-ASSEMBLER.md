@@ -1,5 +1,7 @@
 # Private CREATE review assembler
 
+The image-free version1 contract below remains unchanged. Finish-enabled unified creation uses a separate strict [version2 parent branch](UNIFIED-CREATE-PARENT.md) with draft-owned staged sources and one complete approval.
+
 `buildCatalogCreateReviewManifest({ state, projection, codecDigest })` extends the same module and assembly path as [UPDATE](CATALOG-UPDATE-REVIEW-ASSEMBLER.md). Inputs are fresh private outputs from the SELECT-only CREATE reader/projector, including the canonical request and separately prepared values. The function has no database/writer, permission flags, model-selected tool or stage input. It fixes `catalog.preview_create` and returns `{ manifest, revision, reviewBinding }`.
 
 The wrapper compares the unchanged shared D1a revision preimage, strict creation identity, final metadata/options, actual source union and complete before/after product membership. Existing target labels come from its real captured products. New labels come from the adopted final AFTER metadata. Real BEFORE views include only old products; no fake new-product BEFORE view is added. `EMPTY_BEFORE` supplies empty private resource metadata, explicitly not a fabricated database snapshot.

@@ -1,5 +1,7 @@
 # Constructor-private CREATE adapter
 
+The image-free version1 contract below remains unchanged. Finish-enabled unified creation uses a separate strict [version2 parent branch](UNIFIED-CREATE-PARENT.md) with draft-owned staged sources and one complete approval.
+
 `catalogMediaCreateTool(runtime)` preserves the existing safe CREATE name, input schema and minimal receipt schema, substituting `catalogMediaCreateAdapter(runtime)`. It fixes `catalog/catalog` and the source-owned media marker. It is not registered or authorized here. The eventual CREATE profile requires its own separately reviewed gate; enabling the independent UPDATE profile must not authorize CREATE.
 
 `runtime` supplies a fixed `codecDigest` and `nativeSession`. The engine will own the capture, lock-free resolve and final fenced preview phases. Capture normalizes the original safe input through the existing product normalizer, after only a bounded currency lookup, and allocates the strict server product/listing identity without writing ghost rows. Global metadata preflight and the shared full-settings preflight precede business-service text reads. The shared CREATE state/projector/assembler builds the complete review; native validation receives only the exact used old seven-field DB references, with no stage or upload-before-product flow.

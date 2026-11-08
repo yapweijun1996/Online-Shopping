@@ -22,8 +22,10 @@ const coordinators=new WeakSet();export const isCreateDraftCoordinator=value=>co
 /** The supplied write fence is constructor-owned and always rechecks the original
  * live catalog+media grant. Model inputs cannot choose authority or a store. */
 export function createDraftCoordinator({store,write,reserve,codecDigest}){
- const dto=async(writer,draft,replayed=false)=>({draftId:draft.id,productId:draft.creationIdentity.productId,listingId:draft.creationIdentity.targetListingId??draft.creationIdentity.newListingId,state:draft.state,
-  images:await Promise.all(draft.stages.map(async stage=>({index:stage.position,stageId:stage.stage_id,nextOffset:(await writer.inspect(stage.stage_id)).nextOffset}))),replayed});
+ const dto=async(writer,draft,replayed=false)=>{
+  const images=[];for(const stage of draft.stages)images.push({index:stage.position,stageId:stage.stage_id,nextOffset:(await writer.inspect(stage.stage_id)).nextOffset});
+  return {draftId:draft.id,productId:draft.creationIdentity.productId,listingId:draft.creationIdentity.targetListingId??draft.creationIdentity.newListingId,state:draft.state,images,replayed};
+ };
  const audit=async(context,draft,action)=>store.run('INSERT INTO seller_mcp_create_draft_event(id,draft_id,tenant_id,at,event) VALUES(?,?,?,?,?)',randomUUID(),draft.id,context.tenantId,new Date().toISOString(),action);
  const coordinator=Object.freeze({
  async renewParentDraft(id,context,writer){

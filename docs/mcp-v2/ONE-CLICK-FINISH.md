@@ -1,7 +1,7 @@
 # One-click Approve & Finish
 
 Updated 2026-11-08. This document describes the prepared-operation coordinator.
-The unified new-product/new-image parent contract is documented separately.
+The [unified create/new-image/publication parent](UNIFIED-CREATE-PARENT.md) adds one strict source-owned workflow.
 Implementation and local validation do not establish that a production release
 or a particular seller operation has completed.
 
@@ -72,11 +72,17 @@ and permissions; it does not create, repair, migrate or grant tables.
 
 See [FINISH-PRODUCTION-RELEASE.md](FINISH-PRODUCTION-RELEASE.md) for the explicit
 owner-run SQLite/PostgreSQL extension installer, structural manifests, exact app
-DML grants, backups and rollback. Base schema remains 35. Source DDL and actual
+DML grants, backups and rollback. Base shop schema is35; original MCP storage
+manifests remain frozen. Source DDL and actual
 structural fingerprints are both checked. Bounded tenant cleanup retires finish
 metadata after 90 days; linked operation receipt removal still cascades progress.
 Batches cap at five, jobs at 1,000/account, mutations at 120/account/15 minutes,
 and progress reads at 600/account/15 minutes.
+
+Keeping finish OFF retains the original single-operation review/commit APIs;
+it neither exposes creation-draft staging nor installs optional extension tables.
+Production installation requires the reviewed database-owner connection and grants
+only fixed data-table DML plus SELECT on structural metadata to the app role.
 
 ## Validation and release evidence
 
