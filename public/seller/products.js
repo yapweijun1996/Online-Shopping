@@ -215,7 +215,11 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   editorActions.append(find('#product-cancel'), find('#product-save'));
   form.append(editorActions);
   find('.product-form-heading').remove();
-  listView.append(find('.product-toolbar'), statusFilter, status, listRecovery, listHeading, list, more);
+  const listShell = document.createElement('div');
+  listShell.className = 'product-list-shell';
+  listShell.hidden = true;
+  listShell.append(listHeading, list);
+  listView.append(find('.product-toolbar'), statusFilter, status, listRecovery, listShell, more);
   // Change history is secondary: a compact disclosure after the cards, not a full-width bar above them.
   editorActions.before(find('#product-history'));
   editorView.append(back, editorStatus, form);
@@ -609,6 +613,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   function refreshBulk() {
     const eligible = items.filter((product) => product.variantCount <= 1);
     const selectedCount = eligible.filter((product) => selected.has(product.id)).length;
+    listShell.hidden = !items.length && !bulkMessageKey;
     listHeading.hidden = !items.length;
     selectBar.hidden = list.hidden || !items.length;
     variantsNote.hidden = list.hidden || !items.some((product) => product.variantCount > 1);
