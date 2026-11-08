@@ -27,7 +27,7 @@ PREVIOUS = 'b134f5c30b316b10c88fc8afedac6479a1cd6d8b'
 OWNER_LABEL = 'shopping.mcp-canary.owner'
 PROJECT_LABEL = 'com.docker.compose.project'
 SOURCE_PINS = {
-    'deploy/gcp/update.py': 'ac5e7b5ba920f59f55482798c10e2367ed0649bafcf4e84e10a485df5c238974',
+    'deploy/gcp/update.py': 'e210672401e49b086ae0b79757200cdaa827ea00e4cef68c9ec145c38ddd65c1',
     'deploy/gcp/media-codec.py': '881c17e637655f137e009f089be1daca862661e0f123e6c32cc9fa28f941dec2',
     'deploy/gcp/mcp-maintenance.py': '93d37e12c122f5e1a6167d195e31b49c7acc705e40a9757efe5aced1065af49e',
 }
@@ -45,6 +45,18 @@ PG_TCP_READY = ['pg_isready', '-h', '127.0.0.1', '-U', 'online_shopping', '-d', 
 READY_PROGRAM = "fetch('http://127.0.0.1:3000/ready',{signal:AbortSignal.timeout(4000)}).then(async r=>{if(!r.ok)process.exit(1);console.log(await r.text())}).catch(()=>process.exit(1))"
 LEGACY_BASELINE_PROGRAM = "import{createHash}from'node:crypto';import{catalogue}from'./src/mcp/tools.js';const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;const tools=catalogue.map(({scope,...tool})=>tool);if(tools.length!==8)process.exit(1);console.log(JSON.stringify({version:1,count:8,sha256:createHash('sha256').update(JSON.stringify(canonical(tools))).digest('hex')}));"
 COUNTS_SQL = "SELECT json_build_object('grants',(SELECT COUNT(*) FROM oauth_grant WHERE revoked_at IS NULL),'tokens',(SELECT COUNT(*) FROM oauth_token WHERE revoked_at IS NULL),'codes',(SELECT COUNT(*) FROM oauth_authorization_code WHERE consumed_at IS NULL AND expires_at::timestamptz>clock_timestamp()),'sessions',(SELECT COUNT(*) FROM session),'unbound',(SELECT COUNT(*) FROM oauth_authorization_request WHERE account_id IS NULL AND consumed_at IS NULL AND expires_at::timestamptz>clock_timestamp()))"
+
+
+def finish_install_command(ns, action):
+    require(action in ('install','verify'), 'FINISH_INSTALL_ACTION')
+    command=[]
+    if action=='install':
+        command += ['-v',str(ns.root/'secrets/finish-owner-password')+':/run/secrets/finish-owner-password:ro',
+                    '-e','FINISH_DATABASE_OWNER_PASSWORD_FILE=/run/secrets/finish-owner-password']
+    command += ['-e','MCP_V2_FINISH_ENABLED=1','backend','node','scripts/install-seller-mcp-finish.js',
+                '--action='+action,'--expected-origin=https://seller.'+ns.nonce+'.invalid',
+                '--expected-database=online_shopping','--expected-schema=34','--tenant=default']
+    return command
 
 
 class Blocked(Exception):
@@ -233,7 +245,11 @@ class DockerGuard:
                 require(len(tail)>=8 and tail[2:4] == ['--no-deps', '--name'] and tail[4] in self.record.get('jobs', []), 'JOB_NAME')
                 command = tail[5:]
                 if command[:2] == ['-e', 'NEW_SELLER_PASSWORD']: command = command[2:]
-                require(command[:2] == ['backend', 'node'] and
+                finish_action=next((action for action in ('install','verify') if command==finish_install_command(self.ns,action)),None)
+                if finish_action=='install':
+                    secret=self.ns.root/'secrets/finish-owner-password';info=secret.lstat()
+                    require(stat.S_ISREG(info.st_mode) and info.st_uid==1000 and stat.S_IMODE(info.st_mode)==0o600 and 1<=info.st_size<=512,'FINISH_OWNER_FILE')
+                require(finish_action is not None or command[:2] == ['backend', 'node'] and
                         ((command[2:4] == ['scripts/reset-seller-password.js', 'synthetic_owner'] and len(command)==4) or
                          (command[2:3] == ['scripts/recover-seller-mcp.js'] and all(re.fullmatch(r'--(?:phase=(?:accounts|requests)|limit=100|after=[0-9a-f-]{36})', x) for x in command[3:]))), 'JOB_COMMAND')
         # A colliding project must never let Compose mutate foreign resources.
@@ -487,11 +503,12 @@ class Harness:
             out.write(text+'\n');out.flush();os.fsync(out.fileno())
         return path
 
-    def runtime(self,on):
+    def runtime(self,on,finish=False):
         values={'SHOP_HOST':'shop.'+self.ns.nonce+'.invalid','SELLER_HOST':'seller.'+self.ns.nonce+'.invalid',
                 'ADMIN_USERNAME':'synthetic_owner','SECRETS_DIR':str(self.root/'secrets'),'PLATFORM_ENABLED':'0',
                 'AI_ENABLED':'0','WHATSAPP_QR_ENABLED':'0','WHATSAPP_QR_SLOT1_ENABLED':'0','MCP_ENABLED':'1' if on else '0',
-                'MCP_REDIRECT_URIS':'https://client.example.com/canary-'+self.ns.nonce}
+                'MCP_REDIRECT_URIS':'https://client.example.com/canary-'+self.ns.nonce,'MCP_V2_FINISH_ENABLED':'1' if finish else '0'}
+        require(not finish or on,'FINISH_REQUIRES_ON')
         if on:values.update({key:'1' for key in self.module.MCP_FLAGS},MCP_V2_PRODUCTION_PROFILE=self.module.PROFILE)
         self.module.atomic(self.root/'runtime.env',''.join(k+'='+v+'\n' for k,v in values.items()).encode())
 
@@ -647,6 +664,28 @@ class Harness:
         self.capture_legacy_baseline();self.pg_identity();self.client('baseline')
         return {'historicalManualBootstrap':True,'postgresTcpBootstrap':bootstrap,'initializeTrustGateClaimed':False,'sha':old['sha'],'legacyContract':self.record['legacyContract'],'policy':self.policy_readback()}
 
+    def install_finish(self,candidate):
+        # Only the nonce-owned synthetic app is drained. Keep its sealed codec
+        # running so both installer and ordinary-app verify use real config.
+        controller=self.controller();controller.pause();controller.stop_clients(controller.compose(candidate))
+        secret=self.root/'secrets/finish-owner-password'
+        require(not secret.exists(),'FINISH_OWNER_COLLISION')
+        password=(self.root/'secrets/postgres-owner-password').read_text().strip()
+        self.secret_file('finish-owner-password',password,mode=0o600,uid=1000)
+        try:
+            for action in ('install','verify'):
+                name=self.ns.project+'-job-finish-'+action
+                require(name not in self.record['io'].get('jobs',[]),'DUPLICATE_JOB')
+                self.record['io'].setdefault('jobs',[]).append(name);self.persist()
+                result=self.docker(*controller.compose(candidate),'run','--rm','--no-deps','--name',name,
+                                   *finish_install_command(self.ns,action),timeout=90)
+                value=json.loads(result)
+                require(value=={'status':'INSTALLED' if action=='install' else 'VERIFIED','version':2,'tenantId':'default','schemaVersion':34},'FINISH_INSTALL_RECEIPT')
+        finally:
+            secret.unlink(missing_ok=True)
+        require(not secret.exists(),'FINISH_OWNER_NOT_REMOVED')
+        return {'ownerInstall':True,'ordinaryAppVerify':True,'privateOwnerCopyRemoved':True,'baseSchema':34}
+
     def phase_B(self):
         trust=self.controller();sha=self.manifest['candidate']['sha']
         require(trust.head()==sha and trust.approved(sha),'EXACT_MAIN_CI_CHANGED')
@@ -655,8 +694,10 @@ class Harness:
         self.runtime(True);candidate=self.artifact('candidate')
         require(trust.head()==sha and trust.approved(sha),'EXACT_MAIN_CI_CHANGED')
         self.step('pending_first_full_activation');self.accept(candidate,self.record['releases']['previous'])
+        installation=self.install_finish(candidate)
+        self.runtime(True,finish=True);self.accept(candidate,self.record['releases']['previous'])
         self.pg_identity();self.client('on');self.record['generation']=self.generation();self.persist()
-        return {'fullProfile':True,'pendingFirst':True,'privateHttpOnly':True,'realSellerApprovalClaimed':False,'policy':self.policy_readback()}
+        return {'fullProfile':True,'finishEnabled':True,'finishStorage':installation,'pendingFirst':True,'privateHttpOnly':True,'realSellerApprovalClaimed':False,'policy':self.policy_readback()}
 
     def phase_C(self):
         self.lock_probe()

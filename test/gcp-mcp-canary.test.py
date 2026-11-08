@@ -245,6 +245,52 @@ class Tests(unittest.TestCase):
         with self.assertRaises(c.Blocked):self.guard.call(bad,self.raw,supervisor=supervisor)
 
 
+class FinishActivation(unittest.TestCase):
+    def test_policy_pins_match_reviewed_sources(self):
+        for path,expected in c.SOURCE_PINS.items():
+            self.assertEqual(c.digest((ROOT/path).read_bytes()),expected,path)
+
+    def test_runtime_finish_requires_full_on_and_writes_explicit_off(self):
+        with tempfile.TemporaryDirectory() as directory:
+            h=object.__new__(c.Harness);h.root=Path(directory);h.ns=c.Namespace('012345abcdef')
+            h.module=SimpleNamespace(MCP_FLAGS=('MCP_V2_ENABLED','MCP_V2_MEDIA_ENABLED','MCP_V2_CATALOG_MEDIA_UPDATE_ENABLED','MCP_V2_CATALOG_MEDIA_CREATE_ENABLED'),PROFILE='seller-operations-v1',atomic=lambda path,data:path.write_bytes(data))
+            h.runtime(False);self.assertIn('MCP_V2_FINISH_ENABLED=0', (h.root/'runtime.env').read_text())
+            with self.assertRaises(c.Blocked):h.runtime(False,finish=True)
+            h.runtime(True,finish=True);text=(h.root/'runtime.env').read_text()
+            self.assertIn('MCP_V2_FINISH_ENABLED=1',text);self.assertIn('MCP_V2_PRODUCTION_PROFILE=seller-operations-v1',text)
+
+    def test_installer_allows_only_exact_nonce_secret_mount_and_bound_contract(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ns=c.Namespace('012345abcdef');ns.root=Path(directory);(ns.root/'secrets').mkdir()
+            secret=ns.root/'secrets/finish-owner-password';secret.write_text('Synthetic-private-owner-secret\n');secret.chmod(0o600)
+            if os.getuid()==0:os.chown(secret,1000,1000)
+            elif os.getuid()!=1000:self.skipTest('Owner file fixture needs UID1000 or root.')
+            compose=ns.root/'compose.yaml';compose.write_text('{}')
+            name=ns.project+'-job-finish-install';record={'jobs':[name]}
+            guard=c.DockerGuard(ns,set(),record,lambda:None);guard.compose_hash=c.digest(compose.read_bytes())
+            prefix=['compose','--project-name',ns.project,'--env-file',str(ns.root/'runtime.env'),'--env-file',str(ns.root/'images.env'),'-f',str(compose),'--profile','whatsapp-qr','--profile','whatsapp-qr-slot1','run','--rm','--no-deps','--name',name]
+            command=c.finish_install_command(ns,'install')
+            self.assertEqual(guard.compose(prefix+command,lambda *args:''),prefix+command)
+            verify=c.finish_install_command(ns,'verify');self.assertNotIn('-v',verify)
+            self.assertEqual(guard.compose(prefix+verify,lambda *args:''),prefix+verify)
+            for old,new in [(str(secret)+':/run/secrets/finish-owner-password:ro','/opt/online-shopping-gcp/private:/run/secrets/finish-owner-password:ro'),('--expected-schema=34','--expected-schema=35'),('--tenant=default','--tenant=other'),('--expected-database=online_shopping','--expected-database=production'),('MCP_V2_FINISH_ENABLED=1','MCP_V2_FINISH_ENABLED=0')]:
+                bad=[new if value==old else value for value in command]
+                with self.subTest(new=new),self.assertRaises(c.Blocked):guard.compose(prefix+bad,lambda *args:'')
+            secret.chmod(0o644)
+            with self.assertRaisesRegex(c.Blocked,'FINISH_OWNER_FILE'):guard.compose(prefix+command,lambda *args:'')
+
+    def test_failed_installer_removes_private_owner_copy_and_never_enables_runtime(self):
+        with tempfile.TemporaryDirectory() as directory:
+            h=object.__new__(c.Harness);h.root=Path(directory);h.ns=c.Namespace('012345abcdef');h.ns.root=h.root
+            (h.root/'secrets').mkdir();(h.root/'secrets/postgres-owner-password').write_text('Synthetic-secret\n')
+            h.record={'io':{}};h.persist=Mock();h.controller=Mock();h.controller.return_value.compose.return_value=['synthetic-compose']
+            h.docker=Mock(side_effect=c.Blocked('SYNTHETIC_INSTALL_FAILURE'));h.runtime=Mock()
+            h.secret_file=lambda name,text,**kwargs:(h.root/'secrets'/name).write_text(text)
+            with self.assertRaisesRegex(c.Blocked,'SYNTHETIC_INSTALL_FAILURE'):h.install_finish({'sha':'a'*40})
+            self.assertFalse((h.root/'secrets/finish-owner-password').exists());h.runtime.assert_not_called()
+            h.controller.return_value.stop_clients.assert_called_once()
+
+
 class Cleanup(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)

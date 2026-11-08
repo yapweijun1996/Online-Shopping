@@ -31,7 +31,7 @@ const names = [...legacyNames, 'company.get', 'company.preview_update', 'company
   'media.list', 'media.prepare_upload', 'media.commit_upload', 'media.preview_layout', 'media.commit_layout',
   'inventory.summary', 'inventory.movements', 'inventory.preview_adjustment', 'inventory.commit_adjustment',
   'orders.preview_decision', 'orders.commit_decision', 'analytics.sales_trend', 'analytics.top_products', 'analytics.inventory_risk',
-  'operations.get', 'operations.audit', 'operations.cancel'];
+  'operations.get', 'operations.audit', 'operations.cancel', ...(process.env.MCP_V2_FINISH_ENABLED === '1' ? ['catalog.prepare_create'] : [])];
 let input, state, evidence = {}, pool, seq = 0;
 
 async function request(path, method = 'GET', body, headers = {}, socketPath) {
@@ -172,6 +172,10 @@ async function company({ pending = false, previewOnly = false, invalidChallenge 
 }
 
 async function full() {
+  need(process.env.MCP_V2_FINISH_ENABLED === '1', 'FINISH_RUNTIME_ON');
+  const extensions=await query("SELECT (SELECT version FROM seller_mcp_finish_schema WHERE id=1)::int AS finish,(SELECT version FROM seller_mcp_create_draft_schema WHERE id=1)::int AS draft,has_table_privilege(current_user,'seller_mcp_create_draft_event','INSERT') AS draft_audit,has_table_privilege(current_user,'seller_mcp_finish','UPDATE') AS finish_dml,has_table_privilege(current_user,'seller_mcp_finish_schema','UPDATE') OR has_table_privilege(current_user,'seller_mcp_create_draft_schema','UPDATE') AS metadata_write");
+  need(extensions[0].finish === 2 && extensions[0].draft === 1 && extensions[0].draft_audit && extensions[0].finish_dml && !extensions[0].metadata_write,'FINISH_STORAGE_PERMISSIONS');
+  evidence.finishProfile={enabled:true,finishStorage:2,draftStorage:1,appDml:true,metadataWrite:false};
   state.full = await authorize(scopes);
   const initialized = await rpc(state.full, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'synthetic-canary', version: '1' } });
   need(initialized.status === 200 && initialized.data.result?.protocolVersion === '2025-06-18', 'PROTOCOL');
@@ -211,6 +215,7 @@ async function main() {
     process.env.DATABASE_HOST === 'postgres' && process.env.DATABASE_NAME === 'online_shopping', 'SYNTHETIC_ENVIRONMENT');
   state.password ??= (await readFile(process.env.ADMIN_PASSWORD_FILE, 'utf8')).trim();
   if (input.action === 'baseline') {
+    need((process.env.MCP_V2_FINISH_ENABLED || '0') === '0', 'FINISH_RUNTIME_OFF');
     need((await request('/mcp')).status === 404, 'OFF_MCP');
     const session = await login();
     need((await request('/api/v1/seller/setup', 'POST', { mode: 'production', shopName: 'Synthetic isolated canary' }, session)).status === 200, 'SYNTHETIC_SETUP');
