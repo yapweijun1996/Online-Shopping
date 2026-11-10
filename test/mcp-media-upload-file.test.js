@@ -16,8 +16,12 @@ const argumentsFor = async (f, key = 'synthetic-file-upload-01') => {
 const tools = (f, downloadFile) => createOperationTools({ store: f.store, binding: f.binding, config: f.config,
   tenantGuard: f.guard, quickLogin: false, entries: f.entries, downloadFile });
 
-test('file tool is discoverable and uses existing review/approval/commit with exact source bytes', async t => {
-  const f = await mediaToolsFixture(t, 'sqlite');
+for (const dialect of ['sqlite', 'postgres']) {
+const mediaTest = (name, run) => test(`${dialect}: ${name}`,
+  { skip: dialect === 'postgres' && !process.env.SHOP_TEST_DATABASE_URL }, run);
+
+mediaTest('file tool is discoverable and uses existing review/approval/commit with exact source bytes', async t => {
+  const f = await mediaToolsFixture(t, dialect);
   const bytes = Buffer.concat([png, Buffer.alloc(50000, 3)]);
   const registered = tools(f, async () => ({ bytes, mime: 'image/png' }));
   const listed = await f.rpc('tools/list', {});
@@ -42,8 +46,8 @@ test('file tool is discoverable and uses existing review/approval/commit with ex
   assert.notEqual(current.revision, args.expectedRevision);
 });
 
-test('current authorization, foreign product and stale revision fail before download', async t => {
-  const f = await mediaToolsFixture(t, 'sqlite');
+mediaTest('current authorization, foreign product and stale revision fail before download', async t => {
+  const f = await mediaToolsFixture(t, dialect);
   let downloads = 0;
   const registered = tools(f, async () => { downloads++; return { bytes: png, mime: 'image/png' }; });
   const args = await argumentsFor(f);
@@ -54,8 +58,8 @@ test('current authorization, foreign product and stale revision fail before down
   assert.equal(downloads, 0);
 });
 
-test('revocation during download cannot create a stage and production forbids injection', async t => {
-  const f = await mediaToolsFixture(t, 'sqlite');
+mediaTest('revocation during download cannot create a stage and production forbids injection', async t => {
+  const f = await mediaToolsFixture(t, dialect);
   const registered = tools(f, async () => {
     await f.store.run("DELETE FROM mcp_v2_scope_consent WHERE grant_id=? AND scope='media.write'", f.grantId);
     return { bytes: png, mime: 'image/png' };
@@ -65,8 +69,8 @@ test('revocation during download cannot create a stage and production forbids in
   assert.throws(() => createOperationTools({ config: { production: true }, downloadFile: async () => ({}) }), TypeError);
 });
 
-test('changed bytes cannot reuse the original upload intent', async t => {
-  const f = await mediaToolsFixture(t, 'sqlite');
+mediaTest('changed bytes cannot reuse the original upload intent', async t => {
+  const f = await mediaToolsFixture(t, dialect);
   let bytes = png;
   const registered = tools(f, async () => ({ bytes, mime: 'image/png' }));
   const args = await argumentsFor(f);
@@ -76,8 +80,8 @@ test('changed bytes cannot reuse the original upload intent', async t => {
   assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_operation')).n, 1);
 });
 
-test('interrupted fixed-chunk upload resumes without duplicating stored source bytes', async t => {
-  const f = await mediaToolsFixture(t, 'sqlite');
+mediaTest('interrupted fixed-chunk upload resumes without duplicating stored source bytes', async t => {
+  const f = await mediaToolsFixture(t, dialect);
   const bytes = Buffer.concat([png, Buffer.alloc(50000, 4)]), args = await argumentsFor(f);
   const stage = await f.coordinator.begin(f.bearer, { productId: args.productId, targetSlot: args.targetSlot,
     expectedRevision: args.expectedRevision, idempotencyKey: args.idempotencyKey,
@@ -92,8 +96,8 @@ test('interrupted fixed-chunk upload resumes without duplicating stored source b
   assert.deepEqual(Buffer.concat(chunks.map(row => Buffer.from(row.data))), bytes);
 });
 
-test('gallery file review and approved commit preserve the existing main identity', async t => {
-  const f = await mediaToolsFixture(t, 'sqlite');
+mediaTest('gallery file review and approved commit preserve the existing main identity', async t => {
+  const f = await mediaToolsFixture(t, dialect);
   const args = { ...await argumentsFor(f), targetSlot: 'GALLERY' };
   const before = (await f.tool('media.list', { productId: args.productId })).data.result.structuredContent;
   const bytes = Buffer.concat([png, Buffer.from('gallery-image')]);
@@ -105,8 +109,8 @@ test('gallery file review and approved commit preserve the existing main identit
   assert.equal(after.items[0].gallery.length, before.items[0].gallery.length + 1);
 });
 
-test('maximum source uses fifteen chunks and stores the exact source SHA-256', async t => {
-  const f = await mediaToolsFixture(t, 'sqlite');
+mediaTest('maximum source uses fifteen chunks and stores the exact source SHA-256', async t => {
+  const f = await mediaToolsFixture(t, dialect);
   const bytes = Buffer.alloc(524288, 0x69); png.copy(bytes);
   const args = await argumentsFor(f, 'synthetic-maximum-file-01');
   const operation = await tools(f, async () => ({ bytes, mime: 'image/png' })).call('media.upload_file', args, f.bearer);
@@ -121,8 +125,8 @@ test('maximum source uses fifteen chunks and stores the exact source SHA-256', a
   assert.deepEqual(Buffer.concat(chunks.map(row => Buffer.from(row.data))), bytes);
 });
 
-test('two approved MAIN replacements commit once and preserve another product', async t => {
-  const f = await mediaToolsFixture(t, 'sqlite');
+mediaTest('two approved MAIN replacements commit once and preserve another product', async t => {
+  const f = await mediaToolsFixture(t, dialect);
   const other = await f.make('UNRELATED-MEDIA');
   const unrelatedBefore = await f.store.get('SELECT * FROM product WHERE id=?', other.id);
   const args = await argumentsFor(f, 'synthetic-concurrent-main-01');
@@ -142,8 +146,8 @@ test('two approved MAIN replacements commit once and preserve another product', 
   assert.equal((await f.store.get("SELECT COUNT(*) AS n FROM mcp_v2_event WHERE event='COMMIT'")).n, 1);
 });
 
-test('media revision changed during download rolls back the upload stage', async t => {
-  const f = await mediaToolsFixture(t, 'sqlite');
+mediaTest('media revision changed during download rolls back the upload stage', async t => {
+  const f = await mediaToolsFixture(t, dialect);
   const args = await argumentsFor(f, 'synthetic-download-revision-01');
   const externallyAdded = Buffer.concat([png, Buffer.from('concurrent-portal-image')]);
   const registered = tools(f, async () => {
@@ -157,3 +161,4 @@ test('media revision changed during download rolls back the upload stage', async
   const after = (await f.tool('media.list', { productId: args.productId })).data.result.structuredContent;
   assert.ok(after.assets.some(asset => asset.sha256 === mediaHash(externallyAdded)));
 });
+}
