@@ -9,8 +9,8 @@ const HEADER = ['SKU', 'Name', 'Description', 'Category', 'Variant group', 'Vari
 export async function exportProductsCsv(database, params) {
   const query = sellerCatalogQuery(params);
   // Existing direct CSV callers retain variant-level search; the new UI uses listing-level filters.
-  const legacySearch = !params.has('includeInactive');
-  const filter = (query.activeVariantsOnly ? 'AND p.active = 1' : '') +
+  const legacySearch = !params.has('includeInactive') && !params.has('catalogStatus');
+  const filter = (query.activeVariantsOnly ? 'AND p.active = 1' : query.inactiveVariantsOnly ? 'AND p.active = 0' : '') +
     (legacySearch ? " AND (? = '' OR instr(lower(p.name), lower(?)) > 0 OR instr(lower(p.sku), lower(?)) > 0)" : '');
   const order = legacySearch && !params.has('sort') ? 'p.name, p.sku' : query.exportOrder + ', p.sku';
   const args = [...query.args, ...(legacySearch ? [query.search, query.search, query.search] : [])];

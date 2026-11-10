@@ -71,7 +71,7 @@ try {
     await seller.goto(origin + '/seller/#products');await seller.locator('#username').fill(config.username);await seller.locator('#password').fill(config.password);
     await seller.locator('#login-form').evaluate((form) => form.requestSubmit());await seller.locator('#workspace').waitFor({ state: 'visible' });
     const card = (item, page = seller) => page.locator(`.product-card[data-product-id="${item.id}"]`);
-    const listReady = async (page = seller) => {await page.locator('#product-list').waitFor({ state: 'visible' });await card(alpha, page).waitFor();await card(beta, page).waitFor();};
+    const listReady = async (page = seller) => {await page.locator('[data-catalog-status=all]').click(); await page.waitForFunction(() => document.querySelector('#product-list')?.getAttribute('aria-busy') === 'false'); await page.locator('#product-list').waitFor({ state: 'visible' });await card(alpha, page).waitFor();await card(beta, page).waitFor();};
     const stateReady = async (item, active, page = seller) => {await page.waitForFunction(({ id, active }) => document.querySelector(`.product-card[data-product-id="${id}"] .product-status-chip`)?.textContent === (active ? 'Active' : 'Inactive'), { id: item.id, active });};
     const shot = (page, label) => page.screenshot({ path: out + `/${label}-${width}.png`, fullPage: true });
     const mutation = async (page, path, control) => {
@@ -80,14 +80,14 @@ try {
       return { status: actual.status(), request: actual.request().postDataJSON(), body };
     };
     const toggle = async (item, active, page = seller) => {
-      const result = await mutation(page, '/api/v1/seller/products/' + item.id, card(item, page).locator('[data-action=toggle]'));
+      const result = await mutation(page, '/api/v1/seller/products/' + item.id, { click: async () => { await card(item, page).locator('summary').click(); await card(item, page).locator('[data-action=toggle]').click(); if (!active) await page.locator('dialog[open]').getByRole('button', { name: 'Deactivate', exact: true }).click(); } });
       assert.deepEqual(result.request, { active });await stateReady(item, active, page);assert.equal((await productRow(item.id)).active, Number(active));
       return result;
     };
     const undo = async (item, active) => {
       const result = await mutation(seller, '/api/v1/seller/products/' + item.id, card(item).locator('[data-action=undo]'));
       assert.deepEqual(result.request, { active });await stateReady(item, active);assert.equal(await card(item).locator('[data-action=undo]').count(), 0);
-      await seller.waitForFunction((id) => document.activeElement?.dataset.action === 'toggle' && document.activeElement.closest('.product-card')?.dataset.productId === id, item.id);
+      await seller.waitForFunction((id) => document.activeElement?.dataset.action === 'more' && document.activeElement.closest('.product-card')?.dataset.productId === id, item.id);
       return result;
     };
     const publicState = async (expected, label = 'Fictional Base') => {

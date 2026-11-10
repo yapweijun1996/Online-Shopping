@@ -35,6 +35,10 @@ test('seller catalog: active-first opt-in, disjoint listing counts, composed ser
     const all = await list('includeInactive=true');
     assert.equal(all.total, 4);
     assert.deepEqual((await list('')).items.map(item => item.id), all.items.map(item => item.id), 'legacy omitted parameter keeps all listings');
+    const inactiveTab = await list('catalogStatus=inactive');
+    assert.equal(inactiveTab.total, 1, 'new tabs partition listings; mixed listing belongs to Active');
+    assert.equal((await list('catalogStatus=active')).total + inactiveTab.total, (await list('catalogStatus=all')).total);
+    assert.equal((await list('catalogStatus=inactive&search=HIDDEN&category=Examples&stock=out-of-stock&limit=1')).items[0].id, f.inactive.id);
     assert.equal((await list('status=inactive')).total, 2, 'legacy inactive still includes mixed listings');
     assert.equal((await list('includeInactive=false&search=hidden')).total, 0);
     assert.equal((await list('includeInactive=true&search=hidden')).items[0].id, f.inactive.id);
@@ -47,7 +51,7 @@ test('seller catalog: active-first opt-in, disjoint listing counts, composed ser
     assert.equal(first.nextOffset, 2); assert.equal(second.nextOffset, null);
     assert.deepEqual([...first.items, ...second.items].map(item => item.name), ['Example item', 'Hidden product', 'Mixed product', 'Other product']);
     assert.equal(new Set([...first.items, ...second.items].map(item => item.id)).size, 4);
-    for (const query of ['includeInactive=1', 'includeInactive=false&status=inactive', 'stock=unknown', 'sort=sql', 'limit=101']) {
+    for (const query of ['catalogStatus=unknown', 'catalogStatus=inactive&includeInactive=true', 'catalogStatus=active&status=inactive', 'includeInactive=1', 'includeInactive=false&status=inactive', 'stock=unknown', 'sort=sql', 'limit=101']) {
       assert.equal((await f.request('GET', '/api/v1/seller/products?' + query, null, headers)).response.status, 400, query);
       if (!query.startsWith('limit')) assert.equal((await f.request('GET', '/api/v1/seller/products/export.csv?' + query, null, headers)).response.status, 400, query);
     }
@@ -67,6 +71,10 @@ test('seller CSV follows listing search/category/stock/sort and active visibilit
       assert.equal(result.response.status, 200, JSON.stringify(result.data));
       return result.data.replace(/^\uFEFF/, '').trim().split('\r\n').slice(1).map(line => line.split(',')[0]);
     };
+    assert.deepEqual(await csv('catalogStatus=inactive&category=Examples&stock=out-of-stock&search=Hidden&limit=1&offset=100'), ['HIDDEN'], 'filtered export ignores pagination');
+    assert.deepEqual(await csv('catalogStatus=active&search=MIX-B'), ['MIX-A']);
+    assert.deepEqual(await csv('catalogStatus=inactive&search=MIX-B'), [], 'mixed listing is not in Inactive');
+    assert.deepEqual(await csv('catalogStatus=all&search=MIX-B'), ['MIX-A', 'MIX-B']);
     assert.deepEqual(await csv('includeInactive=false&search=MIX-B'), ['MIX-A'], 'active-first exports only active variants of the matching listing');
     assert.deepEqual(await csv('includeInactive=true&search=MIX-B'), ['MIX-A', 'MIX-B'], 'show-inactive exports every variant of the matching listing');
     assert.deepEqual(await csv('search=MIX-B'), ['MIX-B'], 'legacy direct CSV search retains variant-level matching');

@@ -1,6 +1,7 @@
 import { apiUrl } from '../shared/base-path.js';
 import { icon } from '../shared/icons.js';
 import { formatMoney, t, translate } from '../shared/i18n.js';
+import { confirmModal } from '../shared/modal.js';
 import { beginMutation } from '../shared/update-guard.js';
 import { revealImage } from '../shared/image-reveal.js';
 import { makeThumbnail, thumbUrl } from '../shared/image-thumb.js';
@@ -107,7 +108,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   listRecovery.className = 'product-list-recovery';
   const clearSearch = button(t('clearSearch'), () => {
     search.value = '';
-    load();
+    load(true, '');
   });
   clearSearch.dataset.i18n = 'clearSearch';
   clearSearch.hidden = true;
@@ -117,33 +118,26 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   listRecovery.append(clearSearch, retryList);
   const listHeading = document.createElement('div');
   listHeading.className = 'product-list-heading';
-  for (const key of ['product', 'sku', 'price', 'orderStatus', 'actions']) {
+  for (const key of ['product', 'sku', 'price', 'catalogInventory', 'orderStatus', 'actions']) {
     const label = document.createElement('span');
     label.setAttribute('aria-hidden', 'true');
     label.dataset.i18n = key;
     label.textContent = t(key);
     listHeading.append(label);
   }
-  const statsPanel = document.createElement('div');
-  statsPanel.className = 'product-stats';
-  statsPanel.setAttribute('aria-label', t('productStatistics'));
-  const statValues = new Map();
-  for (const [name, key] of [['active', 'activeProducts'], ['inactive', 'inactiveProducts'], ['total', 'totalProducts']]) {
-    const card = document.createElement('div'); card.className = `product-stat product-stat-${name}`;
+  const statusTabs = document.createElement('div');
+  statusTabs.className = 'product-status-tabs';
+  statusTabs.setAttribute('role', 'group'); statusTabs.setAttribute('aria-label', t('orderStatus'));
+  const statValues = new Map(), statusTabButtons = new Map();
+  for (const [name, key] of [['active', 'active'], ['inactive', 'inactive'], ['all', 'catalogAll']]) {
+    const tab = button('', () => { filterStatus = name; load(); });
+    tab.dataset.catalogStatus = name; tab.setAttribute('aria-controls', 'product-list');
     const label = document.createElement('span'); label.dataset.i18n = key; label.textContent = t(key);
-    const value = document.createElement('strong'); value.textContent = '—'; value.dataset.stat = name;
-    statValues.set(name, value); card.append(label, value); statsPanel.append(card);
+    const value = document.createElement('span'); value.textContent = '—'; value.dataset.stat = name === 'all' ? 'total' : name;
+    statValues.set(name === 'all' ? 'total' : name, value); statusTabButtons.set(name, tab);
+    tab.replaceChildren(label, document.createTextNode(' ('), value, document.createTextNode(')')); statusTabs.append(tab);
   }
-  const statusFilter = document.createElement('div');
-  statusFilter.className = 'product-list-filters';
-  const inactiveLabel = document.createElement('label');
-  inactiveLabel.className = 'product-inactive-toggle';
-  const inactiveToggle = document.createElement('input');
-  inactiveToggle.type = 'checkbox'; inactiveToggle.id = 'product-include-inactive';
-  inactiveToggle.setAttribute('role', 'switch'); inactiveToggle.setAttribute('aria-controls', 'product-list');
-  const toggleTrack = document.createElement('span'); toggleTrack.className = 'product-toggle-track'; toggleTrack.setAttribute('aria-hidden', 'true');
-  const inactiveText = document.createElement('span'); inactiveText.dataset.i18n = 'showInactiveProducts'; inactiveText.textContent = t('showInactiveProducts');
-  inactiveLabel.append(inactiveToggle, toggleTrack, inactiveText);
+  const statusFilter = document.createElement('div'); statusFilter.className = 'product-list-filters';
   const filterSelect = (id, key, choices) => {
     const label = document.createElement('label'); label.className = 'product-filter-select';
     const text = document.createElement('span'); text.dataset.i18n = key; text.textContent = t(key);
@@ -153,28 +147,29 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     select.addEventListener('change', () => load());
     return select;
   };
-  statusFilter.append(inactiveLabel);
   const categoryFilter = filterSelect('product-filter-category', 'category', [['', 'allCategories']]);
   const stockFilter = filterSelect('product-filter-stock', 'stockLabel', [['', 'stockAll'], ['in-stock', 'inStock'], ['out-of-stock', 'outOfStock'], ['unlimited', 'unlimitedStock']]);
   const sortFilter = filterSelect('product-filter-sort', 'productSort', [['updated', 'productSortUpdated'], ['name', 'productSortName'], ['price_asc', 'productSortPriceAsc'], ['price_desc', 'productSortPriceDesc']]);
-  inactiveToggle.addEventListener('change', () => { filterStatus = inactiveToggle.checked ? '' : 'active'; load(); });
   const listSummary = document.createElement('p'); listSummary.className = 'product-list-summary'; listSummary.setAttribute('role', 'status'); listSummary.setAttribute('aria-live', 'polite');
   const removedUndo = document.createElement('div'); removedUndo.className = 'product-filter-undo'; removedUndo.hidden = true;
   removedUndo.setAttribute('role', 'status');
   listRecovery.append(removedUndo);
   function refreshStatusFilter() {
-    inactiveToggle.checked = filterStatus !== 'active';
+    for (const [name, tab] of statusTabButtons) tab.setAttribute('aria-pressed', String(filterStatus === name));
     categoryFilter.value = filterCategory; stockFilter.value = filterStock; sortFilter.value = filterSort;
   }
   function refreshStats() {
-    listSummary.textContent = matchingTotal === null ? '' : format(t('productResultsFormat'), { count: items.length, total: matchingTotal });
+    listSummary.textContent = matchingTotal === null ? '' : `${format(t('productResultsFormat'), { count: items.length, total: matchingTotal })} · ${t(appliedStatus === 'all' ? 'catalogAll' : appliedStatus)}`;
+    clearFilters.hidden = !appliedSearch && appliedStatus === 'active' && !appliedCategory && !appliedStock && appliedSort === 'updated';
+    exportHint.textContent = matchingTotal === null ? '' : format(t('catalogExportScope'), { count: matchingTotal });
     for (const [key, value] of statValues) value.textContent = catalogStats ? String(catalogStats[key]) : '—';
+    for (const tab of statusTabButtons.values()) tab.setAttribute('aria-label', tab.textContent);
   }
   function renderRemovedUndo(product) {
     removedUndo.replaceChildren();
-    removedUndo.hidden = product.active || appliedStatus !== 'active';
+    removedUndo.hidden = appliedStatus === 'all' || (appliedStatus === 'active' ? product.active : !product.active);
     if (removedUndo.hidden) return;
-    const text = document.createElement('span'); text.textContent = `${product.name}: ${t('productDeactivatedInline')}`;
+    const text = document.createElement('span'); text.textContent = `${product.name}: ${t(product.active ? 'productActivatedInline' : 'productDeactivatedInline')}`;
     const undo = button(t('undoChange'), event => undoToggle(product, event.currentTarget));
     removedUndo.append(text, undo);
   }
@@ -302,7 +297,19 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   listShell.className = 'product-list-shell';
   listShell.hidden = true;
   listShell.append(listHeading, list);
-  listView.append(statsPanel, find('.product-toolbar'), statusFilter, status, listRecovery, listShell, listSummary, more);
+  const heading = document.createElement('div'); heading.className = 'product-page-heading';
+  const intro = document.createElement('p'); intro.dataset.i18n = 'catalogIntro'; intro.textContent = t('catalogIntro');
+  heading.append(intro, find('#product-new'));
+  const toolbar = find('.product-toolbar');
+  const transfers = document.createElement('div'); transfers.className = 'product-transfer-actions';
+  transfers.append(find('#product-import'), find('#product-export'));
+  const clearFilters = button(t('clearFilters'), () => {
+    search.value = ''; filterStatus = 'active'; categoryFilter.value = ''; stockFilter.value = ''; sortFilter.value = 'updated'; load(true, '');
+  }); clearFilters.id = 'product-clear-filters'; clearFilters.dataset.i18n = 'clearFilters'; clearFilters.hidden = true;
+  const exportHint = document.createElement('p'); exportHint.className = 'product-export-scope'; exportHint.id = 'product-export-scope';
+  transfers.querySelector('#product-export').setAttribute('aria-describedby', exportHint.id);
+  toolbar.append(statusFilter, clearFilters, transfers);
+  listView.append(heading, statusTabs, toolbar, exportHint, status, listRecovery, listShell, listSummary, more);
   // Change history is secondary: a compact disclosure after the cards, not a full-width bar above them.
   editorActions.before(find('#product-history'));
   editorView.append(back, editorStatus, form);
@@ -333,6 +340,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   let matchingTotal = null;
   let loadSequence = 0;
   let editingId = null;
+  let imageEntryId = null;
   let statusKey = '';
   let statusProductName = '';
   let formErrorKey = '';
@@ -346,10 +354,32 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   const undoStates = new Map();
   const pendingChanges = new Set();
 
+  const urlKeys = { search: 'productSearch', status: 'productStatus', category: 'productCategory', stock: 'productStock', sort: 'productSort' };
+  function restoreFilters() {
+    const params = new URL(location.href).searchParams;
+    search.value = appliedSearch = params.get(urlKeys.search) || '';
+    filterStatus = ['active', 'inactive', 'all'].includes(params.get(urlKeys.status)) ? params.get(urlKeys.status) : 'active';
+    filterCategory = params.get(urlKeys.category) || '';
+    filterStock = ['', 'in-stock', 'out-of-stock', 'unlimited'].includes(params.get(urlKeys.stock) || '') ? params.get(urlKeys.stock) || '' : '';
+    filterSort = ['updated', 'name', 'price_asc', 'price_desc'].includes(params.get(urlKeys.sort)) ? params.get(urlKeys.sort) : 'updated';
+    refreshStatusFilter();
+  }
+  function saveFilters() {
+    const url = new URL(location.href);
+    for (const [key, value] of Object.entries({ search: appliedSearch, status: appliedStatus === 'active' ? '' : appliedStatus, category: appliedCategory, stock: appliedStock, sort: appliedSort === 'updated' ? '' : appliedSort })) {
+      if (value) url.searchParams.set(urlKeys[key], value); else url.searchParams.delete(urlKeys[key]);
+    }
+    history.replaceState(history.state, '', url);
+  }
+  restoreFilters();
+  async function confirmDeactivation(name) {
+    return confirmModal(format(t('catalogDeactivateConfirm'), { name }), { title: t('deactivateProduct'), confirmLabel: t('deactivateProduct') });
+  }
+
   function setStatus(key, productName = '') {
     statusKey = key;
     statusProductName = productName;
-    status.classList.toggle('sr-only', ['productActivatedInline', 'productDeactivatedInline', 'productUndoRestored'].includes(key));
+    status.classList.remove('sr-only');
     status.textContent = key ? `${productName ? `${productName}: ` : ''}${t(key)}` : '';
   }
   function setError(key) { formErrorKey = key; error.textContent = key ? t(key) : ''; }
@@ -544,7 +574,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       ]);
       if (!isCurrent()) return;
       categories = categoryResult.items;
-      const pickedCategory = categoryFilter.value;
+      const pickedCategory = filterCategory || categoryFilter.value;
       const allCategoriesOption = new Option(t('allCategories'), ''); allCategoriesOption.dataset.i18n = 'allCategories';
       categoryFilter.replaceChildren(allCategoriesOption);
       for (const category of categories) categoryFilter.add(new Option(category.label, category.label));
@@ -734,15 +764,17 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       },
       onImported: async (summary) => {
         if (!isCurrent()) return;
-        bulkMessageKey = 'importDone'; bulkMessageValues = { created: summary.create, updated: summary.update };
-        await load(true); refreshBulk();
+        bulkMessageKey = 'catalogImportDone'; bulkMessageValues = { created: summary.create, updated: summary.update };
+        const refreshed = await load(true);
+        if (!refreshed && isCurrent()) setStatus('catalogImportRefreshFailed');
+        refreshBulk();
       } });
   });
   find('#product-export').addEventListener('click', async (event) => {
     const control = event.currentTarget;
     control.disabled = true;
     try {
-      const response = await fetch(apiUrl(`v1/seller/products/export.csv?${new URLSearchParams({ search: appliedSearch, includeInactive: String(appliedStatus !== 'active'), category: appliedCategory, stock: appliedStock, sort: appliedSort })}`), { cache: 'no-store' });
+      const response = await fetch(apiUrl(`v1/seller/products/export.csv?${new URLSearchParams({ search: appliedSearch, catalogStatus: appliedStatus, category: appliedCategory, stock: appliedStock, sort: appliedSort })}`), { cache: 'no-store' });
       if (response.status === 401) { if (isCurrent()) onUnauthorized(); return; }
       if (!response.ok) {
         const code = (await response.json().catch(() => ({}))).error?.code;
@@ -761,6 +793,8 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
 
   async function runBulk(action) {
     if (!selected.size || selected.size > 100 || bulkBusy) return;
+    if (action === 'deactivate' && !await confirmDeactivation(format(t('bulkSelected'), { count: selected.size }), document.activeElement)) return;
+    if (!isCurrent()) return;
     bulkBusy = true; bulkMessageKey = ''; refreshBulk();
     try {
       const result = await api('POST', apiUrl('v1/seller/products/bulk'), { ids: [...selected], action });
@@ -771,8 +805,15 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       bulkMessageKey = 'bulkFailed';
     }
     bulkBusy = false;
-    await load(true);
+    const refreshed = await load(true);
+    if (!refreshed && isCurrent() && bulkMessageKey === 'bulkDone') setStatus('catalogChangedRefreshFailed');
     refreshBulk();
+  }
+
+  function imageEntry(product, message) {
+    const entry = button('', () => { imageEntryId = product.id; onNavigate(`products/${product.id}`); }, `${t('catalogManageImage')}: ${product.name}`);
+    entry.className = 'product-placeholder product-image-entry'; entry.title = `${t(message)} · ${t('catalogManageImage')}`;
+    const label = document.createElement('span'); label.textContent = t(message); entry.append(icon('image'), label); return entry;
   }
 
   function renderList() {
@@ -800,12 +841,10 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
         revealImage(image);
         image.src = thumbUrl(product.imageUrl);
         image.alt = product.name;
+        image.addEventListener('error', () => { const fallback = imageEntry(product, 'catalogImageFailed'); image.replaceWith(fallback); }, { once: true });
         card.append(image);
       } else {
-        const placeholder = document.createElement('div');
-        placeholder.className = 'product-placeholder';
-        placeholder.textContent = t('imageMissing');
-        card.append(placeholder);
+        card.append(imageEntry(product, 'imageMissing'));
       }
       const main = document.createElement('div');
       main.className = 'product-card-main';
@@ -837,18 +876,23 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       const stockNow = grouped ? product.stockTotal : product.stockQuantity;
       stock.textContent = stockNow === null ? `${t('stockLabel')}: ${t('unlimitedStock')}`
         : stockNow === 0 ? t('outOfStock') : `${t('stockLabel')}: ${stockNow}`;
+      stock.classList.add('product-row-stock');
       main.append(identity, sku, price, stock, chip);
       const actions = document.createElement('div');
       actions.className = 'product-card-actions';
-      const toggleButton = button(t(product.active ? 'deactivateProduct' : 'activateProduct'),
+      const toggleButton = button(t(product.active ? 'deactivateProduct' : 'catalogReactivate'),
         (event) => toggle(product, event.currentTarget),
-        `${t(product.active ? 'deactivateProduct' : 'activateProduct')}: ${product.name} (${product.sku})`);
+        `${t(product.active ? 'deactivateProduct' : 'catalogReactivate')}: ${product.name} (${product.sku})`);
       toggleButton.dataset.action = 'toggle';
       toggleButton.disabled = pendingChanges.has(product.id);
       // A product with several variants is switched on or off per variant, inside the product.
       actions.append(button(t('editProduct'), () => onNavigate(`products/${product.id}`), `${t('editProduct')}: ${product.name} (${product.sku})`));
       if (!grouped) {
-        actions.append(toggleButton);
+        const menu = document.createElement('details'); menu.className = 'product-more-menu';
+        const summary = document.createElement('summary'); summary.setAttribute('aria-label', `${t('catalogMore')}: ${product.name}`); summary.dataset.action = 'more'; summary.append(icon('more'));
+        summary.addEventListener('click', () => { for (const other of list.querySelectorAll('.product-more-menu[open]')) if (other !== menu) other.open = false; });
+        menu.addEventListener('keydown', event => { if (event.key === 'Escape') { menu.open = false; summary.focus(); } });
+        menu.append(summary, toggleButton); actions.append(menu);
       }
       card.append(main, actions);
       const undo = undoStates.get(product.id);
@@ -887,10 +931,11 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     } finally { finish(); if (method !== 'GET') { mutations--; document.dispatchEvent(new Event('updateguardchange')); } }
   }
 
-  async function load(reset = true) {
+  async function load(reset = true, submittedSearch = appliedSearch) {
     if (!reset && nextOffset === null) return false;
+    selected.clear();
     const sequence = ++loadSequence;
-    const query = reset ? search.value.trim() : appliedSearch;
+    const query = reset ? submittedSearch : appliedSearch;
     const queryStatus = reset ? filterStatus : appliedStatus;
     const queryCategory = reset ? categoryFilter.value : appliedCategory;
     const queryStock = reset ? stockFilter.value : appliedStock;
@@ -912,7 +957,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     setStatus('loading');
     try {
       const params = new URLSearchParams({ limit: '24', offset: String(offset), search: query });
-      params.set('includeInactive', String(queryStatus !== 'active'));
+      params.set('catalogStatus', queryStatus);
       params.set('category', queryCategory); params.set('stock', queryStock); params.set('sort', querySort);
       const result = await api('GET', apiUrl(`v1/seller/products?${params}`));
       if (sequence !== loadSequence || !isCurrent()) return false;
@@ -921,6 +966,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
         appliedSearch = query; appliedStatus = filterStatus = queryStatus;
         appliedCategory = filterCategory = queryCategory; appliedStock = filterStock = queryStock; appliedSort = filterSort = querySort;
       }
+      saveFilters();
       matchingTotal = result.total;
       catalogStats = result.stats; refreshStats(); refreshStatusFilter();
       nextOffset = result.nextOffset;
@@ -1013,6 +1059,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     if (detailLoaded) {
       acceptGallery(product);
       renderVariants(product);
+      if (imageEntryId === product.id) { imageEntryId = null; selectTab('images'); find('#product-editor-tab-images').focus(); }
       return;
     }
     renderVariants(null);
@@ -1101,35 +1148,41 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       refreshStats();
     }
     items = items.map((item) => item.id === product.id ? { ...item, ...product } : item)
-      .filter(item => appliedStatus !== 'active' || item.activeCount > 0 && item.variantCount > 1 || item.active);
+      .filter(item => appliedStatus === 'all' || (appliedStatus === 'active' ? (item.variantCount > 1 ? item.activeCount > 0 : item.active) : (item.variantCount > 1 ? item.activeCount === 0 : !item.active)));
     syncOpenFormAvailability(product);
     renderList();
   }
 
   function focusProductAction(productId, action) {
     [...list.children].find((card) => card.dataset.productId === productId)
-      ?.querySelector(`[data-action="${action}"]`)?.focus({ preventScroll: true });
+      ?.querySelector(`[data-action="${action === 'toggle' ? 'more' : action}"]`)?.focus({ preventScroll: true });
   }
 
   async function toggle(product, control) {
     if (pendingChanges.has(product.id)) return;
+    const menu = control.closest('.product-more-menu');
+    if (menu) menu.open = false;
+    if (product.active && !await confirmDeactivation(product.name)) { menu?.querySelector('summary')?.focus(); return; }
+    if (!isCurrent() || pendingChanges.has(product.id)) return;
     pendingChanges.add(product.id);
     control.disabled = true;
     try {
       const updated = await api('PATCH', apiUrl(`v1/seller/products/${product.id}`), { active: !product.active });
+      if (!isCurrent()) return;
       undoStates.set(product.id, { previousActive: product.active, appliedActive: updated.active });
       pendingChanges.delete(product.id);
       replaceProduct(updated);
-      await load(true);
+      const refreshed = await load(true);
       if (!isCurrent()) return;
       renderRemovedUndo(updated);
+      if (!refreshed) { setStatus('catalogChangedRefreshFailed', product.name); return; }
       setStatus(updated.active ? 'productActivatedInline' : 'productDeactivatedInline', product.name);
-      if (appliedStatus === 'active' && !updated.active) removedUndo.querySelector('button')?.focus({ preventScroll: true });
+      if (appliedStatus !== 'all' && (appliedStatus === 'active' ? !updated.active : updated.active)) removedUndo.querySelector('button')?.focus({ preventScroll: true });
       else focusProductAction(product.id, 'toggle');
     } catch {
       pendingChanges.delete(product.id);
       control.disabled = false;
-      if (isCurrent()) setStatus('productError', product.name);
+      if (isCurrent()) { setStatus('productError', product.name); focusProductAction(product.id, 'toggle'); }
     }
   }
 
@@ -1140,6 +1193,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     control.disabled = true;
     try {
       const latest = await api('GET', apiUrl(`v1/seller/products/${product.id}`));
+      if (!isCurrent()) return;
       if (latest.active !== undo.appliedActive) {
         undoStates.delete(product.id);
         pendingChanges.delete(product.id);
@@ -1147,6 +1201,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
         setStatus('productUndoUnavailable', product.name);
       } else {
         const restored = await api('PATCH', apiUrl(`v1/seller/products/${product.id}`), { active: undo.previousActive });
+        if (!isCurrent()) return;
         undoStates.delete(product.id);
         pendingChanges.delete(product.id);
         replaceProduct(restored);
@@ -1154,13 +1209,14 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       }
       removedUndo.hidden = true;
       const undoStatus = statusKey;
-      await load(true);
-      setStatus(undoStatus, product.name);
+      const refreshed = await load(true);
+      if (!isCurrent()) return;
+      setStatus(refreshed ? undoStatus : 'catalogChangedRefreshFailed', product.name);
       focusProductAction(product.id, 'toggle');
     } catch {
       pendingChanges.delete(product.id);
       control.disabled = false;
-      if (isCurrent()) setStatus('productError', product.name);
+      if (isCurrent()) { setStatus('productError', product.name); focusProductAction(product.id, 'toggle'); }
     }
   }
 
@@ -1170,7 +1226,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   find('#product-cancel').addEventListener('click', () => onNavigate('products'));
   form.addEventListener('input', () => { if (formSuccessKey) setFormSuccess(''); });
   form.addEventListener('change', () => { if (formSuccessKey) setFormSuccess(''); });
-  find('#product-search-form').addEventListener('submit', (event) => { event.preventDefault(); load(); });
+  find('#product-search-form').addEventListener('submit', (event) => { event.preventDefault(); load(true, search.value.trim()); });
   more.addEventListener('click', () => load(false));
   removeImage.addEventListener('click', () => {
     if (!galleryLoaded || (galleryImages.length > 1 && !sharedGallery)) return;
