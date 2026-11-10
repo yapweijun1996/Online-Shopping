@@ -5,6 +5,7 @@ import { createOperationTools } from '../src/mcp/operation-tools.js';
 import { mediaToolsFixture } from './helpers/mcp-media-tools-fixture.js';
 import { png } from './helpers/mcp-media-coordinator-fixture.js';
 import { mediaHash } from '../src/mcp/media-policy.js';
+import { addGalleryImage } from '../src/products.js';
 
 const file = { download_url: 'https://files.oaiusercontent.com/synthetic-test', file_id: 'synthetic-file' };
 const argumentsFor = async (f, key = 'synthetic-file-upload-01') => {
@@ -102,4 +103,57 @@ test('gallery file review and approved commit preserve the existing main identit
   const after = (await f.tool('media.list', { productId: args.productId })).data.result.structuredContent;
   assert.equal(after.items[0].mainAssetKey, before.items[0].mainAssetKey);
   assert.equal(after.items[0].gallery.length, before.items[0].gallery.length + 1);
+});
+
+test('maximum source uses fifteen chunks and stores the exact source SHA-256', async t => {
+  const f = await mediaToolsFixture(t, 'sqlite');
+  const bytes = Buffer.alloc(524288, 0x69); png.copy(bytes);
+  const args = await argumentsFor(f, 'synthetic-maximum-file-01');
+  const operation = await tools(f, async () => ({ bytes, mime: 'image/png' })).call('media.upload_file', args, f.bearer);
+  assert.equal(operation.status, 'PENDING_APPROVAL');
+  const stage = await f.store.get('SELECT id,source_sha256,declared_bytes,next_offset FROM mcp_v2_media_stage');
+  assert.equal(stage.source_sha256, mediaHash(bytes));
+  assert.equal(stage.declared_bytes, bytes.length);
+  assert.equal(stage.next_offset, bytes.length);
+  const chunks = await f.store.all('SELECT data,byte_length FROM mcp_v2_media_chunk WHERE stage_id=? ORDER BY "offset"', stage.id);
+  assert.equal(chunks.length, 15);
+  assert.ok(chunks.every(row => row.byte_length <= 36864));
+  assert.deepEqual(Buffer.concat(chunks.map(row => Buffer.from(row.data))), bytes);
+});
+
+test('two approved MAIN replacements commit once and preserve another product', async t => {
+  const f = await mediaToolsFixture(t, 'sqlite');
+  const other = await f.make('UNRELATED-MEDIA');
+  const unrelatedBefore = await f.store.get('SELECT * FROM product WHERE id=?', other.id);
+  const args = await argumentsFor(f, 'synthetic-concurrent-main-01');
+  const bytes = [Buffer.concat([png, Buffer.from('replacement-one')]), Buffer.concat([png, Buffer.from('replacement-two')])];
+  const proposals = await Promise.all(bytes.map((source, index) => tools(f, async () => ({ bytes: source, mime: 'image/png' }))
+    .call('media.upload_file', { ...args, idempotencyKey: args.idempotencyKey + index }, f.bearer)));
+  for (const proposal of proposals) await f.approve(proposal);
+  const replies = await Promise.all(proposals.map(proposal => f.tool('media.commit_upload', { operationId: proposal.operationId })));
+  const results = replies.map(reply => reply.data.result?.structuredContent);
+  assert.equal(results.filter(result => result?.status === 'COMMITTED').length, 1, JSON.stringify(replies.map(reply => reply.data)));
+  assert.equal(results.filter(result => result?.error === 'STALE_REVISION').length, 1, JSON.stringify(replies.map(reply => reply.data)));
+  const winner = results.findIndex(result => result?.status === 'COMMITTED');
+  const listed = (await f.tool('media.list', { productId: args.productId })).data.result.structuredContent;
+  const main = listed.assets.find(asset => asset.assetKey === listed.items[0].mainAssetKey);
+  assert.equal(main.sha256, mediaHash(bytes[winner]));
+  assert.deepEqual(await f.store.get('SELECT * FROM product WHERE id=?', other.id), unrelatedBefore);
+  assert.equal((await f.store.get("SELECT COUNT(*) AS n FROM mcp_v2_event WHERE event='COMMIT'")).n, 1);
+});
+
+test('media revision changed during download rolls back the upload stage', async t => {
+  const f = await mediaToolsFixture(t, 'sqlite');
+  const args = await argumentsFor(f, 'synthetic-download-revision-01');
+  const externallyAdded = Buffer.concat([png, Buffer.from('concurrent-portal-image')]);
+  const registered = tools(f, async () => {
+    await addGalleryImage(f.store, args.productId, 'data:image/png;base64,' + externallyAdded.toString('base64'));
+    return { bytes: Buffer.concat([png, Buffer.from('should-not-upload')]), mime: 'image/png' };
+  });
+  await assert.rejects(registered.call('media.upload_file', args, f.bearer), { status: 409 });
+  for (const table of ['mcp_v2_media_stage', 'mcp_v2_media_chunk', 'mcp_v2_operation']) {
+    assert.equal((await f.store.get(`SELECT COUNT(*) AS n FROM ${table}`)).n, 0);
+  }
+  const after = (await f.tool('media.list', { productId: args.productId })).data.result.structuredContent;
+  assert.ok(after.assets.some(asset => asset.sha256 === mediaHash(externallyAdded)));
 });
