@@ -9,6 +9,6 @@ for(const dialect of ['sqlite','postgres'])test(`${dialect}: schema31 exposes no
     const f=await reviewFixture(t,dialect,{operationTools:undefined,config:{mcpRedirectUris:['https://client.example.com/catalog-callback']}});
     const client=await freshCatalogAccess(f,legacyCatalogScopes+' media.read media.write');
     assert.deepEqual((await client.rpc('tools/list',{})).data.result.tools,catalogue.map(({scope:_scope,...tool})=>tool));
-    for(const name of ['media.list','media.prepare_upload','media.commit_upload','media.preview_layout','media.commit_layout'])assert.equal((await client.call(name,{})).data.error.code,-32602,name);
+    for(const name of ['media.list','media.prepare_upload','media.commit_upload','media.upload_file','media.preview_layout','media.commit_layout'])assert.equal((await client.call(name,{})).data.error.code,-32602,name);
     for(const table of MEDIA_STORAGE_TABLES)assert.equal((await f.store.get(`SELECT COUNT(*) AS n FROM ${table}`)).n,0,table);
   });

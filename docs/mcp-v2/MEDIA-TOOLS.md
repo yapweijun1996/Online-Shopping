@@ -1,4 +1,11 @@
-# Five bounded media tools
+# Bounded media tools
+
+The isolated2026-11-10 change adds `media.upload_file` to the five existing tools.
+It accepts ChatGPT file parameters, restricts the source download, computes the
+source size/hash and prepares the existing image approval. See
+[file upload](../MCP_MEDIA_FILE_UPLOAD.md) for the actual security boundary and
+pending live acceptance. The development-foundation status below is historical;
+it is not the status of the later production profile activation.
 
 Status: the built-in development factory is available (`MEDIA_TOOLS_ACCEPTED=true`); the independent media feature flag remains off by default. Production activation is blocked. No reserved catalog-media expansion, new MCP server or generic HTTP/SQL tool is introduced. The final frozen-source validation summary distinguishes actual default-constructor native/browser acceptance from synthetic decoder and storage tests.
 
@@ -20,6 +27,7 @@ The fixed Linux development launcher policy requires host uid/gid1000, private b
 | --- | --- | --- |
 | media.list | media.read / catalog.write | Bounded current graph revision and paginated member/image identities. No image bytes, URL, stock/price or customer data. Default5/max25 members; source300 products,32old content keys/16MiB physical bytes. Oversized metadata page rejects503; reduce limit, no truncation. |
 | media.prepare_upload | media.write / catalog.write | Root object `{input:<one closed command>}`. `begin` binds existing product/slot/revision and immutable intent; `append` carries canonical parts and offset; `seal` creates the durable HIGH image operation; `discard` aborts an unbound stage. |
+| media.upload_file | media.write / catalog.write | Top-level owned product/slot/revision/idempotency key and ChatGPT file object. Restricted download and exact source hashing feed existing staged preparation. Returns the existing first-party approval proposal, never approval or commit. |
 | media.commit_upload | media.write / catalog.write | Only operationId. Current authority, policy, frame, pin, native-derived thumbnail, full graph, human review evidence and actual bytes are rechecked. |
 | media.preview_layout | media.write / catalog.write | Existing product/revision, gallery UUIDs or literal main, explicit removeMain boolean. Outer normal preview idempotencyKey. All before/after product/listing effects are immutable HIGH review metadata. No new image payloads or cross-product selection. |
 | media.commit_layout | media.write / catalog.write | Only operationId. Applies the exact approved existing-image selection using shared services/history. |

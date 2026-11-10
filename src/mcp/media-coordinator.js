@@ -115,6 +115,14 @@ export function createMediaCoordinator({ store, binding, tenantGuard, epoch, bui
       return auditStage(writer,context,stage,'BEGIN');
     });
   };
+  const preflight = async (bearer, input) => {
+    await reserve(bearer, false);
+    shape(input, ['productId','targetSlot','expectedRevision']);
+    if (!isMediaUuid(input.productId) || !['MAIN','GALLERY'].includes(input.targetSlot) || !isMediaHash(input.expectedRevision)) invalid();
+    return write(bearer, async (_writer, _context, reader) => {
+      await inspectTarget(reader, input.productId, input.targetSlot, input.expectedRevision);
+    });
+  };
   const append = async (bearer, input) => {
     let exact = false;
     try { mediaObject(input, ['stageId','offset','dataParts']); exact = isMediaUuid(input.stageId) &&
@@ -170,7 +178,7 @@ export function createMediaCoordinator({ store, binding, tenantGuard, epoch, bui
       await writer.consume(envelope.proposal.stageId, envelope.operationId);
     },
   });
-  const coordinator = Object.freeze({ begin, append, discard, uploadAdapter: makeUploadAdapter({ hooks }) });
+  const coordinator = Object.freeze({ begin, append, discard, preflight, uploadAdapter: makeUploadAdapter({ hooks }) });
   coordinators.add(coordinator);
   return coordinator;
 }

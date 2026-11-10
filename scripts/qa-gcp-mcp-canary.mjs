@@ -28,7 +28,7 @@ const scopes = [...legacyScopes, 'company.read', 'company.write', 'catalog.write
 const legacyNames = ['catalog.list', 'catalog.get', 'catalog.categories', 'catalog.history', 'catalog.low_stock', 'orders.list', 'orders.get', 'analytics.summary'];
 const names = [...legacyNames, 'company.get', 'company.preview_update', 'company.commit_update',
   'catalog.preview_create', 'catalog.commit_create', 'catalog.preview_update', 'catalog.commit_update',
-  'media.list', 'media.prepare_upload', 'media.commit_upload', 'media.preview_layout', 'media.commit_layout',
+  'media.list', 'media.prepare_upload', 'media.commit_upload', 'media.upload_file', 'media.preview_layout', 'media.commit_layout',
   'inventory.summary', 'inventory.movements', 'inventory.preview_adjustment', 'inventory.commit_adjustment',
   'orders.preview_decision', 'orders.commit_decision', 'analytics.sales_trend', 'analytics.top_products', 'analytics.inventory_risk',
   'operations.get', 'operations.audit', 'operations.cancel'];

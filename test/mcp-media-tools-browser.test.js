@@ -23,6 +23,9 @@ import { freshCatalogAccess,legacyCatalogScopes } from './helpers/mcp-catalog-de
 import { reviewPassword } from './helpers/mcp-review-fixture.js';
 import { catalogue } from '../src/mcp/tools.js';
 import { syntheticMediaPng } from './helpers/mcp-media-hooks-fixture.js';
+import { createMediaRuntime } from '../src/mcp/media-runtime.js';
+import { mediaTools } from '../src/mcp/media-tools.js';
+import { createOperationTools } from '../src/mcp/operation-tools.js';
 const enabled=Boolean(process.env.QA_PLAYWRIGHT_MODULE)&&process.env.MEDIA_TOOLS_NATIVE_BROWSER_TEST==='1';
 const dto=value=>value.data.result?.structuredContent;
 async function environment(t,dialect,worker,browser,seedExisting=false){
@@ -68,7 +71,7 @@ async function environment(t,dialect,worker,browser,seedExisting=false){
   const text=await response.text();let data;try{data=JSON.parse(text);}catch{data=text;}
   return{response:{status:response.status(),headers:new Headers(response.headers())},data};
  };
- return{store,config,binding,origin,product,context,call};
+ return{store,config,binding,registry,origin,product,context,call};
 }
 async function reviewInBrowser(f,page,operation){
  await page.goto(operation.reviewUrl);await page.locator('#media-review').waitFor({state:'visible'});
@@ -85,7 +88,12 @@ async function reviewInBrowser(f,page,operation){
  await page.locator('#password').fill(reviewPassword);await page.locator('#approve').click();
  assert.match(await page.locator('#status').textContent(),/check the image acknowledgment/);
  assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?',operation.operationId)).state,'PENDING_APPROVAL');
- await page.locator('#media-ack').check();await page.locator('#approve').click();await page.locator('#decision').waitFor({state:'hidden'});
+ await page.locator('#media-ack').check();
+ const approvalResponse=page.waitForResponse(response=>response.request().method()==='POST'&&
+  response.url()===f.origin+'/api/v1/seller/mcp/operations/'+operation.operationId+'/approval');
+ await page.locator('#approve').click();
+ const approval=await approvalResponse;assert.equal(approval.status(),200,'Seller approval HTTP status');
+ await page.locator('#decision').waitFor({state:'hidden'});
  assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?',operation.operationId)).state,'APPROVED');
  assert.equal(await page.locator('#password').inputValue(),'');
  assert.equal(await page.evaluate(()=>window.__mediaInjected),undefined);
@@ -117,8 +125,8 @@ async function authorized(f){
  assert.deepEqual(tools.data.result.tools.map(tool=>tool.name),[...catalogue.map(tool=>tool.name),
   'company.get','company.preview_update','company.commit_update','catalog.preview_create','catalog.commit_create','catalog.preview_update','catalog.commit_update',
   'analytics.sales_trend','analytics.top_products','analytics.inventory_risk','inventory.summary','inventory.movements','inventory.preview_adjustment','inventory.commit_adjustment',
-  'media.list','media.prepare_upload','media.commit_upload','media.preview_layout','media.commit_layout']);
- assert.equal(tools.data.result.tools.length,27);assert.deepEqual(tools.data.result.tools.slice(0,8),catalogue.map(({scope:_scope,...tool})=>tool));
+  'media.list','media.prepare_upload','media.commit_upload','media.upload_file','media.preview_layout','media.commit_layout']);
+ assert.equal(tools.data.result.tools.length,28);assert.deepEqual(tools.data.result.tools.slice(0,8),catalogue.map(({scope:_scope,...tool})=>tool));
  const errors=[],external=[];await f.context.route('**/*',route=>new URL(route.request().url()).origin===f.origin?route.continue():(external.push(route.request().url()),route.abort()));
  const page=await f.context.newPage();page.on('pageerror',error=>errors.push(error.message));return{client,page,errors,external};
 }
@@ -183,6 +191,50 @@ test('actual native worker and fresh OAuth MCP Chromium flow A creates/uploads/p
     assert.equal(await page.evaluate(()=>window.__mediaInjected),undefined);await legacyEight(f);
     assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
     child.diagnostic(JSON.stringify({nativeImage:imageId,realOAuth:true,realMcpGalleryCommit:true,browserApprovals:3,syntheticHumanEvidence:false,restoredMainSha:firstSha}));
+   });
+   // Each format has its own fresh store/account fixture. Two approvals remain
+   // within the real per-address budget; no limiter reset or alternate IP is used.
+   for(const mime of ['image/jpeg','image/png','image/webp'])await t.test(dialect+':C '+mime+' synthetic file transport with real OAuth, native codec and browser MAIN/GALLERY approval',async child=>{
+    const f=await environment(child,dialect,worker,browser,true),{client,page,errors,external}=await authorized(f);
+    const identity=await f.registry.resolve(new Request(f.origin)),tenantGuard=f.registry.operationGuard(identity);
+    const binding={...f.binding,mcpV2:{...f.config.mcpV2}};
+    const options={store:f.store,binding,config:f.config,tenantGuard,quickLogin:false};
+    const runtime=createMediaRuntime(options);
+    let source;
+    const registered=createOperationTools({...options,entries:mediaTools(options,runtime),
+     downloadFile:async()=>({bytes:source.bytes,mime:source.mime})});
+    let approved=0;
+    for(const targetSlot of ['MAIN','GALLERY']){
+     const encoded=await page.evaluate(({mime,slot})=>{
+      const canvas=document.createElement('canvas');canvas.width=96;canvas.height=96;
+      const context=canvas.getContext('2d');context.fillStyle=slot==='MAIN'?'#cc7b31':'#398ca1';context.fillRect(0,0,96,96);
+      context.fillStyle='#e9e2ca';context.fillRect(11,19,43,37);return canvas.toDataURL(mime,0.88);
+     },{mime,slot:targetSlot});
+     assert.ok(encoded.startsWith('data:'+mime+';base64,'));
+     source={bytes:Buffer.from(encoded.split(',')[1],'base64'),mime};
+     const before=dto(await client.call('media.list',{productId:f.product.id}));
+     const operation=await registered.call('media.upload_file',{productId:f.product.id,targetSlot,expectedRevision:before.revision,
+      idempotencyKey:'actual-file-'+mime.replace('/','-')+'-'+targetSlot,
+      file:{download_url:'https://files.oaiusercontent.com/synthetic-native-browser-file',file_id:'synthetic-file',mime_type:mime}},client.bearer);
+     assert.equal(operation.status,'PENDING_APPROVAL');
+     const stage=await f.store.get('SELECT source_sha256,canonical_sha256 FROM mcp_v2_media_stage WHERE operation_id=?',operation.operationId);
+     assert.equal(stage.source_sha256,hash(source.bytes));assert.match(stage.canonical_sha256,/^[a-f0-9]{64}$/);
+     assert.equal((await client.call('media.commit_upload',{operationId:operation.operationId})).response.status,403);
+     await reviewInBrowser(f,page,operation);approved++;
+     assert.equal(dto(await client.call('media.commit_upload',{operationId:operation.operationId})).status,'COMMITTED');
+     const after=dto(await client.call('media.list',{productId:f.product.id}));
+     assert.notEqual(after.revision,before.revision);
+     const persisted=after.assets.find(asset=>asset.sha256===stage.canonical_sha256);assert.ok(persisted);
+     if(targetSlot==='MAIN')assert.equal(after.items[0].mainAssetKey,persisted.assetKey);
+     else{
+      assert.equal(after.items[0].mainAssetKey,before.items[0].mainAssetKey);
+      assert.equal(after.items[0].gallery.length,before.items[0].gallery.length+1);
+      assert.ok(after.items[0].gallery.some(image=>image.assetKey===persisted.assetKey));
+     }
+    }
+    assert.equal(approved,2);assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
+    child.diagnostic(JSON.stringify({nativeImage:imageId,realOAuth:true,realNativeFormats:[mime],
+     browserApprovals:approved,slots:['MAIN','GALLERY'],syntheticFileTransport:true,syntheticHumanEvidence:false,externalChatGptDownload:false}));
    });
   }
  });

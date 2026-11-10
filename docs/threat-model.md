@@ -22,6 +22,47 @@ Source review at `41407a7bda20adf167e2825900a268f3949316cc`: [CODEBASE_BUG_REVIE
 
 ## 1. Scope
 
+### ChatGPT file-based media preparation (isolated implementation, 2026-11-10)
+
+`media.upload_file` is an alternate transport for the existing
+`media.prepare_upload` policy, not a new approval or commit authority. Its
+`openai/fileParams` descriptor lets a compatible host supply a file object. The
+file ID, MIME and name remain untrusted metadata; the ID does not attest the
+file's owner or provenance. A temporary download URL is a bearer source
+capability and must never be logged, returned or included in operation audit.
+
+Before network access, current media consent, RBAC, tenant lifecycle, product
+identity, target-slot rules and the complete media revision are checked under
+the existing tenant fence. Download runs outside SQL transactions and platform
+locks. Each subsequent begin/append/seal phase repeats current authority checks;
+revocation or a concurrent product change cannot be adopted as upload authority.
+
+The downloader accepts only HTTPS on the exact `files.oaiusercontent.com`
+hostname and default TLS port, with no userinfo or fragment. Subdomains,
+trailing-dot aliases, local paths, other schemes/hosts, redirects and compressed
+responses are rejected. Every DNS answer must be public; a validated answer is
+pinned to the actual TLS connection without forwarding Shop credentials. A
+ten-second total deadline covers DNS and streaming, the streamed source is
+limited to 512 KiB, and four process-wide download permits bound buffering
+before stage quota is acquired. Errors disclose no source URL. The source-origin
+restriction is a deliberately narrow compatibility boundary; real ChatGPT file
+hosts outside it fail closed and require separate source verification.
+
+The server calculates source size and SHA-256 from downloaded bytes, then uses
+the existing stage quota, exact-offset chunks, full-source hash validation and
+native codec. Magic-byte detection is only an early format check, not pixel
+validation. The codec's canonical image can differ from the original bytes;
+first-party review and commit remain bound to the exact canonical image and
+immutable manifest. The tool returns a genuine Seller Approval proposal and
+cannot supply image-view acknowledgments, seller approval or commit. Origin,
+CSRF, current session, password, revision, original-grant and audit requirements
+remain unchanged. Existing `media.prepare_upload` and `media.commit_upload`
+remain available.
+
+Local synthetic transport and SQLite evidence does not establish live download
+host compatibility, real image decoding, PostgreSQL, real-browser review or
+production deployment. Those remain separate acceptance gates.
+
 ### Seller approval page entry and sign-in continuation
 
 The public operation-review shell permits only a single UUID operationId plus an
