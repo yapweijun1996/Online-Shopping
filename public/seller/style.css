@@ -42,7 +42,7 @@
 .nav-item.active::before{content:"";position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:3px;background:var(--shop-accent)}
 .nav-group{padding:24px 13px 8px;color:#8295a0;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}
 .collapse-button{margin-top:auto;display:flex;align-items:center;gap:12px;min-height:44px;padding:9px 13px;border-radius:9px;text-align:left;font-size:13px;font-weight:600}
-.main{margin-left:248px;padding:31px clamp(20px,3vw,48px) 55px;transition:margin-left .18s ease}
+.main{margin-left:248px;padding:31px var(--ui-page-gutter) 55px;transition:margin-left .18s ease}
 .sidebar.collapsed{width:74px}
 .sidebar.collapsed .sidebar-head{justify-content:center;padding:0}
 .sidebar.collapsed .sidebar-brand span:not(.brand-mark),.sidebar.collapsed .nav-group,.sidebar.collapsed .nav-item span,.sidebar.collapsed .collapse-button span{display:none}

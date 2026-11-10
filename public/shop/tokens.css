@@ -95,6 +95,16 @@
 
 /* Layout, layering, motion and safe-area tokens shared by every console (the single source for these values). */
 :root {
+  --ui-space-2: 8px;
+  --ui-space-3: 12px;
+  --ui-space-4: 16px;
+  --ui-font-sm: 13px;
+  --ui-font-md: 14px;
+  --ui-page-gutter: clamp(20px, 3vw, 44px);
+  --ui-filter-search-width: 400px;
+  --ui-filter-search-compact: 360px;
+  --ui-filter-search-max: 480px;
+  --ui-filter-select-width: 160px;
   --ui-radius-sm: 8px;
   --ui-radius-md: 12px;
   --ui-shadow-raised: 0 8px 28px #1d465a14;

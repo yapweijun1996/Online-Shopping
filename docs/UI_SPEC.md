@@ -10,6 +10,16 @@ At wide widths, category filtering sits above a four-column catalog. At 761–10
 
 ## Approved visual direction
 
+### Workspace layout SSOT and opt-in heading primitive
+
+Runtime source takes precedence over historical preview dimensions in this document. `public/shop/tokens.css` is the existing authoritative source for semantic colors and shared layout/type/spacing tokens. `public/shared/base.css` and `appearance.css` own shared primitives; Seller `style.css`/`commerce.css` consume them. Do not create a second design-system stylesheet or fix one page with repeated constants that compete with these sources.
+
+Seller `.main` owns sidebar offset and the content gutters. Its current desktop inline gutter is `--ui-page-gutter: clamp(20px, 3vw, 44px)`; existing tablet/mobile overrides remain22px/16px (and12px at the narrowest breakpoint). A workspace inside `.main` uses its available width; Team must not add max1200px/auto margins on both its page and outer heading. Measured1920px baseline had main left248px/width1672px/padding44px, but Team left484px/width1200px. The fluid correction uses main's content left292px/width1584px, without changing Seller's effective desktop gutter.
+
+`.ui-page-heading` is an explicitly adopted normal-flow Grid primitive for eyebrow/title/description/actions. Team receives the existing outer title host, appends its description and action slot, and removes only its owned nodes/class on dispose. Other routes keep their existing heading behavior until explicitly adopted; do not position Team actions with negative top offsets, absolute positioning, padding compensation or a duplicated title. Titles, filters, result counts, lists and activity align to the same main gutter, including a collapsed sidebar.
+
+Shared tokens cover8/12/16px spacing,13/14px secondary/body type,400px search basis (360px compact through1200px, max480px) and160px filter selects. Team consumes these tokens rather than adding a parallel sizing owner. Its member table has a flexible username column; compact columns apply through1200px so opening the248px sidebar just above1024px does not crush long usernames. Validate1050/1051/1100px edges as well as phone/tablet/wide layouts. Local help belongs beside the protected Owner explanation as an accessible disclosure; it is not a permanent full-width footer. Activity counts describe only returned recent records (currently at most20), with real latest time and a truthful zero-record state.
+
 ### Shared Seller and Platform sign-in shell
 
 The login card layout, image geometry and responsive breakpoints have one source in [LOGIN_DESIGN_SYSTEM.md](LOGIN_DESIGN_SYSTEM.md) and `public/shared/login-shell.css`, consumed by Seller and Platform. The card is inside each page’s outer safe-area spacing. Seller and SuperAdmin authentication, copy and platform-specific error states remain separate. Local evidence and production-release status are tracked in [TASK.md](TASK.md).

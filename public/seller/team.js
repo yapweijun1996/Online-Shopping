@@ -13,7 +13,7 @@ const text = (key, values = {}) => t(key).replace(/\{(\w+)\}/g, (match, name) =>
 const control = (label, action, className = 'secondary-button') => { const button = node('button', className, t(label)); button.type = 'button'; button.dataset.i18n = label; button.addEventListener('click', action); return button; };
 
 // The server remains authoritative for account roles, credential validation and revocation.
-export function mountTeam(root, { csrfToken, onUnauthorized }) {
+export function mountTeam(root, { csrfToken, onUnauthorized, headingHost = null }) {
   root.replaceChildren();
   const identity = csrfToken();
   const confirmations = new AbortController();
@@ -24,14 +24,17 @@ export function mountTeam(root, { csrfToken, onUnauthorized }) {
   const updateGuard = () => document.dispatchEvent(new Event('updateguardchange'));
   const heading = node('div', 'team-heading');
   const intro = node('p', 'team-intro', t('teamUI_intro')); intro.dataset.i18n = 'teamUI_intro';
-  const add = control('teamCreate', () => openEditor('add'), 'primary-button'); add.id = 'team-add-person'; heading.append(intro, add);
+  const add = control('teamCreate', () => openEditor('add'), 'primary-button'); add.id = 'team-add-person';
+  const headingActions = node('div', 'ui-page-heading-actions');
+  if (headingHost) { headingHost.classList.add('ui-page-heading'); intro.classList.add('ui-page-heading-description'); headingActions.append(add); headingHost.append(intro, headingActions); }
+  else heading.append(intro, add);
   const filters = node('div', 'team-filters');
   const field = (key, input, helpKey = '') => {
     const label = node('label'); const caption = node('span', '', t(key)); caption.dataset.i18n = key; label.append(caption, input);
     if (helpKey) { const help = node('small', 'team-field-help', t(helpKey)); help.dataset.i18n = helpKey; help.id = `${input.id}-help`; input.setAttribute('aria-describedby', help.id); label.append(help); }
     return label;
   };
-  const search = node('input'); search.id = 'team-search'; search.type = 'search'; search.maxLength = 64;
+  const search = node('input'); search.id = 'team-search'; search.type = 'search'; search.maxLength = 64; search.placeholder = t('teamUI_searchPlaceholder');
   const roleFilter = node('select'); roleFilter.id = 'team-filter-role';
   const statusFilter = node('select'); statusFilter.id = 'team-filter-status';
   const option = (select, value, key) => { const item = node('option', '', t(key)); item.value = value; item.dataset.i18n = key; select.append(item); };
@@ -50,14 +53,18 @@ export function mountTeam(root, { csrfToken, onUnauthorized }) {
   for (const key of columns) { const cell = node('th', '', t(key)); cell.scope = 'col'; cell.dataset.i18n = key; headRow.append(cell); }
   head.append(headRow); const rows = node('tbody'); table.append(caption, head, rows);
   const empty = node('div', 'team-empty'); const emptyText = node('p'); const emptyClear = control('clearFilters', () => clear.click()); empty.append(emptyText, emptyClear); listContainer.append(table, empty);
-  const ownerGuidance = node('p', 'team-owner-guidance'); listContainer.append(ownerGuidance);
-  const activity = node('details', 'team-activity'); const activityTitle = node('summary', '', t('teamActivity')); activityTitle.dataset.i18n = 'teamActivity';
+  const activity = node('details', 'team-activity'); const activityTitle = node('summary');
+  const activityLabel = node('span', '', t('teamActivity')); activityLabel.dataset.i18n = 'teamActivity';
+  const activityCount = node('span', 'team-activity-count'); const activityLatest = node('time', 'team-activity-latest');
+  activityTitle.append(icon('chevronDown'), activityLabel, activityCount, activityLatest);
   const activityTable = node('table', 'team-activity-table'); const activityHead = node('thead'); const activityHeading = node('tr');
   const activityColumns = ['teamUI_time', 'teamUI_actor', 'teamUI_member', 'teamUI_action'];
   for (const key of activityColumns) { const cell = node('th', '', t(key)); cell.scope = 'col'; cell.dataset.i18n = key; activityHeading.append(cell); }
   activityHead.append(activityHeading); const activityCaption = node('caption', 'sr-only', t('teamActivity')); activityCaption.dataset.i18n = 'teamActivity';
-  const events = node('tbody'); activityTable.append(activityCaption, activityHead, events); activity.append(activityTitle, activityTable);
-  page.append(heading, filters, message, recovery, result, listContainer, activity);
+  const events = node('tbody'); activityTable.append(activityCaption, activityHead, events);
+  const activityEmpty = node('p', 'team-activity-empty', t('teamUI_noActivity')); activityEmpty.dataset.i18n = 'teamUI_noActivity';
+  activity.append(activityTitle, activityTable, activityEmpty);
+  page.append(...(headingHost ? [] : [heading]), filters, message, recovery, result, listContainer, activity);
   const matches = account => (!search.value.trim() || account.username.toLowerCase().includes(search.value.trim().toLowerCase())) && (!roleFilter.value || account.role === roleFilter.value) && (!statusFilter.value || account.active === (statusFilter.value === 'active'));
   const filtered = () => Boolean(search.value.trim() || roleFilter.value || statusFilter.value);
 
@@ -105,7 +112,13 @@ export function mountTeam(root, { csrfToken, onUnauthorized }) {
       cells[1].append(node('span', 'team-role', t(ROLE_KEY[account.role])));
       cells[2].append(node('span', `team-status${account.active ? '' : ' is-inactive'}`, t(account.active ? 'teamActive' : 'teamInactive')));
       cells[3].textContent = account.lastLoginAt ? formatDate(account.lastLoginAt) : t('teamUI_never');
-      if (account.role === 'OWNER') cells[4].append(node('span', 'team-owner-protected', t('teamUI_ownerProtected')));
+      if (account.role === 'OWNER') {
+        const help = node('details', 'team-owner-help'); const summary = node('summary');
+        summary.append(node('span', 'team-owner-protected', t('teamUI_ownerProtected')), icon('info'));
+        const guidance = node('p', 'team-owner-guidance', text('teamUI_ownerGuidance', { account: t('account'), profile: t('profile'), changePassword: t('changePassword') }));
+        help.addEventListener('keydown', event => { if (event.key === 'Escape' && help.open) { event.stopPropagation(); help.open = false; summary.focus(); } });
+        help.append(summary, guidance); cells[4].append(help);
+      }
       else {
         const menu = node('details', 'team-more'); const summary = node('summary'); summary.setAttribute('aria-label', `${t('teamUI_more')}: ${account.username}`); summary.append(icon('more'));
         const actions = node('div', 'team-menu-actions');
@@ -120,8 +133,6 @@ export function mountTeam(root, { csrfToken, onUnauthorized }) {
     table.hidden = !shown.length; empty.hidden = Boolean(shown.length) || !data;
     emptyText.textContent = t(filtered() ? 'teamUI_noMatches' : 'teamUI_noMembers'); emptyClear.hidden = !filtered();
     result.textContent = data ? text(filtered() ? 'teamUI_count' : 'teamUI_countDefault', { count: shown.length, total: data.items.length }) : ''; clear.hidden = !filtered();
-    ownerGuidance.hidden = !shown.some(account => account.role === 'OWNER');
-    ownerGuidance.textContent = text('teamUI_ownerGuidance', { account: t('account'), profile: t('profile'), changePassword: t('changePassword') });
     events.replaceChildren();
     for (const event of data?.events || []) {
       const row = node('tr');
@@ -129,7 +140,12 @@ export function mountTeam(root, { csrfToken, onUnauthorized }) {
       for (const [index, value] of values.entries()) { const cell = node('td', '', value); cell.dataset.label = t(activityColumns[index]); row.append(cell); }
       events.append(row);
     }
-    activity.hidden = !data?.events?.length;
+    const recent = data?.events || [];
+    activityCount.textContent = text('teamUI_recentEvents', { count: recent.length });
+    const latest = recent.map(event => event.at).filter(at => Number.isFinite(Date.parse(at))).sort((a, b) => Date.parse(b) - Date.parse(a))[0];
+    activityLatest.textContent = latest ? text('teamUI_latestActivity', { time: formatDate(latest) }) : '';
+    activityLatest.dateTime = latest || ''; activityLatest.hidden = !latest; activityEmpty.hidden = recent.length > 0; activityTable.hidden = recent.length === 0;
+    activity.hidden = !data;
     renderFeedback();
   }
   search.addEventListener('input', renderRows); roleFilter.addEventListener('change', renderRows); statusFilter.addEventListener('change', renderRows);
@@ -225,8 +241,8 @@ export function mountTeam(root, { csrfToken, onUnauthorized }) {
   renderRows();
   load();
   return {
-    refreshLocale() { translate(page); caption.textContent = t('teamUI_members'); listContainer.setAttribute('aria-label', t('teamUI_members')); renderRows(); drawer?.refresh(); },
-    dispose() { active = false; confirmations.abort(); sequence++; if (drawer) { drawer.clearSensitive(); drawer.resolveClosed(); drawer.dialog.close(); drawer.dialog.remove(); drawer = null; } },
+    refreshLocale() { search.placeholder = t('teamUI_searchPlaceholder'); translate(page); if (headingHost) translate(headingHost); caption.textContent = t('teamUI_members'); listContainer.setAttribute('aria-label', t('teamUI_members')); renderRows(); drawer?.refresh(); },
+    dispose() { active = false; if (headingHost) { headingHost.classList.remove('ui-page-heading'); intro.remove(); headingActions.remove(); } confirmations.abort(); sequence++; if (drawer) { drawer.clearSensitive(); drawer.resolveClosed(); drawer.dialog.close(); drawer.dialog.remove(); drawer = null; } },
     hasUnsavedChanges: () => Boolean(drawer?.dirty), isBusy: () => busy,
     // Monotonic edit identity protects update/navigation guards without serializing credentials.
     draftSignature: () => `${drawer?.dialog.dataset.teamMode || 'closed'}:${draftRevision}`,

@@ -1,6 +1,11 @@
 import { messages } from '../shared/i18n.js';
 const locales = ['en', 'ms', 'zh-Hans', 'vi', 'th', 'ja', 'ko'];
 const rows = [
+["searchPlaceholder", "Search by username", "Cari mengikut nama pengguna", "输入用户名搜索", "Tìm theo tên đăng nhập", "ค้นหาด้วยชื่อผู้ใช้", "ユーザー名を入力して検索", "사용자 이름으로 검색"],
+["recentEvents", "Recent {count} records", "{count} rekod terkini", "最近 {count} 条记录", "{count} bản ghi gần nhất", "{count} รายการล่าสุด", "直近 {count} 件", "최근 기록 {count}건"],
+["latestActivity", "Latest: {time}", "Terkini: {time}", "最新：{time}", "Mới nhất: {time}", "ล่าสุด: {time}", "最新：{time}", "최근: {time}"],
+["noActivity", "No member activity yet.", "Belum ada aktiviti ahli.", "暂无成员操作记录。", "Chưa có hoạt động thành viên.", "ยังไม่มีกิจกรรมสมาชิก", "メンバーの操作履歴はまだありません。", "구성원 활동이 아직 없습니다."],
+
 ["countDefault", "{total} people", "{total} orang", "共 {total} 位成员", "{total} thành viên", "สมาชิก {total} คน", "メンバー {total} 人", "구성원 {total}명"],
 ["ownerGuidance", "To change your own password: {account} → {profile} → {changePassword}.", "Untuk menukar kata laluan sendiri: {account} → {profile} → {changePassword}.", "修改自己的密码：右上角{account} → {profile} → {changePassword}。", "Đổi mật khẩu của bạn: {account} → {profile} → {changePassword}.", "เปลี่ยนรหัสผ่านของคุณ: {account} → {profile} → {changePassword}.", "自分のパスワード変更：{account} → {profile} → {changePassword}。", "내 비밀번호 변경: {account} → {profile} → {changePassword}."],
 ["time", "Time", "Masa", "时间", "Thời gian", "เวลา", "日時", "시간"],

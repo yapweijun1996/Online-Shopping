@@ -60,3 +60,10 @@ h1{font-size:clamp(29px,3vw,40px);letter-spacing:-.035em;line-height:1.14;margin
 .topbar-update[data-state=failed]{color:var(--ui-danger, var(--shop-error, #aa3946));border-color:var(--ui-danger, var(--shop-error, #aa3946))}
 .topbar-update:disabled{opacity:.7;cursor:progress}
 @media(max-width:719px){.topbar-update-label{display:none}.topbar-update{padding:0}}
+
+/* Opt-in workspace heading: existing routes keep their layout until they adopt this primitive. */
+.ui-page-heading{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:var(--ui-space-4);row-gap:var(--ui-space-2);align-items:center}
+.ui-page-heading>.eyebrow{grid-column:1/-1;margin:0}
+.ui-page-heading>h1{grid-column:1;min-width:0;overflow-wrap:anywhere}
+.ui-page-heading>.ui-page-heading-actions{grid-column:2;grid-row:2;display:flex;align-items:center;flex-wrap:wrap;gap:var(--ui-space-2);min-width:0}
+.ui-page-heading>.ui-page-heading-description{grid-column:1/-1;margin:0;font-size:var(--ui-font-md);line-height:1.6;color:var(--ui-secondary-text)}

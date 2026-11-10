@@ -384,7 +384,7 @@ function renderView() {
     return;
   }
   if (currentView === 'team') {
-    settingsPage = mountTeam(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError') });
+    settingsPage = mountTeam(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError'), headingHost: byId('page-title').parentElement });
     return;
   }
   if (currentView === 'audit') {
