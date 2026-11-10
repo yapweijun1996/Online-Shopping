@@ -7,6 +7,7 @@ import { confirmModal, createModal } from '../shared/modal.js';
 import { beginMutation } from '../shared/update-guard.js';
 
 const node = (tag, className = '', text = '') => { const element = document.createElement(tag); if (className) element.className = className; if (text) element.textContent = text; return element; };
+const EVENT_KEYS = new Set(['CREATED', 'ROLE_CHANGED', 'DEACTIVATED', 'ACTIVATED', 'PASSWORD_RESET', 'PASSWORD_CHANGED']);
 const ROLE_KEY = { OWNER: 'roleOwner', MANAGER: 'roleManager', STAFF: 'roleStaff' };
 const text = (key, values = {}) => t(key).replace(/\{(\w+)\}/g, (match, name) => String(values[name] ?? match));
 const control = (label, action, className = 'secondary-button') => { const button = node('button', className, t(label)); button.type = 'button'; button.dataset.i18n = label; button.addEventListener('click', action); return button; };
@@ -49,10 +50,16 @@ export function mountTeam(root, { csrfToken, onUnauthorized }) {
   for (const key of columns) { const cell = node('th', '', t(key)); cell.scope = 'col'; cell.dataset.i18n = key; headRow.append(cell); }
   head.append(headRow); const rows = node('tbody'); table.append(caption, head, rows);
   const empty = node('div', 'team-empty'); const emptyText = node('p'); const emptyClear = control('clearFilters', () => clear.click()); empty.append(emptyText, emptyClear); listContainer.append(table, empty);
-  const activity = node('details', 'team-activity'); const activityTitle = node('summary', '', t('teamActivity')); activityTitle.dataset.i18n = 'teamActivity'; const events = node('ul', 'team-events'); activity.append(activityTitle, events);
+  const ownerGuidance = node('p', 'team-owner-guidance'); listContainer.append(ownerGuidance);
+  const activity = node('details', 'team-activity'); const activityTitle = node('summary', '', t('teamActivity')); activityTitle.dataset.i18n = 'teamActivity';
+  const activityTable = node('table', 'team-activity-table'); const activityHead = node('thead'); const activityHeading = node('tr');
+  const activityColumns = ['teamUI_time', 'teamUI_actor', 'teamUI_member', 'teamUI_action'];
+  for (const key of activityColumns) { const cell = node('th', '', t(key)); cell.scope = 'col'; cell.dataset.i18n = key; activityHeading.append(cell); }
+  activityHead.append(activityHeading); const activityCaption = node('caption', 'sr-only', t('teamActivity')); activityCaption.dataset.i18n = 'teamActivity';
+  const events = node('tbody'); activityTable.append(activityCaption, activityHead, events); activity.append(activityTitle, activityTable);
   page.append(heading, filters, message, recovery, result, listContainer, activity);
   const matches = account => (!search.value.trim() || account.username.toLowerCase().includes(search.value.trim().toLowerCase())) && (!roleFilter.value || account.role === roleFilter.value) && (!statusFilter.value || account.active === (statusFilter.value === 'active'));
-  const filtered = () => Boolean(search.value || roleFilter.value || statusFilter.value);
+  const filtered = () => Boolean(search.value.trim() || roleFilter.value || statusFilter.value);
 
   function say(key, name = '', isError = false) { messageKey = key; messageName = name; errorMessage = isError; renderFeedback(); }
   function renderFeedback() {
@@ -112,9 +119,16 @@ export function mountTeam(root, { csrfToken, onUnauthorized }) {
     }
     table.hidden = !shown.length; empty.hidden = Boolean(shown.length) || !data;
     emptyText.textContent = t(filtered() ? 'teamUI_noMatches' : 'teamUI_noMembers'); emptyClear.hidden = !filtered();
-    result.textContent = data ? text('teamUI_count', { count: shown.length, total: data.items.length }) : ''; clear.hidden = !filtered();
+    result.textContent = data ? text(filtered() ? 'teamUI_count' : 'teamUI_countDefault', { count: shown.length, total: data.items.length }) : ''; clear.hidden = !filtered();
+    ownerGuidance.hidden = !shown.some(account => account.role === 'OWNER');
+    ownerGuidance.textContent = text('teamUI_ownerGuidance', { account: t('account'), profile: t('profile'), changePassword: t('changePassword') });
     events.replaceChildren();
-    for (const event of data?.events || []) events.append(node('li', '', `${formatDate(event.at)} · ${event.actor} → ${event.account}: ${t(`event${event.action}`)}`));
+    for (const event of data?.events || []) {
+      const row = node('tr');
+      const values = [formatDate(event.at), event.actor, event.account, t(EVENT_KEYS.has(event.action) ? `event${event.action}` : 'teamUI_accountUpdated')];
+      for (const [index, value] of values.entries()) { const cell = node('td', '', value); cell.dataset.label = t(activityColumns[index]); row.append(cell); }
+      events.append(row);
+    }
     activity.hidden = !data?.events?.length;
     renderFeedback();
   }

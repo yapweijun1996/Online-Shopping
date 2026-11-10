@@ -1,14 +1,22 @@
 import { messages } from '../shared/i18n.js';
 const locales = ['en', 'ms', 'zh-Hans', 'vi', 'th', 'ja', 'ko'];
 const rows = [
+["countDefault", "{total} people", "{total} orang", "共 {total} 位成员", "{total} thành viên", "สมาชิก {total} คน", "メンバー {total} 人", "구성원 {total}명"],
+["ownerGuidance", "To change your own password: {account} → {profile} → {changePassword}.", "Untuk menukar kata laluan sendiri: {account} → {profile} → {changePassword}.", "修改自己的密码：右上角{account} → {profile} → {changePassword}。", "Đổi mật khẩu của bạn: {account} → {profile} → {changePassword}.", "เปลี่ยนรหัสผ่านของคุณ: {account} → {profile} → {changePassword}.", "自分のパスワード変更：{account} → {profile} → {changePassword}。", "내 비밀번호 변경: {account} → {profile} → {changePassword}."],
+["time", "Time", "Masa", "时间", "Thời gian", "เวลา", "日時", "시간"],
+["actor", "Actor", "Pelaku", "操作者", "Người thực hiện", "ผู้ดำเนินการ", "操作者", "작업자"],
+["member", "Member", "Ahli", "成员", "Thành viên", "สมาชิก", "メンバー", "구성원"],
+["action", "Action", "Tindakan", "操作", "Thao tác", "การดำเนินการ", "操作", "작업"],
+["accountUpdated", "Account updated", "Akaun dikemas kini", "账号已更新", "Đã cập nhật tài khoản", "อัปเดตบัญชีแล้ว", "アカウント更新", "계정 수정됨"],
+
 ['intro', 'Manage who can access your store.', 'Urus akses ke kedai anda.', '管理商店成员与访问权限。', 'Quản lý người có quyền truy cập cửa hàng.', 'จัดการผู้ที่เข้าถึงร้านค้าของคุณ', 'ショップにアクセスできるメンバーを管理します。', '상점에 접근할 수 있는 구성원을 관리하세요.'],
 ['search', 'Search username', 'Cari nama pengguna', '搜索用户名', 'Tìm tên đăng nhập', 'ค้นหาชื่อผู้ใช้', 'ユーザー名で検索', '사용자 이름 검색'],
 ['allRoles', 'All roles', 'Semua peranan', '全部角色', 'Mọi vai trò', 'ทุกบทบาท', 'すべての役割', '모든 역할'],
 ['allStatus', 'All statuses', 'Semua status', '全部状态', 'Mọi trạng thái', 'ทุกสถานะ', 'すべての状態', '모든 상태'],
 ['members', 'Team members', 'Ahli pasukan', '团队成员', 'Thành viên', 'สมาชิกทีม', 'チームメンバー', '팀 구성원'],
-['count', 'Showing {count} of {total} people', 'Menunjukkan {count} daripada {total} orang', '显示 {count} / {total} 位成员', 'Hiển thị {count} trong {total} người', 'แสดง {count} จาก {total} คน', '{total} 人中 {count} 人を表示', '총 {total}명 중 {count}명 표시'],
+['count', 'Showing {count} of {total} people', 'Menunjukkan {count} daripada {total} orang', '找到 {count} 位成员，共 {total} 位', 'Hiển thị {count} trong {total} người', 'แสดง {count} จาก {total} คน', '{total} 人中 {count} 人を表示', '총 {total}명 중 {count}명 표시'],
 ['never', 'Never signed in', 'Belum pernah log masuk', '尚未登录', 'Chưa đăng nhập', 'ยังไม่เคยเข้าสู่ระบบ', 'ログイン履歴なし', '로그인한 적 없음'],
-['ownerProtected', 'Protected Owner account', 'Akaun Pemilik dilindungi', '受保护的店主账户', 'Tài khoản chủ sở hữu được bảo vệ', 'บัญชีเจ้าของที่ได้รับการปกป้อง', '保護されたオーナーアカウント', '보호된 소유자 계정'],
+['ownerProtected', 'Protected Owner account', 'Akaun Pemilik dilindungi', '店主账号不可在此修改', 'Tài khoản chủ sở hữu được bảo vệ', 'บัญชีเจ้าของที่ได้รับการปกป้อง', '保護されたオーナーアカウント', '보호된 소유자 계정'],
 ['updated', 'Updated', 'Dikemas kini', '已更新', 'Đã cập nhật', 'อัปเดตแล้ว', '更新済み', '수정됨'],
 ['more', 'More actions', 'Tindakan lain', '更多操作', 'Thao tác khác', 'การดำเนินการเพิ่มเติม', 'その他の操作', '추가 작업'],
 ['changeRole', 'Change role', 'Tukar peranan', '更改角色', 'Đổi vai trò', 'เปลี่ยนบทบาท', '役割を変更', '역할 변경'],
