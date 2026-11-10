@@ -650,3 +650,9 @@ are rejected atomically rather than silently losing a shared document. Existing
 inventory/MCP extension manifests remain frozen while global schema becomes35.
 Operator deployment/restore must use matching binaries and schema recovery rules;
 see [product rich detail](PRODUCT_RICH_DETAIL.md) for contracts and limitations.
+
+### Seller Team one-time credential handoff
+
+Team Add/Reset uses browser-only Web Crypto generation (24 characters from a64-character alphabet, bounded32 attempts, no weak fallback) without changing server policy. An unavailable RNG preserves a manual draft. After an actual successful write, the same drawer temporarily retains the submitted credential to build a localized, current-origin/tenant-path email template from the saved account response and current shop header source. An inactive account is explicitly described as requiring activation. No recipient collection, email transport, mailto URL, server metadata/audit credential, or persistent recovery mechanism is introduced.
+
+Credential inputs and readonly copy textareas opt into private edit-revision signatures even after reveal. Copy operations take an invocation snapshot and fence UI completion against drawer, edit and copy identity. Closing/disposal clears DOM fields, handoff state and pending copy references; a delayed browser clipboard operation may already hold its own argument and cannot be revoked. The OS clipboard and manually shared text are outside page cleanup. Clipboard denial truthfully offers manual selection; generated values are never written to status messages, URLs or browser storage. Saving and copying remain separate actions; failed writes cannot produce a success handoff. Refresh errors preserve save success and offer Retry, while Done clears the handoff independently of refresh completion. Existing backend validation, session revocation, mandatory first-login change and Owner protections remain authoritative.

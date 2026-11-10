@@ -55,6 +55,7 @@ let csrfToken = null;
 let currentView = 'dashboard';
 let currentRoute = 'dashboard';
 let username = '';
+let shopName = '';
 let role = '';
 let quickLogin = false;
 let productsPage = null;
@@ -247,7 +248,7 @@ function showLogin(messageKey = '', clearHint = true) {
   sidebar.hidden = true;
   menuButton.hidden = true;
   accountWrap.hidden = true;
-  byId('shop-context').hidden = true;
+  byId('shop-context').hidden = true; shopName = '';
   document.body.classList.remove('seller-signed-in');
   setPasswordVisible(false);
   setLoginMessage(messageKey);
@@ -296,7 +297,8 @@ function showWorkspace(session) {
     if (!response.ok) return;
     const setup = await response.json();
     if (workspace.hidden || csrfToken !== sessionToken) return;
-    byId('shop-context').textContent = setup.shopName || t('sellerPortal');
+    shopName = setup.shopName || '';
+    byId('shop-context').textContent = shopName || t('sellerPortal');
     byId('shop-context').hidden = false;
   }).catch(() => {});
   byId('password').value = '';
@@ -384,7 +386,7 @@ function renderView() {
     return;
   }
   if (currentView === 'team') {
-    settingsPage = mountTeam(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError'), headingHost: byId('page-title').parentElement });
+    settingsPage = mountTeam(content, { csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError'), headingHost: byId('page-title').parentElement, getShopName: () => shopName });
     return;
   }
   if (currentView === 'audit') {
@@ -444,7 +446,8 @@ async function renderDashboard(content) {
     welcome.append(node('div', 'dashboard-shop-name', setup.shopName || t('shop')), node('p', '', t('studioOverview')));
     identity.append(welcome,
       node('span', `dashboard-mode ${setup.mode === 'demo' ? 'is-demo' : ''}`, t(setup.mode === 'demo' ? 'dashboardSimulated' : 'dashboardProduction')));
-    byId('shop-context').textContent = setup.shopName || t('sellerPortal');
+    shopName = setup.shopName || '';
+    byId('shop-context').textContent = shopName || t('sellerPortal');
     const stats = node('div', 'dashboard-stats');
     const stat = (label, value) => {
       const card = node('section', 'dashboard-stat');

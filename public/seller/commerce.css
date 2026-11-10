@@ -606,3 +606,16 @@ body{background:var(--ui-canvas)}
 .team-editor>label:has(input[required])>span:after{content:" *";color:var(--shop-error)}
 
 @media(min-width:761px) and (max-width:1200px){.team-filters>label:first-child{flex-basis:var(--ui-filter-search-compact)}.team-table th:nth-child(2),.team-table th:nth-child(3){width:90px}.team-table th:nth-child(4){width:160px}.team-table th:last-child{width:210px}}
+
+/* Credential generation/copy stays local to the existing Team drawer. */
+.team-password-line{display:grid;grid-template-columns:minmax(0,1fr) auto 44px;align-items:center;gap:var(--ui-space-2)}
+.team-password-line .team-show-password,.team-copy-password{min-height:44px;min-width:44px;padding:6px;font-size:var(--ui-font-sm)}
+.team-copy-password{display:grid;place-items:center}.team-copy-password .ui-icon{width:20px;height:20px}
+.team-password-tools{display:flex;flex-wrap:wrap;gap:var(--ui-space-2)}
+.team-password-tools button{min-height:44px;font-size:var(--ui-font-sm)}
+.team-copy-status{margin:0;font-size:var(--ui-font-sm);font-weight:400;line-height:1.6;color:var(--ui-secondary-text)}
+.team-copy-status:empty{display:none}
+.team-manual-copy,.team-email-text{width:100%;min-width:0;resize:vertical;padding:var(--ui-space-3);border:1px solid var(--ui-control-border);border-radius:var(--ui-radius-sm);font:inherit;font-size:var(--ui-font-sm);line-height:1.6;background:var(--ui-surface);color:var(--ui-text);white-space:pre-wrap;overflow-wrap:anywhere}
+.team-handoff{display:grid;gap:var(--ui-space-4);min-width:0}.team-handoff h3{margin:0;font-size:18px;line-height:1.5}.team-handoff p{margin:0}
+.team-handoff>button{justify-self:start;min-height:44px}.team-email-details{min-width:0}.team-email-details>summary{min-height:44px;cursor:pointer;font-size:var(--ui-font-sm);line-height:1.6}
+.team-handoff .team-editor-actions{justify-content:flex-end}.team-handoff .team-editor-actions button{min-width:90px}
