@@ -11,7 +11,7 @@ const paths = {
   copy: 'M9 9h12v12H9zM15 9V3H3v12h6',
   square: 'M4 4h16v16H4z',
   user: 'M8 6a4 4 0 1 0 8 0 4 4 0 0 0-8 0M4 22v-3a8 8 0 0 1 16 0v3',
-  more: 'M4 12h.01M12 12h.01M20 12h.01',
+  more: 'M3 12a2 2 0 1 0 4 0 2 2 0 1 0-4 0zM10 12a2 2 0 1 0 4 0 2 2 0 1 0-4 0zM17 12a2 2 0 1 0 4 0 2 2 0 1 0-4 0z',
   edit: 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z',
   chat: 'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z',
   info: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16v-4M12 8h.01',
@@ -32,6 +32,7 @@ export function icon(name) {
   if (!Object.hasOwn(paths, name)) throw new RangeError(`Unknown icon: ${name}`);
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   for (const [key, value] of Object.entries({ viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true', focusable: 'false', class: 'ui-icon' })) svg.setAttribute(key, value);
+  if (name === 'more') { svg.setAttribute('fill', 'currentColor'); svg.setAttribute('stroke', 'none'); svg.setAttribute('class', 'ui-icon ui-icon-more'); }
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   path.setAttribute('d', paths[name]); svg.append(path);
   return svg;

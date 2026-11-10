@@ -12,6 +12,7 @@ test('UI chrome does not depend on symbol fonts', async () => {
     'public/seller/product-import.js': '→',
     'public/seller/products.js': '→',
     'public/seller/team.js': '→',
+    'public/seller/team-copy.js': '→',
     'public/seller/tracking-import.js': '←→',
     'public/seller/whatsapp-connection.js': '→',
     'public/seller/whatsapp-qr-copy.js': '→',
@@ -43,7 +44,13 @@ test('icons build namespaced, hidden SVGs without parsing markup', t => {
     assert.equal(svg.attributes.viewBox, '0 0 24 24');
     assert.equal(svg.attributes['aria-hidden'], 'true');
     assert.equal(svg.attributes.focusable, 'false');
-    assert.equal(svg.attributes.stroke, 'currentColor');
+    assert.equal(svg.attributes.stroke, name === 'more' ? 'none' : 'currentColor');
+    assert.equal(svg.attributes.fill, name === 'more' ? 'currentColor' : 'none');
+    if (name === 'more') {
+      assert.equal(svg.attributes.class, 'ui-icon ui-icon-more');
+      assert.equal(svg.children[0].attributes.d.split('z').filter(Boolean).length, 3, 'three closed filled components');
+      assert.doesNotMatch(svg.children[0].attributes.d, /h\.01/, 'not zero-length stroked dots');
+    }
     assert.equal(svg.children[0].localName, 'path');
     assert.equal(svg.children[0].namespaceURI, svg.namespaceURI);
     assert.match(svg.children[0].attributes.d, /^M|^m/);
