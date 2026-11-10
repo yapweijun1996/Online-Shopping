@@ -26,6 +26,8 @@ Backend memory is capped at 384 MiB with a 192 MiB V8 heap to leave native/TLS/d
 
 ## CI images
 
+The existing `Verify new MVP` workflow (`.github/workflows/verify.yml`, unchanged `push` and `pull_request` triggers) performs bounded Python deployment/controller checks, JavaScript syntax checks, production dependency audits, and the dedicated WhatsApp QR/media-codec checks. Its root application `npm test` step and PostgreSQL service are removed; full application regression tests run locally as needed and must be recorded separately. Successful GitHub verification therefore establishes only these CI checks, not a full application-suite pass. This does not relax exact-SHA main/verification/image checks or the protected-workflow manual release gate.
+
 `.github/workflows/gcp-images.yml` runs only after a successful same-repository `push` of `main` through `Verify new MVP`. It checks out that exact tested SHA, builds `linux/amd64`, and publishes backend/frontend images with SHA tags and OCI revision labels. Actions are pinned to authoritative upstream Git refs checked during implementation. CI has only `contents: read` and `packages: write`; there are no VM credentials or VM builds.
 
 After the first publication, make both GHCR packages **public** in their package settings. The host uses anonymous public GitHub and GHCR, with its own empty Docker credential configuration and no PAT. Do not make the repository public merely to enable this method: anonymous source access is a prerequisite, and private repositories need a separately reviewed authentication design.

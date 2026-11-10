@@ -24,7 +24,7 @@ npm run test:integrations
 python3 test/auto-update.test.py
 ```
 
-CI (`.github/workflows/verify.yml`) runs the auto-update test, `npm run check`, `npm test` against PostgreSQL 16, and `npm audit --omit=dev --audit-level=high`.
+CI (`.github/workflows/verify.yml`) runs bounded Python deployment/controller tests, `npm run check`, production dependency audits, and the dedicated WhatsApp QR/media-codec checks. It does not run the full root application `npm test` suite or start PostgreSQL. Run application tests locally as needed for the change, with PostgreSQL regression coverage when relevant; a green CI run is not evidence that the full application suite ran.
 
 ## Working rules
 
