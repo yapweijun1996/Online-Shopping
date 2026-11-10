@@ -63,7 +63,7 @@ jobs:
           mkdir -p "$codec_fixture/public/shared" "$codec_fixture/media-codec" "$codec_fixture/tmp"
           cp package.json "$codec_fixture/"
           cp -R src node_modules "$codec_fixture/"
-          cp public/shared/order-status.js public/shared/integration-catalog.js "$codec_fixture/public/shared/"
+          cp public/shared/order-status.js public/shared/integration-catalog.js public/shared/sender-fields.js "$codec_fixture/public/shared/"
           cp -R public/setup "$codec_fixture/public/"
           cp media-codec/package.json media-codec/package-lock.json media-codec/Dockerfile media-codec/Dockerfile.dockerignore "$codec_fixture/media-codec/"
           cp -R media-codec/src media-codec/test media-codec/scripts media-codec/node_modules "$codec_fixture/media-codec/"

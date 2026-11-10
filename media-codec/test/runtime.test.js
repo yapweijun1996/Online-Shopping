@@ -64,7 +64,7 @@ test('production-shaped backend starts flag-off with neither private codec nor S
   await cp(join(root, 'node_modules'), join(dir, 'node_modules'), { recursive: true, dereference: true });
   await cp(join(root, 'package.json'), join(dir, 'package.json'));
   await mkdir(join(dir, 'public/shared'), { recursive: true });
-  for (const file of ['order-status.js', 'integration-catalog.js']) await cp(join(root, 'public/shared', file), join(dir, 'public/shared', file));
+  for (const file of ['order-status.js', 'integration-catalog.js', 'sender-fields.js']) await cp(join(root, 'public/shared', file), join(dir, 'public/shared', file));
   await cp(join(root, 'public/setup'), join(dir, 'public/setup'), { recursive: true });
   const program = `import assert from 'node:assert/strict';import fs from 'node:fs/promises';
     import {readConfig} from './src/config.js';import {openDatabase} from './src/db.js';import {createApi} from './src/app.js';
