@@ -1,166 +1,109 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { messages } from '../public/shared/i18n.js';
-const { mountWhatsAppConnection } = await import('../public/seller/whatsapp-connection.js');
+import { mkdirSync } from 'node:fs';
+import { sellerFixture } from './helpers/seller-app.js';
 
-// Minimal DOM double: exercise requests and lifecycle without a browser or network.
-class Element {
-  constructor(tag) { this.tagName = tag; this.children = []; this.dataset = {}; this.attributes = {}; this.events = {}; this.value = ''; this.textContent = ''; }
-  get isConnected() { return this.connected || Boolean(this.parent?.isConnected); }
-  append(...nodes) { for (const node of nodes) { node.parent = this; this.children.push(node); } }
-  replaceChildren(...nodes) { for (const node of this.children) node.parent = null; this.children = []; this.append(...nodes); }
-  setAttribute(key, value) { this.attributes[key] = value; }
-  removeAttribute(key) { delete this.attributes[key]; }
-  addEventListener(name, handler) { this.events[name] = handler; }
-  querySelectorAll(selector) { return this.descendants().filter(node => selector === '[data-i18n]' ? 'i18n' in node.dataset : 'i18nAria' in node.dataset); }
-  descendants() { return this.children.flatMap(node => [node, ...node.descendants()]); }
-  focus() { this.focused = true; }
-  select() { this.selected = true; }
+// Browser-only local UI DTO fixtures. No Meta connection, provider check or message is performed.
+const modulePath = process.env.QA_PLAYWRIGHT_MODULE;
+const artifacts = process.env.QA_ARTIFACT_DIR || '/tmp/whatsapp-cloud-browser';
+const credentials = { accessToken: 'FictionalCloudAccessToken2026', appSecret: 'FictionalCloudAppSecret2026', phoneNumberId: '000001234567890', businessAccountId: '987654321000000' };
+const connected = (environment, body = credentials) => ({ id: `fixture-${environment}`, environment, status: 'CONNECTED', secretHint: '****2026', lastCheckedAt: '2026-11-10T00:00:00Z', publicConfig: { phoneNumberId: body.phoneNumberId, businessAccountId: body.businessAccountId, verifyToken: `FictionalVerify-${environment}`, displayPhoneNumber: '+60 123 456 789', verifiedName: 'Fictional Cloud Store' } });
+const evidence = { checkedAt: '2026-11-10T01:00:00Z', checks: [{ id: 'phoneOwnership', status: 'PASS' }, { id: 'appSubscription', status: 'PASS' }, { id: 'appSecret', status: 'UNKNOWN' }, { id: 'templates', status: 'FAIL' }], templates: [{ name: 'order_submitted', language: 'en', status: 'APPROVED' }, { name: 'order_confirmed', language: 'zh_CN', status: 'PENDING' }, { name: 'order_shipped_' + 'x'.repeat(80), language: 'ko', status: 'UNKNOWN' }] };
+async function fixture(t, width = 1280, colorScheme = 'light') {
+  const { chromium } = await import(modulePath), browser = await chromium.launch({ headless: true, executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', '--disable-gpu'] }); t.after(() => browser.close());
+  const f = await sellerFixture(); t.after(() => f.close()); const context = await browser.newContext({ viewport: { width, height: 1000 }, reducedMotion: 'reduce', colorScheme, serviceWorkers: 'block' });
+  await context.route('**/*', route => new URL(route.request().url()).origin === f.origin ? route.continue() : route.abort());
+  const page = await context.newPage(), calls = [], errors = []; page.setDefaultTimeout(7000); page.on('pageerror', error => errors.push(error.message));
+  const state = { rows: [], loadStatus: 200, available: true, writeStatus: 200, readStatus: 200, evidence, writeGate: null, readGate: null, loadGate: null };
+  await page.route(/\/api\/v1\/seller\/integrations\/whatsapp(?:\/(?:PRODUCTION|SANDBOX)(?:\/readiness)?)?$/, async route => {
+    const request = route.request(), pathname = new URL(request.url()).pathname;
+    calls.push({ method: request.method(), path: pathname, body: request.postDataJSON() });
+    if (pathname.endsWith('/whatsapp')) { if (state.loadGate) await state.loadGate; await route.fulfill({ status: state.loadStatus, json: { available: state.available, webhookUrl: `${f.origin}/api/v1/webhooks/whatsapp`, connections: state.rows } }); return; }
+    const environment = pathname.includes('/SANDBOX') ? 'SANDBOX' : 'PRODUCTION';
+    if (pathname.endsWith('/readiness')) { if (state.readGate) await state.readGate; await route.fulfill({ status: state.readStatus, json: state.evidence }); return; }
+    if (state.writeGate) await state.writeGate;
+    if (state.writeStatus !== 200) { await route.fulfill({ status: state.writeStatus, json: { error: { code: state.writeStatus === 403 ? 'FORBIDDEN' : 'INVALID_INPUT', field: 'appSecret', message: 'RAW_PROVIDER_PRIVATE_DETAIL' } } }); return; }
+    const result = request.method() === 'DELETE' ? { environment, status: 'NOT_CONFIGURED', publicConfig: {} } : connected(environment, request.postDataJSON()); state.rows = [...state.rows.filter(row => row.environment !== environment), result]; await route.fulfill({ json: result });
+  });
+  const cloud = page.locator('.wa-cloud'), env = name => cloud.locator(`.wa-cloud-environment[data-environment=${name}]`), ready = () => page.waitForFunction(() => document.querySelector('.wa-cloud')?.getAttribute('aria-busy') === 'false');
+  async function login() { await page.goto(`${f.origin}/seller/#company`); await page.locator('#username').fill(f.config.username); await page.locator('#password').fill(f.config.password); await page.locator('#password').press('Enter'); await page.locator('#company-tab-messaging').click(); await ready(); }
+  const fill = async (values = credentials, environment = 'PRODUCTION') => { for (const [key, value] of Object.entries(values)) await env(environment).locator(`[name=${key}]`).fill(value); };
+  const go = async index => cloud.locator('.wa-cloud-nav').locator(`[data-step-target="${index}"]`).click();
+  const signature = () => page.evaluate(async () => (await import('/shared/update-guard.js')).draftSignature());
+  const copyMode = denied => page.evaluate(deny => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { if (deny) throw new Error('denied'); } } }), denied);
+  const noOverflow = async () => assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && scrollX === 0), true);
+  mkdirSync(artifacts, { recursive: true }); const shot = async label => { await page.evaluate(() => new Promise(resolve => { scrollTo(0, 0); requestAnimationFrame(resolve); })); await page.screenshot({ path: `${artifacts}/${label}-${width}-${colorScheme}.png`, fullPage: true, animations: 'disabled' }); };
+  return { f, page, calls, errors, state, cloud, env, ready, login, fill, go, signature, copyMode, noOverflow, shot };
 }
-const flush = () => new Promise(resolve => setImmediate(resolve));
-async function fixture(fn) {
-  const originalDocument = globalThis.document, originalFetch = globalThis.fetch;
-  const root = new Element('main'); root.connected = true;
-  globalThis.document = { createElement: tag => new Element(tag) };
-  try { await fn(root); }
-  finally { globalThis.document = originalDocument; globalThis.fetch = originalFetch; }
-}
-const available = { available: true, webhookUrl: 'https://fictional.example/webhook', connections: [] };
-const response = data => ({ ok: true, status: 200, json: async () => data });
-
-test('failed, unavailable, unauthorized and stale loads remain hidden', async () => {
-  await fixture(async root => {
-    for (const result of [response({ available: false }), { ok: false, status: 503 }, { ok: false, status: 401 }, new Error('offline')]) {
-      let unauthorized = 0;
-      globalThis.fetch = async (path, options) => {
-        assert.equal(path, '/api/v1/seller/integrations/whatsapp'); assert.equal(options.cache, 'no-store');
-        if (result instanceof Error) throw result; return result;
-      };
-      mountWhatsAppConnection(root, { csrfToken: () => 'fictional-csrf', onUnauthorized: () => unauthorized++, request() {} });
-      await flush();
-      assert.equal(root.children.at(-1).hidden, true);
-      assert.equal(root.children.at(-1).children.length, 0);
-      assert.equal(unauthorized, result.status === 401 ? 1 : 0);
-    }
-    for (const detach of [false, true]) {
-      let resolve, identity = 'first';
-      globalThis.fetch = () => new Promise(done => { resolve = done; });
-      mountWhatsAppConnection(root, { csrfToken: () => identity, onUnauthorized() { assert.fail('stale unauthorized'); }, request() {} });
-      const section = root.children.at(-1);
-      if (detach) section.parent = null; else identity = 'second';
-      resolve(response(available)); await flush();
-      assert.equal(section.hidden, true);
-    }
-  });
+for (const width of [390, 768, 1280, 1920]) for (const scheme of ['light', 'dark']) test(`WhatsApp Cloud four-step UI DTO fixture: ${width}px ${scheme}`, { skip: !modulePath, timeout: 45000 }, async t => {
+  const q = await fixture(t, width, scheme); const { page, cloud, env, calls, state } = q; await q.login(); await q.shot('cloud-initial');
+  const production = env('PRODUCTION'), sandbox = env('SANDBOX');
+  assert.equal(await cloud.locator('[data-environment=PRODUCTION][aria-pressed=true]').count(), 1); assert.equal(await production.locator('.wa-cloud-step[open]').count(), 1); assert.equal(await production.locator('.wa-cloud-step[open]').getAttribute('data-step'), '2');
+  assert.equal(calls.filter(call => call.path.endsWith('/readiness')).length, 0, 'loading does not perform provider readiness'); const initialCalls = calls.length;
+  const token = production.locator('[name=accessToken]');
+  const inputBox = await token.boundingBox(), revealBox = await production.locator('[data-credential-reveal=accessToken]').boundingBox(); assert.ok(Math.abs(inputBox.y + inputBox.height / 2 - revealBox.y - revealBox.height / 2) < 1, 'reveal aligns with input center'); assert.ok((await token.boundingBox()).y < 1000, 'credentials are accessible without a long guide above');
+  await production.locator('[data-step="4"]>summary').click(); await page.waitForFunction(() => document.querySelector('.wa-cloud-nav [data-step-target="4"]')?.getAttribute('aria-current') === 'step'); await production.locator('[data-step="4"]>summary').press('Enter');
+  await q.go(1); assert.equal(await production.locator('a').getAttribute('href'), 'https://developers.facebook.com/apps/'); assert.ok((await production.locator('a').getAttribute('rel')).includes('noopener')); assert.equal(calls.length, initialCalls);
+  await q.go(3); assert.equal(await production.locator('input[readonly][type=password]').inputValue(), ''); assert.equal(await production.locator('[data-step="3"] summary').evaluate(el => el === document.activeElement), true);
+  await q.go(2); await q.fill(); const privateSignature = await q.signature(); assert.ok(!privateSignature.includes(credentials.accessToken) && !privateSignature.includes(credentials.appSecret)); await production.locator('[data-credential-reveal=accessToken]').click(); assert.ok(!(await q.signature()).includes(credentials.accessToken)); await production.locator('[data-credential-reveal=accessToken]').click();
+  await cloud.locator('button[data-environment=SANDBOX]').click(); await q.go(2); assert.equal(await sandbox.locator('[name=accessToken]').inputValue(), ''); await q.fill({ ...credentials, accessToken: 'OtherFictionalSandboxToken2026' }, 'SANDBOX'); await cloud.locator('button[data-environment=PRODUCTION]').click(); assert.ok(await token.inputValue() === credentials.accessToken);
+  await token.fill('Invalid token with spaces'); await production.locator('button[type=submit]').click(); assert.equal(await token.getAttribute('aria-invalid'), 'true'); assert.equal(calls.filter(call => call.method === 'PUT').length, 0); await q.fill();
+  let release; state.writeGate = new Promise(resolve => { release = resolve; }); await production.locator('button[type=submit]').click(); await page.waitForFunction(() => document.querySelector('.wa-cloud')?.getAttribute('aria-busy') === 'true'); await production.locator('form').evaluate(form => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  assert.equal(await cloud.locator('button[data-environment=SANDBOX]').isDisabled(), true); release(); await q.ready(); state.writeGate = null;
+  const writes = calls.filter(call => call.method === 'PUT'); assert.equal(writes.length, 1); assert.equal(writes[0].path.endsWith('/PRODUCTION'), true); assert.deepEqual(writes[0].body, credentials); assert.equal(await token.inputValue(), ''); assert.equal(await production.locator('[name=appSecret]').inputValue(), '');
+  assert.ok((await cloud.locator('.wa-cloud-overview').innerText()).includes('Production')); assert.equal(await production.locator('[data-check=appSecret] strong').getAttribute('data-state'), 'UNKNOWN'); assert.equal(calls.filter(call => call.path.endsWith('/readiness')).length, 0);
+  await q.go(3); const verify = production.locator('input[readonly][type=password]'); assert.ok(!(await q.signature()).includes(await verify.inputValue())); await q.copyMode(true); await production.getByRole('button', { name: 'Verify token: Copy', exact: true }).click(); const revealedVerify = production.locator('.whatsapp-copy-field input').nth(1); assert.equal(await revealedVerify.evaluate(el => el === document.activeElement && el.selectionStart === 0 && el.selectionEnd === el.value.length), true); await q.copyMode(false); await production.getByRole('button', { name: 'Verify token: Copy', exact: true }).click(); assert.ok((await production.innerText()).includes('Copied.')); await production.getByRole('button', { name: 'Hide: Verify token', exact: true }).click();
+  await production.locator('[data-step="3"]').getByRole('button', { name: 'Check readiness', exact: true }).click(); await q.ready(); assert.equal(await production.locator('[data-check=appSecret] strong').getAttribute('data-state'), 'UNKNOWN'); assert.equal(await production.locator('[data-check=appSubscription] strong').getAttribute('data-state'), 'PASS');
+  await q.go(4); const beforeTemplateCheck = calls.filter(call => call.path.endsWith('/readiness')).length; await production.locator('[data-step="4"]').getByRole('button', { name: 'Check readiness', exact: true }).click(); await q.ready(); assert.equal(calls.filter(call => call.path.endsWith('/readiness')).length, beforeTemplateCheck + 1); assert.ok((await production.locator('.wa-cloud-counts').innerText()).includes('Approved: 1')); await production.locator('.wa-cloud-step[data-step="4"] details').first().locator('summary').click(); assert.equal(await production.locator('.wa-cloud-records>div').count(), 3); await q.noOverflow();
+  if (scheme === 'dark') await page.evaluate(() => window.sellerPalette.choose('warm-plum')); await q.shot('cloud-templates');
+  if (width === 1920 && scheme === 'light') { for (const locale of ['en', 'ms', 'zh-Hans', 'vi', 'th', 'ja', 'ko']) { await page.evaluate(async value => { const i18n = await import('/shared/i18n.js'); i18n.setLocale(value);  }, locale); assert.ok(!(await cloud.innerText()).includes('waCloud_')); await q.noOverflow(); } await page.evaluate(async () => (await import('/shared/i18n.js')).setLocale('en')); }
+  if ([390, 1920].includes(width) && scheme === 'light') { await page.evaluate(async () => (await import('/shared/i18n.js')).setLocale('zh-Hans')); await q.shot('cloud-zh-Hans'); await page.evaluate(async () => (await import('/shared/i18n.js')).setLocale('en')); }
+  await q.go(2); await q.fill(); await production.locator('button[type=submit]').click(); await q.ready(); assert.equal(await production.locator('[data-check=appSubscription] strong').getAttribute('data-state'), 'UNKNOWN', 'rotation invalidates previous readiness');
+  await cloud.locator('button[data-environment=SANDBOX]').click(); assert.ok(await sandbox.locator('[name=accessToken]').inputValue() === 'OtherFictionalSandboxToken2026'); assert.ok(!(await cloud.locator('.wa-cloud-overview').innerText()).includes('Connected')); await sandbox.locator('[name=accessToken]').fill(''); await sandbox.locator('[name=appSecret]').fill(''); await sandbox.locator('[name=phoneNumberId]').fill(''); await sandbox.locator('[name=businessAccountId]').fill('');
+  let unexpectedPrompt = false; page.on('dialog', async dialog => { unexpectedPrompt = true; await dialog.dismiss(); }); await page.goto(`${q.f.origin}/seller/#products`); await page.locator('#product-list').waitFor(); assert.equal(unexpectedPrompt, false, 'restoring all environment drafts removes the navigation guard');
+  assert.deepEqual(q.errors, []);
 });
 
-test('connect sends exactly four fields, clears passwords and preserves the other environment draft', async () => {
-  await fixture(async root => {
-    globalThis.fetch = async () => response(available);
-    let resolve, sent;
-    const card = mountWhatsAppConnection(root, { csrfToken: () => 'fictional-csrf', onUnauthorized() {}, request(method, path, body) {
-      sent = { method, path, body }; return new Promise(done => { resolve = done; });
-    } });
-    await flush();
-    const forms = root.descendants().filter(node => node.tagName === 'form');
-    const inputs = forms[0].descendants().filter(node => node.tagName === 'input');
-    const other = forms[1].descendants().find(node => node.name === 'accessToken'); other.value = 'fictional-draft';
-    const values = ['fictional-access', 'fictional-app-secret', '12345', '67890'];
-    inputs.forEach((input, index) => { input.value = values[index]; assert.equal(input.autocomplete, 'off'); });
-    const submit = forms[0].descendants().find(node => node.type === 'submit');
-    forms[0].events.submit({ preventDefault() {} });
-    assert.equal(submit.disabled, true);
-    assert.deepEqual(sent, { method: 'PUT', path: '/api/v1/seller/integrations/whatsapp/SANDBOX', body: { accessToken: values[0], appSecret: values[1], phoneNumberId: values[2], businessAccountId: values[3] } });
-    card.refreshLocale(); assert.equal(other.value, 'fictional-draft');
-    resolve({ environment: 'SANDBOX', status: 'CONNECTED', secretHint: '••••cess', publicConfig: { phoneNumberId: '12345', businessAccountId: '67890', verifyToken: 'fictional-verification', displayPhoneNumber: '+1 202 555 0100', verifiedName: 'Fictional Shop' }, lastCheckedAt: '2026-10-08T00:00:00Z' });
-    await flush();
-    assert.equal(inputs[0].value, ''); assert.equal(inputs[1].value, '');
-    assert.equal(other.value, 'fictional-draft'); assert.equal(submit.disabled, false);
-    assert.equal(submit.textContent, messages.en.waUpdate);
-    assert.ok(root.descendants().some(node => node.textContent === 'Fictional Shop'));
-  });
+test('Cloud unavailable, permission and transport failures stay visible and can be retried without false disconnected state', { skip: !modulePath, timeout: 45000 }, async t => {
+  const q = await fixture(t); q.state.loadStatus = 503; await q.login();
+  assert.equal(await q.cloud.isVisible(), true); assert.equal(await q.cloud.locator('.wa-cloud-retry').isVisible(), true); assert.ok(!(await q.cloud.locator('.wa-cloud-overview').innerText()).includes('Not connected')); assert.equal(await q.cloud.locator('.wa-cloud-next button').count(), 0);
+  q.state.loadStatus = 200; q.state.available = false; await q.cloud.locator('.wa-cloud-retry').click(); await q.ready(); assert.ok((await q.cloud.innerText()).includes('currently unavailable')); assert.equal(await q.env('PRODUCTION').locator('button[type=submit]').isDisabled(), true);
+  q.state.available = true; q.state.rows = [connected('PRODUCTION')]; await q.cloud.locator('.wa-cloud-retry').click(); await q.ready(); await q.go(2); await q.fill();
+  q.state.writeStatus = 400; await q.env('PRODUCTION').locator('button[type=submit]').click(); await q.ready(); assert.ok((await q.cloud.locator('.wa-cloud-overview').innerText()).includes('Connected')); assert.ok(await q.env('PRODUCTION').locator('[name=appSecret]').inputValue() === credentials.appSecret); assert.equal(await q.env('PRODUCTION').locator('[name=appSecret]').getAttribute('aria-invalid'), 'true'); assert.equal(await q.env('PRODUCTION').locator('[name=appSecret]').evaluate(el => el === document.activeElement), true); assert.ok(!(await q.cloud.innerText()).includes('RAW_PROVIDER_PRIVATE_DETAIL'));
+  await q.go(3); q.state.readStatus = 429; await q.env('PRODUCTION').locator('[data-step="3"]').getByRole('button', { name: 'Check readiness', exact: true }).click(); await q.ready(); assert.ok((await q.env('PRODUCTION').locator('[data-step="3"] .whatsapp-status').allTextContents()).some(text => text.includes('Too many attempts'))); assert.equal(await q.env('PRODUCTION').locator('[data-check=appSecret] strong').getAttribute('data-state'), 'UNKNOWN');
+  q.state.readStatus = 200; q.state.evidence = { checkedAt: evidence.checkedAt, checks: [], templates: [] }; await q.go(4); await q.env('PRODUCTION').locator('[data-step="4"]').getByRole('button', { name: 'Check readiness', exact: true }).click(); await q.ready(); assert.ok(!(await q.env('PRODUCTION').locator('.wa-cloud-counts').innerText()).includes('Not checked'), 'empty returned evidence is unknown, not an unperformed check');
+  q.state.readStatus = 503; await q.go(4); await q.env('PRODUCTION').locator('[data-step="4"]').getByRole('button', { name: 'Check readiness', exact: true }).click(); await q.ready(); assert.ok((await q.env('PRODUCTION').locator('[data-step="4"] .whatsapp-status').innerText()).includes('temporarily unavailable'));
+  q.state.readStatus = 403; await q.go(3); await q.env('PRODUCTION').locator('[data-step="3"]').getByRole('button', { name: 'Check readiness', exact: true }).click(); await q.ready(); assert.ok((await q.cloud.innerText()).includes('permission')); for (const field of ['accessToken', 'appSecret']) assert.equal(await q.env('PRODUCTION').locator(`[name=${field}]`).inputValue(), ''); assert.equal(await q.env('PRODUCTION').locator('.whatsapp-copy-field input').nth(1).inputValue(), ''); assert.equal(await q.env('PRODUCTION').locator('button[type=submit]').isDisabled(), true);
+  q.state.readStatus = 200; await q.cloud.locator('.wa-cloud-retry').click(); await q.ready();
+  const abort = route => route.abort(); await q.page.route(/\/api\/v1\/seller\/integrations\/whatsapp$/, abort); await q.page.reload(); await q.page.locator('#company-tab-messaging').click(); await q.ready(); assert.ok((await q.cloud.innerText()).includes('temporarily unavailable')); await q.page.unroute(/\/api\/v1\/seller\/integrations\/whatsapp$/, abort); await q.cloud.locator('.wa-cloud-retry').click(); await q.ready();
+  assert.deepEqual(q.errors, []);
 });
 
-test('provider and field errors use only localized messages and re-enable submit', async () => {
-  await fixture(async root => {
-    globalThis.fetch = async () => response(available);
-    let code = 'INVALID_INPUT';
-    mountWhatsAppConnection(root, { csrfToken: () => 'fictional-csrf', onUnauthorized() {}, request: async () => { throw Object.assign(new Error('untrusted server text'), { code, field: 'phoneNumberId' }); } });
-    await flush();
-    const form = root.descendants().find(node => node.tagName === 'form');
-    const field = form.descendants().find(node => node.name === 'phoneNumberId');
-    for (const [error, key] of [['INVALID_INPUT', 'waInvalid'], ['CONNECTION_REJECTED', 'waRejected'], ['PROVIDER_UNAVAILABLE', 'waProviderUnavailable'], ['RATE_LIMITED', 'waRateLimited'], ['INTEGRATIONS_UNAVAILABLE', 'waUnavailable'], ['FORBIDDEN', 'waForbidden'], ['UNKNOWN', 'waFailed']]) {
-      code = error; form.events.submit({ preventDefault() {} }); await flush();
-      const line = form.descendants().find(node => node.attributes.role === 'status');
-      assert.equal(line.textContent, messages.en[key]);
-      assert.equal(line.attributes['aria-live'], 'polite');
-      assert.equal(form.descendants().find(node => node.type === 'submit').disabled, false);
-      if (error === 'INVALID_INPUT') { assert.equal(field.attributes['aria-invalid'], 'true'); assert.equal(field.focused, true); }
-    }
-  });
+test('Cloud clipboard identity, owned confirmation, stale readiness/write/load and session disposal clear secrets', { skip: !modulePath, timeout: 45000 }, async t => {
+  const q = await fixture(t); q.state.rows = [connected('PRODUCTION')]; await q.login(); const production = q.env('PRODUCTION'), page = q.page;
+  await q.go(3); await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => new Promise(resolve => { window.releaseCloudClipboard = resolve; }) } }));
+  const copy = production.getByRole('button', { name: 'Verify token: Copy', exact: true }); await copy.click(); await production.getByRole('button', { name: 'Show: Verify token', exact: true }).click(); assert.equal(await copy.isDisabled(), true, 'render cannot re-enable a pending copy');
+  await page.evaluate(() => { window.oldVerifyInput = document.querySelectorAll('.wa-cloud-environment[data-environment=PRODUCTION] .whatsapp-copy-field input')[1]; });
+  await page.goto(`${q.f.origin}/seller/#products`); await page.locator('#product-list').waitFor(); await page.evaluate(() => window.releaseCloudClipboard()); assert.equal(await q.cloud.count(), 0); assert.equal(await page.evaluate(() => window.oldVerifyInput.value), '');
+  await page.goto(`${q.f.origin}/seller/#company`); await page.locator('#company-tab-messaging').click(); await q.ready(); await q.go(2); await production.getByRole('button', { name: 'Disconnect', exact: true }).click(); await page.locator('.app-modal-confirm').waitFor(); assert.ok((await page.locator('.app-modal-confirm').innerText()).includes('Production')); await page.locator('.app-modal-confirm').getByRole('button', { name: 'Cancel', exact: true }).click(); await page.locator('.app-modal-confirm').waitFor({ state: 'detached' }); assert.equal(q.calls.filter(call => call.method === 'DELETE').length, 0);
+  await production.getByRole('button', { name: 'Disconnect', exact: true }).click(); await page.locator('.app-modal-confirm').getByRole('button', { name: 'Disconnect', exact: true }).click(); await q.ready(); assert.equal(q.calls.filter(call => call.method === 'DELETE').length, 1); assert.ok((await q.cloud.locator('.wa-cloud-overview').innerText()).includes('Not connected')); assert.equal(await production.locator('.whatsapp-copy-field input').nth(1).inputValue(), '');
+  await q.go(2); await q.fill(); let releaseWrite; q.state.writeGate = new Promise(resolve => { releaseWrite = resolve; }); await production.locator('button[type=submit]').click(); await page.waitForFunction(() => document.querySelector('.wa-cloud')?.getAttribute('aria-busy') === 'true');
+  page.once('dialog', dialog => dialog.accept()); await page.goto(`${q.f.origin}/seller/#products`); await page.locator('#product-list').waitFor(); releaseWrite(); q.state.writeGate = null; await page.waitForTimeout(30); assert.equal(await q.cloud.count(), 0);
+  await page.goto(`${q.f.origin}/seller/#company`); await page.locator('#company-tab-messaging').click(); await q.ready(); await q.go(3); let releaseRead; q.state.readGate = new Promise(resolve => { releaseRead = resolve; }); q.state.evidence = { ...evidence, checks: evidence.checks.map(check => ({ ...check, status: 'PASS' })), templates: [evidence.templates[0]] }; await production.locator('[data-step="3"]').getByRole('button', { name: 'Check readiness', exact: true }).click();
+  assert.equal(await production.locator('[data-step="4"] button').first().isDisabled(), true); await page.goto(`${q.f.origin}/seller/#products`); releaseRead(); q.state.readGate = null; await page.waitForTimeout(30); assert.equal(await q.cloud.count(), 0);
+  await page.goto(`${q.f.origin}/seller/#company`); await page.locator('#company-tab-messaging').click(); await q.ready(); assert.equal(await production.locator('[data-check=appSecret] strong').getAttribute('data-state'), 'UNKNOWN', 'readiness is not persisted across mount');
+  await page.goto(`${q.f.origin}/seller/#products`); let releaseLoad; q.state.loadGate = new Promise(resolve => { releaseLoad = resolve; }); await page.goto(`${q.f.origin}/seller/#company`); await page.waitForFunction(() => document.querySelector('.wa-cloud')?.getAttribute('aria-busy') === 'true'); await page.goto(`${q.f.origin}/seller/#products`); releaseLoad(); q.state.loadGate = null; await page.waitForTimeout(30); assert.equal(await q.cloud.count(), 0, 'late initial status cannot remount the disposed card');
+  await page.goto(`${q.f.origin}/seller/#company`); await page.locator('#company-tab-messaging').click(); await q.ready();
+  await q.go(2); await q.fill(); await production.getByRole('button', { name: 'Disconnect', exact: true }).click(); await page.locator('.app-modal-confirm').waitFor();
+  // Invoke the existing sign-out handler to simulate session loss while the owned confirmation is top-layer.
+  page.once('dialog', dialog => dialog.accept()); await page.evaluate(() => document.querySelector('#sign-out-button').click()); await page.locator('#login-form').waitFor(); assert.equal(await page.locator('.app-modal-confirm').count(), 0); assert.equal(await q.cloud.count(), 0); assert.ok(await page.evaluate(() => !JSON.stringify({ ...sessionStorage, ...localStorage }).includes('FictionalCloudAccessToken2026')));
+  assert.deepEqual(q.errors, []);
 });
 
-test('copy falls back to selecting the read-only input and supports clipboard success', async () => {
-  await fixture(async root => {
-    globalThis.fetch = async () => response(available);
-    mountWhatsAppConnection(root, { csrfToken: () => 'fictional-csrf', onUnauthorized() {}, request() {} });
-    await flush();
-    const copy = root.descendants().find(node => node.dataset.i18nAria === 'waCallback');
-    const input = copy.parent.descendants().find(node => node.tagName === 'input');
-    assert.equal(input.readOnly, true);
-    const previous = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
-    try {
-      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
-      await copy.events.click();
-      assert.equal(input.selected, true); assert.equal(input.focused, true);
-      assert.ok(root.descendants().some(node => node.textContent === messages.en.waSelectCopy));
-      let copied;
-      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async value => { copied = value; } } });
-      await copy.events.click();
-      assert.equal(copied, available.webhookUrl);
-      assert.ok(root.descendants().some(node => node.textContent === messages.en.waCopied));
-    } finally {
-      if (previous) Object.defineProperty(navigator, 'clipboard', previous); else delete navigator.clipboard;
-    }
-  });
-});
-
-test('stale mutation results clear passwords but cannot render into a new session', async () => {
-  await fixture(async root => {
-    globalThis.fetch = async () => response(available);
-    let identity = 'first', resolve;
-    mountWhatsAppConnection(root, { csrfToken: () => identity, onUnauthorized() {}, request: () => new Promise(done => { resolve = done; }) });
-    await flush();
-    const form = root.descendants().find(node => node.tagName === 'form');
-    const fields = form.descendants().filter(node => node.tagName === 'input');
-    fields[0].value = 'fictional-access'; fields[1].value = 'fictional-app-secret';
-    form.events.submit({ preventDefault() {} });
-    identity = 'second';
-    resolve({ status: 'CONNECTED', publicConfig: { verifiedName: 'Stale Fictional Shop' } }); await flush();
-    assert.equal(fields[0].value, ''); assert.equal(fields[1].value, '');
-    assert.ok(!root.descendants().some(node => node.textContent === 'Stale Fictional Shop'));
-    assert.equal(form.descendants().find(node => node.type === 'submit').textContent, messages.en.waConnect);
-  });
-});
-
-test('readiness renders safe check badges and matrix without credentials or a write request', async () => {
-  await fixture(async root => {
-    let reads = 0;
-    globalThis.fetch = async path => {
-      if (++reads === 1) return response({ ...available, connections: [{ environment: 'SANDBOX', status: 'CONNECTED', publicConfig: {} }] });
-      assert.equal(path, '/api/v1/seller/integrations/whatsapp/SANDBOX/readiness');
-      return response({ checkedAt: '2026-10-21T00:00:00Z', checks: [
-        { id: 'phoneOwnership', status: 'PASS' }, { id: 'appSubscription', status: 'FAIL' }, { id: 'appSecret', status: 'UNKNOWN' },
-      ], templates: [{ name: '<script>fixture</script>', language: 'en', status: 'MISSING' }] });
-    };
-    mountWhatsAppConnection(root, { csrfToken: () => 'fixture', onUnauthorized() {}, request() { assert.fail('readiness must not mutate'); } });
-    await flush();
-    const button = root.descendants().find(node => node.dataset.i18n === 'waReadiness');
-    assert.equal(button.hidden, false);
-    await button.events.click();
-    for (const text of ['PASS', 'FAIL', 'UNKNOWN', '<script>fixture</script>', 'MISSING'])
-      assert.ok(root.descendants().some(node => node.textContent === text));
-    assert.ok(root.descendants().some(node => node.tagName === 'details'));
-    assert.equal(button.disabled, false);
-  });
+test('Cloud unauthorized readiness and initial status use the existing login cleanup', { skip: !modulePath, timeout: 30000 }, async t => {
+  const q = await fixture(t); q.state.rows = [connected('PRODUCTION')]; await q.login(); await q.go(2); await q.fill(); await q.go(3);
+  await q.page.evaluate(() => { window.oldCloudSecret = document.querySelector('.wa-cloud-environment[data-environment=PRODUCTION] input[name=accessToken]'); window.oldCloudVerify = document.querySelectorAll('.wa-cloud-environment[data-environment=PRODUCTION] .whatsapp-copy-field input')[1]; });
+  q.state.readStatus = 401; await q.env('PRODUCTION').locator('[data-step="3"]').getByRole('button', { name: 'Check readiness', exact: true }).click(); await q.page.locator('#login-form').waitFor(); assert.equal(await q.cloud.count(), 0); assert.ok(await q.page.evaluate(() => window.oldCloudSecret.value === '' && window.oldCloudVerify.value === ''));
+  q.state.loadStatus = 401; await q.page.locator('#username').fill(q.f.config.username); await q.page.locator('#password').fill(q.f.config.password); await q.page.locator('#password').press('Enter'); await q.page.waitForFunction(() => !document.querySelector('#login-view').hidden); assert.equal(await q.cloud.count(), 0);
+  assert.deepEqual(q.errors, []);
 });

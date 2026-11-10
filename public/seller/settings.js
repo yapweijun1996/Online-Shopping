@@ -327,10 +327,11 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
     }
   });
   return {
-    dispose() { whatsappQr.dispose(); },
-    isBusy: () => pendingWrites > 0 || Boolean(ai?.isBusy()),
+    dispose() { whatsapp.dispose(); whatsappQr.dispose(); },
+    isBusy: () => pendingWrites > 0 || Boolean(ai?.isBusy()) || whatsapp.isBusy(),
+    draftSignature: () => whatsapp.draftSignature(),
     hasUnsavedChanges() {
-      return Boolean(ai?.hasUnsavedChanges()) || currentState() !== (savedState ?? initialState) ||
+      return whatsapp.hasUnsavedChanges() || Boolean(ai?.hasUnsavedChanges()) || currentState() !== (savedState ?? initialState) ||
         (!setupForm.hidden && JSON.stringify([setupForm.elements.mode.value, setupForm.elements.shopName.value]) !== setupBaseline);
     },
     refreshLocale() {

@@ -619,3 +619,37 @@ body{background:var(--ui-canvas)}
 .team-handoff{display:grid;gap:var(--ui-space-4);min-width:0}.team-handoff h3{margin:0;font-size:18px;line-height:1.5}.team-handoff p{margin:0}
 .team-handoff>button{justify-self:start;min-height:44px}.team-email-details{min-width:0}.team-email-details>summary{min-height:44px;cursor:pointer;font-size:var(--ui-font-sm);line-height:1.6}
 .team-handoff .team-editor-actions{justify-content:flex-end}.team-handoff .team-editor-actions button{min-width:90px}
+/* WhatsApp Cloud setup: scoped step layout, separate from the QR provider card. */
+.wa-cloud{min-width:0;max-width:none}
+.wa-cloud>h2{margin-bottom:8px}.wa-cloud>p{max-width:80ch}
+.wa-cloud-environments,.wa-cloud-nav,.wa-cloud-next,.wa-cloud-counts{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
+.wa-cloud-environments button[aria-pressed=true],.wa-cloud-nav button[aria-current=step]{border-color:var(--ui-primary);background:var(--ui-hover-surface);color:var(--ui-text)}
+.wa-cloud-overview{padding:16px;border:1px solid var(--ui-border);border-radius:12px;background:var(--ui-surface)}
+.wa-cloud-overview p{margin:8px 0 0;font-size:var(--ui-font-md)}
+.wa-cloud-nav button{flex:1 1 150px;text-align:left}
+.wa-cloud-step{border:1px solid var(--ui-border);border-radius:12px;margin:12px 0;padding:0 18px;min-width:0;overflow-wrap:anywhere;background:var(--ui-surface)}
+.wa-cloud-step>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;min-height:60px;padding:10px 0;font-weight:700;list-style:none}
+.wa-cloud-step>summary::-webkit-details-marker{display:none}.wa-cloud-step>summary:focus-visible,.wa-cloud-help>summary:focus-visible{outline:3px solid var(--ui-focus);outline-offset:3px}
+.wa-cloud-step>summary>.ui-icon,.wa-cloud-help>summary>.ui-icon{width:18px;height:18px;transform:rotate(-90deg)}.wa-cloud-step[open]>summary>.ui-icon,.wa-cloud-help[open]>summary>.ui-icon{transform:none}.wa-cloud-step>summary>span:not(.wa-cloud-step-status){flex:1}
+.wa-cloud-step-status{font-size:var(--ui-font-sm);font-weight:400;max-width:45%;text-align:right;color:var(--ui-muted)}
+.wa-cloud [data-state=PASS]{color:var(--ui-primary)}
+.wa-cloud-step>p,.wa-cloud-help,.wa-cloud-hint,.wa-cloud-check{font-size:var(--ui-font-md);line-height:1.55}
+.wa-cloud-step>p:last-child{margin-bottom:20px}
+.wa-cloud-step .whatsapp-form{margin:8px 0 20px;max-width:860px}
+.wa-cloud-input-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:8px}
+.wa-cloud-input-row label{gap:4px}.wa-cloud-input-row code{font-size:var(--ui-font-sm);font-weight:400;color:var(--ui-muted);overflow-wrap:anywhere}
+.wa-cloud-input-row button{min-width:70px}
+.wa-cloud-help{border-top:1px solid var(--ui-border);padding:10px 0;margin:12px 0}
+.wa-cloud-help>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;gap:8px;font-weight:700}
+
+.wa-cloud .whatsapp-copy-row{grid-template-columns:minmax(0,1fr) 44px auto;margin:14px 0 0}.wa-cloud .whatsapp-copy-row:has(button:last-child:nth-child(2)){grid-template-columns:minmax(0,1fr) 44px}
+.wa-cloud .whatsapp-copy-row button{min-width:44px;padding:10px}.wa-cloud .whatsapp-copy-row .ui-icon{width:20px;height:20px}
+.wa-cloud-check{display:grid;grid-template-columns:minmax(130px,180px) minmax(0,1fr);gap:12px;padding:12px 0;border-bottom:1px solid var(--ui-border)}
+.wa-cloud-records>div{display:grid;grid-template-columns:minmax(0,2fr) minmax(65px,1fr) minmax(0,1fr);gap:10px;padding:12px 0;border-bottom:1px solid var(--ui-border)}
+.wa-cloud-counts>span{padding:6px 10px;background:var(--ui-hover-surface);border-radius:8px;font-size:var(--ui-font-md)}
+.wa-cloud a.secondary-button{display:inline-flex;align-items:center;min-height:44px;padding:10px 14px;box-sizing:border-box;margin-bottom:16px}
+@media(max-width:600px){.wa-cloud-step{padding:0 12px}.wa-cloud-step>summary{flex-wrap:wrap}.wa-cloud-step-status{max-width:none}.wa-cloud-check{grid-template-columns:1fr;gap:4px}.wa-cloud-records>div{grid-template-columns:1fr;gap:4px}.wa-cloud-nav button{flex-basis:calc(50% - 8px)}.wa-cloud .whatsapp-copy-row{grid-template-columns:minmax(0,1fr) 44px auto}.wa-cloud .whatsapp-copy-row button{justify-self:stretch}.wa-cloud-input-row{grid-template-columns:minmax(0,1fr) auto}}
+
+.wa-cloud-field{display:grid;gap:4px;min-width:0}.wa-cloud-field>small{font-size:var(--ui-font-sm);font-weight:400;line-height:1.4;color:var(--ui-muted)}
+
+.wa-cloud .whatsapp-form>p{margin:0}.wa-cloud .whatsapp-form>.wa-cloud-help{margin:0}.wa-cloud .whatsapp-form{gap:14px}

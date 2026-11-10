@@ -1,5 +1,8 @@
 import { apiUrl } from '../shared/base-path.js';
 import { messages, t, translate, formatDate } from '../shared/i18n.js';
+import './whatsapp-cloud-copy.js';
+import { cloudProjection, invalidCredentialField } from './whatsapp-cloud-state.js';
+import { icon } from '../shared/icons.js';
 import { confirmModal } from '../shared/modal.js';
 
 const keys = ['waHeading', 'waIntro', 'waCallback', 'waCopy', 'waCopied', 'waSelectCopy', 'waSandbox', 'waProduction', 'waConnected', 'waNotConnected', 'waError', 'waSecretHint', 'waPhone', 'waName', 'waChecked', 'waNever', 'waVerifyToken', 'waWebhookHelp', 'waAccessToken', 'waAppSecret', 'waPhoneId', 'waBusinessId', 'waConnect', 'waUpdate', 'waDisconnect', 'waDisconnectConfirm', 'waRejected', 'waProviderUnavailable', 'waRateLimited', 'waUnavailable', 'waForbidden', 'waInvalid', 'waFailed'];
@@ -108,196 +111,206 @@ for (const [locale, values] of Object.entries(setupTranslations))
   Object.assign(messages[locale], Object.fromEntries(Object.keys(setupCopy).map((key, index) => [key, values[index]])));
 
 export function mountWhatsAppConnection(root, { csrfToken, onUnauthorized, request }) {
-  const section = document.createElement('section');
-  section.className = 'settings-card integration-status-card whatsapp-connection-card';
-  section.hidden = true;
-  root.append(section);
-  const identity = csrfToken();
-  let epoch = 0;
-  const current = ticket => section.isConnected && ticket === epoch && csrfToken() === identity;
-  const blocks = [];
-  function element(tag, key, className) {
-    const node = document.createElement(tag);
-    if (key) { node.dataset.i18n = key; node.textContent = t(key); }
-    if (className) node.className = className;
-    return node;
-  }
-  function statusLine() {
-    const line = element('p', null, 'whatsapp-status');
-    line.setAttribute('role', 'status'); line.setAttribute('aria-live', 'polite');
-    return line;
-  }
-  function setStatus(line, key) {
-    line.dataset.i18n = key; line.textContent = key ? t(key) : '';
-  }
-  function copyField(parent, key, value) {
-    const label = element('label', null, 'whatsapp-copy-field');
-    const row = element('div', null, 'whatsapp-copy-row');
-    const input = element('input'); input.readOnly = true; input.value = value || ''; input.autocomplete = 'off';
-    const button = element('button', 'waCopy', 'secondary-button'); button.type = 'button'; button.disabled = !input.value;
-    button.dataset.i18nAria = key; button.setAttribute('aria-label', t(key) + ': ' + t('waCopy'));
-    const line = statusLine();
-    button.addEventListener('click', async () => {
-      try {
-        if (!navigator.clipboard?.writeText) throw new Error('clipboard');
-        await navigator.clipboard.writeText(input.value);
-        setStatus(line, 'waCopied');
-      } catch { input.focus(); input.select(); setStatus(line, 'waSelectCopy'); }
-    });
-    // Keep the button outside the label so clicking it does not focus the input.
-    label.append(element('span', key), input); row.append(label, button); parent.append(row, line);
-  }
-  function mountGuide() {
-    const guide = element('details');
-    guide.append(element('summary', 'waGuide'));
-    for (const key of ['waStep1', 'waStep2', 'waStep3', 'waStep4', 'waLanguages']) guide.append(element('p', key));
-    const table = element('table');
-    const header = element('tr'); header.append(element('th', 'waTemplateName'), element('th', 'waTemplateBody')); table.append(header);
-    for (const [name, body] of [
-      ['order_submitted', 'Hello {{1}}, we received your order {{2}}.'],
-      ['order_confirmed', 'Hello {{1}}, your order {{2}} is confirmed.'],
-      ['order_rejected', 'Hello {{1}}, we cannot accept your order {{2}}.'],
-      ['order_shipped', 'Hello {{1}}, your order {{2}} has shipped with {{3}}. Tracking number: {{4}}.'],
-    ]) {
-      const row = element('tr');
-      for (const text of [name, body]) { const cell = element('td'); cell.textContent = text; row.append(cell); }
-      table.append(row);
+  const el = (tag, key, className) => { const node = document.createElement(tag); if (key) { node.dataset.i18n = key; node.textContent = t(key); } if (className) node.className = className; return node; };
+  const button = (key, action, className = 'secondary-button') => { const node = el('button', key, className); node.type = 'button'; node.addEventListener('click', action); return node; };
+  const privateField = input => { input.dataset.privateDraft = 'true'; input.dataset.privateDraftRevision = '0'; input.autocomplete = 'off'; return input; };
+  const summary = key => { const node = el('summary'); node.append(icon('chevronDown')); if (key) node.append(el('span', key)); return node; };
+  const status = () => { const node = el('p', null, 'whatsapp-status'); node.hidden = true; node.setAttribute('role', 'status'); return node; };
+  const setStatus = (node, key) => { node.dataset.i18n = key; node.textContent = key ? t(key) : ''; node.hidden = !key; };
+  const section = el('section', null, 'settings-card whatsapp-connection-card wa-cloud'); root.append(section);
+  const identity = csrfToken(), confirmations = new AbortController();
+  let disposed = false, sequence = 0, busy = false, availability = 'loading', selected = 'PRODUCTION', revision = 0, callback = '', pendingBody = null;
+  const invalidateCopies = () => { for (const env of environments.values()) for (const field of [env.callback, env.verify]) { field.sequence++; field.job.value = ''; field.pending = false; } };
+  const current = ticket => !disposed && section.isConnected && csrfToken() === identity && (ticket === undefined || ticket === sequence);
+  const changed = () => document.dispatchEvent(new Event('updateguardchange'));
+  const heading = el('h2', 'waCloud_title'), intro = el('p', 'waIntro'), feedback = status();
+  const retry = button('retry', () => load()); retry.classList.add('wa-cloud-retry');
+  const environmentBar = el('div', null, 'wa-cloud-environments'); environmentBar.setAttribute('role', 'group');
+  const overview = el('div', null, 'wa-cloud-overview'), next = el('div', null, 'wa-cloud-next');
+  const nav = el('nav', null, 'wa-cloud-nav');
+  section.append(heading, intro, feedback, retry, environmentBar, overview, next, nav);
+  const environments = new Map(), envButtons = new Map();
+  const hasDraft = env => Boolean(env.fields.accessToken.value || env.fields.appSecret.value || ['phoneNumberId', 'businessAccountId'].some(field => env.fields[field].value !== (env.connection?.publicConfig?.[field] || '')));
+  const stepKeys = ['waCloud_meta', 'waCloud_credentials', 'waCloud_webhook', 'waCloud_templates'];
+  const stamp = value => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? formatDate(value) : t('waNever');
+  const evidenceKey = value => value === 'PASS' ? 'waCloud_pass' : value === 'FAIL' ? 'waCloud_fail' : 'waCloud_unknown';
+  function clearSensitive() {
+    if (pendingBody) { delete pendingBody.accessToken; delete pendingBody.appSecret; pendingBody = null; }
+    for (const env of environments.values()) {
+      env.fields.accessToken.value = ''; env.fields.appSecret.value = ''; env.fields.accessToken.type = 'password'; env.fields.appSecret.type = 'password'; env.verify.input.value = ''; env.verify.job.value = ''; env.callback.job.value = ''; env.verify.sequence++; env.callback.sequence++; env.verify.pending = false; env.callback.pending = false; env.dirty = false;
+      if (env.connection?.publicConfig) env.connection = { ...env.connection, publicConfig: { ...env.connection.publicConfig, verifyToken: '' } };
     }
-    guide.append(table, element('p', 'waReadinessLimit'));
-    return guide;
+    revision++; changed();
   }
-  function mountEnvironment(environment, connection, ticket) {
-    const block = element('article', null, 'whatsapp-environment');
-    const details = element('div', null, 'whatsapp-details');
-    const form = element('form', null, 'whatsapp-form');
-    const fields = {};
-    for (const [name, key, password] of [['accessToken', 'waAccessToken', true], ['appSecret', 'waAppSecret', true], ['phoneNumberId', 'waPhoneId', false], ['businessAccountId', 'waBusinessId', false]]) {
-      const label = element('label'); const input = element('input');
-      input.name = name; input.type = password ? 'password' : 'text'; input.autocomplete = 'off'; input.required = true;
-      if (!password) { input.inputMode = 'numeric'; input.pattern = '[0-9]{5,32}'; input.minLength = 5; input.maxLength = 32; }
-      label.append(element('span', key), input); form.append(label); fields[name] = input;
-    }
-    const actions = element('div', null, 'whatsapp-actions');
-    const submit = element('button', 'waConnect', 'primary-button'); submit.type = 'submit';
-    const disconnect = element('button', 'waDisconnect', 'secondary-button'); disconnect.type = 'button';
-    const line = statusLine();
-    const readiness = element('button', 'waReadiness', 'secondary-button'); readiness.type = 'button';
-    const readinessResult = element('div');
-    readinessResult.setAttribute('role', 'status'); readinessResult.setAttribute('aria-live', 'polite');
-    readiness.addEventListener('click', async () => {
-      if (busy || !current(ticket)) return;
-      busy = true; readiness.disabled = true; submit.disabled = true; disconnect.disabled = true;
+  function copyField(parent, key, sensitive = false) {
+    const row = el('div', null, 'whatsapp-copy-row'), label = el('label', null, 'whatsapp-copy-field'), input = el('input'); input.readOnly = true; input.autocomplete = 'off'; if (sensitive) { privateField(input); input.type = 'password'; }
+    label.append(el('span', key), input); const line = status();
+    const state = { input, line, sequence: 0, pending: false, job: { value: '' } };
+    const copy = button('waCopy', async () => {
+      if (!current() || busy || !input.value || state.pending || copy.disabled) return;
+      const ticket = sequence, copyTicket = ++state.sequence, snapshot = { value: input.value }; state.job = snapshot; state.pending = true; copy.disabled = true;
       try {
-        const response = await fetch(apiUrl(`v1/seller/integrations/whatsapp/${environment}/readiness`), { cache: 'no-store' });
-        if (!current(ticket)) return;
-        if (response.status === 401) { onUnauthorized(); return; }
-        if (!response.ok) { showError({ code: response.status === 429 ? 'RATE_LIMITED' : 'PROVIDER_UNAVAILABLE' }); return; }
-        const result = await response.json();
-        if (!current(ticket)) return;
-        readinessResult.replaceChildren();
-        const checked = element('p'); checked.textContent = formatDate(result.checkedAt); readinessResult.append(checked);
-        const labels = { phoneOwnership: 'waPhoneOwnership', appSubscription: 'waAppSubscription', templates: 'waTemplatesCheck', appSecret: 'waAppSecretCheck' };
-        for (const check of result.checks) {
-          const row = element('p'), badge = element('strong');
-          badge.textContent = check.status;
-          row.append(badge, element('span', labels[check.id]));
-          readinessResult.append(row);
-        }
-        const table = element('table');
-        for (const template of result.templates) {
-          const row = element('tr');
-          for (const value of [template.name, template.language, template.status]) {
-            const cell = element('td'); cell.textContent = value; row.append(cell);
-          }
-          table.append(row);
-        }
-        readinessResult.append(table, element('p', 'waUnknownHelp'));
-      } catch { if (current(ticket)) showError({ code: 'PROVIDER_UNAVAILABLE' }); }
-      finally { busy = false; readiness.disabled = false; submit.disabled = false; disconnect.disabled = false; }
+        if (typeof navigator.clipboard?.writeText !== 'function') throw new Error('clipboard');
+        await navigator.clipboard.writeText(snapshot.value);
+        if (current(ticket) && copyTicket === state.sequence) setStatus(line, 'waCopied');
+      } catch {
+        if (current(ticket) && copyTicket === state.sequence) { if (sensitive) input.type = 'text'; input.focus(); input.select(); setStatus(line, 'waSelectCopy'); }
+      } finally { snapshot.value = ''; if (current(ticket) && copyTicket === state.sequence && state.job === snapshot) { state.pending = false; render(); } }
     });
-    actions.append(submit, disconnect); form.append(actions, line);
-    form.append(readiness, readinessResult);
-    block.append(element('h3', environment === 'SANDBOX' ? 'waSandbox' : 'waProduction'), details, form);
-    let state = connection, busy = false;
-    function renderDetails(hydrate = false) {
-      const connected = state?.status === 'CONNECTED';
-      readiness.hidden = !connected;
-      const config = state?.publicConfig || {};
-      details.replaceChildren(element('strong', connected ? 'waConnected' : state?.status === 'ERROR' ? 'waError' : 'waNotConnected'));
-      const entries = [['waPhone', config.displayPhoneNumber], ['waName', config.verifiedName]];
-      if (connected) entries.unshift(['waSecretHint', state.secretHint]);
-      let checked = t('waNever');
-      if (state?.lastCheckedAt) { try { checked = formatDate(state.lastCheckedAt); } catch { /* Invalid timestamps stay unavailable. */ } }
-      entries.push(['waChecked', checked]);
-      const list = element('dl');
-      for (const [key, value] of entries) {
-        const text = element('dd'); text.textContent = value || '—'; list.append(element('dt', key), text);
+    copy.replaceChildren(icon('copy')); copy.removeAttribute('data-i18n'); copy.dataset.copyLabel = key;
+    row.append(label, copy);
+    if (sensitive) { const reveal = button('waCloud_show', () => { input.type = input.type === 'password' ? 'text' : 'password'; render(); }); reveal.dataset.revealField = key; state.reveal = reveal; row.append(reveal); }
+    state.copy = copy; parent.append(row, line); return state;
+  }
+  function step(env, index) {
+    const card = el('details', null, 'wa-cloud-step'); card.dataset.step = String(index + 1); card.id = `wa-cloud-${env.name.toLowerCase()}-${index + 1}`;
+    const stepSummary = summary(), title = el('span', stepKeys[index]), marker = el('span', null, 'wa-cloud-step-status'); stepSummary.append(title, marker); card.append(stepSummary); env.container.append(card);
+    const control = button(stepKeys[index], () => { card.open = true; env.activeStep = index + 1; render(); stepSummary.focus({ preventScroll: true }); card.scrollIntoView({ block: 'nearest', behavior: 'instant' }); }); control.dataset.stepTarget = String(index + 1); control.setAttribute('aria-controls', card.id);
+    card.addEventListener('toggle', () => { if (card.open && env.activeStep !== index + 1 && current()) { env.activeStep = index + 1; render(); } });
+    env.steps.push({ card, summary: stepSummary, title, marker, control }); return card;
+  }
+  for (const name of ['PRODUCTION', 'SANDBOX']) {
+    const envButton = button(name === 'PRODUCTION' ? 'waProduction' : 'waSandbox', () => { if (busy || !current()) return; selected = name; render(); }); envButton.dataset.environment = name; environmentBar.append(envButton); envButtons.set(name, envButton);
+    const env = { name, connection: null, readiness: null, dirty: false, activeStep: 2, fields: {}, steps: [], initialized: false };
+    env.container = el('div', null, 'wa-cloud-environment'); env.container.dataset.environment = name; section.append(env.container); environments.set(name, env);
+    const meta = step(env, 0); meta.append(el('p', 'waCloud_metaHelp')); const link = el('a', 'waCloud_openMeta', 'secondary-button'); link.href = 'https://developers.facebook.com/apps/'; link.target = '_blank'; link.rel = 'noopener noreferrer'; meta.append(link);
+    const credentials = step(env, 1), form = el('form', null, 'whatsapp-form'); form.noValidate = true; env.form = form;
+    for (const [field, key, min, max, sensitive] of [['accessToken', 'waAccessToken', 20, 512, true], ['appSecret', 'waAppSecret', 16, 128, true], ['phoneNumberId', 'waPhoneId', 5, 32, false], ['businessAccountId', 'waBusinessId', 5, 32, false]]) {
+      const label = el('label'), input = el('input'); input.name = field; input.id = `wa-${name.toLowerCase()}-${field}`; input.type = sensitive ? 'password' : 'text'; input.required = true; input.minLength = min; input.maxLength = max; input.autocomplete = 'off'; input.spellcheck = false;
+      if (sensitive) privateField(input); else { input.inputMode = 'numeric'; input.pattern = '[0-9]{5,32}'; }
+      const text = el('span', key); const identifier = el('code'); identifier.dataset.credentialIdentifier = key; identifier.textContent = { accessToken: 'Access token', appSecret: 'App Secret', phoneNumberId: 'Phone Number ID', businessAccountId: 'WhatsApp Business Account ID' }[field];
+      const row = el('div', null, 'wa-cloud-input-row'); const rule = el('small'); rule.dataset.credentialRule = field; rule.id = `${input.id}-rule`; rule.textContent = sensitive ? `${min}–${max} · ${t('waCloud_noWhitespace')}` : `5–32 · ${t('waCloud_digits')}`; label.append(text, identifier, input); row.append(label); const group = el('div', null, 'wa-cloud-field'); group.append(row, rule);
+      if (sensitive) { const reveal = button('waCloud_show', () => { input.type = input.type === 'password' ? 'text' : 'password'; render(); }); reveal.dataset.credentialReveal = field; row.append(reveal); }
+      form.append(group); env.fields[field] = input;
+      input.addEventListener('input', () => { env.invalidField = null; env.dirty = hasDraft(env); revision++; for (const value of Object.values(env.fields)) value.dataset.privateDraftRevision = String(revision); input.removeAttribute('aria-invalid'); setStatus(env.line, ''); changed(); });
+    }
+    const help = el('details', null, 'wa-cloud-help'); help.append(summary('waCloud_fieldHelp'), el('p', 'waCloud_tokenHelp'), el('p', 'waCloud_idsHelp'));
+    env.secretHint = el('p', null, 'wa-cloud-hint'); env.line = status(); env.line.id = `wa-${name.toLowerCase()}-feedback`; env.line.tabIndex = -1;
+    for (const input of Object.values(env.fields)) input.setAttribute('aria-describedby', `${input.id}-rule ${env.line.id}`);
+    const actions = el('div', null, 'whatsapp-actions'); env.save = el('button', 'waConnect', 'primary-button'); env.save.type = 'submit';
+    env.disconnect = button('waDisconnect', async () => {
+      if (busy || !current()) return; busy = true; changed(); render();
+      const ticket = sequence;
+      const accepted = await confirmModal(t('waCloud_disconnectEnv').replace('{environment}', t(name === 'PRODUCTION' ? 'waProduction' : 'waSandbox')), { title: t('waDisconnect'), confirmLabel: t('waDisconnect'), signal: confirmations.signal });
+      if (!current(ticket)) return; busy = false;
+      if (accepted) await mutate(env, 'DELETE'); else { render(); changed(); }
+    }); actions.append(env.save, env.disconnect); form.append(el('p', 'waCloud_allFields'), env.secretHint, help, actions, env.line); credentials.append(form);
+    form.addEventListener('submit', event => { event.preventDefault(); mutate(env, 'PUT'); });
+    const webhook = step(env, 2); env.prerequisite = el('div'); env.prerequisite.append(el('p', 'waCloud_prerequisite'), button('waCloud_credentials', () => env.steps[1].control.click()));
+    env.webhook = el('div'); env.callback = copyField(env.webhook, 'waCallback'); env.verify = copyField(env.webhook, 'waVerifyToken', true);
+    env.webhook.append(el('p', 'waCloud_webhookAction'), el('p', 'waCloud_subscribeAction'), el('p', 'waCloud_noHandshake'));
+    env.checkLine = status();
+    env.check = button('waReadiness', () => checkReadiness(env)); env.checks = el('div', null, 'wa-cloud-checks'); webhook.append(env.prerequisite, env.webhook, env.check, env.checkLine, env.checks, el('p', 'waUnknownHelp'));
+    const templates = step(env, 3); env.counts = el('div', null, 'wa-cloud-counts'); env.matrix = el('details', null, 'wa-cloud-help'); env.matrix.append(summary('waCloud_matrix')); env.records = el('div', null, 'wa-cloud-records'); env.matrix.append(env.records);
+    const reference = el('details', null, 'wa-cloud-help'); reference.append(summary('waCloud_reference'), el('p', 'waStep4'), el('p', 'waLanguages'));
+    for (const [template, body] of [['order_submitted', 'Hello {{1}}, we received your order {{2}}.'], ['order_confirmed', 'Hello {{1}}, your order {{2}} is confirmed.'], ['order_rejected', 'Hello {{1}}, we cannot accept your order {{2}}.'], ['order_shipped', 'Hello {{1}}, your order {{2}} has shipped with {{3}}. Tracking number: {{4}}.']]) { const row = el('p'), code = el('code'); code.textContent = template; row.append(code, document.createTextNode(`: ${body}`)); reference.append(row); }
+    env.templateCheck = button('waReadiness', () => checkReadiness(env)); env.templateLine = status();
+    templates.append(env.templateCheck, env.templateLine, env.counts, env.matrix, reference, el('p', 'waReadinessLimit'));
+  }
+  function render() {
+    if (!current()) return;
+    translate(section); retry.hidden = availability === 'ready' || busy; environmentBar.hidden = availability === 'loading';
+    environmentBar.setAttribute('aria-label', `${t('waProduction')} / ${t('waSandbox')}`);
+    section.setAttribute('aria-busy', String(busy));
+    nav.replaceChildren(); overview.replaceChildren(); next.replaceChildren();
+    for (const env of environments.values()) {
+      const chosen = env.name === selected, state = cloudProjection(env.connection, env.readiness, availability); env.container.hidden = !chosen || availability === 'loading';
+      envButtons.get(env.name).setAttribute('aria-pressed', String(chosen)); envButtons.get(env.name).disabled = busy;
+      for (const input of Object.values(env.fields)) input.disabled = busy || availability !== 'ready';
+      const statuses = ['waCloud_external', state.connected ? 'waConnected' : state.connectionStatus === 'DISCONNECTED' ? 'waNotConnected' : 'waCloud_unknown', evidenceKey(state.webhookStatus), evidenceKey(state.templateStatus)];
+      env.steps.forEach((entry, index) => { entry.title.textContent = `${index + 1}. ${t(stepKeys[index])}`; entry.marker.textContent = t(statuses[index]); entry.marker.dataset.state = index === 2 ? state.webhookStatus : index === 3 ? state.templateStatus : ''; entry.control.textContent = `${index + 1}. ${t(stepKeys[index])}`; entry.control.setAttribute('aria-current', env.activeStep === index + 1 ? 'step' : 'false'); if (chosen) nav.append(entry.control); });
+      env.save.textContent = t(state.connected ? 'waUpdate' : 'waConnect'); env.save.disabled = busy || availability !== 'ready'; env.disconnect.hidden = !state.connected; env.disconnect.disabled = busy || availability !== 'ready';
+      env.secretHint.hidden = !env.connection?.secretHint; env.secretHint.textContent = env.connection?.secretHint ? `${t('waSecretHint')}: ${env.connection.secretHint}` : '';
+      for (const identifier of env.form.querySelectorAll('[data-credential-identifier]')) identifier.hidden = t(identifier.dataset.credentialIdentifier).toLowerCase() === identifier.textContent.toLowerCase();
+      for (const rule of env.form.querySelectorAll('[data-credential-rule]')) { const field = env.fields[rule.dataset.credentialRule]; rule.textContent = `${field.minLength}–${field.maxLength} · ${t(['accessToken', 'appSecret'].includes(field.name) ? 'waCloud_noWhitespace' : 'waCloud_digits')}`; }
+      for (const reveal of env.form.querySelectorAll('[data-credential-reveal]')) { const field = env.fields[reveal.dataset.credentialReveal]; const key = field.type === 'password' ? 'waCloud_show' : 'waCloud_hide'; reveal.textContent = t(key); reveal.setAttribute('aria-label', `${t(key)}: ${t(field.name === 'accessToken' ? 'waAccessToken' : 'waAppSecret')}`); reveal.disabled = busy || availability !== 'ready'; }
+      const config = env.connection?.publicConfig || {}, hasWebhook = state.connected && typeof config.verifyToken === 'string' && Boolean(config.verifyToken);
+      env.webhook.hidden = !hasWebhook; env.prerequisite.hidden = hasWebhook; env.check.disabled = busy || availability !== 'ready' || !state.connected; env.templateCheck.disabled = env.check.disabled;
+      for (const [field, value] of [[env.callback, callback], [env.verify, hasWebhook ? config.verifyToken : '']]) {
+        if (field.input.value !== value) { if (field === env.verify) field.input.type = 'password'; field.sequence++; field.job.value = ''; field.pending = false; field.input.value = value; revision++; field.input.dataset.privateDraftRevision = String(revision); setStatus(field.line, ''); }
+        field.copy.disabled = field.pending || busy || availability !== 'ready' || !value; field.copy.setAttribute('aria-label', `${t(field.copy.dataset.copyLabel)}: ${t('waCopy')}`);
+        if (field.reveal) { const key = field.input.type === 'password' ? 'waCloud_show' : 'waCloud_hide'; field.reveal.textContent = t(key); field.reveal.setAttribute('aria-label', `${t(key)}: ${t('waVerifyToken')}`); field.reveal.disabled = busy || !value; }
       }
-      details.append(list);
-      // The verify token only exists once an account has been connected; before that there is nothing to paste into Meta.
-      if (config.verifyToken) { copyField(details, 'waVerifyToken', config.verifyToken); details.append(element('p', 'waWebhookHelp')); }
-      submit.dataset.i18n = connected ? 'waUpdate' : 'waConnect'; submit.textContent = t(submit.dataset.i18n);
-      disconnect.hidden = !connected;
-      if (hydrate) { fields.phoneNumberId.value = config.phoneNumberId || ''; fields.businessAccountId.value = config.businessAccountId || ''; }
+      env.checks.replaceChildren();
+      for (const id of ['phoneOwnership', 'appSubscription', 'appSecret']) { const row = el('div', null, 'wa-cloud-check'), badge = el('strong', evidenceKey(state.checks[id])); badge.dataset.state = state.checks[id]; row.dataset.check = id; row.append(badge, el('span', { phoneOwnership: 'waPhoneOwnership', appSubscription: 'waAppSubscription', appSecret: 'waAppSecretCheck' }[id])); env.checks.append(row); }
+      env.counts.replaceChildren();
+      for (const [statusName, key] of [['APPROVED', 'approved'], ['PENDING', 'pending'], ['REJECTED', 'rejected'], ['MISSING', 'missing'], ['UNKNOWN', 'unknown']]) { const count = el('span'); count.textContent = `${t(`waCloud_${key}`)}: ${state.counts[statusName]}`; env.counts.append(count); }
+      if (!state.templates.length) env.counts.append(el('p', env.readiness ? 'waCloud_unknown' : 'waCloud_notChecked'));
+      env.records.replaceChildren();
+      for (const record of state.templates) { const row = el('div'), name = el('code'), language = el('code'), badge = el('span'); name.textContent = record.name || t('waCloud_unknown'); language.textContent = record.language || t('waCloud_unknown'); badge.textContent = t(`waCloud_${{ APPROVED: 'approved', PENDING: 'pending', REJECTED: 'rejected', MISSING: 'missing', UNKNOWN: 'unknown' }[record.status]}`); row.append(name, language, badge); env.records.append(row); }
+      if (chosen) {
+        nav.setAttribute('aria-label', t('waGuide'));
+        const label = t(env.name === 'PRODUCTION' ? 'waProduction' : 'waSandbox');
+        const badge = el('strong'); badge.textContent = `${label} · ${t(state.connected ? 'waConnected' : state.connectionStatus === 'DISCONNECTED' ? 'waNotConnected' : state.connectionStatus === 'ERROR' ? 'waError' : 'waCloud_unknown')}`;
+        const connectionTime = el('p'); connectionTime.textContent = `${t('waChecked')}: ${stamp(env.connection?.lastCheckedAt)}`;
+        const readinessTime = el('p'); readinessTime.textContent = `${t('waCloud_checkTime')}: ${state.checkedAt ? stamp(state.checkedAt) : t('waCloud_notChecked')}`;
+        overview.append(badge, connectionTime, readinessTime);
+        const action = button('waCloud_next', () => env.steps[state.nextStep - 1].control.click()); action.textContent = `${t('waCloud_next')}: ${t(stepKeys[state.nextStep - 1])}`; if (availability === 'ready') next.append(action); else { const explanation = el('p', availability === 'loading' ? 'loading' : availability === 'forbidden' ? 'waForbidden' : availability === 'unavailable' ? 'waUnavailable' : 'waProviderUnavailable'); next.append(explanation); }
+      }
     }
-    function showError(error) {
-      const errors = { CONNECTION_REJECTED: 'waRejected', PROVIDER_UNAVAILABLE: 'waProviderUnavailable', RATE_LIMITED: 'waRateLimited', INTEGRATIONS_UNAVAILABLE: 'waUnavailable', FORBIDDEN: 'waForbidden', INVALID_INPUT: 'waInvalid' };
-      const key = errors[error.code] || 'waFailed';
-      setStatus(line, key);
-      const field = error.code === 'INVALID_INPUT' && Object.hasOwn(fields, error.field) ? fields[error.field] : null;
-      if (field) { field.setAttribute('aria-invalid', 'true'); field.focus(); }
-    }
-    async function mutate(method) {
-      if (busy || !current(ticket)) return;
-      busy = true; submit.disabled = true; disconnect.disabled = true; setStatus(line, '');
-      for (const field of Object.values(fields)) field.removeAttribute('aria-invalid');
-      try {
-        const body = method === 'PUT' ? {
-          accessToken: fields.accessToken.value,
-          appSecret: fields.appSecret.value,
-          phoneNumberId: fields.phoneNumberId.value,
-          businessAccountId: fields.businessAccountId.value,
-        } : {};
-        const result = await request(method, apiUrl(`v1/seller/integrations/whatsapp/${environment}`), body, csrfToken, () => { if (current(ticket)) onUnauthorized(); });
-        fields.accessToken.value = ''; fields.appSecret.value = '';
-        if (!current(ticket)) return;
-        state = result; renderDetails(true);
-        readinessResult.replaceChildren();
-      } catch (error) { if (current(ticket) && error.message !== 'unauthorized') showError(error); }
-      finally { busy = false; submit.disabled = false; disconnect.disabled = false; }
-    }
-    form.addEventListener('submit', event => { event.preventDefault(); mutate('PUT'); });
-    disconnect.addEventListener('click', async () => {
-      if (busy || !current(ticket)) return;
-      busy = true; submit.disabled = true; disconnect.disabled = true;
-      const accepted = await confirmModal(t('waDisconnectConfirm'), { title: t('waDisconnect'), confirmLabel: t('waDisconnect') });
-      busy = false; submit.disabled = false; disconnect.disabled = false;
-      if (accepted && current(ticket)) mutate('DELETE');
-    });
-    renderDetails(true); blocks.push({ renderDetails });
-    return block;
+  }
+  function showError(env, error) {
+    const key = { CONNECTION_REJECTED: 'waRejected', PROVIDER_UNAVAILABLE: 'waProviderUnavailable', RATE_LIMITED: 'waRateLimited', INTEGRATIONS_UNAVAILABLE: 'waUnavailable', FORBIDDEN: 'waForbidden', INVALID_INPUT: 'waInvalid' }[error.code] || 'waFailed';
+    setStatus(env.line, key); setStatus(env.checkLine, key); setStatus(env.templateLine, key);
+    if (error.code === 'FORBIDDEN') { availability = 'forbidden'; clearSensitive(); setStatus(feedback, 'waForbidden'); }
+    if (error.code === 'INVALID_INPUT' && Object.hasOwn(env.fields, error.field)) { env.fields[error.field].setAttribute('aria-invalid', 'true'); env.invalidField = error.field; env.fields[error.field].focus(); }
+  }
+  async function mutate(env, method) {
+    if (!current() || busy || availability !== 'ready') return;
+    env.invalidField = null;
+    const body = method === 'PUT' ? Object.fromEntries(Object.entries(env.fields).map(([key, input]) => [key, input.value])) : {};
+    const field = method === 'PUT' ? invalidCredentialField(body) : null;
+    if (field) { showError(env, { code: 'INVALID_INPUT', field }); delete body.accessToken; delete body.appSecret; return; }
+    const ticket = ++sequence; invalidateCopies(); pendingBody = body; busy = true; env.readiness = null; setStatus(env.line, ''); changed(); render();
+    try {
+      const result = await request(method, apiUrl(`v1/seller/integrations/whatsapp/${env.name}`), body, csrfToken, () => { if (current(ticket)) { clearSensitive(); onUnauthorized(); } });
+      delete body.accessToken; delete body.appSecret;
+      if (!current(ticket)) return;
+      env.connection = result; env.readiness = null; env.fields.accessToken.value = ''; env.fields.appSecret.value = ''; env.fields.accessToken.type = 'password'; env.fields.appSecret.type = 'password'; env.dirty = false; revision++;
+      for (const field of ['phoneNumberId', 'businessAccountId']) env.fields[field].value = result?.publicConfig?.[field] || '';
+      env.activeStep = method === 'PUT' && result?.publicConfig?.verifyToken ? 3 : 2; env.steps[env.activeStep - 1].card.open = true;
+      setStatus(env.line, method === 'PUT' ? 'waCloud_saved' : 'waCloud_disconnected'); setStatus(env.checkLine, method === 'PUT' ? 'waCloud_saved' : 'waCloud_disconnected');
+    } catch (error) { if (current(ticket) && error.message !== 'unauthorized') showError(env, error); }
+    finally { delete body.accessToken; delete body.appSecret; if (pendingBody === body) pendingBody = null; if (current(ticket)) { busy = false; render(); if (env.invalidField) { env.fields[env.invalidField].focus(); env.invalidField = null; } else if (env.connection?.status === 'CONNECTED' && !env.dirty) env.steps[2].summary.focus(); changed(); } }
+  }
+  async function checkReadiness(env) {
+    if (!current() || busy || availability !== 'ready' || env.connection?.status !== 'CONNECTED') return;
+    const ticket = ++sequence; invalidateCopies(); busy = true; env.readiness = null; setStatus(env.line, ''); setStatus(env.checkLine, ''); setStatus(env.templateLine, ''); render(); changed();
+    try {
+      const response = await fetch(apiUrl(`v1/seller/integrations/whatsapp/${env.name}/readiness`), { cache: 'no-store' });
+      if (!current(ticket)) return;
+      if (response.status === 401) { clearSensitive(); onUnauthorized(); return; }
+      if (!response.ok) { showError(env, { code: response.status === 403 ? 'FORBIDDEN' : response.status === 429 ? 'RATE_LIMITED' : 'PROVIDER_UNAVAILABLE' }); return; }
+      const result = await response.json(); if (current(ticket)) env.readiness = result;
+    } catch { if (current(ticket)) showError(env, { code: 'PROVIDER_UNAVAILABLE' }); }
+    finally { if (current(ticket)) { busy = false; render(); changed(); } }
   }
   async function load() {
-    const ticket = ++epoch;
+    if (!current() || busy) return;
+    const ticket = ++sequence; invalidateCopies(); busy = true; setStatus(feedback, 'loading'); render();
     try {
       const response = await fetch(apiUrl('v1/seller/integrations/whatsapp'), { cache: 'no-store' });
       if (!current(ticket)) return;
-      if (response.status === 401) { onUnauthorized(); return; }
-      if (!response.ok) return;
-      const data = await response.json();
-      if (!current(ticket) || data.available !== true) return;
-      section.append(element('h2', 'waHeading'), element('p', 'waIntro'));
-      section.append(mountGuide());
-      copyField(section, 'waCallback', data.webhookUrl);
-      const environments = element('div', null, 'whatsapp-environments');
-      for (const environment of ['SANDBOX', 'PRODUCTION']) environments.append(mountEnvironment(environment, data.connections?.find(connection => connection.environment === environment), ticket));
-      section.append(environments); section.hidden = false;
-    } catch { /* Unavailable connections stay hidden. */ }
+      if (response.status === 401) { clearSensitive(); onUnauthorized(); return; }
+      if (!response.ok) { availability = response.status === 403 ? 'forbidden' : 'error'; if (response.status === 403) clearSensitive(); setStatus(feedback, response.status === 403 ? 'waForbidden' : 'waProviderUnavailable'); return; }
+      const data = await response.json(); if (!current(ticket)) return;
+      if (data?.available !== true) { availability = 'unavailable'; clearSensitive(); setStatus(feedback, 'waUnavailable'); return; }
+      if (!Array.isArray(data.connections)) throw new Error('invalid response');
+      availability = 'ready'; callback = typeof data.webhookUrl === 'string' ? data.webhookUrl : ''; setStatus(feedback, '');
+      for (const env of environments.values()) {
+        env.connection = data.connections.find(connection => connection?.environment === env.name) || null; env.readiness = null;
+        if (!env.dirty) for (const field of ['phoneNumberId', 'businessAccountId']) env.fields[field].value = env.connection?.publicConfig?.[field] || '';
+        if (!env.initialized) { env.activeStep = env.connection?.status === 'CONNECTED' ? 3 : 2; env.steps[env.activeStep - 1].card.open = true; env.initialized = true; }
+      }
+    } catch { if (current(ticket)) { availability = 'error'; setStatus(feedback, 'waProviderUnavailable'); } }
+    finally { if (current(ticket)) { busy = false; render(); changed(); } }
   }
-  load();
-  return { refreshLocale() {
-    translate(section);
-    for (const block of blocks) block.renderDetails();
-    for (const button of section.querySelectorAll('[data-i18n-aria]')) button.setAttribute('aria-label', t(button.dataset.i18nAria) + ': ' + t('waCopy'));
-  } };
+  render(); load();
+  return {
+    refreshLocale: render,
+    hasUnsavedChanges: () => [...environments.values()].some(hasDraft),
+    isBusy: () => busy,
+    draftSignature: () => `whatsapp-cloud:${revision}`,
+    dispose() { disposed = true; sequence++; confirmations.abort(); clearSensitive(); section.remove(); },
+  };
 }
