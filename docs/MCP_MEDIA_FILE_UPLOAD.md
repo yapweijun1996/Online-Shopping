@@ -63,10 +63,20 @@ file transport and codec fixtures; they are not proof of real TLS/native/browser
 or production behavior. Independent review found no P0/P1 authorization or
 approval bypass and checked17 additional URL/IP attack inputs.
 
-Full acceptance still requires PostgreSQL, native decoder, real browser approval
-and a real ChatGPT-provided file. The current execution sandbox denies Unix socket
-binding/Docker access and lacks the configured PostgreSQL/browser harness. No
-production product, approval, upload or media data was changed during this work.
+Subsequent authorized Pomelo VM verification completed the nine new acceptance
+cases on both SQLite and disposable PostgreSQL (18/18), actual native PNG/JPEG/WebP
+checks (7/7), and actual OAuth/native/Chromium approval workflows (11/11). The
+new file-tool browser cases exercise all three formats in MAIN and GALLERY on
+both stores, using a synthetic download callback and genuine native processing,
+current registry guard, OAuth grant, image ACK/password approval, commit and
+readback. They do not prove an external ChatGPT download or HTTP file handoff.
+The first extended browser fixture exceeded the unchanged five-approval address
+limit; independent per-format fixtures corrected the test arrangement without
+changing limits, addresses or runtime. All owned PG/codec test containers were
+removed. Initial sandbox failures below remain historical evidence.
+
+Actual ChatGPT source-host/file handoff and production release are still pending.
+No production product, approval, upload or media data was changed during this work.
 
 The complete per-file local run attempted296 files and reported2120 tests:
 1255 passed,121 failed,744 skipped. Another file aborted in Node's native async
