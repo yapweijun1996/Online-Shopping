@@ -18,7 +18,7 @@ const expectedNames = [
   'analytics.sales_trend', 'analytics.top_products', 'analytics.inventory_risk',
   'inventory.summary', 'inventory.movements', 'inventory.preview_adjustment', 'inventory.commit_adjustment',
   'orders.preview_decision', 'orders.commit_decision', 'operations.get', 'operations.cancel', 'operations.audit',
-  'media.list', 'media.prepare_upload', 'media.commit_upload', 'media.preview_layout', 'media.commit_layout',
+  'media.list', 'media.prepare_upload', 'media.commit_upload', 'media.upload_file', 'media.preview_layout', 'media.commit_layout',
 ];
 const day = 86400000;
 const localDate = instant => new Date(instant + 8 * 3600000).toISOString().slice(0, 10);

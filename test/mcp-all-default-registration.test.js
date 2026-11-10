@@ -26,7 +26,7 @@ const extensionNames = ['company.get', 'company.preview_update', 'company.commit
   'analytics.sales_trend', 'analytics.top_products', 'analytics.inventory_risk',
   'inventory.summary', 'inventory.movements', 'inventory.preview_adjustment', 'inventory.commit_adjustment',
   'orders.preview_decision', 'orders.commit_decision', 'operations.get', 'operations.cancel', 'operations.audit',
-  'media.list', 'media.prepare_upload', 'media.commit_upload', 'media.preview_layout', 'media.commit_layout'];
+  'media.list', 'media.prepare_upload', 'media.commit_upload', 'media.upload_file', 'media.preview_layout', 'media.commit_layout'];
 const allNames = [...legacyNames, ...extensionNames];
 const legacy = catalogue.map(({ scope: _scope, ...tool }) => tool);
 const allScopes = [...legacyCatalogScopes.split(' '), ...V2_SCOPES];
@@ -105,13 +105,13 @@ for (const dialect of ['sqlite', 'postgres']) {
   const options = { skip: !socketFixtureAvailable ? 'Requires the real Linux UID1000/private-socket ownership harness.' :
     dialect === 'postgres' && !process.env.SHOP_TEST_DATABASE_URL ? 'Disposable PostgreSQL not configured.' : false };
 
-  test(`${dialect}: fresh full consent exposes the actual default 32 and exact seven-contract schema union`, options, async t => {
+  test(`${dialect}: fresh full consent exposes the actual default 33 and exact seven-contract schema union`, options, async t => {
     const f = await defaultFixture(t, dialect);
     assert.equal(Number((await f.store.get('SELECT COUNT(*) AS n FROM oauth_grant')).n), 0);
     assert.equal(Number((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_scope_consent')).n), 0);
     assert.deepEqual(catalogue.map(tool => tool.name), legacyNames);
     const client = await freshCatalogAccess(f, allScopes.join(' ')), tools = await listed(client), contracts = await contractUnion();
-    assert.equal(tools.length, 32);
+    assert.equal(tools.length, 33);
     assert.deepEqual(tools.map(tool => tool.name), allNames);
     assert.deepEqual(tools.slice(0, 8), legacy);
     for (const tool of tools.slice(8)) {

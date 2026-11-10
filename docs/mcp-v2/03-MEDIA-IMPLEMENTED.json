@@ -44,6 +44,167 @@
   },
   "tools": [
     {
+      "name": "media.upload_file",
+      "scope": "media.write",
+      "capability": "catalog.write",
+      "risk": "HIGH",
+      "description": "Transfer a ChatGPT-provided image file from the supported first-party download source into an existing product image review. Computes source size and SHA-256 automatically. Requires the current media revision and media.write consent. Returns the existing Seller Approval proposal; never approves or commits. Use media.commit_upload only after genuine seller approval.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "targetSlot": {
+            "type": "string",
+            "minLength": 4,
+            "maxLength": 7,
+            "enum": [
+              "MAIN",
+              "GALLERY"
+            ]
+          },
+          "expectedRevision": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 16,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._~-]+$"
+          },
+          "file": {
+            "type": "object",
+            "properties": {
+              "download_url": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "file_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "mime_type": {
+                "type": "string",
+                "minLength": 9,
+                "maxLength": 10,
+                "enum": [
+                  "image/png",
+                  "image/jpeg",
+                  "image/webp"
+                ]
+              },
+              "file_name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255
+              }
+            },
+            "required": [
+              "download_url",
+              "file_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "productId",
+          "targetSlot",
+          "expectedRevision",
+          "idempotencyKey",
+          "file"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "status": {
+            "type": "string",
+            "minLength": 6,
+            "maxLength": 16,
+            "enum": [
+              "PREPARED",
+              "PENDING_APPROVAL",
+              "APPROVED",
+              "REJECTED",
+              "COMMITTED",
+              "EXPIRED",
+              "CANCELLED",
+              "CONFLICT",
+              "FAILED"
+            ]
+          },
+          "previewHash": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "expiresAt": {
+            "type": "string",
+            "minLength": 24,
+            "maxLength": 24
+          },
+          "replayed": {
+            "type": "boolean"
+          },
+          "reviewUrl": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          }
+        },
+        "required": [
+          "operationId",
+          "status",
+          "previewHash",
+          "expiresAt",
+          "replayed",
+          "reviewUrl"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      },
+      "_meta": {
+        "openai/fileParams": [
+          "file"
+        ]
+      },
+      "examples": [
+        {
+          "productId": "00000000-0000-4000-8000-000000000001",
+          "targetSlot": "MAIN",
+          "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "idempotencyKey": "documented-file-shape-0001",
+          "file": {
+            "file_id": "synthetic-file",
+            "download_url": "https://files.oaiusercontent.com/synthetic-not-downloadable",
+            "mime_type": "image/png"
+          }
+        }
+      ]
+    },
+    {
       "name": "media.list",
       "scope": "media.read",
       "capability": "catalog.write",

@@ -117,8 +117,8 @@ async function authorized(f){
  assert.deepEqual(tools.data.result.tools.map(tool=>tool.name),[...catalogue.map(tool=>tool.name),
   'company.get','company.preview_update','company.commit_update','catalog.preview_create','catalog.commit_create','catalog.preview_update','catalog.commit_update',
   'analytics.sales_trend','analytics.top_products','analytics.inventory_risk','inventory.summary','inventory.movements','inventory.preview_adjustment','inventory.commit_adjustment',
-  'media.list','media.prepare_upload','media.commit_upload','media.preview_layout','media.commit_layout']);
- assert.equal(tools.data.result.tools.length,27);assert.deepEqual(tools.data.result.tools.slice(0,8),catalogue.map(({scope:_scope,...tool})=>tool));
+  'media.list','media.prepare_upload','media.commit_upload','media.upload_file','media.preview_layout','media.commit_layout']);
+ assert.equal(tools.data.result.tools.length,28);assert.deepEqual(tools.data.result.tools.slice(0,8),catalogue.map(({scope:_scope,...tool})=>tool));
  const errors=[],external=[];await f.context.route('**/*',route=>new URL(route.request().url()).origin===f.origin?route.continue():(external.push(route.request().url()),route.abort()));
  const page=await f.context.newPage();page.on('pageerror',error=>errors.push(error.message));return{client,page,errors,external};
 }

@@ -13,6 +13,8 @@ import { MEDIA_TOOL_CONTRACTS, mediaStageInput, mediaStageOutput, mediaReceiptSc
 import { OPERATION_CONTROL_CONTRACTS } from './operation-control-contracts.js';
 import { createOperationControls } from './operation-controls.js';
 import { catalogMediaUpdateEnabled,catalogMediaCreateEnabled,catalogMediaAllowed } from './catalog-media-config.js';
+import { downloadMediaFile } from './media-file-download.js';
+import { uploadMediaFile } from './media-file-upload.js';
 
 const uuid = { type: 'string', minLength: 36, maxLength: 36, pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' };
 const object = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
@@ -95,7 +97,8 @@ function selectOnly(store) {
   return Object.freeze({ dialect: store.dialect, get: (sql, ...args) => store.get(query(sql), ...args), all: (sql, ...args) => store.all(query(sql), ...args) });
 }
 
-export function createOperationTools({ store, binding, config, tenantGuard, quickLogin, entries = [] }) {
+export function createOperationTools({ store, binding, config, tenantGuard, quickLogin, entries = [], downloadFile = downloadMediaFile }) {
+  if (typeof downloadFile !== 'function' || (config.production === true && downloadFile !== downloadMediaFile)) invalid();
   if (!Array.isArray(entries) || entries.length > Object.keys(OPERATION_MUTATION_PAIRS).length + readNames.size + 5) invalid();
   const mediaEnabled = mcpMediaRuntimeEnabled(config,{quickLogin,tenantGuard});
   const catalogUpdateEnabled = catalogMediaUpdateEnabled(config,{quickLogin,tenantGuard});
@@ -147,6 +150,13 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
       const tool = freeze({ name: entry.name, scope: entry.scope, ...MEDIA_TOOL_CONTRACTS[entry.name], inputSchema, outputSchema });
       const commit = freeze({ name: entry.commitName, scope: entry.scope, ...MEDIA_TOOL_CONTRACTS[entry.commitName] });
       tools.push(tool,commit); register(entry.name,{ kind:'stage',tool,coordinator:entry.coordinator },adapter.media?.policyId ?? null); register(entry.commitName,{ kind:'commit',tool:commit },adapter.media?.policyId ?? null);
+      const fileTool = freeze({ name: 'media.upload_file', scope: entry.scope, ...MEDIA_TOOL_CONTRACTS['media.upload_file'] });
+      tools.push(fileTool);
+      // This is an alternate transport for the same upload preparation policy.
+      // It cannot introduce a new approval or commit operation family.
+      const uploadPolicy = operationAuthorityPolicy('media.prepare_upload', adapter.media?.policyId ?? null);
+      byName.set(fileTool.name, { kind: 'file', tool: fileTool, coordinator: entry.coordinator,
+        requiredScopes: Object.freeze([...uploadPolicy.requiredScopes]) });
       continue;
     }
 
@@ -223,6 +233,20 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
       const registered = byName.get(name);
       if (!registered || !valid(args, registered.tool.inputSchema)) throw new ApiError(400, 'INVALID_INPUT', 'Invalid operation arguments.');
       if(registered.kind==='control')return controls.call(name,args,bearer);
+      if (registered.kind === 'file') {
+        const safeArgs = freeze(JSON.parse(canonicalOperationJson(args)));
+        let dto;
+        try {
+          dto = await uploadMediaFile({ args: safeArgs, bearer, coordinator: registered.coordinator,
+            prepare: input => engine.prepare(input), downloadFile });
+        } catch (error) {
+          if (error instanceof ApiError && error.status === 404) throw new ApiError(400,'MEDIA_RESOURCE_NOT_FOUND','Media resource not found.');
+          throw error;
+        }
+        dto.reviewUrl = binding.issuer + '/oauth/operation?operationId=' + dto.operationId;
+        if (!valid(dto, registered.tool.outputSchema)) throw new TypeError('Invalid media file output.');
+        return dto;
+      }
       if (registered.kind === 'read') {
         const safeArgs = freeze(JSON.parse(canonicalOperationJson(args)));
         return tenantGuard.withActiveTenant(binding.tenantId, tenant => store.transaction(async () => {

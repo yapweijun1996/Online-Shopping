@@ -11,11 +11,11 @@ const parts = data => Array.from({length:Math.ceil(data.length/3072)},(_,n)=>dat
 const prepare = (f,input) => f.tool('media.prepare_upload',{input});
 for(const dialect of ['sqlite','postgres']){
   const options={skip:dialect==='postgres'&&!process.env.SHOP_TEST_DATABASE_URL};
-  test(`${dialect}: actual RPC media factory lists exactly five bounded tools and preserves legacy8`,options,async t=>{
+  test(`${dialect}: actual RPC media factory lists exactly six bounded tools and preserves legacy8`,options,async t=>{
     const f=await mediaToolsFixture(t,dialect),listed=await f.rpc('tools/list',{});
     assert.equal(listed.response.status,200,JSON.stringify(listed.data));
     assert.deepEqual(listed.data.result.tools.slice(0,8),catalogue.map(({scope:_scope,...tool})=>tool));
-    assert.deepEqual(listed.data.result.tools.slice(8).map(tool=>tool.name),['media.list','media.prepare_upload','media.commit_upload','media.preview_layout','media.commit_layout']);
+    assert.deepEqual(listed.data.result.tools.slice(8).map(tool=>tool.name),['media.list','media.prepare_upload','media.commit_upload','media.upload_file','media.preview_layout','media.commit_layout']);
     const media=await f.tool('media.list',{productId:f.product.id});
     assert.equal(media.response.status,200,JSON.stringify(media.data));assert.equal(dto(media).items[0].productId,f.product.id);
     assert.equal(dto(media).assets[0].mime,'image/png');assert.doesNotMatch(JSON.stringify(dto(media)),/data:image|imageDataUrl|thumbDataUrl|socketPath|tokenFile|stockQuantity|priceMinor/);
