@@ -215,7 +215,7 @@ for (const engine of ['sqlite', 'postgres']) {
   test(`${engine}: DCR redirect policy and persistent preauthentication limits`, options, async (t) => {
     const f = await fixture(t, engine);
     for (const uri of ['http://connector.example.com/callback', 'https://127.0.0.1/callback', 'https://user:pass@connector.example.com/callback', redirect + '#fragment', redirect + '?code=secret', 'https://connector.example.com.evil.com/callback']) assert.equal((await f.call('/oauth/register', 'POST', { ...metadata, redirect_uris: [uri] })).data.error, 'invalid_redirect_uri');
-    for (let i = 0; i < 5; i++) assert.equal((await f.call('/oauth/register', 'POST', metadata, {}, 'same-ip')).response.status, 201);
+    for (let i = 0; i < 20; i++) assert.equal((await f.call('/oauth/register', 'POST', metadata, {}, 'same-ip')).response.status, 201);
     await f.recreate();
     const limited = await f.call('/oauth/register', 'POST', metadata, {}, 'same-ip'); assert.equal(limited.response.status, 429); assert.equal(limited.response.headers.get('retry-after'), '900');
     assert.equal((await f.call('/oauth/token', 'POST', 'grant_type=x', { 'content-type': 'text/plain' })).response.status, 415);
@@ -455,14 +455,26 @@ test('credential invalidation while off cannot resurrect a grant when reenabled'
   assert.equal((await f.refresh(g)).data.error, 'invalid_grant');
 });
 
-test('DCR failures consume both anonymous address and global budgets', async (t) => {
+test('DCR failures consume the address budget but not the shop-wide budget', async (t) => {
   const f = await fixture(t, 'sqlite');
-  for (let i = 0; i < 5; i++) assert.equal((await f.call('/oauth/register', 'POST', {}, {}, 'abusive-ip')).response.status, 400);
+  for (let i = 0; i < 20; i++) assert.equal((await f.call('/oauth/register', 'POST', {}, {}, 'abusive-ip')).response.status, 400);
   assert.equal((await f.call('/oauth/register', 'POST', metadata, {}, 'abusive-ip')).response.status, 429);
-  for (let i = 0; i < 95; i++) assert.equal((await f.call('/oauth/register', 'POST', {})).response.status, 400);
+  for (let i = 0; i < 95; i++) assert.equal((await f.call('/oauth/register', 'POST', {}, {}, 'junk-' + i)).response.status, 400);
   await f.recreate();
-  assert.equal((await f.call('/oauth/register', 'POST', metadata)).response.status, 429);
-  assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM oauth_client')).n, 0);
+  assert.equal((await f.call('/oauth/register', 'POST', metadata)).response.status, 201);
+});
+
+test('DCR ignores unknown client metadata and does not store or echo it', async (t) => {
+  const f = await fixture(t, 'sqlite');
+  const r = await f.call('/oauth/register', 'POST', { ...metadata, scope: 'catalog.read', client_uri: 'https://example.com' });
+  assert.equal(r.response.status, 201); assert.equal(r.data.scope, undefined); assert.equal(r.data.client_uri, undefined);
+  assert.equal((await f.call('/oauth/register', 'POST', { client_name: 'x' })).data.error, 'invalid_request');
+});
+
+test('valid DCR requests consume the shop-wide budget', async (t) => {
+  const f = await fixture(t, 'sqlite');
+  for (let i = 0; i < 100; i++) assert.equal((await f.call('/oauth/register', 'POST', metadata, {}, 'ip-' + i)).response.status, 201);
+  assert.equal((await f.call('/oauth/register', 'POST', metadata, {}, 'ip-next')).response.status, 429);
 });
 
 test('enabled reservations do not prevent updating an existing collision shop', { skip: !base }, async (t) => {

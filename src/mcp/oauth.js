@@ -92,10 +92,14 @@ export function createOAuth({ store, config, tenantId, limit }) {
   }
   async function register(request, ip) {
     fresh();
-    await limit('oauth-register', ip, 5); await limit('oauth-register-shop', 'shop', 100);
-    const input = fields(await readJson(request, 16384), ['client_name', 'redirect_uris', 'grant_types', 'response_types', 'token_endpoint_auth_method']);
+    await limit('oauth-register', ip, 20);
+    const known = ['client_name', 'redirect_uris', 'grant_types', 'response_types', 'token_endpoint_auth_method'], body = await readJson(request, 16384);
+    // RFC 7591: ignore metadata this server does not use (e.g. scope, client_uri); only the known fields are stored and echoed.
+    const input = fields(body && typeof body === 'object' && !Array.isArray(body) ? Object.fromEntries(known.filter((key) => Object.hasOwn(body, key)).map((key) => [key, body[key]])) : body, known);
     if (typeof input.client_name !== 'string' || !input.client_name.trim() || input.client_name.length > 80 || /[\u0000-\u001f]/.test(input.client_name) || JSON.stringify(input.grant_types) !== JSON.stringify(['authorization_code', 'refresh_token']) || JSON.stringify(input.response_types) !== '["code"]' || input.token_endpoint_auth_method !== 'none') fail('invalid_client_metadata');
     if (!Array.isArray(input.redirect_uris) || input.redirect_uris.length < 1 || input.redirect_uris.length > 5 || new Set(input.redirect_uris).size !== input.redirect_uris.length || input.redirect_uris.some((uri) => !safeRedirect(uri, config.mcpRedirectUris || []))) fail('invalid_redirect_uri');
+    // Only well-formed registrations spend the shop-wide budget, so anonymous junk cannot lock every connector out.
+    await limit('oauth-register-shop', 'shop', 100);
     // Reclamation must commit even if an older database still exceeds the hard cap.
     await cleanupOAuth(store);
     return transaction(async () => {
