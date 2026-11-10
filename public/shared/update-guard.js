@@ -1,7 +1,10 @@
 // No values leave the browser. A changed draft during activation defers reload.
+// Private draft inputs opt into a caller-maintained non-secret revision, even when their type changes to text.
 export function draftSignature(root = document) {
   return JSON.stringify([...root.querySelectorAll('input, textarea, select')].map(input => [
-    input.name || input.id, input.type === 'checkbox' || input.type === 'radio' ? input.checked : input.value,
+    input.name || input.id, input.dataset?.privateDraft === 'true'
+      ? ['private', input.dataset.privateDraftRevision || '0']
+      : input.type === 'checkbox' || input.type === 'radio' ? input.checked : input.value,
     input.files ? [...input.files].map(file => [file.name, file.size, file.lastModified]) : null,
   ]));
 }
