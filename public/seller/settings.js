@@ -1,7 +1,9 @@
 import './sender-copy.js';
 import { mountCompanyTabs } from './company-tabs.js';
 import { mountAiSettings } from './ai-settings.js';
-const senderInputs = { senderName: 120, senderPhone: 32, senderAddressLine1: 240, senderAddressLine2: 240, senderCity: 120, senderState: 120, senderPostcode: 20, senderCountry: 2 };
+import { senderInputLimits } from '../shared/sender-fields.js';
+import { mountSenderFields } from './sender-form.js';
+const senderInputs = senderInputLimits;
 import { apiUrl } from '../shared/base-path.js';
 import { t, translate } from '../shared/i18n.js';
 import { mountAppearance } from '../shared/appearance.js';
@@ -158,7 +160,7 @@ async function mountDemoReset(root, csrfToken, onUnauthorized) {
 
 export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUnauthorized, role = 'OWNER' }) {
   root.innerHTML = `<section class="settings-card" aria-labelledby="company-heading">
-    <form id="company-form" class="settings-form">
+    <form id="company-form" class="settings-form" novalidate>
       <div id="company-group-general">
     <h2 id="company-heading" data-i18n="companySettings">Company settings</h2>
     <p data-i18n="currencyIntro">Choose the default currency for new products. Existing product prices and orders keep their own currency.</p>
@@ -175,16 +177,16 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
       <label><span data-i18n="shipping">Shipping</span><textarea name="shippingText" rows="3" maxlength="1000" aria-describedby="storefront-texts-help"></textarea></label>
       <label><span data-i18n="returnsAndGuarantees">Returns and guarantees</span><textarea name="returnsText" rows="3" maxlength="1000" aria-describedby="storefront-texts-help"></textarea></label>
       </div>
-      <div id="company-group-shipping">
-      <h2 data-i18n="senderTitle"></h2>
-      ${Object.entries(senderInputs).map(([name, max]) => `<label><span data-i18n="${name}"></span><input name="${name}" maxlength="${max}"${name === 'senderPhone' ? ' type="tel"' : ''}></label>`).join('')}
-      </div>
+      <div id="company-group-shipping"></div>
       <button class="secondary-button" type="button" id="company-retry" data-i18n="retry" hidden>Retry</button>
       <button class="primary-button" type="submit" data-i18n="saveSettings">Save settings</button>
     </form><p class="settings-status" role="status"></p>
   </section>`;
   const form = root.querySelector('#company-form');
-  const isCurrent = () => form.isConnected && root.contains(form);
+  let disposed = false;
+  const identity = csrfToken();
+  const isCurrent = () => !disposed && form.isConnected && root.contains(form) && csrfToken() === identity;
+  const sender = mountSenderFields(form.querySelector('#company-group-shipping'));
   const onUnauthorized = () => { if (isCurrent()) notifyUnauthorized(); };
   const setup = document.createElement('section');
   setup.className = 'settings-card';
@@ -206,13 +208,14 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
   const whatsappQr = mountWhatsAppQr(messaging, { csrfToken, onUnauthorized, role });
   const groups = { general: form.querySelector('#company-group-general'), storefront: form.querySelector('#company-group-storefront'), shipping: form.querySelector('#company-group-shipping') };
   const ai = role === 'OWNER' ? mountAiSettings(root, { csrfToken, onUnauthorized }) : null;
+  let activeGroup = 'general';
   const tabs = mountCompanyTabs(root, [
     { id: 'general', label: 'companyTabGeneral', panels: [setup, groups.general, extras] },
     { id: 'storefront', label: 'companyTabStorefront', panels: [groups.storefront] },
     { id: 'shipping', label: 'companyTabShipping', panels: [groups.shipping] },
     { id: 'messaging', label: 'companyTabMessaging', panels: [messaging] },
     { id: 'appearance', label: 'companyTabAppearance', panels: [appearance] },
-  ], { onSelect: (id) => { formCard.hidden = !['general', 'storefront', 'shipping'].includes(id); } });
+  ], { onSelect: (id) => { activeGroup = id; formCard.hidden = !['general', 'storefront', 'shipping'].includes(id); syncCompanyControls(); } });
   ai?.ready.then(available => { if (available && isCurrent()) tabs.add({ id: 'ai', label: 'ai_title', panels: [ai.section] }); });
   const tabOfField = (field = '') => field.startsWith('sender') ? 'shipping' : ['availabilityText', 'shippingText', 'returnsText'].includes(field) ? 'storefront' : 'general';
   const setupForm = setup.querySelector('form');
@@ -257,92 +260,132 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
   translate(root);
   const saveButton = form.querySelector('[type="submit"]');
   const retryButton = form.querySelector('#company-retry');
-  saveButton.disabled = true;
-  let currencyEdited = false;
-  let phoneEdited = false;
-  let mobileBarsEdited = false;
-  let savedState = null;
-  const textFields = ['availabilityText', 'shippingText', 'returnsText', ...Object.keys(senderInputs)];
-  let textsEdited = false;
-  const textValues = () => Object.fromEntries(textFields.map(name => [name, form.elements[name].value]));
-  const currentState = () => JSON.stringify({
-    defaultCurrency: form.elements.defaultCurrency.value,
-    sellerWhatsAppPhone: form.elements.sellerWhatsAppPhone.value,
-    mobileHideBarsOnScroll: form.elements.mobileHideBarsOnScroll.checked,
-    ...textValues(),
-  });
-  const initialState = currentState();
+  const companyGroups = {
+    general: ['defaultCurrency', 'sellerWhatsAppPhone', 'mobileHideBarsOnScroll'],
+    storefront: ['availabilityText', 'shippingText', 'returnsText'],
+    shipping: Object.keys(senderInputs),
+  };
+  let loaded = false, loadingSettings = false, loadSequence = 0, pendingGroup = null, forbidden = false;
+  const baselines = {}, feedback = {}, errors = new Map();
   const setupBaseline = JSON.stringify([setupForm.elements.mode.value, setupForm.elements.shopName.value]);
-  form.elements.defaultCurrency.addEventListener('change', () => { currencyEdited = true; });
-  form.elements.sellerWhatsAppPhone.addEventListener('input', () => { phoneEdited = true; });
-  form.elements.mobileHideBarsOnScroll.addEventListener('change', () => { mobileBarsEdited = true; });
-  for (const name of textFields) form.elements[name].addEventListener('input', () => { textsEdited = true; });
+  function groupValues(group) {
+    return Object.fromEntries(companyGroups[group].map(name => [name, name === 'senderCountry' ? sender.countryValue() : name === 'mobileHideBarsOnScroll' ? form.elements[name].checked : form.elements[name].value]));
+  }
+  const groupDirty = group => loaded && JSON.stringify(groupValues(group)) !== JSON.stringify(baselines[group]);
+  function validSettings(settings) {
+    return settings && typeof settings.defaultCurrency === 'string' && typeof settings.mobileHideBarsOnScroll === 'boolean' && Object.values(companyGroups).flat().every(name => Object.hasOwn(settings, name) && (name === 'mobileHideBarsOnScroll' || settings[name] === null || typeof settings[name] === 'string'));
+  }
+  function canonical(settings, group) {
+    return Object.fromEntries(companyGroups[group].map(name => [name, name === 'mobileHideBarsOnScroll' ? settings[name] === true : ['senderPhone', 'sellerWhatsAppPhone'].includes(name) && settings[name] ? `+${settings[name]}` : settings[name] || '']));
+  }
+  function hydrate(group, values) {
+    for (const [name, value] of Object.entries(values)) {
+      if (name === 'senderCountry') sender.setCountry(value);
+      else if (name === 'mobileHideBarsOnScroll') form.elements[name].checked = value;
+      else form.elements[name].value = value;
+    }
+  }
+  function clearFieldError(name) {
+    const saved = errors.get(name); if (!saved) return;
+    saved.input.removeAttribute('aria-invalid');
+    if (saved.describedBy) saved.input.setAttribute('aria-describedby', saved.describedBy); else saved.input.removeAttribute('aria-describedby');
+    saved.node.remove(); errors.delete(name);
+  }
+  function markFieldError(name, key) {
+    const input = name.startsWith('sender') ? sender.field(name) : form.elements[name]; if (!input) return;
+    clearFieldError(name);
+    const node = document.createElement('small'); node.id = `company-error-${name}`; node.className = 'company-field-error'; node.dataset.i18n = key; node.textContent = t(key);
+    const describedBy = input.getAttribute('aria-describedby'); input.setAttribute('aria-invalid', 'true'); input.setAttribute('aria-describedby', [describedBy, node.id].filter(Boolean).join(' ')); input.after(node);
+    errors.set(name, { input, node, describedBy });
+  }
+  function syncCompanyControls() {
+    // Company tabs select their initial panel synchronously before this form controller is initialized.
+    if (!form.querySelector('[data-company-ready]')) return;
+    for (const [group, fields] of Object.entries(companyGroups)) for (const name of fields) form.elements[name].disabled = !loaded || loadingSettings || forbidden || pendingGroup === group;
+    form.elements.senderCountryOther.disabled = form.elements.senderCountry.value !== '__other__' || !loaded || loadingSettings || forbidden || pendingGroup === 'shipping';
+    saveButton.disabled = !loaded || loadingSettings || forbidden || pendingGroup !== null || !companyGroups[activeGroup] || !groupDirty(activeGroup);
+    saveButton.dataset.i18n = pendingGroup === activeGroup ? 'companySaving' : activeGroup === 'shipping' ? 'senderSave' : 'saveSettings'; saveButton.textContent = t(saveButton.dataset.i18n);
+    form.setAttribute('aria-busy', String(Boolean(pendingGroup) || loadingSettings));
+    const message = feedback[activeGroup];
+    status(root, loadingSettings ? 'loading' : message?.key || (companyGroups[activeGroup] && groupDirty(activeGroup) ? 'companyUnsaved' : ''), message?.error === true);
+    document.dispatchEvent(new Event('updateguardchange'));
+  }
+  // A non-secret initialization marker permits the first tab callback to be a harmless no-op.
+  saveButton.dataset.companyReady = 'true';
+  function onEdit(event) {
+    const name = event.target.name === 'senderCountryOther' ? 'senderCountry' : event.target.name;
+    const group = Object.keys(companyGroups).find(group => companyGroups[group].includes(name)); if (!group) return;
+    clearFieldError(name);
+    if (!feedback[group]?.error || feedback[group]?.field === name) delete feedback[group];
+    syncCompanyControls();
+  }
+  form.addEventListener('input', onEdit); form.addEventListener('change', onEdit);
   async function loadSettings() {
-    retryButton.disabled = true;
+    if (!isCurrent() || loadingSettings || pendingGroup !== null) return;
+    const ticket = ++loadSequence; loadingSettings = true; retryButton.disabled = true; syncCompanyControls();
     try {
       const settings = await request('GET', apiUrl('v1/seller/company-settings'), null, csrfToken, onUnauthorized);
-      if (!isCurrent()) return;
-      if (!currencyEdited) form.elements.defaultCurrency.value = settings.defaultCurrency;
-      if (!phoneEdited) form.elements.sellerWhatsAppPhone.value = settings.sellerWhatsAppPhone ? `+${settings.sellerWhatsAppPhone}` : '';
-      if (!mobileBarsEdited) form.elements.mobileHideBarsOnScroll.checked = settings.mobileHideBarsOnScroll === true;
-      if (!textsEdited) for (const name of textFields) form.elements[name].value = settings[name] || '';
-      savedState = JSON.stringify({
-        defaultCurrency: settings.defaultCurrency,
-        sellerWhatsAppPhone: settings.sellerWhatsAppPhone ? `+${settings.sellerWhatsAppPhone}` : '',
-        mobileHideBarsOnScroll: settings.mobileHideBarsOnScroll === true,
-        ...Object.fromEntries(textFields.map(name => [name, settings[name] || ''])),
-      });
-      saveButton.disabled = false;
-      retryButton.hidden = true;
-      status(root, '');
-    } catch {
-      if (isCurrent()) { retryButton.hidden = false; status(root, 'networkError', true); }
-    } finally { if (isCurrent()) retryButton.disabled = false; }
+      if (!isCurrent() || ticket !== loadSequence) return;
+      if (!validSettings(settings)) throw new Error('invalid company settings');
+      for (const group of Object.keys(companyGroups)) {
+        const values = canonical(settings, group); const keepDraft = loaded && groupDirty(group);
+        if (!keepDraft) hydrate(group, values);
+        baselines[group] = values;
+      }
+      loaded = true; forbidden = false; retryButton.hidden = true;
+      for (const group of Object.keys(companyGroups)) if (feedback[group]?.load) delete feedback[group];
+    } catch (error) {
+      if (!isCurrent() || ticket !== loadSequence || error.message === 'unauthorized') return;
+      forbidden = error.code === 'FORBIDDEN'; retryButton.hidden = false;
+      for (const group of Object.keys(companyGroups)) feedback[group] = { key: forbidden ? 'companyForbidden' : 'networkError', error: true, load: true };
+    } finally { if (isCurrent() && ticket === loadSequence) { loadingSettings = false; retryButton.disabled = false; syncCompanyControls(); } }
   }
   retryButton.addEventListener('click', loadSettings);
-  loadSettings();
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault(); saveButton.disabled = true;
-    for (const input of form.querySelectorAll('input, select, textarea')) input.disabled = true;
+  syncCompanyControls(); loadSettings();
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const group = activeGroup;
+    if (!isCurrent() || !loaded || loadingSettings || forbidden || pendingGroup !== null || !companyGroups[group] || !groupDirty(group)) return;
+    const body = groupValues(group); pendingGroup = group; delete feedback[group];
+    for (const name of companyGroups[group]) clearFieldError(name);
+    syncCompanyControls();
+    let focusField = null;
     try {
-      const settings = await request('PATCH', apiUrl('v1/seller/company-settings'), {
-        defaultCurrency: form.elements.defaultCurrency.value,
-        sellerWhatsAppPhone: form.elements.sellerWhatsAppPhone.value.trim(),
-        mobileHideBarsOnScroll: form.elements.mobileHideBarsOnScroll.checked,
-        ...textValues(),
-      }, csrfToken, onUnauthorized);
+      const settings = await request('PATCH', apiUrl('v1/seller/company-settings'), body, csrfToken, onUnauthorized);
       if (!isCurrent()) return;
-      form.elements.sellerWhatsAppPhone.value = settings.sellerWhatsAppPhone ? `+${settings.sellerWhatsAppPhone}` : '';
-      form.elements.mobileHideBarsOnScroll.checked = settings.mobileHideBarsOnScroll;
-      for (const name of textFields) form.elements[name].value = settings[name] || '';
-      savedState = currentState();
-      currencyEdited = phoneEdited = mobileBarsEdited = textsEdited = false;
-      status(root, 'settingsSaved');
-    } catch (error) { if (isCurrent()) tabs.select(error.code === 'COMPANY_CURRENCY_CONFLICT' ? 'general' : tabOfField(error.field)); if (isCurrent()) status(root, error.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : error.field === 'sellerWhatsAppPhone' ? 'sellerWhatsAppInvalid' : error.field?.startsWith('sender') ? 'senderInvalid' : 'productError', true); }
-    finally {
+      if (!validSettings(settings)) throw Object.assign(new Error('invalid company settings response'), { code: 'INVALID_SETTINGS_RESPONSE' });
+      const values = canonical(settings, group); hydrate(group, values); baselines[group] = values;
+      feedback[group] = { key: group === 'shipping' ? 'senderSaved' : 'settingsSaved', error: false };
+    } catch (error) {
+      if (!isCurrent() || error.message === 'unauthorized') return;
+      const target = error.code === 'COMPANY_CURRENCY_CONFLICT' ? 'general' : error.field ? tabOfField(error.field) : group;
+      const key = error.code === 'INVALID_SETTINGS_RESPONSE' ? 'companySaveUnconfirmed' : error.code === 'FORBIDDEN' ? 'companyForbidden' : error.code === 'COMPANY_CURRENCY_CONFLICT' ? 'currencyConflict' : error.field === 'sellerWhatsAppPhone' ? 'sellerWhatsAppInvalid' : error.field?.startsWith('sender') ? 'senderInvalid' : 'companySaveFailed';
+      forbidden = error.code === 'FORBIDDEN'; if (forbidden || error.code === 'INVALID_SETTINGS_RESPONSE') retryButton.hidden = false;
+      feedback[target] = { key, error: true, field: error.field }; tabs.select(target);
+      if (error.field && companyGroups[target]?.includes(error.field)) { markFieldError(error.field, key); focusField = error.field; }
+    } finally {
       if (isCurrent()) {
-        for (const input of form.querySelectorAll('input, select, textarea')) input.disabled = false;
-        saveButton.disabled = false;
+        pendingGroup = null; syncCompanyControls();
+        if (focusField) (focusField.startsWith('sender') ? sender.field(focusField) : form.elements[focusField])?.focus();
       }
     }
   });
   return {
-    dispose() { whatsapp.dispose(); whatsappQr.dispose(); },
-    isBusy: () => pendingWrites > 0 || Boolean(ai?.isBusy()) || whatsapp.isBusy(),
+    dispose() { disposed = true; loadSequence++; whatsapp.dispose(); whatsappQr.dispose(); },
+    isBusy: () => Boolean(pendingGroup) || loadingSettings || pendingWrites > 0 || Boolean(ai?.isBusy()) || whatsapp.isBusy(),
     draftSignature: () => whatsapp.draftSignature(),
     hasUnsavedChanges() {
-      return whatsapp.hasUnsavedChanges() || Boolean(ai?.hasUnsavedChanges()) || currentState() !== (savedState ?? initialState) ||
+      return whatsapp.hasUnsavedChanges() || Boolean(ai?.hasUnsavedChanges()) || Object.keys(companyGroups).some(groupDirty) ||
         (!setupForm.hidden && JSON.stringify([setupForm.elements.mode.value, setupForm.elements.shopName.value]) !== setupBaseline);
     },
     refreshLocale() {
-      translate(root); tabs.refreshLocale();
+      translate(root); tabs.refreshLocale(); sender.refreshLocale(); syncCompanyControls();
       if (setupState?.mode) showSetup(setupState);
       integrations.refreshLocale();
       whatsapp.refreshLocale();
       whatsappQr.refreshLocale();
       ai?.refreshLocale();
-      const line = root.querySelector('.settings-status');
-      line.textContent = line.dataset.statusKey ? t(line.dataset.statusKey) : '';
+
     },
   };
 }

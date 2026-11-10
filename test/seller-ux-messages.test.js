@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { languages, messages } from '../public/shared/i18n.js';
 import '../public/seller/ops-copy.js';
@@ -14,6 +13,5 @@ test('an invalid sender / pickup address gets its own message instead of the pro
     assert.ok(messages[code].senderInvalid?.trim(), `${code}.senderInvalid is missing`);
     assert.notEqual(messages[code].senderInvalid, messages[code].productError);
   }
-  const source = readFileSync(new URL('../public/seller/settings.js', import.meta.url), 'utf8');
-  assert.match(source, /error\.field\?\.startsWith\('sender'\) \? 'senderInvalid'/);
+  // Routing, payload isolation and inline invalid-field focus are exercised by sender-settings-browser.test.js.
 });

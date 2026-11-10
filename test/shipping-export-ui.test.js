@@ -48,9 +48,9 @@ test('shipping UI: confirmation-only action, filters, download, errors and mobil
   await page.locator('[name="senderName"]').fill('Fictional Pickup');
   await page.locator('[name="senderPhone"]').fill('+60123456789');
   await page.locator('[name="senderPostcode"]').fill('01000');
-  await page.locator('[name="senderCountry"]').fill('MY');
-  await page.getByRole('button', { name: 'Save settings', exact: true }).click();
-  await page.getByText('Settings saved.', { exact: true }).waitFor();
+  await page.locator('[name="senderCountry"]').selectOption('MY');
+  await page.getByRole('button', { name: 'Save sender details', exact: true }).click();
+  await page.getByText('Sender details saved.', { exact: true }).waitFor();
   await page.reload();
   await page.waitForFunction(() => document.querySelector('[name="senderName"]')?.value === 'Fictional Pickup');
   assert.equal(await page.locator('[name="senderPostcode"]').inputValue(), '01000');

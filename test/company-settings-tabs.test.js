@@ -32,13 +32,13 @@ test('Company settings is split into tabs: one group per tab, keyboard navigatio
   assert.equal(await visible('#company-form'), false);
   await page.getByRole('tab', { name: 'WhatsApp' }).click();
   assert.equal(await visible('#company-form'), false);
-  // Shipping holds the sender address; an invalid sender phone is reported there even when saved from another tab.
+  // Shipping validation belongs to its own save; General never submits a sibling draft.
   await page.getByRole('tab', { name: 'Shipping' }).click();
-  await page.locator('[name=senderPhone]').fill('+60312345678');
-  await page.getByRole('tab', { name: 'General' }).click();
-  await page.getByRole('button', { name: 'Save settings', exact: true }).click();
-  await page.getByText('Check the sender / pickup address.', { exact: false }).waitFor();
+  await page.locator('[name=senderPhone]').fill('invalid');
+  await page.getByRole('button', { name: 'Save sender details', exact: true }).click();
+  await page.getByText('Check the sender / pickup address.', { exact: false }).first().waitFor();
   assert.equal(await page.getByRole('tab', { name: 'Shipping' }).getAttribute('aria-selected'), 'true');
+  assert.equal(await page.locator('[name=senderPhone]').getAttribute('aria-invalid'), 'true');
   assert.equal(await visible('[name=senderPhone]'), true);
   // The selected tab survives a reload of the page.
   await page.reload(); await tablist.waitFor();

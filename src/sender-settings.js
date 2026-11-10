@@ -1,10 +1,13 @@
 // Fixed identifiers shared by migrations, settings validation and shipping exports.
-export const senderFields = {
-  senderName: ['sender_name', 120], senderPhone: ['sender_phone', 15],
-  senderAddressLine1: ['sender_address_line1', 240], senderAddressLine2: ['sender_address_line2', 240],
-  senderCity: ['sender_city', 120], senderState: ['sender_state', 120],
-  senderPostcode: ['sender_postcode', 20], senderCountry: ['sender_country', 2],
+import { senderLimits } from '../public/shared/sender-fields.js';
+
+const senderColumns = {
+  senderName: 'sender_name', senderPhone: 'sender_phone',
+  senderAddressLine1: 'sender_address_line1', senderAddressLine2: 'sender_address_line2',
+  senderCity: 'sender_city', senderState: 'sender_state',
+  senderPostcode: 'sender_postcode', senderCountry: 'sender_country',
 };
+export const senderFields = Object.fromEntries(Object.entries(senderColumns).map(([field, column]) => [field, [column, senderLimits[field]]]));
 
 export async function migrateSenderSettings(store) {
   const postgres = store.dialect === 'postgres';

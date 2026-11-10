@@ -4,7 +4,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && mkdir -p /data && chown node:node /data
 COPY src/ ./src/
-COPY public/shared/order-status.js public/shared/integration-catalog.js ./public/shared/
+COPY public/shared/order-status.js public/shared/integration-catalog.js public/shared/sender-fields.js ./public/shared/
 COPY public/setup/ ./public/setup/
 COPY scripts/import-sqlite.js scripts/database-evidence.js scripts/reset-seller-password.js scripts/reset-platform-admin.js scripts/deployment-maintenance.mjs scripts/restore-smoke.mjs scripts/cleanup-seller-mcp.js scripts/recover-seller-mcp.js ./scripts/
 

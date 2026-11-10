@@ -653,3 +653,19 @@ body{background:var(--ui-canvas)}
 .wa-cloud-field{display:grid;gap:4px;min-width:0}.wa-cloud-field>small{font-size:var(--ui-font-sm);font-weight:400;line-height:1.4;color:var(--ui-muted)}
 
 .wa-cloud .whatsapp-form>p{margin:0}.wa-cloud .whatsapp-form>.wa-cloud-help{margin:0}.wa-cloud .whatsapp-form{gap:14px}
+/* Sender fields share the existing Company card width and control/focus tokens. */
+#company-group-shipping.sender-settings{display:grid;gap:var(--ui-space-4);width:100%;min-width:0}
+.sender-settings>h2,.sender-settings>p{margin:0}.sender-settings>p{color:var(--ui-muted);font-size:var(--ui-font-md);line-height:1.5}
+.sender-settings fieldset{border:0;padding:0;margin:0;min-width:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--ui-space-4)}
+.sender-settings legend{font-size:var(--ui-font-md);font-weight:700;margin-bottom:var(--ui-space-3);padding:0;color:var(--ui-text)}
+.settings-form .sender-settings label{min-width:0;width:100%;align-content:start;font-size:var(--ui-font-md)}
+.sender-settings [data-sender-field=senderCountry],.sender-settings [data-sender-field=senderAddressLine1],.sender-settings [data-sender-field=senderAddressLine2],.sender-settings .sender-country-other,.sender-settings .sender-field-help{grid-column:1/-1}
+.sender-settings .sender-country-other{max-width:360px}
+.sender-field-help{margin:0;color:var(--ui-muted);font-size:var(--ui-font-sm);font-weight:400;line-height:1.5}
+.settings-form .sender-settings input,.settings-form .sender-settings select{box-sizing:border-box;font:inherit}
+.company-field-error{color:var(--shop-error);font-size:var(--ui-font-sm);font-weight:400;line-height:1.4}
+#company-form [aria-invalid=true]{border-color:var(--shop-error)}
+#company-form>[type=submit],#company-form>#company-retry{margin-top:var(--ui-space-2)}
+@media(max-width:600px){.sender-settings fieldset{grid-template-columns:minmax(0,1fr)}.sender-settings .sender-country-other{max-width:none}.sender-settings [data-sender-field]{grid-column:1}}
+
+#company-form:has(#company-group-shipping:not([hidden])){margin:0}#company-form+.settings-status:empty{display:none}
