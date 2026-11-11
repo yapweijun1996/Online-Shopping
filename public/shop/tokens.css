@@ -95,9 +95,18 @@
 
 /* Layout, layering, motion and safe-area tokens shared by every console (the single source for these values). */
 :root {
+  --ui-space-1: 4px;
   --ui-space-2: 8px;
   --ui-space-3: 12px;
   --ui-space-4: 16px;
+  --ui-space-5: 20px;
+  --ui-space-6: 24px;
+  --ui-space-8: 32px;
+  --ui-space-12: 48px;
+  --ui-form-max: 640px;
+  --ui-card-padding: var(--ui-space-6);
+  --ui-page-top: var(--ui-space-8);
+  --ui-page-bottom: var(--ui-space-12);
   --ui-font-sm: 13px;
   --ui-font-md: 14px;
   --ui-page-gutter: clamp(20px, 3vw, 44px);

@@ -38,8 +38,8 @@ body{background:var(--ui-canvas)}
 .sidebar .icon-button{color:#fff}
 .sidebar .icon-button:hover{background:#ffffff16}
 .sidebar :focus-visible{outline:2px solid #fff;outline-offset:3px}
-.main{padding:32px var(--ui-page-gutter) 60px}
-.page-heading{margin-bottom:24px}
+
+.page-heading{margin-bottom:var(--ui-space-6)}
 .page-heading .eyebrow{font-size:10px;letter-spacing:.14em}
 .page-heading h1{font-size:32px;letter-spacing:-.035em;font-weight:750}
 .primary-button,.secondary-button,.text-button{border-radius:8px}
@@ -167,12 +167,12 @@ body{background:var(--ui-canvas)}
 @media(max-width:900px){
  .sidebar-head{min-height:64px}
  .sidebar-brand-static{font-size:17px}
- .main{padding:24px 22px 45px}
+
  .shop-context{max-width:45%;font-size:13px}
  .seller-signed-in .topbar .brand>span{display:none}
 }
 @media(max-width:760px){
- .main{padding:20px 16px 36px}
+
  .page-heading h1{font-size:27px}
  .page-heading .eyebrow{font-size:9px}
  .shop-context{max-width:39%;font-size:12px}
@@ -214,7 +214,7 @@ body{background:var(--ui-canvas)}
  #product-editor-view .product-form{padding-bottom:0}
 }
 @media(max-width:360px){
- .main{padding-inline:12px}
+
  .shop-context{max-width:36%}
  .product-card{padding:12px;gap:9px;grid-template-columns:44px minmax(0,1fr)}
  .product-card>img,.product-placeholder{width:44px;height:44px}

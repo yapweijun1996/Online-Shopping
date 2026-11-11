@@ -26,3 +26,15 @@ test('Owner budget draft retains its revision when analytics refreshes', {skip:!
  const {chromium}=await import(modulePath);const browser=await chromium.launch({headless:true,channel:'chrome'});t.after(()=>browser.close());const f=await sellerFixture();t.after(()=>f.close());const page=await browser.newPage({serviceWorkers:'block'});await page.goto(f.origin+'/seller/');await page.fill('#username',f.config.username);await page.fill('#password',f.config.password);await page.click('#login-submit');await page.locator('.dashboard-home').waitFor();await page.goto(f.origin+'/seller/#aistudio/tab/budget');await page.waitForFunction(()=>document.querySelector('select[name=budgetMode]')?.value==='WARN');await page.fill('input[name=dailyBudget]','12');
  const {saveBudget}=await import('../src/ai-studio/budget.js');await saveBudget(f.app.database,{dailyMicrousd:20000000,monthlyMicrousd:null,mode:'WARN',alertPercent:80,expectedRevision:1},'other_owner');await page.getByRole('button',{name:'Refresh',exact:true}).click();await page.waitForTimeout(200);assert.equal(await page.inputValue('input[name=dailyBudget]'),'12');await page.getByRole('button',{name:'Save budget',exact:true}).click();await page.getByText('This changed somewhere else. Reload the page.',{exact:true}).waitFor();assert.equal((await f.app.database.get('SELECT daily_microusd FROM ai_studio_budget')).daily_microusd,20000000);
 });
+
+test('Unknown-only usage stays unknown in the Studio summary and budget metrics', {skip:!modulePath}, async t=>{
+ const {chromium}=await import(modulePath),browser=await chromium.launch({headless:true,channel:'chrome'});t.after(()=>browser.close());
+ const f=await sellerFixture();t.after(()=>f.close());
+ const [id]=await reserve(f.app.database,['IMAGE'],'review_owner');await settle(f.app.database,id,'AMBIGUOUS');
+ const page=await browser.newPage({serviceWorkers:'block'});
+ await page.goto(f.origin+'/seller/');await page.fill('#username',f.config.username);await page.fill('#password',f.config.password);await page.click('#login-submit');await page.locator('.dashboard-home').waitFor();
+ await page.goto(f.origin+'/seller/#aistudio/tab/budget');await page.locator('.ai-budget-metric').first().waitFor();
+ await page.waitForFunction(()=>document.querySelector('.ai-studio-summary')?.textContent.includes('Unknown cost'));
+ const summary=await page.locator('.ai-studio-summary').innerText();assert.match(summary,/Today: Unknown cost/);assert.match(summary,/This month: Unknown cost/);assert.doesNotMatch(summary,/\$0\.00/);
+ assert.match(await page.locator('.ai-budget-metric>strong').first().innerText(),/Unknown cost/);
+});
