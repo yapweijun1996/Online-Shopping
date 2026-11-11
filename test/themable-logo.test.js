@@ -24,7 +24,10 @@ test('the shop draws the logo with <use> and colours it from the palette', () =>
 
 test('seller branding uses the shared logo in the header, login and sidebar', () => {
   const html = read('../public/seller/index.html');
-  assert.equal((html.match(/<img[^>]*src="\/favicon\.svg"/g) || []).length, 5);
+  assert.equal((html.match(/<use href="\/favicon\.svg#mark"\/>/g) || []).length, 5);
+  assert.doesNotMatch(html, /<img[^>]*src="\/favicon\.svg"/);
   assert.doesNotMatch(html, /studio-leaf\.svg/);
   assert.match(read('../public/seller/sw.js'), /'\/favicon\.svg'/);
+  assert.match(read('../public/seller/brand.css'), /\.seller-brand-logo\{[^}]*color:var\(--ui-primary\);fill:currentColor;stroke:none/);
+  assert.match(read('../public/seller/sw.js'), /'\.\/brand\.css'/);
 });

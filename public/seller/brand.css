@@ -1,0 +1,3 @@
+.seller-brand-logo{width:40px;height:40px;flex:none;color:var(--ui-primary);fill:currentColor;stroke:none}
+.sidebar .sidebar-brand .seller-brand-logo,.sidebar .sidebar-brand-static .seller-brand-logo{background:var(--ui-surface)}
+@media (max-width:760px){.studio-login-brand .seller-brand-logo{width:34px;height:34px}}
