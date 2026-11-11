@@ -64,16 +64,16 @@ export function createOpenAiStudioProvider({ apiKey, models = {}, fetchImpl = fe
       response = await fetchImpl(`${host}${path}`, { redirect: 'error', signal, ...init, headers: { authorization: `Bearer ${apiKey}`, ...init.headers } });
     } catch (error) {
       const timedOut = signal.aborted || error?.name === 'TimeoutError' || error?.name === 'AbortError';
-      throw studioError(timedOut ? 'STUDIO_TIMEOUT' : 'STUDIO_UNAVAILABLE', ambiguousOnTimeout ? { ambiguous: true } : {});
+      throw studioError(timedOut ? 'STUDIO_TIMEOUT' : 'STUDIO_UNAVAILABLE', path !== '/v1/models' ? { ambiguous: true } : {});
     }
-    if (!response.ok) { await response.body?.cancel(); throw studioError(failureCode(response.status)); }
+    if (!response.ok) { await response.body?.cancel(); throw studioError(failureCode(response.status), response.status >= 500 && path !== '/v1/models' ? { ambiguous: true } : {}); }
     const expired = new Promise((_, reject) => signal.addEventListener('abort', () => reject(Object.assign(new Error('deadline'), { name: 'TimeoutError' })), { once: true }));
     expired.catch(() => {});
     try { return JSON.parse((await Promise.race([readBounded(response, limit), expired])).toString('utf8')); }
     catch (error) {
       // Whatever went wrong after the request was accepted, never pass the original error on; an edit may be billed.
       const timedOut = signal.aborted || error?.name === 'TimeoutError' || error?.name === 'AbortError';
-      throw studioError(timedOut ? 'STUDIO_TIMEOUT' : 'STUDIO_BAD_RESPONSE', ambiguousOnTimeout ? { ambiguous: true } : {});
+      throw studioError(timedOut ? 'STUDIO_TIMEOUT' : 'STUDIO_BAD_RESPONSE', path !== '/v1/models' ? { ambiguous: true } : {});
     }
   }
   return {
@@ -81,11 +81,11 @@ export function createOpenAiStudioProvider({ apiKey, models = {}, fetchImpl = fe
     async validateKey() { await call('/v1/models', { method: 'GET' }); return true; },
 
     /* Reads one product photo and returns plain-text suggestions. The photo is untrusted input. */
-    async analyze({ image, categories, languageHint = 'English' }) {
+    async analyze({ image, categories, languageHint = 'English', onUsage }) {
       const codes = categories.map((category) => category.code);
       const list = categories.map((category) => `${category.code} = ${category.label}`).join('; ');
       const body = {
-        model: model.vision, store: false, max_output_tokens: 1200,
+        model: model.vision, store: false, service_tier: 'default', max_output_tokens: 1200,
         input: [{ role: 'user', content: [
           { type: 'input_text', text: `Describe the product in the photo for an online shop listing, in ${languageHint}. ` +
             'Use only what is visible. Do not invent brand names, materials, sizes or prices. ' +
@@ -97,13 +97,14 @@ export function createOpenAiStudioProvider({ apiKey, models = {}, fetchImpl = fe
         text: { format: { type: 'json_schema', name: 'product_suggestion', strict: true, schema: SUGGESTION_SCHEMA(codes) } }
       };
       const result = await call('/v1/responses', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      await reportUsage(onUsage, model.vision, result);
       return cleanSuggestion(parseMessage(result), codes);
     },
 
     /* Advisory comparison of a generated image with its source photo. Never approves anything by itself. */
-    async review({ source, result }) {
+    async review({ source, result, onUsage }) {
       const body = {
-        model: model.vision, store: false, max_output_tokens: 800,
+        model: model.vision, store: false, service_tier: 'default', max_output_tokens: 800,
         input: [{ role: 'user', content: [
           { type: 'input_text', text: 'Image 1 is the original product photo. Image 2 is an AI-generated variation that must show the same product in a new setting. ' +
             'Compare the product itself: shape, proportions, colour, material, logo, label and printed text, and any added or missing parts. ' +
@@ -116,11 +117,12 @@ export function createOpenAiStudioProvider({ apiKey, models = {}, fetchImpl = fe
         text: { format: { type: 'json_schema', name: 'image_review', strict: true, schema: REVIEW_SCHEMA } }
       };
       const answer = await call('/v1/responses', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }, { limit: MAX_JSON_BYTES });
+      await reportUsage(onUsage, model.vision, answer);
       return cleanReview(parseMessage(answer));
     },
 
     /* One independent image edit. A timeout may still have been billed, so it is marked ambiguous. */
-    async edit({ image, prompt, size = '1024x1024', format = 'webp', compression = 80 }) {
+    async edit({ image, prompt, size = '1024x1024', format = 'webp', compression = 80, onUsage }) {
       const form = new FormData();
       form.set('model', model.image);
       form.set('prompt', prompt);
@@ -129,6 +131,7 @@ export function createOpenAiStudioProvider({ apiKey, models = {}, fetchImpl = fe
       form.set('output_compression', String(compression));
       form.set('image', new Blob([image.data], { type: image.mime }), `source.${image.mime.split('/')[1]}`);
       const result = await call('/v1/images/edits', { method: 'POST', body: form }, { limit: MAX_IMAGE_RESULT_BYTES * 2, ambiguousOnTimeout: true });
+      await reportUsage(onUsage, model.image, result);
       const encoded = result?.data?.[0]?.b64_json;
       if (typeof encoded !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) throw studioError('STUDIO_BAD_RESPONSE', { ambiguous: true });
       const data = Buffer.from(encoded, 'base64');
@@ -154,4 +157,10 @@ export function cleanReview(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || !['PASS', 'WARN', 'FAIL'].includes(value.verdict)) throw studioError('STUDIO_BAD_RESPONSE');
   const issues = Array.isArray(value.issues) ? value.issues.map((issue) => plain(issue, 200)).filter(Boolean).slice(0, 5) : [];
   return { verdict: value.verdict, issues: value.verdict === 'PASS' ? [] : issues };
+}
+
+async function reportUsage(callback, model, result) {
+  if (!callback) return;
+  try { await callback({ model: result?.model || model, usage: result?.usage, serviceTier: result?.service_tier || 'default' }); }
+  catch { throw studioError('STUDIO_BAD_RESPONSE', { ambiguous: true }); }
 }

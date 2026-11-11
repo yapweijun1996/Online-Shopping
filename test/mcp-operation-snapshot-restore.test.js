@@ -1,3 +1,4 @@
+import { pgBinary } from './helpers/pg-binary.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -28,7 +29,7 @@ if (base && (process.env.NODE_ENV !== 'test' || !/test/i.test(new URL(base).path
 }
 const password = 'Synthetic-restore-password-2026!';
 const sellerOrigin = 'https://seller.example.test';
-const pgBin = '/usr/lib/postgresql/16/bin';
+
 
 async function physicalOperationSchema(store) {
   return {
@@ -49,7 +50,7 @@ function postgresEnvironment(url) {
 function postgresTool(tool, url, args) {
   // Credentials are environment-only, never process arguments, error output or
   // test diagnostics. All files and connections belong to this synthetic fixture.
-  const result = spawnSync(path.join(pgBin, tool), args, { env: postgresEnvironment(url),
+  const result = spawnSync(pgBinary(tool), args, { env: postgresEnvironment(url),
     stdio: ['ignore', 'pipe', 'pipe'], timeout: 15000, maxBuffer: 1024 * 1024 });
   assert.ok(result.status === 0 && !result.error, `Synthetic ${tool} did not complete successfully.`);
 }

@@ -104,7 +104,7 @@ test('failures while reading the body are sanitized and edits stay ambiguous', a
   const big = await huge.api.edit({ image, prompt: 'p' }).catch((e) => e);
   assert.equal(big.code, 'STUDIO_BAD_RESPONSE'); assert.equal(big.ambiguous, true);
   const analyzeReset = await provider(leaky).api.analyze({ image, categories }).catch((e) => e);
-  assert.equal(analyzeReset.code, 'STUDIO_BAD_RESPONSE'); assert.notEqual(analyzeReset.ambiguous, true);
+  assert.equal(analyzeReset.code, 'STUDIO_BAD_RESPONSE'); assert.equal(analyzeReset.ambiguous, true);
 });
 
 test('review compares both photos with a strict verdict schema and returns plain issues', async () => {
@@ -121,4 +121,17 @@ test('review compares both photos with a strict verdict schema and returns plain
     await assert.rejects(provider(() => json(message(JSON.stringify(bad)))).api.review({ source: image, result: image }), { code: 'STUDIO_BAD_RESPONSE' });
   }
   await assert.rejects(provider(() => json({ status: 'completed', output: [{ type: 'message', content: [{ type: 'refusal', refusal: 'no' }] }] })).api.review({ source: image, result: image }), { code: 'STUDIO_REFUSED' });
+});
+
+test('usage reaches the accounting callback before output refusal or parse failure', async () => {
+ const usage={input_tokens:50,output_tokens:10,input_tokens_details:{cached_tokens:0}}, seen=[];
+ const client=provider(()=>json({model:'gpt-6-astra',usage,status:'completed',output:[{type:'message',content:[{type:'refusal'}]}]}));
+ await assert.rejects(client.api.analyze({image,categories,onUsage:data=>seen.push(data)}),{code:'STUDIO_REFUSED'});
+ assert.deepEqual(seen,[{model:'gpt-6-astra',usage,serviceTier:'default'}]);
+ for(const method of ['analyze','edit','review']) {
+  const client=provider(()=>{throw new Error('connection reset')});
+  const args=method==='analyze'?{image,categories}:method==='edit'?{image,prompt:'p'}:{source:image,result:image};
+  await assert.rejects(client.api[method](args),{code:'STUDIO_UNAVAILABLE',ambiguous:true});
+  const server=provider(()=>json({},500));await assert.rejects(server.api[method](args),{code:'STUDIO_UNAVAILABLE',ambiguous:true});
+ }
 });

@@ -86,7 +86,7 @@ const ORDER_ROUTE = /^(?:orders|confirmations)\/[0-9a-f-]{36}$/;
 function routeFromHash() {
   // `review` was the old address of the queue of orders waiting for a decision, which is now Sales Orders.
   const route = location.hash.slice(1).replace(/^review(?=\/|$)/, 'orders');
-  return (VALID_VIEWS.has(route) || /^aistudio\/(?:tab\/(?:create|images|settings)|[0-9a-f-]{36})$/.test(route) || PRODUCT_ROUTE.test(route) || ORDER_ROUTE.test(route)) && allowedRoute(route) ? route : 'dashboard';
+  return (VALID_VIEWS.has(route) || /^aistudio\/(?:tab\/(?:create|images|settings|budget)|[0-9a-f-]{36})$/.test(route) || PRODUCT_ROUTE.test(route) || ORDER_ROUTE.test(route)) && allowedRoute(route) ? route : 'dashboard';
 }
 
 function viewFromRoute(route) { return route.split('/')[0]; }

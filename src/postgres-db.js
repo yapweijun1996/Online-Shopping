@@ -1,3 +1,4 @@
+import { budgetStorageReady } from './ai-studio/budget.js';
 import { assertProductDetailStorage } from './product-detail-schema.js';
 import { inventoryStorageReady } from './inventory-schema.js';
 import { readFile } from 'node:fs/promises';
@@ -23,6 +24,7 @@ export async function openPostgresDatabase(url, options) {
         version = await store.schemaVersion();
       }
       if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
+      if (!await budgetStorageReady(store)) throw new Error('Incompatible AI budget storage.');
       await assertProductDetailStorage(store);
       if (!await inventoryStorageReady(store)) throw new Error('Incompatible inventory storage.');
     });

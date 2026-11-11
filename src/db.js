@@ -1,3 +1,4 @@
+import { migrateStudioBudget, budgetStorageReady } from './ai-studio/budget.js';
 import { migrateProductDetail, productDetailStorageReady, assertProductDetailStorage } from './product-detail-schema.js';
 import { migrateInventory, inventoryStorageReady, migrateInventoryOrderIndex } from './inventory-schema.js';
 import { migrateAi } from './ai/schema.js';
@@ -12,7 +13,7 @@ import { migrateSharedGalleries } from './product-gallery.js';
 import { migrateOAuth } from './mcp/schema.js';
 import { initializeOperationStorage, operationStorageReady, upgradeMediaStorage, assertOperationStorageForUpgrade, upgradeOperationAuditStorage } from './mcp/operation-runtime.js';
 
-export const SCHEMA_VERSION = 35;
+export const SCHEMA_VERSION = 36;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -660,6 +661,10 @@ export async function migrateStore(store) {
     await store.transaction(async () => { await migrateProductDetail(store); await store.setSchemaVersion(35); });
     version = 35;
   }
+  if (version === 35) {
+    await store.transaction(async () => { await migrateStudioBudget(store); await store.setSchemaVersion(36); });
+    version = 36;
+  }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
   await assertProductDetailStorage(store);
 }
@@ -674,7 +679,7 @@ async function addThumbnailColumns(store) {
 
 export async function ready(store) {
   try {
-    return await operationStorageReady(store) && await inventoryStorageReady(store) && await productDetailStorageReady(store) &&
+    return await budgetStorageReady(store) && await operationStorageReady(store) && await inventoryStorageReady(store) && await productDetailStorageReady(store) &&
       await store.schemaVersion() === SCHEMA_VERSION &&
       Array.isArray(await store.all('SELECT stock_quantity, gallery_layout_json FROM product LIMIT 0')) &&
       Array.isArray(await store.all('SELECT tracking_carrier, tracking_no, contact_erased_at, contact_erased_by FROM shop_order LIMIT 0')) &&
@@ -699,7 +704,7 @@ export async function ready(store) {
       (await Promise.all(['session', 'product', 'general_code', 'shop_order', 'delivery', 'order_item', 'order_event', 'checkout_idempotency',
         'rate_limit_attempt', 'shop_setup', 'product_gallery_image', 'oauth_client', 'oauth_authorization_request',
         'oauth_grant', 'oauth_authorization_code', 'oauth_token', 'mcp_audit',
-        'whatsapp_qr_session', 'whatsapp_qr_auth', 'message_peer_suppression', 'message_thread', 'message_thread_message', 'ai_setting', 'ai_usage', 'ai_suggestion_audit', 'ai_studio_credential', 'ai_studio_setting', 'ai_studio_usage', 'ai_studio_image']
+        'whatsapp_qr_session', 'whatsapp_qr_auth', 'message_peer_suppression', 'message_thread', 'message_thread_message', 'ai_setting', 'ai_usage', 'ai_suggestion_audit', 'ai_studio_credential', 'ai_studio_setting', 'ai_studio_usage', 'ai_studio_image', 'ai_studio_budget', 'ai_studio_cost', 'ai_studio_budget_event']
         .map(async (table) => Array.isArray(await store.all(`SELECT * FROM ${table} LIMIT 0`))))).every(Boolean);
   } catch {
     return false;

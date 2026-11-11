@@ -1,3 +1,4 @@
+import { pgBinary } from './helpers/pg-binary.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -19,12 +20,12 @@ import { getProductDetail, saveProductDetail, stageProductDetailImage, getProduc
 const base=process.env.SHOP_TEST_DATABASE_URL;
 const options={skip:!base,timeout:30000};
 const sha=data=>createHash('sha256').update(data).digest('hex');
-const tables=importTables.filter(table=>!['listing_detail','listing_detail_image'].includes(table));
+const tables=importTables.filter(table=>!['listing_detail','listing_detail_image','ai_studio_budget','ai_studio_cost','ai_studio_budget_event'].includes(table));
 const snapshot=async store=>Object.fromEntries(await Promise.all(tables.map(async table=>[table,rowsDigest(await store.all(`SELECT * FROM ${table}`))])));
 const photo='data:image/png;base64,'+(await readFile(new URL('../public/shop/icons/icon-192.png',import.meta.url))).toString('base64');
 function pgTool(name,url,args){
  const u=new URL(url);assert.equal(process.env.NODE_ENV,'test');assert.ok(/test/i.test(u.pathname)&&['127.0.0.1','localhost'].includes(u.hostname));
- const result=spawnSync('/usr/lib/postgresql/16/bin/'+name,args,{env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8',PGHOST:u.hostname,PGPORT:u.port,PGUSER:decodeURIComponent(u.username),PGPASSWORD:decodeURIComponent(u.password),PGDATABASE:u.pathname.slice(1),PGCONNECT_TIMEOUT:'5'},stdio:['ignore','pipe','pipe'],timeout:15000,maxBuffer:1048576});
+ const result=spawnSync(pgBinary(name),args,{env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8',PGHOST:u.hostname,PGPORT:u.port,PGUSER:decodeURIComponent(u.username),PGPASSWORD:decodeURIComponent(u.password),PGDATABASE:u.pathname.slice(1),PGCONNECT_TIMEOUT:'5'},stdio:['ignore','pipe','pipe'],timeout:15000,maxBuffer:1048576});
  assert.ok(result.status===0&&!result.error,'Owned synthetic rich detail snapshot tool failed.');
 }
 async function databases(t){
@@ -39,7 +40,7 @@ test('real PostgreSQL schema34 dump restores separately and upgrades with origin
  // Strip ONLY the additive35 section and its two metadata strings. This exact
  // source hash is the real dfe0692 schema34 baseline, independent of git depth.
  const current=await readFile(new URL('../src/postgres/schema.sql',import.meta.url),'utf8');
- const old=current.split('\n-- Listing-owned rich product detail (schema 35).')[0].replace('matching SQLite schema 35','matching SQLite schema 34').replace('INSERT INTO schema_meta VALUES (1, 35);','INSERT INTO schema_meta VALUES (1, 34);');
+ const old=current.split('\n-- Listing-owned rich product detail (schema 35).')[0].replace('matching SQLite schema 36','matching SQLite schema 34').replace('INSERT INTO schema_meta VALUES (1, 36);','INSERT INTO schema_meta VALUES (1, 34);');
  assert.equal(sha(old),'d0067a35d523accff71d4d6d61848f5f5a4d203adf3338c4b0d051bbf007f449');
  const source=openPostgresStore(original.url);dbs.stores.push(source);await source.exec(old);
  assert.equal(await source.schemaVersion(),34);assert.equal((await source.get("SELECT to_regclass('public.listing_detail') AS table_name")).table_name,null);
@@ -56,13 +57,19 @@ test('real PostgreSQL schema34 dump restores separately and upgrades with origin
 });
 
 test('real PostgreSQL35 dump preserves rich document and encoded bytes independently of later original edits',options,async t=>{
- const f=await inventoryFixture(t,'postgres'),p=await f.product(),asset=await stageProductDetailImage(f.store,p.id,{imageDataUrl:photo});
+ const dbs=await databases(t),original=await dbs.create();
+ const current=await readFile(new URL('../src/postgres/schema.sql',import.meta.url),'utf8');
+ const schema35=current.split('\n-- AI Studio application budgets (schema36).')[0].replace('matching SQLite schema 36','matching SQLite schema 35').replace('INSERT INTO schema_meta VALUES (1, 36);','INSERT INTO schema_meta VALUES (1, 35);');
+ assert.equal(sha(schema35),'d07494125ee0398ed807108d7578d4f4bfbc4f026eff0396523dc392f117f151');
+ const store=openPostgresStore(original.url);dbs.stores.push(store);await store.exec(schema35);assert.equal(await store.schemaVersion(),35);
+ await ensureAdmin(store,'synthetic_owner','SyntheticDetailRestorePassword123!');await createCategory(store,{code:'SYNTHETIC',label:'Synthetic'});
+ const p=await createProduct(store,{sku:'REAL35',name:'Synthetic original35',description:'Preserved summary',category:'SYNTHETIC',priceMinor:500,currency:'MYR',active:true}),f={store,location:original.url},asset=await stageProductDetailImage(store,p.id,{imageDataUrl:photo});
  await saveProductDetail(f.store,p.id,{expectedRevision:(await getProductDetail(f.store,p.id,true)).revision,document:{version:1,blocks:[{type:'image',assetId:asset.id,alt:'Synthetic image',caption:'Original caption'}]}},'synthetic_owner');
  const before=await getProductDetail(f.store,p.id,true),imageDigest=sha((await getProductDetailImage(f.store,p.id,asset.id,true)).data);
  const directory=await mkdtemp(join(tmpdir(),'shopping-detail35-recovery-'));t.after(()=>rm(directory,{recursive:true,force:true}));
  const path=join(directory,'schema35.dump');await writeFile(path,'',{mode:0o600});pgTool('pg_dump',f.location,['--format=custom','--no-owner','--no-privileges','--file',path]);
- const dbs=await databases(t),recovery=await dbs.create();pgTool('pg_restore',recovery.url,['--no-owner','--no-privileges','--exit-on-error','--single-transaction','--dbname',recovery.name,path]);
- const restored=await openPostgresDatabase(recovery.url);dbs.stores.push(restored);
+ const recovery=await dbs.create();pgTool('pg_restore',recovery.url,['--no-owner','--no-privileges','--exit-on-error','--single-transaction','--dbname',recovery.name,path]);
+ const restored=await openPostgresDatabase(recovery.url,{allowUpgrade:true});dbs.stores.push(restored);assert.equal(await restored.schemaVersion(),SCHEMA_VERSION);
  await saveProductDetail(f.store,p.id,{expectedRevision:before.revision,document:{version:1,blocks:[]}},'synthetic_owner');
  assert.deepEqual(await getProductDetail(restored,p.id,true),before);assert.equal(sha((await getProductDetailImage(restored,p.id,asset.id,true)).data),imageDigest);assert.equal(await ready(restored),true);
  await assert.rejects(()=>getProductDetailImage(f.store,p.id,asset.id,true),{status:404});
@@ -73,6 +80,6 @@ test('SQLite to PostgreSQL import preserves rich document/asset bytes and remain
  await saveProductDetail(source.store,p.id,{expectedRevision:(await getProductDetail(source.store,p.id,true)).revision,document:{version:1,blocks:[{type:'image',assetId:asset.id,alt:'Synthetic imported image',caption:''}]}},'synthetic_owner');
  const before=await getProductDetail(source.store,p.id,true),target=await inventoryFixture(t,'postgres',{seed:false});
  await importSqlite(source.store,target.store);assert.deepEqual(await getProductDetail(target.store,p.id,true),before);
- for(const table of ['listing_detail','listing_detail_image'])assert.equal(rowsDigest(await source.store.all(`SELECT * FROM ${table}`)),rowsDigest(await target.store.all(`SELECT * FROM ${table}`)));
+ for(const table of ['listing_detail','listing_detail_image','ai_studio_budget','ai_studio_cost','ai_studio_budget_event'])assert.equal(rowsDigest(await source.store.all(`SELECT * FROM ${table}`)),rowsDigest(await target.store.all(`SELECT * FROM ${table}`)));
  assert.equal(await ready(target.store),true);
 });

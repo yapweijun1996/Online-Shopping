@@ -1,3 +1,4 @@
+import { pgBinary } from './helpers/pg-binary.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp,chmod,writeFile,rm } from 'node:fs/promises';
@@ -13,7 +14,7 @@ import { operationStorageReady } from '../src/mcp/operation-runtime.js';
 import { withMediaWriter, mediaHash } from '../src/mcp/media-storage.js';
 import { importSqlite } from '../src/sqlite-import.js';
 import { MEDIA_STORAGE_TABLES } from '../src/mcp/media-schema.js';
-function tool(name,url,args){const p=new URL(url);assert.ok(['127.0.0.1','localhost'].includes(p.hostname));const result=spawnSync('/usr/lib/postgresql/16/bin/'+name,args,{env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8',PGHOST:p.hostname,PGPORT:p.port,PGUSER:decodeURIComponent(p.username),PGPASSWORD:decodeURIComponent(p.password),PGDATABASE:p.pathname.slice(1),PGCONNECT_TIMEOUT:'5'},stdio:['ignore','pipe','pipe'],timeout:15000,maxBuffer:1048576});assert.ok(result.status===0&&!result.error,'Synthetic media snapshot tool failed.');}
+function tool(name,url,args){const p=new URL(url);assert.ok(['127.0.0.1','localhost'].includes(p.hostname));const result=spawnSync(pgBinary(name),args,{env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8',PGHOST:p.hostname,PGPORT:p.port,PGUSER:decodeURIComponent(p.username),PGPASSWORD:decodeURIComponent(p.password),PGDATABASE:p.pathname.slice(1),PGCONNECT_TIMEOUT:'5'},stdio:['ignore','pipe','pipe'],timeout:15000,maxBuffer:1048576});assert.ok(result.status===0&&!result.error,'Synthetic media snapshot tool failed.');}
 for(const dialect of ['sqlite','postgres'])test(`${dialect}: actual dataful schema31 snapshot preserves chunks, bound payload and quota without manufacturing authority`,
   {skip:dialect==='postgres'&&!process.env.SHOP_TEST_DATABASE_URL,timeout:30000},async t=>{
     const f=await mediaFixture(t,dialect),bytes=Buffer.alloc(524288,3),{stage,lease}=await f.upload(bytes),op=await f.operation(lease.codecDigest,f.now,lease.correlationId);

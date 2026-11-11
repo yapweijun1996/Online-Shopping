@@ -122,7 +122,7 @@ export const operationStorageDdl = (dialect, { version = OPERATION_STORAGE_VERSI
 const ddlDigest = (store, version = OPERATION_STORAGE_VERSION) => sha256(operationStorageDdl(store.dialect, { version }));
 
 async function assertStorage(store, version = OPERATION_STORAGE_VERSION) {
-  if (![29, 30, 31, 32, 33, 34, 35].includes(await store.schemaVersion())) throw new Error('MCP v2 storage requires base schema 29 through 35.');
+  if (![29, 30, 31, 32, 33, 34, 35, 36].includes(await store.schemaVersion())) throw new Error('MCP v2 storage requires base schema 29 through 36.');
   const meta = await store.get('SELECT version, ddl_digest, manifest_digest FROM mcp_v2_schema WHERE id = 1');
   if (!meta || meta.version !== version || meta.ddl_digest !== ddlDigest(store, version) ||
       meta.manifest_digest !== await manifestDigest(store, version)) throw new Error('Incompatible MCP v2 storage extension.');
@@ -140,7 +140,7 @@ export async function assertOperationStorageForUpgrade(store) {
 }
 
 export async function operationStorageReady(store) {
-  try { if (![34,35].includes(await store.schemaVersion())) return false; await assertStorage(store); await assertMcpAuditStorage(store); return true; } catch { return false; }
+  try { if (![34,35,36].includes(await store.schemaVersion())) return false; await assertStorage(store); await assertMcpAuditStorage(store); return true; } catch { return false; }
 }
 
 export function operationStorageMetaSchema(dialect, { version = OPERATION_STORAGE_VERSION } = {}) {
@@ -166,7 +166,7 @@ async function writeStorageMetadata(store, version = OPERATION_STORAGE_VERSION) 
 // The fresh SQL baseline initializes its metadata itself so direct SQL bootstrap
 // and the JS loader have identical behavior. The loader verifies before commit.
 export async function initializeFreshOperationStorage(store) {
-  if (store.dialect !== 'postgres' || await store.schemaVersion() !== 35) throw new Error('Expected a fresh PostgreSQL schema 35.');
+  if (store.dialect !== 'postgres' || await store.schemaVersion() !== 36) throw new Error('Expected a fresh PostgreSQL schema 36.');
   await assertStorage(store);
   await assertMcpAuditStorage(store);
 }
@@ -177,7 +177,7 @@ export async function initializeOperationStorage(store, options) {
   if (options === undefined || options?.enabled === false) return false;
   if (options?.enabled !== true) throw new TypeError('Explicit MCP v2 storage opt-in is required.');
   return store.transaction(async () => {
-    if (![29, 30, 31, 32, 33, 34, 35].includes(await store.schemaVersion())) throw new Error('MCP v2 storage requires base schema 29 through 35.');
+    if (![29, 30, 31, 32, 33, 34, 35, 36].includes(await store.schemaVersion())) throw new Error('MCP v2 storage requires base schema 29 through 36.');
     const exists = store.dialect === 'sqlite'
       ? Boolean(await store.get("SELECT name FROM sqlite_schema WHERE name = 'mcp_v2_schema'"))
       : store.dialect === 'postgres' && Boolean((await store.get("SELECT to_regclass('public.mcp_v2_schema') AS name")).name);
