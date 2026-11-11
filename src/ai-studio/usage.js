@@ -1,4 +1,5 @@
 // Billable-call ledger and the per-shop daily cap. Metadata only: no prompts, images or keys.
+import { checkBudget } from './budget.js';
 import { randomUUID } from 'node:crypto';
 import { ApiError } from '../http.js';
 import { FieldError } from '../validation.js';
@@ -40,6 +41,7 @@ export async function reserve(store, plan, actor, productId = null, now = new Da
     if (used + plan.length > dailyCallCap) {
       throw Object.assign(new ApiError(429, 'AI_STUDIO_CAP', `The daily limit of ${dailyCallCap} AI calls would be exceeded.`), { used, cap: dailyCallCap });
     }
+    await checkBudget(store, now);
     const at = new Date(now).toISOString(), ids = [];
     for (const kind of plan) {
       if (!['ANALYZE', 'IMAGE', 'REVIEW'].includes(kind)) throw new FieldError('usage', 'Enter a valid usage record.');

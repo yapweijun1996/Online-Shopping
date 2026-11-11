@@ -1,3 +1,4 @@
+import { createBudgetPanel, usd } from './budget-ui.js';
 // AI Studio page: the shop's OpenAI key (Owner), a product draft made from one photo, and styled images for a draft.
 // Everything the server or the AI returns is shown with textContent only. Nothing here publishes a product.
 import { studioText, STUDIO_STYLES } from './ai-studio-copy.js';
@@ -6,12 +7,12 @@ import { apiUrl } from '../shared/base-path.js';
 import { beginMutation } from '../shared/update-guard.js';
 import { confirmModal } from '../shared/modal.js';
 
-const ERROR_KEYS = { AI_STUDIO_NO_KEY: 'eNoKey', AI_STUDIO_CAP: 'eCap', AI_STUDIO_BUSY: 'eBusy', AI_STUDIO_KEY_REJECTED: 'eKeyRejected', AI_STUDIO_TIMEOUT: 'eTimeout',
+const ERROR_KEYS = { AI_STUDIO_BUDGET: 'budgetReached', AI_STUDIO_BUDGET_UNCERTAIN: 'budgetUncertain', AI_STUDIO_NO_KEY: 'eNoKey', AI_STUDIO_CAP: 'eCap', AI_STUDIO_BUSY: 'eBusy', AI_STUDIO_KEY_REJECTED: 'eKeyRejected', AI_STUDIO_TIMEOUT: 'eTimeout',
   AI_STUDIO_PROVIDER_LIMIT: 'eRate', AI_STUDIO_REFUSED: 'eRefused', AI_STUDIO_BAD_RESPONSE: 'eBad', AI_STUDIO_REQUEST_REJECTED: 'eRequest',
   AI_STUDIO_IMAGE_REJECTED: 'eImage', AI_STUDIO_VARIANT: 'eVariant', AI_STUDIO_GALLERY_FULL: 'eFull', AI_STUDIO_PUBLISHED: 'published',
   AI_STUDIO_UNAVAILABLE: 'eFailed', STALE_REVISION: 'eStale', RATE_LIMITED: 'eBusy' };
 // After these the remaining styles would fail the same way, so a batch stops.
-const STOPS = new Set(['AI_STUDIO_NO_KEY', 'AI_STUDIO_CAP', 'AI_STUDIO_KEY_REJECTED', 'AI_STUDIO_PROVIDER_LIMIT', 'AI_STUDIO_PUBLISHED', 'AI_STUDIO_VARIANT', 'AI_STUDIO_GALLERY_FULL', 'AI_STUDIO_TIMEOUT']);
+const STOPS = new Set(['AI_STUDIO_BUDGET','AI_STUDIO_BUDGET_UNCERTAIN','AI_STUDIO_NO_KEY', 'AI_STUDIO_CAP', 'AI_STUDIO_KEY_REJECTED', 'AI_STUDIO_PROVIDER_LIMIT', 'AI_STUDIO_PUBLISHED', 'AI_STUDIO_VARIANT', 'AI_STUDIO_GALLERY_FULL', 'AI_STUDIO_TIMEOUT']);
 const errorKey = (error) => error.status === 403 ? 'eForbidden' : ERROR_KEYS[error.code] || (error.field ? 'eField' : 'eFailed');
 const PHOTO_LIMIT = 480 * 1024;
 
@@ -98,7 +99,7 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
     } finally { busy -= 1; finish(); }
   }
 
-  const page = document.createElement('div'); page.className = 'ai-studio';
+  const page = document.createElement('div'); page.className = owner ? 'ai-studio ai-studio-budget-enabled' : 'ai-studio';
   const intro = text('p', 'reviewNote', 'ai-studio-note'); 
   const unavailable = text('p', 'unavailable', 'ai-studio-note'); unavailable.hidden = true;
   const usageCard = card('keyTitle'); usageCard.classList.add('ai-studio-key-card');
@@ -171,27 +172,29 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
   keyForm.hidden = true; capForm.hidden = true; removeKey.hidden = true;
   const summary = document.createElement('div'); summary.className = 'ai-studio-summary'; summary.setAttribute('role', 'status');
   const connection = text('strong', 'keyNone'); const summaryUsage = text('span', 'usageShort', '', () => ({ used: state.usedToday, cap: state.dailyCallCap }));
-  summary.append(connection, summaryUsage);
+  const budgetSummary = owner ? button('tabBudget') : null;
+  if (budgetSummary) { budgetSummary.addEventListener('click',()=>selectTab('budget')); summary.append(connection,budgetSummary,summaryUsage); } else summary.append(connection,summaryUsage);
   const tabs = document.createElement('div'); tabs.className = 'ai-studio-tabs'; tabs.setAttribute('role', 'tablist');
-  const panels = [photoCard, genCard, usageCard];
-  const names = ['create', 'images', 'settings'];
+  const budgetPanel = owner ? createBudgetPanel({api,live,onChanged:()=>reloadCounts()}) : null;
+  const panels = [photoCard, genCard, usageCard, ...(owner ? [budgetPanel.root] : [])];
+  const names = ['create', 'images', 'settings', ...(owner ? ['budget'] : [])];
   let activeTab = names.includes(initialTab) ? initialTab : initialProductId ? 'images' : 'create';
-  const tabButtons = ['tabCreate', 'tabImages', 'tabSettings'].map((key, i) => {
+  const tabButtons = ['tabCreate', 'tabImages', 'tabSettings', ...(owner ? ['tabBudget'] : [])].map((key, i) => {
     const control = button(key); control.id = `ai-studio-tab-${names[i]}`; control.setAttribute('role', 'tab');
     panels[i].id = `ai-studio-panel-${names[i]}`; panels[i].setAttribute('role', 'tabpanel'); panels[i].setAttribute('aria-labelledby', control.id); panels[i].tabIndex = 0;
     control.setAttribute('aria-controls', panels[i].id);
     control.addEventListener('click', () => selectTab(names[i]));
     control.addEventListener('keydown', event => {
       const delta = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
-      const index = event.key === 'Home' ? 0 : event.key === 'End' ? 2 : delta ? (i + delta + 3) % 3 : null;
+      const index = event.key === 'Home' ? 0 : event.key === 'End' ? names.length - 1 : delta ? (i + delta + names.length) % names.length : null;
       if (index === null) return; event.preventDefault(); selectTab(names[index]); tabButtons[index].focus();
     }); return control;
   });
   function selectTab(name, notify = true) {
     activeTab = name;
-    setup.hidden = state.available && state.configured || name === 'settings';
+    setup.hidden = state.available && state.configured || (name === 'settings' || name === 'budget');
     panels.forEach((panel, i) => { const selected = names[i] === name; panel.hidden = !selected; tabButtons[i].setAttribute('aria-selected', String(selected)); tabButtons[i].tabIndex = selected ? 0 : -1; });
-    if (notify) onTabChange(name);
+    if (notify) { onTabChange(name); if(name === 'budget') budgetPanel?.load(); }
   }
   tabs.append(...tabButtons);
   const setup = document.createElement('div'); setup.className = 'ai-studio-setup';
@@ -208,7 +211,8 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
   let keyEditorInitialized = false;
   function paintState() {
     unavailable.hidden = state.available;
-    selectTab(activeTab, false); setup.hidden = state.available && state.configured || activeTab === 'settings'; connection.textContent = studioText(!state.available ? 'unavailable' : state.configured ? 'connected' : 'keyNone'); summaryUsage.textContent = studioText('usageShort', { used: state.usedToday, cap: state.dailyCallCap }); if (!keyEditorInitialized) { keyEditor.open = !state.configured; keyEditorInitialized = true; } readButton.disabled = !state.available || !state.configured || analyzing;
+    if (budgetSummary && state.budget) { budgetSummary.textContent = `${studioText('estimated')} · ${studioText('todayCost')}: ${usd(state.budget.today.estimatedMicrousd)} · ${studioText('monthCost')}: ${usd(state.budget.month.estimatedMicrousd)}${state.budget.month.unknownCalls ? ' · '+studioText('unknownCost')+': '+state.budget.month.unknownCalls : ''}`; }
+    selectTab(activeTab, false); setup.hidden = state.available && state.configured || (activeTab === 'settings' || activeTab === 'budget'); connection.textContent = studioText(!state.available ? 'unavailable' : state.configured ? 'connected' : 'keyNone'); summaryUsage.textContent = studioText('usageShort', { used: state.usedToday, cap: state.dailyCallCap }); if (!keyEditorInitialized) { keyEditor.open = !state.configured; keyEditorInitialized = true; } readButton.disabled = !state.available || !state.configured || analyzing;
     usageLine.textContent = state.configured ? studioText('keySaved', { last4: state.last4 ?? '' }) : studioText('keyNone');
     usageCount.textContent = studioText('usage', { used: state.usedToday, cap: state.dailyCallCap });
     removeKey.hidden = !state.configured; keyForm.hidden = !state.available; capForm.hidden = !state.available;
@@ -219,11 +223,12 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
       const data = await api('GET', 'ai-studio');
       if (!live()) return;
       Object.assign(state, { available: data.available, configured: data.configured, last4: data.last4 ?? null, usedToday: data.usedToday, dailyCallCap: data.dailyCallCap,
-        keyRevision: data.keyRevision ?? state.keyRevision, settingRevision: data.settingRevision ?? state.settingRevision });
+        budget: data.budget ?? state.budget, keyRevision: data.keyRevision ?? state.keyRevision, settingRevision: data.settingRevision ?? state.settingRevision });
     } catch { if (live()) state.available = false; }
     paintState();
+    if(activeTab==='budget') budgetPanel?.load();
   }
-  const reloadCounts = () => api('GET', 'ai-studio').then((data) => { Object.assign(state, { usedToday: data.usedToday, dailyCallCap: data.dailyCallCap, configured: data.configured }); paintState(); }).catch(() => {});
+  const reloadCounts = () => api('GET', 'ai-studio').then((data) => { Object.assign(state, { usedToday: data.usedToday, dailyCallCap: data.dailyCallCap, configured: data.configured, budget: data.budget ?? state.budget }); paintState(); }).catch(() => {});
 
   keyForm.addEventListener('submit', async (event) => {
     event.preventDefault(); if (!owner || !live()) return;
@@ -372,10 +377,10 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
 
   load().then(() => { if (initialProductId && live() && state.configured) api('GET', `products/${initialProductId}`).then((p) => choose({ id: p.id, name: p.name, active: Boolean(p.active) })).catch(() => {}); });
   return {
-    dispose() { disposed = true; page.remove(); },
-    refreshLocale() { translate(page); refreshers.forEach((paint) => paint()); if (chosenProduct) chosen.textContent = studioText('selected', { name: chosenProduct.name }); paintState(); },
-    hasUnsavedChanges: () => Boolean(photoData) || dirty && !draftForm.hidden || Boolean(keyInput.value) || Boolean(capInput.dataset.edited),
+    dispose() { disposed = true; budgetPanel?.dispose(); page.remove(); },
+    refreshLocale() { budgetPanel?.refresh(); translate(page); refreshers.forEach((paint) => paint()); if (chosenProduct) chosen.textContent = studioText('selected', { name: chosenProduct.name }); paintState(); },
+    hasUnsavedChanges: () => Boolean(photoData) || dirty && !draftForm.hidden || Boolean(keyInput.value) || Boolean(capInput.dataset.edited) || Boolean(budgetPanel?.dirty()),
     draftSignature: () => JSON.stringify([activeTab, photoToken, ...Object.values(inputs).map(input => input.value), chosenProduct?.id, styleInputs.map(input => input.checked)]),
-    isBusy: () => busy > 0,
+    isBusy: () => busy > 0 || Boolean(budgetPanel?.busy()),
   };
 }

@@ -208,3 +208,15 @@ test('at most two generations run at once on the host', async (t) => {
   release();
   assert.deepEqual((await Promise.all(running)).map((r) => r.status), [201, 201]);
 });
+
+test('budget analytics and settings are Owner-only, CSRF-protected and block before paid calls', async t => {
+ const f=await fixture(t);
+ const initial=await f.request('/api/v1/seller/ai-studio/analytics', 'GET', null, {cookie:f.cookie});assert.equal(initial.status,200);assert.equal(initial.headers.get('cache-control'),'no-store');const data=await initial.json();assert.equal(data.setting.mode,'WARN');
+ const input={dailyMicrousd:1000000,monthlyMicrousd:null,mode:'BLOCK',alertPercent:80,expectedRevision:1};
+ assert.equal((await f.request('/api/v1/seller/ai-studio/budget','PATCH',input,{cookie:f.cookie})).status,403);
+ assert.equal((await f.request('/api/v1/seller/ai-studio/budget','PATCH',input,f.headers)).status,200);
+ const blocked=await f.request('/api/v1/seller/ai-studio/analyze','POST',{imageDataUrl:dataUrl(jpeg())},f.headers);assert.equal(blocked.status,409);assert.equal((await blocked.json()).error.code,'AI_STUDIO_BUDGET_UNCERTAIN');assert.equal(f.calls.analyze.length,0);
+ await f.store.run("UPDATE seller_account SET role='MANAGER'");
+ assert.equal((await f.request('/api/v1/seller/ai-studio/analytics','GET',null,{cookie:f.cookie})).status,403);
+ assert.equal((await f.request('/api/v1/seller/ai-studio/budget','PATCH',{...input,expectedRevision:2},f.headers)).status,403);
+});

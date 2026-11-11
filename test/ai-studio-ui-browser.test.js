@@ -15,7 +15,7 @@ function png(width = 64, height = 48) {
 
 test('AI Studio page: key, photo to draft, independent styled images, phone width', { skip: !modulePath }, async (t) => {
   const { chromium } = await import(modulePath);
-  const browser = await chromium.launch({ headless: true, executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', '--disable-gpu'] }); t.after(() => browser.close());
+  const browser = await chromium.launch({ headless: true, executablePath: process.env.QA_CHROME_EXECUTABLE || '/usr/bin/google-chrome', args: ['--no-sandbox', '--disable-gpu'] }); t.after(() => browser.close());
   const f = await sellerFixture(); t.after(() => f.close());
   const context = await browser.newContext({ viewport: { width: 375, height: 812 }, serviceWorkers: 'block' });
   const status = { available: true, configured: false, provider: 'OPENAI', dailyCallCap: 20, usedToday: 0, last4: null, keyRevision: 0, settingRevision: 1 };
@@ -140,7 +140,7 @@ test('AI Studio page: key, photo to draft, independent styled images, phone widt
 
 test('AI Studio tabs: keyboard, direct routes, settings disclosure and role presentation', {skip: !modulePath}, async t => {
   const {chromium} = await import(modulePath);
-  const browser = await chromium.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox','--disable-gpu']});t.after(()=>browser.close());
+  const browser = await chromium.launch({headless:true,executablePath:process.env.QA_CHROME_EXECUTABLE||'/usr/bin/google-chrome',args:['--no-sandbox','--disable-gpu']});t.after(()=>browser.close());
   const f=await sellerFixture();t.after(()=>f.close());
   const context=await browser.newContext({viewport:{width:390,height:900},serviceWorkers:'block'});t.after(()=>context.close());
   let configured=true,available=true;
@@ -152,12 +152,12 @@ test('AI Studio tabs: keyboard, direct routes, settings disclosure and role pres
   const p=await context.newPage();await p.goto(f.origin+'/seller/#aistudio');await p.locator('#username').fill(f.config.username);await p.locator('#password').fill(f.config.password);await p.locator('#password').press('Enter');
   await p.getByText('AI connected',{exact:true}).waitFor();
   const create=p.getByRole('tab',{name:'Create Product'});await create.focus();await p.keyboard.press('ArrowRight');assert.equal(await p.getByRole('tab',{name:'Generate Images'}).getAttribute('aria-selected'),'true');
-  await p.keyboard.press('End');assert.equal(await p.getByRole('tab',{name:'Settings',exact:true}).getAttribute('aria-selected'),'true');assert.equal(await p.locator('.ai-studio-key-editor').getAttribute('open'),null);
+  await p.keyboard.press('End');assert.equal(await p.getByRole('tab',{name:'Usage & budget',exact:true}).getAttribute('aria-selected'),'true');await p.keyboard.press('ArrowLeft');assert.equal(await p.getByRole('tab',{name:'Settings',exact:true}).getAttribute('aria-selected'),'true');assert.equal(await p.locator('.ai-studio-key-editor').getAttribute('open'),null);
   await p.locator('.ai-studio-key-editor summary').click();assert.equal(await p.locator('input[name=apiKey]').isVisible(),true);
   await p.reload();await p.getByText('AI connected',{exact:true}).waitFor();assert.equal(await p.getByRole('tab',{name:'Settings',exact:true}).getAttribute('aria-selected'),'true');
-  for(const width of [390,1280]){await p.setViewportSize({width,height:900});for(const tab of ['Create Product','Generate Images','Settings']){await p.getByRole('tab',{name:tab,exact:true}).click();assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));if(process.env.AI_STUDIO_SHOTS)await p.screenshot({path:`${process.env.AI_STUDIO_SHOTS}/tabs-${width}-${tab.replaceAll(' ','-')}.png`});}}
+  for(const width of [390,1280]){await p.setViewportSize({width,height:900});for(const tab of ['Create Product','Generate Images','Settings','Usage & budget']){await p.getByRole('tab',{name:tab,exact:true}).click();assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));if(process.env.AI_STUDIO_SHOTS)await p.screenshot({path:`${process.env.AI_STUDIO_SHOTS}/tabs-${width}-${tab.replaceAll(' ','-')}.png`});}}
   configured=false;await p.reload();await p.getByRole('tab',{name:'Create Product'}).click();await p.getByRole('button',{name:'Go to Settings'}).click();assert.equal(await p.locator('input[name=apiKey]').isVisible(),true);
   await p.evaluate(async()=>{const {mountAiStudio}=await import('/seller/ai-studio.js');mountAiStudio(document.querySelector('#workspace-content'),{csrfToken:()=>'',onUnauthorized:()=>{},role:'MANAGER'});});
-  await p.getByRole('tab',{name:'Settings',exact:true}).click();await p.getByText('Only the Owner can change the key and the daily limit.').waitFor();assert.equal(await p.locator('input[name=apiKey]').count(),0);
+  await p.getByRole('tab',{name:'Settings',exact:true}).click();await p.getByText('Only the Owner can change the key and the daily limit.').waitFor();assert.equal(await p.locator('input[name=apiKey]').count(),0);assert.equal(await p.getByRole('tab',{name:'Usage & budget',exact:true}).count(),0);
   available=false;await p.reload();await p.locator('.ai-studio-summary').getByText('AI Studio is not set up on this server.').waitFor();assert.equal(await p.getByRole('button',{name:/Read photo/}).isVisible(),false);
 });

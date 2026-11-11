@@ -1,4 +1,4 @@
--- PostgreSQL baseline matching SQLite schema 35. Timestamps stay ISO text to preserve API snapshots.
+-- PostgreSQL baseline matching SQLite schema 36. Timestamps stay ISO text to preserve API snapshots.
 CREATE TABLE admin (
         id BIGINT PRIMARY KEY CHECK (id = 1),
         username TEXT NOT NULL UNIQUE,
@@ -327,7 +327,7 @@ CREATE TABLE ai_studio_image (
  created_by TEXT NOT NULL, created_at TEXT NOT NULL
 );
 CREATE INDEX ai_studio_image_product ON ai_studio_image(product_id);
-INSERT INTO schema_meta VALUES (1, 35);
+INSERT INTO schema_meta VALUES (1, 36);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 INSERT INTO shop_setup(id, mode, shop_name) VALUES (1, NULL, 'Online Shopping');
@@ -767,3 +767,23 @@ CREATE TABLE IF NOT EXISTS listing_detail_image (
  CHECK (width * height <= 40000000)
 );
 CREATE INDEX IF NOT EXISTS listing_detail_image_owner ON listing_detail_image(listing_id, committed, created_at);
+
+-- AI Studio application budgets (schema36).
+
+CREATE TABLE IF NOT EXISTS ai_studio_budget (
+ id INTEGER PRIMARY KEY CHECK (id = 1), daily_microusd BIGINT, monthly_microusd BIGINT,
+ mode TEXT NOT NULL DEFAULT 'WARN' CHECK (mode IN ('WARN','BLOCK')),
+ alert_percent INTEGER NOT NULL DEFAULT 80 CHECK (alert_percent BETWEEN 1 AND 100),
+ revision INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL,
+ CHECK (daily_microusd IS NULL OR daily_microusd BETWEEN 10000 AND 100000000000),
+ CHECK (monthly_microusd IS NULL OR monthly_microusd BETWEEN 10000 AND 100000000000)
+);
+INSERT INTO ai_studio_budget (id, updated_at) VALUES (1, '1970-01-01T00:00:00.000Z') ON CONFLICT (id) DO NOTHING;
+CREATE TABLE IF NOT EXISTS ai_studio_cost (
+ id TEXT PRIMARY KEY, model TEXT NOT NULL,
+ tokens_json TEXT, estimated_microusd BIGINT CHECK (estimated_microusd IS NULL OR estimated_microusd >= 0),
+ price_version TEXT NOT NULL, recorded_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ai_studio_budget_event (
+ id TEXT PRIMARY KEY, actor TEXT NOT NULL, settings_json TEXT NOT NULL, created_at TEXT NOT NULL
+);

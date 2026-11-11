@@ -1,3 +1,4 @@
+import { analytics, saveBudget, budgetStatus } from './ai-studio/budget.js';
 import { getProductDetail, saveProductDetail, stageProductDetailImage, getProductDetailImage, discardProductDetailImage } from './product-detail.js';
 import { getAiSettings, updateAiSettings } from './ai/settings.js';
 import { keyStatus, saveKey, deleteKey } from './ai-studio/credential.js';
@@ -432,7 +433,15 @@ async function createTenantApi({ store, config, tenantId, tenantGuard, operation
       const owner = account.role === 'OWNER';
       return json(200, { available: Boolean(secretBox), configured: status.configured, provider: status.provider,
         dailyCallCap: setting.dailyCallCap, usedToday: await callsToday(store),
-        ...(owner ? { last4: status.last4 ?? null, keyRevision: status.revision, settingRevision: setting.revision } : {}) }, { 'Cache-Control': 'no-store' });
+        ...(owner ? { last4: status.last4 ?? null, keyRevision: status.revision, settingRevision: setting.revision, budget: await budgetStatus(store) } : {}) }, { 'Cache-Control': 'no-store' });
+    }
+    if (pathname === '/api/v1/seller/ai-studio/budget' && method === 'PATCH') {
+      allow('ai.settings'); requireOrigin(request, expectedOrigin); requireCsrf(request, session);
+      return json(200, await saveBudget(store, await readJson(request), account.username), { 'Cache-Control': 'no-store' });
+    }
+    if (pathname === '/api/v1/seller/ai-studio/analytics' && method === 'GET') {
+      allow('ai.settings');
+      return json(200, await analytics(store, url.searchParams), { 'Cache-Control': 'no-store' });
     }
     if (pathname === '/api/v1/seller/ai-studio/key' && (method === 'PUT' || method === 'DELETE')) {
       allow('ai.settings');

@@ -1,3 +1,4 @@
+import { recordUsage } from './budget.js';
 // AI Studio work done for a seller: read a photo, and make one styled image at a time (independent jobs).
 // Everything is a draft. Images are only generated for products that are not published, so nothing reaches the
 // storefront before the seller looks at it. Calls are reserved against the daily cap before they are made.
@@ -52,7 +53,7 @@ export async function analyzePhoto({ store, secretBox, shopId, studioProvider, a
     const categories = (await listCategories(store)).filter((category) => category.active);
     const [call] = await reserve(store, ['ANALYZE'], actor);
     try {
-      const suggestion = await studioProvider(apiKey).analyze({ image: { mime: decoded.mime, data: decoded.data }, categories, languageHint: language });
+      const suggestion = await studioProvider(apiKey).analyze({ image: { mime: decoded.mime, data: decoded.data }, categories, languageHint: language, onUsage: data => recordUsage(store, call, data) });
       await settle(store, call, 'OK');
       return suggestion;
     } catch (error) {
@@ -90,7 +91,7 @@ export async function generateStyleImage({ store, secretBox, shopId, studioProvi
     const image = { mime: source.mime, data: Buffer.from(source.data) };
     let generated;
     try {
-      generated = await provider.edit({ image, prompt: buildPrompt(style, { name: product.name, categoryLabel: product.category ?? '' }), size: STYLES[style].size, format: 'webp', compression: 70 });
+      generated = await provider.edit({ image, prompt: buildPrompt(style, { name: product.name, categoryLabel: product.category ?? '' }), size: STYLES[style].size, format: 'webp', compression: 70, onUsage: data => recordUsage(store, imageCall, data) });
       await settle(store, imageCall, 'OK');
     } catch (error) {
       await settle(store, imageCall, failureOutcome(error)).catch(() => {});
@@ -105,7 +106,7 @@ export async function generateStyleImage({ store, secretBox, shopId, studioProvi
     }
     let verdict = null, issues = [];
     try {
-      ({ verdict, issues } = await provider.review({ source: image, result: generated }));
+      ({ verdict, issues } = await provider.review({ source: image, result: generated, onUsage: data => recordUsage(store, reviewCall, data) }));
       await settle(store, reviewCall, 'OK');
     } catch (error) {
       await settle(store, reviewCall, failureOutcome(error)).catch(() => {});
