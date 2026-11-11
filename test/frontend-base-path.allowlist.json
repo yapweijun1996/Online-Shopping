@@ -1,4 +1,5 @@
 {
+  "public/seller/team-password.js": {"lines": 1, "reason": "The seller login URL prefixes /seller/ with the verified page basePath, preserving the tenant code; this constructs a scoped absolute URL, not a root-only request."},
   "public/shared/product-detail.js": {"lines": 2, "reason": "The shared detail renderer uses a root-shop fallback only without a document location and builds its asset allow-list prefix from the verified page base; no root-only API request is issued."},
   "public/shop/manifest.webmanifest": {"lines": 5, "reason": "Legacy static manifest id/scope/start_url and icons retain their resolved root URLs; tenants receive dynamic manifests."},
   "public/seller/manifest.webmanifest": {"lines": 5, "reason": "Legacy static manifest id/scope/start_url and icons retain their resolved root URLs; tenants receive dynamic manifests."},

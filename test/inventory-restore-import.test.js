@@ -1,3 +1,4 @@
+import { pgBinary } from './helpers/pg-binary.js';
 import test from 'node:test';
 import { restoreLegacyAuditFixture } from './helpers/legacy-audit-fixture.js';
 import assert from 'node:assert/strict';
@@ -17,7 +18,7 @@ import { updateProduct } from '../src/products.js';
 import { decideSellerOrder } from '../src/seller-orders.js';
 const evidenceTables=['product','inventory_coverage','inventory_state','inventory_movement','order_item','shop_order','order_event'];
 const evidence=async store=>{const out=[];for(const name of evidenceTables)out.push([name,rowsDigest(await store.all(`SELECT * FROM ${name}`))]);return out;};
-function pgTool(name,url,args){const u=new URL(url);assert.ok(['127.0.0.1','localhost'].includes(u.hostname));const result=spawnSync('/usr/lib/postgresql/16/bin/'+name,args,{env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8',PGHOST:u.hostname,PGPORT:u.port,PGUSER:decodeURIComponent(u.username),PGPASSWORD:decodeURIComponent(u.password),PGDATABASE:u.pathname.slice(1),PGCONNECT_TIMEOUT:'5'},stdio:['ignore','pipe','pipe'],timeout:15000,maxBuffer:1048576});assert.ok(result.status===0&&!result.error,'Owned synthetic inventory snapshot tool failed.');}
+function pgTool(name,url,args){const u=new URL(url);assert.ok(['127.0.0.1','localhost'].includes(u.hostname));const result=spawnSync(pgBinary(name),args,{env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8',PGHOST:u.hostname,PGPORT:u.port,PGUSER:decodeURIComponent(u.username),PGPASSWORD:decodeURIComponent(u.password),PGDATABASE:u.pathname.slice(1),PGCONNECT_TIMEOUT:'5'},stdio:['ignore','pipe','pipe'],timeout:15000,maxBuffer:1048576});assert.ok(result.status===0&&!result.error,'Owned synthetic inventory snapshot tool failed.');}
 for(const dialect of ['sqlite','postgres'])test(`${dialect}: actual snapshot restores exact stock, coverage and ledger; later original writes stay separate`,{skip:dialect==='postgres'&&!process.env.SHOP_TEST_DATABASE_URL,timeout:30000},async t=>{
  const f=await inventoryFixture(t,dialect),p=await f.product({stockQuantity:8}),order=await f.order([p],2);
  await decideSellerOrder(f.store,order.id,'confirm',{expectedRevision:1},'synthetic_owner');const before=await evidence(f.store);
