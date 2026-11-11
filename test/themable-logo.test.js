@@ -21,3 +21,10 @@ test('the shop draws the logo with <use> and colours it from the palette', () =>
   assert.match(css, /\.shop-boot-mark\{[^}]*color:var\(--ui-primary\)/);
   assert.match(read('../public/shop/sw.js'), /'\/favicon\.svg'/, 'the shared file is cached for offline use');
 });
+
+test('seller branding uses the shared logo in the header, login and sidebar', () => {
+  const html = read('../public/seller/index.html');
+  assert.equal((html.match(/<img[^>]*src="\/favicon\.svg"/g) || []).length, 5);
+  assert.doesNotMatch(html, /studio-leaf\.svg/);
+  assert.match(read('../public/seller/sw.js'), /'\/favicon\.svg'/);
+});
