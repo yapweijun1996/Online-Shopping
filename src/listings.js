@@ -135,7 +135,9 @@ export async function syncListing(database, listingId, patch, now) {
   const columns = changed.map((key) => `${key} = ?`).join(', ');
   const values = changed.map((key) => projected[key]);
   await database.run(`UPDATE listing SET ${columns}, updated_at = ? WHERE id = ?`, ...values, now, listingId);
-  await database.run(`UPDATE product SET ${columns} WHERE listing_id = ?`, ...values, listingId);
+  const latest = await database.get('SELECT MAX(updated_at) AS latest FROM product WHERE listing_id = ?', listingId);
+  const revision = new Date(Math.max(Date.parse(now), Date.parse(latest?.latest || now) + 1)).toISOString();
+  await database.run(`UPDATE product SET ${columns}, updated_at = ? WHERE listing_id = ?`, ...values, revision, listingId);
 }
 
 /* Moves a product row to the listing of `group` (or a private one when empty) and removes a listing left without variants. */

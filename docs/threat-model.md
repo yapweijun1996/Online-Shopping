@@ -18,7 +18,7 @@ Operation controls require explicit operations.read/cancel consent and additiona
 
 Evidence base: R1–R4 release source and actual verification dated 2026-10-11; exact SHAs, CI and production state are recorded in MULTI_TENANT_LEDGER.md. Statements describe what the code does today; anything else is labelled **Planned**, **Partial** or **Missing**. Update this file when a trust boundary, entry point or control changes.
 
-Source review at `41407a7bda20adf167e2825900a268f3949316cc`: [CODEBASE_BUG_REVIEW.md](CODEBASE_BUG_REVIEW.md) preserves 15 confirmed findings. B01–B09 are fixed and locally verified; B10–B15 remain open. These checks do not establish production deployment or activation. Invariants below remain required properties.
+Source review at `41407a7bda20adf167e2825900a268f3949316cc`: [CODEBASE_BUG_REVIEW.md](CODEBASE_BUG_REVIEW.md) preserves 15 confirmed findings. B01–B09 were fixed and locally verified at that review. Subsequent local B10–B15 repairs and validation are tracked in [bug.md](../bug.md). These checks do not establish production deployment or activation. Invariants below remain required properties.
 
 ## 1. Scope
 
@@ -664,3 +664,7 @@ The four-step Cloud UI preserves the existing connection/readiness endpoints and
 ### AI Studio budgets (schema36)
 
 Owner-only `GET /api/v1/seller/ai-studio/analytics` and `PATCH /api/v1/seller/ai-studio/budget` use the resolved shop store, session and `ai.settings`. PATCH enforces exact Origin, CSRF and revision CAS; both are no-store. Cost summary in the normal Studio status is Owner-only. Analytics accepts bounded date windows/page sizes and parameterized queries. No provider admin key, prompt, image or raw response is persisted: cost metadata is whitelisted, estimates versioned, settings changes audited. Unknown/legacy costs are not zero. Post-dispatch unknown network/5xx failures stay possibly billed. Budget checks occur inside the writer transaction before any paid request. Because a safe maximum charge is unavailable for current model requests, configured BLOCK budgets refuse those requests; WARN allows them with honest estimate/unknown disclosure. This is a shop application control, not a provider account spend guarantee. See AI_STUDIO_BUDGET.md for accounting, migration and rollback boundaries.
+
+### Schema37 structured variant identity (local repair, 2026-11-12)
+
+Structured option uniqueness is the canonical sorted set of option type/value IDs within a variant group, checked within the shared writer transaction. The display label is lossy and no longer has a unique database index. SQLite BEGIN IMMEDIATE and PostgreSQL advisory transaction locking serialize supported create/update paths; legacy free-text collisions remain checked with the prior dialect-specific comparison. Raw database writes are privileged and bypass these application uniqueness checks. Preserve this boundary in imports and future mutation paths. Existing approval/content fences remain required even when product timestamps are stale; regression fixtures explicitly simulate legacy unversioned writes. See [bug.md](../bug.md) for migration and local acceptance status.

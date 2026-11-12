@@ -1,4 +1,4 @@
--- PostgreSQL baseline matching SQLite schema 36. Timestamps stay ISO text to preserve API snapshots.
+-- PostgreSQL baseline matching SQLite schema 37. Timestamps stay ISO text to preserve API snapshots.
 CREATE TABLE admin (
         id BIGINT PRIMARY KEY CHECK (id = 1),
         username TEXT NOT NULL UNIQUE,
@@ -181,7 +181,7 @@ CREATE INDEX session_expiry ON session(expires_at);
 CREATE INDEX product_public ON product(active, category, updated_at);
 CREATE INDEX rate_limit_lookup ON rate_limit_attempt(bucket, key_hash);
 CREATE INDEX rate_limit_expiry ON rate_limit_attempt(bucket, attempted_at);
-CREATE UNIQUE INDEX product_variant_option ON product(variant_group, lower(variant_label));
+CREATE INDEX product_variant_option ON product(variant_group, lower(variant_label));
 CREATE INDEX product_variant_group ON product(variant_group, active);
 CREATE INDEX product_gallery_product ON product_gallery_image(product_id, position);
 CREATE INDEX shop_order_queue ON shop_order(status, submitted_at DESC);
@@ -327,7 +327,7 @@ CREATE TABLE ai_studio_image (
  created_by TEXT NOT NULL, created_at TEXT NOT NULL
 );
 CREATE INDEX ai_studio_image_product ON ai_studio_image(product_id);
-INSERT INTO schema_meta VALUES (1, 36);
+INSERT INTO schema_meta VALUES (1, 37);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 INSERT INTO shop_setup(id, mode, shop_name) VALUES (1, NULL, 'Online Shopping');

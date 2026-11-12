@@ -116,7 +116,7 @@ for (const dialect of ['sqlite', 'postgres']) {
   test(`${dialect}: extension initialization is explicit, repeatable, base-compatible and readiness checks physical schema`, options, async (t) => {
     const store = await fixture(t, dialect);
     await ensureAdmin(store, 'synthetic_owner', ownerPassword);
-    assert.equal(SCHEMA_VERSION, 36);
+    assert.equal(SCHEMA_VERSION, 37);
     assert.equal(await ready(store), true);
     assert.equal(await initializeOperationStorage(store), false);
     assert.equal(await initializeOperationStorage(store, { enabled: false }), false);
@@ -171,7 +171,7 @@ for (const dialect of ['sqlite', 'postgres']) {
     assert.equal(await operationStorageReady(store), false);
     assert.equal((await extensionNames(store)).includes(OPERATION_STORAGE_META), false);
     await store.setSchemaVersion(28);
-    await assert.rejects(initializeOperationStorage(store, { enabled: true }), /base schema 29 through 36/);
+    await assert.rejects(initializeOperationStorage(store, { enabled: true }), /base schema 29 through 37/);
     assert.equal(await store.schemaVersion(), 28);
   });
 

@@ -58,6 +58,8 @@ for(const dialect of ['sqlite','postgres']){
   const f=await catalogCreateRuntimeFixture(t,dialect),p=await f.product({variantGroup:'TARGET',variantLabel:'A'}),op=await f.prepare(input({variantGroup:'TARGET',variantLabel:'B'}),'stale-create-thumb'),
    time=(await f.store.get('SELECT updated_at FROM product WHERE id=?',p.id)).updated_at;
   await setProductThumbnail(f.store,p.id,'data:image/png;base64,'+syntheticMediaPng(91).toString('base64'));
+  // Simulate legacy thumbnail bytes changing without a revision bump.
+  await f.store.run('UPDATE product SET updated_at=? WHERE id=?',time,p.id);
   assert.equal((await f.store.get('SELECT updated_at FROM product WHERE id=?',p.id)).updated_at,time);
   assert.equal((await f.call(f.path(op),'GET',undefined,f.headers)).response.status,403);assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_approval')).n,0);
  });

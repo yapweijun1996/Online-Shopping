@@ -1,8 +1,10 @@
+> Subsequent local repair status (2026-11-12): see [bug.md](../bug.md) for B10–B15, BUG-016, schema37 compatibility and current validation. This historical report preserves its original observations.
+
 # Codebase Bug Review — 2026-10-11
 
 Reviewed commit: `41407a7bda20adf167e2825900a268f3949316cc`.
 
-This review records **15 confirmed defects: 7 P1 and 8 P2** at the reviewed commit. Following the approved P1 repair scope, **B01–B07 are fixed and locally verified; B08–B15 remain open**. This commit includes the P1 repairs and review documentation. No push, production deployment or installed-controller update was performed. Finding descriptions and reproductions below preserve the original baseline behavior; source links are pinned to that baseline. This is a bounded review, not a guarantee that every possible defect has been found.
+This review records **15 confirmed defects: 7 P1 and 8 P2** at the reviewed commit. Following the approved P1 repair scope, **B01–B09 are fixed and locally verified; B10–B15 remain open**. This commit includes the P1 repairs and review documentation. No push, production deployment or installed-controller update was performed. Finding descriptions and reproductions below preserve the original baseline behavior; source links are pinned to that baseline. This is a bounded review, not a guarantee that every possible defect has been found.
 
 ## P1 repair verification — 2026-10-11
 
@@ -285,7 +287,7 @@ Public versioned images receive `max-age=31536000, immutable`. Thumbnail backfil
 
 ## Documentation corrections
 
-`threat-model.md` is updated alongside this report to distinguish the real WhatsApp runtime from its separate offline simulation foundation, describe the existing reservation window and explicit sample-login configuration, and expose the confirmed limitations of password revocation, erased-message retention, checkout retry and non-platform upgrade recovery. The threat model now also records the verified B01–B07 controls, retained browser-state boundary and production-installation limits. B08–B15 remain documented as open.
+`threat-model.md` is updated alongside this report to distinguish the real WhatsApp runtime from its separate offline simulation foundation, describe the existing reservation window and explicit sample-login configuration, and expose the confirmed limitations of password revocation, erased-message retention, checkout retry and non-platform upgrade recovery. The threat model now also records the verified B01–B07 controls, retained browser-state boundary and production-installation limits. B10–B15 remain documented as open.
 
 ## Remaining repair order
 

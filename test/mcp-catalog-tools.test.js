@@ -308,6 +308,8 @@ for (const dialect of ['sqlite', 'postgres']) {
     const op = dto(await f.previewUpdate(a.id, { priceMinor: 1550 })); await f.approve(op);
     const timestamp = (await f.store.get('SELECT updated_at FROM product WHERE id = ?', a.id)).updated_at;
     assert.equal((await f.call('/api/v1/seller/products/' + b.id, 'PATCH', { name: 'Portal shared title' }, f.headers)).response.status, 200);
+    // Simulate a legacy writer so the full-content fence remains covered.
+    await f.store.run('UPDATE product SET updated_at=? WHERE id=?',timestamp,a.id);
     assert.equal((await f.store.get('SELECT updated_at FROM product WHERE id = ?', a.id)).updated_at, timestamp);
     assert.equal(dto(await f.commit('update', op)).error, 'STALE_REVISION');
     const after = await getProduct(f.store, a.id, true); assert.equal(after.priceMinor, 1200); assert.equal(after.name, 'Portal shared title');

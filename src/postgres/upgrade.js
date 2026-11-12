@@ -20,7 +20,7 @@ const legacyApplicationGrant = `current_database() !~ '^t_[a-z0-9]{3,30}_[0-9a-f
 
 // Called only by an explicit operator/test opt-in, inside the store-owned transaction.
 export async function upgradePostgres(store, version) {
-  if (![10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35].includes(version)) {
+  if (![10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36].includes(version)) {
     throw new Error(`Unsupported PostgreSQL schema version ${version}.`);
   }
   if (await store.schemaVersion() === SCHEMA_VERSION) {
@@ -45,6 +45,7 @@ export async function upgradePostgres(store, version) {
   if (version < 34) await upgradeOperationAuditStorage(store);
   await migrateProductDetail(store);
   await migrateStudioBudget(store);
+  await store.exec('DROP INDEX product_variant_option; CREATE INDEX product_variant_option ON product(variant_group, lower(variant_label));');
   await store.exec(`DO $$ BEGIN IF ${legacyApplicationGrant} THEN
     GRANT SELECT, INSERT, UPDATE, DELETE ON ${[OPERATION_STORAGE_META, ...OPERATION_STORAGE_TABLES, 'mcp_audit', 'inventory_schema', 'inventory_coverage', 'inventory_state', 'inventory_movement', 'listing_detail', 'listing_detail_image', 'ai_studio_budget', 'ai_studio_cost', 'ai_studio_budget_event'].join(', ')} TO online_shopping_app;
     GRANT USAGE, SELECT ON SEQUENCE mcp_audit_sequence_seq, mcp_v2_event_sequence_seq TO online_shopping_app;

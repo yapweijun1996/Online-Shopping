@@ -103,6 +103,8 @@ for(const dialect of ['sqlite','postgres']){
   const f=await catalogRuntimeFixture(t,dialect),p=await f.product(),op=await f.prepare(p.id,{name:'Proposed literal'}),
    timestamp=(await f.store.get('SELECT updated_at FROM product WHERE id=?',p.id)).updated_at;
   await setProductThumbnail(f.store,p.id,'data:image/png;base64,'+syntheticMediaPng(91).toString('base64'));
+  // Simulate a legacy/unversioned writer; the content fence must still reject it.
+  await f.store.run('UPDATE product SET updated_at=? WHERE id=?',timestamp,p.id);
   assert.equal((await f.store.get('SELECT updated_at FROM product WHERE id=?',p.id)).updated_at,timestamp);
   assert.equal((await f.call(f.path(op),'GET',undefined,f.headers)).response.status,403);assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_approval')).n,0);
  });

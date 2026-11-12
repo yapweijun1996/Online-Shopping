@@ -75,3 +75,10 @@ test('profile notice follows production and preview mode changes', () => {
     assert.doesNotMatch(notice.textContent, /simulat|anonymous/);
   } finally { globalThis.document = previous; }
 });
+
+test('Singapore local prefix digits survive normalization and repeated saves',()=>{
+ for(const phone of ['65123456','+6565123456','6565123456']){
+  const value=normalizeProfile({fullName:'Synthetic Customer',code:'+65',phone});
+  assert.equal(value.phone,'+6565123456');assert.deepEqual(normalizeProfile(value),value);
+ }
+});

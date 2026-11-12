@@ -5,7 +5,7 @@ const KEY = 'online-shopping-profile-v1';
 export function localPhoneInput(value, code) {
   const digits = String(value || '').replace(/\D/g, '');
   const prefix = code.replace('+', '');
-  return (digits.startsWith(prefix) ? digits.slice(prefix.length) : digits).replace(/^0/, '');
+  return (digits.startsWith(prefix) && (prefix !== '65' || digits.length === 10) ? digits.slice(prefix.length) : digits).replace(/^0/, '');
 }
 export function normalizeProfile(value) {
   if (!value || typeof value !== 'object') throw new TypeError('profileRequired');

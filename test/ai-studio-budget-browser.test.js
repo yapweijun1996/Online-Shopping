@@ -38,3 +38,13 @@ test('Unknown-only usage stays unknown in the Studio summary and budget metrics'
  const summary=await page.locator('.ai-studio-summary').innerText();assert.match(summary,/Today: Unknown cost/);assert.match(summary,/This month: Unknown cost/);assert.doesNotMatch(summary,/\$0\.00/);
  assert.match(await page.locator('.ai-budget-metric>strong').first().innerText(),/Unknown cost/);
 });
+
+test('analytics failure disables pagination and refresh recovers without a page error',{skip:!modulePath},async t=>{
+ const {chromium}=await import(modulePath),browser=await chromium.launch({headless:true,channel:'chrome'});t.after(()=>browser.close());
+ const f=await sellerFixture();t.after(()=>f.close());const page=await browser.newPage({serviceWorkers:'block'}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto(f.origin+'/seller/');await page.fill('#username',f.config.username);await page.fill('#password',f.config.password);await page.click('#login-submit');await page.locator('.dashboard-home').waitFor();
+ await page.route('**/api/v1/seller/ai-studio/analytics?*',r=>r.fulfill({status:503,contentType:'application/json',body:'{"error":{"code":"UNAVAILABLE"}}'}));
+ await page.goto(f.origin+'/seller/#aistudio/tab/budget');await page.locator('.ai-budget>p[role=status]').filter({hasText:/./}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'Next',exact:true}).isDisabled(),true);assert.equal(await page.getByRole('button',{name:'Previous',exact:true}).isDisabled(),true);
+ await page.unroute('**/api/v1/seller/ai-studio/analytics?*');await page.getByRole('button',{name:'Refresh',exact:true}).click();await page.locator('.ai-budget-metric').first().waitFor();assert.deepEqual(errors,[]);
+});

@@ -21,3 +21,9 @@ Sellers describe products with **options they define themselves**: any option ty
 
 ## Phases
 1. Data model, API, migration (this change). 2. Storefront selector (one row per type, price/image/stock follow the chosen combination). 3. Seller editor (types and values, generate all combinations in a table). 4. Polish: availability states, accessibility, copy, tests.
+
+## Structured identity and display labels (schema37)
+
+A structured combination is identified by its sorted option type/value IDs within the group. Its derived display label is limited to 80 characters and is not unique: different combinations may have the same truncated text. The shared writer transaction validates duplicate combinations; the old unique display-label index is now a nonunique lookup index. Legacy free-text variants still reserve their labels using the existing dialect-specific case-insensitive comparison, including when a structured label would collide with a legacy member. Canonical intermediate free-text validation is preserved. Use variant IDs and full option selections in selections/reviews, never truncated text as identity.
+
+Both SQLite schema36 migration and the PostgreSQL explicit upgrade path preserve existing data. Production migration is a separate release action. See [bug.md](../bug.md) for local repair evidence and the implications for privileged raw database writes and downgrade.

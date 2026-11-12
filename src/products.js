@@ -112,8 +112,8 @@ export async function requireUniqueProductSku(database, sku, excludeId = null) {
   }
 }
 
-export async function requireUniqueVariantLabel(database, group, label, excludeId = null) {
-  if (await hasVariantLabel(database, group, label, excludeId)) {
+export async function requireUniqueVariantLabel(database, group, label, excludeId = null, legacyOnly = false) {
+  if (await hasVariantLabel(database, group, label, excludeId, legacyOnly)) {
     const conflict = new ApiError(409, 'DUPLICATE_VARIANT', 'This variant option is already in the group.');
     conflict.field = 'variantLabel';
     throw conflict;
@@ -156,7 +156,7 @@ export async function preparePlannedProductCreate(database,input,context) {
   const identity=plannedProductCreationIdentity(context),product=await prepareProductCreate(database,creationInput(input));
   await planProductCreationListing(database,product,identity);
   await requireUniqueProductSku(database,product.sku);
-  await requireUniqueVariantLabel(database,product.variantGroup,product.variantLabel);
+  await requireUniqueVariantLabel(database,product.variantGroup,product.variantLabel,null,Boolean(product.options?.length));
   const selected=await prepareProductOptions(database,identity.productId,product.variantGroup,product.options??[],{newProduct:true});
   await requireGroupOptions(database,identity.productId,product.variantGroup,selected.options.length>0);
   return {...product,stockQuantity:product.stockQuantity??null,...(selected.options.length?{options:selected.options,variantLabel:selected.label}:{})};
@@ -179,7 +179,7 @@ async function createProductInternal(database,input,identity=null) {
     // Variants share their listing's title, description and category; the first product of a group defines them.
     const listing = identity?await listingForPlannedProductCreate(database,product,now,identity):await listingFor(database, product, now);
     await requireUniqueProductSku(database, product.sku);
-    await requireUniqueVariantLabel(database, product.variantGroup, product.variantLabel);
+    await requireUniqueVariantLabel(database, product.variantGroup, product.variantLabel, null, Boolean(product.options?.length));
     try {
       await database.run(`INSERT INTO product
       (id, sku, name, description, category, price_minor, currency, active, image_mime, image_data,
@@ -337,7 +337,7 @@ async function patchProduct(database, id, input, { galleryChanging = false, list
   if (Object.hasOwn(patch, 'sku')) await requireUniqueProductSku(database, patch.sku, id);
   const optionsChange = productOptionsChange(existing, patch);
   if (optionsChange.checkIntermediateLabel) {
-    await requireUniqueVariantLabel(database, optionsChange.groupAfter, optionsChange.baseLabel, id);
+    await requireUniqueVariantLabel(database, optionsChange.groupAfter, optionsChange.baseLabel, id, optionsChange.structuredAfter);
   }
   try {
     await database.run(`UPDATE product SET ${assignments.join(', ')} WHERE id = ?`, ...values);
@@ -371,7 +371,9 @@ export function productOptionsChange(existing, patch) {
     replace: Object.hasOwn(patch, 'options') || Object.hasOwn(patch, 'variantGroup') && groupAfter !== existing.variantGroup,
     requestedOptions: Object.hasOwn(patch, 'options') ? patch.options : [],
     baseLabel: Object.hasOwn(patch, 'variantLabel') ? patch.variantLabel : existing.variantLabel,
-    checkIntermediateLabel: Object.hasOwn(patch, 'variantGroup') || Object.hasOwn(patch, 'variantLabel') };
+    checkIntermediateLabel: Object.hasOwn(patch, 'variantGroup') || Object.hasOwn(patch, 'variantLabel'),
+    structuredAfter: Boolean(Object.hasOwn(patch, 'options') ? Array.isArray(patch.options) && patch.options.length :
+      groupAfter === existing.variantGroup && existing.options?.length) };
 }
 
 // SELECT-only update preparation. Excluding this existing ID from sibling and
@@ -383,7 +385,7 @@ export async function prepareProductOptionsAfter(database, existing, patch) {
   }
   const change = productOptionsChange(existing, patch);
   if (!await database.get('SELECT id FROM product WHERE id = ?', existing.id)) throw new ApiError(404, 'NOT_FOUND', 'Product not found.');
-  if (change.checkIntermediateLabel) await requireUniqueVariantLabel(database, change.groupAfter, change.baseLabel, existing.id);
+  if (change.checkIntermediateLabel) await requireUniqueVariantLabel(database, change.groupAfter, change.baseLabel, existing.id, change.structuredAfter);
   let optionsAfter, label = change.baseLabel;
   if (change.replace) {
     const selected = await prepareProductOptions(database, existing.id, change.groupAfter, change.requestedOptions);
@@ -446,8 +448,11 @@ export async function setProductThumbnail(database, id, thumbDataUrl) {
   const thumb = decodeThumbnail(thumbDataUrl);
   if (!thumb) throw new FieldError('thumbDataUrl', 'Send a preview image.');
   return await database.transaction(async () => {
-    if (!await database.get('SELECT 1 AS found FROM product WHERE id = ? AND image_data IS NOT NULL', id)) throw new ApiError(404, 'NOT_FOUND', 'Product image not found.');
-    await database.run('UPDATE product SET thumb_mime = ?, thumb_data = ? WHERE id = ?', thumb.mime, thumb.data, id);
+    const current = await database.get('SELECT updated_at, thumb_mime, thumb_data FROM product WHERE id = ? AND image_data IS NOT NULL', id);
+    if (!current) throw new ApiError(404, 'NOT_FOUND', 'Product image not found.');
+    if (current.thumb_mime === thumb.mime && current.thumb_data && Buffer.from(current.thumb_data).equals(Buffer.from(thumb.data))) return { ok: true };
+    const version = new Date(Math.max(Date.now(), Date.parse(current.updated_at) + 1)).toISOString();
+    await database.run('UPDATE product SET thumb_mime = ?, thumb_data = ?, updated_at = ? WHERE id = ?', thumb.mime, thumb.data, version, id);
     return { ok: true };
   });
 }
@@ -456,8 +461,12 @@ export async function setGalleryThumbnail(database, productId, imageId, thumbDat
   const thumb = decodeThumbnail(thumbDataUrl);
   if (!thumb) throw new FieldError('thumbDataUrl', 'Send a preview image.');
   return await database.transaction(async () => {
-    if (!await database.get('SELECT 1 AS found FROM product_gallery_image WHERE id = ? AND product_id = ?', imageId, productId)) throw new ApiError(404, 'NOT_FOUND', 'Image not found.');
-    await database.run('UPDATE product_gallery_image SET thumb_mime = ?, thumb_data = ? WHERE id = ? AND product_id = ?', thumb.mime, thumb.data, imageId, productId);
+    const current = await database.get('SELECT created_at, thumb_mime, thumb_data FROM product_gallery_image WHERE id = ? AND product_id = ?', imageId, productId);
+    if (!current) throw new ApiError(404, 'NOT_FOUND', 'Image not found.');
+    if (current.thumb_mime === thumb.mime && current.thumb_data && Buffer.from(current.thumb_data).equals(Buffer.from(thumb.data))) return { ok: true };
+    // Gallery created_at is the existing public asset-version clock; ordering uses position.
+    const version = new Date(Math.max(Date.now(), Date.parse(current.created_at) + 1)).toISOString();
+    await database.run('UPDATE product_gallery_image SET thumb_mime = ?, thumb_data = ?, created_at = ? WHERE id = ? AND product_id = ?', thumb.mime, thumb.data, version, imageId, productId);
     return { ok: true };
   });
 }
@@ -518,7 +527,7 @@ export async function listProducts(database, params, seller = false, mode = 'man
     // (the one that matches the search), with the group size and whether its prices differ.
     : await database.all(`SELECT * FROM (
         SELECT ${columns()}, ROW_NUMBER() OVER (PARTITION BY COALESCE('g:' || p.variant_group, 'p:' || p.id)
-          ORDER BY CASE WHEN p.stock_quantity IS NULL OR p.stock_quantity > 0 THEN 0 ELSE 1 END, p.price_minor, p.sku, p.id) AS group_rank,
+          ORDER BY CASE WHEN p.stock_quantity IS NULL OR p.stock_quantity > ${reservedQuantitySql('p.id')} THEN 0 ELSE 1 END, p.price_minor, p.sku, p.id) AS group_rank,
           COUNT(*) OVER (PARTITION BY COALESCE('g:' || p.variant_group, 'p:' || p.id)) AS group_size,
           MAX(p.price_minor) OVER (PARTITION BY COALESCE('g:' || p.variant_group, 'p:' || p.id)) AS group_max_price
         ${fromProduct} WHERE ${activeClause} ${filters}) listed

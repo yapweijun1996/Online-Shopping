@@ -98,6 +98,8 @@ for (const dialect of ['sqlite', 'postgres']) {
     assert.equal((await readMediaSnapshot(f.store, product.id)).revision, before.revision);
     const timestamp = (await f.store.get('SELECT updated_at FROM product WHERE id = ?', product.id)).updated_at;
     await setProductThumbnail(f.store, product.id, photo('thumb-B'));
+    // Simulate legacy backfill without a product revision change.
+    await f.store.run('UPDATE product SET updated_at=? WHERE id=?',timestamp,product.id);
     assert.equal((await f.store.get('SELECT updated_at FROM product WHERE id = ?', product.id)).updated_at, timestamp);
     const afterThumb = await readMediaSnapshot(f.store, product.id); assert.notEqual(afterThumb.revision, before.revision);
     await assert.rejects(loadOldMediaAsset(f.store, before, sourceRef(source), { thumbnail: true }), { code: 'MEDIA_RESOURCE_CHANGED' });

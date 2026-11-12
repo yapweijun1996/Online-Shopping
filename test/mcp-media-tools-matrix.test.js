@@ -111,6 +111,8 @@ for (const dialect of ['sqlite','postgres']) {
     const operation=dto(await f.tool('media.preview_layout',args)),again=dto(await f.tool('media.preview_layout',args));
     assert.equal(again.operationId,operation.operationId);assert.equal(again.previewHash,operation.previewHash);
     await f.approve(operation);await setProductThumbnail(f.store,f.product.id,photo(Buffer.concat([png,Buffer.from('thumbnail backfill')])));
+    // Keep the unversioned-content regression independent of supported backfill.
+    await f.store.run('UPDATE product SET updated_at=? WHERE id=?',current.updatedAt,f.product.id);
     assert.equal((await getProduct(f.store,f.product.id,true)).updatedAt,current.updatedAt);
     assert.deepEqual(dto(await f.tool('media.commit_layout',{operationId:operation.operationId})),{operationId:operation.operationId,error:'STALE_REVISION'});
     assert.deepEqual((await getProduct(f.store,f.product.id,true)).galleryItems.map(({id})=>({id})),selected);

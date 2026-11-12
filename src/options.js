@@ -10,12 +10,12 @@ import { OPTION_LIMITS } from './option-limits.js';
  * carts and orders are unchanged.
  */
 export const OPTION_DISPLAYS = ['button', 'swatch', 'image', 'dropdown'];
-// Mirror the actual per-dialect unique index, including SQLite's ASCII-only
+// Preserve legacy per-dialect label matching, including SQLite's ASCII-only
 // NOCASE semantics rather than silently changing it to JavaScript case folding.
-export async function hasVariantLabel(database, group, label, excludeId = null) {
+export async function hasVariantLabel(database, group, label, excludeId = null, legacyOnly = false) {
   const comparison = database.dialect === 'postgres' ? 'lower(variant_label) = lower(?)' : 'variant_label COLLATE NOCASE = ?';
   return Boolean(group && label && await database.get(`SELECT id FROM product WHERE variant_group = ? AND ${comparison}
-    AND (? IS NULL OR id <> ?) LIMIT 1`, group, label, excludeId, excludeId));
+    AND (? IS NULL OR id <> ?) ${legacyOnly ? 'AND NOT EXISTS (SELECT 1 FROM product_option po WHERE po.product_id = product.id)' : ''} LIMIT 1`, group, label, excludeId, excludeId));
 }
 const localePattern = /^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$/;
 const colorPattern = /^#[0-9a-fA-F]{6}$/;
@@ -217,7 +217,13 @@ export async function refreshVariantLabels(database, productIds) {
   const options = await loadProductOptions(database, ids);
   for (const id of ids) {
     const label = derivedVariantLabel(options.get(id).map(option => option.value.label));
-    if (label) await database.run('UPDATE product SET variant_label = ? WHERE id = ?', label, id);
+    if (label) {
+      const product = await database.get('SELECT variant_group FROM product WHERE id = ?', id);
+      if (await hasVariantLabel(database, product.variant_group, label, id, true)) {
+        throw new ApiError(409, 'DUPLICATE_VARIANT', 'This label already exists in the group.');
+      }
+      await database.run('UPDATE product SET variant_label = ? WHERE id = ?', label, id);
+    }
   }
 }
 
@@ -265,8 +271,9 @@ export async function prepareProductOptions(database, productId, variantGroup, o
     }
   }
   const label = derivedVariantLabel(rows.map(row => row.label));
-  if (await hasVariantLabel(database, variantGroup, label, productId)) {
-    const conflict = new ApiError(409, 'DUPLICATE_VARIANT', 'This combination already exists in the group.');
+  // Legacy free-text variants still reserve their label; structured siblings use IDs.
+  if (await hasVariantLabel(database, variantGroup, label, productId, true)) {
+    const conflict = new ApiError(409, 'DUPLICATE_VARIANT', 'This label already exists in the group.');
     conflict.field = 'options';
     throw conflict;
   }

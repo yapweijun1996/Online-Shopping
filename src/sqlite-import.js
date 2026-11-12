@@ -33,7 +33,7 @@ export async function importSqlite(source, target) {
   if (await source.schemaVersion() !== await target.schemaVersion()) throw new Error('Schema versions do not match.');
   return target.transaction(async () => {
     if (!await operationStorageReady(source) || !await operationStorageReady(target) || !await inventoryStorageReady(source) || !await inventoryStorageReady(target)) {
-      throw new Error('Import requires compatible operation/inventory schema 36 storage.');
+      throw new Error('Import requires compatible operation/inventory schema 37 storage.');
     }
     for (const table of OPERATION_STORAGE_TABLES) {
       if (await target.get(`SELECT 1 AS found FROM ${table} LIMIT 1`)) throw new Error('Import destination must have no MCP v2 history or authority.');

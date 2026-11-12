@@ -13,7 +13,7 @@ import { migrateSharedGalleries } from './product-gallery.js';
 import { migrateOAuth } from './mcp/schema.js';
 import { initializeOperationStorage, operationStorageReady, upgradeMediaStorage, assertOperationStorageForUpgrade, upgradeOperationAuditStorage } from './mcp/operation-runtime.js';
 
-export const SCHEMA_VERSION = 36;
+export const SCHEMA_VERSION = 37;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -664,6 +664,14 @@ export async function migrateStore(store) {
   if (version === 35) {
     await store.transaction(async () => { await migrateStudioBudget(store); await store.setSchemaVersion(36); });
     version = 36;
+  }
+  if (version === 36) {
+    await store.transaction(async () => {
+      // Display labels are lossy; structured identity is checked under the writer lock.
+      await store.exec('DROP INDEX product_variant_option; CREATE INDEX product_variant_option ON product(variant_group, variant_label COLLATE NOCASE);');
+      await store.setSchemaVersion(37);
+    });
+    version = 37;
   }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
   await assertProductDetailStorage(store);
