@@ -246,3 +246,11 @@ These results show that the Seller upgrade UI opens its confirmation and that Ch
 ### Sidebar preference and motion
 
 The desktop sidebar preference is stored locally per shop namespace; storage failures leave the toggle usable without persistence. The sidebar header remains visible while its navigation scrolls. Width, content offset and label transitions use the shared `--ui-motion-fast` token, and respect reduced motion. The existing 900px drawer breakpoint, focus handling and route permissions remain unchanged. Seller and platform shell versions both change when the platform's cached copy of seller styles changes.
+
+Seller navigation hover feedback transitions its existing palette-aware background and gently moves the icon on fine pointers. Keyboard focus keeps its visible outline. Touch devices do not receive icon movement, and reduced-motion settings disable this feedback animation.
+
+A decorative active marker follows the item identified by `aria-current`; its position is recalculated after navigation and layout changes. The marker uses the existing palette and motion token and is hidden from assistive technology. Reduced-motion preferences disable its transition.
+
+The Sales Manager and Configuration headings are buttons that expand or collapse their navigation groups. Available groups start expanded; groups with no permitted items are hidden. The compact desktop rail temporarily shows all permitted icons and restores the chosen group state on expansion. Hidden groups are inert, and a collapsed group containing the current page is identified as the current location. The mobile drawer traps focus only among available controls; group transitions respect reduced motion.
+
+Compact sidebar tooltips use the shared motion token, follow their focused or hovered icon during sidebar scrolling, and hide while that icon is outside the visible navigation area. Buttons retain their own accessible names; the visual tooltip is hidden from assistive technology to avoid repeating them. Reduced-motion preferences remove the tooltip transition.

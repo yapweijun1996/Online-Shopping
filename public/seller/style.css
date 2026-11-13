@@ -55,6 +55,10 @@
 .sidebar.collapsed+.main{margin-left:74px}
 .sidebar[hidden]+.main{margin-left:0}
 .sidebar-tooltip{position:fixed;z-index:50;max-width:min(260px,calc(100vw - 90px));padding:8px 11px;border:1px solid var(--ui-control-border);border-radius:8px;background:var(--ui-text);color:var(--ui-surface);font-size:13px;font-weight:700;line-height:1.35;box-shadow:0 8px 20px #15354c2b;pointer-events:none}
+.seller-sidebar-tooltip{opacity:0;visibility:hidden;transform:translateX(-4px);transition:opacity var(--ui-motion-fast) ease,transform var(--ui-motion-fast) ease,visibility 0s linear var(--ui-motion-fast)}
+.seller-sidebar-tooltip.is-visible{opacity:1;visibility:visible;transform:translateX(0);transition:opacity var(--ui-motion-fast) ease,transform var(--ui-motion-fast) ease,visibility 0s linear}
+@media(prefers-reduced-motion:reduce){.seller-sidebar-tooltip,.seller-sidebar-tooltip.is-visible{transition:none}}
+
 .page-heading{margin-bottom:var(--ui-space-6)}
 .page-heading h1{font-size:clamp(28px,3vw,38px);color:var(--ui-text)}
 .seller-update-notice{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px;padding:14px 16px;border:1px solid var(--shop-warning-border);border-radius:13px;background:var(--shop-warning-background);color:#433918}

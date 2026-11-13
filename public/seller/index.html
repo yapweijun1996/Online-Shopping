@@ -43,22 +43,26 @@
     </div>
   </header>
   <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
-  <aside id="sidebar" class="sidebar" hidden>
-    <div class="sidebar-head"><button id="collapse-nav" class="sidebar-brand" type="button" data-i18n-aria="collapse" aria-controls="sidebar" aria-expanded="true"><svg class="brand-mark seller-brand-logo" viewBox="147 146 960 960" aria-hidden="true"><use href="/favicon.svg#mark"/></svg><span>Seller Studio</span><svg class="brand-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button><div class="sidebar-brand-static" aria-hidden="true"><svg class="brand-mark seller-brand-logo" viewBox="147 146 960 960" aria-hidden="true"><use href="/favicon.svg#mark"/></svg><span>Seller Studio</span></div><button id="close-menu" class="icon-button mobile-only" type="button" data-i18n-aria="closeMenu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg></button></div>
+  <aside id="sidebar" class="sidebar seller-sidebar" hidden>
+    <div class="sidebar-head"><button id="collapse-nav" class="sidebar-brand" type="button" aria-label="Seller Studio" aria-controls="sidebar" aria-expanded="true"><svg class="brand-mark seller-brand-logo" viewBox="147 146 960 960" aria-hidden="true"><use href="/favicon.svg#mark"/></svg><span>Seller Studio</span><svg class="brand-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button><div class="sidebar-brand-static" aria-hidden="true"><svg class="brand-mark seller-brand-logo" viewBox="147 146 960 960" aria-hidden="true"><use href="/favicon.svg#mark"/></svg><span>Seller Studio</span></div><button id="close-menu" class="icon-button mobile-only" type="button" data-i18n-aria="closeMenu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg></button></div>
     <nav aria-label="Seller portal" data-i18n-aria="sellerPortal">
       <button class="nav-item active" type="button" data-view="dashboard" data-i18n-aria="dashboard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5V21H3zM9 21v-7h6v7"/></svg><span data-i18n="dashboard">Dashboard</span></button>
       <button class="nav-item" type="button" data-view="products" data-i18n-aria="products"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v14H4zM3 7l2-4h14l2 4M9 12h6"/></svg><span data-i18n="products">Products</span></button>
       <button class="nav-item" type="button" data-view="aistudio" data-i18n-aria="aiStudioNav" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg><span data-i18n="aiStudioNav">AI Studio</span></button>
-      <div class="nav-group" data-i18n="salesManager">Sales Manager</div>
+      <button class="nav-group" type="button" aria-expanded="true" aria-controls="sales-nav-group"><span data-i18n="salesManager">Sales Manager</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+      <div id="sales-nav-group" class="nav-group-panel"><div class="nav-group-items">
       <button class="nav-item" type="button" data-view="orders" data-i18n-aria="salesOrders"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18l-3-2-4 2-4-2-3 2zM8 8h8M8 12h8"/></svg><span data-i18n="salesOrders">Sales Orders</span><span id="pending-badge" class="nav-badge" role="status" hidden></span></button>
       <button class="nav-item" type="button" data-view="confirmations" data-i18n-aria="orderReview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM8 12l3 3 5-6"/></svg><span data-i18n="orderReview">Sales Order Confirmation</span></button>
       <button id="messages-nav" class="nav-item" type="button" data-view="messages" data-i18n-aria="msgHeading" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v14H8l-5 3zM7 8h10M7 12h7"/></svg><span data-i18n="msgHeading">Messages</span><span id="messages-badge" class="nav-badge" role="status" hidden></span></button>
       <button class="nav-item" type="button" data-view="audit" data-i18n-aria="auditLog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5l3 2M3 12a9 9 0 1 0 3-6.7M3 4v4h4"/></svg><span data-i18n="auditLog">Audit log</span></button>
-      <div class="nav-group" data-i18n="configuration">Configuration</div>
+      </div></div>
+      <button class="nav-group" type="button" aria-expanded="true" aria-controls="configuration-nav-group"><span data-i18n="configuration">Configuration</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+      <div id="configuration-nav-group" class="nav-group-panel"><div class="nav-group-items">
       <button class="nav-item" type="button" data-view="categories" data-i18n-aria="categoryCodes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h6"/></svg><span data-i18n="categoryCodes">Category codes</span></button>
       <button class="nav-item" type="button" data-view="options" data-i18n-aria="optionsNav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span data-i18n="optionsNav">Product options</span></button>
       <button id="team-nav" class="nav-item" type="button" data-view="team" data-i18n-aria="teamNav" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20v-1.5a6.5 6.5 0 0 1 13 0V20M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 5.5V20"/></svg><span data-i18n="teamNav">Team</span></button>
       <button class="nav-item" type="button" data-view="company" data-i18n-aria="companySettings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V7l8-4 8 4v14M2 21h20M9 21v-6h6v6"/></svg><span data-i18n="companySettings">Company settings</span></button>
+      </div></div>
     </nav>
   </aside>
   <main id="main" class="main">

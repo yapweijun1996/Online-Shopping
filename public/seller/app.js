@@ -46,9 +46,61 @@ const collapseNavButton = byId('collapse-nav');
 const backdrop = byId('drawer-backdrop');
 const main = byId('main');
 const topbar = document.querySelector('.topbar');
+const sidebarNav = sidebar.querySelector('nav');
+const navGroupButtons = [...sidebarNav.querySelectorAll('.nav-group[aria-controls]')];
+function syncNavGroups() {
+  const compact = sidebar.classList.contains('collapsed') && !matchMedia('(max-width: 900px)').matches;
+  for (const button of navGroupButtons) {
+    const panel = byId(button.getAttribute('aria-controls'));
+    const available = [...panel.querySelectorAll('.nav-item')].some(item => !item.hidden);
+    button.hidden = !available;
+    panel.hidden = !available;
+    const expanded = compact || button.dataset.groupOpen !== 'false';
+    button.setAttribute('aria-expanded', String(expanded));
+    panel.inert = !expanded;
+    panel.setAttribute('aria-hidden', String(!expanded));
+    if (!expanded && panel.querySelector('.nav-item[aria-current="page"]')) button.setAttribute('aria-current', 'location');
+    else button.removeAttribute('aria-current');
+  }
+}
+for (const panel of sidebarNav.querySelectorAll('.nav-group-panel')) panel.addEventListener('transitionend', event => {
+  if (event.target === panel && event.propertyName === 'grid-template-rows') scheduleNavIndicator();
+});
+for (const button of navGroupButtons) button.addEventListener('click', () => {
+  button.dataset.groupOpen = button.getAttribute('aria-expanded') === 'true' ? 'false' : 'true';
+  syncNavGroups();
+  scheduleNavIndicator();
+});
+
+const navIndicator = document.createElement('div');
+navIndicator.className = 'nav-current-indicator';
+navIndicator.setAttribute('aria-hidden', 'true');
+navIndicator.hidden = true;
+sidebarNav.append(navIndicator);
+let navIndicatorFrame = 0;
+function scheduleNavIndicator() {
+  if (navIndicatorFrame) return;
+  navIndicatorFrame = requestAnimationFrame(() => {
+    navIndicatorFrame = 0;
+    const current = sidebarNav.querySelector('.nav-item[aria-current="page"]');
+    const panel = current?.closest('.nav-group-panel');
+    const active = panel?.inert ? navGroupButtons.find(button => button.getAttribute('aria-controls') === panel.id) : current;
+    if (!active || !active.getClientRects().length) { navIndicator.hidden = true; return; }
+    navIndicator.style.transform = `translateY(${active.offsetTop + 9}px)`;
+    navIndicator.style.height = `${Math.max(0, active.offsetHeight - 18)}px`;
+    navIndicator.hidden = false;
+  });
+}
+if (typeof ResizeObserver !== 'undefined') {
+  const navLayoutObserver = new ResizeObserver(scheduleNavIndicator);
+  navLayoutObserver.observe(sidebar);
+  navLayoutObserver.observe(sidebarNav);
+  sidebarNav.querySelectorAll('.nav-item').forEach(button => navLayoutObserver.observe(button));
+}
+window.addEventListener('resize', scheduleNavIndicator);
 const navTooltip = document.createElement('div');
-navTooltip.className = 'sidebar-tooltip';
-navTooltip.hidden = true;
+navTooltip.className = 'sidebar-tooltip seller-sidebar-tooltip';
+navTooltip.setAttribute('aria-hidden', 'true');
 document.body.append(navTooltip);
 let navTooltipAnchor = null;
 let csrfToken = null;
@@ -74,7 +126,7 @@ let updateView = null;
 let updateIdentity = '';
 const sessionHintKey = storageKey('online-shopping-seller-session-hint');
 const sidebarPreferenceKey = storageKey('online-shopping-seller-sidebar-collapsed');
-try { if (localStorage.getItem(sidebarPreferenceKey) === '1') setSidebarCollapsed(true); } catch { /* Storage is optional. */ }
+try { setSidebarCollapsed(localStorage.getItem(sidebarPreferenceKey) === '1'); } catch { setSidebarCollapsed(false); /* Storage is optional. */ }
 mountTabIcon(window.sellerPalette);
 const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'confirmations', 'audit', 'messages', 'categories', 'options', 'company', 'team', 'aistudio']);
 // Pages a role cannot use are hidden and their addresses fall back to the dashboard. The server refuses them anyway.
@@ -327,6 +379,8 @@ function renderView() {
     if (active) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
   });
+  syncNavGroups();
+  scheduleNavIndicator();
   const titleKey = currentView === 'products' && currentRoute !== 'products'
     ? currentRoute.startsWith('products/new') ? 'addProduct' : 'editProduct'
     : { dashboard: 'dashboard', products: 'products', orders: 'salesOrders', confirmations: 'orderReview', audit: 'auditLog', messages: 'msgHeading', team: 'teamNav', aistudio: 'aiStudioNav', categories: 'categoryCodes', options: 'optionsNav', company: 'companySettings' }[currentView];
@@ -600,17 +654,42 @@ function syncDrawerAccess() {
 function showNavTooltip(button) {
   if (window.matchMedia('(max-width: 900px)').matches || !sidebar.classList.contains('collapsed')) return;
   navTooltipAnchor = button;
-  navTooltip.textContent = button.getAttribute('aria-label') || '';
-  navTooltip.hidden = false;
   const buttonRect = button.getBoundingClientRect();
+  const sidebarRect = sidebar.getBoundingClientRect();
+  const contentTop = sidebar.querySelector('.sidebar-head').getBoundingClientRect().bottom;
+  if (button !== collapseNavButton && (buttonRect.bottom <= contentTop || buttonRect.top >= sidebarRect.bottom)) {
+    navTooltip.classList.remove('is-visible');
+    return;
+  }
+  navTooltip.textContent = button === collapseNavButton ? t(sidebar.classList.contains('collapsed') ? 'expand' : 'collapse') : button.getAttribute('aria-label') || '';
   const tipRect = navTooltip.getBoundingClientRect();
   navTooltip.style.left = `${Math.min(buttonRect.right + 9, innerWidth - tipRect.width - 8)}px`;
   navTooltip.style.top = `${Math.max(8, Math.min(buttonRect.top + (buttonRect.height - tipRect.height) / 2, innerHeight - tipRect.height - 8))}px`;
+  navTooltip.classList.add('is-visible');
 }
 
-function hideNavTooltip() { navTooltip.hidden = true; navTooltipAnchor = null; }
+function hideNavTooltip() { navTooltip.classList.remove('is-visible'); navTooltipAnchor = null; }
+function navTooltipMouseLeave(button) {
+  const focused = document.activeElement;
+  if (focused === button) return;
+  if (focused === collapseNavButton || (sidebar.contains(focused) && focused?.classList.contains('nav-item'))) showNavTooltip(focused);
+  else hideNavTooltip();
+}
+function navTooltipBlur(button) {
+  if (navTooltipAnchor === button && !button.matches(':hover')) hideNavTooltip();
+}
+let tooltipScrollFrame = 0;
+sidebar.addEventListener('scroll', () => {
+  if (!navTooltipAnchor || tooltipScrollFrame) return;
+  tooltipScrollFrame = requestAnimationFrame(() => {
+    tooltipScrollFrame = 0;
+    if (navTooltipAnchor) showNavTooltip(navTooltipAnchor);
+  });
+}, { passive: true });
 sidebar.addEventListener('transitionend', (event) => {
-  if (event.propertyName === 'width' && navTooltipAnchor) showNavTooltip(navTooltipAnchor);
+  if (event.target !== sidebar || event.propertyName !== 'width') return;
+  scheduleNavIndicator();
+  if (navTooltipAnchor) showNavTooltip(navTooltipAnchor);
 });
 
 function closeAccount() {
@@ -629,15 +708,21 @@ menuButton.addEventListener('click', () => {
 closeMenuButton.addEventListener('click', () => closeDrawer());
 backdrop.addEventListener('click', () => closeDrawer());
 window.addEventListener('resize', () => {
+  const sidebarHadFocus = sidebar.contains(document.activeElement);
+  syncNavGroups();
+  scheduleNavIndicator();
   hideNavTooltip();
   if (!window.matchMedia('(max-width: 900px)').matches && sidebar.classList.contains('drawer-open')) {
     closeDrawer(false);
     byId('page-title').focus({ preventScroll: true });
-  } else syncDrawerAccess();
+  } else {
+    syncDrawerAccess();
+    if (sidebarHadFocus && window.matchMedia('(max-width: 900px)').matches && !sidebar.classList.contains('drawer-open') && !menuButton.hidden) menuButton.focus();
+  }
 });
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Tab' && sidebar.classList.contains('drawer-open') && !document.querySelector('dialog[open]')) {
-    const focusables = [...sidebar.querySelectorAll('button')].filter((button) => button.getClientRects().length && !button.disabled);
+    const focusables = [...sidebar.querySelectorAll('button')].filter((button) => button.getClientRects().length && !button.disabled && !button.closest('[inert]'));
     const first = focusables[0];
     const last = focusables.at(-1);
     if (event.shiftKey && (!sidebar.contains(document.activeElement) || document.activeElement === first)) {
@@ -658,16 +743,15 @@ document.addEventListener('focusin', (event) => {
 });
 collapseNavButton.addEventListener('mouseenter', () => showNavTooltip(collapseNavButton));
 collapseNavButton.addEventListener('focus', () => showNavTooltip(collapseNavButton));
-collapseNavButton.addEventListener('mouseleave', () => {
-  if (document.activeElement !== collapseNavButton) hideNavTooltip();
-});
-collapseNavButton.addEventListener('blur', hideNavTooltip);
+collapseNavButton.addEventListener('mouseleave', () => navTooltipMouseLeave(collapseNavButton));
+collapseNavButton.addEventListener('blur', () => navTooltipBlur(collapseNavButton));
 function setSidebarCollapsed(collapsed) {
   sidebar.classList.toggle('collapsed', collapsed);
   document.body.classList.toggle('seller-nav-collapsed', collapsed);
-  collapseNavButton.dataset.i18nAria = collapsed ? 'expand' : 'collapse';
-  collapseNavButton.setAttribute('aria-label', t(collapsed ? 'expand' : 'collapse'));
+  syncNavGroups();
+  collapseNavButton.setAttribute('aria-label', `Seller Studio — ${t(collapsed ? 'expand' : 'collapse')}`);
   collapseNavButton.setAttribute('aria-expanded', String(!collapsed));
+  scheduleNavIndicator();
 }
 collapseNavButton.addEventListener('click', () => {
   const collapsed = !sidebar.classList.contains('collapsed');
@@ -699,10 +783,8 @@ window.addEventListener('beforeunload', (event) => {
 document.querySelectorAll('.nav-item').forEach((button) => {
   button.addEventListener('mouseenter', () => showNavTooltip(button));
   button.addEventListener('focus', () => showNavTooltip(button));
-  button.addEventListener('mouseleave', () => {
-    if (document.activeElement !== button) hideNavTooltip();
-  });
-  button.addEventListener('blur', hideNavTooltip);
+  button.addEventListener('mouseleave', () => navTooltipMouseLeave(button));
+  button.addEventListener('blur', () => navTooltipBlur(button));
   button.addEventListener('click', () => {
     hideNavTooltip();
     if (navigate(button.dataset.view)) {
@@ -784,6 +866,8 @@ byId('login-form').addEventListener('submit', async (event) => {
 });
 
 document.addEventListener('localechange', () => {
+  setSidebarCollapsed(sidebar.classList.contains('collapsed'));
+  scheduleNavIndicator();
   if (messagesPage) messagesPage.refreshLocale();
   else if (currentView === 'products' && productsPage) productsPage.refreshLocale();
   else if (ordersPage) ordersPage.refreshLocale();

@@ -23,21 +23,44 @@ body{background:var(--ui-canvas)}
 .topbar{border-bottom:1px solid var(--ui-border);background:var(--ui-surface)}
 .topbar .brand-mark,.sidebar-brand .brand-mark,.sidebar-brand-static .brand-mark{background:transparent}
 .shop-context{margin:0;min-width:0;max-width:45%;font-weight:700;font-size:14px;color:var(--ui-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sidebar{background:var(--ui-primary);border-right:0;color:#fff;padding-inline:15px}
+.sidebar{--sidebar-nav-hover:#ffffff16;--sidebar-nav-selected:#ffffff20;background:var(--ui-primary);border-right:0;color:#fff;padding-inline:15px}
 .sidebar-head{margin-inline:-15px;padding-inline:20px;border-color:#ffffff26;min-height:76px}
 .sidebar-brand,.sidebar-brand-static{color:#fff;font-size:16px;letter-spacing:-.025em}
 .sidebar-brand:hover{background:#ffffff12}
 .sidebar nav{gap:4px;padding-top:12px}
 .nav-item{min-height:48px;color:#fff;font-weight:550;padding:11px 13px;border-radius:8px}
-.nav-item:hover{background:#ffffff16}
-.nav-item.active{background:#ffffff20;color:#fff;font-weight:750}
+.nav-item:hover{background:var(--sidebar-nav-hover)}
+.nav-item.active{background:var(--sidebar-nav-selected);color:#fff;font-weight:750}
 .seller-signed-in .sidebar [aria-current="page"]{color:#fff}
 .nav-item.active::before{display:none}
 .nav-group{color:#fff;opacity:.75;font-size:11px;letter-spacing:.06em;padding-top:20px;padding-bottom:6px}
 .nav-item{gap:12px}
 .sidebar .icon-button{color:#fff}
-.sidebar .icon-button:hover{background:#ffffff16}
+.sidebar .icon-button:hover{background:var(--sidebar-nav-hover)}
 .sidebar :focus-visible{outline:2px solid #fff;outline-offset:3px}
+/* Navigation groups stay expanded in the compact icon rail. */
+.seller-sidebar .nav-group{width:100%;min-height:44px;margin-top:10px;padding:10px 13px;border:0;border-radius:8px;background:transparent;display:flex;align-items:center;justify-content:space-between;text-align:left;cursor:pointer}
+.seller-sidebar .nav-group[hidden],.seller-sidebar .nav-group-panel[hidden]{display:none}
+.seller-sidebar .nav-group:hover{background:var(--sidebar-nav-hover)}
+.seller-sidebar .nav-group[aria-current="location"]{background:var(--sidebar-nav-selected);opacity:1}
+.seller-sidebar .nav-group svg{width:16px;height:16px;flex:none;transition:transform var(--ui-motion-fast) ease}
+.seller-sidebar .nav-group[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.seller-sidebar .nav-group-panel{display:grid;grid-template-rows:1fr;transition:grid-template-rows var(--ui-motion-fast) ease}
+.seller-sidebar .nav-group[aria-expanded="false"]+.nav-group-panel{grid-template-rows:0fr}
+.seller-sidebar .nav-group-items{min-height:0;overflow:hidden;display:grid;align-content:start;gap:4px}
+.seller-sidebar .nav-group-items .nav-item:focus-visible{outline-offset:-2px}
+@media (max-width:900px){.seller-sidebar.collapsed .nav-group:not([hidden]){display:flex}}
+@media (prefers-reduced-motion:reduce){.seller-sidebar .nav-group-panel,.seller-sidebar .nav-group svg{transition:none}}
+/* One decorative marker follows the semantic current navigation item. */
+.seller-sidebar nav{position:relative}
+.seller-sidebar .nav-current-indicator{position:absolute;left:0;top:0;width:3px;border-radius:3px;background:var(--ui-on-action);pointer-events:none;transition:transform var(--ui-motion-fast) ease,height var(--ui-motion-fast) ease}
+@media (prefers-reduced-motion:reduce){.seller-sidebar .nav-current-indicator{transition:none}}
+/* Seller navigation feedback uses the shared motion token and existing palette. */
+.seller-sidebar .nav-item{transition:background-color var(--ui-motion-fast) ease}
+.seller-sidebar .nav-item>svg{transition:transform var(--ui-motion-fast) ease}
+@media (hover:hover) and (pointer:fine){.seller-sidebar .nav-item:hover>svg{transform:translateX(2px)}}
+@media (prefers-reduced-motion:reduce){.seller-sidebar .nav-item,.seller-sidebar .nav-item>svg{transition:none}.seller-sidebar .nav-item:hover>svg{transform:none}}
+
 
 .page-heading{margin-bottom:var(--ui-space-6)}
 .page-heading .eyebrow{font-size:10px;letter-spacing:.14em}
