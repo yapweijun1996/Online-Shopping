@@ -73,6 +73,8 @@ let updateDismissed = false;
 let updateView = null;
 let updateIdentity = '';
 const sessionHintKey = storageKey('online-shopping-seller-session-hint');
+const sidebarPreferenceKey = storageKey('online-shopping-seller-sidebar-collapsed');
+try { if (localStorage.getItem(sidebarPreferenceKey) === '1') setSidebarCollapsed(true); } catch { /* Storage is optional. */ }
 mountTabIcon(window.sellerPalette);
 const VALID_VIEWS = new Set(['dashboard', 'products', 'orders', 'confirmations', 'audit', 'messages', 'categories', 'options', 'company', 'team', 'aistudio']);
 // Pages a role cannot use are hidden and their addresses fall back to the dashboard. The server refuses them anyway.
@@ -660,15 +662,21 @@ collapseNavButton.addEventListener('mouseleave', () => {
   if (document.activeElement !== collapseNavButton) hideNavTooltip();
 });
 collapseNavButton.addEventListener('blur', hideNavTooltip);
-collapseNavButton.addEventListener('click', () => {
-  const collapsed = sidebar.classList.toggle('collapsed');
-  hideNavTooltip();
+function setSidebarCollapsed(collapsed) {
+  sidebar.classList.toggle('collapsed', collapsed);
   document.body.classList.toggle('seller-nav-collapsed', collapsed);
   collapseNavButton.dataset.i18nAria = collapsed ? 'expand' : 'collapse';
   collapseNavButton.setAttribute('aria-label', t(collapsed ? 'expand' : 'collapse'));
   collapseNavButton.setAttribute('aria-expanded', String(!collapsed));
+}
+collapseNavButton.addEventListener('click', () => {
+  const collapsed = !sidebar.classList.contains('collapsed');
+  hideNavTooltip();
+  setSidebarCollapsed(collapsed);
+  try { localStorage.setItem(sidebarPreferenceKey, collapsed ? '1' : '0'); } catch { /* Storage is optional. */ }
   if (collapsed && document.activeElement === collapseNavButton) showNavTooltip(collapseNavButton);
 });
+
 function focusRouteChange() {
   window.scrollTo(0, 0);
   byId('page-title').focus({ preventScroll: true });
