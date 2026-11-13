@@ -35,6 +35,13 @@ body{background:var(--ui-canvas)}
 .nav-item.active::before{display:none}
 .nav-group{color:#fff;opacity:.75;font-size:11px;letter-spacing:.06em;padding-top:20px;padding-bottom:6px}
 .nav-item{gap:12px}
+/* Fit navigation labels to the rail without changing the accessible button names. */
+.seller-sidebar{container-type:inline-size}
+.seller-sidebar .nav-item{gap:6px}
+.seller-sidebar .nav-item>span[data-i18n],.seller-sidebar .nav-group>span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seller-sidebar .nav-item[data-view="confirmations"]{padding-right:4px}
+.seller-sidebar .nav-item[data-view="confirmations"]>span[data-i18n]{font-size:13px;font-size:clamp(.75rem,6cqi,1rem)}
+:lang(ms) .seller-sidebar .nav-item[data-view="confirmations"]>span[data-i18n]{font-size:12px;font-size:clamp(.75rem,4.8cqi,1rem)}
 .sidebar .icon-button{color:#fff}
 .sidebar .icon-button:hover{background:var(--sidebar-nav-hover)}
 .sidebar :focus-visible{outline:2px solid #fff;outline-offset:3px}

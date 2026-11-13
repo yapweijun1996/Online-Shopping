@@ -258,3 +258,5 @@ Compact sidebar tooltips use the shared motion token, follow their focused or ho
 During desktop sidebar expansion, text and group headings stay hidden until the width transition ends. Rapid reversals, viewport changes and reduced-motion settings clear the temporary opening state; the compact and mobile controls remain usable.
 
 The seller account menu grows to fit its single-line actions within the viewport; action text uses a bounded responsive font size on narrow screens. An exceptionally long label is visually ellipsized if it exceeds the available screen width; its full button name remains available to assistive technology. Update-status messages may wrap independently.
+
+Seller navigation labels and section headings stay on one line. The order confirmation label uses a bounded size based on sidebar width, with a narrower Malay setting; exceptionally long labels are ellipsized without changing their accessible names or notification badges.
