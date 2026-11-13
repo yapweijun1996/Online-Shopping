@@ -38,6 +38,11 @@ body{background:var(--ui-canvas)}
 .sidebar .icon-button{color:#fff}
 .sidebar .icon-button:hover{background:var(--sidebar-nav-hover)}
 .sidebar :focus-visible{outline:2px solid #fff;outline-offset:3px}
+/* Hide text as soon as the desktop rail starts narrowing. */
+@media (min-width:901px){.seller-sidebar.collapsed .sidebar-brand span:not(.brand-mark),.seller-sidebar.collapsed .nav-item span{visibility:hidden;opacity:0;transition:none}}
+/* Keep labels out of the narrow rail until the desktop width transition finishes. */
+.seller-sidebar.sidebar-opening .sidebar-brand span:not(.brand-mark),.seller-sidebar.sidebar-opening .nav-item span{position:absolute;visibility:hidden;opacity:0;pointer-events:none;transition:none}
+.seller-sidebar.sidebar-opening .nav-group,.seller-sidebar.sidebar-opening .brand-chevron{visibility:hidden;opacity:0;pointer-events:none}
 /* Navigation groups stay expanded in the compact icon rail. */
 .seller-sidebar .nav-group{width:100%;min-height:44px;margin-top:10px;padding:10px 13px;border:0;border-radius:8px;background:transparent;display:flex;align-items:center;justify-content:space-between;text-align:left;cursor:pointer}
 .seller-sidebar .nav-group[hidden],.seller-sidebar .nav-group-panel[hidden]{display:none}

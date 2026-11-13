@@ -686,8 +686,25 @@ sidebar.addEventListener('scroll', () => {
     if (navTooltipAnchor) showNavTooltip(navTooltipAnchor);
   });
 }, { passive: true });
+let sidebarOpeningTimer = 0;
+function finishSidebarOpening() {
+  clearTimeout(sidebarOpeningTimer);
+  sidebarOpeningTimer = 0;
+  sidebar.classList.remove('sidebar-opening');
+}
+function sidebarWidthTransitionMs() {
+  const style = getComputedStyle(sidebar);
+  const properties = style.transitionProperty.split(',').map(value => value.trim());
+  const index = properties.findIndex(value => value === 'width' || value === 'all');
+  if (index < 0) return 0;
+  const duration = style.transitionDuration.split(',').map(value => value.trim());
+  const delay = style.transitionDelay.split(',').map(value => value.trim());
+  const milliseconds = value => parseFloat(value) * (value.endsWith('ms') ? 1 : 1000) || 0;
+  return Math.max(0, milliseconds(duration[index % duration.length]) + milliseconds(delay[index % delay.length]));
+}
 sidebar.addEventListener('transitionend', (event) => {
   if (event.target !== sidebar || event.propertyName !== 'width') return;
+  if (!sidebar.classList.contains('collapsed')) finishSidebarOpening();
   scheduleNavIndicator();
   if (navTooltipAnchor) showNavTooltip(navTooltipAnchor);
 });
@@ -708,6 +725,7 @@ menuButton.addEventListener('click', () => {
 closeMenuButton.addEventListener('click', () => closeDrawer());
 backdrop.addEventListener('click', () => closeDrawer());
 window.addEventListener('resize', () => {
+  if (window.matchMedia('(max-width: 900px)').matches) finishSidebarOpening();
   const sidebarHadFocus = sidebar.contains(document.activeElement);
   syncNavGroups();
   scheduleNavIndicator();
@@ -753,10 +771,23 @@ function setSidebarCollapsed(collapsed) {
   collapseNavButton.setAttribute('aria-expanded', String(!collapsed));
   scheduleNavIndicator();
 }
+window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener?.('change', event => { if (event.matches) finishSidebarOpening(); });
 collapseNavButton.addEventListener('click', () => {
   const collapsed = !sidebar.classList.contains('collapsed');
   hideNavTooltip();
+  finishSidebarOpening();
+  const animateOpening = !collapsed && !window.matchMedia('(max-width: 900px)').matches && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (animateOpening) {
+    sidebar.classList.add('sidebar-opening');
+    // Commit the collapsed geometry before changing the width.
+    void sidebar.offsetWidth;
+  }
   setSidebarCollapsed(collapsed);
+  if (animateOpening) {
+    const duration = sidebarWidthTransitionMs();
+    if (duration) sidebarOpeningTimer = setTimeout(finishSidebarOpening, duration + 60);
+    else finishSidebarOpening();
+  }
   try { localStorage.setItem(sidebarPreferenceKey, collapsed ? '1' : '0'); } catch { /* Storage is optional. */ }
   if (collapsed && document.activeElement === collapseNavButton) showNavTooltip(collapseNavButton);
 });
