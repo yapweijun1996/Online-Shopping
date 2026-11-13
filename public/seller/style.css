@@ -17,6 +17,13 @@
 .account-menu{position:absolute;right:0;top:calc(100% + 8px);min-width:185px;background:var(--ui-surface);border:1px solid var(--ui-border);box-shadow:0 16px 40px #15354c22;border-radius:12px;padding:6px;z-index:40}
 .account-menu button{display:block;width:100%;border:0;background:transparent;text-align:left;padding:11px 12px;border-radius:8px;color:var(--ui-text)}
 .account-menu button:hover{background:var(--ui-hover-surface)}
+/* Grow the seller menu to its labels, bounded by the viewport. */
+#account-wrap #account-menu{right:2px;width:max-content;max-width:calc(100vw - 24px)}
+#account-wrap #account-menu button,#account-wrap #seller-current-version{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#account-wrap #account-menu button{font-size:clamp(.8125rem,4.6vw,1rem)}
+@media(max-width:320px){#account-wrap #account-menu button{padding-inline:8px}}
+#account-wrap #check-updates-status{width:0;min-width:calc(100% - 16px);overflow-wrap:anywhere}
+
 .account-menu p{margin:0 8px;padding:0 4px;color:var(--ui-muted);font-size:12px;line-height:1.4}
 .account-menu p:empty{display:none}
 .account-menu-update{margin-top:6px;padding-top:6px;border-top:1px solid var(--ui-border)}
