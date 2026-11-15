@@ -35,7 +35,7 @@ test('shop and seller manifests have separate scopes and real icon sizes', () =>
 });
 
 test('shop theme color matches its brand token and is cached offline', () => {
-  const tokens = readFileSync(new URL('../public/shop/tokens.css', import.meta.url), 'utf8');
+  const tokens = readFileSync(new URL('../public/shared/theme.css', import.meta.url), 'utf8');
   const style = readFileSync(new URL('../public/shop/style.css', import.meta.url), 'utf8');
   const html = readFileSync(new URL('../public/shop/index.html', import.meta.url), 'utf8');
   const manifest = JSON.parse(readFileSync(new URL('../public/shop/manifest.webmanifest', import.meta.url), 'utf8'));
@@ -44,7 +44,7 @@ test('shop theme color matches its brand token and is cached offline', () => {
   assert.ok(brand, 'shop brand token is defined');
   assert.equal(html.match(/<meta name="theme-color" content="(#[0-9a-f]{6})">/i)?.[1], brand);
   assert.equal(manifest.theme_color, brand);
-  assert.match(style, /@import url\('\.\/tokens\.css'\)/);
+  assert.match(style, /@import url\('\.\.\/shared\/theme\.css'\)/);
   assert.match(worker, /'\.\/tokens\.css'/);
 });
 

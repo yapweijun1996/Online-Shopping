@@ -10,7 +10,7 @@ import { wireId } from './helpers/mcp-catalog-wire-fixture.js';
 test('SYNTHETIC transport CREATE renderer verifies null BEFORE/options/page ACK, not actual CREATE authorization',
  {skip:!process.env.QA_PLAYWRIGHT_MODULE,timeout:60000},async t=>{
  const assets=Object.fromEntries(await Promise.all(['html','js','css'].map(async extension=>[extension,await readFile(new URL('../src/mcp/operation-review.'+extension,import.meta.url))]))),png=await readFile(new URL('../public/shop/icons/icon-192.png',import.meta.url));
- const styles={'/shop/tokens.css':await readFile(new URL('../public/shop/tokens.css',import.meta.url)),'/shared/appearance.css':await readFile(new URL('../public/shared/appearance.css',import.meta.url))};
+ const styles={'/shop/tokens.css':await readFile(new URL('../public/shared/theme.css',import.meta.url)),'/shared/appearance.css':await readFile(new URL('../public/shared/appearance.css',import.meta.url))};
  let current,corrupt=false;const acknowledgements=[],approvals=[];
  const server=createServer(async(request,response)=>{
   const path=new URL(request.url,'http://localhost').pathname.replace(/^\/alpha(?=\/)/,'');

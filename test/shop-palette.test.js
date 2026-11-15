@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext as rawContext } from 'node:vm';
 const runInNewContext = (source, context) => rawContext(source.replace(/^import .*\n/m, ''), { scopedKey: (key) => key, ...context });
 
-const stylesheet = readFileSync(new URL('../public/shop/tokens.css', import.meta.url), 'utf8');
+const stylesheet = readFileSync(new URL('../public/shared/theme.css', import.meta.url), 'utf8');
 const script = readFileSync(new URL('../public/shop/palette.js', import.meta.url), 'utf8');
 const roles = (block) => Object.fromEntries([...block.matchAll(/(--[\w-]+):\s*(#[0-9a-f]{3,6})\s*;/gi)].map(([, name, color]) => [name, color]));
 const blocks = [...stylesheet.matchAll(/([^{}]+)\{([^{}]+)\}/g)];

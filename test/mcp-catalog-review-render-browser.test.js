@@ -10,7 +10,7 @@ const enabled=Boolean(process.env.QA_PLAYWRIGHT_MODULE);
 test('SYNTHETIC transport C renderer verifies page labels and safely displays nullable listings; this is not C authorization proof',
  {skip:!enabled,timeout:60000},async t=>{
   const assets=Object.fromEntries(await Promise.all(['html','js','css'].map(async extension=>[extension,await readFile(new URL('../src/mcp/operation-review.'+extension,import.meta.url))])));
-  const styles={'/shop/tokens.css':await readFile(new URL('../public/shop/tokens.css',import.meta.url)),'/shared/appearance.css':await readFile(new URL('../public/shared/appearance.css',import.meta.url))};
+  const styles={'/shop/tokens.css':await readFile(new URL('../public/shared/theme.css',import.meta.url)),'/shared/appearance.css':await readFile(new URL('../public/shared/appearance.css',import.meta.url))};
   const png=await readFile(new URL('../public/shop/icons/icon-192.png',import.meta.url)),input=catalogWireInput();
   input.assets[0].byte_sha256=mediaHash(png);input.assets[0].byte_length=png.length;input.graphBytes.oldBytes=png.length;
   const key=mediaAssetKey('image/png',mediaHash(png));input.effects[0].before.mainAssetKey=input.effects[0].after.mainAssetKey=key;input.effects[1].before.galleryAssetKeys=[key];

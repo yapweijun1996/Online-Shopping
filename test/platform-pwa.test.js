@@ -54,7 +54,7 @@ test('the worker caches exactly the files the page needs, and never an API respo
 });
 
 test('SSOT: platform styles use shared tokens, with no raw colours, z-index numbers or safe-area calls of their own', () => {
-  const css = file('platform/style.css'), tokens = file('shop/tokens.css');
+  const css = file('platform/style.css'), tokens = file('shared/theme.css');
   const withoutDeclarations = css.replace(/--[a-z0-9-]+\s*:\s*[^;}]*[;}]?/g, '');
   assert.deepEqual([...new Set(withoutDeclarations.match(/#[0-9a-fA-F]{3,8}\b/g) || [])], [], 'raw colours belong in tokens');
   assert.deepEqual(css.match(/z-index:\s*\d+/g) || [], [], 'layers use --ui-z-* tokens');

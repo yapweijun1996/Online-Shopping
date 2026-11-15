@@ -14,7 +14,7 @@ test('first-party review prototype renders all untrusted data as text and requir
       [extension, await readFile(new URL(`../src/mcp/operation-review.${extension}`, import.meta.url))])));
     const calls = [];
     const styles = {
-      '/shop/tokens.css': await readFile(new URL('../public/shop/tokens.css', import.meta.url)),
+      '/shop/tokens.css': await readFile(new URL('../public/shared/theme.css', import.meta.url)),
       '/shared/appearance.css': await readFile(new URL('../public/shared/appearance.css', import.meta.url)),
     };
     const server = createServer(async (request, response) => {

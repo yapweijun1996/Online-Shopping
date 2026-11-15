@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-ui-surface="seller">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#24553e">
   <title>Seller portal · Online Shopping</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -11,6 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="OS Seller">
+  <script src="../shared/theme.js"></script>
   <link rel="stylesheet" href="./style.css">
   <script type="module" src="./bootstrap.js"></script>
   <link rel="stylesheet" href="./order-print.css">
@@ -26,6 +27,7 @@
     <a class="brand" href="./" data-i18n-aria="sellerPortal"><svg class="brand-mark seller-brand-logo" viewBox="147 146 960 960" aria-hidden="true"><use href="/favicon.svg#mark"/></svg><span>Seller Studio</span></a>
     <p id="shop-context" class="shop-context" hidden></p>
     <div class="top-actions">
+      <div class="theme-control" data-theme-control></div>
       <div id="language" class="language-menu"></div>
       <div class="account-wrap" id="account-wrap" hidden>
         <button id="account-button" class="account-button" type="button" data-i18n-aria="account" aria-expanded="false" aria-controls="account-menu"><span class="avatar" aria-hidden="true"></span><span data-i18n="account">Account</span><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></button>

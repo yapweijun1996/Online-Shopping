@@ -21,7 +21,7 @@ test('review expiry disables decisions despite pending media and late errors',
   { skip: !browserModule, timeout: 60000 }, async t => {
     const assets = Object.fromEntries(await Promise.all(['html', 'js', 'css'].map(async extension =>
       [extension, await readFile(new URL(`../src/mcp/operation-review.${extension}`, import.meta.url))])));
-    const tokens = await readFile(new URL('../public/shop/tokens.css', import.meta.url));
+    const tokens = await readFile(new URL('../public/shared/theme.css', import.meta.url));
     const appearance = await readFile(new URL('../public/shared/appearance.css', import.meta.url));
     const png = await readFile(new URL('../public/shop/icons/icon-192.png', import.meta.url));
     const input = directWireInput(), assetKey = mediaAssetKey('image/png', mediaHash(png));

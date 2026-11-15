@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-ui-surface="shop">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#087f83">
   <title>Online Shopping</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -11,6 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="OS Shop">
+  <script src="../shared/theme.js"></script>
   <link rel="stylesheet" href="./style.css">
   <script type="module" src="./bootstrap.js"></script>
 </head>
@@ -36,6 +37,7 @@
     <nav class="shop-nav" data-i18n-aria="shop" aria-label="Shop">
       <a href="#cart" data-i18n-aria="cart" aria-label="Cart"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 4h2l2.3 11.5h11.7L21 7H5"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg><span data-i18n="cart">Cart</span> <span id="cart-count" class="cart-count">0</span></a>
     </nav>
+    <div class="theme-control" data-theme-control></div>
     <div id="language" class="language-menu shop-language"></div>
     <div class="shop-account">
       <button id="profile-menu-button" class="language-trigger" type="button" aria-expanded="false" aria-controls="profile-menu" aria-haspopup="true" data-i18n-aria="account"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/></svg><span class="utility-label" data-i18n="account">Account</span></button>

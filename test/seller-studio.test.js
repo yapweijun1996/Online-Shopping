@@ -28,8 +28,9 @@ function contrast(a, b) {
 }
 
 test('warm Seller default keeps contrast and semantic price/error colors; new assets are in the offline shell', () => {
-  const css = readFileSync(new URL('../public/seller/commerce.css', import.meta.url), 'utf8');
-  const block = css.slice(0, css.indexOf('}') + 1);
+  const css = readFileSync(new URL('../public/shared/theme.css', import.meta.url), 'utf8');
+  const start = css.indexOf('/* Seller warmth');
+  const block = css.slice(start, css.indexOf('}', start) + 1);
   const tokens = Object.fromEntries([...block.matchAll(/(--[\w-]+):\s*(#[0-9a-f]{6});/gi)].map(([, name, value]) => [name, value]));
   assert.ok(contrast('#ffffff', tokens['--ui-primary']) >= 4.5);
   assert.ok(contrast(tokens['--ui-muted'], tokens['--ui-canvas']) >= 4.5);
