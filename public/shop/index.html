@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#087f83">
   <title>Online Shopping</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/shared/brand/pomelo-compact.svg" type="image/svg+xml">
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/shared/brand/pomelo-icon-square-192.png">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="OS Shop">
@@ -18,7 +18,7 @@
 <body>
   <div id="shop-boot-loader" class="shop-boot-overlay" role="status" aria-live="polite" aria-labelledby="shop-boot-title" tabindex="-1" hidden>
     <div class="shop-boot-content">
-      <svg class="shop-boot-mark" viewBox="147 146 960 960" aria-hidden="true"><use href="/favicon.svg#mark"/></svg>
+      <picture class="shop-boot-placeholder" aria-hidden="true"><img class="placeholder-light" src="/shared/brand/pomelo-placeholder-loader.svg" alt=""><img class="placeholder-dark" src="/shared/brand/pomelo-placeholder-loader-dark.svg" alt=""><img class="placeholder-static-light" src="/shared/brand/pomelo-placeholder-static.svg" alt=""><img class="placeholder-static-dark" src="/shared/brand/pomelo-placeholder-static-dark.svg" alt=""></picture>
       <h2 id="shop-boot-title" data-i18n="shop">Shop</h2>
       <p id="shop-boot-status" data-i18n="loading">Loading…</p>
       <span class="shop-boot-progress" aria-hidden="true"></span>
@@ -27,7 +27,7 @@
   </div>
   <a class="skip-link" href="#catalog-results" data-i18n="browseProducts">Browse products</a>
   <header class="topbar shop-topbar">
-    <a class="brand" href="./"><svg class="shop-brand-logo" viewBox="147 146 960 960" aria-hidden="true" width="38" height="38"><use href="/favicon.svg#mark"/></svg><span class="brand-copy"><strong id="shop-brand-name">Shop</strong><small id="shop-brand-kind" data-i18n="shop">Shop</small></span></a>
+    <a class="brand" href="./"><img class="shop-brand-logo" src="/shared/brand/pomelo-compact.svg" alt="" width="38" height="38"><span class="brand-copy"><strong id="shop-brand-name">Shop</strong><small id="shop-brand-kind" data-i18n="shop">Shop</small></span></a>
     <form id="catalog-search-form" class="header-search" role="search">
       <button id="search-cancel" class="search-back" type="button" aria-label="Cancel" data-i18n-aria="cancel" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 5-7 7 7 7M7 12h14"/></svg></button>
       <label class="sr-only" for="catalog-search" data-i18n="searchProducts">Search products</label>
@@ -182,7 +182,7 @@
       </div>
     </section>
   </main>
-  <nav id="mobile-navigation" class="mobile-navigation" aria-label="Shop" data-i18n-aria="shop"><a href="#catalog"><span class="mobile-nav-icon" aria-hidden="true"><svg viewBox="147 146 960 960"><use href="/favicon.svg#mark"/></svg></span><span data-i18n="home"></span></a><button id="mobile-category" type="button" aria-haspopup="dialog"><span class="mobile-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 5h12M9 12h12M9 19h12M3 5h1M3 12h1M3 19h1"/></svg></span><span data-i18n="category"></span></button><a href="#cart"><span class="mobile-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2 3h3l3 12h11l2-9H6"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg><span id="mobile-cart-count" class="mobile-cart-count">0</span></span><span data-i18n="cart"></span></a><button id="mobile-language" type="button" aria-haspopup="dialog"><span class="mobile-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c4 4 4 14 0 18M12 3c-4 4-4 14 0 18"/></svg></span><span data-i18n="selectLanguage"></span></button><a href="#profile"><span class="mobile-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/></svg></span><span data-i18n="account"></span></a></nav>
+  <nav id="mobile-navigation" class="mobile-navigation" aria-label="Shop" data-i18n-aria="shop"><a href="#catalog"><span class="mobile-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5V21H3zM9 21v-7h6v7"/></svg></span><span data-i18n="home"></span></a><button id="mobile-category" type="button" aria-haspopup="dialog"><span class="mobile-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 5h12M9 12h12M9 19h12M3 5h1M3 12h1M3 19h1"/></svg></span><span data-i18n="category"></span></button><a href="#cart"><span class="mobile-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2 3h3l3 12h11l2-9H6"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg><span id="mobile-cart-count" class="mobile-cart-count">0</span></span><span data-i18n="cart"></span></a><button id="mobile-language" type="button" aria-haspopup="dialog"><span class="mobile-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c4 4 4 14 0 18M12 3c-4 4-4 14 0 18"/></svg></span><span data-i18n="selectLanguage"></span></button><a href="#profile"><span class="mobile-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/></svg></span><span data-i18n="account"></span></a></nav>
   <p id="shop-message" class="shop-toast" role="status" aria-live="polite"></p>
 </body>
 </html>

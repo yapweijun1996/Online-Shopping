@@ -23,7 +23,7 @@ test('shop and seller manifests have separate scopes and real icon sizes', () =>
     assert.equal(manifest.display, 'standalone');
     assert.equal(ids.has(manifest.id), false);
     ids.add(manifest.id);
-    assert.deepEqual(manifest.icons.map((icon) => icon.sizes), ['192x192', '512x512']);
+    assert.deepEqual(manifest.icons.map((icon) => [icon.sizes, icon.purpose]), [['192x192', 'any'], ['512x512', 'any'], ['192x192', 'maskable'], ['512x512', 'maskable']]);
     for (const icon of manifest.icons) {
       const png = readFileSync(new URL(`../public${icon.src}`, import.meta.url));
       assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
