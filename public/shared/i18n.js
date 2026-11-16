@@ -2063,13 +2063,23 @@ const sellerGalleryCardMessages = {
 for (const [locale, values] of Object.entries(sellerGalleryCardMessages)) Object.assign(messages[locale], values);
 
 const shopLogoMessages = {
- en: ['Shop logo','Without a custom logo, the Pomelo logo is shown. PNG, JPEG or WebP, up to 256 KB.','Choose an image','Upload logo','Remove logo','Choose an image first.','The image must be 256 KB or smaller.','Choose a PNG, JPEG or WebP image.','Could not update the logo. Try again.','Logo updated.'],
- ms: ['Logo kedai','Tanpa logo tersuai, logo Pomelo dipaparkan. PNG, JPEG atau WebP, sehingga 256 KB.','Pilih imej','Muat naik logo','Buang logo','Pilih imej dahulu.','Imej mestilah 256 KB atau lebih kecil.','Pilih imej PNG, JPEG atau WebP.','Logo tidak dapat dikemas kini. Cuba lagi.','Logo dikemas kini.'],
- 'zh-Hans': ['商店标志','未设置自定义标志时显示 Pomelo 标志。支持 PNG、JPEG 或 WebP，最大 256 KB。','选择图片','上传标志','移除标志','请先选择图片。','图片不能超过 256 KB。','请选择 PNG、JPEG 或 WebP 图片。','无法更新标志，请重试。','标志已更新。'],
- vi: ['Logo cửa hàng','Nếu không có logo riêng, logo Pomelo sẽ được hiển thị. PNG, JPEG hoặc WebP, tối đa 256 KB.','Chọn ảnh','Tải logo lên','Xóa logo','Hãy chọn ảnh trước.','Ảnh phải nhỏ hơn hoặc bằng 256 KB.','Chọn ảnh PNG, JPEG hoặc WebP.','Không thể cập nhật logo. Hãy thử lại.','Đã cập nhật logo.'],
- th: ['โลโก้ร้าน','หากไม่มีโลโก้ของร้าน จะแสดงโลโก้ Pomelo รองรับ PNG, JPEG หรือ WebP ไม่เกิน 256 KB','เลือกรูป','อัปโหลดโลโก้','ลบโลโก้','โปรดเลือกรูปก่อน','รูปต้องมีขนาดไม่เกิน 256 KB','เลือกภาพ PNG, JPEG หรือ WebP','อัปเดตโลโก้ไม่ได้ โปรดลองอีกครั้ง','อัปเดตโลโก้แล้ว'],
- ja: ['ショップのロゴ','ロゴを設定しない場合は Pomelo のロゴを表示します。PNG、JPEG、WebP、256 KB 以下。','画像を選択','ロゴをアップロード','ロゴを削除','先に画像を選択してください。','画像は 256 KB 以下にしてください。','PNG、JPEG、WebP 画像を選択してください。','ロゴを更新できませんでした。再試行してください。','ロゴを更新しました。'],
- ko: ['상점 로고','사용자 로고가 없으면 Pomelo 로고가 표시됩니다. PNG, JPEG 또는 WebP, 최대 256 KB.','이미지 선택','로고 업로드','로고 삭제','먼저 이미지를 선택하세요.','이미지는 256 KB 이하여야 합니다.','PNG, JPEG 또는 WebP 이미지를 선택하세요.','로고를 업데이트하지 못했습니다. 다시 시도하세요.','로고가 업데이트되었습니다.'],
+ en: ['Shop logo','Without a custom logo, the Pomelo logo is shown. PNG, JPEG or WebP, up to 8 MB; images are resized automatically.','Choose an image','Upload logo','Remove logo','Choose an image first.','The image must be 256 KB or smaller.','Choose a PNG, JPEG or WebP image.','Could not update the logo. Try again.','Logo updated.'],
+ ms: ['Logo kedai','Tanpa logo tersuai, logo Pomelo dipaparkan. PNG, JPEG atau WebP, sehingga 8 MB; imej diubah saiz secara automatik.','Pilih imej','Muat naik logo','Buang logo','Pilih imej dahulu.','Imej mestilah 256 KB atau lebih kecil.','Pilih imej PNG, JPEG atau WebP.','Logo tidak dapat dikemas kini. Cuba lagi.','Logo dikemas kini.'],
+ 'zh-Hans': ['商店标志','未设置自定义标志时显示 Pomelo 标志。支持 PNG、JPEG 或 WebP，最大 8 MB；图片会自动调整大小。','选择图片','上传标志','移除标志','请先选择图片。','图片不能超过 256 KB。','请选择 PNG、JPEG 或 WebP 图片。','无法更新标志，请重试。','标志已更新。'],
+ vi: ['Logo cửa hàng','Nếu không có logo riêng, logo Pomelo sẽ được hiển thị. PNG, JPEG hoặc WebP, tối đa 8 MB; ảnh được tự động đổi kích thước.','Chọn ảnh','Tải logo lên','Xóa logo','Hãy chọn ảnh trước.','Ảnh phải nhỏ hơn hoặc bằng 256 KB.','Chọn ảnh PNG, JPEG hoặc WebP.','Không thể cập nhật logo. Hãy thử lại.','Đã cập nhật logo.'],
+ th: ['โลโก้ร้าน','หากไม่มีโลโก้ของร้าน จะแสดงโลโก้ Pomelo รองรับ PNG, JPEG หรือ WebP ไม่เกิน 8 MB และปรับขนาดรูปอัตโนมัติ','เลือกรูป','อัปโหลดโลโก้','ลบโลโก้','โปรดเลือกรูปก่อน','รูปต้องมีขนาดไม่เกิน 256 KB','เลือกภาพ PNG, JPEG หรือ WebP','อัปเดตโลโก้ไม่ได้ โปรดลองอีกครั้ง','อัปเดตโลโก้แล้ว'],
+ ja: ['ショップのロゴ','ロゴを設定しない場合は Pomelo のロゴを表示します。PNG、JPEG、WebP、8 MB 以下。画像は自動的に縮小されます。','画像を選択','ロゴをアップロード','ロゴを削除','先に画像を選択してください。','画像は 256 KB 以下にしてください。','PNG、JPEG、WebP 画像を選択してください。','ロゴを更新できませんでした。再試行してください。','ロゴを更新しました。'],
+ ko: ['상점 로고','사용자 로고가 없으면 Pomelo 로고가 표시됩니다. PNG, JPEG 또는 WebP, 최대 8 MB. 이미지 크기는 자동으로 조정됩니다.','이미지 선택','로고 업로드','로고 삭제','먼저 이미지를 선택하세요.','이미지는 256 KB 이하여야 합니다.','PNG, JPEG 또는 WebP 이미지를 선택하세요.','로고를 업데이트하지 못했습니다. 다시 시도하세요.','로고가 업데이트되었습니다.'],
 };
+const logoPreparationMessages = {
+ en: ['Choose an image no larger than 8 MB.', 'Could not compress this image enough. Try another image.', 'Could not read this image. Try another image.'],
+ ms: ['Pilih imej tidak melebihi 8 MB.', 'Imej ini tidak dapat dimampatkan secukupnya. Cuba imej lain.', 'Imej ini tidak dapat dibaca. Cuba imej lain.'],
+ 'zh-Hans': ['请选择不超过 8 MB 的图片。', '无法充分压缩此图片，请尝试其他图片。', '无法读取此图片，请尝试其他图片。'],
+ vi: ['Chọn ảnh không quá 8 MB.', 'Không thể nén đủ ảnh này. Hãy thử ảnh khác.', 'Không thể đọc ảnh này. Hãy thử ảnh khác.'],
+ th: ['เลือกรูปที่มีขนาดไม่เกิน 8 MB', 'บีบอัดรูปนี้ให้เล็กพอไม่ได้ โปรดลองรูปอื่น', 'อ่านรูปนี้ไม่ได้ โปรดลองรูปอื่น'],
+ ja: ['8 MB 以下の画像を選択してください。', '画像を十分に圧縮できませんでした。別の画像をお試しください。', '画像を読み込めませんでした。別の画像をお試しください。'],
+ ko: ['8 MB 이하의 이미지를 선택하세요.', '이미지를 충분히 압축하지 못했습니다. 다른 이미지를 사용하세요.', '이미지를 읽지 못했습니다. 다른 이미지를 사용하세요.'],
+};
+for (const { code } of languages) ['logoInputSizeError', 'logoCompressError', 'logoDecodeError'].forEach((key, i) => { messages[code][key] = logoPreparationMessages[code][i]; });
 const shopLogoKeys = ['logoTitle','logoHint','logoChoose','logoUpload','logoRemove','logoChooseError','logoSizeError','logoTypeError','logoSaveError','logoSaved'];
 for (const { code } of languages) shopLogoKeys.forEach((key, i) => { messages[code][key] = shopLogoMessages[code][i]; });
