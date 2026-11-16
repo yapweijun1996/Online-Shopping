@@ -1,5 +1,5 @@
 import { icon } from '../shared/icons.js';
-import { apiUrl } from '../shared/base-path.js';
+import { apiUrl, basePath } from '../shared/base-path.js';
 import { mountAppearance } from '../shared/appearance.js';
 import { mountTabIcon } from '../shared/tab-icon.js';
 import { confirmModal } from '../shared/modal.js';
@@ -279,6 +279,8 @@ async function loadCatalog(reset = true) {
     checkoutPage.setDemoMode(shop.mode === 'demo');
     byId('catalog-shop-name').textContent = shop.shopName || '';
     byId('shop-brand-name').textContent = shop.shopName || t('shop');
+    const logo = document.querySelector('.shop-brand-logo');
+    if (!logo.dataset.loaded) { logo.dataset.loaded = 'true'; logo.onerror = () => { logo.onerror = null; logo.src = [basePath(), 'shared', 'brand', 'pomelo-compact.svg'].join('/'); }; logo.src = apiUrl('v1/shop/logo'); }
     byId('shop-brand-kind').hidden = true;
     if (request !== catalogRequest) return;
     const previousCount = products.length;

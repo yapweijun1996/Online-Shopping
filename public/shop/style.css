@@ -604,7 +604,7 @@ body:has(.app-modal[open]) .shop-actionbar{visibility:hidden}
 /* Approved mobile shop refresh; the existing store data and flows remain authoritative. */
 :root{--shop-safe-bottom:env(safe-area-inset-bottom,0px);--shop-safe-top:env(safe-area-inset-top,0px)}
 .shop-topbar .brand{gap:10px;min-width:0;max-width:255px}
-.shop-brand-logo{width:38px;height:38px;flex:none;color:var(--ui-primary)}
+.shop-brand-logo{object-fit:contain;width:38px;height:38px;flex:none;color:var(--ui-primary)}
 .brand-copy{display:grid;gap:3px;min-width:0;line-height:1.15}
 .brand-copy strong{font-size:18px;letter-spacing:-.035em;overflow-wrap:anywhere}
 .brand-copy small{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--ui-secondary-text)}

@@ -52,6 +52,7 @@ import {upgradePostgres} from '../src/postgres/upgrade.js';
 for(const dialect of ['sqlite','postgres'])test(`${dialect}: schema36 label index upgrades atomically and preserves products`,{skip:dialect==='postgres'&&!process.env.SHOP_TEST_DATABASE_URL},async t=>{
  const f=await inventoryFixture(t,dialect),p=await f.product({variantGroup:'OLD',variantLabel:'Existing'});
  await f.store.exec(`DROP INDEX product_variant_option; CREATE UNIQUE INDEX product_variant_option ON product(variant_group, ${dialect==='sqlite'?'variant_label COLLATE NOCASE':'lower(variant_label)'});`);
+ await f.store.exec('DROP TABLE shop_logo_event; DROP TABLE shop_logo');
  await f.store.setSchemaVersion(36);
  const upgrade=()=>dialect==='sqlite'?migrateStore(f.store):f.store.transaction(()=>upgradePostgres(f.store,36));
  await upgrade();assert.equal(await f.store.schemaVersion(),SCHEMA_VERSION);assert.equal((await getProduct(f.store,p.id,true)).variantLabel,'Existing');

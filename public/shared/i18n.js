@@ -2061,3 +2061,15 @@ const sellerGalleryCardMessages = {
   ko: {"galleryCountFormat": "{count} / {max}장", "viewPhotoFormat": "사진 {number} 보기", "photoActionsFormat": "사진 {number} 추가 작업", "photoNowPrimary": "대표 이미지로 설정했습니다. 저장해야 반영됩니다.", "photoMovedFormat": "사진을 {number}번째로 옮겼습니다. 저장해야 반영됩니다.", "photoRemovedFormat": "사진을 삭제했습니다. 저장해야 반영되며, 취소하면 되돌립니다.", "galleryHelp": "첫 번째 사진이 대표 이미지입니다. 변경 사항은 저장할 때 적용되며, 취소하면 버려집니다."},
 };
 for (const [locale, values] of Object.entries(sellerGalleryCardMessages)) Object.assign(messages[locale], values);
+
+const shopLogoMessages = {
+ en: ['Shop logo','Without a custom logo, the Pomelo logo is shown. PNG, JPEG or WebP, up to 256 KB.','Choose an image','Upload logo','Remove logo','Choose an image first.','The image must be 256 KB or smaller.','Choose a PNG, JPEG or WebP image.','Could not update the logo. Try again.','Logo updated.'],
+ ms: ['Logo kedai','Tanpa logo tersuai, logo Pomelo dipaparkan. PNG, JPEG atau WebP, sehingga 256 KB.','Pilih imej','Muat naik logo','Buang logo','Pilih imej dahulu.','Imej mestilah 256 KB atau lebih kecil.','Pilih imej PNG, JPEG atau WebP.','Logo tidak dapat dikemas kini. Cuba lagi.','Logo dikemas kini.'],
+ 'zh-Hans': ['商店标志','未设置自定义标志时显示 Pomelo 标志。支持 PNG、JPEG 或 WebP，最大 256 KB。','选择图片','上传标志','移除标志','请先选择图片。','图片不能超过 256 KB。','请选择 PNG、JPEG 或 WebP 图片。','无法更新标志，请重试。','标志已更新。'],
+ vi: ['Logo cửa hàng','Nếu không có logo riêng, logo Pomelo sẽ được hiển thị. PNG, JPEG hoặc WebP, tối đa 256 KB.','Chọn ảnh','Tải logo lên','Xóa logo','Hãy chọn ảnh trước.','Ảnh phải nhỏ hơn hoặc bằng 256 KB.','Chọn ảnh PNG, JPEG hoặc WebP.','Không thể cập nhật logo. Hãy thử lại.','Đã cập nhật logo.'],
+ th: ['โลโก้ร้าน','หากไม่มีโลโก้ของร้าน จะแสดงโลโก้ Pomelo รองรับ PNG, JPEG หรือ WebP ไม่เกิน 256 KB','เลือกรูป','อัปโหลดโลโก้','ลบโลโก้','โปรดเลือกรูปก่อน','รูปต้องมีขนาดไม่เกิน 256 KB','เลือกภาพ PNG, JPEG หรือ WebP','อัปเดตโลโก้ไม่ได้ โปรดลองอีกครั้ง','อัปเดตโลโก้แล้ว'],
+ ja: ['ショップのロゴ','ロゴを設定しない場合は Pomelo のロゴを表示します。PNG、JPEG、WebP、256 KB 以下。','画像を選択','ロゴをアップロード','ロゴを削除','先に画像を選択してください。','画像は 256 KB 以下にしてください。','PNG、JPEG、WebP 画像を選択してください。','ロゴを更新できませんでした。再試行してください。','ロゴを更新しました。'],
+ ko: ['상점 로고','사용자 로고가 없으면 Pomelo 로고가 표시됩니다. PNG, JPEG 또는 WebP, 최대 256 KB.','이미지 선택','로고 업로드','로고 삭제','먼저 이미지를 선택하세요.','이미지는 256 KB 이하여야 합니다.','PNG, JPEG 또는 WebP 이미지를 선택하세요.','로고를 업데이트하지 못했습니다. 다시 시도하세요.','로고가 업데이트되었습니다.'],
+};
+const shopLogoKeys = ['logoTitle','logoHint','logoChoose','logoUpload','logoRemove','logoChooseError','logoSizeError','logoTypeError','logoSaveError','logoSaved'];
+for (const { code } of languages) shopLogoKeys.forEach((key, i) => { messages[code][key] = shopLogoMessages[code][i]; });

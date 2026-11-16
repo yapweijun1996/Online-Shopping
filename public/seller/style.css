@@ -755,3 +755,5 @@
 @media(max-width:900px){:root{--ui-page-top:var(--ui-space-6)}}
 @media(max-width:760px){:root{--ui-page-gutter:var(--ui-space-4);--ui-page-top:var(--ui-space-5);--ui-card-padding:var(--ui-space-4)}}
 @media(max-width:360px){:root{--ui-page-gutter:var(--ui-space-3)}}
+
+.shop-logo-preview{display:block;object-fit:contain;width:80px;height:80px;margin:12px 0}

@@ -89,6 +89,10 @@ An ambiguous DB acknowledgment or receipt failure retains PREPARED evidence for 
 exact idempotent retry. Host/database-owner authority and local journal tampering
 remain outside the seller/MCP trust boundary. See [promotion runbook](SHOP_PRODUCTION_PROMOTION.md).
 
+### Shop logo uploads
+
+The public shop logo endpoint returns only the current shop database's image and supports ETag revalidation. Seller uploads and deletes require the settings permission, a same-origin request and the session CSRF token. Uploads are capped at 256 KiB and accept PNG, JPEG or WebP signatures only; client filenames and MIME types are ignored. Responses use the detected content type and `nosniff`. Logo changes and actor identity are recorded transactionally in the shop database without retaining image data in the audit record. Signature checks do not fully decode or validate images.
+
 ### Currently implemented
 
 | Component | Evidence | Notes |

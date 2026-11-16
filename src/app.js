@@ -1,3 +1,4 @@
+import { LOGO_MAX_BYTES, getShopLogo, putShopLogo, deleteShopLogo } from './shop-logo.js';
 import { analytics, saveBudget, budgetStatus } from './ai-studio/budget.js';
 import { getProductDetail, saveProductDetail, stageProductDetailImage, getProductDetailImage, discardProductDetailImage } from './product-detail.js';
 import { getAiSettings, updateAiSettings } from './ai/settings.js';
@@ -182,6 +183,14 @@ async function createTenantApi({ store, config, tenantId, tenantGuard, operation
       if (/^\/demo(?:\/|$)/.test(decoded) && !demoEnabled) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
       if (serveStatic) return serveStatic(request, pathname, basePath);
       throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+    }
+    if (method === 'GET' && pathname === '/api/v1/shop/logo') {
+      const logo = await getShopLogo(store);
+      if (!logo) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
+      const etag = `"${logo.sha256}"`;
+      const headers = { 'Content-Type': logo.content_type, 'Cache-Control': 'public, no-cache', 'ETag': etag, 'X-Content-Type-Options': 'nosniff' };
+      if (request.headers.get('if-none-match')?.split(',').some(tag => tag.trim().replace(/^W\//, '') === etag || tag.trim() === '*')) return new Response(null, { status: 304, headers });
+      return new Response(logo.data, { headers });
     }
     if (method === 'GET' && pathname === '/api/v1/shop') {
       const setup = await getShopSetup(store);
@@ -477,6 +486,12 @@ async function createTenantApi({ store, config, tenantId, tenantGuard, operation
       requireOrigin(request, expectedOrigin);
       requireCsrf(request, session);
       return json(200, await updateStudioSetting(store, await readJson(request)), { 'Cache-Control': 'no-store' });
+    }
+    if (pathname === '/api/v1/seller/shop-logo' && (method === 'PUT' || method === 'DELETE')) {
+      allow('settings.write'); requireOrigin(request, expectedOrigin); requireCsrf(request, session);
+      if (method === 'PUT') await putShopLogo(store, await readBody(request, LOGO_MAX_BYTES), account.username);
+      else await deleteShopLogo(store, account.username);
+      return json(200, { ok: true });
     }
     if (method === 'GET' && pathname === '/api/v1/seller/company-settings') {
       return json(200, await getCompanySettings(store));

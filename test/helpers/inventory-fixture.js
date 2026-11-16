@@ -37,5 +37,6 @@ export async function dropInventoryForLegacyFixture(store) {
   // Pre30 paths initialize the current operation extension themselves; restore
   // only the old OAuth audit here. Exact31/32 fixtures separately restore v2.
   if(exists)await store.exec(legacyMcpAuditFixtureSql(store.dialect));
+  await store.exec('DROP TABLE IF EXISTS shop_logo_event; DROP TABLE IF EXISTS shop_logo;');
   await store.exec(inventoryDropSql);
 }

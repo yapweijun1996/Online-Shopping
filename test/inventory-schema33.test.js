@@ -14,7 +14,7 @@ for(const dialect of ['sqlite','postgres']){
  const options={skip:dialect==='postgres'&&!process.env.SHOP_TEST_DATABASE_URL};
  test(`${dialect}: exact32 index-only migration preserves frozen ledger metadata and rolls back index/version atomically`,options,async t=>{
   const f=await inventoryFixture(t,dialect),p=await f.product({stockQuantity:8}),meta=await f.store.get('SELECT * FROM inventory_schema'),movement=await f.store.get('SELECT * FROM inventory_movement');
-  await restoreLegacyAuditFixture(f.store);await f.store.exec('DROP INDEX order_item_inventory');await f.store.setSchemaVersion(32);const exec=f.store.exec;
+  await restoreLegacyAuditFixture(f.store);await f.store.exec('DROP INDEX order_item_inventory; DROP TABLE shop_logo_event; DROP TABLE shop_logo');await f.store.setSchemaVersion(32);const exec=f.store.exec;
   f.store.exec=async sql=>{await exec(sql);if(sql===INVENTORY_ORDER_INDEX_SQL)throw new Error('Synthetic33 index interruption');};
   await assert.rejects(migrate(f.store),/Synthetic33/);f.store.exec=exec;assert.equal(await f.store.schemaVersion(),32);assert.equal(await inventoryOrderIndexReady(f.store),false);
   await migrate(f.store);assert.equal(await f.store.schemaVersion(),SCHEMA_VERSION);assert.equal(await inventoryStorageReady(f.store),true);assert.deepEqual(await f.store.get('SELECT * FROM inventory_schema'),meta);assert.deepEqual(await f.store.get('SELECT * FROM inventory_movement'),movement);assert.equal((await f.store.get('SELECT stock_quantity FROM product WHERE id=?',p.id)).stock_quantity,8);

@@ -4,7 +4,7 @@ import { mountAiSettings } from './ai-settings.js';
 import { senderInputLimits } from '../shared/sender-fields.js';
 import { mountSenderFields } from './sender-form.js';
 const senderInputs = senderInputLimits;
-import { apiUrl } from '../shared/base-path.js';
+import { apiUrl, basePath } from '../shared/base-path.js';
 import { t, translate } from '../shared/i18n.js';
 import { mountAppearance } from '../shared/appearance.js';
 import { beginMutation } from '../shared/update-guard.js';
@@ -196,8 +196,30 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
       <label><span data-i18n="shopName"></span><input name="shopName" maxlength="80" value="Preview General Store" required></label>
       <button class="primary-button" type="submit" data-i18n="setupShop" disabled></button>
     </form><p class="setup-status" role="status"></p>`;
+  const logo = document.createElement('section'); logo.className = 'settings-card';
+  logo.innerHTML = `<h2 data-i18n="logoTitle"></h2><p data-i18n="logoHint"></p><img class="shop-logo-preview" alt="" width="80" height="80"><form class="settings-form"><label><span data-i18n="logoChoose"></span><input type="file" accept="image/png,image/jpeg,image/webp"></label><button class="primary-button" type="submit" data-i18n="logoUpload"></button><button class="secondary-button" type="button" data-i18n="logoRemove"></button></form><p role="status"></p>`;
+  const logoImage = logo.querySelector('img'), logoForm = logo.querySelector('form'), logoInput = logo.querySelector('input'), logoRemove = logo.querySelector('button[type="button"]'), logoStatus = logo.querySelector('[role="status"]');
+  const defaultLogo = [basePath(), 'shared', 'brand', 'pomelo-compact.svg'].join('/');
+  const loadLogo = () => { logoImage.onerror = () => { logoImage.onerror = null; logoImage.src = defaultLogo; }; logoImage.src = apiUrl('v1/shop/logo') + '?t=' + Date.now(); };
+  loadLogo();
+  async function changeLogo(method) {
+    const file = logoInput.files[0];
+    if (method === 'PUT' && !file) { logoStatus.textContent = t('logoChooseError'); return; }
+    if (file && method === 'PUT' && file.size > 262144) { logoStatus.textContent = t('logoSizeError'); return; }
+    const finish = beginMutation(); pendingWrites++; document.dispatchEvent(new Event('updateguardchange'));
+    for (const control of logoForm.elements) control.disabled = true;
+    try {
+      const response = await fetch(apiUrl('v1/seller/shop-logo'), { method, headers: { 'X-CSRF-Token': csrfToken() }, body: method === 'PUT' ? file : undefined });
+      if (response.status === 401) onUnauthorized();
+      if (!response.ok) { logoStatus.textContent = t(response.status === 415 ? 'logoTypeError' : response.status === 413 ? 'logoSizeError' : 'logoSaveError'); return; }
+      logoInput.value = ''; loadLogo(); logoStatus.textContent = t('logoSaved');
+    } catch { logoStatus.textContent = t('logoSaveError'); }
+    finally { for (const control of logoForm.elements) control.disabled = false; pendingWrites--; finish(); document.dispatchEvent(new Event('updateguardchange')); }
+  }
+  logoForm.addEventListener('submit', event => { event.preventDefault(); changeLogo('PUT'); });
+  logoRemove.addEventListener('click', () => changeLogo('DELETE'));
   const formCard = form.closest('.settings-card');
-  formCard.before(setup);
+  formCard.before(setup, logo);
   const appearance = document.createElement('section'); appearance.className = 'settings-card';
   const messaging = document.createElement('div'), extras = document.createElement('div');
   extras.className = 'company-extra';
@@ -210,7 +232,7 @@ export function mountCompanySettings(root, { csrfToken, onUnauthorized: notifyUn
   const ai = role === 'OWNER' ? mountAiSettings(root, { csrfToken, onUnauthorized }) : null;
   let activeGroup = 'general';
   const tabs = mountCompanyTabs(root, [
-    { id: 'general', label: 'companyTabGeneral', panels: [setup, groups.general, extras] },
+    { id: 'general', label: 'companyTabGeneral', panels: [setup, logo, groups.general, extras] },
     { id: 'storefront', label: 'companyTabStorefront', panels: [groups.storefront] },
     { id: 'shipping', label: 'companyTabShipping', panels: [groups.shipping] },
     { id: 'messaging', label: 'companyTabMessaging', panels: [messaging] },

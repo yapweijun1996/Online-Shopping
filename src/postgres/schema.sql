@@ -1,4 +1,4 @@
--- PostgreSQL baseline matching SQLite schema 37. Timestamps stay ISO text to preserve API snapshots.
+-- PostgreSQL baseline matching SQLite schema 38. Timestamps stay ISO text to preserve API snapshots.
 CREATE TABLE admin (
         id BIGINT PRIMARY KEY CHECK (id = 1),
         username TEXT NOT NULL UNIQUE,
@@ -327,7 +327,7 @@ CREATE TABLE ai_studio_image (
  created_by TEXT NOT NULL, created_at TEXT NOT NULL
 );
 CREATE INDEX ai_studio_image_product ON ai_studio_image(product_id);
-INSERT INTO schema_meta VALUES (1, 37);
+INSERT INTO schema_meta VALUES (1, 38);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 INSERT INTO shop_setup(id, mode, shop_name) VALUES (1, NULL, 'Online Shopping');
@@ -787,3 +787,7 @@ CREATE TABLE IF NOT EXISTS ai_studio_cost (
 CREATE TABLE IF NOT EXISTS ai_studio_budget_event (
  id TEXT PRIMARY KEY, actor TEXT NOT NULL, settings_json TEXT NOT NULL, created_at TEXT NOT NULL
 );
+
+-- Shop-owned logo and its audit events (schema 38).
+CREATE TABLE shop_logo (id BIGINT PRIMARY KEY CHECK (id = 1), content_type TEXT NOT NULL CHECK (content_type IN ('image/png','image/jpeg','image/webp')), data BYTEA NOT NULL CHECK (length(data) BETWEEN 1 AND 262144), size BIGINT NOT NULL CHECK (size = length(data)), sha256 TEXT NOT NULL CHECK (length(sha256) = 64), updated_at TEXT NOT NULL, updated_by TEXT NOT NULL);
+CREATE TABLE shop_logo_event (id TEXT PRIMARY KEY, action TEXT NOT NULL CHECK (action IN ('UPLOAD','DELETE')), actor TEXT NOT NULL, created_at TEXT NOT NULL);
