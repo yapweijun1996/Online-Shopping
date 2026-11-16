@@ -28,6 +28,9 @@ test('shared theme persists across Seller and Shop, follows System, and remains 
     const state = async (mode, resolved = mode) => {
       await page.waitForFunction(value => document.documentElement.dataset.theme === value, resolved);
       assert.equal(await theme.inputValue(), mode);
+      const icon = await page.locator('[data-theme-control] svg').evaluate(node => node.innerHTML);
+      assert.match(icon, mode === 'system' ? /<rect/ : mode === 'light' ? /<circle/ : /<path/);
+      assert.doesNotMatch(icon, mode === 'system' ? /<circle/ : mode === 'light' ? /<rect/ : /<rect|<circle/);
       const chrome = await page.evaluate(() => ({ meta: document.querySelector('meta[name="theme-color"]').content, bar: getComputedStyle(document.querySelector('.topbar')).backgroundColor }));
       assert.equal(chrome.meta, resolved === 'dark' ? '#202d25' : '#ffffff');
       assert.equal(chrome.bar, resolved === 'dark' ? 'rgb(32, 45, 37)' : 'rgb(255, 255, 255)');

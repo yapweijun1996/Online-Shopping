@@ -35,8 +35,8 @@ test('theme resolves synchronously before controls mount and persists all three 
     assert.equal(f.root.dataset.themePreference, mode);
     assert.equal(f.root.dataset.theme, mode === 'system' ? 'light' : mode);
   }
-  assert.match(f.control.innerHTML, /<svg viewBox="0 0 24 24"/);
-  assert.match(f.control.innerHTML, /stroke-width="1.5"/);
+  assert.match(f.control.innerHTML, /<path d="M20\.9 13/);
+  assert.match(f.control.innerHTML, /<path d="M20\.9 13/);
 });
 
 test('System tracks OS changes; explicit Light and Dark override OS changes', () => {
