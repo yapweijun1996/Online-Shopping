@@ -15,7 +15,7 @@ spec = importlib.util.spec_from_file_location('gcp_update', ROOT / 'deploy/gcp/u
 u = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(u)
 A, B = 'a' * 40, 'b' * 40
-BASE = {'protected': {'deploy/init-postgres.sh': 'unchanged'}, 'schema': 24}
+BASE = {'schema': 24}
 
 
 def release(sha):
@@ -55,7 +55,7 @@ class Fake(u.Updater):
     def source(self, sha): return self.baseline, {}
     def release(self, sha, baseline, content):
         self.calls.append('pull')
-        return release(sha)
+        return dict(release(sha), baseline=baseline)
     def activate(self, item, initial=False): self.calls.append(('activate', item['sha']))
     def health(self, item):
         self.calls.append(('health', item['sha']))
@@ -128,20 +128,32 @@ class Tests(unittest.TestCase):
             f.poll()
             self.assertEqual(count, len(f.calls))
 
-    def test_schema_protected_and_local_changes_stop_before_pull(self):
-        for baseline in [dict(BASE, schema=25), dict(BASE, protected={'changed': 'blob'})]:
-            with tempfile.TemporaryDirectory() as root:
-                f = Fake(root)
-                f.baseline = baseline
-                f.poll()
-                self.assertEqual('manual_release_required', f.state['status'])
-                self.assertEqual([], f.calls)
+    def test_schema_and_local_changes_stop_before_pull(self):
+        with tempfile.TemporaryDirectory() as root:
+            f = Fake(root)
+            f.baseline = dict(BASE, schema=25)
+            f.poll()
+            self.assertEqual('manual_schema_release_required', f.state['status'])
+            self.assertEqual([], f.calls)
         with tempfile.TemporaryDirectory() as root:
             f = Fake(root)
             f.state['local'] = {'runtime.env': 'changed'}
             f.poll()
             self.assertEqual('manual_config_required', f.state['status'])
             self.assertEqual([], f.calls)
+
+    def test_legacy_protected_changes_auto_activate(self):
+        for path in ('package.json', 'src/app.js', 'Dockerfile'):
+            with self.subTest(path=path), tempfile.TemporaryDirectory() as root:
+                old = release(A)
+                old['baseline'] = dict(BASE, protected={path: ['old', '100644']})
+                Path(root, 'state.json').write_text(json.dumps(dict(current=old, previous=None, pending=None, local={})))
+                f = Fake(root)
+                f.state = u.Updater(root).state
+                f.poll()
+                self.assertEqual('deployed', f.state['status'])
+                self.assertIn(('activate', B), f.calls)
+                self.assertEqual(BASE, f.state['current']['baseline'])
 
     def test_crash_recovery_and_rollback_failure_preserve_intent(self):
         with tempfile.TemporaryDirectory() as root:
