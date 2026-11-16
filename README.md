@@ -1,5 +1,7 @@
 # Online Shopping MVP
 
+**Project goal: this project is built, released, deployed and operated entirely by AI agents; no human approval or manual release step is part of the design. See [AGENTS.md](AGENTS.md#project-goal-fully-ai-agent-operated-no-human-steps).**
+
 **Status: public Demo available; self-hosted PostgreSQL deployment available at shop.gmb01.xyz and seller.gmb01.xyz. Broader production acceptance remains open.** Seller sign-in/session, MYR/SGD product management, public catalog/cart, guest checkout with one delivery address per order, seller order review, and responsive PWA shells run locally. A two-container Docker Compose stack passed local smoke checks. AC-01–15 and AC-18 are locally verified; PWA installation and production operations remain unfinished, and the Production release remains pending. The local `sample/` prototype is a separate business-rule reference; its code, UI, database, and demo credentials are not the new application.
 
 Self-hosted setup and verification: [OrbStack deployment](docs/ORBSTACK_DEPLOY.md). The legacy local Compose stack below continues to use SQLite.
