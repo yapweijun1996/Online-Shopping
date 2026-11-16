@@ -82,4 +82,4 @@ Auto-publish, bulk photo batches, price suggestions, Anthropic provider, WhatsAp
 4. Analyze endpoint and draft product creation.
 5. Seven-style image jobs and gallery integration.
 6. Seller UI (phone first), translations for the seven seller languages, accessibility.
-7. Manual release rehearsal and production release with backup and rollback.
+7. Agent-led release rehearsal and production release with backup and rollback.

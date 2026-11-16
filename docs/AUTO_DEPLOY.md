@@ -4,7 +4,7 @@ The OrbStack host checks `yapweijun1996/Online-Shopping` main every 120 seconds.
 
 ## Release behavior
 
-The private controller lives in `~/Library/Application Support/Online-Shopping/auto-deploy/auto-update.py`. Git checkouts and revision-tagged application images are immutable and separate from the development folder. The controller accepts only descendants of the installed commit; a force-push needs operator review. Build and database backup/isolated restore verification finish before cutover. A newer main push supersedes an older build.
+The private controller lives in `~/Library/Application Support/Online-Shopping/auto-deploy/auto-update.py`. Git checkouts and revision-tagged application images are immutable and separate from the development folder. The controller accepts only descendants of the installed commit; a force-push needs agent review. Build and database backup/isolated restore verification finish before cutover. A newer main push supersedes an older build.
 
 Application services are recreated; PostgreSQL and the existing tunnel remain running. Both legacy domains must report the expected commit on `/health` and `/ready`, and the container image IDs must match. An ordinary failed cutover restores the previous application images without restoring database contents, preserving orders received during deployment. A pending interrupted cutover restores the recorded current release at the next check. Failed build/cutover commits require `--retry` or a newer commit.
 
