@@ -19,6 +19,12 @@ test('the shop uses the shared compact logo and palette-aware tab icon', () => {
   assert.match(html, /pomelo-placeholder-static\.svg/);
   const css = read('../public/shop/style.css');
   assert.match(css, /\.shop-topbar \.brand-mark\{[^}]*width:42px;height:42px/);
+  assert.match(css, /@media\(max-width:760px\)\{[\s\S]*?\.shop-topbar>\.brand\{display:flex;justify-content:center;flex:none;width:44px;height:44px/);
+  assert.match(css, /\.shop-brand-logo\{width:32px;height:32px\}/);
+  assert.match(css, /body\.search-focused \.shop-topbar>\.brand[^\{]*\{display:none\}/);
+  const app = read('../public/shop/app.js');
+  assert.equal((app.match(/apiUrl\('v1\/shop\/logo'\)/g) || []).length, 1);
+  assert.match(app, /logo\.onerror = \(\) => \{[^}]*pomelo-compact\.svg/);
   assert.match(read('../public/shared/tab-icon.js'), /fetch\('\/shared\/brand\/pomelo-compact\.svg'\)/);
   assert.match(read('../public/shop/sw.js'), /pomelo-compact\.svg/);
 });

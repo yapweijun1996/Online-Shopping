@@ -30,7 +30,7 @@ body.shop-booting{overflow:hidden}
 .shop-topbar .brand-mark{width:42px;height:42px;border-radius:12px;background:var(--shop-accent);font-size:16px}
 .header-search{display:flex;align-items:stretch;justify-self:center;width:min(100%,650px);height:44px;border:1px solid var(--ui-control-border);border-radius:11px;background:var(--ui-surface);overflow:hidden}
 .header-search:focus-within{outline:3px solid var(--ui-focus);outline-offset:2px}
-.header-search input{min-width:0;width:100%;border:0;outline:0;padding:0 17px;color:var(--ui-ink);background:transparent}
+.header-search input{min-width:0;width:100%;text-overflow:ellipsis;border:0;outline:0;padding:0 17px;color:var(--ui-ink);background:transparent}
 .header-search input:focus-visible{outline:0}
 .header-search button{display:grid;place-items:center;flex:none;width:52px;border:0;background:var(--shop-accent);color:var(--ui-surface)}
 .header-search button:hover{background:var(--shop-accent-hover)}
@@ -689,13 +689,15 @@ body.search-focused .header-search{width:100%;max-width:720px;margin:auto;height
  .shop-topbar{display:flex;height:60px;min-height:60px;padding:8px 12px;gap:0}
  .shop-topbar>.brand,.shop-topbar>.shop-nav,.shop-topbar>.shop-language,.shop-topbar>.shop-account{display:none}
  .brand-copy strong{font-size:17px}
- .shop-brand-logo{width:34px;height:34px}
+ .shop-topbar>.brand{display:flex;justify-content:center;flex:none;width:44px;height:44px;margin-inline-end:4px}
+ .shop-topbar .brand-copy{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+ .shop-brand-logo{width:32px;height:32px}
  .shop-nav>a[href='#catalog']{display:none}
  .shop-nav>a[href='#cart']{position:relative;padding:8px;min-width:44px;min-height:44px;background:transparent}
  .shop-nav>a[href='#cart']>span[data-i18n=cart]{display:none}
  .shop-nav svg{width:24px;height:24px}
  .shop-nav .cart-count{position:absolute;right:0;top:0;font-size:10px;min-width:17px;height:17px;padding:0 3px}
- .shop-topbar .header-search{grid-area:auto;grid-column:auto;grid-row:auto;width:100%;max-width:none;height:44px}
+ .shop-topbar .header-search{grid-area:auto;grid-column:auto;grid-row:auto;flex:1;min-width:0;width:100%;max-width:none;height:44px}
  .shop-main{padding:12px 12px 28px}
  .demo-banner{padding:8px 10px;gap:3px 8px;font-size:11px;line-height:1.4;margin-bottom:12px}
  .catalog-hero{padding:16px;margin-bottom:18px;gap:12px;border-radius:14px}
@@ -800,7 +802,7 @@ html.image-zoom-open{overflow:hidden}
 .local-orders-toolbar:has(button[hidden]):has(.shop-note:empty){display:none}
 @media(max-width:480px){.local-order-card{padding:16px}.local-order-heading{gap:8px}.order-detail h2{font-size:18px}.order-detail .order-thumbnail{width:52px;height:52px}}
 
-/* Cohesive desktop utilities; mobile retains the search-only header. */
+/* Cohesive desktop utilities. */
 @media(min-width:761px){
  .shop-topbar{height:72px;min-height:72px;grid-template-columns:minmax(140px,auto) minmax(140px,1fr) auto auto auto;gap:12px;padding-inline:clamp(16px,3vw,48px)}
  .shop-topbar .brand{max-width:320px}
