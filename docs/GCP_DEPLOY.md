@@ -26,7 +26,7 @@ Backend memory is capped at 384 MiB with a 192 MiB V8 heap to leave native/TLS/d
 
 ## CI images
 
-The existing `Verify new MVP` workflow (`.github/workflows/verify.yml`, unchanged `push` and `pull_request` triggers) performs bounded Python deployment/controller checks, JavaScript syntax checks, production dependency audits, and the dedicated WhatsApp QR/media-codec checks. Its root application `npm test` step and PostgreSQL service are removed; full application regression tests run locally as needed and must be recorded separately. Successful GitHub verification therefore establishes only these CI checks, not a full application-suite pass. This does not relax exact-SHA main/verification/image checks or the shop-schema manual release gate.
+The existing `Verify new MVP` workflow (`.github/workflows/verify.yml`, unchanged `push` and `pull_request` triggers) performs bounded Python deployment/controller checks, JavaScript syntax checks, production dependency audits, and the dedicated WhatsApp QR/media-codec checks. Its root application `npm test` step and PostgreSQL service are removed; full application regression tests run locally as needed and must be recorded separately. Successful GitHub verification therefore establishes only these CI checks, not a full application-suite pass. This does not relax exact-SHA main/verification/image checks or the shop-schema version fence.
 
 `.github/workflows/gcp-images.yml` runs only after a successful same-repository `push` of `main` through `Verify new MVP`. It checks out that exact tested SHA, builds `linux/amd64`, and publishes backend/frontend images with SHA tags and OCI revision labels. Actions are pinned to authoritative upstream Git refs checked during implementation. CI has only `contents: read` and `packages: write`; there are no VM credentials or VM builds.
 
@@ -54,9 +54,9 @@ Seed inputs (`--data` and `--images`) are operator-trusted: preserve the bundle 
 An unambiguous active category label is reused case-insensitively with its stored code and spelling; only unmatched labels receive generated codes. `Home & Living` does not match `Home`. Conflicting labels/codes fail before writes. The shop-name update is deliberately a separate final, name-column-only step after product transactions; a failure can leave committed products with the old name. Rerun with the same bundle and name to finish. An unchanged name issues no update. Serialize this maintenance operation with seller edits.
 
 
-## Initial operator installation
+## Initial agent installation
 
-Review the exact release and verify its CI before installation. All commands below run on the existing VM as root. The installer is intentionally manual: automatic updates cannot replace the updater, Compose policy, runtime configuration or systemd units.
+Review the exact release and verify its CI before installation. All commands below run on the existing VM as root. The agent runs the installer: automatic updates cannot replace the updater, Compose policy, runtime configuration or systemd units.
 
 1. Create `/opt/online-shopping-gcp` root-owned mode `0700`, with root-owned non-writable ancestors. Install the reviewed updater, Compose policy, provisioner and runtime example there as `update.py`, `compose.yaml`, `enable-platform.py` and `runtime.env`, mode `0600` (provisioner `0700`). Runtime accepts only shop/seller hosts, default seller username, secrets directory, two binary platform switches and the empty or fixed integration key mount path. Unknown/duplicate keys and interpolation are rejected. No secret values belong here.
 2. Create `/opt/cloudops/secrets/online-shopping` root owned, mode `0700`. Generate three separate strong secrets outside Git: `admin-password` (the existing application requires at least 16 characters, letters and digits, and rejects weak passwords), `postgres-password`, and `postgres-owner-password`. Docker Compose file-backed secrets retain host file permissions: the backend's non-root `node` user must be able to read its mounted admin/app secrets. Use root-owned mode `0444` secret files inside the root-only `0700` host directory, or an explicitly reviewed UID/ACL mapping. Never print the values or use command-line password arguments. Do not reuse any existing app/database secrets.
@@ -81,13 +81,13 @@ Review the exact release and verify its CI before installation. All commands bel
 
 The service is root owned because Docker control is root equivalent; access to its unit, updater, state and deployment root is privileged. systemd gives it write access only to its deployment root and the Docker daemon socket through Docker's normal API. It runs every approximately three minutes, serializes with `flock`, bounds HTTP/subprocess durations/output, uses fixed argv and no shell, and reports codes/status only. Anonymous GitHub API rate limits can defer checks; API/network failures leave the current release running.
 
-## Automatic update and manual release protocol
+## Automatic update and agent release protocol
 
 The updater trusts the exact repository's main HEAD and **latest** successful completed `verify.yml` push run for that SHA. An older successful attempt cannot override a newer failed/in-progress rerun. Main and CI are rechecked after pulls, before activation. Candidate SHA must be full lowercase hex. Repository maintainers able to change main and its verification workflow remain trusted: configure branch protections/reviews in GitHub; this code cannot establish that policy.
 
 Automatic activation changes only backend/frontend immutable digest references with `compose up --no-deps --no-build`; it never restarts/replaces PostgreSQL, invokes migrations, restores backups, deletes data, prunes volumes, executes downloaded code, or updates its own controller. The host Compose and runtime env remain fixed outside release directories and their hashes must match initialized state.
 
-Changes to repository paths do not themselves block activation. The updater compares the candidate `SCHEMA_VERSION` with the deployed release's recorded schema; a difference stops before image pull with `manual_schema_release_required`. It does not migrate databases or detect independent platform-schema changes. Schema/init/Caddy and codec source files are Git-blob verified. Unchanged-schema updates retain the current release record, save pending intent before mutation, check the running digest and exact readiness revision through backend and frontend, and restore previous **application images only** on failure. A crash with pending intent restores the last accepted images on the next run. Failed SHAs are not retried automatically. A rollback failure preserves pending intent and needs operator investigation. Application writes are not undone.
+Changes to repository paths do not themselves block activation. The updater compares the candidate `SCHEMA_VERSION` with the deployed release's recorded schema; a difference stops before image pull with `manual_schema_release_required`. It does not migrate databases or detect independent platform-schema changes. Schema/init/Caddy and codec source files are Git-blob verified. Unchanged-schema updates retain the current release record, save pending intent before mutation, check the running digest and exact readiness revision through backend and frontend, and restore previous **application images only** on failure. A crash with pending intent restores the last accepted images on the next run. Failed SHAs are not retried automatically. A rollback failure preserves pending intent; the agent investigates and resolves it. Application writes are not undone.
 
 Host Compose and runtime changes require an agent to install them; repository changes do not update those host files. The installed `deploy/gcp/update.py` controller does not update itself. To install a reviewed controller, with its source staged at `/root/reviewed-platform`, the agent stops the timer and service, verifies the existing local fingerprint and absence of pending recovery, preserves the controller and state, installs the file and records its new local fingerprint. Run as root only after reviewing the source and operational state:
 
@@ -130,13 +130,13 @@ PYCODE
 systemctl start online-shopping-update.timer
 ```
 
-If a step fails, keep the timer stopped and investigate; preserve the rollback copies. For a schema release, stop the timer, review the schema and policy difference, take and **restore-test** a private database backup and plan compatible migration/rollback. Do not erase state or rerun initialization to bypass the schema gate. This updater has no force/migrate/prune option. After a verified manual schema or configuration release, establish an audited baseline. Do not assume an old image can safely run against a new schema.
+If a step fails, keep the timer stopped and investigate; preserve the rollback copies. For a schema release, stop the timer, review the schema and policy difference, take and **restore-test** a private database backup and plan compatible migration/rollback. Do not erase state or rerun initialization to bypass the schema gate. This updater has no force/migrate/prune option. After an agent verifies a schema or configuration release, establish an audited baseline. Do not assume an old image can safely run against a new schema.
 
 ## Operations and limitations
 
-Inspect status via `systemctl status online-shopping-update.timer`, `journalctl -u online-shopping-update.service`, and private `state.json`. Never publish `docker inspect`, rendered Compose config, runtime logs, DB dumps or secret contents. State records image digests and release metadata, not passwords. Application JSON logs are rotated at 2 × 5 MiB per service. Before every application image pull the updater requires at least 3 GiB free on the deployment filesystem; low space aborts before activation and leaves the current release running. This is a reserve guard, not a bound on image growth or protection from other writers. Check disk use frequently: this version deliberately performs **no image/release cleanup**, so a 20 GiB disk has a finite release capacity. Operators may remove only reviewed unused app images/releases while retaining current/previous/pending images; never prune DB volumes. Budget checks, encrypted off-host backups, alerts and disk cleanup are operational responsibilities and are not implemented by this image updater.
+Inspect status via `systemctl status online-shopping-update.timer`, `journalctl -u online-shopping-update.service`, and private `state.json`. Never publish `docker inspect`, rendered Compose config, runtime logs, DB dumps or secret contents. State records image digests and release metadata, not passwords. Application JSON logs are rotated at 2 × 5 MiB per service. Before every application image pull the updater requires at least 3 GiB free on the deployment filesystem; low space aborts before activation and leaves the current release running. This is a reserve guard, not a bound on image growth or protection from other writers. Check disk use frequently: this version deliberately performs **no image/release cleanup**, so a 20 GiB disk has a finite release capacity. Agents may remove only reviewed unused app images/releases while retaining current/previous/pending images; never prune DB volumes. Budget checks, encrypted off-host backups, alerts and disk cleanup are operational responsibilities and are not implemented by this image updater.
 
-Offline verification: `python3 test/gcp-deploy.test.py`; the new image publication workflow runs these tests before publishing each image. Tests cover latest CI scope/reruns, idempotency, failed readiness rollback and failed rollback intent, crash recovery, schema and local configuration gates, malicious path/revision/image/config inputs, secret-safe command failures, anonymous digest resolution, and Compose isolation. Live deployment and public TLS/route checks must be recorded by the operator separately.
+Offline verification: `python3 test/gcp-deploy.test.py`; the new image publication workflow runs these tests before publishing each image. Tests cover latest CI scope/reruns, idempotency, failed readiness rollback and failed rollback intent, crash recovery, schema and local configuration gates, malicious path/revision/image/config inputs, secret-safe command failures, anonymous digest resolution, and Compose isolation. Live deployment and public TLS/route checks must be recorded by the agent separately.
 
 Real local GCP edge verification (Docker context `orbstack`, no application images or production access):
 
@@ -156,11 +156,11 @@ Release `fb96872f727390c1b59e7fc130fca0c91b58a24a` passed main push verification
 
 Independent pre-deployment checks passed 522 application tests with PostgreSQL16 on Node24.20, 39 existing deployment-controller tests, 12 GCP controller tests, and production dependency audit (zero vulnerabilities). A separate fresh local Compose stack verified owner login, authenticated setup read, shop/seller pages, cross-host404 isolation and disabled demo mode. These checks do not claim public TLS availability, migration of existing shop data, or a completed shop business setup.
 
-## Platform claim manual release (P7/P8/P10 artifacts; not live acceptance)
+## Platform claim agent release (P7/P8/P10 artifacts; not live acceptance)
 
 Run as root on Linux. No DNS change: admin host is `seller.demoonlineshopping.xyz`. This deliberately shares the seller script origin with SuperAdmin; mandatory TOTP does not eliminate that shared-origin risk. Do not use legacy `PLATFORM_ADMIN_USERNAME` or `PLATFORM_ADMIN_PASSWORD_FILE`.
 
-Prerequisite for an **existing live stack**: stage the complete reviewed release at `/root/reviewed-platform`, including CI-verified immutable references in `images.env` (BACKEND_IMAGE, FRONTEND_IMAGE, APP_REVISION and RELEASE_DIR only). RELEASE_DIR is `/opt/online-shopping-gcp/releases/<APP_REVISION>`. Verify CI/digests before staging. The running default-shop schema must match; otherwise stop for its separate migration procedure. Before the mutation block below, take and restore-test a private cluster backup in isolated PostgreSQL16. Do not proceed without restore evidence. Existing platform v1 requires the manual procedure below; provisioning never runs shop DDL. An older v1-only image cannot open a manually upgraded v2 platform database; do not use it for rollback after opt-in.
+Prerequisite for an **existing live stack**: stage the complete reviewed release at `/root/reviewed-platform`, including CI-verified immutable references in `images.env` (BACKEND_IMAGE, FRONTEND_IMAGE, APP_REVISION and RELEASE_DIR only). RELEASE_DIR is `/opt/online-shopping-gcp/releases/<APP_REVISION>`. Verify CI/digests before staging. The running default-shop schema must match; otherwise stop for its separate migration procedure. Before the mutation block below, take and restore-test a private cluster backup in isolated PostgreSQL16. Do not proceed without restore evidence. Existing platform v1 requires the agent procedure below; provisioning never runs shop DDL. An older v1-only image cannot open a manually upgraded v2 platform database; do not use it for rollback after opt-in.
 
 Ordered non-interactive commands (do not enable shell tracing; stdout/logs remain private):
 
@@ -229,7 +229,7 @@ docker compose -p online-shopping-gcp --env-file "$R/runtime.env" --env-file "$R
 
 Before DDL, restore-test `cluster.sql` in an isolated PostgreSQL 16 environment using the separately reviewed backup procedure; do not restore into production or proceed without that evidence. Logs contain one `platform.claim.issued` record per generation, including the bearer URL. Read privately; never paste it into chat, tickets or CI. Docker json-file is authoritative here; Cloud Logging delivery is UNVERIFIED. Restrict log readers/exports/retention before enabling. Missing/expired delivery requires a trusted stop/start of backend to issue a fresh generation, not retrieval of an old plaintext token.
 
-The owner alone opens the shop-host claim URL, submits email/username/password, then signs in again at `https://seller.demoonlineshopping.xyz/platform/`, enrolls TOTP and stores recovery codes privately. The agent must not claim or enroll for the owner. Verify setup now returns 404, console MFA works, and a fictional tenant's shop/seller routes, lifecycle/alias gate, cross-host 404s and webhooks work before marking acceptance. Actual Caddy adaptation and gateway/TLS tests are mandatory at deployment; offline tests are not substitutes.
+The agent completes the shop-host claim using the authorized credentials, signs in again at `https://seller.demoonlineshopping.xyz/platform/`, enrolls TOTP and stores recovery codes privately. Verify setup now returns 404, console MFA works, and a fictional tenant's shop/seller routes, lifecycle/alias gate, cross-host 404s and webhooks work before marking acceptance. Actual Caddy adaptation and gateway/TLS tests are mandatory at deployment; offline tests are not substitutes.
 
 Rollback configuration without dropping platform objects or changing any passwords:
 
@@ -248,7 +248,7 @@ PY
 docker compose -p online-shopping-gcp --env-file "$R/runtime.env" --env-file "$R/images.env" -f "$R/compose.yaml" up -d --no-deps --no-build backend frontend
 ```
 
-Keep the timer stopped after activation or rollback until acceptance and a new audited baseline. The following explicit baseline command is a privileged manual release, not an updater bypass: it requires the staged release to still be CI-approved main, compares every controller-managed mount to reviewed source, verifies readiness and saves the current schema baseline and local fingerprints. Run only after the owner has completed MFA and the public acceptance checks above:
+Keep the timer stopped after activation or rollback until acceptance and a new audited baseline. The following explicit baseline command is a privileged agent release, not an updater bypass: it requires the staged release to still be CI-approved main, compares every controller-managed mount to reviewed source, verifies readiness and saves the current schema baseline and local fingerprints. The agent runs it only after completing MFA and the public acceptance checks above:
 
 ```sh
 python3 - /opt/online-shopping-gcp <<'PY'
@@ -273,11 +273,11 @@ PY
 systemctl start online-shopping-update.timer
 ```
 
-Do not erase state or rerun initialize. Platform schema/version/migrations require separate operator review; the updater does not gate platform-only schema changes. MOUNTS is unchanged. Provisioning is additive, resumes interrupted creation, validates boundaries and never changes existing passwords or shop tables. Missing schema and v2 skip migration; both provision and check refuse v1. The automatic OrbStack version stays 1 and its unflagged runner never applies migration 002. Claim-off fresh databases remain v1; claim-on fresh databases initialize v2. Retain the old controller baseline and keep the timer stopped pending review.
+Do not erase state or rerun initialize. The agent must separately review platform schema/version/migrations; the updater does not gate platform-only schema changes. MOUNTS is unchanged. Provisioning is additive, resumes interrupted creation, validates boundaries and never changes existing passwords or shop tables. Missing schema and v2 skip migration; both provision and check refuse v1. The automatic OrbStack version stays 1 and its unflagged runner never applies migration 002. Claim-off fresh databases remain v1; claim-on fresh databases initialize v2. Retain the old controller baseline and keep the timer stopped until the agent completes that review.
 
-### Manual v1 migration and egress release
+### Agent v1 migration and egress release
 
-Changes to `compose.gcp.yaml` do not update host policy automatically. With the updater timer stopped, manually install the reviewed policy as host `compose.yaml` and recreate backend to attach `egress`; do not change frontend or PostgreSQL policy. This is not an automatic image-only release.
+Changes to `compose.gcp.yaml` do not update host policy automatically. With the updater timer stopped, the agent installs the reviewed policy as host `compose.yaml` and recreates backend to attach `egress`; do not change frontend or PostgreSQL policy. This is not an automatic image-only release.
 
 For existing platform v1, stop backend traffic/workers, take a private cluster backup and restore-test it in isolated PostgreSQL 16 before proceeding. Keep backend stopped. Verify candidate image compatibility, release script provenance and `/app` working directory. With the same project/env/policy arguments used above, run a one-off backend with:
 
@@ -366,7 +366,7 @@ systemctl disable --now online-shopping-egress-guard.service
 /opt/online-shopping-gcp/egress-guard.sh --remove
 ```
 
-Service stop intentionally retains rules. Removal deletes only exact tagged guard rules, never flushes shared chains. Offline test: `python3 test/gcp-egress-guard.test.py`. Live packet denial, public/provider HTTPS, reboot ordering and host firewall compatibility remain operator acceptance requirements.
+Service stop intentionally retains rules. Removal deletes only exact tagged guard rules, never flushes shared chains. Offline test: `python3 test/gcp-egress-guard.test.py`. Live packet denial, public/provider HTTPS, reboot ordering and host firewall compatibility remain agent acceptance requirements.
 
 ## GCP acceptance record (2026-10-21)
 
@@ -380,23 +380,25 @@ Evidence from the live deployment at https://demoonlineshopping.xyz (shop) and h
 - **Content:** shop name `Demo Mart Malaysia`, currency MYR; 14 AI-generated demonstration products (computers/IT and home & living, 3 photos each) were added with `scripts/seed-demo-shop.mjs` to the existing 35 sample products (49 total); a dry run preceded the real run and a second run created 0.
 - **Not accepted / UNVERIFIED:** physical-device PWA install, Safari/iOS behaviour, real WhatsApp Cloud API traffic (Meta credentials not yet entered), scheduled backups (none installed by owner decision; only the one-off pre-release backup exists), Cloud Logging delivery of the claim log line, behaviour under load on the 2 GB VM.
 
-Do not erase state or rerun initialize. Platform schema/version/migrations require separate operator review; the updater does not gate platform-only schema changes. MOUNTS is unchanged. Provisioning is additive, resumes interrupted creation, validates boundaries and never changes existing passwords or shop tables. Its explicit `scripts/upgrade-platform.mjs --with-claim` invocation initializes/migrates platform to v2. The automatic OrbStack version stays 1 and its unflagged runner never applies migration 002. Claim-off fresh databases remain v1; claim-on fresh databases initialize v2, and existing v1 requires explicit upgrade. Retain the old controller baseline and keep the timer stopped pending review.
+Do not erase state or rerun initialize. The agent must separately review platform schema/version/migrations; the updater does not gate platform-only schema changes. MOUNTS is unchanged. Provisioning is additive, resumes interrupted creation, validates boundaries and never changes existing passwords or shop tables. Its explicit `scripts/upgrade-platform.mjs --with-claim` invocation initializes/migrates platform to v2. The automatic OrbStack version stays 1 and its unflagged runner never applies migration 002. Claim-off fresh databases remain v1; claim-on fresh databases initialize v2, and existing v1 requires explicit upgrade. Retain the old controller baseline and keep the timer stopped until the agent completes that review.
 
-## Seller MCP schema25 manual release
+<a id="seller-mcp-schema25-manual-release"></a>
 
-Release requirements, not executed production evidence. GCP pauses changes to the shop schema version; OrbStack instead automatically backs up and migrates eligible shop databases after a passing main release, even with MCP off. Required owner decision: **"merging = auto-migrate OrbStack production DB to schema 25; backups/rollback procedure"**. Stop its installed poller before merge if manual approval is intended. Image-only rollback cannot reverse committed schema25.
+## Seller MCP schema25 agent release
+
+Release requirements, not executed production evidence. GCP pauses changes to the shop schema version; OrbStack instead automatically backs up and migrates eligible shop databases after a passing main release, even with MCP off. Before merging, the agent evaluates the automatic migration and verifies the backup and rollback procedure; stop the installed poller if the safeguards are not ready. Image-only rollback cannot reverse committed schema25.
 
 1. Stop `online-shopping-update.timer` and `online-shopping-update.service` before merge/deploy. Preserve private controller, units, runtime.env, images.env, compose.yaml, state.json and immutable current/previous digests. Never erase state or initialize again.
 2. Pin reviewed full main SHA and exact-SHA CI/images. Verify on supported Node24/PostgreSQL16. Inventory default and every ACTIVE/SUSPENDED/DELETING shop, roles/schema versions, platform version and collision names/aliases. Reject incomplete backup coverage; preserve the PostgreSQL volume.
 3. Stage reviewed release directory and immutable images without activation, MCP off. Validate mounted secrets, owner/app roles, config and headroom privately. Retain schema24 images/files; review DDL/grants and platform-version constraints.
 4. Block ingress/issuance at the trusted gateway, drain requests and stop all backend/worker/provisioning writers. GCP does not mount OrbStack's maintenance volume. Keep PostgreSQL running privately.
-5. Take a coordinated private cluster backup covering default, platform and every eligible tenant with the **running schema24 release's** backup tooling. Restore into isolated PostgreSQL16, compare schema/table digests and smoke business behavior. Record manifest, roles and sealed credential/key custody. Explicitly approve restore's loss of post-backup writes; backup existence alone is insufficient.
+5. Take a coordinated private cluster backup covering default, platform and every eligible tenant with the **running schema24 release's** backup tooling. Restore into isolated PostgreSQL16, compare schema/table digests and smoke business behavior. Record manifest, roles and sealed credential/key custody. The agent must assess and explicitly accept restore's loss of post-backup writes; backup existence alone is insufficient.
 6. Run candidate `scripts/upgrade-database.mjs` in an isolated one-shot candidate backend digest container on `online-shopping-gcp_private`, entrypoint `node`, argv `/app/scripts/upgrade-database.mjs`, existing owner password file read-only at `/run/secrets/owner`, connection postgres:5432/online_shopping. Require `{"version":25}`; no secrets in argv/logs.
 7. Migrate every eligible tenant using the reviewed exported `upgradePlatform` function, verified backup manifest and durable report, with `withClaim` matching installed platform version. The `--with-claim` CLI branch is platform-only and does not migrate tenants; unflagged CLI targets platform v1, not installed claim-v2. Mount platform password/master key privately. Verify complete attempted/upgraded coverage; on failure stop runners and restore the complete attempted set before old-image activation.
-8. Independently verify shop version25 and app-role OAuth table SELECT/INSERT/UPDATE/DELETE, ordinary readiness, owner login, product/orders and tenant lifecycle/aliases with MCP off. Do not change platform version without separate approval.
-9. Perform a privileged **Updater-class manual release**, not poll/initialize: load reviewed `update.py`, construct `Updater(root)`, require `head() == reviewed_sha` and `approved(reviewed_sha)`, obtain `baseline, content = source(reviewed_sha)` and `candidate = release(reviewed_sha, baseline, content)`. Recheck exact main/CI, then `activate(candidate)` (never `initial=True`) and `health(candidate)`. Keep ingress blocked. This activates backend/frontend without recreating PostgreSQL. Require frontend-proxied `/ready` exact revision and fictional checkout/seller/tenant smokes. Only after acceptance save the accepted candidate as current with no pending state and no schema24 previous-image recovery target: `save('deployed', current=candidate, previous=None, pending=None, local=local_fingerprint())`. Reopen only after acceptance. Failure requires schema25-compatible disabled images or coordinated restore, never schema24 images against schema25. Retain private old state for schema-aware rollback.
+8. Independently verify shop version25 and app-role OAuth table SELECT/INSERT/UPDATE/DELETE, ordinary readiness, owner login, product/orders and tenant lifecycle/aliases with MCP off. The agent must separately review any platform version change.
+9. Perform a privileged **Updater-class agent release**, not poll/initialize: load reviewed `update.py`, construct `Updater(root)`, require `head() == reviewed_sha` and `approved(reviewed_sha)`, obtain `baseline, content = source(reviewed_sha)` and `candidate = release(reviewed_sha, baseline, content)`. Recheck exact main/CI, then `activate(candidate)` (never `initial=True`) and `health(candidate)`. Keep ingress blocked. This activates backend/frontend without recreating PostgreSQL. Require frontend-proxied `/ready` exact revision and fictional checkout/seller/tenant smokes. Only after acceptance save the accepted candidate as current with no pending state and no schema24 previous-image recovery target: `save('deployed', current=candidate, previous=None, pending=None, local=local_fingerprint())`. Reopen only after acceptance. Failure requires schema25-compatible disabled images or coordinated restore, never schema24 images against schema25. Retain private old state for schema-aware rollback.
 10. Enabling: `compose.gcp.yaml` forwards `MCP_ENABLED` (default 0) and `MCP_REDIRECT_URIS` (default empty) to the backend; `deploy/gcp/update.py` accepts both runtime keys, requires 0/1, exact comma-separated `https://` callbacks without ports, userinfo, queries or IPs, and refuses `MCP_ENABLED=1` without callbacks. The seller host proxies `/mcp`, `/oauth/{register,authorize,token,revoke,consent.js,consent.css}` and `/.well-known/oauth-{protected-resource,authorization-server}[/...]` with `Cache-Control: no-store`; tenant variants `/<code>/mcp`, `/<code>/oauth/*`, `/<code>/.well-known/oauth-*` go through the tenant API route; `mcp` and `oauth` are reserved tenant codes at the edge. The shop host serves none of them (`scripts/qa-gcp-caddy-routing.mjs`, group "Seller MCP connector routes"). Vendor callbacks from official docs (2026-10-21): Claude `https://claude.ai/api/mcp/auth_callback` (claude.com/docs/connectors/building/authentication), ChatGPT `https://chatgpt.com/connector_platform_oauth_redirect` (developers.openai.com/apps-sdk/build/auth). Both vendors call server-to-server, so `MCP_BROWSER_ORIGINS` is not forwarded.
-11. After accepted manual release, use the Updater-class baseline procedure above to verify CI-approved main, source mounts, runtime, health and schema baseline and local fingerprints, then save the new baseline and restart the timer. Keep schema24 previous images ineligible for image-only recovery. Schedule per-shop lifecycle cleanup, dormant audit retention and resource monitoring. Installed-controller identity, production migration/restore and vendor acceptance remain unverified here.
+11. After the agent accepts the release, use the Updater-class baseline procedure above to verify CI-approved main, source mounts, runtime, health and schema baseline and local fingerprints, then save the new baseline and restart the timer. Keep schema24 previous images ineligible for image-only recovery. Schedule per-shop lifecycle cleanup, dormant audit retention and resource monitoring. Installed-controller identity, production migration/restore and vendor acceptance remain unverified here.
 
 ## GCP release record (2026-10-21, schema 25 → 27)
 
@@ -631,7 +633,7 @@ checks, not remote attestation. Publication still requires the successful **late
 main push Verify run** at the exact revision. Native dependencies stay out of the
 application image.
 
-Host policy is manually installed and reviewed. Neither candidate release files
+The agent reviews and installs host policy. Neither candidate release files
 nor downloaded Python are executed as root. Install fixed `update.py`,
 `media-codec.py`, `mcp-maintenance.py`, the optional overlay and the two MCP
 service/timer pairs from `deploy/gcp/`; retain root ownership and no group/world
@@ -640,7 +642,7 @@ installed controller, base Compose and runtime, plus the overlay/supervisor/hygi
 wrapper when the profile is ON. Changes require an explicit reviewed state update.
 `src/mcp/`, `media-codec/`, adapter origin handling and host/release configuration
 are protected source boundaries: the ordinary poller reports manual release
-required when these change. All mounted source and codec hash inputs are checked
+required when these change; the agent resolves the stop using the protected release procedure. All mounted source and codec hash inputs are checked
 against their individual Git blob hashes. No commit/tree-SHA equivalence is assumed.
 
 Before initial activation, create `/opt/online-shopping-gcp/mcp-control` as
@@ -660,7 +662,7 @@ fresh generation for the candidate and one for rollback. Rollback uses reserve 1
 The supervisor checks exact existing ownership and bounded generation inventory;
 unknown owners fail closed. A full 64-generation inventory reports
 `manual_maintenance_required` while the accepted service continues running.
-There is no automatic purge. Manual pruning must first pause all three timers,
+There is no automatic purge. Agent pruning must first pause all three timers,
 hold `update.lock`, close owned frontend ingress, stop every backend instance and
 retire only the proven-owned worker; retain current/pending generations and
 private failure evidence until their mounts and containers are proven absent.
@@ -675,7 +677,7 @@ ID, read-only generation/epoch mounts and private `/ready` revision (which check
 epoch and authenticated codec readiness) before starting the frontend. Final
 frontend-proxied health must pass before the pause barrier is removed and the
 accepted release is saved. Failure leaves durable pending intent. An interrupted
-codec recovery leaves ingress paused for operator review; it does not silently
+codec recovery leaves ingress paused for agent investigation and recovery; it does not silently
 fall back to another image or rotate the epoch.
 
 Initial compatibility rollback to the accepted old disabled image is special:
@@ -684,7 +686,7 @@ worker, rotates the epoch and persists `profile_fallback=true`. Both restarted
 polling and codec recovery then return `manual_profile_resume_required`, even if
 the installed runtime still requests the full profile. They cannot re-enable old
 images under ON selectors. Keep the update/recovery timers stopped until a
-reviewed operator has restored a coherent disabled runtime, or has revalidated a
+agent has reviewed and restored a coherent disabled runtime, or revalidated a
 complete production tuple and deliberately cleared this quarantine after health.
 Ordinary forward updates cannot silently choose the disabled fallback. Database
 schema compatibility must be checked independently; image rollback never restores
@@ -694,7 +696,7 @@ The optional `online-shopping-mcp-recover.timer` invokes the installed controlle
 under the same lock. It respects `paused`, uses the accepted build and same epoch,
 and makes at most three fresh-generation attempts per 15 minutes. It never
 restarts a sealed worker directory. Failed recovery or exhausted budget requires
-manual review. Do not use `restart: unless-stopped` for the codec. Start this timer
+agent investigation and recovery. Do not use `restart: unless-stopped` for the codec. Start this timer
 only after real production-profile artifact/lifecycle acceptance.
 
 The separately reviewed `online-shopping-mcp-maintenance.timer` runs one bounded
@@ -720,7 +722,7 @@ runtime gates. No live customer rows are used for these tests.
 Initial installation must use `initialize` with the v2 profile OFF. The command
 rejects ON before any image pull, pause marker or container/state mutation. After
 the disabled installation has a stable accepted current release and `images.env`,
-the reviewed manual enable procedure must validate exact main/CI and all
+the agent-reviewed enable procedure must validate exact main/CI and all
 artifacts, then **save the candidate as durable pending intent before calling
 `activate(candidate)`**. This allows a fresh process to identify a partially
 started codec and apply only the explicit disabled compatibility fallback. Keep

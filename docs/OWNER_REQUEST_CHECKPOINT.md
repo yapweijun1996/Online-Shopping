@@ -58,7 +58,7 @@ Runnable API/VM tests are tracked in `test/`. Detailed local browser scripts/log
 
 [ADMIN_MULTI_COMPANY_DESIGN.md](ADMIN_MULTI_COMPANY_DESIGN.md) is the proposed PostgreSQL tenant design and rollout sequence. [PRODUCTION_ACCEPTANCE.md](PRODUCTION_ACCEPTANCE.md) reconciles all 18 existing criteria: historical local baseline 16/18, Production released **0/18**. Payment/courier automation remains outside that denominator.
 
-Before publishing Demo: independent authorization/security review at exact head, CI, mode/HTTPS/asset/private-cache checks and owner review of the exact release artifact. Older installed clients must finish writes/save drafts before adopting these new guards; this candidate cannot retrofit guards into already cached v103/v79 scripts.
+Before publishing Demo: independent authorization/security review at exact head, CI, mode/HTTPS/asset/private-cache checks and agent review of the exact release artifact. Older installed clients must finish writes/save drafts before adopting these new guards; this candidate cannot retrofit guards into already cached v103/v79 scripts.
 
 Before Production: implement PostgreSQL and tenant-scoped repositories/composite FKs/RLS/pooled context/browser storage/status/idempotency/documents, prove revocation and all cross-company routes, restore encrypted off-host backups, approve exact migration/grant manifest and rollback, reconcile current contact/delivery acceptance wording, validate retention policy and real HTTPS/installed Safari/iPhone/iPad/desktop target devices. No local test establishes these missing gates.
 

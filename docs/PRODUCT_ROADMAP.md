@@ -36,9 +36,9 @@ Guardrails: tool-calling only against our own APIs, per-shop kill switch, amount
 | Selling features (Shopify parity, in value order) | Discount codes and promotions, abandoned-cart recovery over WhatsApp, customer order notifications (Cloud templates), low-stock alerts, sales analytics, product reviews, customer accounts, SEO/sitemap, import from Shopee/Lazada/Shopify CSV | Phased, smallest first |
 | Compliance | Malaysian SST and e-invoice (MyInvois) readiness, PDPA privacy notice and terms, data export/erasure already exists | Verify requirements with an accountant before launch |
 | SaaS | Plans, billing, trial, self-serve shop creation, custom domains, tenant support tools | Subscription billing plus metered AI usage |
-| Operations | One small VM, manual schema and host configuration releases, no alerts, no off-host backups | Uptime monitoring, off-host encrypted backups, capacity plan, release automation for source-only changes |
+| Operations | One small VM, agent-led schema and host configuration releases, no alerts, no off-host backups | Uptime monitoring, off-host encrypted backups, capacity plan, release automation for source-only changes |
 
-## 5. Phases (default order, each ends with live verification and an owner hand-over)
+## 5. Phases (default order, each ends with agent-led live verification)
 
 1. **AI assist (levels 1-2)** on the Cloud API: conversation store, tool layer, draft-order creation, hand-off, audit, cost cap. Needs an LLM API key **[owner]**.
 2. **Payments + courier** (needs gateway and courier accounts **[owner]**).

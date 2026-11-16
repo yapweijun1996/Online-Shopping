@@ -56,7 +56,7 @@ Library creation confirmed all three images with matching local sizes and receip
 
 Before credentials: tenant API/grant design and durable production repository, official private SPX contract, complete public provider request/response mapping, approved Meta/QR onboarding choice, dispatch retry classification, signed ingress/account matching, revocation/reconciliation audit, secure label/media retrieval with fixed allowed hosts and redirect policy. No label/media URL is fetched in this phase.
 
-Then distinguish offline test evidence, sandbox verification, provider approval and authorized live acceptance. None implies the next. Exact reviewed release, migrations/backup/rollback and owner approval remain mandatory. No real messages, shipments, payments, grants, pairing, provider secrets or credentials were created.
+Then distinguish offline test evidence, sandbox verification, provider approval and authorized live acceptance. None implies the next. The agent must review the exact release and verify migrations, backup and rollback. No real messages, shipments, payments, grants, pairing, provider secrets or credentials were created.
 
 Payment/courier automation remains an extension outside the original **18 MVP** denominator. Historical local baseline stays 16/18, production released 0/18. AC-16 operations and AC-17 physical installed-PWA verification remain open; see [PRODUCTION_ACCEPTANCE.md](PRODUCTION_ACCEPTANCE.md). The B design and this integration prototype do not close production tenant isolation.
 
