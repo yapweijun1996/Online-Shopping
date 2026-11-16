@@ -10,3 +10,6 @@ for (const directory of directories) {
   }
 }
 console.log('JavaScript syntax checks passed.');
+
+const brandCheck = spawnSync(process.execPath, ['scripts/check-brand.js'], { stdio: 'inherit' });
+if (brandCheck.status !== 0) process.exit(brandCheck.status || 1);
