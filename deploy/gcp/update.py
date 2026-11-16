@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Root-installed, anonymous, main + CI gated image deployment. Never runs release code."""
+"""Root-installed, anonymous, main + CI gated image deployment and schema upgrades."""
 import argparse
 import base64
 import fcntl
@@ -25,6 +25,9 @@ CODEC_FILES = {'wireSha256': 'src/mcp/media-codec-wire.js', 'clientSha256': 'src
 MCP_FLAGS = ('MCP_V2_ENABLED', 'MCP_V2_MEDIA_ENABLED', 'MCP_V2_CATALOG_MEDIA_UPDATE_ENABLED', 'MCP_V2_CATALOG_MEDIA_CREATE_ENABLED')
 PROFILE = 'seller-operations-v1'
 IMAGE_ID = re.compile(r'sha256:[0-9a-f]{64}')
+BACKUP_SCRIPT = '/opt/online-shopping-backup/backup.sh'
+RESTORE_TEST_SCRIPT = '/opt/online-shopping-backup/restore-test.sh'
+UPGRADE_SCRIPT = 'scripts/upgrade-database.mjs'
 
 
 def revision(value):
@@ -151,7 +154,57 @@ class Updater:
         match = re.search(rb'export const SCHEMA_VERSION = (\d+);', content['src/db.js'])
         if not match:
             raise ValueError('Missing schema version')
+        self._source_entries = (sha, entries)
         return {'schema': int(match[1])}, content
+
+    def schema_script(self, sha):
+        # Reuse the exact tree already checked by source(), never another tree lookup.
+        source_sha, entries = self._source_entries
+        entry = entries.get(UPGRADE_SCRIPT, {})
+        if source_sha != sha or entry.get('mode') not in ('100644', '100755'):
+            raise ValueError('Invalid migration source')
+        data = request('https://raw.githubusercontent.com/' + REPO + '/' + revision(sha) + '/' + UPGRADE_SCRIPT)
+        if hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest() != entry.get('sha'):
+            raise ValueError('Migration source digest mismatch')
+        directory = self.root / 'releases' / sha
+        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        path = directory / 'upgrade-database.mjs'
+        atomic(path, data)
+        # The candidate runs as node (UID/GID 1000). Keep mode 0600 while
+        # allowing that user to read its read-only bind mount; the host directory stays private.
+        os.chown(path, 1000, 1000)
+        return path
+
+    def schema_backup(self):
+        trusted(BACKUP_SCRIPT)
+        trusted(RESTORE_TEST_SCRIPT)
+        self.command([BACKUP_SCRIPT], timeout=600)
+        output = self.command([RESTORE_TEST_SCRIPT], timeout=900)
+        # The host tool reports one '<db>: RESULT ...' line per database; other lines (for example
+        # PostgreSQL NOTICE output) are not results. Missing results or any difference fail closed.
+        lines = [line for line in output.splitlines() if ': RESULT ' in line]
+        tables = [line for line in output.splitlines() if ': tables live=' in line]
+        if (not lines or len(lines) != len(tables) or 'RESULT DIFFERENCES' in output or
+                any('RESULT identical' not in line for line in lines)):
+            raise ValueError('Backup restore verification failed')
+
+    def migrate_schema(self, candidate, script):
+        owner = Path(self.runtime()['SECRETS_DIR']) / 'postgres-owner-password'
+        if not owner.is_file() or not owner.stat().st_size:
+            raise ValueError('Missing database owner secret')
+        output = self.docker('run', '--rm', '--network', 'online-shopping-gcp_private',
+                             '--read-only', '--cap-drop', 'ALL',
+                             '-v', str(script) + ':/app/scripts/upgrade-database.mjs:ro',
+                             '-v', str(owner) + ':/run/secrets/owner:ro',
+                             '--entrypoint', 'node', candidate['backend'], '/app/scripts/upgrade-database.mjs')
+        version = candidate['baseline']['schema']
+        result = json.loads(output.strip().splitlines()[-1])
+        if result != {'version': version} or type(result.get('version')) is not int:
+            raise ValueError('Migration result mismatch')
+        actual = self.docker('exec', 'online-shopping-gcp-postgres-1', 'psql', '-U', 'online_shopping',
+                             '-d', 'online_shopping', '-Atc', 'select version from schema_meta').strip()
+        if actual != str(version):
+            raise ValueError('Migrated database version mismatch')
 
     def command(self, argv, timeout=180):
         # Output stays private, is never included in exceptions/logs and has a finite file cap.
@@ -336,11 +389,14 @@ class Updater:
         finally: self._rollback = False
 
     def recover_codec(self):
+        current = self.state.get('current')
+        if (current and self.state.get('migrated_schema') is not None and
+                self.state['migrated_schema'] > current['baseline']['schema']):
+            return
         if self.state.get('profile_fallback'):
             self.save('manual_profile_resume_required'); return
         if self.paused():
             self.save('codec_paused'); return
-        current = self.state.get('current')
         if not current or 'mcp' not in current: return
         if self.local_fingerprint() != self.state['local']:
             self.save('manual_config_required'); return
@@ -626,6 +682,14 @@ class Updater:
             self.save('manual_profile_resume_required'); return
         previous = self.state['current']
         self.validate_release(previous)
+        # A crash or uncertain migration outcome must never restore incompatible images.
+        if (self.state.get('migrated_schema') is not None and
+                self.state['migrated_schema'] > previous['baseline']['schema']):
+            if self.state.get('pending'):
+                self.save('schema_release_failed', failed_sha=self.state['pending']['sha'], pending=None)
+            elif self.state.get('status') == 'schema_migrating':
+                self.save('schema_migration_failed', pending=None)
+            return
         if self.state.get('pending') and self.state.get('pending_kind') == 'codec-recovery':
             self.save('codec_manual_maintenance_required'); return
         if self.state.get('pending'):
@@ -645,10 +709,21 @@ class Updater:
             self.save('waiting_for_ci')
             return
         baseline, content = self.source(sha)
-        if baseline['schema'] != previous['baseline']['schema']:
-            self.save('manual_schema_release_required')
+        if baseline['schema'] < previous['baseline']['schema']:
+            self.save('schema_downgrade_refused')
             return
-        candidate = self.release(sha, baseline, content)
+        upgrading = baseline['schema'] > previous['baseline']['schema']
+        if upgrading:
+            try: self.schema_backup()
+            except Exception:
+                self.save('schema_backup_failed', failed_sha=sha); return
+            try: script = self.schema_script(sha)
+            except Exception:
+                self.save('schema_migration_failed', failed_sha=sha, pending=None); return
+        try: candidate = self.release(sha, baseline, content)
+        except Exception:
+            if not upgrading: raise
+            self.save('schema_migration_failed', failed_sha=sha, pending=None); return
         if self.head() != sha or not self.approved(sha):
             self.save('trust_changed')
             return
@@ -658,11 +733,21 @@ class Updater:
                 if error.args == ('MANUAL_MAINTENANCE_REQUIRED',):
                     self.save('manual_maintenance_required'); return
                 raise
+        if upgrading:
+            # Persist the compatibility fence before DDL: even a lost command result
+            # or process crash can mean that the database has already advanced.
+            self.save('schema_migrating', failed_sha=sha, pending=None, migrated_schema=baseline['schema'])
+            try: self.migrate_schema(candidate, script)
+            except Exception:
+                self.save('schema_migration_failed', failed_sha=sha, pending=None); return
         self.save('deploying', pending=candidate)
         try:
             self.activate(candidate)
             self.health(candidate)
         except Exception:
+            if upgrading:
+                self.save('schema_release_failed', failed_sha=sha, pending=None, migrated_schema=baseline['schema'])
+                raise RuntimeError('Schema release failed') from None
             self.save('rolling_back', failed_sha=sha)
             self.restore(previous)
             self.health(previous)

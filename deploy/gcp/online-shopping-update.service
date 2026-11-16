@@ -15,3 +15,4 @@ PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
 ReadWritePaths=/opt/online-shopping-gcp
+ReadWritePaths=-/var/backups/online-shopping

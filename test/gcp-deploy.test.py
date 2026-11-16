@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Offline acceptance tests: no Docker, GitHub, DB or provider calls."""
 import importlib.util
+import hashlib
 import json
 import shutil
 import subprocess
@@ -60,6 +61,44 @@ class Fake(u.Updater):
     def health(self, item):
         self.calls.append(('health', item['sha']))
         if self.fail and item['sha'] == B: raise RuntimeError('secret must not escape')
+
+
+class SchemaFake(Fake):
+    def __init__(self, root):
+        super().__init__(root)
+        self.baseline = {'schema': 25}
+        self.script_data = b'// verified migration fixture\n'
+        paths = (*u.MOUNTS, 'src/db.js', *u.CODEC_FILES.values(), u.UPGRADE_SCRIPT)
+        self.content = {p: p.encode() for p in paths}
+        self.content['src/db.js'] = b'export const SCHEMA_VERSION = 25;'
+        self.content[u.UPGRADE_SCRIPT] = self.script_data
+        self.entries = [dict(path=p, type='blob', mode='100644',
+                             sha=hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest())
+                        for p, data in self.content.items()]
+        self.restore_output = 'online_shopping: tables live=72 restored=72; rows live=9 restored=9\nonline_shopping: RESULT identical\nplatform: tables live=10 restored=10; rows live=6 restored=6\nplatform: RESULT identical\nNOTICE:  database "copy" does not exist, skipping\n'
+        self.migration_output = 'migration complete\n{"version":25}\n'
+        self.database_version = '25\n'
+        self.command_failure = None
+        self.secrets = activation_secrets(root)
+    def source(self, sha): return u.Updater.source(self, sha)
+    def runtime(self): return {'SECRETS_DIR': str(self.secrets)}
+    def command(self, argv, timeout=180):
+        self.calls.append(argv)
+        if self.command_failure and self.command_failure in argv:
+            raise RuntimeError('private diagnostics')
+        if argv == [u.BACKUP_SCRIPT]: return ''
+        if argv == [u.RESTORE_TEST_SCRIPT]: return self.restore_output
+        if 'run' in argv: return self.migration_output
+        if 'psql' in argv: return self.database_version
+        raise AssertionError('Unexpected command')
+    def poll(self):
+        with patch.object(u, 'api', return_value={'tree': self.entries}) as api, \
+                patch.object(u, 'request', side_effect=lambda url: self.content[url.split('/' + B + '/')[1]]), \
+                patch.object(u.os, 'chown') as chown, \
+                patch.object(u, 'trusted', side_effect=Path):
+            super().poll()
+        self.chown_calls = chown.call_args_list
+        return api
 
 
 class Tests(unittest.TestCase):
@@ -128,12 +167,12 @@ class Tests(unittest.TestCase):
             f.poll()
             self.assertEqual(count, len(f.calls))
 
-    def test_schema_and_local_changes_stop_before_pull(self):
+    def test_schema_downgrade_and_local_changes_stop_before_pull(self):
         with tempfile.TemporaryDirectory() as root:
             f = Fake(root)
-            f.baseline = dict(BASE, schema=25)
+            f.baseline = dict(BASE, schema=23)
             f.poll()
-            self.assertEqual('manual_schema_release_required', f.state['status'])
+            self.assertEqual('schema_downgrade_refused', f.state['status'])
             self.assertEqual([], f.calls)
         with tempfile.TemporaryDirectory() as root:
             f = Fake(root)
@@ -141,6 +180,152 @@ class Tests(unittest.TestCase):
             f.poll()
             self.assertEqual('manual_config_required', f.state['status'])
             self.assertEqual([], f.calls)
+
+    def test_forward_schema_release(self):
+        with tempfile.TemporaryDirectory() as root:
+            f = SchemaFake(root)
+            api = f.poll()
+            api.assert_called_once_with('/git/trees/' + B + '?recursive=1')
+            self.assertEqual('deployed', f.state['status'])
+            self.assertEqual({'schema': 25}, f.state['current']['baseline'])
+            self.assertEqual(A, f.state['previous']['sha'])
+            self.assertIsNone(f.state['pending'])
+            self.assertIsNone(f.state['failed_sha'])
+            script = Path(root, 'releases', B, 'upgrade-database.mjs')
+            self.assertEqual(f.script_data, script.read_bytes())
+            self.assertEqual(0o600, script.stat().st_mode & 0o777)
+            self.assertEqual([(script, 1000, 1000)], [call.args for call in f.chown_calls])
+            self.assertNotIn(u.UPGRADE_SCRIPT, u.MOUNTS)
+            migration = ['docker', '--config', str(Path(root, 'docker-anonymous')), 'run', '--rm',
+                         '--network', 'online-shopping-gcp_private', '--read-only', '--cap-drop', 'ALL',
+                         '-v', str(script) + ':/app/scripts/upgrade-database.mjs:ro',
+                         '-v', str(f.secrets / 'postgres-owner-password') + ':/run/secrets/owner:ro',
+                         '--entrypoint', 'node', release(B)['backend'], '/app/scripts/upgrade-database.mjs']
+            self.assertEqual([[u.BACKUP_SCRIPT], [u.RESTORE_TEST_SCRIPT], 'pull', migration,
+                              ['docker', '--config', str(Path(root, 'docker-anonymous')), 'exec',
+                               'online-shopping-gcp-postgres-1', 'psql', '-U', 'online_shopping',
+                               '-d', 'online_shopping', '-Atc', 'select version from schema_meta'],
+                              ('activate', B), ('health', B)], f.calls)
+            count = len(f.calls)
+            f.poll()
+            self.assertEqual(count, len(f.calls))
+
+    def test_schema_backup_failures_leave_stack_untouched_and_do_not_retry(self):
+        for failure, output in [(u.BACKUP_SCRIPT, ''), (u.RESTORE_TEST_SCRIPT, ''),
+                                (None, 'online_shopping: tables live=1 restored=1\nonline_shopping: RESULT DIFFERENCES\nplatform: tables live=1 restored=1\nplatform: RESULT identical\n'),
+                                (None, ''), (None, 'online_shopping: tables live=1 restored=1\nonline_shopping: RESULT identical\nplatform: tables live=1 restored=1\n'),
+                                (None, 'online_shopping: tables live=1 restored=1\nonline_shopping: RESULT unknown\nplatform: tables live=1 restored=1\nplatform: RESULT identical\n')]:
+            with self.subTest(failure=failure, output=output), tempfile.TemporaryDirectory() as root:
+                f = SchemaFake(root)
+                f.command_failure, f.restore_output = failure, output
+                f.poll()
+                self.assertEqual('schema_backup_failed', f.state['status'])
+                self.assertEqual(B, f.state['failed_sha'])
+                self.assertNotIn('pull', f.calls)
+                self.assertFalse(Path(root, 'releases').exists())
+                count = len(f.calls)
+                f.poll()
+                self.assertEqual(count, len(f.calls))
+
+    def test_schema_script_blob_mismatch_or_missing_entry(self):
+        for invalid in ('hash', 'missing', 'mode'):
+            with self.subTest(invalid=invalid), tempfile.TemporaryDirectory() as root:
+                f = SchemaFake(root)
+                entry = next(e for e in f.entries if e['path'] == u.UPGRADE_SCRIPT)
+                if invalid == 'missing': f.entries.remove(entry)
+                elif invalid == 'hash': entry['sha'] = '0' * 40
+                else: entry['mode'] = '120000'
+                f.poll()
+                self.assertEqual('schema_migration_failed', f.state['status'])
+                self.assertEqual(B, f.state['failed_sha'])
+                self.assertIsNone(f.state['pending'])
+                self.assertNotIn('pull', f.calls)
+                self.assertFalse(Path(root, 'releases').exists())
+
+    def test_schema_trust_and_mcp_preflight_still_precede_migration(self):
+        for gate in ('head', 'ci', 'mcp'):
+            with self.subTest(gate=gate), tempfile.TemporaryDirectory() as root:
+                f = SchemaFake(root)
+                original_release = f.release
+                def candidate(*args):
+                    item = original_release(*args)
+                    item['mcp'] = {'fixture': True}
+                    return item
+                with patch.object(f, 'release', side_effect=candidate), \
+                        patch.object(f, 'head', side_effect=[B, A if gate == 'head' else B]), \
+                        patch.object(f, 'approved', side_effect=[True, gate != 'ci']), \
+                        patch.object(f, 'preflight_mcp', side_effect=RuntimeError('MANUAL_MAINTENANCE_REQUIRED')) as preflight:
+                    f.poll()
+                self.assertEqual('manual_maintenance_required' if gate == 'mcp' else 'trust_changed', f.state['status'])
+                self.assertEqual(1 if gate == 'mcp' else 0, preflight.call_count)
+                self.assertNotIn('migrated_schema', f.state)
+                self.assertFalse(any(isinstance(c, list) and 'run' in c for c in f.calls))
+
+    def test_schema_staging_failure_is_not_retried(self):
+        with tempfile.TemporaryDirectory() as root:
+            f = SchemaFake(root)
+            with patch.object(f, 'release', side_effect=RuntimeError('private diagnostics')):
+                f.poll()
+            self.assertEqual('schema_migration_failed', f.state['status'])
+            self.assertEqual(B, f.state['failed_sha'])
+            count = len(f.calls)
+            f.poll()
+            self.assertEqual(count, len(f.calls))
+
+    def test_schema_migration_failure_never_activates_or_retries(self):
+        for output, version, failure in [(' {"version":24}', '25', None), ('', '25', None),
+                                          ('not json', '25', None), ('{"version":25,"extra":1}', '25', None),
+                                          ('{"version":25}', '24', None), ('{"version":25}', '25', 'run'),
+                                          ('{"version":25}', '25', 'psql')]:
+            with self.subTest(output=output, version=version, failure=failure), tempfile.TemporaryDirectory() as root:
+                f = SchemaFake(root)
+                f.migration_output, f.database_version, f.command_failure = output, version, failure
+                f.poll()
+                self.assertEqual('schema_migration_failed', f.state['status'])
+                self.assertEqual(B, f.state['failed_sha'])
+                self.assertIsNone(f.state['pending'])
+                self.assertEqual(A, f.state['current']['sha'])
+                self.assertFalse(any(isinstance(c, tuple) for c in f.calls))
+                count = len(f.calls)
+                f.poll()
+                self.assertEqual(count, len(f.calls))
+                # Even another SHA cannot use the obsolete schema baseline after an uncertain migration.
+                f.remote = 'c' * 40
+                f.poll()
+                self.assertEqual(count, len(f.calls))
+
+    def test_schema_activation_or_health_failure_never_restores_old_images(self):
+        for phase in ('activate', 'health'):
+            with self.subTest(phase=phase), tempfile.TemporaryDirectory() as root:
+                f = SchemaFake(root)
+                with patch.object(f, phase, side_effect=RuntimeError('private diagnostics')), \
+                        patch.object(f, 'restore') as restore, patch.object(f, 'unpause') as unpause:
+                    with self.assertRaisesRegex(RuntimeError, '^Schema release failed$'): f.poll()
+                    restore.assert_not_called()
+                    unpause.assert_not_called()
+                self.assertEqual('schema_release_failed', f.state['status'])
+                self.assertEqual(25, f.state['migrated_schema'])
+                self.assertEqual(B, f.state['failed_sha'])
+                self.assertIsNone(f.state['pending'])
+                count = len(f.calls)
+                f.poll()
+                self.assertEqual(count, len(f.calls))
+
+    def test_schema_crash_fence_preserves_stack(self):
+        for pending in (None, dict(release(B), baseline={'schema': 25})):
+            with self.subTest(pending=pending), tempfile.TemporaryDirectory() as root:
+                f = Fake(root)
+                f.state.update(status='deploying' if pending else 'schema_migrating', pending=pending,
+                               migrated_schema=25, failed_sha=B)
+                f.poll()
+                self.assertEqual('schema_release_failed' if pending else 'schema_migration_failed', f.state['status'])
+                self.assertIsNone(f.state['pending'])
+                self.assertEqual([], f.calls)
+                f.state['current']['mcp'] = {'fixture': True}
+                with patch.object(f, 'supervisor') as supervisor:
+                    f.recover_codec()
+                    supervisor.assert_not_called()
+                self.assertEqual([], f.calls)
 
     def test_legacy_protected_changes_auto_activate(self):
         for path in ('package.json', 'src/app.js', 'Dockerfile'):
