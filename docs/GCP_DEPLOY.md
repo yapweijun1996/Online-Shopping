@@ -89,7 +89,7 @@ Automatic activation changes only backend/frontend immutable digest references w
 
 Changes to repository paths do not themselves block activation. The updater compares the candidate `SCHEMA_VERSION` with the deployed release's recorded schema; a difference stops before image pull with `manual_schema_release_required`. It does not migrate databases or detect independent platform-schema changes. Schema/init/Caddy and codec source files are Git-blob verified. Unchanged-schema updates retain the current release record, save pending intent before mutation, check the running digest and exact readiness revision through backend and frontend, and restore previous **application images only** on failure. A crash with pending intent restores the last accepted images on the next run. Failed SHAs are not retried automatically. A rollback failure preserves pending intent and needs operator investigation. Application writes are not undone.
 
-Host Compose and runtime changes still require operator installation; repository changes do not update those host files. The installed `deploy/gcp/update.py` controller does not update itself. To install a reviewed controller, with its source staged at `/root/reviewed-platform`, an operator must stop the timer and service, verify the existing local fingerprint and absence of pending recovery, preserve the controller and state, install the file and record its new local fingerprint. Run as root only after reviewing the source and operational state:
+Host Compose and runtime changes require an agent to install them; repository changes do not update those host files. The installed `deploy/gcp/update.py` controller does not update itself. To install a reviewed controller, with its source staged at `/root/reviewed-platform`, the agent stops the timer and service, verifies the existing local fingerprint and absence of pending recovery, preserves the controller and state, installs the file and records its new local fingerprint. Run as root only after reviewing the source and operational state:
 
 ```sh
 set -eu
@@ -98,11 +98,13 @@ S=/root/reviewed-platform
 systemctl stop online-shopping-update.timer
 systemctl stop online-shopping-update.service
 python3 - "$R" <<'PYCODE'
-import importlib.util, pathlib, sys
+import fcntl, importlib.util, pathlib, sys
 r = pathlib.Path(sys.argv[1])
+lock = open(r/'update.lock', 'a')
+fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
 spec = importlib.util.spec_from_file_location('gcp_update', r/'update.py')
 u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
-up = u.Updater(r)
+up = u.Updater(r, lock)
 assert up.state.get('current') and not up.state.get('pending')
 assert up.local_fingerprint() == up.state['local'], 'Investigate host configuration drift'
 up.health(up.state['current'])
@@ -111,11 +113,13 @@ BACKUP=$(mktemp -d "$R/controller-rollback.XXXXXXXX")
 cp -p "$R/update.py" "$R/state.json" "$BACKUP/"
 install -m 0600 "$S/deploy/gcp/update.py" "$R/update.py"
 python3 - "$R" <<'PYCODE'
-import importlib.util, pathlib, sys
+import fcntl, importlib.util, pathlib, sys
 r = pathlib.Path(sys.argv[1])
+lock = open(r/'update.lock', 'a')
+fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
 spec = importlib.util.spec_from_file_location('gcp_update', r/'update.py')
 u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
-up = u.Updater(r)
+up = u.Updater(r, lock)
 assert not up.state.get('pending')
 local = up.local_fingerprint()
 assert all(local.get(k) == v for k, v in up.state['local'].items() if k != 'update.py')
