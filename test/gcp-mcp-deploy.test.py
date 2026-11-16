@@ -84,7 +84,7 @@ class Tests(unittest.TestCase):
             entries=[dict(path=p,type='blob',mode='100644',sha=hashlib.sha1(b'blob '+str(len(b)).encode()+b'\0'+b).hexdigest()) for p,b in content.items()]
             with patch.object(u,'api',return_value=dict(sha=SHA,truncated=False,tree=entries)),patch.object(u,'request',side_effect=lambda url:content[url.split('/'+SHA+'/')[1]]):
                 baseline,actual=f.source(SHA)
-            self.assertEqual(34,baseline['schema']);self.assertEqual(content,actual)
+            self.assertEqual({'schema': 34},baseline);self.assertEqual(content,actual)
             with patch.object(u,'api',return_value=dict(tree=entries)),patch.object(u,'request',return_value=b'corrupt'):
                 with self.assertRaisesRegex(ValueError,'Source digest mismatch'): f.source(SHA)
 
@@ -114,8 +114,6 @@ class Tests(unittest.TestCase):
         self.assertEqual(2,overlay.count('create_host_path: false'))
         self.assertEqual(2,overlay.count('read_only: true'))
         self.assertIn('target: /run/mcp-control\n',overlay)
-        for path in ('src/mcp/deployment-profile.js','src/mcp/media-codec-client.js','media-codec/src/main.js','src/server.js'):
-            self.assertTrue(path.startswith(u.PROTECTED))
 
 class Supervisor:
     def __init__(self, calls, root): self.calls=calls; self.root=Path(root); self.ready=True; self.capacity=False

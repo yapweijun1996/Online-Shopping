@@ -25,7 +25,6 @@ CODEC_FILES = {'wireSha256': 'src/mcp/media-codec-wire.js', 'clientSha256': 'src
 MCP_FLAGS = ('MCP_V2_ENABLED', 'MCP_V2_MEDIA_ENABLED', 'MCP_V2_CATALOG_MEDIA_UPDATE_ENABLED', 'MCP_V2_CATALOG_MEDIA_CREATE_ENABLED')
 PROFILE = 'seller-operations-v1'
 IMAGE_ID = re.compile(r'sha256:[0-9a-f]{64}')
-PROTECTED = ('src/mcp/', 'media-codec/', 'src/request-origin.js', 'src/server.js', 'src/app.js', 'deploy/', '.github/workflows/', 'compose', 'Dockerfile', 'src/postgres/', 'src/platform/', 'src/config.js', 'package.json', 'package-lock.json')
 
 
 def revision(value):
@@ -140,7 +139,6 @@ class Updater:
         if tree.get('truncated') or not tree.get('tree'):
             raise ValueError('Incomplete source tree')
         entries = {e['path']: e for e in tree['tree'] if e['type'] == 'blob'}
-        protected = {p: [e['sha'], e['mode']] for p, e in entries.items() if p.startswith(PROTECTED)}
         if not all(p in entries and entries[p]['mode'] in ('100644', '100755') for p in (*MOUNTS, 'src/db.js', *CODEC_FILES.values())):
             raise ValueError('Invalid mounted source')
         content = {}
@@ -153,7 +151,7 @@ class Updater:
         match = re.search(rb'export const SCHEMA_VERSION = (\d+);', content['src/db.js'])
         if not match:
             raise ValueError('Missing schema version')
-        return {'protected': protected, 'schema': int(match[1])}, content
+        return {'schema': int(match[1])}, content
 
     def command(self, argv, timeout=180):
         # Output stays private, is never included in exceptions/logs and has a finite file cap.
@@ -647,8 +645,8 @@ class Updater:
             self.save('waiting_for_ci')
             return
         baseline, content = self.source(sha)
-        if baseline != previous['baseline']:
-            self.save('manual_release_required')
+        if baseline['schema'] != previous['baseline']['schema']:
+            self.save('manual_schema_release_required')
             return
         candidate = self.release(sha, baseline, content)
         if self.head() != sha or not self.approved(sha):

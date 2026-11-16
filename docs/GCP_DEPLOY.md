@@ -26,7 +26,7 @@ Backend memory is capped at 384 MiB with a 192 MiB V8 heap to leave native/TLS/d
 
 ## CI images
 
-The existing `Verify new MVP` workflow (`.github/workflows/verify.yml`, unchanged `push` and `pull_request` triggers) performs bounded Python deployment/controller checks, JavaScript syntax checks, production dependency audits, and the dedicated WhatsApp QR/media-codec checks. Its root application `npm test` step and PostgreSQL service are removed; full application regression tests run locally as needed and must be recorded separately. Successful GitHub verification therefore establishes only these CI checks, not a full application-suite pass. This does not relax exact-SHA main/verification/image checks or the protected-workflow manual release gate.
+The existing `Verify new MVP` workflow (`.github/workflows/verify.yml`, unchanged `push` and `pull_request` triggers) performs bounded Python deployment/controller checks, JavaScript syntax checks, production dependency audits, and the dedicated WhatsApp QR/media-codec checks. Its root application `npm test` step and PostgreSQL service are removed; full application regression tests run locally as needed and must be recorded separately. Successful GitHub verification therefore establishes only these CI checks, not a full application-suite pass. This does not relax exact-SHA main/verification/image checks or the shop-schema manual release gate.
 
 `.github/workflows/gcp-images.yml` runs only after a successful same-repository `push` of `main` through `Verify new MVP`. It checks out that exact tested SHA, builds `linux/amd64`, and publishes backend/frontend images with SHA tags and OCI revision labels. Actions are pinned to authoritative upstream Git refs checked during implementation. CI has only `contents: read` and `packages: write`; there are no VM credentials or VM builds.
 
@@ -87,15 +87,52 @@ The updater trusts the exact repository's main HEAD and **latest** successful co
 
 Automatic activation changes only backend/frontend immutable digest references with `compose up --no-deps --no-build`; it never restarts/replaces PostgreSQL, invokes migrations, restores backups, deletes data, prunes volumes, executes downloaded code, or updates its own controller. The host Compose and runtime env remain fixed outside release directories and their hashes must match initialized state.
 
-Any change under `deploy/`, `.github/workflows/`, `src/postgres/`, Compose files, Dockerfiles, `src/config.js`, dependency manifests, or `SCHEMA_VERSION` pauses automatic activation (`manual_release_required`). Tree fingerprints include file modes and capture additions/removals; the schema/init/Caddy files are also Git-blob verified. This intentionally favors a manual dependency/configuration release over silently changing host policy. Unchanged-schema application updates retain the current release record, save pending intent durably before mutation, check the running digest and exact readiness revision through backend and frontend, and restore previous **application images only** on failure. A crash with pending intent restores the last accepted application images on the next run. Failed SHAs are not retried automatically. A rollback failure preserves pending intent and needs operator investigation. Application writes are not undone.
+Changes to repository paths do not themselves block activation. The updater compares the candidate `SCHEMA_VERSION` with the deployed release's recorded schema; a difference stops before image pull with `manual_schema_release_required`. It does not migrate databases or detect independent platform-schema changes. Schema/init/Caddy and codec source files are Git-blob verified. Unchanged-schema updates retain the current release record, save pending intent before mutation, check the running digest and exact readiness revision through backend and frontend, and restore previous **application images only** on failure. A crash with pending intent restores the last accepted images on the next run. Failed SHAs are not retried automatically. A rollback failure preserves pending intent and needs operator investigation. Application writes are not undone.
 
-For a manual protected/schema/config/controller release: stop the timer, review the full policy/schema difference, take and **restore-test** a private database backup using a separately reviewed maintenance procedure, and explicitly plan compatible migration/rollback. Do not erase state or rerun initialization as a way to bypass a schema gate. This scoped updater deliberately has no force/migrate/prune option. After a verified manual release, an operator must explicitly install the reviewed controller/configuration and establish a new audited baseline; editing state requires privileged operational review. Do not assume an old image can safely run against a new schema.
+Host Compose and runtime changes still require operator installation; repository changes do not update those host files. The installed `deploy/gcp/update.py` controller does not update itself. To install a reviewed controller, with its source staged at `/root/reviewed-platform`, an operator must stop the timer and service, verify the existing local fingerprint and absence of pending recovery, preserve the controller and state, install the file and record its new local fingerprint. Run as root only after reviewing the source and operational state:
+
+```sh
+set -eu
+R=/opt/online-shopping-gcp
+S=/root/reviewed-platform
+systemctl stop online-shopping-update.timer
+systemctl stop online-shopping-update.service
+python3 - "$R" <<'PYCODE'
+import importlib.util, pathlib, sys
+r = pathlib.Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location('gcp_update', r/'update.py')
+u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
+up = u.Updater(r)
+assert up.state.get('current') and not up.state.get('pending')
+assert up.local_fingerprint() == up.state['local'], 'Investigate host configuration drift'
+up.health(up.state['current'])
+PYCODE
+BACKUP=$(mktemp -d "$R/controller-rollback.XXXXXXXX")
+cp -p "$R/update.py" "$R/state.json" "$BACKUP/"
+install -m 0600 "$S/deploy/gcp/update.py" "$R/update.py"
+python3 - "$R" <<'PYCODE'
+import importlib.util, pathlib, sys
+r = pathlib.Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location('gcp_update', r/'update.py')
+u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
+up = u.Updater(r)
+assert not up.state.get('pending')
+local = up.local_fingerprint()
+assert all(local.get(k) == v for k, v in up.state['local'].items() if k != 'update.py')
+assert set(local) == set(up.state['local'])
+up.health(up.state['current'])
+up.save(up.state['status'], local=local)
+PYCODE
+systemctl start online-shopping-update.timer
+```
+
+If a step fails, keep the timer stopped and investigate; preserve the rollback copies. For a schema release, stop the timer, review the schema and policy difference, take and **restore-test** a private database backup and plan compatible migration/rollback. Do not erase state or rerun initialization to bypass the schema gate. This updater has no force/migrate/prune option. After a verified manual schema or configuration release, establish an audited baseline. Do not assume an old image can safely run against a new schema.
 
 ## Operations and limitations
 
 Inspect status via `systemctl status online-shopping-update.timer`, `journalctl -u online-shopping-update.service`, and private `state.json`. Never publish `docker inspect`, rendered Compose config, runtime logs, DB dumps or secret contents. State records image digests and release metadata, not passwords. Application JSON logs are rotated at 2 × 5 MiB per service. Before every application image pull the updater requires at least 3 GiB free on the deployment filesystem; low space aborts before activation and leaves the current release running. This is a reserve guard, not a bound on image growth or protection from other writers. Check disk use frequently: this version deliberately performs **no image/release cleanup**, so a 20 GiB disk has a finite release capacity. Operators may remove only reviewed unused app images/releases while retaining current/previous/pending images; never prune DB volumes. Budget checks, encrypted off-host backups, alerts and disk cleanup are operational responsibilities and are not implemented by this image updater.
 
-Offline verification: `python3 test/gcp-deploy.test.py`; the new image publication workflow runs these tests before publishing each image. Tests cover latest CI scope/reruns, idempotency, failed readiness rollback and failed rollback intent, crash recovery, protected/schema/config gates, malicious path/revision/image/config inputs, secret-safe command failures, anonymous digest resolution, and Compose isolation. Live deployment and public TLS/route checks must be recorded by the operator separately.
+Offline verification: `python3 test/gcp-deploy.test.py`; the new image publication workflow runs these tests before publishing each image. Tests cover latest CI scope/reruns, idempotency, failed readiness rollback and failed rollback intent, crash recovery, schema and local configuration gates, malicious path/revision/image/config inputs, secret-safe command failures, anonymous digest resolution, and Compose isolation. Live deployment and public TLS/route checks must be recorded by the operator separately.
 
 Real local GCP edge verification (Docker context `orbstack`, no application images or production access):
 
@@ -207,7 +244,7 @@ PY
 docker compose -p online-shopping-gcp --env-file "$R/runtime.env" --env-file "$R/images.env" -f "$R/compose.yaml" up -d --no-deps --no-build backend frontend
 ```
 
-Keep the timer stopped after activation or rollback until acceptance and a new audited baseline. The following explicit baseline command is a privileged manual release, not an updater bypass: it requires the staged release to still be CI-approved main, compares every controller-managed mount to reviewed source, verifies readiness and saves the current protected/local fingerprints. Run only after the owner has completed MFA and the public acceptance checks above:
+Keep the timer stopped after activation or rollback until acceptance and a new audited baseline. The following explicit baseline command is a privileged manual release, not an updater bypass: it requires the staged release to still be CI-approved main, compares every controller-managed mount to reviewed source, verifies readiness and saves the current schema baseline and local fingerprints. Run only after the owner has completed MFA and the public acceptance checks above:
 
 ```sh
 python3 - /opt/online-shopping-gcp <<'PY'
@@ -232,11 +269,11 @@ PY
 systemctl start online-shopping-update.timer
 ```
 
-Do not erase state or rerun initialize. Platform schema/version/migrations are protected by `src/platform/`; MOUNTS is unchanged. Provisioning is additive, resumes interrupted creation, validates boundaries and never changes existing passwords or shop tables. Missing schema and v2 skip migration; both provision and check refuse v1. The automatic OrbStack version stays 1 and its unflagged runner never applies migration 002. Claim-off fresh databases remain v1; claim-on fresh databases initialize v2. Retain the old controller baseline and keep the timer stopped pending review.
+Do not erase state or rerun initialize. Platform schema/version/migrations require separate operator review; the updater does not gate platform-only schema changes. MOUNTS is unchanged. Provisioning is additive, resumes interrupted creation, validates boundaries and never changes existing passwords or shop tables. Missing schema and v2 skip migration; both provision and check refuse v1. The automatic OrbStack version stays 1 and its unflagged runner never applies migration 002. Claim-off fresh databases remain v1; claim-on fresh databases initialize v2. Retain the old controller baseline and keep the timer stopped pending review.
 
 ### Manual v1 migration and egress release
 
-`compose.gcp.yaml` is protected. With the updater timer stopped, manually install the reviewed policy as host `compose.yaml` and recreate backend to attach `egress`; do not change frontend or PostgreSQL policy. This is not an automatic image-only release.
+Changes to `compose.gcp.yaml` do not update host policy automatically. With the updater timer stopped, manually install the reviewed policy as host `compose.yaml` and recreate backend to attach `egress`; do not change frontend or PostgreSQL policy. This is not an automatic image-only release.
 
 For existing platform v1, stop backend traffic/workers, take a private cluster backup and restore-test it in isolated PostgreSQL 16 before proceeding. Keep backend stopped. Verify candidate image compatibility, release script provenance and `/app` working directory. With the same project/env/policy arguments used above, run a one-off backend with:
 
@@ -339,11 +376,11 @@ Evidence from the live deployment at https://demoonlineshopping.xyz (shop) and h
 - **Content:** shop name `Demo Mart Malaysia`, currency MYR; 14 AI-generated demonstration products (computers/IT and home & living, 3 photos each) were added with `scripts/seed-demo-shop.mjs` to the existing 35 sample products (49 total); a dry run preceded the real run and a second run created 0.
 - **Not accepted / UNVERIFIED:** physical-device PWA install, Safari/iOS behaviour, real WhatsApp Cloud API traffic (Meta credentials not yet entered), scheduled backups (none installed by owner decision; only the one-off pre-release backup exists), Cloud Logging delivery of the claim log line, behaviour under load on the 2 GB VM.
 
-Do not erase state or rerun initialize. Platform schema/version/migrations are protected by `src/platform/`; MOUNTS is unchanged. Provisioning is additive, resumes interrupted creation, validates boundaries and never changes existing passwords or shop tables. Its explicit `scripts/upgrade-platform.mjs --with-claim` invocation initializes/migrates platform to v2. The automatic OrbStack version stays 1 and its unflagged runner never applies migration 002. Claim-off fresh databases remain v1; claim-on fresh databases initialize v2, and existing v1 requires explicit upgrade. Retain the old controller baseline and keep the timer stopped pending review.
+Do not erase state or rerun initialize. Platform schema/version/migrations require separate operator review; the updater does not gate platform-only schema changes. MOUNTS is unchanged. Provisioning is additive, resumes interrupted creation, validates boundaries and never changes existing passwords or shop tables. Its explicit `scripts/upgrade-platform.mjs --with-claim` invocation initializes/migrates platform to v2. The automatic OrbStack version stays 1 and its unflagged runner never applies migration 002. Claim-off fresh databases remain v1; claim-on fresh databases initialize v2, and existing v1 requires explicit upgrade. Retain the old controller baseline and keep the timer stopped pending review.
 
 ## Seller MCP schema25 manual release
 
-Release requirements, not executed production evidence. GCP pauses protected changes; OrbStack instead automatically backs up and migrates eligible shop databases after a passing main release, even with MCP off. Required owner decision: **"merging = auto-migrate OrbStack production DB to schema 25; backups/rollback procedure"**. Stop its installed poller before merge if manual approval is intended. Image-only rollback cannot reverse committed schema25.
+Release requirements, not executed production evidence. GCP pauses changes to the shop schema version; OrbStack instead automatically backs up and migrates eligible shop databases after a passing main release, even with MCP off. Required owner decision: **"merging = auto-migrate OrbStack production DB to schema 25; backups/rollback procedure"**. Stop its installed poller before merge if manual approval is intended. Image-only rollback cannot reverse committed schema25.
 
 1. Stop `online-shopping-update.timer` and `online-shopping-update.service` before merge/deploy. Preserve private controller, units, runtime.env, images.env, compose.yaml, state.json and immutable current/previous digests. Never erase state or initialize again.
 2. Pin reviewed full main SHA and exact-SHA CI/images. Verify on supported Node24/PostgreSQL16. Inventory default and every ACTIVE/SUSPENDED/DELETING shop, roles/schema versions, platform version and collision names/aliases. Reject incomplete backup coverage; preserve the PostgreSQL volume.
@@ -355,7 +392,7 @@ Release requirements, not executed production evidence. GCP pauses protected cha
 8. Independently verify shop version25 and app-role OAuth table SELECT/INSERT/UPDATE/DELETE, ordinary readiness, owner login, product/orders and tenant lifecycle/aliases with MCP off. Do not change platform version without separate approval.
 9. Perform a privileged **Updater-class manual release**, not poll/initialize: load reviewed `update.py`, construct `Updater(root)`, require `head() == reviewed_sha` and `approved(reviewed_sha)`, obtain `baseline, content = source(reviewed_sha)` and `candidate = release(reviewed_sha, baseline, content)`. Recheck exact main/CI, then `activate(candidate)` (never `initial=True`) and `health(candidate)`. Keep ingress blocked. This activates backend/frontend without recreating PostgreSQL. Require frontend-proxied `/ready` exact revision and fictional checkout/seller/tenant smokes. Only after acceptance save the accepted candidate as current with no pending state and no schema24 previous-image recovery target: `save('deployed', current=candidate, previous=None, pending=None, local=local_fingerprint())`. Reopen only after acceptance. Failure requires schema25-compatible disabled images or coordinated restore, never schema24 images against schema25. Retain private old state for schema-aware rollback.
 10. Enabling: `compose.gcp.yaml` forwards `MCP_ENABLED` (default 0) and `MCP_REDIRECT_URIS` (default empty) to the backend; `deploy/gcp/update.py` accepts both runtime keys, requires 0/1, exact comma-separated `https://` callbacks without ports, userinfo, queries or IPs, and refuses `MCP_ENABLED=1` without callbacks. The seller host proxies `/mcp`, `/oauth/{register,authorize,token,revoke,consent.js,consent.css}` and `/.well-known/oauth-{protected-resource,authorization-server}[/...]` with `Cache-Control: no-store`; tenant variants `/<code>/mcp`, `/<code>/oauth/*`, `/<code>/.well-known/oauth-*` go through the tenant API route; `mcp` and `oauth` are reserved tenant codes at the edge. The shop host serves none of them (`scripts/qa-gcp-caddy-routing.mjs`, group "Seller MCP connector routes"). Vendor callbacks from official docs (2026-10-21): Claude `https://claude.ai/api/mcp/auth_callback` (claude.com/docs/connectors/building/authentication), ChatGPT `https://chatgpt.com/connector_platform_oauth_redirect` (developers.openai.com/apps-sdk/build/auth). Both vendors call server-to-server, so `MCP_BROWSER_ORIGINS` is not forwarded.
-11. After accepted manual release, use the Updater-class baseline procedure above to verify CI-approved main, source mounts, runtime, health and protected/local fingerprints, then save the new baseline and restart the timer. Keep schema24 previous images ineligible for image-only recovery. Schedule per-shop lifecycle cleanup, dormant audit retention and resource monitoring. Installed-controller identity, production migration/restore and vendor acceptance remain unverified here.
+11. After accepted manual release, use the Updater-class baseline procedure above to verify CI-approved main, source mounts, runtime, health and schema baseline and local fingerprints, then save the new baseline and restart the timer. Keep schema24 previous images ineligible for image-only recovery. Schedule per-shop lifecycle cleanup, dormant audit retention and resource monitoring. Installed-controller identity, production migration/restore and vendor acceptance remain unverified here.
 
 ## GCP release record (2026-10-21, schema 25 → 27)
 
@@ -506,8 +543,8 @@ and `AI_ENABLED=1` in `runtime.env` (the updater refuses a missing or placeholde
 
 ### Source-only manual release (2026-10-22, `src/platform/` change, no schema or configuration change)
 
-`src/platform/` is a protected path, so a change there (here: SuperAdmin resets the default shop Owner, `c9218ee`) leaves
-the Updater in `manual_release_required` although CI is green. With no schema, compose or runtime change the release is
+At the time, a `src/platform/` change (SuperAdmin resets the default shop Owner, `c9218ee`) left
+the then-installed updater in `manual_release_required` although CI was green. The current controller does not gate paths. With no schema, compose or runtime change the release is
 light: stop the timer, take a `pg_dumpall` backup (sanity-checked for size), `release.py stage` (re-checks that `main` is
 the requested commit and CI-approved, pulls the CI-built image digests), `release.py activate` (Updater `activate` and
 `health`; on failure it re-activates the previous release and returns to `manual_release_required`), then

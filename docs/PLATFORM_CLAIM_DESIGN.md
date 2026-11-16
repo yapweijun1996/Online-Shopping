@@ -43,7 +43,7 @@ Source overrides historical proposals. Recorded production counts are historical
 | Packaging/static | `src/static.js:20-59`; `Dockerfile.backend:6-8`; `Dockerfile.frontend:3-4` | Node static can expose public files; frontend contains public tree, backend only two shared public modules. Setup must not have bypassable static aliases. |
 | Collision | `src/platform/tenant-code.js:5-13` | `setup` is valid today; opt-in needs tenant/alias collision check and conditional reservation. |
 | OrbStack updater | `docs/AUTO_DEPLOY.md:11-25`; `deploy/auto-update.py:21-25,250-259,323-358` | Configured platform upgrades automatic with drained maintenance/verified backup/restore. Platform schema is not a protected tunnel/init file. Controller installation separate. |
-| GCP updater | `docs/GCP_DEPLOY.md:43-55`; `deploy/gcp/update.py:21-22,130-149,239-261,277-298` | Image-only, four runtime keys, manual config release. Platform schema/version/migrations not currently fingerprint-protected: fix before activation. |
+| GCP updater | `docs/GCP_DEPLOY.md:43-55`; `deploy/gcp/update.py:21-22,130-149,239-261,277-298` | Image-only, four runtime keys, manual config release. Platform schema/version/migrations are not covered by the shop-schema gate; review separately before activation. |
 | Setup portability | `deploy/setup-platform.py:12-17,26-43,48-71` | OrbStack context/container defaults; 0600 setup inputs; creates missing objects/validates flags. Not directly Linux-ready. |
 | Cloud log gap | `compose.gcp.yaml:21-23,59,83`; `docs/GCP_DEPLOY.md:55` | Rotated Docker json-file, not Cloud Logging transport. Cloud-viewer delivery UNVERIFIED. |
 
@@ -269,7 +269,7 @@ Known-wrong/unknown/malformed/locked identifiers same generic failure and one re
 
 OrbStack claim absent/Compose/secrets/tunnel unchanged. The automatic candidate version remains 1, so a running v1 platform does not request a claim migration or claim-related maintenance. Unflagged upgrade-platform targets v1, never 002. Previous v1-only image expectations remain intact until a separately authorized opt-in. Once an operator explicitly upgrades to v2, old v1-only images are incompatible; require a restore-tested manual release/rollback plan before that mutation.
 
-GCP add platform schema/version-bearing platform-db.js/migration runner/directory to fingerprint/manual policy first. Currently outside protected tuple, so platform-only incompatible image might auto-deploy while default ready passes. Keep image-only controller; manual drained restore-tested multi-DB migration/audited baseline. No initialize rerun/state erase/imaginary force-migrate. Gate even unchanged main SCHEMA_VERSION.
+GCP platform-only incompatible images may auto-deploy while default ready passes: the updater gates only the shop schema version. Stop the timer and review platform migrations separately. Keep image-only controller; manual drained restore-tested multi-DB migration/audited baseline. No initialize rerun/state erase/imaginary force-migrate. Do not rely on unchanged shop SCHEMA_VERSION as evidence of platform compatibility.
 
 ## 5. Threat model and recovery
 

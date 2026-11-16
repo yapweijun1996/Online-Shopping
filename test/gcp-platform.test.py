@@ -334,7 +334,6 @@ setTimeout(() => console.log(JSON.stringify({ output, attempts })), 20);
             self.assertNotIn('volumes', service)
             self.assertEqual({'NODE_ENV', 'NODE_OPTIONS', 'WHATSAPP_QR_BACKEND_URL', 'WHATSAPP_QR_TOKEN_FILE'}, set(service['environment']))
         self.assertEqual(workers['whatsapp-qr']['image'], workers['whatsapp-qr-slot1']['image'])
-        self.assertIn('src/platform/',e.load_updater().PROTECTED)
         self.assertEqual(['database_password', 'database_owner_password'], compose['services']['postgres']['secrets'])
         self.assertEqual(['private', 'egress'], backend['networks'])
         self.assertEqual(['private'], compose['services']['postgres']['networks'])
