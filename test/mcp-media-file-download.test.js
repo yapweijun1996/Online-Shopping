@@ -60,8 +60,8 @@ test('supported source bytes are preserved and hashed independently of declared 
     assert.deepEqual(result.bytes,body); assert.equal(result.mime,mime);
     assert.equal(result.sourceSha256,createHash('sha256').update(body).digest('hex'));
   }
-  await assert.rejects(fixture().download({...file,mime_type:'image/jpeg'}),{status:400});
-  await assert.rejects(fixture({body:Buffer.from('not an image')}).download(file),{status:400});
+  await assert.rejects(fixture().download({...file,mime_type:'image/jpeg'}),{status:400,code:'MEDIA_FILE_MIME'});
+  await assert.rejects(fixture({body:Buffer.from('not an image')}).download(file),{status:400,code:'MEDIA_FILE_CONTENT'});
 });
 
 test('optional generic MIME and empty filename do not reject a valid image file reference', async () => {

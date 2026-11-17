@@ -7,6 +7,8 @@ import { png } from './helpers/mcp-media-coordinator-fixture.js';
 import { mediaHash } from '../src/mcp/media-policy.js';
 import { addGalleryImage } from '../src/products.js';
 import { valid } from '../src/mcp/tools.js';
+import { createProtocol } from '../src/mcp/protocol.js';
+import { ApiError } from '../src/http.js';
 
 const file = { download_url: 'https://files.oaiusercontent.com/synthetic-test', file_id: 'synthetic-file' };
 const argumentsFor = async (f, key = 'synthetic-file-upload-01') => {
@@ -57,6 +59,56 @@ mediaTest('current authorization, foreign product and stale revision fail before
   await f.store.run("DELETE FROM mcp_v2_scope_consent WHERE grant_id=? AND scope='media.write'", f.grantId);
   await assert.rejects(registered.call('media.upload_file', args, f.bearer), { status: 403 });
   assert.equal(downloads, 0);
+});
+
+mediaTest('file RPC identifies invalid fields and unsupported source hosts without exposing file capabilities', async t => {
+  const f = await mediaToolsFixture(t, dialect);
+  const args = await argumentsFor(f);
+  for (const [field, value] of [['file', 'file-private'], ['productId', 'not-a-uuid'],
+    ['expectedRevision', 'private-revision'], ['idempotencyKey', 'short']]) {
+    const response = await f.tool('media.upload_file', { ...args, [field]: value });
+    assert.equal(response.data.error.code, -32602);
+    assert.match(response.data.error.message, new RegExp('argument: ' + field.replace('.', '\\.') + '\\.'));
+    assert.doesNotMatch(response.data.error.message, /file-private|not-a-uuid|private-revision|short/);
+  }
+  const nested = await f.tool('media.upload_file', { ...args, file: { ...file, mime_type: 'private-mime' } });
+  assert.match(nested.data.error.message, /argument: file\.mime_type\./);
+  const source = await f.tool('media.upload_file', { ...args, file: {
+    ...file, download_url: 'https://unsupported.example.test/private-file?signature=private-secret',
+  } });
+  assert.equal(source.data.error.code, -32602);
+  assert.equal(source.data.error.message, 'Unsupported image download host: unsupported.example.test. Use media.prepare_upload with the actual image bytes.');
+  assert.doesNotMatch(JSON.stringify(source.data), /private-file|signature|private-secret/);
+  await f.store.run("DELETE FROM mcp_v2_scope_consent WHERE grant_id=? AND scope='media.write'", f.grantId);
+  assert.equal((await f.tool('media.upload_file', args)).response.status, 403);
+  assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_media_stage')).n, 0);
+});
+
+mediaTest('file RPC exposes only known error reasons and preserves other tool errors', async t => {
+  const f = await mediaToolsFixture(t, dialect), args = await argumentsFor(f);
+  const registered = tools(f, async () => ({ bytes: png, mime: 'image/png' }));
+  let failure = new ApiError(400, 'MEDIA_FILE_CONTENT', 'https://private.test/file?signature=secret');
+  const protocol = createProtocol({ store: f.store, config: f.config, binding: { ...f.binding, mcpV2: f.config.mcpV2 }, limit: async () => {},
+    operationTools: { ...registered, call: async () => { throw failure; } } });
+  const invoke = async (name = 'media.upload_file', input = args) => (await protocol(new Request(f.binding.resource, {
+    method: 'POST', headers: { authorization: 'Bearer ' + f.bearer, 'content-type': 'application/json',
+      accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: input } }),
+  }), 'synthetic-error-test')).json();
+  for (const [code, message] of [
+    ['MEDIA_FILE_CONTENT', 'Downloaded file is not a supported PNG, JPEG or WebP image.'],
+    ['MEDIA_FILE_MIME', 'File MIME hint does not match the downloaded image bytes.'],
+    ['MEDIA_FILE_INPUT', 'Invalid media file reference. The host must supply a supported HTTPS download descriptor.'],
+    ['MEDIA_FILE_INVALID', 'Downloaded image exceeds the supported size or format limits.'],
+    ['UNKNOWN_PRIVATE', 'Invalid params'], ['__proto__', 'Invalid params'],
+  ]) {
+    failure.code = code;
+    assert.deepEqual((await invoke()).error, { code: -32602, message });
+  }
+  failure.code = 'MEDIA_FILE_SOURCE'; failure.sourceHost = 'private.test/path?signature=secret';
+  assert.equal((await invoke()).error.message, 'Unsupported image download host. Use media.prepare_upload with the actual image bytes.');
+  failure.code = 'MEDIA_FILE_CONTENT';
+  assert.deepEqual((await invoke('media.list', { productId: args.productId })).error, { code: -32602, message: 'Invalid params' });
 });
 
 mediaTest('generic optional file metadata is accepted by discovery schema and the upload pipeline', async t => {

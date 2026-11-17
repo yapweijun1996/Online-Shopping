@@ -8,7 +8,7 @@ import { MEDIA_FILE_MIME_TYPES, mediaFileMimeHint } from './media-contracts.js';
 const MAX_BYTES = 524288;
 const DEADLINE_MS = 10000;
 let activeDownloads = 0;
-const invalid = () => new ApiError(400, 'MEDIA_FILE_INPUT', 'Invalid media file reference.');
+const invalid = (code = 'MEDIA_FILE_INPUT') => new ApiError(400, code, 'Invalid media file reference.');
 const unavailable = () => new ApiError(503, 'MEDIA_FILE_UNAVAILABLE', 'Media file could not be read safely.');
 
 // Source capabilities are untrusted inputs, never seller or product authority.
@@ -16,8 +16,14 @@ export function validateMediaFileUrl(value) {
   if (typeof value !== 'string' || value.length > 4096 || /[\s\\#]/.test(value)) throw invalid();
   let url;
   try { url = new URL(value); } catch { throw invalid(); }
-  if (url.protocol !== 'https:' || url.hostname !== 'files.oaiusercontent.com' ||
+  if (url.protocol !== 'https:' ||
       url.username || url.password || url.hash || (url.port && url.port !== '443')) throw invalid();
+  if (url.hostname !== 'files.oaiusercontent.com') {
+    const error = invalid('MEDIA_FILE_SOURCE');
+    // Only the public source hostname is diagnostic; never retain a signed URL.
+    error.sourceHost = /^[a-z0-9.-]{1,253}$/.test(url.hostname) ? url.hostname : null;
+    throw error;
+  }
   return url;
 }
 
@@ -47,7 +53,7 @@ function sniff(bytes) {
   if (bytes.length >= 8 && bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) return 'image/png';
   if (bytes.length >= 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) return 'image/jpeg';
   if (bytes.length >= 12 && bytes.toString('ascii',0,4) === 'RIFF' && bytes.toString('ascii',8,12) === 'WEBP') return 'image/webp';
-  throw invalid();
+  throw invalid('MEDIA_FILE_CONTENT');
 }
 
 function makeDownloader(resolve, request, timeoutMs) {
@@ -101,7 +107,7 @@ function makeDownloader(resolve, request, timeoutMs) {
         });
         const mime = sniff(bytes);
         const hint = mediaFileMimeHint(file.mime_type);
-        if (hint !== undefined && hint !== mime) throw invalid();
+        if (hint !== undefined && hint !== mime) throw invalid('MEDIA_FILE_MIME');
         return { bytes, mime, sourceSha256: createHash('sha256').update(bytes).digest('hex') };
       })();
       return await Promise.race([work,timedOut]);

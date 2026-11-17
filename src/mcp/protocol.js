@@ -4,6 +4,7 @@ import { audit, hash, liveGrant, stamp, SCOPES, V2_SCOPES } from './credentials.
 import { callTool, catalogue, error, valid } from './tools.js';
 import { fail } from './oauth.js';
 import { parseJson } from './json.js';
+import { mediaFileInput } from './media-contracts.js';
 
 export const REVISION = '2025-06-18';
 const rpcError = (id, code, message) => json(200, { jsonrpc: '2.0', id, error: { code, message } });
@@ -12,6 +13,38 @@ const content = (dto) => ({ content: [{ type: 'text', text: JSON.stringify(dto) 
 const envelope = body => Boolean(body && !Array.isArray(body) && typeof body === 'object' && body.jsonrpc === '2.0' &&
   typeof body.method === 'string' && body.method.length <= 128 && Object.keys(body).every(key => ['jsonrpc','id','method','params'].includes(key)) &&
   (!Object.hasOwn(body,'id') || Number.isSafeInteger(body.id) || (typeof body.id === 'string' && body.id.length <= 64)));
+
+// Describe only fixed schema fields and allow-listed reasons. Never reflect
+// arguments, file IDs, filenames, signed URLs or arbitrary exception messages.
+function mediaFileArgumentMessage(args) {
+  if (args && typeof args === 'object' && !Array.isArray(args)) {
+    for (const [field, schema] of Object.entries(mediaFileInput.properties)) {
+      if (valid(args[field], schema)) continue;
+      if (field === 'file' && args.file && typeof args.file === 'object' && !Array.isArray(args.file)) {
+        for (const [child, childSchema] of Object.entries(schema.properties)) {
+          if ((Object.hasOwn(args.file, child) || schema.required.includes(child)) && !valid(args.file[child], childSchema)) {
+            return `Invalid media.upload_file argument: file.${child}. Check the discovered tool schema.`;
+          }
+        }
+      }
+      return `Invalid media.upload_file argument: ${field}. Check the discovered tool schema.`;
+    }
+  }
+  return 'Invalid media.upload_file arguments. Check the discovered tool schema.';
+}
+function mediaFileFailureMessage(error) {
+  if (error.code === 'MEDIA_FILE_SOURCE') {
+    const host = typeof error.sourceHost === 'string' && /^[a-z0-9.-]{1,253}$/.test(error.sourceHost) ? ': ' + error.sourceHost : '';
+    return `Unsupported image download host${host}. Use media.prepare_upload with the actual image bytes.`;
+  }
+  const messages = {
+    MEDIA_FILE_INPUT: 'Invalid media file reference. The host must supply a supported HTTPS download descriptor.',
+    MEDIA_FILE_CONTENT: 'Downloaded file is not a supported PNG, JPEG or WebP image.',
+    MEDIA_FILE_MIME: 'File MIME hint does not match the downloaded image bytes.',
+    MEDIA_FILE_INVALID: 'Downloaded image exceeds the supported size or format limits.',
+  };
+  return Object.hasOwn(messages, error.code) ? messages[error.code] : 'Invalid params';
+}
 export function createProtocol({ store, config, binding, limit, operationTools = null, afterOperation = null }) {
   const discovery = `${config.sellerOrigin}/.well-known/oauth-protected-resource${config.basePath || ''}/mcp`;
   const knownScopes = new Set([...SCOPES, ...V2_SCOPES]);
@@ -72,8 +105,9 @@ export function createProtocol({ store, config, binding, limit, operationTools =
     if (extension) {
       if (!Object.hasOwn(body, 'id')) return new Response(null, { status: 202, headers: { 'Cache-Control': 'no-store' } });
       const args = body.params;
-      if (!args || typeof args !== 'object' || Array.isArray(args) || Object.keys(args).some(key => !['name', 'arguments'].includes(key)) ||
-          !valid(args.arguments ?? {}, extension.inputSchema)) return rpcError(body.id, -32602, 'Invalid params');
+      if (!args || typeof args !== 'object' || Array.isArray(args) || Object.keys(args).some(key => !['name', 'arguments'].includes(key))) return rpcError(body.id, -32602, 'Invalid params');
+      if (!valid(args.arguments ?? {}, extension.inputSchema)) return rpcError(body.id, -32602,
+        extension.name === 'media.upload_file' ? mediaFileArgumentMessage(args.arguments) : 'Invalid params');
       const required = requiredScopes(extension);
       if (!required.every(scope => initial.grant.allowed.includes(scope) && initial.token.scopes.split(' ').includes(scope))) {
         fail('insufficient_scope', 403, { 'WWW-Authenticate': `Bearer error="insufficient_scope", scope="${required.join(' ')}"` });
@@ -85,7 +119,8 @@ export function createProtocol({ store, config, binding, limit, operationTools =
         return new Response(encoded, { headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
       } catch (e) {
         if (e instanceof ApiError && e.status === 403) fail('access_denied', 403);
-        if (e instanceof ApiError && e.status === 400) return rpcError(body.id, -32602, 'Invalid params');
+        if (e instanceof ApiError && e.status === 400) return rpcError(body.id, -32602,
+          extension.name === 'media.upload_file' ? mediaFileFailureMessage(e) : 'Invalid params');
         if (e instanceof ApiError && e.status === 409) return rpcError(body.id, -32009, 'Operation conflict');
         if (e instanceof ApiError && [429, 503].includes(e.status)) fail('temporarily_unavailable', e.status);
         return rpcError(body.id, -32603, 'Internal error');

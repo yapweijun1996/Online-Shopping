@@ -51,7 +51,12 @@ ten-second total deadline covers DNS and streaming, the streamed source is
 limited to 512 KiB, and four process-wide download permits bound buffering
 before stage quota is acquired. Errors disclose no source URL. The source-origin
 restriction is a deliberately narrow compatibility boundary; real ChatGPT file
-hosts outside it fail closed and require separate source verification.
+hosts outside it fail closed and require separate source verification. File-upload
+RPC failures identify fixed schema field names and allow-listed failure reasons.
+An unsupported, otherwise valid HTTPS source may return only its bounded ASCII
+hostname to the authenticated caller to diagnose host compatibility. Paths, query
+signatures, file IDs/names and arbitrary exception messages are never reflected;
+source checks still run after current media authorization and target preflight.
 
 The server calculates source size and SHA-256 from downloaded bytes, then uses
 the existing stage quota, exact-offset chunks, full-source hash validation and

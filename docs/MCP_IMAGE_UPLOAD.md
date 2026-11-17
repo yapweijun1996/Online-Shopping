@@ -13,6 +13,15 @@ ChatGPT's supported file descriptor is declared by
 `download_url` and `file_id`; `mime_type` and `file_name` are optional but declared
 in the schema. See the [OpenAI file-input reference](https://developers.openai.com/plugins/reference#define-file-inputs).
 
+The client-facing tool wrapper and the MCP server have different file inputs.
+When the client exposes `file: string` with an instruction to supply an absolute
+local file path, pass the actual image path accessible to that client. Its file
+bridge must upload/resolve the file and send the descriptor object above to the
+server. A bare `file_...` ID does not satisfy that path contract. Neither a bare
+ID nor a raw local path satisfies the server's object schema. Follow the actual
+client tool definition; do not invent a path or a download URL. A valid local
+image alone does not prove that the host bridge completed the transfer.
+
 The current upload accepts omitted/empty MIME hints and
 `application/octet-stream` as unspecified. It detects the actual image MIME from
 bytes and then decodes the image through the native codec. An empty optional
@@ -42,7 +51,10 @@ vendor-account handoff must be tested in that client.
 4. The client resolves the SKU with `catalog.list`/`catalog.get`, reads
    `media.list`, then calls `media.upload_file` with `productId`, `targetSlot`
    (`MAIN` or `GALLERY`), `expectedRevision`, a new `idempotencyKey`, and the
-   actual host-provided `file` object. It must not submit a local filesystem path.
+   file input required by the client wrapper. For a wrapper that requests an
+   absolute path, use the real image path in that client's environment; the host
+   bridge supplies the `file` descriptor object on the MCP wire. Direct MCP
+   callers must provide that descriptor, not a filesystem path or bare file ID.
 5. Open the returned `reviewUrl`, sign in to the same shop, review the exact
    before/after images, and approve with the required seller credentials. Until
    this step, the proposed image has not replaced a product photo.
@@ -74,6 +86,10 @@ metadata compatibility fix.
 | Symptom | Check |
 | --- | --- |
 | Upload tool absent | Media runtime/profile enabled, current role, fresh `media.write` consent, intended shop connection and refreshed client tool discovery. |
+| `Invalid media.upload_file argument: …` | Check the named field against the current tool definition. A path-based wrapper needs a real absolute image path, not `file_...`; the server needs the transformed descriptor. No submitted values are echoed. |
+| Unsupported image download host | The file bridge supplied a source outside the verified allowlist. The error names only the hostname, never its path or signature. Use exact-byte chunk upload, or investigate the source before adding a narrowly verified origin. Changing the local filename or file ID cannot fix a rejected download host. |
+| Downloaded file format or MIME mismatch | The returned bytes are not a supported image, or disagree with an explicit MIME hint. Verify the actual downloaded bytes; a valid source file alone does not establish a valid transfer. |
+| `INVALID_ARGUMENT` / `Invalid params` | Older servers and other input failures may return a generic error. A valid local path does not prove bridge/download compatibility; do not identify the failing field from this error alone. |
 | Invalid file reference | Real host-provided descriptor, supported source hostname, no local path/redirect, supported metadata and actual image bytes. |
 | Source unavailable | Temporary URL expiry, DNS/network failure, source above 512 KiB, or deadline; a file ID alone cannot refresh a URL server-side. |
 | Revision conflict | Product/gallery/variant relationship changed; fetch current media state before preparing a new upload. |
