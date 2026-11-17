@@ -64,6 +64,23 @@ test('supported source bytes are preserved and hashed independently of declared 
   await assert.rejects(fixture({body:Buffer.from('not an image')}).download(file),{status:400});
 });
 
+test('optional generic MIME and empty filename do not reject a valid image file reference', async () => {
+  for (const mime_type of ['', 'application/octet-stream']) {
+    const f = fixture();
+    const result = await f.download({ ...file, mime_type, file_name: '' });
+    assert.equal(result.mime, 'image/png');
+    assert.deepEqual(result.bytes, png);
+    assert.equal(f.calls.length, 1);
+  }
+  await assert.rejects(fixture({ body: Buffer.from('<html>not an image</html>') })
+    .download({ ...file, mime_type: 'application/octet-stream' }), { status: 400 });
+  for (const mime_type of [null, 'text/plain', 'image/gif']) {
+    const f = fixture();
+    await assert.rejects(f.download({ ...file, mime_type }), { status: 400 });
+    assert.equal(f.calls.length, 0);
+  }
+});
+
 test('redirects, compression, incomplete and oversized responses fail without URL disclosure', async () => {
   for (const options of [{status:302,headers:{location:'http://127.0.0.1'}},{headers:{'content-encoding':'gzip'}},
     {headers:{'content-length':'524289'}},{headers:{'content-length':'9x'}},{headers:{'content-length':'10'}},

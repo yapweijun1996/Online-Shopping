@@ -1,6 +1,7 @@
 import { ApiError } from '../http.js';
 import { mediaHash } from './media-policy.js';
 import { MEDIA_LIMITS } from './media-schema.js';
+import { mediaFileMimeHint } from './media-contracts.js';
 
 const conflict = () => { throw new ApiError(409, 'MEDIA_RESOURCE_CHANGED', 'Media upload cannot be resumed.'); };
 
@@ -10,9 +11,10 @@ export async function uploadMediaFile({ args, bearer, coordinator, prepare, down
   const { productId, targetSlot, expectedRevision, idempotencyKey, file } = args;
   await coordinator.preflight(bearer, { productId, targetSlot, expectedRevision });
   const downloaded = await downloadFile(file);
+  const hint = mediaFileMimeHint(file.mime_type);
   if (!(downloaded?.bytes instanceof Uint8Array) || downloaded.bytes.byteLength < 1 ||
       downloaded.bytes.byteLength > MEDIA_LIMITS.sourceBytes || !['image/jpeg','image/png','image/webp'].includes(downloaded.mime) ||
-      (file.mime_type !== undefined && file.mime_type !== downloaded.mime)) {
+      (hint !== undefined && hint !== downloaded.mime)) {
     throw new ApiError(400, 'MEDIA_FILE_INVALID', 'Invalid image file.');
   }
   const bytes = Buffer.from(downloaded.bytes), sourceSha256 = mediaHash(bytes);

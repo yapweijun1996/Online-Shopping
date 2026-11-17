@@ -6,6 +6,7 @@ import { mediaToolsFixture } from './helpers/mcp-media-tools-fixture.js';
 import { png } from './helpers/mcp-media-coordinator-fixture.js';
 import { mediaHash } from '../src/mcp/media-policy.js';
 import { addGalleryImage } from '../src/products.js';
+import { valid } from '../src/mcp/tools.js';
 
 const file = { download_url: 'https://files.oaiusercontent.com/synthetic-test', file_id: 'synthetic-file' };
 const argumentsFor = async (f, key = 'synthetic-file-upload-01') => {
@@ -56,6 +57,33 @@ mediaTest('current authorization, foreign product and stale revision fail before
   await f.store.run("DELETE FROM mcp_v2_scope_consent WHERE grant_id=? AND scope='media.write'", f.grantId);
   await assert.rejects(registered.call('media.upload_file', args, f.bearer), { status: 403 });
   assert.equal(downloads, 0);
+});
+
+mediaTest('generic optional file metadata is accepted by discovery schema and the upload pipeline', async t => {
+  const f = await mediaToolsFixture(t, dialect);
+  const registered = tools(f, async () => ({ bytes: png, mime: 'image/png' }));
+  const args = await argumentsFor(f, 'synthetic-generic-metadata-01');
+  await assert.rejects(registered.call('media.upload_file', {
+    ...args, file: { ...file, mime_type: 'image/jpeg' },
+  }, f.bearer), { status: 400 });
+  assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_media_stage')).n, 0);
+  const metadata = [{ file_name: '' }, { mime_type: '' }, { mime_type: 'application/octet-stream', file_name: 'photo.png' }];
+  for (const [index, fields] of metadata.entries()) {
+    const input = { ...args, idempotencyKey: args.idempotencyKey + index,
+      file: { ...file, ...fields } };
+    assert.equal(valid(input, registered.find('media.upload_file').inputSchema), true);
+    const operation = await registered.call('media.upload_file', input, f.bearer);
+    assert.equal(operation.status, 'PENDING_APPROVAL');
+    const stage = await f.store.get('SELECT source_mime FROM mcp_v2_media_stage WHERE operation_id=?', operation.operationId);
+    assert.equal(stage.source_mime, 'image/png');
+    await f.approve(operation);
+    const committed = await f.tool('media.commit_upload', { operationId: operation.operationId });
+    assert.equal(committed.data.result.structuredContent.status, 'COMMITTED');
+    const product = await f.store.get('SELECT image_mime,image_data FROM product WHERE id=?', args.productId);
+    assert.equal(product.image_mime, 'image/png');
+    assert.deepEqual(Buffer.from(product.image_data), png);
+    args.expectedRevision = (await f.input()).expectedRevision;
+  }
 });
 
 mediaTest('revocation during download cannot create a stage and production forbids injection', async t => {

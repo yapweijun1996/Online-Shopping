@@ -94,18 +94,20 @@
               },
               "mime_type": {
                 "type": "string",
-                "minLength": 9,
-                "maxLength": 10,
+                "minLength": 0,
+                "maxLength": 24,
                 "enum": [
                   "image/png",
                   "image/jpeg",
-                  "image/webp"
+                  "image/webp",
+                  "",
+                  "application/octet-stream"
                 ]
               },
               "file_name": {
                 "type": "string",
-                "minLength": 1,
-                "maxLength": 255
+                "minLength": 0,
+                "maxLength": 256
               }
             },
             "required": [

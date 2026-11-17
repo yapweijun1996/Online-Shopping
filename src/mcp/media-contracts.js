@@ -9,6 +9,11 @@ const key = text(16,128,'^[A-Za-z0-9._~-]+$'), instant = text(24,24);
 const imageId = { anyOf: [constant('main'),mediaUuidSchema] };
 const role = { type: 'string', minLength: 6, maxLength: 7, enum: ['single','holder','variant'] };
 const mime = { type: 'string', minLength: 9, maxLength: 10, enum: ['image/png','image/jpeg','image/webp'] };
+export const MEDIA_FILE_MIME_TYPES = Object.freeze(['image/png','image/jpeg','image/webp','','application/octet-stream']);
+// File-host metadata may be absent or generic. Only validated bytes select the stored image MIME.
+export function mediaFileMimeHint(value) {
+  return value === '' || value === 'application/octet-stream' ? undefined : value;
+}
 export const mediaListInput = object({ productId: mediaUuidSchema, limit: integer(1,25), offset: integer(0,300) }, ['productId']);
 export const mediaListOutput = object({ productId: mediaUuidSchema, revision: mediaRevisionSchema, membersTotal: integer(1,300),
   items: { type: 'array', minItems: 0, maxItems: 25, items: object({ productId: mediaUuidSchema, listingId: mediaUuidSchema,
@@ -38,7 +43,9 @@ export const mediaStageOutput = object({ action: { type: 'string', minLength: 4,
 export const mediaFileInput = object({ productId: mediaUuidSchema,
   targetSlot: { type: 'string', minLength: 4, maxLength: 7, enum: ['MAIN','GALLERY'] },
   expectedRevision: mediaRevisionSchema, idempotencyKey: key,
-  file: object({ download_url: text(1,4096), file_id: text(1,256), mime_type: mime, file_name: text(1,255) }, ['download_url','file_id']) });
+  file: object({ download_url: text(1,4096), file_id: text(1,256),
+    mime_type: { type: 'string', minLength: 0, maxLength: 24, enum: MEDIA_FILE_MIME_TYPES },
+    file_name: text(0,256) }, ['download_url','file_id']) });
 export const mediaLayoutRequest = object({ input: mediaLayoutInput, idempotencyKey: key });
 export const mediaCommitInput = object({ operationId: mediaUuidSchema });
 export const mediaCommitOutput = { oneOf: [object({ operationId: mediaUuidSchema, status: constant('COMMITTED'), result: mediaReceiptSchema, replayed: { type: 'boolean' } }),

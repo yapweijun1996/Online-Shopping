@@ -3,6 +3,7 @@ import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { createHash } from 'node:crypto';
 import { ApiError } from '../http.js';
+import { MEDIA_FILE_MIME_TYPES, mediaFileMimeHint } from './media-contracts.js';
 
 const MAX_BYTES = 524288;
 const DEADLINE_MS = 10000;
@@ -54,7 +55,7 @@ function makeDownloader(resolve, request, timeoutMs) {
     if (!file || typeof file !== 'object' || Array.isArray(file) ||
         Object.keys(file).some(key => !['download_url','file_id','mime_type','file_name'].includes(key)) ||
         typeof file.file_id !== 'string' || !file.file_id.length || file.file_id.length > 256 ||
-        (file.mime_type !== undefined && !['image/jpeg','image/png','image/webp'].includes(file.mime_type)) ||
+        (file.mime_type !== undefined && !MEDIA_FILE_MIME_TYPES.includes(file.mime_type)) ||
         (file.file_name !== undefined && (typeof file.file_name !== 'string' || file.file_name.length > 256))) throw invalid();
     const url = validateMediaFileUrl(file.download_url);
     // Bound pre-stage buffering too; stage quota is acquired only after download.
@@ -99,7 +100,8 @@ function makeDownloader(resolve, request, timeoutMs) {
           active.end();
         });
         const mime = sniff(bytes);
-        if (file.mime_type !== undefined && file.mime_type !== mime) throw invalid();
+        const hint = mediaFileMimeHint(file.mime_type);
+        if (hint !== undefined && hint !== mime) throw invalid();
         return { bytes, mime, sourceSha256: createHash('sha256').update(bytes).digest('hex') };
       })();
       return await Promise.race([work,timedOut]);

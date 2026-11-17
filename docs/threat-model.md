@@ -30,6 +30,11 @@ Source review at `41407a7bda20adf167e2825900a268f3949316cc`: [CODEBASE_BUG_REVIE
 file ID, MIME and name remain untrusted metadata; the ID does not attest the
 file's owner or provenance. A temporary download URL is a bearer source
 capability and must never be logged, returned or included in operation audit.
+An omitted/empty MIME hint or `application/octet-stream` is treated as
+unspecified, and an empty optional filename is accepted. These values do not
+select an image format: downloaded signatures and the native codec still limit
+actual images to PNG, JPEG or WebP. An explicit supported image MIME hint must
+match the downloaded bytes; unsupported MIME hints remain rejected.
 
 Before network access, current media consent, RBAC, tenant lifecycle, product
 identity, target-slot rules and the complete media revision are checked under
