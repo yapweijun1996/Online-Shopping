@@ -18,8 +18,8 @@ test('real Node adapter through GCP Caddy and verified local TLS preserves origi
  }
  for(const prefix of ['', '/alpha']){
   const api=prefix+'/api/v1/seller/mcp/operations/'+id;
-  for(const[path,method]of [[prefix+'/oauth/operation?operationId='+id,'GET'],[prefix+'/oauth/operation-review.js','GET'],[prefix+'/oauth/operation-review.css','GET'],[api,'GET'],[api+'/approval','POST'],[api+'/media/delivery','POST'],[api+'/media/ack','POST']]){
-   const body=method==='POST'?'{"synthetic":"transport metadata only"}':undefined;
+  for(const[path,method]of [[prefix+'/media/upload/synthetic-token','GET'],[prefix+'/media/upload/synthetic-token','PUT'],[prefix+'/media/upload-picker.js','GET'],[prefix+'/media/upload-picker.css','GET'],[prefix+'/oauth/operation?operationId='+id,'GET'],[prefix+'/oauth/operation-review.js','GET'],[prefix+'/oauth/operation-review.css','GET'],[api,'GET'],[api+'/approval','POST'],[api+'/media/delivery','POST'],[api+'/media/ack','POST']]){
+   const body=['POST','PUT'].includes(method)?'{"synthetic":"transport metadata only"}':undefined;
    const r=await f.request(path,{method,body,headers:{'x-forwarded-proto':'http','forwarded':'host=attacker.invalid;proto=http','x-real-ip':'198.51.100.5'}});
    assert.equal(r.status,200,r.body);const value=JSON.parse(r.body);assert.equal(value.url,f.origin+path);assert.equal(value.method,method);assert.equal(value.body,body??'');assert.notEqual(value.ip,'198.51.100.5');
    assertSecurityHeaders(r);
@@ -33,4 +33,7 @@ test('real Node adapter through GCP Caddy and verified local TLS preserves origi
  const wrong=await f.request('/ready',{headers:{host:'wrong.qa.test','x-forwarded-proto':'https'}});assert.equal(wrong.status,404,wrong.body);
  assert.match((await f.internalReady()).url,/^http:\/\/127\.0\.0\.1:3000\/ready$/);
  const legacy=await f.request('/.well-known/oauth-authorization-server');assert.equal(legacy.status,200);assert.equal(legacy.headers['cache-control'],'no-store');assertSecurityHeaders(legacy);
+ const failed=await f.failedUploadLogs();assert.equal(failed.response.status,502);
+ assert.doesNotMatch(failed.logs,/synthetic-sensitive-capability/);
+ assert.match(failed.logs,/\/media\/upload\/REDACTED/);
 });

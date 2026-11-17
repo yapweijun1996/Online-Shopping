@@ -9,6 +9,7 @@ import { addGalleryImage } from '../src/products.js';
 import { valid } from '../src/mcp/tools.js';
 import { createProtocol } from '../src/mcp/protocol.js';
 import { ApiError } from '../src/http.js';
+import { createMediaFileDownloaderForTest } from '../src/mcp/media-file-download.js';
 
 const file = { download_url: 'https://files.oaiusercontent.com/synthetic-test', file_id: 'synthetic-file' };
 const argumentsFor = async (f, key = 'synthetic-file-upload-01') => {
@@ -82,6 +83,47 @@ mediaTest('file RPC identifies invalid fields and unsupported source hosts witho
   await f.store.run("DELETE FROM mcp_v2_scope_consent WHERE grant_id=? AND scope='media.write'", f.grantId);
   assert.equal((await f.tool('media.upload_file', args)).response.status, 403);
   assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_media_stage')).n, 0);
+});
+
+mediaTest('denied Azure source leaves media unchanged and exact-byte fallback still prepares a protected review', async t => {
+  const f = await mediaToolsFixture(t, dialect);
+  const args = await argumentsFor(f, 'synthetic-denied-source-01');
+  const before = (await f.tool('media.list', { productId: args.productId })).data.result.structuredContent;
+  let resolutions = 0;
+  const registered = tools(f, createMediaFileDownloaderForTest({
+    resolve: async () => { resolutions++; return [{ address: '8.8.8.8', family: 4 }]; },
+    request: () => { throw new Error('Unexpected synthetic request'); },
+  }));
+  await assert.rejects(registered.call('media.upload_file', { ...args, file: {
+    ...file, download_url: 'https://oaisdmntprindiasocentral.blob.core.windows.net/private-image?sig=private-signature',
+  } }, f.bearer), error => {
+    assert.equal(error.code, 'MEDIA_FILE_SOURCE');
+    assert.doesNotMatch(JSON.stringify(error) + error.message, /private-image|private-signature/);
+    return true;
+  });
+  for (const claim of [{ authorized: true }, { trustedProvider: 'openai' }, { grantId: f.grantId }]) {
+    await assert.rejects(registered.call('media.upload_file', { ...args, file: { ...file, ...claim } }, f.bearer), { status: 400, code: 'INVALID_INPUT' });
+  }
+  assert.equal(resolutions, 0);
+  assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_media_stage')).n, 0);
+  assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_operation')).n, 0);
+
+  // This is an authenticated caller's byte upload, not a provider-ownership assertion.
+  // The fixture decoder/review services are synthetic; external provider acceptance is separate.
+  const prepare = async input => (await f.tool('media.prepare_upload', { input })).data.result.structuredContent;
+  const stage = (await prepare({ action: 'begin', ...await f.input(png) })).stage;
+  for (let offset = 0; offset < png.length; offset += 36864) {
+    const bytes = png.subarray(offset, offset + 36864), dataParts = [];
+    for (let n = 0; n < bytes.length; n += 3072) dataParts.push(bytes.subarray(n, n + 3072).toString('base64'));
+    assert.equal((await prepare({ action: 'append', stageId: stage.stageId, offset, dataParts })).stage.nextOffset, offset + bytes.length);
+  }
+  const operation = (await prepare({ action: 'seal', stageId: stage.stageId, idempotencyKey: 'synthetic-fallback-seal-01' })).operation;
+  assert.equal(operation.status, 'PENDING_APPROVAL');
+  assert.equal(new URL(operation.reviewUrl).searchParams.get('operationId'), operation.operationId);
+  const stored = await f.store.get('SELECT product_id,target_slot,source_sha256,declared_bytes,next_offset FROM mcp_v2_media_stage WHERE id=?', stage.stageId);
+  assert.deepEqual({ ...stored }, { product_id: args.productId, target_slot: 'MAIN', source_sha256: mediaHash(png), declared_bytes: png.length, next_offset: png.length });
+  assert.equal((await f.tool('media.commit_upload', { operationId: operation.operationId })).response.status, 403);
+  assert.deepEqual((await f.tool('media.list', { productId: args.productId })).data.result.structuredContent, before);
 });
 
 mediaTest('file RPC exposes only known error reasons and preserves other tool errors', async t => {

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Upload product image</title>
+  <link rel="stylesheet" href="../upload-picker.css">
+  <script src="../upload-picker.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1>Upload product image</h1>
+    <p>Choose the original image requested by your assistant. This link expires after five minutes.</p>
+    <form id="upload-form" data-bytes="UPLOAD_BYTES">
+      <label for="image">JPEG, PNG or WebP · maximum 512 KiB</label>
+      <input id="image" type="file" accept="image/jpeg,image/png,image/webp" required>
+      <button type="submit">Upload for review</button>
+    </form>
+    <p id="status" role="status" aria-live="polite"></p>
+    <a id="review" hidden>Review proposed image</a>
+    <p>Your product image changes only after seller approval and a separate commit.</p>
+  </main>
+</body>
+</html>

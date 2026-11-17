@@ -1,11 +1,43 @@
 # Upload a product image through MCP
 
+## Preferred upload: bytes outside MCP arguments
+
+For images over about 8 KiB, call `media.request_upload_url` with the product,
+target slot, current media revision, MIME, byte count and idempotency key. The
+SHA-256 is optional. Send the original file with HTTP PUT to the returned URL,
+or open that same URL and choose the file. Successful PUT automatically seals
+the existing image-review proposal and returns its operation ID and review URL.
+The model does not have to generate or repeat the image's Base64.
+
+The single-use URL expires after five minutes. It is a secret upload capability,
+not approval. Product images remain unchanged until existing seller review and
+separate `media.commit_upload`. See [the upload URL contract and verification](MCP_UPLOAD_URL.md)
+for commands, failure handling, limits and deployment state.
+
+## Authenticated attachment-resolution limitation
+
+`media.upload_file` currently accepts a bounded download capability; it does not
+authenticate external attachment ownership against the Shop user, tenant or
+grant. `file_id`, MIME/name, a signed-looking query and an allowlisted hostname
+are not ownership proof. There is no authenticated attachment resolver in this
+repository. Unsupported sources, including the reported Azure Blob source,
+remain denied. Do not add Azure wildcard/prefix exceptions or caller-supplied
+`authorized` flags. Use `media.request_upload_url` for a direct byte transfer or
+file picker, or exact-byte `media.prepare_upload` for tiny inputs.
+
+The stricter provider-bound compatibility request is **HOLD**; see the
+[secure-source review](MCP_IMAGE_UPLOAD_SECURITY_REVIEW.md) for source references,
+test evidence, native transformation limits and release gates. Previous live
+PNG/JPEG preparation checks demonstrate transport behavior, not attachment
+ownership or compatibility with every ChatGPT file provider.
+
 ## Supported paths
 
 | Client capability | Tool and flow | Limits |
 | --- | --- | --- |
+| Client can send HTTP, or seller can select the original file | `media.list` → `media.request_upload_url` → raw PUT or returned file picker → Seller Approval link → separate commit | Preferred above about 8 KiB; JPEG/PNG/WebP, maximum 512 KiB, five-minute single-use URL. |
 | ChatGPT supplies a file descriptor | `media.list` → `media.upload_file` with the attached file → returned Seller Approval link → `media.commit_upload` after approval | Existing product, PNG/JPEG/WebP, source at most 512 KiB; HTTPS on direct subdomains of `oaiusercontent.com`, including regional file hosts. |
-| MCP client can read the actual image bytes | `media.list` → `media.prepare_upload` begin/append/seal → Seller Approval link → `media.commit_upload` | Same source limit. Each append: up to 12 independently encoded base64 strings, each at most 4,096 characters; at most 36 KiB decoded per call. |
+| MCP client can emit a tiny file's exact bytes | `media.list` → `media.prepare_upload` begin/append/seal → Seller Approval link → `media.commit_upload` | Prefer for images at most about 8 KiB; existing 512 KiB source limit remains compatible. Each append: up to 12 independently encoded base64 strings, each at most 4,096 characters; at most 36 KiB decoded per call. |
 | Client can see an image but cannot provide a file descriptor or exact bytes | Use the authenticated Seller Studio product editor to upload the image | A visible chat image, sandbox path or Claude file ID alone is not an upload capability. Do not invent a URL, base64 data or SHA-256. |
 
 ChatGPT's supported file descriptor is declared by

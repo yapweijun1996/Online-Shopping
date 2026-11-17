@@ -34,7 +34,7 @@ export async function productionProxyFixture(t){
 import {toFetchRequest} from './src/server.js';
 const config={production:true,trustProxy:true,publicOrigin:'https://shop.qa.test:${port}',sellerOrigin:'https://seller.qa.test:${port}'};
 http.createServer(async(req,res)=>{try{
- const request=toFetchRequest(req,config);const review=/^\\/(?:alpha\\/)?(?:oauth\\/operation|api\\/v1\\/seller\\/mcp\\/operations\\/)/.test(new URL(request.url).pathname);
+ const request=toFetchRequest(req,config);const review=/^\\/(?:alpha\\/)?(?:media\\/upload|oauth\\/operation|api\\/v1\\/seller\\/mcp\\/operations\\/)/.test(new URL(request.url).pathname);
  res.setHeader('content-type','application/json');res.setHeader('cache-control','no-store');res.setHeader('referrer-policy','no-referrer');
  // Match the real backend json() response, including its own nosniff policy.
  res.setHeader('x-content-type-options','nosniff');
@@ -46,7 +46,8 @@ http.createServer(async(req,res)=>{try{
  await docker(['network','create','--internal',tag+'-private']);await docker(['network','create',tag+'-edge']);
  const common=['--label',label+'='+token,'--restart','no','--read-only','--security-opt','no-new-privileges:true','--log-driver','none'];
  await docker(['run','-d','--pull=never','--name',names[0],...common,'--network',tag+'-private','--network-alias','backend','--user','1000:1000','--memory','192m','--pids-limit','64','--mount','type=bind,src='+app+',dst=/fixture,readonly','--mount','type=bind,src='+await realpath('node_modules')+',dst=/fixture/node_modules,readonly','--workdir','/fixture',node,'node','--max-old-space-size=96','probe.mjs']);
- await docker(['run','-d','--pull=never','--name',names[1],...common,'--network',tag+'-private','--network-alias','frontend','--memory','48m','--pids-limit','64','--tmpfs','/data:size=4m','--tmpfs','/config:size=1m','-e','SHOP_HOST=shop.qa.test','-e','SELLER_HOST=seller.qa.test','--mount','type=bind,src='+resolve('deploy/gcp/Caddyfile')+',dst=/etc/caddy/Caddyfile,readonly','--mount','type=bind,src='+resolve('public')+',dst=/srv/public,readonly',caddy]);
+ // Bounded logs for the synthetic capability-redaction assertion; no real credentials.
+ await docker(['run','-d','--pull=never','--name',names[1],...common,'--log-driver=local','--log-opt=max-size=1m','--log-opt=max-file=1','--log-opt=compress=false','--network',tag+'-private','--network-alias','frontend','--memory','48m','--pids-limit','64','--tmpfs','/data:size=4m','--tmpfs','/config:size=1m','-e','SHOP_HOST=shop.qa.test','-e','SELLER_HOST=seller.qa.test','--mount','type=bind,src='+resolve('deploy/gcp/Caddyfile')+',dst=/etc/caddy/Caddyfile,readonly','--mount','type=bind,src='+resolve('public')+',dst=/srv/public,readonly',caddy]);
  await docker(['network','connect','--alias','frontend',tag+'-edge',names[1]]);
  await docker(['run','-d','--pull=never','--name',names[2],...common,'--network',tag+'-edge','--memory','48m','--pids-limit','64','--tmpfs','/data:size=4m','--tmpfs','/config:size=1m','-p','127.0.0.1:'+port+':8443','--mount','type=bind,src='+folder+',dst=/fixture,readonly','--mount','type=bind,src='+join(folder,'gateway.Caddyfile')+',dst=/etc/caddy/Caddyfile,readonly',caddy]);
  const request=async(path,{host='seller.qa.test',method='GET',body,headers={}}={})=>{
@@ -60,5 +61,11 @@ http.createServer(async(req,res)=>{try{
  let ready=false,last='none';for(let n=0;n<40;n++){try{const response=await request('/health');last='HTTP '+response.status;if(response.status===200){ready=true;break;}}catch(error){last='client '+error.code;}await new Promise(r=>setTimeout(r,100));}
  if(!ready){for(const name of names){const state=await docker(['inspect','--format','{{json .State}}',name]);last+=' '+name+':'+state.stdout;}}
  assert.equal(ready,true,'Owned TLS/Node transport fixture must become ready: '+last);
- return{request,port,origin:'https://seller.qa.test:'+port,async internalReady(){const value=await docker(['exec',names[0],'node','-e',"fetch('http://127.0.0.1:3000/ready').then(async r=>console.log(await r.text()))"]);return JSON.parse(value.stdout);}};
+ return{request,port,origin:'https://seller.qa.test:'+port,
+  async failedUploadLogs(){
+   await docker(['stop',names[0]]);
+   const response=await request('/media/upload/synthetic-sensitive-capability',{headers:{referer:'https://seller.qa.test/media/upload/synthetic-sensitive-capability'}});
+   const logs=await docker(['logs',names[1]]);return{response,logs:logs.stdout+logs.stderr};
+  },
+  async internalReady(){const value=await docker(['exec',names[0],'node','-e',"fetch('http://127.0.0.1:3000/ready').then(async r=>console.log(await r.text()))"]);return JSON.parse(value.stdout);}};
 }

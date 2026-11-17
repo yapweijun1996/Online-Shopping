@@ -22,6 +22,45 @@ Source review at `41407a7bda20adf167e2825900a268f3949316cc`: [CODEBASE_BUG_REVIE
 
 ## 1. Scope
 
+### Out-of-band product image upload (2026-11-17)
+
+`media.request_upload_url` delegates one raw-byte upload under the existing
+`media.write` grant and catalog capability. The closed request binds product,
+slot, current graph revision, MIME, exact byte count and optional SHA-256.
+`src/mcp/media-upload-url.js` signs a stage ID, random nonce and five-minute
+deadline with a private per-connector HMAC key. The bounded server-side record
+binds the full original tenant/account/client/grant/auth-version/epoch/build
+context. Original bearer credentials stay only in server memory until claim or
+expiration; none are included in the URL or database. Restart/another instance
+invalidates the capability. Issuance reserves an ID, not a database image stage.
+
+GET serves only a first-party file picker. PUT consumes the capability before
+reading, including invalid-content attempts; two concurrent PUTs cannot claim
+it. Every GET/PUT rechecks current authority and graph revision. After reading,
+the exact original authority context is rechecked again before the existing
+begin/append/seal pipeline rechecks authority and native image integrity at
+each phase. Raw streamed input has the declared-length/512 KiB bound and a
+ten-second deadline bounded by URL expiry. Four process-wide receivers,
+256 process-wide tickets, 24 tickets per connector/shop and 12 per original
+account/client bound retained state. Expiry timers remove records and bearer
+references. There are no new source download requests or caller-selected URLs.
+
+The token is an upload capability, not provider provenance or seller approval.
+When SHA-256 is omitted, the capability holder can choose any conforming image;
+the server calculates the actual digest. Existing native canonicalization,
+durable proposal manifests, seller image review, password/ACK requirements and
+separate commit are unchanged. PostgreSQL/SQLite receive the same byte stages
+and approval records as Base64 uploads. Failed partial stages use existing
+expiry/maintenance; no audit data is removed as transport cleanup.
+
+The route requires the configured HTTPS seller origin; browser calls must be
+same-origin and do not use seller cookies as upload authority. Responses have
+no-store, no-referrer, noindex, restrictive CSP and frame denial. The GCP proxy
+routes default and tenant-prefixed upload paths only on the seller host and
+redacts upload capability paths from runtime logs. Any additional upstream
+gateway/access logging must retain that redaction. See [the contract and local
+acceptance evidence](MCP_UPLOAD_URL.md); this addition does not authorize deployment.
+
 ### ChatGPT file-based media preparation (isolated implementation, 2026-11-10)
 
 `media.upload_file` is an alternate transport for the existing

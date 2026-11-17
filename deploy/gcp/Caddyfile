@@ -1,6 +1,17 @@
 {
 	auto_https off
 	admin off
+	# Upload URLs are bearer capabilities, including in reverse-proxy error logs.
+	log default {
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp /media/upload/[^?[:space:]]+ /media/upload/REDACTED
+				uri regexp /media/upload/[^?[:space:]]+ /media/upload/REDACTED
+				request>headers>Referer regexp /media/upload/[^?[:space:]]+ /media/upload/REDACTED
+			}
+		}
+	}
 }
 (proxy) {
 	reverse_proxy backend:3000 {
@@ -19,19 +30,19 @@
 	# API requests retain their prefix; static requests pass the metadata-only gate.
 	@tenant {
 		path_regexp tenant ^/([a-z0-9]{3,30})(?:/|$)
-		not path_regexp ^/(setup|admin|api|mcp|oauth|shop|seller|demo|www|health|ready|static|assets|shared|platform|default|login|logout|public|root|support|system|test|tenant|tenants|webhook|webhooks|sw|manifest|favicon|icons|p|s)(?:/|$)
+		not path_regexp ^/(setup|admin|api|mcp|oauth|media|shop|seller|demo|www|health|ready|static|assets|shared|platform|default|login|logout|public|root|support|system|test|tenant|tenants|webhook|webhooks|sw|manifest|favicon|icons|p|s)(?:/|$)
 	}
 	handle @tenant {
 		route {
 			@tenant_connector {
 				host {$SELLER_HOST}
-				path_regexp ^/[a-z0-9]{3,30}/(?:mcp$|oauth/(?:register|authorize|token|revoke|consent\.(?:js|css)|operation|operation-review\.(?:js|css))$|\.well-known/oauth-(?:protected-resource(?:/mcp)?|authorization-server)$)
+				path_regexp ^/[a-z0-9]{3,30}/(?:mcp$|media/(?:upload/[^/]+|upload-picker\.(?:js|css))$|oauth/(?:register|authorize|token|revoke|consent\.(?:js|css)|operation|operation-review\.(?:js|css))$|\.well-known/oauth-(?:protected-resource(?:/mcp)?|authorization-server)$)
 			}
 			handle @tenant_connector {
 				header >Cache-Control no-store
 				import proxy
 			}
-			@tenant_connector_denied path_regexp ^/[a-z0-9]{3,30}/(?:mcp(?:/|$)|oauth(?:/|$)|\.well-known/oauth-)
+			@tenant_connector_denied path_regexp ^/[a-z0-9]{3,30}/(?:mcp(?:/|$)|media(?:/|$)|oauth(?:/|$)|\.well-known/oauth-)
 			handle @tenant_connector_denied {
 				respond 404
 			}
@@ -147,7 +158,7 @@ http://{$SELLER_HOST} {
 			respond 404
 		}
 		# Seller MCP connector: the backend answers 404 unless MCP_ENABLED=1, and OAuth responses stay no-store.
-		@connector path /mcp /oauth/register /oauth/authorize /oauth/token /oauth/revoke /oauth/consent.js /oauth/consent.css /oauth/operation /oauth/operation-review.js /oauth/operation-review.css /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/* /.well-known/oauth-authorization-server /.well-known/oauth-authorization-server/*
+		@connector path /mcp /media/upload/* /media/upload-picker.js /media/upload-picker.css /oauth/register /oauth/authorize /oauth/token /oauth/revoke /oauth/consent.js /oauth/consent.css /oauth/operation /oauth/operation-review.js /oauth/operation-review.css /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/* /.well-known/oauth-authorization-server /.well-known/oauth-authorization-server/*
 		handle @connector {
 			header >Cache-Control no-store
 			import proxy

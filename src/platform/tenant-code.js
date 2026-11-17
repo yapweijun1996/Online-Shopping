@@ -9,6 +9,6 @@ export function normalizeTenantCode(value, field = 'code', mcpEnabled = false) {
   if (typeof value !== 'string') throw new FieldError(field, 'Enter a shop code.');
   const code = value.trim().toLowerCase();
   if (!/^[a-z0-9]{3,30}$/.test(code)) throw new FieldError(field, 'Use 3 to 30 letters and digits.');
-  if (RESERVED_CODES.has(code) || (mcpEnabled && ['mcp', 'oauth'].includes(code))) throw new FieldError(field, 'This shop code is reserved.');
+  if (RESERVED_CODES.has(code) || (mcpEnabled && ['mcp', 'oauth', 'media'].includes(code))) throw new FieldError(field, 'This shop code is reserved.');
   return code;
 }

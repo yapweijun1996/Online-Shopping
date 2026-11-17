@@ -102,13 +102,14 @@ export function createMediaCoordinator({ store, binding, tenantGuard, epoch, bui
     if (slot === 'GALLERY' && !target.mainAssetKey) throw new ApiError(400, 'MEDIA_MAIN_REQUIRED', 'Add a main image first.');
     return snapshot;
   };
-  const begin = async (bearer, input) => {
+  // requestedId is server-owned URL-upload state, never part of the tool input.
+  const begin = async (bearer, input, requestedId) => {
     await reserve(bearer, false);
     shape(input, ['productId','targetSlot','expectedRevision','sourceSha256','sourceMime','declaredBytes','idempotencyKey']);
     input = { ...input };
     if (!isMediaUuid(input.productId) || !['MAIN','GALLERY'].includes(input.targetSlot) || !isMediaHash(input.expectedRevision)) invalid();
     return write(bearer, async (writer, context, reader) => {
-      const stage = await writer.begin({ ...input, codecDigest: codec.digest });
+      const stage = await writer.begin({ ...input, codecDigest: codec.digest }, requestedId);
       // Invalid new targets roll back their stage/quota/audit atomically. Existing
       // immutable begin intent remains replayable after later portal changes.
       if(!stage.replayed)await inspectTarget(reader, input.productId, input.targetSlot, input.expectedRevision);
@@ -119,8 +120,9 @@ export function createMediaCoordinator({ store, binding, tenantGuard, epoch, bui
     await reserve(bearer, false);
     shape(input, ['productId','targetSlot','expectedRevision']);
     if (!isMediaUuid(input.productId) || !['MAIN','GALLERY'].includes(input.targetSlot) || !isMediaHash(input.expectedRevision)) invalid();
-    return write(bearer, async (_writer, _context, reader) => {
+    return write(bearer, async (_writer, context, reader) => {
       await inspectTarget(reader, input.productId, input.targetSlot, input.expectedRevision);
+      return context;
     });
   };
   const append = async (bearer, input) => {

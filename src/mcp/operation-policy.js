@@ -67,7 +67,7 @@ export const OPERATION_APPROVAL_MS = 5 * 60 * 1000;
 export function operationAuthorityPolicy(toolName, mediaPolicyId = null) {
   // File transfer is only a transport alias; stored operations retain the
   // original prepare tool and exact existing image-review policy.
-  if (toolName === 'media.upload_file') return operationAuthorityPolicy('media.prepare_upload', mediaPolicyId);
+  if (['media.upload_file', 'media.request_upload_url'].includes(toolName)) return operationAuthorityPolicy('media.prepare_upload', mediaPolicyId);
   if (Object.hasOwn(OPERATION_RESOURCE_CONTROLS, toolName)) throw new TypeError('Operation control requires a verified resource binding.');
   if (typeof toolName !== 'string' || !Object.hasOwn(OPERATION_SCOPE_POLICIES, toolName)) {
     throw new TypeError('Unknown operation policy.');

@@ -55,11 +55,44 @@ test('regional OpenAI file hosts download with the same DNS pinning and source l
   await assert.rejects(fixture({ body: Buffer.alloc(524289) }).download(regional), { status: 503 });
 });
 
+test('Azure account names and signature-shaped queries cannot authorize an unsupported source', async () => {
+  let resolutions = 0;
+  const f = fixture({ resolve: async () => { resolutions++; return publicDns(); } });
+  for (const host of ['oaisdmntprindiasocentral.blob.core.windows.net',
+    'untrustedaccount.blob.core.windows.net', 'oaisdmntprforged.blob.core.windows.net',
+    'files.oaiusercontent.com.blob.core.windows.net', 'oaisdmntprindiasocentral.blob.core.windows.net.evil.test']) {
+    for (const expires of ['2000-01-01T00:00:00Z', '2099-01-01T00:00:00Z']) {
+      await assert.rejects(f.download({ ...file,
+        download_url: `https://${host}/private-image?sp=r&se=${expires}&sig=private-signature`,
+      }), error => {
+        assert.equal(error.code, 'MEDIA_FILE_SOURCE');
+        assert.doesNotMatch(JSON.stringify(error) + error.message, /private-image|private-signature|sp=|se=|sig=/);
+        return true;
+      });
+    }
+  }
+  assert.equal(resolutions, 0);
+  assert.equal(f.calls.length, 0);
+});
+
+test('caller assertions of provider trust or attachment ownership are rejected before DNS', async () => {
+  let resolutions = 0;
+  const f = fixture({ resolve: async () => { resolutions++; return publicDns(); } });
+  for (const claim of [{ authorized: true }, { trustedProvider: 'openai' },
+    { tenantId: 'other-shop' }, { grantId: 'forged-grant' }, { ownerId: 'forged-owner' },
+    { authorization: 'forged-proof' }]) {
+    await assert.rejects(f.download({ ...file, ...claim }), { code: 'MEDIA_FILE_INPUT' });
+  }
+  assert.equal(resolutions, 0);
+  assert.equal(f.calls.length, 0);
+});
+
 test('IP classification rejects private, reserved, mapped and tunnel addresses', () => {
   for (const address of ['8.8.8.8','1.1.1.1','2606:4700:4700::1111','2001:4860:4860::8888']) assert.equal(isPublicMediaAddress(address),true,address);
   for (const address of ['0.0.0.0','10.1.2.3','127.0.0.1','100.64.0.1','169.254.169.254','172.16.0.1',
     '192.168.1.1','192.0.2.1','198.18.0.1','198.51.100.1','203.0.113.1','224.0.0.1','255.255.255.255',
-    '::1','::','fc00::1','fe80::1','::ffff:127.0.0.1','::ffff:7f00:1','2001:db8::1','2002:0808:0808::1','2001::1','not-an-ip']) assert.equal(isPublicMediaAddress(address),false,address);
+    '::1','::','fc00::1','fe80::1','ff02::1','::ffff:127.0.0.1','::ffff:7f00:1','::ffff:808:808',
+    '2001:db8::1','2002:0808:0808::1','2001::1','2130706433','0x7f000001','0177.0.0.1','not-an-ip']) assert.equal(isPublicMediaAddress(address),false,address);
 });
 
 test('all DNS answers are checked before a request and the accepted address is pinned', async () => {
@@ -101,7 +134,7 @@ test('optional generic MIME and empty filename do not reject a valid image file 
 });
 
 test('redirects, compression, incomplete and oversized responses fail without URL disclosure', async () => {
-  for (const options of [{status:302,headers:{location:'http://127.0.0.1'}},{headers:{'content-encoding':'gzip'}},
+  for (const options of [{status:401},{status:403},{status:302,headers:{location:'http://127.0.0.1'}},{headers:{'content-encoding':'gzip'}},
     {headers:{'content-length':'524289'}},{headers:{'content-length':'9x'}},{headers:{'content-length':'10'}},
     {complete:false},{body:Buffer.alloc(0)},{body:Buffer.alloc(524289)}]) {
     const f = fixture(options);

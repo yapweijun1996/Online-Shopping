@@ -15,6 +15,7 @@ import { createOperationControls } from './operation-controls.js';
 import { catalogMediaUpdateEnabled,catalogMediaCreateEnabled,catalogMediaAllowed } from './catalog-media-config.js';
 import { downloadMediaFile } from './media-file-download.js';
 import { uploadMediaFile } from './media-file-upload.js';
+import { createMediaUploadUrls } from './media-upload-url.js';
 
 const uuid = { type: 'string', minLength: 36, maxLength: 36, pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' };
 const object = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
@@ -157,6 +158,10 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
       const uploadPolicy = operationAuthorityPolicy('media.prepare_upload', adapter.media?.policyId ?? null);
       byName.set(fileTool.name, { kind: 'file', tool: fileTool, coordinator: entry.coordinator,
         requiredScopes: Object.freeze([...uploadPolicy.requiredScopes]) });
+      const urlTool = freeze({ name: 'media.request_upload_url', scope: entry.scope, ...MEDIA_TOOL_CONTRACTS['media.request_upload_url'] });
+      tools.push(urlTool);
+      byName.set(urlTool.name, { kind: 'uploadUrl', tool: urlTool, coordinator: entry.coordinator,
+        requiredScopes: Object.freeze([...uploadPolicy.requiredScopes]) });
       continue;
     }
 
@@ -211,8 +216,12 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
   if (!enabled || !tools.length) return Object.freeze({ catalogue: Object.freeze([]), find: () => null, requiredScopes: () => null, call: () => { throw new ApiError(404, 'NOT_FOUND', 'Not found.'); } });
   const engine = Object.keys(adapters).length ? createOperationEngine({ store, binding, adapters, tenantGuard, quickLogin, ...config.mcpV2, production: config.production, catalogUpdateEnabled, catalogCreateEnabled }) : null;
   const epochHash = operationEpochHash(config.mcpV2.epoch), read = selectOnly(store);
+  const uploadEntry = byName.get('media.request_upload_url');
+  const uploadUrls = uploadEntry ? createMediaUploadUrls({ binding, coordinator: uploadEntry.coordinator,
+    prepare: input => engine.prepare(input) }) : null;
   const controls=tools.some(tool=>Object.hasOwn(OPERATION_CONTROL_CONTRACTS,tool.name))?createOperationControls({store,binding,config,tenantGuard,quickLogin}):null;
   return Object.freeze({ catalogue: Object.freeze(tools), find: name => byName.get(name)?.tool || null,
+    handleMediaUpload: uploadUrls ? (request, token) => uploadUrls.handle(request, token) : null,
     requiredScopes: name => byName.get(name)?.requiredScopes || null,
     async isMediaAppend(name, args, bearer) {
       const entry = byName.get(name);
@@ -233,6 +242,16 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
       const registered = byName.get(name);
       if (!registered || !valid(args, registered.tool.inputSchema)) throw new ApiError(400, 'INVALID_INPUT', 'Invalid operation arguments.');
       if(registered.kind==='control')return controls.call(name,args,bearer);
+      if (registered.kind === 'uploadUrl') {
+        let dto;
+        try { dto = await uploadUrls.issue(freeze(JSON.parse(canonicalOperationJson(args))), bearer); }
+        catch (error) {
+          if (error instanceof ApiError && error.status === 404) throw new ApiError(400, 'MEDIA_RESOURCE_NOT_FOUND', 'Media resource not found.');
+          throw error;
+        }
+        if (!valid(dto, registered.tool.outputSchema)) throw new TypeError('Invalid upload URL output.');
+        return dto;
+      }
       if (registered.kind === 'file') {
         const safeArgs = freeze(JSON.parse(canonicalOperationJson(args)));
         let dto;

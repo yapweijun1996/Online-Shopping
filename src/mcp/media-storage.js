@@ -87,21 +87,23 @@ export async function withMediaWriter(store, trustedContext, work, { now: suppli
       return owner;
     };
     const writer = {
-      async begin(input) {
+      async begin(input, requestedId) {
         alive(); keys(input,['productId','targetSlot','expectedRevision','sourceSha256','sourceMime','declaredBytes','codecDigest','idempotencyKey']);
+        if (requestedId !== undefined && !isUuid(requestedId)) invalid();
         if (!isUuid(input.productId) || !['MAIN','GALLERY'].includes(input.targetSlot) || !isSha(input.expectedRevision) || !isSha(input.sourceSha256) ||
             !isSha(input.codecDigest) || !['image/png','image/jpeg','image/webp'].includes(input.sourceMime) || !integer(input.declaredBytes,1,MEDIA_LIMITS.sourceBytes) ||
             typeof input.idempotencyKey !== 'string' || !/^[A-Za-z0-9._~-]{16,128}$/.test(input.idempotencyKey) || context.grantExpiresAt <= now) invalid();
         input={...input};
         const {idempotencyKey,...fields}=input, normalized={...fields,idempotencyHash:mediaHash(idempotencyKey)}, requestHash=mediaHash(canonicalOperationJson(normalized));
         const existing=await store.get(`SELECT ${MEDIA_STAGE_COLUMNS} FROM mcp_v2_media_stage WHERE tenant_id=? AND account_id=? AND client_id=? AND grant_id=? AND idempotency_hash=?`,context.tenantId,context.accountId,context.clientId,context.grantId,normalized.idempotencyHash);
-        if(existing){if(!matches(existing,context)||checkMediaStage(existing).begin_request_hash!==requestHash)conflict();return metadata(existing,true);}
+        if(existing){if(!matches(existing,context)||checkMediaStage(existing).begin_request_hash!==requestHash ||
+          (requestedId !== undefined && existing.id !== requestedId))conflict();return metadata(existing,true);}
         const owner=await quotas(), reserved=input.declaredBytes+MEDIA_LIMITS.canonicalBytes+MEDIA_LIMITS.thumbnailBytes;
         for(const[kind,key,bytes,slots]of[['TENANT','tenant',MEDIA_LIMITS.tenantBytes,MEDIA_LIMITS.tenantSlots],['CLIENT',owner,MEDIA_LIMITS.clientBytes,MEDIA_LIMITS.clientSlots]]){
           await store.run('INSERT INTO mcp_v2_media_quota(tenant_id,kind,owner_key,reserved_bytes,active_slots)VALUES(?,?,?,0,0) ON CONFLICT DO NOTHING',context.tenantId,kind,key);
           if(!await store.get('UPDATE mcp_v2_media_quota SET reserved_bytes=reserved_bytes+?,active_slots=active_slots+1 WHERE tenant_id=? AND kind=? AND owner_key=? AND reserved_bytes<=? AND active_slots<? RETURNING owner_key',reserved,context.tenantId,kind,key,bytes-reserved,slots))throw new ApiError(429,'MEDIA_QUOTA','Media upload quota exceeded.');
         }
-        const id=randomUUID(), correlation=randomUUID();
+        const id=requestedId ?? randomUUID(), correlation=randomUUID();
         await store.run(`INSERT INTO mcp_v2_media_stage(id,tenant_id,tenant_revision,account_id,client_id,grant_id,account_auth_version,epoch_hash,build_digest,issuer,resource,
           product_id,target_slot,expected_revision,begin_request_hash,idempotency_hash,source_sha256,codec_digest,source_mime,declared_bytes,next_offset,reserved_bytes,quota_owner_key,state,version,validation_attempts,correlation_id,created_at,upload_expires_at,absolute_expires_at,receipt_expires_at)
           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,'UPLOADING',0,0,?,?,?,?,?)`,id,context.tenantId,context.tenantRevision,context.accountId,context.clientId,context.grantId,context.accountAuthVersion,context.epochHash,context.buildDigest,context.issuer,context.resource,

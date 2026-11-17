@@ -5,6 +5,7 @@ import { MEDIA_LIMITS } from '../src/mcp/media-schema.js';
 import { operationAuthorityPolicy } from '../src/mcp/operation-policy.js';
 const productId='00000000-0000-4000-8000-000000000001',stageId='00000000-0000-4000-8000-000000000002',operationId='00000000-0000-4000-8000-000000000003',sha='a'.repeat(64);
 const examples={
+ 'media.request_upload_url':[{productId,targetSlot:'MAIN',expectedRevision:sha,sourceMime:'image/jpeg',declaredBytes:123904,idempotencyKey:'documented-url-upload-0001'}],
  'media.upload_file':[{productId,targetSlot:'MAIN',expectedRevision:sha,idempotencyKey:'documented-file-shape-0001',file:{file_id:'synthetic-file',download_url:'https://files.oaiusercontent.com/synthetic-not-downloadable',mime_type:'image/png'}}],
  'media.list':[{productId,limit:5,offset:0}],
  'media.prepare_upload':[

@@ -23,7 +23,7 @@ import { catalogMediaUpdateTool } from './catalog-media-adapter.js';
 import { catalogMediaCreateTool } from './catalog-media-create-adapter.js';
 import { createMediaRuntime } from './media-runtime.js';
 
-export const connectorPath = (path) => /^\/(?:mcp$|oauth\/(?:register|authorize|token|revoke|consent\.js|consent\.css|operation|operation-review\.(?:js|css))$|\.well-known\/oauth-(?:protected-resource|authorization-server)(?:\/|$)|api\/v1\/seller\/mcp(?:\/|$))/.test(path);
+export const connectorPath = (path) => /^\/(?:mcp$|media\/(?:upload\/|upload-picker\.(?:js|css)$)|oauth\/(?:register|authorize|token|revoke|consent\.js|consent\.css|operation|operation-review\.(?:js|css))$|\.well-known\/oauth-(?:protected-resource|authorization-server)(?:\/|$)|api\/v1\/seller\/mcp(?:\/|$))/.test(path);
 const operationPath = (path) => path === '/oauth/operation' || /^\/oauth\/operation-review\.(?:js|css)$/.test(path) || /^\/api\/v1\/seller\/mcp\/(?:operations(?:\/|$)|approval(?:\/|$))/.test(path);
 const reviewCsp = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -82,6 +82,8 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
   };
   async function handle(request, ip) {
     const url = new URL(request.url), path = url.pathname, operation = operationPath(path);
+    const upload = path.startsWith('/media/upload/') || /^\/media\/upload-picker\.(js|css)$/.test(path);
+    if (upload && (!safeV2 || !extensions.handleMediaUpload || url.origin !== config.sellerOrigin)) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
     if (operation && (!safeV2 || url.origin !== config.sellerOrigin)) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
     if (!config.mcpEnabled) return null;
     if (!connectorPath(path)) return null;
@@ -90,14 +92,24 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
     const approved = origin === config.sellerOrigin || (config.mcpBrowserOrigins || []).includes(origin);
     let response;
     try {
-      if (operation && origin !== null && origin !== config.sellerOrigin) fail('access_denied', 403);
+      if ((operation || upload) && origin !== null && origin !== config.sellerOrigin) fail('access_denied', 403);
       if (origin !== null) {
         let canonical = false;
         try { canonical = new URL(origin).origin === origin; } catch { /* Reject malformed Origin below. */ }
         if (!approved || !canonical || origin === 'null') fail('access_denied', 403);
       }
       if (request.url.length > 8192) fail('invalid_request', 414);
-      if (operation) {
+      if (upload) {
+        await limit('mcp-media-upload-http', ip, 120);
+        if (url.search || !['GET','PUT'].includes(request.method)) fail('invalid_request', 400);
+        const asset = /^\/media\/upload-picker\.(js|css)$/.exec(path);
+        if (asset) {
+          if (request.method !== 'GET') fail('invalid_request', 405);
+          response = new Response(await readFile(new URL(`./upload-picker.${asset[1]}`, import.meta.url)), {
+            headers: { 'Content-Type': (asset[1] === 'js' ? 'text/javascript' : 'text/css') + '; charset=utf-8' },
+          });
+        } else response = await extensions.handleMediaUpload(request, path.slice('/media/upload/'.length));
+      } else if (operation) {
         const match = /^\/api\/v1\/seller\/mcp\/operations\/([0-9a-f-]+)(\/(?:approval|media\/(?:delivery|ack)))?$/.exec(path);
         const page = path === '/oauth/operation', asset = /^\/oauth\/operation-review\.(js|css)$/.exec(path);
         if (!page && !asset && (!match || !uuid.test(match[1]))) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
@@ -166,12 +178,13 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
           await store.transaction(() => audit(store, tenantId, 'DENY', {}, e.error));
         } catch { /* Denial never releases data; an unavailable audit cannot turn it into success. */ }
       }
-      response = json(e instanceof OAuthError ? e.status : e instanceof ApiError ? e.status : 503, { error: e instanceof OAuthError ? e.error : 'temporarily_unavailable' }, e.headers || {});
+      response = json(e instanceof OAuthError ? e.status : e instanceof ApiError ? e.status : 503,
+        { error: e instanceof OAuthError ? e.error : upload && e instanceof ApiError ? e.code : 'temporarily_unavailable' }, e.headers || {});
     }
     if (operation && response.ok && path.startsWith('/api/')) await maintain();
     response.headers.set('Referrer-Policy', 'no-referrer'); response.headers.set('X-Content-Type-Options', 'nosniff'); response.headers.set('Cache-Control', 'no-store');
-    if (operation) { response.headers.set('Content-Security-Policy', reviewCsp); response.headers.set('X-Frame-Options', 'DENY'); response.headers.set('X-Robots-Tag', 'noindex'); }
-    if (!operation && origin && approved) { response.headers.set('Access-Control-Allow-Origin', origin); response.headers.set('Vary', 'Origin'); response.headers.set('Access-Control-Expose-Headers', 'WWW-Authenticate, MCP-Protocol-Version'); }
+    if (operation || upload) { response.headers.set('Content-Security-Policy', reviewCsp); response.headers.set('X-Frame-Options', 'DENY'); response.headers.set('X-Robots-Tag', 'noindex'); }
+    if (!operation && !upload && origin && approved) { response.headers.set('Access-Control-Allow-Origin', origin); response.headers.set('Vary', 'Origin'); response.headers.set('Access-Control-Expose-Headers', 'WWW-Authenticate, MCP-Protocol-Version'); }
     return response;
   }
   return { handle, initialize: async () => {
