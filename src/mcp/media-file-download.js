@@ -18,7 +18,9 @@ export function validateMediaFileUrl(value) {
   try { url = new URL(value); } catch { throw invalid(); }
   if (url.protocol !== 'https:' ||
       url.username || url.password || url.hash || (url.port && url.port !== '443')) throw invalid();
-  if (url.hostname !== 'files.oaiusercontent.com') {
+  // ChatGPT file bridges also use regional hosts (observed sdmntprseasia).
+  // Permit one DNS label within OpenAI's documented file domain, never suffix lookalikes.
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.oaiusercontent\.com$/.test(url.hostname)) {
     const error = invalid('MEDIA_FILE_SOURCE');
     // Only the public source hostname is diagnostic; never retain a signed URL.
     error.sourceHost = /^[a-z0-9.-]{1,253}$/.test(url.hostname) ? url.hostname : null;

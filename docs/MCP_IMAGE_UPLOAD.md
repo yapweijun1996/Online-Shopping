@@ -4,7 +4,7 @@
 
 | Client capability | Tool and flow | Limits |
 | --- | --- | --- |
-| ChatGPT supplies a file descriptor | `media.list` → `media.upload_file` with the attached file → returned Seller Approval link → `media.commit_upload` after approval | Existing product, PNG/JPEG/WebP, source at most 512 KiB; HTTPS on exact `files.oaiusercontent.com` host only. |
+| ChatGPT supplies a file descriptor | `media.list` → `media.upload_file` with the attached file → returned Seller Approval link → `media.commit_upload` after approval | Existing product, PNG/JPEG/WebP, source at most 512 KiB; HTTPS on direct subdomains of `oaiusercontent.com`, including regional file hosts. |
 | MCP client can read the actual image bytes | `media.list` → `media.prepare_upload` begin/append/seal → Seller Approval link → `media.commit_upload` | Same source limit. Each append: up to 12 independently encoded base64 strings, each at most 4,096 characters; at most 36 KiB decoded per call. |
 | Client can see an image but cannot provide a file descriptor or exact bytes | Use the authenticated Seller Studio product editor to upload the image | A visible chat image, sandbox path or Claude file ID alone is not an upload capability. Do not invent a URL, base64 data or SHA-256. |
 
@@ -21,6 +21,16 @@ server. A bare `file_...` ID does not satisfy that path contract. Neither a bare
 ID nor a raw local path satisfies the server's object schema. Follow the actual
 client tool definition; do not invent a path or a download URL. A valid local
 image alone does not prove that the host bridge completed the transfer.
+
+On 2026-11-17, a real connector transfer supplied
+`sdmntprseasia.oaiusercontent.com`. The previous exact
+`files.oaiusercontent.com` allowlist rejected it after successful argument and
+target validation, producing the generic `Invalid params` error. The downloader
+now accepts direct subdomains of OpenAI's documented `*.oaiusercontent.com`
+namespace; see the [OpenAI network guidance](https://help.openai.com/en/articles/9247338-network-recommendations-for-chatgpt-errors-on-web-and-apps).
+Nested subdomains, the bare apex, suffix lookalikes, non-HTTPS sources and
+redirects remain denied. Public DNS validation/pinning, native image decoding,
+size/deadline/concurrency bounds and seller approval still apply.
 
 The current upload accepts omitted/empty MIME hints and
 `application/octet-stream` as unspecified. It detects the actual image MIME from

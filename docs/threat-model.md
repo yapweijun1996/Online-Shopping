@@ -42,9 +42,15 @@ the existing tenant fence. Download runs outside SQL transactions and platform
 locks. Each subsequent begin/append/seal phase repeats current authority checks;
 revocation or a concurrent product change cannot be adopted as upload authority.
 
-The downloader accepts only HTTPS on the exact `files.oaiusercontent.com`
-hostname and default TLS port, with no userinfo or fragment. Subdomains,
-trailing-dot aliases, local paths, other schemes/hosts, redirects and compressed
+The downloader accepts only HTTPS on direct DNS subdomains of
+`oaiusercontent.com` and the default TLS port, with no userinfo or fragment.
+This covers `files.oaiusercontent.com` and the regional
+`sdmntprseasia.oaiusercontent.com` observed in a real connector transfer on
+2026-11-17. OpenAI's [network guidance](https://help.openai.com/en/articles/9247338-network-recommendations-for-chatgpt-errors-on-web-and-apps)
+identifies `*.oaiusercontent.com` as its file/network domain. This is a source
+network boundary, not proof of file ownership or safe image content. Each host
+has exactly one nonempty valid DNS label before that suffix. Apex hosts, nested
+subdomains, suffix lookalikes, trailing-dot aliases, local paths, other schemes/hosts, redirects and compressed
 responses are rejected. Every DNS answer must be public; a validated answer is
 pinned to the actual TLS connection without forwarding Shop credentials. A
 ten-second total deadline covers DNS and streaming, the streamed source is

@@ -27,13 +27,32 @@ function fixture({ body = png, status = 200, headers = {}, complete = true, reso
   return { calls, download: createMediaFileDownloaderForTest({resolve,request,timeoutMs}) };
 }
 
-test('only the exact HTTPS source origin is accepted', () => {
+test('only direct HTTPS subdomains of the OpenAI file domain are accepted', () => {
   assert.equal(validateMediaFileUrl(url).hostname, 'files.oaiusercontent.com');
   for (const value of [undefined,'/etc/passwd','file:///etc/passwd','http://files.oaiusercontent.com/file',
     'https://files.oaiusercontent.com.evil.test/file','https://sub.files.oaiusercontent.com/file',
+    'https://sdmntprseasia.oaiusercontent.com.evil.test/file','https://fake-oaiusercontent.com/file',
+    'https://oaiusercontent.com/file','https://-invalid.oaiusercontent.com/file',
+    'https://' + 'a'.repeat(64) + '.oaiusercontent.com/file',
     'https://files.oaiusercontent.com./file','https://user:pass@files.oaiusercontent.com/file',
     'https://files.oaiusercontent.com:444/file','https://files.oaiusercontent.com/file#x',
     'https://127.0.0.1/file','https://files.oaiusercontent.com\\@evil.test/file']) assert.throws(() => validateMediaFileUrl(value),{status:400});
+});
+
+test('regional OpenAI file hosts download with the same DNS pinning and source limits', async () => {
+  const regional = { ...file, download_url: 'https://sdmntprseasia.oaiusercontent.com/synthetic-file?sig=private-test-value' };
+  assert.equal(validateMediaFileUrl(regional.download_url).hostname, 'sdmntprseasia.oaiusercontent.com');
+  const f = fixture();
+  assert.deepEqual((await f.download(regional)).bytes, png);
+  assert.equal(f.calls[0].target.hostname, 'sdmntprseasia.oaiusercontent.com');
+  f.calls[0].options.lookup('sdmntprseasia.oaiusercontent.com', {}, (error, address, family) => {
+    assert.equal(error, null); assert.equal(address, '8.8.8.8'); assert.equal(family, 4);
+  });
+  const denied = fixture({ resolve: async () => [{ address: '127.0.0.1', family: 4 }] });
+  await assert.rejects(denied.download(regional), { status: 503 });
+  assert.equal(denied.calls.length, 0);
+  await assert.rejects(fixture({ status: 302, headers: { location: 'https://outside.example.test/file' } }).download(regional), { status: 503 });
+  await assert.rejects(fixture({ body: Buffer.alloc(524289) }).download(regional), { status: 503 });
 });
 
 test('IP classification rejects private, reserved, mapped and tunnel addresses', () => {
