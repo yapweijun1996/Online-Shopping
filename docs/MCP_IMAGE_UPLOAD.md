@@ -27,10 +27,12 @@ vendor-account handoff must be tested in that client.
 
 ## ChatGPT test flow
 
-1. Connect the intended shop's seller MCP URL. For the documented GCP default
-   shop this is `https://seller.demoonlineshopping.xyz/mcp`; a tenant uses
-   `https://seller.demoonlineshopping.xyz/<shop-code>/mcp`. These are deployment
-   addresses, not a claim that the service is currently reachable.
+1. Connect the intended shop's seller MCP URL. The current Pomelo Stem default
+   shop uses `https://seller.pomelostem.com/mcp`; a tenant uses
+   `https://seller.pomelostem.com/<shop-code>/mcp`. Seller Studio is
+   `https://seller.pomelostem.com/seller/`. Other installations use their own
+   configured seller origin; legacy deployment addresses in older runbooks are
+   not substitutes for the connected shop.
 2. Sign in and grant the needed media scopes. The server also checks the current
    account's catalog capability; an old read-only grant cannot upload.
 3. Choose an existing disposable test product. Attach a PNG, JPEG or WebP under
