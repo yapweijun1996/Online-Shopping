@@ -50,20 +50,19 @@ test('SYNTHETIC transport C renderer verifies page labels and safely displays nu
    const context=await browser.newContext({viewport:{width,height:900}});t.after(()=>context.close());const errors=[],external=[];
    await context.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():(external.push(route.request().url()),route.abort()));
    const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));
-   await page.goto(origin+base+'/oauth/operation?operationId='+wireId(1));await page.waitForFunction(()=>!document.querySelector('#media-image-ack').disabled);
+   await page.goto(origin+base+'/oauth/operation?operationId='+wireId(1));await page.locator('#approve:enabled').waitFor();
    const text=await page.locator('#media-effects').textContent();assert.match(text,/Did not exist before this change/);assert.match(text,/Removed by this change/);
    assert.match(text,/Stored own main is hidden/);assert.match(text,/Old literal name/);assert.ok(text.includes('<script>window.__CInjected=true</script>'));assert.ok(text.includes('\\u202e'));
    assert.equal(await page.evaluate(()=>window.__CInjected),undefined);assert.equal(await page.locator('#media-effects script').count(),0);
    const summary=await page.locator('#summary-fields').textContent();for(const value of ['Before product','After product','BEFORE-SKU','AFTER-SKU','MYR 12.34','SGD 56.78','Before category','After category','Before description','After description'])assert.ok(summary.includes(value),value);
-   assert.equal(await page.locator('#media-ack').isChecked(),false);assert.equal(await page.locator('#approve').isDisabled(),true);
+   assert.equal(await page.locator('#media-ack, #media-image-ack, #decision input[type=password]').count(),0);
    const image=await page.locator('#media-image').evaluate(value=>({width:value.naturalWidth,height:value.naturalHeight}));assert.ok(image.width>0&&image.height>0);
-   await page.locator('#media-image-ack').click();await page.waitForFunction(()=>!document.querySelector('#approve').disabled);
-   const before=approvals.length;await page.locator('#password').fill('Synthetic-render-password');await page.locator('#approve').click();assert.equal(approvals.length,before);
-   await page.locator('#media-ack').check();await page.locator('#approve').click();await page.locator('#decision').waitFor({state:'hidden'});
-   assert.equal(approvals.length,before+1);assert.equal(approvals.at(-1).mediaReviewed,true);assert.equal(await page.locator('#password').inputValue(),'');
+   const before=approvals.length;
+   await page.locator('#approve').click();await page.locator('#decision').waitFor({state:'hidden'});
+   assert.equal(approvals.length,before+1);assert.equal(approvals.at(-1).mediaReviewed,true);assert.equal(Object.hasOwn(approvals.at(-1),'password'),false);
    assert.ok(acknowledgements.some(value=>value.kind==='ASSET'));assert.deepEqual(errors,[]);assert.deepEqual(external,[]);await context.close();
   }
   corrupt=true;const context=await browser.newContext();t.after(()=>context.close());const page=await context.newPage();
   await page.goto(origin+'/oauth/operation?operationId='+wireId(1));await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Image verification failed'));
-  assert.equal(await page.locator('#approve').isDisabled(),true);assert.equal(await page.locator('#media-image-ack').isDisabled(),true);assert.equal(approvals.length,2);
+  assert.equal(await page.locator('#approve').isDisabled(),true);assert.equal(approvals.length,2);
  });

@@ -68,7 +68,7 @@ export async function reviewFixture(t, dialect = 'sqlite', options = {}) {
     const values = [value.operationId, value.tenantId, value.tenantRevision, value.accountId, value.clientId, value.grantId, value.epochHash, value.buildDigest, value.issuer, value.resource, value.toolName, value.resourceType, value.resourceId, String(value.expectedRevision), value.requiredScope, value.requiredCapability, value.risk, value.createdAt, value.expiresAt, value.idempotencyHash, value.correlationId, canonicalOperationJson(value), previewHash, hash('synthetic-request'), 'PENDING_APPROVAL', new Date(Date.parse(later) + 90 * 86400000).toISOString()];
     await store.run(`INSERT INTO mcp_v2_operation(${columns.join(',')}) VALUES (${columns.map(() => '?').join(',')})`, ...values);
     const path = '/api/v1/seller/mcp/operations/' + value.operationId;
-    return { value, path, previewHash, input: { operationId: value.operationId, previewHash, decision: 'approve', password: reviewPassword } };
+    return { value, path, previewHash, input: { operationId: value.operationId, previewHash, decision: 'approve' } };
   }
   async function reviewedOperation(patch) {
     const op = await operation(patch), review = await call(op.path, 'GET', undefined, headers);

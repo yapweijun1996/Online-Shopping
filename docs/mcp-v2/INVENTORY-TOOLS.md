@@ -56,7 +56,7 @@ Schema33 is index-only. Frozen32 inventory table DDL, version and stored fingerp
 | 3 Binding | Wrong tenant and different genuine OAuth client cannot commit another binding |
 | 4 Revocation | Account/token/grant denial, including already-approved proposal |
 | 5 Runtime | Ordinary configured mode, Demo/disabled/production and explicit empty/null constructors |
-| 6 Human authority | No approval, wrong hash/password/session, missing Origin/CSRF, closed authority arguments; inert note |
+| 6 Human authority | No approval, wrong hash/session, a legacy password field, missing Origin/CSRF, closed authority arguments; inert note |
 | 7 Staleness | ABA, portal/labels, checkout, rejection/cancellation and naturally expired holds |
 | 8 Policy | Zero/null, below-hold shortfall, confirmed mode restriction and no-op |
 | 9 Concurrency | Duplicate commit one movement/history/audit; real confirm/adjust contiguous chain |

@@ -24,7 +24,7 @@ const day = 86400000;
 const localDate = instant => new Date(instant + 8 * 3600000).toISOString().slice(0, 10);
 
 // Synthetic QA human actions use the actual seller page, including all page/image
-// deliveries, browser SHA/decode ACKs, unchecked human confirmation and fresh PW.
+// deliveries, browser SHA/decode and automatic ACKs, and explicit seller approval.
 async function approve(f, page, operation) {
   const responses = [], failures = [], pageErrors = [];
   const recordResponse = response => responses.push({ path: new URL(response.url()).pathname, status: response.status(), method: response.request().method() });
@@ -38,24 +38,15 @@ async function approve(f, page, operation) {
   if (mediaRequired) await page.locator('#media-review').waitFor({ state: 'visible' });
   assert.equal(await page.locator('#media-review').isVisible(), mediaRequired);
   if (mediaRequired) {
-    assert.equal(await page.locator('#media-ack').isChecked(), false);
     const count = Number((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_media_asset_ref WHERE operation_id=?', operation.operationId)).n);
-    for (let n = 1; n <= count; n++) {
-      await page.waitForFunction(() => !document.querySelector('#media-image-ack').disabled);
-      assert.ok(await page.locator('#media-image').evaluate(node => node.naturalWidth > 0));
-      await page.locator('#media-image-ack').click();
-      await page.waitForFunction(expected => document.querySelector('#media-progress').textContent.startsWith(expected + ' of '), n);
-    }
-    await page.waitForFunction(() => !document.querySelector('#approve').disabled);
-    assert.equal(Number((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_media_delivery WHERE operation_id=? AND ack_at IS NULL', operation.operationId)).n), 0);
-    await page.locator('#media-ack').check();
+    await page.locator('#approve:enabled').waitFor();
+    assert.equal(Number((await f.store.get("SELECT COUNT(*) AS n FROM mcp_v2_media_delivery WHERE operation_id=? AND kind='ASSET' AND ack_at IS NOT NULL", operation.operationId)).n), count);
   }
-  await page.locator('#password').fill(f.password);
   const response = page.waitForResponse(value => new URL(value.url()).pathname.endsWith('/' + operation.operationId + '/approval') && value.request().method() === 'POST');
   await page.locator('#approve').click();
-  assert.equal((await response).status(), 200, 'Actual first-party password/ACK approval');
+  assert.equal((await response).status(), 200, 'Actual first-party session-based approval');
   await page.locator('#decision').waitFor({ state: 'hidden' });
-  assert.equal(await page.locator('#password').inputValue(), '');
+  assert.equal(await page.locator('#decision input[type=password]').count(), 0);
   assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?', operation.operationId)).state, 'APPROVED');
   } catch (error) {
     const ui = await page.evaluate(() => ({
@@ -64,7 +55,6 @@ async function approve(f, page, operation) {
       mediaHidden: document.querySelector('#media-review')?.hidden,
       progress: document.querySelector('#media-progress')?.textContent,
       approveDisabled: document.querySelector('#approve')?.disabled,
-      passwordValid: document.querySelector('#password')?.validity.valid,
     })).catch(() => null);
     f.diagnostic('Synthetic review diagnostics: ' + JSON.stringify({ ui, responses, failures, pageErrors }));
     throw error;

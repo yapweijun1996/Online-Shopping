@@ -5,11 +5,17 @@ import { updateProduct } from '../src/products.js';
 
 for (const dialect of ['sqlite', 'postgres']) {
   test(`${dialect}: actual first-party media delivery and explicit approval commit once`, async t => {
-    const f = await mediaReviewFixture(t, dialect), review = await f.review();
+    const f = await mediaReviewFixture(t, dialect, { prepareGraph: sharedReviewGraph }), review = await f.review();
     assert.equal(review.mediaReview.descriptor.policyId, 'media-upload-v1');
     assert.ok(review.mediaReview.items.some(item => item.kind === 'ASSET'));
     assert.equal((await f.approve(review, { mediaReviewed: true })).status, 403);
-    await f.complete(review);
+    const pendingImage = review.mediaReview.items.findLast(item => item.kind === 'ASSET');
+    assert.ok(review.mediaReview.descriptor.assetCount > 1);
+    await f.complete({ ...review, mediaReview: { items: review.mediaReview.items.filter(item => item !== pendingImage) } });
+    const delivered = await f.deliver(review, pendingImage);
+    assert.equal(delivered.status, 200);
+    assert.equal((await f.approve(review, { mediaReviewed: true })).status, 403);
+    assert.equal((await f.acknowledge(review, pendingImage, delivered.headers.get('x-media-nonce'))).status, 200);
     assert.equal((await f.approve(review)).status, 403);
     const approval = await f.approve(review, { mediaReviewed: true });
     assert.equal(approval.status, 200, await approval.text());
@@ -35,7 +41,7 @@ for (const dialect of ['sqlite', 'postgres']) {
     const other = { origin: f.config.sellerOrigin, cookie: login.response.headers.get('set-cookie').split(';')[0], 'x-csrf-token': login.data.csrfToken };
     assert.equal((await f.deliver(fresh, item, other)).status, 403);
   });
-  test(`${dialect}: reject needs fresh password but no image ACK and leaves image data unchanged`, async t => {
+  test(`${dialect}: seller session can reject before image ACKs and leaves image data unchanged`, async t => {
     const f = await mediaReviewFixture(t, dialect), review = await f.review();
     const before = await f.store.get('SELECT image_data FROM product WHERE id=?', f.product.id);
     const bad = await f.approve(review, { password: 'Incorrect synthetic password' }, 'reject'); assert.equal(bad.status, 403);
@@ -66,19 +72,26 @@ for (const dialect of ['sqlite', 'postgres']) {
     assert.equal((await f.deliver(review, item)).status, 403);
     assert.equal((await f.approve(review, { mediaReviewed: true })).status, 403);
   });
-  test(`${dialect}: password work releases writer lock and a concurrent portal edit invalidates all prior image ACKs`, async t => {
+  test(`${dialect}: a portal edit between approval fences invalidates all prior image ACKs`, async t => {
     const f = await mediaReviewFixture(t, dialect), review = await f.review(); await f.complete(review);
-    const get = f.store.get; let edited, scheduled = false;
-    const changed = new Promise((resolve, reject) => { edited = { resolve, reject }; });
+    const get = f.store.get, transaction = f.store.transaction;
+    let snapshotRead = false, edited = false;
     f.store.get = async (sql, ...args) => {
       const result = await get(sql, ...args);
-      if (!scheduled && /SELECT password_hash, oauth_auth_version/.test(sql)) {
-        scheduled = true; setImmediate(() => updateProduct(f.store, f.product.id, { name: 'Concurrent synthetic portal edit' }).then(edited.resolve, edited.reject));
+      if (sql.startsWith('SELECT oauth_auth_version FROM seller_account')) snapshotRead = true;
+      return result;
+    };
+    f.store.transaction = async (...args) => {
+      const result = await transaction(...args);
+      if (snapshotRead && !edited) {
+        edited = true;
+        await updateProduct(f.store, f.product.id, { name: 'Concurrent synthetic portal edit' });
       }
       return result;
     };
-    const approving = f.approve(review, { mediaReviewed: true }); await changed;
-    const response = await approving; f.store.get = get;
+    const response = await f.approve(review, { mediaReviewed: true });
+    f.store.get = get; f.store.transaction = transaction;
+    assert.equal(edited, true);
     assert.equal(response.status, 403);
     assert.equal(await f.store.get('SELECT operation_id FROM mcp_v2_approval WHERE operation_id=?', f.operation.operationId), undefined);
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?', f.operation.operationId)).state, 'PENDING_APPROVAL');

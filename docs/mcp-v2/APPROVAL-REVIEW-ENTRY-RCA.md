@@ -50,7 +50,7 @@ replacement must complete first; quick-login sessions do not continue to review.
 Unknown, unauthorized, expired, cancelled and committed references show the same
 generic unavailable message with instructions to request a new preview. No
 proposal is rendered on those failed paths. Sessions, scope/consent checks,
-ownership, tenant isolation, Origin/CSRF, fresh password, image/page evidence,
+ownership, tenant isolation, Origin/CSRF, seller-session and challenge binding, image/page evidence,
 revision checks and commit/replay behavior retain their existing API enforcement.
 
 The integrated cached seller application is version167 and the platform shell is version21.
@@ -72,8 +72,7 @@ and open both plain and attributed authenticated links.
 
 The CREATE cases use a genuine empty BEFORE and zero image assets. PAGE delivery
 and one-use acknowledgments still occur; native decode is never called, so this is
-not native-codec coverage. Approval requires the initially unchecked full-review
-acknowledgment and a fresh password. An unapproved commit is rejected; approved
+not native-codec coverage. The historical run required a full-review checkbox and a password re-prompt. The current approval flow uses the authenticated seller session, challenge and automatic PAGE ACKs. An unapproved commit is rejected; approved
 commit creates exactly one intended product with expected price/stock, and retry
 returns a replay receipt without another product. The same genuine OAuth client
 independently re-reads the committed product through `catalog.get` (ID, SKU,

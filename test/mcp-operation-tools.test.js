@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { createOperationTools } from '../src/mcp/operation-tools.js';
 import { catalogue, valid } from '../src/mcp/tools.js';
 import { hash, secret } from '../src/mcp/credentials.js';
-import { reviewFixture, reviewPassword } from './helpers/mcp-review-fixture.js';
+import { reviewFixture } from './helpers/mcp-review-fixture.js';
 import { syntheticOperationTool, objectSchema } from './helpers/mcp-operation-tool-fixture.js';
 
 async function rpcFixture(t, dialect, options = {}) {
@@ -77,7 +77,7 @@ for (const dialect of ['sqlite', 'postgres']) {
       const review = await f.call(path, 'GET', undefined, f.headers);
       assert.equal(review.response.status, 200); assert.equal(review.data.proposal.after, f.input.name);
       const approval = await f.call(path + '/approval', 'POST', { operationId: op.operationId, previewHash: op.previewHash,
-        challenge: review.data.challenge, decision: 'approve', password: reviewPassword }, f.headers);
+        challenge: review.data.challenge, decision: 'approve' }, f.headers);
       assert.equal(approval.response.status, 200);
       const originalRun = f.store.run;
       f.store.run = async (sql, ...values) => {
@@ -153,7 +153,7 @@ for (const dialect of ['sqlite', 'postgres']) {
         return originalAll(sql, ...values);
       };
       const approval = await f.call(path + '/approval', 'POST', { operationId: op.operationId, previewHash: op.previewHash,
-        challenge: review.data.challenge, decision: 'approve', password: reviewPassword }, f.headers);
+        challenge: review.data.challenge, decision: 'approve' }, f.headers);
       f.store.all = originalAll;
       assert.equal(approval.response.status, 200); assert.equal(approval.data.status, 'APPROVED');
       const committed = await f.tool('catalog.commit_update', { operationId: op.operationId });
@@ -227,7 +227,7 @@ test('tenant prefix transport preserves the validated minimal RPC receipt verbat
   const op = prepared.data.result.structuredContent, path = '/api/v1/seller/mcp/operations/' + op.operationId;
   const review = await f.call(path, 'GET', undefined, f.headers);
   assert.equal((await f.call(path + '/approval', 'POST', { operationId: op.operationId, previewHash: op.previewHash,
-    challenge: review.data.challenge, decision: 'approve', password: reviewPassword }, f.headers)).response.status, 200);
+    challenge: review.data.challenge, decision: 'approve' }, f.headers)).response.status, 200);
   const committed = await f.tool('catalog.commit_update', { operationId: op.operationId });
   const stored = JSON.parse((await f.store.get('SELECT result_json FROM mcp_v2_operation WHERE id = ?', op.operationId)).result_json);
   assert.deepEqual(committed.data.result.structuredContent.result, stored);

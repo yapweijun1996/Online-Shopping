@@ -3,7 +3,6 @@ import { createApi } from '../../src/app.js';
 import { createMediaNativeSession } from '../../src/mcp/media-native.js';
 import { mediaListTool, mediaUploadTool, mediaLayoutTool } from '../../src/mcp/media-tools.js';
 import { mediaHash } from '../../src/mcp/media-storage.js';
-import { reviewPassword } from './mcp-review-fixture.js';
 import assert from 'node:assert/strict';
 
 // Actual HTTP/auth/store with explicitly synthetic decoder and seeded consent.
@@ -41,7 +40,7 @@ export async function mediaToolsFixture(t, dialect, options = {}) {
       assert.equal(ack.response.status,200,JSON.stringify(ack.data));
     }
     const approved=await call(path+'/approval','POST',{operationId:operation.operationId,previewHash:operation.previewHash,challenge:value.challenge,
-      decision:'approve',password:reviewPassword,mediaReviewed:true},f.headers);
+      decision:'approve',mediaReviewed:true},f.headers);
     assert.equal(approved.response.status,200,JSON.stringify(approved.data));return value;
   }
   return{...f,config,api,call,rpc,tool,entries,runtime,approve};

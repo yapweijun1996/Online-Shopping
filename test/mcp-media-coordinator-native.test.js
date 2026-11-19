@@ -8,7 +8,6 @@ import { createOperationEngine } from '../src/mcp/operation-engine.js';
 import { readMediaFrame } from '../src/mcp/media-frame-storage.js';
 import { hash } from '../src/mcp/credentials.js';
 import { seedSyntheticMediaApproval } from './helpers/mcp-media-engine-fixture.js';
-import { reviewPassword } from './helpers/mcp-review-fixture.js';
 import { startContainer } from '../media-codec/scripts/dev-container.js';
 
 const enabled = process.env.MEDIA_COORDINATOR_CONTAINER_TEST === '1';
@@ -45,7 +44,7 @@ test('actual isolated codec seals uploads and SYNTHETIC reviewed evidence exerci
     const path = '/api/v1/seller/mcp/operations/' + operation.operationId;
     assert.equal((await f.call(path, 'GET', undefined, f.headers)).response.status, 403);
     assert.equal((await f.call(path + '/approval', 'POST', { operationId: operation.operationId, previewHash: operation.previewHash,
-      decision: 'approve', password: reviewPassword, challenge: 'A'.repeat(43) }, f.headers)).response.status, 403);
+      decision: 'approve', challenge: 'A'.repeat(43) }, f.headers)).response.status, 403);
     // Internal synthetic evidence only. No actual human image-review/ACK proof is claimed.
     await seedSyntheticMediaApproval({ store: f.store, context, sessionHash: hash(f.cookie.slice(f.cookie.indexOf('=') + 1)) }, operation);
     const commit = () => engine.commit({ bearer: f.bearer, toolName: 'media.commit_upload', operationId: operation.operationId });

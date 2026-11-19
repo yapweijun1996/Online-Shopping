@@ -146,7 +146,7 @@ for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: actual productio
   const prepared = await current.call('company.preview_update', { input: { expectedRevision: company.revision, changes: { availabilityText: 'Synthetic reviewed text' } }, idempotencyKey: 'production-reviewed-company' });
   assert.equal(prepared.response.status, 200); const op = prepared.data.result.structuredContent, path = '/api/v1/seller/mcp/operations/' + op.operationId;
   const reviewed = await call(path, 'GET', undefined, current.headers); assert.equal(reviewed.response.status, 200);
-  const approved = await call(path + '/approval', 'POST', { operationId: op.operationId, previewHash: op.previewHash, challenge: reviewed.data.challenge, decision: 'approve', password }, current.headers);
+  const approved = await call(path + '/approval', 'POST', { operationId: op.operationId, previewHash: op.previewHash, challenge: reviewed.data.challenge, decision: 'approve' }, current.headers);
   assert.equal(approved.response.status, 200); assert.equal((await store.get('SELECT state FROM mcp_v2_operation WHERE id=?', op.operationId)).state, 'APPROVED');
   config = readConfig({ ...physical.env, MCP_V2_BACKEND_IDENTITY: 'sha256:' + 'd'.repeat(64) });
   api = await createApi({ store, config, operationTools: entries });

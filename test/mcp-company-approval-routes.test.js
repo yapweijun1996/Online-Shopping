@@ -19,7 +19,7 @@ for (const dialect of ['sqlite', 'postgres']) {
       const op = await company();
       assert.equal(op.review.data.currencyAcknowledgementRequired, true);
       assert.equal(op.review.data.currencyWarning, COMPANY_CURRENCY_WARNING);
-      for (const patch of [{}, { currencyAcknowledged: false }, { currencyAcknowledged: 'true' }, { approved: true, currencyAcknowledged: true }]) {
+      for (const patch of [{}, { currencyAcknowledged: false }, { currencyAcknowledged: 'true' }, { approved: true, currencyAcknowledged: true }, { password: 'Synthetic-legacy-password', currencyAcknowledged: true }]) {
         assert.equal((await f.call(op.path + '/approval', 'POST', { ...op.input, ...patch }, f.headers)).response.status, 403);
       }
       assert.equal((await f.call(op.path + '/approval', 'POST', { ...op.input, currencyAcknowledged: true }, f.headers)).response.status, 200);

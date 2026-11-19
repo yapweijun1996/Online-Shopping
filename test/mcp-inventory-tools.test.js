@@ -64,7 +64,7 @@ for(const dialect of ['sqlite','postgres']){
   const client=await freshCatalogAccess(f,legacyCatalogScopes+' inventory.read inventory.adjust',f.call,{username:'inventory_manager',password});
   const current=dto(await client.call('inventory.summary',{productId:p.id}));const op=dto(await client.call('inventory.preview_adjustment',{input:{productId:p.id,expectedRevision:current.revision,stockQuantity:4,reasonCode:'DAMAGE'},idempotencyKey:'synthetic-manager-adjust-0001'}));
   const path='/api/v1/seller/mcp/operations/'+op.operationId;assert.equal((await f.call(path,'GET',undefined,f.headers)).response.status,403);const review=await f.call(path,'GET',undefined,client.headers);
-  assert.equal(review.response.status,200);const approved=await f.call(path+'/approval','POST',{operationId:op.operationId,previewHash:op.previewHash,challenge:review.data.challenge,decision:'approve',password},client.headers);assert.equal(approved.response.status,200);
+  assert.equal(review.response.status,200);const approved=await f.call(path+'/approval','POST',{operationId:op.operationId,previewHash:op.previewHash,challenge:review.data.challenge,decision:'approve'},client.headers);assert.equal(approved.response.status,200);
   assert.equal(dto(await client.call('inventory.commit_adjustment',{operationId:op.operationId})).status,'COMMITTED');assert.equal((await f.store.get("SELECT actor_id FROM inventory_movement WHERE source='MCP_ADJUST'")).actor_id,manager.id);
   const read=await freshCatalogAccess(f,legacyCatalogScopes+' inventory.read');assert.equal((await read.call('inventory.summary',{productId:p.id})).response.status,200);assert.equal((await read.call('inventory.commit_adjustment',{operationId:op.operationId})).response.status,403);
  });
@@ -89,7 +89,7 @@ for(const dialect of ['sqlite','postgres']){
   const existing=await f.store.get("SELECT id,revision FROM shop_order WHERE status='SUBMITTED'");await decideSellerOrder(f.store,existing.id,'confirm',{expectedRevision:existing.revision},'synthetic_owner');
   assert.equal((await f.preview(p,null)).data.error.code,-32009);
  });
- test(`${dialect}: wrong password/hash/client or revoked grant cannot authorize an otherwise valid proposal`,options,async t=>{
+ test(`${dialect}: a legacy password field, wrong hash/client or revoked grant cannot authorize an otherwise valid proposal`,options,async t=>{
   const f=await inventoryToolFixture(t,dialect),p=await f.product(),op=dto(await f.preview(p,3));
   assert.equal((await f.approve(op,{password:'WrongSyntheticPassword123!'})).response.status,403);
   assert.equal((await f.approve(op,{previewHash:'0'.repeat(64)})).response.status,403);
@@ -131,7 +131,7 @@ for(const dialect of ['sqlite','postgres']){
   assert.equal((await f.call(path,'GET')).response.status,403);
   for(const headers of [{...f.client.headers,origin:'https://untrusted.example.test'},{...f.client.headers,'x-csrf-token':''},{...f.client.headers,cookie:''}]){
    const review=await f.call(path,'GET',undefined,f.client.headers);assert.equal(review.response.status,200);
-   const denied=await f.call(path+'/approval','POST',{operationId:op.operationId,previewHash:op.previewHash,challenge:review.data.challenge,decision:'approve',password:'Synthetic-route-password-2026!'},headers);assert.equal(denied.response.status,403);
+   const denied=await f.call(path+'/approval','POST',{operationId:op.operationId,previewHash:op.previewHash,challenge:review.data.challenge,decision:'approve'},headers);assert.equal(denied.response.status,403);
   }
   assert.equal((await f.commit(op)).response.status,403);assert.equal((await f.approve(op)).response.status,200);
   const previous=await f.store.get("SELECT COUNT(*) AS n FROM mcp_audit WHERE event='READ' AND outcome LIKE 'inventory.%'"),run=f.store.run;

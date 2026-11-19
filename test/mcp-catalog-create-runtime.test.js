@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {catalogCreateRuntimeFixture} from './helpers/mcp-catalog-create-runtime-fixture.js';
-import {reviewPassword} from './helpers/mcp-review-fixture.js';
 import {getProduct,updateProduct,setProductThumbnail} from '../src/products.js';
 import {freshCatalogAccess,legacyCatalogScopes} from './helpers/mcp-catalog-default-grant.js';
 import {catalogCreateTool} from '../src/mcp/catalog-tools.js';
@@ -15,13 +14,13 @@ async function commerce(store){const result={};for(const table of ['product','li
  const order=table==='product_option'?'product_id,option_type_id':table==='inventory_state'?'product_id':'id';result[table]=rowsDigest(await store.all('SELECT * FROM '+table+' ORDER BY '+order));}return result;}
 for(const dialect of ['sqlite','postgres']){
  const options={skip:dialect==='postgres'&&!process.env.SHOP_TEST_DATABASE_URL};
- test(`${dialect}: real RPC CREATE EMPTY_BEFORE requires PAGE ACK/password, commits initial stock and replays without absent-ID reread`,options,async t=>{
+ test(`${dialect}: real RPC CREATE EMPTY_BEFORE requires PAGE ACK and a seller session, commits initial stock and replays without absent-ID reread`,options,async t=>{
   const f=await catalogCreateRuntimeFixture(t,dialect),before=await commerce(f.store),op=await f.prepare(input(),'create-empty-page-only'),value=await f.review(op);
   assert.deepEqual(await commerce(f.store),before);assert.equal(f.decodes(),0);
   assert.equal(value.proposal.before,null);assert.equal(value.proposal.creationIdentity.targetListingId,null);
   assert.ok(value.mediaReview.items.length>=1);assert.ok(value.mediaReview.items.every(item=>item.kind==='PAGE'));
   const row=await f.store.get('SELECT * FROM mcp_v2_operation WHERE id=?',op.operationId);assert.equal(row.resource_type,'catalog');assert.equal(row.resource_id,'catalog');assert.equal(row.risk,'HIGH');
-  const decision={operationId:op.operationId,previewHash:op.previewHash,challenge:value.challenge,decision:'approve',password:reviewPassword,mediaReviewed:true};
+  const decision={operationId:op.operationId,previewHash:op.previewHash,challenge:value.challenge,decision:'approve',mediaReviewed:true};
   assert.equal((await f.post(op,'/approval',decision)).status,403);await f.acknowledge(op,value);
   assert.equal((await f.post(op,'/approval',{...decision,mediaReviewed:false})).status,403);
   assert.equal((await f.post(op,'/approval',{...decision,password:'wrong-password'})).status,403);

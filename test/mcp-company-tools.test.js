@@ -9,7 +9,7 @@ import { createProduct } from '../src/products.js';
 import { hash, secret, stamp } from '../src/mcp/credentials.js';
 import { COMPANY_CURRENCY_ACKNOWLEDGED } from '../src/mcp/company-approval-policy.js';
 import { operationEpochHash } from '../src/mcp/operation-epoch.js';
-import { reviewFixture, reviewPassword } from './helpers/mcp-review-fixture.js';
+import { reviewFixture } from './helpers/mcp-review-fixture.js';
 
 async function fixture(t, dialect, options = {}) {
   const f = await reviewFixture(t, dialect, { operationTools: [companyReadTool(), companyMutationTool()], ...options }); await f.seedGrant();
@@ -32,7 +32,7 @@ async function fixture(t, dialect, options = {}) {
     const review = await f.call(path, 'GET', undefined, f.headers);
     assert.equal(review.response.status, 200, JSON.stringify(review.data));
     return f.call(path + '/approval', 'POST', { operationId: op.operationId, previewHash: op.previewHash, challenge: review.data.challenge,
-      decision: 'approve', password: reviewPassword, ...extra }, f.headers);
+      decision: 'approve', ...extra }, f.headers);
   };
   const commit = (op) => tool('company.commit_update', { operationId: op.operationId });
   return { ...f, tool, snapshot, preview, approve, commit, bearer };
@@ -162,7 +162,7 @@ for (const dialect of ['sqlite', 'postgres']) {
     const path = '/api/v1/seller/mcp/operations/' + op.operationId;
     const reviewed = await f.call(path, 'GET', undefined, f.headers); assert.equal(reviewed.response.status, 200);
     assert.equal(reviewed.data.currencyAcknowledgementRequired, true); assert.match(reviewed.data.currencyWarning, /historical order currencies are not converted/);
-    const approval = { operationId: op.operationId, previewHash: op.previewHash, challenge: reviewed.data.challenge, decision: 'approve', password: reviewPassword };
+    const approval = { operationId: op.operationId, previewHash: op.previewHash, challenge: reviewed.data.challenge, decision: 'approve' };
     assert.equal((await f.call(path + '/approval', 'POST', approval, f.headers)).response.status, 403);
     assert.equal((await f.call(path + '/approval', 'POST', { ...approval, currencyAcknowledged: false }, f.headers)).response.status, 403);
     assert.equal((await f.commit(op)).response.status, 403); assert.equal((await getCompanySettings(f.store)).defaultCurrency, 'MYR');

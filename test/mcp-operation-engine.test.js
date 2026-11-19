@@ -57,7 +57,7 @@ test('postgres: platform suspension is serialized with a tenant operation commit
     quickLogin: false, epoch: f.options.epoch, buildDigest: f.options.buildDigest, tenantGuard, enabled: true });
   const reviewOp = (value) => review(new Request(f.binding.issuer + '/api/v1/seller/mcp/operations/' + value.operationId,
     { headers: { cookie: `seller_session=${f.session.token}` } }), value.operationId);
-  await approve(request, { challenge: (await reviewOp(op)).challenge, operationId: op.operationId, previewHash: op.previewHash, decision: 'approve', password }, 'guard-ip');
+  await approve(request, { challenge: (await reviewOp(op)).challenge, operationId: op.operationId, previewHash: op.previewHash, decision: 'approve' }, 'guard-ip');
   const worker = concurrentWorker(t, { databaseUrl: url.href }, 'tenant');
   await worker.event('ready');
   const committing = engine.commit({ bearer: f.bearer, toolName: 'catalog.commit_update', operationId: op.operationId });
@@ -77,7 +77,7 @@ test('postgres: platform suspension is serialized with a tenant operation commit
   await other.query("UPDATE tenant SET status = 'ACTIVE', revision = revision + 1 WHERE id = $1", [f.binding.tenantId]);
   const pending = await engine.prepare({ bearer: f.bearer, toolName: 'catalog.preview_update',
     args: { id: f.productId, expectedRevision: 2, name: 'Must not survive suspension' }, idempotencyKey: 'synthetic-resumed-operation' });
-  await approve(request, { challenge: (await reviewOp(pending)).challenge, operationId: pending.operationId, previewHash: pending.previewHash, decision: 'approve', password }, 'guard-ip-2');
+  await approve(request, { challenge: (await reviewOp(pending)).challenge, operationId: pending.operationId, previewHash: pending.previewHash, decision: 'approve' }, 'guard-ip-2');
   await other.query("UPDATE tenant SET status = 'SUSPENDED', revision = revision + 1 WHERE id = $1", [f.binding.tenantId]);
   await other.query("UPDATE tenant SET status = 'ACTIVE', revision = revision + 1 WHERE id = $1", [f.binding.tenantId]);
   await assert.rejects(engine.commit({ bearer: f.bearer, toolName: 'catalog.commit_update', operationId: pending.operationId }), { status: 403 });
@@ -167,7 +167,7 @@ async function fixture(t, dialect) {
   const approveOp = async (op, ip) => {
     const reviewed = await review(new Request(binding.issuer + '/api/v1/seller/mcp/operations/' + op.operationId,
       { headers: { cookie: `seller_session=${session.token}` } }), op.operationId);
-    return approve(request(), { operationId: op.operationId, previewHash: op.previewHash, challenge: reviewed.challenge, decision: 'approve', password }, ip);
+    return approve(request(), { operationId: op.operationId, previewHash: op.previewHash, challenge: reviewed.challenge, decision: 'approve' }, ip);
   };
   const commit = (op) => engine.commit({ bearer, toolName: 'catalog.commit_update', operationId: op.operationId });
   return { store, productId, account, session, grantId, bearer, binding, adapter, options, engine, prepare, approveOp, commit,

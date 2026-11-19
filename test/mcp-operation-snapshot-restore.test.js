@@ -152,7 +152,7 @@ async function seedSnapshot(store, config) {
   const reviewed = await review(humanRequest('GET'), approved.operationId);
   assert.ok(typeof reviewed.challenge === 'string');
   assert.equal((await createOperationApproval(options(store, config))(humanRequest(), {
-    operationId: approved.operationId, previewHash: approved.previewHash, challenge: reviewed.challenge, decision: 'approve', password,
+    operationId: approved.operationId, previewHash: approved.previewHash, challenge: reviewed.challenge, decision: 'approve',
   }, 'synthetic-snapshot-approval')).status, 'APPROVED');
   const pending = await engine.prepare({ bearer, toolName: 'catalog.preview_update', args: { id: resourceId, value: 'Synthetic pending change' }, idempotencyKey: 'synthetic-snapshot-pending-0001' });
   const pendingReview = await review(humanRequest('GET'), pending.operationId);
@@ -231,7 +231,7 @@ for (const dialect of ['sqlite', 'postgres']) {
         args: { id: fixture.resourceId, value: 'Synthetic denied change' }, idempotencyKey: 'synthetic-after-restore-0001' }));
       await denied(createOperationReview(optionsB)(fixture.humanRequest('GET'), fixture.pending.operationId));
       await denied(createOperationApproval(optionsB)(fixture.humanRequest(), { operationId: fixture.pending.operationId,
-        previewHash: fixture.pending.previewHash, challenge: fixture.pendingReview.challenge, decision: 'approve', password }, 'synthetic-restored-pending'));
+        previewHash: fixture.pending.previewHash, challenge: fixture.pendingReview.challenge, decision: 'approve' }, 'synthetic-restored-pending'));
       await denied(engineB.commit({ bearer: fixture.bearer, toolName: 'catalog.commit_update', operationId: fixture.approved.operationId }));
       assert.equal(fixture.counts.applied, 0);
       assert.equal((await recovery.get('SELECT revision FROM synthetic_restore_target WHERE id = ?', fixture.resourceId)).revision, 1);

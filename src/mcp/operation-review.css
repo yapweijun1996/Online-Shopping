@@ -52,8 +52,6 @@ summary { padding: 16px 0; min-height: 48px; cursor: pointer; font-weight: 700; 
 .technical { display: grid; gap: 12px; margin-bottom: 20px; }
 pre { max-height: 50vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 16px; border: 1px solid var(--review-border); border-radius: var(--ui-radius-sm); background: var(--review-canvas); font-size: .85rem; line-height: 1.5; }
 label { display: block; font-weight: 650; margin: 20px 0 8px; }
-input { width: 100%; min-height: 48px; padding: 12px; font: inherit; border: 1px solid var(--ui-control-border); border-radius: var(--ui-radius-sm); color: var(--review-text); background: var(--review-surface); }
-#password-help { font-size: .85rem; margin-top: 8px; }
 .actions { display: flex; gap: 12px; margin-top: 20px; flex-wrap: wrap; }
 button { min-height: 48px; padding: 12px 18px; border: 1px solid var(--ui-action); border-radius: var(--ui-radius-sm); background: var(--ui-action); color: var(--ui-on-action); font: inherit; font-weight: 700; cursor: pointer; }
 button:hover:not(:disabled) { background: var(--ui-primary-hover); color: var(--ui-on-action); }

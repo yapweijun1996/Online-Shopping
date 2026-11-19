@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {reviewFixture,reviewPassword} from './mcp-review-fixture.js';
+import {reviewFixture} from './mcp-review-fixture.js';
 import {freshCatalogAccess,legacyCatalogScopes} from './mcp-catalog-default-grant.js';
 import {catalogMediaUpdateTool} from '../../src/mcp/catalog-media-adapter.js';
 import {operationControlTools} from '../../src/mcp/operation-control-contracts.js';
@@ -44,7 +44,7 @@ export async function catalogRuntimeFixture(t,dialect,{beforeDecode,config:extra
    const response=await post(op,'/media/ack',{...args,expectedHash:item.hash,nonce:delivery.headers.get('x-media-nonce')});assert.equal(response.status,200,await response.clone().text());}
  };
  const approve=async op=>{const value=await review(op);await acknowledge(op,value);const response=await post(op,'/approval',
-  {operationId:op.operationId,previewHash:op.previewHash,challenge:value.challenge,decision:'approve',password:reviewPassword,mediaReviewed:true});
+  {operationId:op.operationId,previewHash:op.previewHash,challenge:value.challenge,decision:'approve',mediaReviewed:true});
   assert.equal(response.status,200,await response.clone().text());return value;};
  return{...f,client,runtime,product,prepare,review,acknowledge,approve,post,path,decodes:()=>decodes,
   commit:op=>client.call('catalog.commit_update',{operationId:op.operationId})};

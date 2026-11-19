@@ -6,7 +6,7 @@ This isolated Phase 5 implementation registers two decision tools under the exis
 
 [03-ORDERS-IMPLEMENTED.json](03-ORDERS-IMPLEMENTED.json) is exported from the actual trusted registry by `node scripts/export-orders-contracts.js`. Four input/output schemas and synthetic examples are validated and compared with genuine authenticated tools/list. Earlier proposed contracts remain historical.
 
-Both orders.preview_decision and orders.commit_decision require fresh orders.decide consent and current orders.decide capability, with HIGH first-party password approval. OWNER/MANAGER are eligible. STAFF's existing portal shipping/delivery capability is unchanged and does not grant these MCP tools. The original eight schemas/results stay unchanged; existing inventory names remain available under their own fresh scopes. A grant with all implemented non-media scopes sees the prior 22 plus these 2. Disabled/production/Demo/explicit-empty constructors expose no new order authority; null registries remain invalid.
+Both orders.preview_decision and orders.commit_decision require fresh orders.decide consent and current orders.decide capability, with HIGH first-party seller-session approval. OWNER/MANAGER are eligible. STAFF's existing portal shipping/delivery capability is unchanged and does not grant these MCP tools. The original eight schemas/results stay unchanged; existing inventory names remain available under their own fresh scopes. A grant with all implemented non-media scopes sees the prior 22 plus these 2. Disabled/production/Demo/explicit-empty constructors expose no new order authority; null registries remain invalid.
 
 Preview's standard wrapper accepts idempotencyKey and input: UUID orderId, optional positive integer expectedRevision, and decision. Action is confirm/reject/cancel/ship/deliver only. Reject/cancel require reason; ship requires carrier and optional trackingNo; confirm/deliver accept no extra action fields. The shared existing validator checks exact allowed fields, trim/NFC normalization, control characters and normalized limits reason 500 / carrier 40 / tracking 60. Wire text is capped 4096 before normalization so valid existing whitespace/Unicode normalization is preserved. Null/absent/empty shipping tracking normalizes to null. Unrelated action fields remain rejected.
 
@@ -51,7 +51,7 @@ Over-budget reviews raise controlled `503 ORDER_DECISION_LIMIT`, with no operati
 
 ## Verification and security cases
 
-Tests use actual `Request` to `createApi`, genuine fresh OAuth grants, first-party password/Origin/CSRF challenges and the real services on disposable SQLite/PostgreSQL databases. Browser tests use local HTTPS and Chromium without backend or permission substitution. All five actions, customer status after fulfilment, commit replay and stock restoration are exercised. Untrusted reason/tracking text remains inert review data.
+Tests use actual `Request` to `createApi`, genuine fresh OAuth grants, first-party seller-session, Origin, CSRF and challenge checks and the real services on disposable SQLite/PostgreSQL databases. Browser tests use local HTTPS and Chromium without backend or permission substitution. All five actions, customer status after fulfilment, commit replay and stock restoration are exercised. Untrusted reason/tracking text remains inert review data.
 
 The security matrix covers these independent boundaries:
 

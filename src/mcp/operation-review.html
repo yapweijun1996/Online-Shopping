@@ -47,7 +47,7 @@
       </details>
       <section id="media-review" hidden aria-labelledby="media-title">
         <h2 id="media-title">Complete image changes</h2>
-        <p>Review every before and after role and gallery position below. An identical byte hash may appear in several roles; each unique image is reviewed once.</p>
+        <p>Review every before and after role and gallery position below. An identical byte hash may appear in several roles; the page verifies each unique image once.</p>
         <p id="media-progress" role="status"></p>
         <p id="media-empty" class="notice" hidden>No images are included in this proposal. Review the complete before and after roles and galleries below.</p>
         <div id="media-effects"></div>
@@ -57,24 +57,19 @@
           <p id="media-image-status" role="status" aria-live="polite"></p>
           <img id="media-image" alt="Protected image for the selected change" hidden>
           <button id="media-image-retry" type="button" class="secondary" hidden>Retry image verification</button>
-          <button id="media-image-ack" type="button" disabled>I reviewed this exact image</button>
         </section>
       </section>
       <form id="decision" method="post">
         <h2>Your decision</h2>
         <p class="notice">Approval only authorizes this exact proposal. The connected app must still commit it; approval does not apply the change.</p>
-        <label id="media-warning" class="currency-acknowledgement" hidden><input id="media-ack" type="checkbox">I reviewed every exact image and the complete before and after roles and ordered galleries.</label>
         <div id="currency-warning" class="currency-warning" hidden role="group" aria-label="Company currency change">
           <strong>Company currency change</strong>
           <p id="currency-warning-text"></p>
           <label class="currency-acknowledgement" for="currency-ack"><input id="currency-ack" type="checkbox">I understand that existing prices and historical orders will not be converted.</label>
         </div>
-        <label for="password">Confirm your seller password</label>
-        <input id="password" type="password" autocomplete="current-password" required maxlength="256" aria-describedby="password-help">
-        <p id="password-help" class="muted">Your password is required for either decision. It is sent only to Seller Studio, not the connected app.</p>
         <div class="actions">
-          <button id="approve" type="submit" name="decision" value="approve">Approve proposal</button>
-          <button type="submit" name="decision" value="reject" class="secondary">Reject this change</button>
+          <button id="approve" type="submit" name="decision" value="approve">Approve</button>
+          <button type="submit" name="decision" value="reject" class="secondary">Reject</button>
         </div>
       </form>
     </section>

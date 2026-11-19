@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { orderToolFixture,orderDto,orderScopes } from './helpers/mcp-order-fixture.js';
 import { freshCatalogAccess } from './helpers/mcp-catalog-default-grant.js';
-import { reviewPassword } from './helpers/mcp-review-fixture.js';
 import { hash } from '../src/mcp/credentials.js';
 import { maintainOperations } from '../src/mcp/operation-maintenance.js';
 import { cleanupMcpAudit } from '../src/mcp/audit.js';
@@ -160,7 +159,7 @@ for(const dialect of ['sqlite','postgres']) {
  test(`${dialect}: cancel uses shared expiry semantics and approval cannot revive the cancelled operation`,options,async t=>{
   const f=await orderToolFixture(t,dialect,{scopes}),first=await prepare(f),path='/api/v1/seller/mcp/operations/'+first.op.operationId;
   const review=await f.call(path,'GET',undefined,f.client.headers);assert.equal(review.response.status,200);
-  const results=await Promise.all([cancel(f,first.op),f.call(path+'/approval','POST',{operationId:first.op.operationId,previewHash:first.op.previewHash,challenge:review.data.challenge,decision:'approve',password:reviewPassword},f.client.headers)]);
+  const results=await Promise.all([cancel(f,first.op),f.call(path+'/approval','POST',{operationId:first.op.operationId,previewHash:first.op.previewHash,challenge:review.data.challenge,decision:'approve'},f.client.headers)]);
   assert.equal(orderDto(results[0]).status,'CANCELLED');assert.equal((await state(f,first.op)).state,'CANCELLED');
   assert.equal((await f.store.get('SELECT status FROM shop_order WHERE id=?',first.o.id)).status,'SUBMITTED');
   const proof=await f.store.get('SELECT consumed_at FROM mcp_v2_approval WHERE operation_id=?',first.op.operationId);assert.ok(!proof||proof.consumed_at);

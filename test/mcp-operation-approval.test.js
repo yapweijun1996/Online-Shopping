@@ -81,13 +81,13 @@ async function fixture(t, engine) {
     const challenge = secret();
     await store.run(`INSERT INTO mcp_v2_approval_challenge(id, operation_id, nonce_hash, created_at, expires_at, account_id, session_hash, account_auth_version, bound_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, randomUUID(), value.operationId, hash(challenge + ':' + previewHash), now, later, account.id, hash(session.token), account.oauth_auth_version, now);
-    return { value, previewHash, input: { operationId: value.operationId, previewHash, challenge, decision: 'approve', password } };
+    return { value, previewHash, input: { operationId: value.operationId, previewHash, challenge, decision: 'approve' } };
   }
   return { store, account, session, binding, grantId, epoch, buildDigest, tenantGuard, request, operation };
 }
 
 for (const engine of ['sqlite', 'postgres']) {
-  test(`${engine}: approval requires current seller session, fresh password, exact preview and live grant`,
+  test(`${engine}: approval requires current seller session, exact preview and challenge, and live grant`,
     { skip: engine === 'postgres' && !base }, async (t) => {
       const f = await fixture(t, engine);
       const config = { store: f.store, binding: f.binding, sellerOrigin: f.binding.issuer, quickLogin: false,
@@ -112,10 +112,12 @@ for (const engine of ['sqlite', 'postgres']) {
       await denied(review(new Request(reviewRequest.url), op.value.operationId));
       await denied(review(new Request(reviewRequest.url, { headers: { origin: 'https://other.example.test',
         cookie: `seller_session=${f.session.token}` } }), op.value.operationId));
+      await denied(approve(f.request({ cookie: '' }), op.input, 'ip-no-session'));
       await denied(approve(f.request({ origin: 'https://other.example.test' }), op.input, 'ip-origin'));
       await denied(approve(f.request({ 'x-csrf-token': 'wrong' }), op.input, 'ip-csrf'));
       await denied(approve(f.request(), { ...op.input, approved: true }, 'ip-model'));
-      await denied(approve(f.request(), { ...op.input, password: 'wrong-password' }, 'ip-password'));
+      await denied(approve(f.request(), { ...op.input, password }, 'ip-password'));
+      await denied(approve(f.request(), { ...op.input, challenge: secret() }, 'ip-challenge'));
       await denied(approve(f.request(), { ...op.input, previewHash: 'b'.repeat(64) }, 'ip-hash'));
       const commitAsProposal = await f.operation(false, 'catalog.commit_update');
       await denied(approve(f.request(), commitAsProposal.input, 'ip-commit-name'));
@@ -164,6 +166,23 @@ for (const engine of ['sqlite', 'postgres']) {
       await assert.rejects(faultApproval(f.request(), fault.input, 'ip-fault'), /Synthetic audit failure/);
       assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id = ?', fault.value.operationId)).state, 'PENDING_APPROVAL');
       assert.equal(await f.store.get('SELECT operation_id FROM mcp_v2_approval WHERE operation_id = ?', fault.value.operationId), undefined);
+
+      const accountChanged = await f.operation();
+      let fenced = false;
+      const recheckApproval = createOperationApproval({ ...config, tenantGuard: {
+        withActiveTenant: async (id, work) => {
+          const result = await f.tenantGuard.withActiveTenant(id, work);
+          if (!fenced) {
+            fenced = true;
+            await f.store.run('UPDATE seller_account SET oauth_auth_version = oauth_auth_version + 1 WHERE id = ?', f.account.id);
+          }
+          return result;
+        },
+      } });
+      await denied(recheckApproval(f.request(), accountChanged.input, 'ip-account-change'));
+      assert.equal(fenced, true);
+      assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id = ?', accountChanged.value.operationId)).state, 'PENDING_APPROVAL');
+      await f.store.run('UPDATE seller_account SET oauth_auth_version = ? WHERE id = ?', f.account.oauth_auth_version, f.account.id);
 
       const race = await f.operation();
       const attempts = await Promise.allSettled([approve(f.request(), race.input, 'ip-race-1'), approve(f.request(), race.input, 'ip-race-2')]);

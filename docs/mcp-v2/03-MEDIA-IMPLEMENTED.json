@@ -976,7 +976,7 @@
       "scope": "media.write",
       "capability": "catalog.write",
       "risk": "HIGH",
-      "description": "Commit the exact stored image proposal after first-party pixel review, coverage ACK, explicit acknowledgement and fresh password. Current authority/revision are rechecked; retries return a minimal receipt.",
+      "description": "Commit the exact stored image proposal after authenticated seller approval and complete first-party image delivery acknowledgments. Current authority/revision are rechecked; retries return a minimal receipt.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1250,7 +1250,7 @@
       "scope": "media.write",
       "capability": "catalog.write",
       "risk": "HIGH",
-      "description": "Commit an explicitly approved stored HIGH image layout once after current authority, complete graph, image-review coverage and fresh password checks. Identical authorized retry returns a minimal receipt.",
+      "description": "Commit an explicitly approved stored HIGH image layout once after current authority, complete graph and image delivery coverage checks. Identical authorized retry returns a minimal receipt.",
       "inputSchema": {
         "type": "object",
         "properties": {

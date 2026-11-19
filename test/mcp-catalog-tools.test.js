@@ -14,7 +14,7 @@ import { rowsDigest } from '../src/sqlite-import.js';
 import { createApi } from '../src/app.js';
 import { catalogue, valid } from '../src/mcp/tools.js';
 import { OPERATION_SCOPE_POLICIES, OPERATION_PREVIEW_RISKS } from '../src/mcp/operation-policy.js';
-import { reviewFixture, reviewPassword } from './helpers/mcp-review-fixture.js';
+import { reviewFixture } from './helpers/mcp-review-fixture.js';
 
 async function fixture(t, dialect) {
   const f = await reviewFixture(t, dialect, { operationTools: [catalogCreateTool(), catalogUpdateTool()] }); await f.seedGrant();
@@ -35,7 +35,7 @@ async function fixture(t, dialect) {
     const path = '/api/v1/seller/mcp/operations/' + op.operationId;
     const review = await f.call(path, 'GET', undefined, f.headers); assert.equal(review.response.status, 200, JSON.stringify(review.data));
     return f.call(path + '/approval', 'POST', { operationId: op.operationId, previewHash: op.previewHash, challenge: review.data.challenge,
-      decision: 'approve', password: reviewPassword }, f.headers);
+      decision: 'approve' }, f.headers);
   };
   const commit = (kind, op) => rpc(`catalog.commit_${kind}`, { operationId: op.operationId });
   return { ...f, bearer, rpc, draft, previewCreate, previewUpdate, approve, commit };

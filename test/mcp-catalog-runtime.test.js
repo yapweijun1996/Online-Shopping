@@ -29,7 +29,7 @@ for(const dialect of ['sqlite','postgres']){
   assert.equal(response.status,500);assert.equal((await response.json()).error.code,'INTERNAL_ERROR');
   assert.equal(f.decodes(),0);assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_operation')).n,0);
  });
- test(`${dialect}: actual RPC and password/ACK handlers apply C once; decoder is SYNTHETIC and outside the real tenant guard`,options,async t=>{
+ test(`${dialect}: actual RPC and approval/ACK handlers apply C once; decoder is SYNTHETIC and outside the real tenant guard`,options,async t=>{
   const f=await catalogRuntimeFixture(t,dialect),a=await f.product({variantGroup:'SOURCE',variantLabel:'A'}),b=await f.product({variantGroup:'TARGET',variantLabel:'B'}),
    op=await f.prepare(a.id,{variantGroup:'TARGET',variantLabel:'Moved'},'runtime-exact-once');
   assert.equal((await f.store.get('SELECT risk FROM mcp_v2_operation WHERE id=?',op.operationId)).risk,'HIGH');assert.ok(f.decodes()>0);
@@ -115,9 +115,9 @@ for(const dialect of ['sqlite','postgres']){
   assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?',op.operationId)).state,'CONFLICT');
   assert.ok((await f.store.get('SELECT consumed_at FROM mcp_v2_approval WHERE operation_id=?',op.operationId)).consumed_at);
  });
- test(`${dialect}: pages/assets and the bound seller session are mandatory for the real password decision`,options,async t=>{
+ test(`${dialect}: pages/assets and the bound seller session are mandatory for the real approval decision`,options,async t=>{
   const f=await catalogRuntimeFixture(t,dialect),p=await f.product(),op=await f.prepare(p.id,{name:'Proposed literal'}),value=await f.review(op),
-   input={operationId:op.operationId,previewHash:op.previewHash,challenge:value.challenge,decision:'approve',password:reviewPassword,mediaReviewed:true};
+   input={operationId:op.operationId,previewHash:op.previewHash,challenge:value.challenge,decision:'approve',mediaReviewed:true};
   assert.equal((await f.post(op,'/approval',input)).status,403);await f.acknowledge(op,value);
   const login=await f.call('/api/v1/seller/session','POST',{username:'synthetic_owner',password:reviewPassword},{origin:f.config.sellerOrigin});assert.equal(login.response.status,200);
   assert.equal((await f.call(f.path(op)+'/approval','POST',input,{origin:f.config.sellerOrigin,cookie:login.response.headers.get('set-cookie').split(';')[0],
@@ -126,7 +126,7 @@ for(const dialect of ['sqlite','postgres']){
  });
  test(`${dialect}: C human decision rechecks current consent/role/grant/mode and first-party Origin/CSRF`,options,async t=>{
   const f=await catalogRuntimeFixture(t,dialect),p=await f.product(),op=await f.prepare(p.id,{name:'Proposed literal'}),value=await f.review(op);await f.acknowledge(op,value);
-  const input={operationId:op.operationId,previewHash:op.previewHash,challenge:value.challenge,decision:'approve',password:reviewPassword,mediaReviewed:true},
+  const input={operationId:op.operationId,previewHash:op.previewHash,challenge:value.challenge,decision:'approve',mediaReviewed:true},
    row=await f.store.get('SELECT * FROM mcp_v2_operation WHERE id=?',op.operationId),consent=await f.store.get("SELECT * FROM mcp_v2_scope_consent WHERE grant_id=? AND scope='media.write'",row.grant_id);
   const noOrigin={...f.headers};delete noOrigin.origin;
   for(const headers of [noOrigin,{...f.headers,origin:'https://ai.example.test'},{...f.headers,'x-csrf-token':'invalid-csrf'}]){
@@ -154,7 +154,7 @@ for(const dialect of ['sqlite','postgres']){
   assert.equal((await f.post(op,'/media/ack',{...args,expectedHash:item.hash,nonce})).status,403);
   const changed=await f.review(op);assert.notEqual(changed.challenge,value.challenge);
   assert.equal((await f.post(op,'/approval',{operationId:op.operationId,previewHash:op.previewHash,challenge:value.challenge,
-   decision:'approve',password:reviewPassword,mediaReviewed:true})).status,403);
+   decision:'approve',mediaReviewed:true})).status,403);
   assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_approval')).n,0);
  });
  test(`${dialect}: corrupt canonical pages fail controlled503 and expired challenges cannot approve C`,options,async t=>{
@@ -166,7 +166,7 @@ for(const dialect of ['sqlite','postgres']){
   const value=await f.review(op),challenge=await f.store.get('SELECT expires_at FROM mcp_v2_approval_challenge WHERE operation_id=?',op.operationId);
   await f.acknowledge(op,value);t.mock.timers.enable({apis:['Date'],now:Date.parse(challenge.expires_at)+1});
   assert.equal((await f.post(op,'/approval',{operationId:op.operationId,previewHash:op.previewHash,challenge:value.challenge,
-   decision:'approve',password:reviewPassword,mediaReviewed:true})).status,403);
+   decision:'approve',mediaReviewed:true})).status,403);
   assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_approval')).n,0);assert.deepEqual(await commerce(f.store),before);
  });
  test(`${dialect}: current consent, epoch, role, original grant and real shop mode cannot be bypassed after C approval`,options,async t=>{

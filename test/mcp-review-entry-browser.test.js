@@ -17,7 +17,7 @@ import { createAccount } from '../src/accounts.js';
 const modulePath = process.env.QA_PLAYWRIGHT_MODULE;
 const dto = response => response.data.result?.structuredContent;
 for (const dialect of ['sqlite', 'postgres']) for (const base of ['', '/alpha']) {
-  test(`${dialect}: ${base || 'default'} real HTTPS sign-in returns to the exact attributed CREATE review and requires page/password approval`,
+  test(`${dialect}: ${base || 'default'} real HTTPS sign-in returns to the exact attributed CREATE review and requires page ACK and an authenticated decision`,
     { skip: !modulePath || (dialect === 'postgres' && !process.env.SHOP_TEST_DATABASE_URL), timeout: 60000 }, async t => {
       const dir = await mkdtemp(join(tmpdir(), 'shopping-review-entry-'));
       t.after(() => rm(dir, { recursive: true, force: true }));
@@ -99,7 +99,7 @@ for (const dialect of ['sqlite', 'postgres']) for (const base of ['', '/alpha'])
       await page.waitForURL(op.reviewUrl);
       await page.locator('#review').waitFor({ state: 'visible' });
       await page.waitForFunction(() => !document.querySelector('#approve').disabled);
-      assert.equal(await page.locator('#media-ack').isChecked(), false);
+      assert.equal(await page.locator('#media-ack, #media-image-ack, #decision input[type=password]').count(), 0);
       assert.equal((await client.call('catalog.commit_create', { operationId: op.operationId })).response.status, 403);
       // Both canonical and attributed authenticated links load the same operation.
       await page.goto(op.reviewUrl + '&utm_source=chatgpt.com');
@@ -110,18 +110,15 @@ for (const dialect of ['sqlite', 'postgres']) for (const base of ['', '/alpha'])
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       const evidenceDir = process.env.QA_REVIEW_EVIDENCE_DIR;
       if (evidenceDir) { await mkdir(evidenceDir, { recursive: true }); await page.screenshot({ path: join(evidenceDir, `${dialect}-${base ? 'desktop-light' : 'mobile-dark'}-review.png`), fullPage: true }); }
-      await page.locator('#password').fill(reviewPassword); await page.locator('#approve').click();
-      assert.match(await page.locator('#status').textContent(), /check the image acknowledgment/);
-      await page.locator('#media-ack').check();
       const approvalRequest = page.waitForRequest(request => request.method() === 'POST' &&
         request.url() === origin + base + '/api/v1/seller/mcp/operations/' + op.operationId + '/approval');
       await page.locator('#approve').click();
       const approvedRequest = await approvalRequest;
       await page.locator('#decision').waitFor({ state: 'hidden' });
       assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?', op.operationId)).state, 'APPROVED');
-      assert.equal(await page.locator('#password').inputValue(), '');
+      assert.equal(approvedRequest.postDataJSON().mediaReviewed, true);
+      assert.equal(Object.hasOwn(approvedRequest.postDataJSON(), 'password'), false);
       // Replay the exact fictional browser request with the same session and CSRF.
-      // Its password-bearing body remains in memory and is never logged or persisted.
       const duplicateApproval = await context.request.post(approvedRequest.url(), {
         headers: { 'content-type': 'application/json', origin, 'x-csrf-token': approvedRequest.headers()['x-csrf-token'] },
         data: approvedRequest.postData(),

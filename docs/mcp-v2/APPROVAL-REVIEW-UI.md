@@ -4,19 +4,20 @@ The first-party operation review page presents a business summary before the com
 
 Full proposal details are initially collapsed. Expanding them exposes the complete text-safe proposal, including fields not recognized by the business summary. The summary is a reading aid, not a replacement for the bound proposal or an additional source of authorization.
 
-Expiry is displayed in the seller browser's local date/time, with the exact UTC timestamp in its title. At expiry the page disables decision controls and image acknowledgments, clears the password and asks for a fresh preview. Submission checks the deadline again, including when a background-tab timer was delayed. Pending media verification or a failed decision request cannot reenable expired controls. Server-side expiry validation remains authoritative.
+Expiry is displayed in the seller browser's local date/time, with the exact UTC timestamp in its title. At expiry the page disables decision and image controls and asks for a fresh preview. Submission checks the deadline again, including when a background-tab timer was delayed. Pending media verification or a failed decision request cannot reenable expired controls. Server-side expiry validation remains authoritative.
 
 ## Images and acknowledgments
 
-Only after complete manifest validation, an image-free proposal hides the image viewer and explicitly says **No images**. PAGE delivery and acknowledgment still take place. The seller's media confirmation remains unchecked, and approval still requires the explicit confirmation and fresh password.
+After complete manifest validation, an image-free proposal hides the viewer and says **No images**. The browser still verifies and acknowledges each PAGE.
 
-For proposals containing images, each exact ASSET must pass delivery integrity checks and browser decoding before its image acknowledgment is enabled. Switching references clears the previous image immediately. Failed delivery, verification or decoding hides the failed image, disables its acknowledgment and retains the **Image verification failed** status. Approval remains disabled until all unique images have been explicitly reviewed; a failure to revisit an already acknowledged image does not revoke its existing bound acknowledgment. Retry requests and decodes the image again; it does not acknowledge an image on the seller's behalf.
+The page loads each unique image automatically. After verifying the protected bytes and decoding and rendering the image, it sends the one-use ACK. Approval stays disabled until every image has an ACK. A failed image stays hidden and can be retried. The before/after references reopen the corresponding verified images.
+
+The seller taps **Approve** or **Reject**. Both decisions use the current authenticated seller session, exact Origin, CSRF and an expiring single-use challenge bound to the operation and preview hash. The decision endpoint rejects a password field. The company currency change checkbox remains required for approval. Browser checks establish which exact bytes were delivered and rendered in the browser. They do not establish that the seller personally inspected them. See [the threat model](../threat-model.md).
 
 ## Appearance and limits
 
 The page loads canonical `../shop/tokens.css` through existing root and tenant static routes, with no review-specific stylesheet alias or proxy exception. Review-scoped semantic aliases reference canonical tokens for light and dark presentation, without a new hardcoded palette or script dependency. At 380–600 pixels the field column is at least 100 pixels wide; below 380 pixels each field label spans the row with Before/After values underneath. Browser regressions cover 320, 360, 379, 380, 390, 768 and 1440 pixel widths in both color schemes, readable labels, horizontal overflow, text-safe untrusted values and initially collapsed technical details.
 
-This is a UI redesign only. Authentication, tenant routing, current-session and original-grant checks, origin/CSRF protection, fresh-password requirements, challenge expiry and single use, PAGE/ASSET proof binding, media acknowledgment, approval policy and server-side limits are unchanged. Browser decoding and acknowledgment do not prove human eyesight. Synthetic renderer fixtures are not evidence of actual CREATE/UPDATE authorization or production deployment. See [the threat model](../threat-model.md).
 
 ## Browser checks and fixture screenshots
 
@@ -29,7 +30,7 @@ QA_APPROVAL_SCREENSHOT_DIR=/tmp/approval-review-screenshots \
 node --test test/mcp-operation-review-browser.test.js test/mcp-operation-review-expiry-browser.test.js test/mcp-catalog-create-render-browser.test.js test/mcp-catalog-review-render-browser.test.js test/mcp-media-review-browser.test.js test/mcp-operation-review-app-browser.test.js test/mcp-review-entry-browser.test.js
 ```
 
-`QA_APPROVAL_SCREENSHOT_DIR` is optional. When set, the general review browser fixture captures `approval-{width}-{light|dark}.png` at each of the fourteen viewport/color-scheme combinations. CREATE renderer fixtures also capture `approval-create-no-images-1280.png` and `approval-create-exact-image-390.png`. Captures use synthetic proposal data and collapsed technical details; do not substitute production seller sessions or customer data. The remaining tests exercise image-free CREATE PAGE acknowledgment, password and checkbox requirements, full UPDATE summaries, image integrity failures, explicit image acknowledgment, decoder failure and retry behavior.
+`QA_APPROVAL_SCREENSHOT_DIR` is optional. When set, the general review browser fixture captures `approval-{width}-{light|dark}.png` at each of the fourteen viewport/color-scheme combinations. CREATE renderer fixtures also capture `approval-create-no-images-1280.png` and `approval-create-exact-image-390.png`. Captures use synthetic proposal data and collapsed technical details; do not substitute production seller sessions or customer data. The remaining tests exercise image-free CREATE PAGE acknowledgment, a single-tap decision, the company currency checkbox, full UPDATE summaries, image integrity failures, automatic image acknowledgment, decoder failure and retry behavior.
 
 ## Local verification
 

@@ -79,7 +79,7 @@ GET does not consume the capability. The page does not approve or commit.
 | Browser boundary | Seller origin only, same-origin browser PUT, no cookie authority, no CORS upload delegation, no-store/no-referrer/CSP/frame denial. |
 | Logging | Application responses/errors exclude capability contents. GCP runtime log filters redact upload path tokens and referring upload paths using [Caddy's filter encoder](https://caddyserver.com/docs/caddyfile/directives/log#filter). Additional gateways must preserve this policy. |
 | Storage | Existing source chunks and canonical review bytes use PostgreSQL BYTEA / SQLite BLOB. No schema migration. |
-| Approval | Existing review, fresh password, image/page ACKs, exact manifest and separate commit remain unchanged. |
+| Approval | Authenticated seller session, exact Origin/CSRF, a bound challenge, automatic image/page ACKs, exact manifest and separate commit. |
 
 Use a new idempotency key for a new upload intent after a consumed or failed
 URL. Repeating issuance while an unused link is live returns the same link;

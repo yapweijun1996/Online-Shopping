@@ -68,7 +68,7 @@ for (const dialect of ['sqlite', 'postgres']) {
     assert.equal((await current.call('company.get', {})).response.status, 401);
     assert.equal((await f.call(path, 'GET', undefined, current.headers)).response.status, 403);
     assert.equal((await f.call(path + '/approval', 'POST', { operationId: operation.operationId, previewHash: operation.previewHash,
-      challenge: reviewed.data.challenge, decision: 'approve', password: reviewPassword }, current.headers)).response.status, 403);
+      challenge: reviewed.data.challenge, decision: 'approve' }, current.headers)).response.status, 403);
     const refreshed = await f.call('/oauth/token', 'POST', new URLSearchParams({ grant_type: 'refresh_token', client_id: clientId,
       refresh_token: refresh, resource: f.binding.resource }).toString(), { 'content-type': 'application/x-www-form-urlencoded' });
     assert.equal(refreshed.response.status, 403);
@@ -81,7 +81,7 @@ for (const dialect of ['sqlite', 'postgres']) {
     f.store.run = async (sql, ...args) => { const result = await run(sql, ...args); if (/INSERT INTO mcp_v2_event/.test(sql) && args.includes('APPROVE')) epoch.replace(secret()); return result; };
     try {
       const denied = await f.call(path + '/approval', 'POST', { operationId: operation.operationId, previewHash: operation.previewHash,
-        challenge: reviewed.data.challenge, decision: 'approve', password: reviewPassword }, current.headers);
+        challenge: reviewed.data.challenge, decision: 'approve' }, current.headers);
       assert.equal(denied.response.status, 403);
     } finally { f.store.run = run; }
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?', operation.operationId)).state, 'PENDING_APPROVAL');

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { reviewFixture,reviewPassword } from './mcp-review-fixture.js';
+import { reviewFixture } from './mcp-review-fixture.js';
 import { freshCatalogAccess,legacyCatalogScopes } from './mcp-catalog-default-grant.js';
 import { createCategory } from '../../src/settings.js';
 import { createProduct } from '../../src/products.js';
@@ -15,6 +15,6 @@ export async function orderToolFixture(t,dialect,{scopes=orderScopes,...options}
   deliveries:Array.from({length:deliveries},()=>({recipient:{fullName:'Synthetic private recipient',phone:'+60123456789'},address:{line1:'Synthetic private street',city:'Synthetic private city',postcode:'50000',country:'MY'},items:products.map(p=>({productId:p.id,quantity,expectedPriceMinor:p.priceMinor,expectedCurrency:p.currency}))}))});return f.store.get('SELECT id,order_no,status,revision,currency,total_minor FROM shop_order WHERE order_no=?',result.receipt.orderNo);};
  const client=await freshCatalogAccess(f,scopes);
  const preview=(id,decision,extra={})=>client.call('orders.preview_decision',{input:{orderId:id,decision,...extra},idempotencyKey:'synthetic-order-decision-'+String(++sequence).padStart(8,'0')});
- const approve=async(op,extra={})=>{const path='/api/v1/seller/mcp/operations/'+op.operationId,review=await f.call(path,'GET',undefined,client.headers);assert.equal(review.response.status,200,JSON.stringify(review.data));return f.call(path+'/approval','POST',{operationId:op.operationId,previewHash:op.previewHash,challenge:review.data.challenge,decision:'approve',password:reviewPassword,...extra},client.headers);};
+ const approve=async(op,extra={})=>{const path='/api/v1/seller/mcp/operations/'+op.operationId,review=await f.call(path,'GET',undefined,client.headers);assert.equal(review.response.status,200,JSON.stringify(review.data));return f.call(path+'/approval','POST',{operationId:op.operationId,previewHash:op.previewHash,challenge:review.data.challenge,decision:'approve',...extra},client.headers);};
  return{...f,client,product,order,preview,approve,commit:op=>client.call('orders.commit_decision',{operationId:op.operationId})};
 }

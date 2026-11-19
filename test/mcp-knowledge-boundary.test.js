@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createCategory } from '../src/settings.js';
 import { createProduct } from '../src/products.js';
 import { hash } from '../src/mcp/credentials.js';
-import { reviewFixture, reviewPassword } from './helpers/mcp-review-fixture.js';
+import { reviewFixture } from './helpers/mcp-review-fixture.js';
 import { freshCatalogAccess, legacyCatalogScopes } from './helpers/mcp-catalog-default-grant.js';
 
 // Only knowledge retrieval is stubbed. Commerce calls use real Request ->
@@ -28,7 +28,7 @@ async function fixture(t, dialect) {
   const approval = (op, input, headers = client.headers) => f.call('/api/v1/seller/mcp/operations/' + op.operationId + '/approval', 'POST', input, headers);
   const approve = async op => {
     const reviewed = await review(op); assert.equal(reviewed.response.status, 200);
-    return approval(op, { operationId: op.operationId, previewHash: op.previewHash, challenge: reviewed.data.challenge, decision: 'approve', password: reviewPassword });
+    return approval(op, { operationId: op.operationId, previewHash: op.previewHash, challenge: reviewed.data.challenge, decision: 'approve' });
   };
   return { ...f, product, client, preview, read, commit, review, approval, approve };
 }
@@ -82,7 +82,7 @@ for (const dialect of ['sqlite', 'postgres']) {
       const commit = await f.client.call('catalog.commit_update', { operationId: op.operationId, [field]: value });
       assert.deepEqual(commit.data.error, { code: -32602, message: 'Invalid params' });
     }
-    const input = { operationId: op.operationId, previewHash: op.previewHash, challenge: reviewed.data.challenge, decision: 'approve', password: reviewPassword };
+    const input = { operationId: op.operationId, previewHash: op.previewHash, challenge: reviewed.data.challenge, decision: 'approve' };
     for (const patch of [{ password: claim.password }, { previewHash: claim.previewHash }, { challenge: claim.challenge }, { tenantId: claim.tenantId }, { role: claim.role }, { approved: true }]) {
       assert.equal((await f.approval(op, { ...input, ...patch })).response.status, 403);
     }

@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { createApi } from '../src/app.js';
 import { serveStatic } from '../src/static.js';
 import { createCategory } from '../src/settings.js';
-import { reviewFixture, reviewPassword } from './helpers/mcp-review-fixture.js';
+import { reviewFixture } from './helpers/mcp-review-fixture.js';
 import { freshCatalogAccess } from './helpers/mcp-catalog-default-grant.js';
 
 const browserModule = process.env.QA_PLAYWRIGHT_MODULE;
@@ -61,10 +61,10 @@ test('real HTTPS catalog default tools create through Chromium review and replay
   assert.ok((await page.locator('#proposal').textContent()).includes(injection));
   assert.match(await page.locator('#proposal').textContent(), /SYNTHETIC-BROWSER/);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-  await page.locator('#password').fill(reviewPassword); await page.locator('button[value="approve"]').click();
+  await page.locator('button[value="approve"]').click();
   await page.locator('#decision').waitFor({ state: 'hidden' });
   assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id = ?', op.operationId)).state, 'APPROVED');
-  assert.equal(await page.locator('#password').inputValue(), '');
+  assert.equal(await page.locator('#decision input[type=password]').count(), 0);
   const done = await client.call('catalog.commit_create', { operationId: op.operationId });
   assert.equal(done.response.status, 200, JSON.stringify(done.data)); const receipt = done.data.result.structuredContent;
   assert.equal(receipt.status, 'COMMITTED'); assert.equal(receipt.replayed, false);

@@ -7,7 +7,6 @@ import { verifyMediaAuthority } from '../src/mcp/operation-authorization.js';
 import { readMediaFrame } from '../src/mcp/media-frame-storage.js';
 import { maintainMedia } from '../src/mcp/media-maintenance.js';
 import { hash } from '../src/mcp/credentials.js';
-import { reviewPassword } from './helpers/mcp-review-fixture.js';
 import { readMediaSnapshot } from '../src/mcp/media-resources.js';
 import { updateProduct, getProduct } from '../src/products.js';
 
@@ -50,7 +49,7 @@ for (const dialect of ['sqlite','postgres']) {
     const path = '/api/v1/seller/mcp/operations/' + operation.operationId;
     assert.equal((await f.call(path, 'GET', undefined, f.headers)).response.status, 403);
     assert.equal((await f.call(path + '/approval', 'POST', { operationId: operation.operationId, previewHash: operation.previewHash,
-      decision: 'approve', password: reviewPassword, challenge: 'A'.repeat(43) }, f.headers)).response.status, 403);
+      decision: 'approve', challenge: 'A'.repeat(43) }, f.headers)).response.status, 403);
     await assert.rejects(engine.commit({ bearer: f.bearer, toolName: 'media.commit_upload', operationId: operation.operationId }), { status: 403 });
     assert.equal((await f.store.get('SELECT stock_quantity FROM product WHERE id=?', f.product.id)).stock_quantity, 7);
   });

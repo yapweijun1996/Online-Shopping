@@ -20,7 +20,7 @@ Omitted fields stay unchanged. Unknown fields/IDs, empty changes and invalid val
 
 Read requires fresh `company.read`; mutation requires `company.write`. Both require current OWNER-only `settings.write`. The registry checks token/grant/tenant/epoch and holds the lifecycle fence before the store transaction. Read output includes the seller's business contact/address data for this explicitly consented OWNER connection.
 
-Every mutation is HIGH risk and uses password-confirmed first-party review, session challenge, exact Origin/CSRF and one-use approval. Stored proposal includes complete normalized before/after, changed field names, currency change flag and fixed warnings. Text stays data.
+Every mutation is HIGH risk and uses first-party review with an authenticated seller session, session challenge, exact Origin/CSRF and one-use approval. Stored proposal includes complete normalized before/after, changed field names, currency change flag and fixed warnings. Text stays data.
 
 Currency change additionally requires an unchecked first-party human acknowledgment. The engine checks its server-written APPROVE event against operation, tenant, account, client, grant, tool, human, correlation ID and exact approval timestamp. Model acknowledgment/approval flags are rejected. The read registry and first-party acknowledgment UI are integrated and exercised through real Fetch/JSON-RPC and approval routes on both database adapters.
 

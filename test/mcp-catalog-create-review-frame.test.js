@@ -5,7 +5,7 @@ import { seedCreateWireOperation } from './helpers/mcp-catalog-create-wire-fixtu
 import { persistMediaFrame,readMediaFrame } from '../src/mcp/media-frame-storage.js';
 import { canonicalOperationJson,operationPreviewHash } from '../src/mcp/operation-envelope.js';
 import { storeMediaPolicy } from '../src/mcp/media-storage.js';
-import { reviewFixture,reviewPassword } from './helpers/mcp-review-fixture.js';
+import { reviewFixture } from './helpers/mcp-review-fixture.js';
 import { operationEpochHash } from '../src/mcp/operation-epoch.js';
 for(const dialect of ['sqlite','postgres']){const options={skip:dialect==='postgres'&&!process.env.SHOP_TEST_DATABASE_URL};
  test(`${dialect}: SYNTHETIC CREATE EMPTY/existing frames bind stored identity and page literals with no stage authority`,options,async t=>{
@@ -33,7 +33,7 @@ for(const dialect of ['sqlite','postgres']){const options={skip:dialect==='postg
   const operation=await seedCreateWireOperation({...f,context,now:grant.created_at});await persistMediaFrame(f.store,context,operation.id,operation.manifest);await f.store.run("UPDATE mcp_v2_operation SET state='PENDING_APPROVAL' WHERE id=?",operation.id);
   const url='/api/v1/seller/mcp/operations/'+operation.id;
   assert.equal((await f.call(url,'GET',undefined,f.headers)).response.status,403);
-  assert.equal((await f.call(url+'/approval','POST',{operationId:operation.id,previewHash:operationPreviewHash(operation.envelope),challenge:'A'.repeat(43),decision:'approve',password:reviewPassword,mediaReviewed:true},f.headers)).response.status,403);
+  assert.equal((await f.call(url+'/approval','POST',{operationId:operation.id,previewHash:operationPreviewHash(operation.envelope),challenge:'A'.repeat(43),decision:'approve',mediaReviewed:true},f.headers)).response.status,403);
   for(const table of ['mcp_v2_approval','mcp_v2_approval_challenge','mcp_v2_media_delivery','mcp_v2_media_approval_evidence'])assert.equal((await f.store.get('SELECT COUNT(*) n FROM '+table)).n,0);
   assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?',operation.id)).state,'PENDING_APPROVAL');
  });

@@ -39,7 +39,7 @@ for (const dialect of ['sqlite', 'postgres']) {
     const post = new Request(f.binding.issuer + '/api/v1/seller/mcp/approval', { method: 'POST',
       headers: { origin: f.binding.issuer, cookie: `seller_session=${f.session.token}`, 'x-csrf-token': f.session.csrfToken } });
     await assert.rejects(createOperationApproval(options)(post, { operationId: operation.operationId, previewHash: operation.previewHash,
-      decision: 'approve', password: 'Synthetic-media-engine-password-2026!', challenge: 'synthetic-forged-challenge' }, 'synthetic'), { status: 403 });
+      decision: 'approve', challenge: 'synthetic-forged-challenge' }, 'synthetic'), { status: 403 });
     assert.equal(await f.store.get('SELECT * FROM mcp_v2_approval WHERE operation_id=?', operation.operationId), undefined);
   });
   test(`${dialect}: final fence rejects a portal revision or revoked consent during lock-free resolution`, async t => {

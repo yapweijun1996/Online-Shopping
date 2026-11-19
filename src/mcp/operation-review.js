@@ -5,7 +5,6 @@
 const statusNode = document.querySelector('#status');
 const reviewSection = document.querySelector('#review');
 const form = document.querySelector('#decision');
-const password = document.querySelector('#password');
 const path = /^\/(?:([a-z0-9]{3,30})\/)?oauth\/operation\/?$/.exec(location.pathname);
 const base = path?.[1] ? `/${path[1]}` : '';
 const id = new URL(location.href).searchParams.get('operationId');
@@ -16,11 +15,9 @@ let csrf = null;
 let previewHash = null;
 let challenge = null;
 let currencyAcknowledgementRequired = false;
-let mediaReview = null, mediaComplete = false, imageUrl = null, selectedImage = null, imageJob = null;
-const mediaAck = document.querySelector('#media-ack');
+let mediaReview = null, mediaComplete = false, imageUrl = null, imageJob = null;
 const imageNode = document.querySelector('#media-image');
-const imageAck = document.querySelector('#media-image-ack');
-const reviewedImages = new Set();
+const acknowledgedImages = new Set();
 const currencyAck = document.querySelector('#currency-ack');
 const imageStatus = document.querySelector('#media-image-status');
 const imageRetry = document.querySelector('#media-image-retry');
@@ -36,9 +33,8 @@ function checkExpiry() {
     document.querySelector('#pending-state').textContent = message;
     statusNode.textContent = message;
     for (const control of form.querySelectorAll('input, button')) control.disabled = true;
-    imageAck.disabled = true; imageRetry.disabled = true;
+    imageRetry.disabled = true;
     for (const control of document.querySelectorAll('.media-reference')) control.disabled = true;
-    password.value = '';
   }
   return expired;
 }
@@ -51,9 +47,8 @@ function updateReviewControls() {
   const disabled = checkExpiry() || decisionPending || !csrf || !previewHash || !challenge;
   for (const control of form.querySelectorAll('input, button')) control.disabled = disabled;
   document.querySelector('#approve').disabled = disabled || Boolean(mediaReview && !mediaComplete);
-  imageAck.disabled = disabled || !selectedImage || reviewedImages.has(selectedImage.item.itemKey);
   imageRetry.disabled = disabled;
-  for (const control of document.querySelectorAll('.media-reference')) control.disabled = disabled;
+  for (const control of document.querySelectorAll('.media-reference')) control.disabled = disabled || !mediaComplete;
 }
 function reviewStatus(message) {
   if (!checkExpiry()) statusNode.textContent = message;
@@ -188,9 +183,8 @@ async function load() {
   reviewStatus('Review the complete proposal, then explicitly approve or reject it.');
   if (mediaReview) {
     document.querySelector('#media-review').hidden = false;
-    document.querySelector('#media-warning').hidden = false; mediaAck.checked = false;
     if (!checkExpiry()) await loadMedia(value.toolName, value.proposal, value.resourceId, value.resourceType, value.risk)
-      .catch(() => { reviewStatus('Image verification failed. Reload this review or reject the proposal.'); });
+      .catch(() => { if (csrf) reviewStatus('Image verification failed. Reload this review or reject the proposal.'); });
   }
 }
 
@@ -208,12 +202,14 @@ async function receiveMedia(item, signal) {
   if (!response.ok || response.headers.get('x-media-sha256') !== item.hash || response.headers.get('x-media-manifest') !== mediaReview.descriptor.manifestRoot ||
       response.headers.get('x-media-item') !== item.kind + ':' + item.itemKey) throw new Error('Image delivery failed.');
   const nonce = response.headers.get('x-media-nonce'), bytes = await response.arrayBuffer();
-  if ((!/^[A-Za-z0-9_-]{43}$/.test(nonce || '') && !(reviewedImages.has(item.itemKey) && response.headers.get('x-media-acknowledged') === 'true')) ||
+  const acknowledged = response.headers.get('x-media-acknowledged') === 'true';
+  if ((!acknowledged && !/^[A-Za-z0-9_-]{43}$/.test(nonce || '')) ||
       bytes.byteLength > (item.kind === 'PAGE' ? 16384 : 524288) || await sha256(bytes) !== item.hash) throw new Error('Image checksum failed.');
-  return { bytes, nonce, mime: response.headers.get('content-type') };
+  return { bytes, nonce, acknowledged, mime: response.headers.get('content-type') };
 }
-async function acknowledgeMedia(item, nonce) {
-  const response = await mediaPost('ack', item, { expectedHash: item.hash, nonce });
+async function acknowledgeMedia(item, { nonce, acknowledged }, signal) {
+  if (acknowledged) return;
+  const response = await mediaPost('ack', item, { expectedHash: item.hash, nonce }, signal);
   if (!response.ok) throw new Error('Image confirmation failed.');
   const result = await response.json();
   if (result.operationId !== id || result.itemKey !== item.itemKey || result.kind !== item.kind || result.acknowledged !== true) throw new Error('Image confirmation failed.');
@@ -258,7 +254,7 @@ async function loadMedia(toolName, proposal, resourceId, resourceType, risk) {
     if (header && header !== common) throw new Error('Mismatched image page.'); header = common;
     records.push(...body.records); if (records.length > 512) throw new Error('Image graph too large.');
     pageDigests.push({ index, hash: item.hash, recordCount: body.records.length });
-    await acknowledgeMedia(item, packet.nonce);
+    await acknowledgeMedia(item, packet);
   }
   const common = JSON.parse(header), root = { version: 1, policyId: descriptor.policyId, codecDigest: descriptor.codecDigest,
     graphRevision: descriptor.graphRevision, graphBytes: common.graphBytes, pages: pageDigests, assetCount: descriptor.assetCount, effectCount: descriptor.effectCount };
@@ -282,50 +278,65 @@ async function loadMedia(toolName, proposal, resourceId, resourceType, risk) {
   document.querySelector('#media-viewer').hidden = empty;
   document.querySelector('#media-empty').hidden = !empty;
   updateMediaProgress();
-  if (mediaReview.assetItems.length) await showMediaImage(mediaReview.assetItems[0]);
+  await verifyRemainingImages();
 }
 function updateMediaProgress() {
-  mediaComplete = reviewedImages.size === mediaReview.assetItems.length;
-  document.querySelector('#media-progress').textContent = `${reviewedImages.size} of ${mediaReview.assetItems.length} unique exact images reviewed. All ordered before and after effects are shown below.`;
+  mediaComplete = acknowledgedImages.size === mediaReview.assetItems.length;
+  document.querySelector('#media-progress').textContent = `${acknowledgedImages.size} of ${mediaReview.assetItems.length} unique images verified. All ordered before and after effects are shown below.`;
   updateReviewControls();
 }
 function releaseMediaImage() {
   if (imageJob) imageJob.abort(); imageJob = null;
   imageNode.hidden = true; imageNode.removeAttribute('src');
   if (imageUrl) URL.revokeObjectURL(imageUrl); imageUrl = null;
-  selectedImage = null; imageAck.disabled = true;
   document.querySelector('#media-image-details').textContent = '';
 }
+async function verifyRemainingImages() {
+  for (const item of mediaReview.assetItems) {
+    if (!acknowledgedImages.has(item.itemKey) && !await showMediaImage(item)) return;
+  }
+}
 async function showMediaImage(item) {
-  if (checkExpiry() || decisionPending || !csrf) return;
+  if (checkExpiry() || !csrf) return false;
   releaseMediaImage();
   retryImage = item; imageRetry.hidden = true;
   imageStatus.textContent = 'Loading and verifying the exact image…';
   const job = new AbortController(); imageJob = job;
   try {
     const packet = await receiveMedia(item, job.signal), asset = mediaReview.assets.get(item.assetKey);
-    if (job.signal.aborted || checkExpiry()) return;
+    if (job.signal.aborted || checkExpiry()) return false;
     if (!asset || packet.mime !== asset.mime || packet.bytes.byteLength !== asset.byte_length) throw new Error('Image type failed.');
     imageUrl = URL.createObjectURL(new Blob([packet.bytes], { type: asset.mime })); imageNode.src = imageUrl;
     await imageNode.decode();
-    if (job.signal.aborted || checkExpiry()) return;
+    if (job.signal.aborted || checkExpiry()) return false;
     imageNode.hidden = false;
     document.querySelector('#media-image-details').textContent = `${asset.mime} · ${asset.byte_length} bytes · SHA256 ${item.hash}`;
-    selectedImage = { item, nonce: packet.nonce }; updateReviewControls();
-    imageStatus.textContent = reviewedImages.has(item.itemKey)
-      ? 'Exact image verified and already reviewed.' : 'Exact image verified. Inspect it, then confirm below.';
+    // Let the decoded image render before acknowledging its delivery.
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    if (job.signal.aborted || checkExpiry()) return false;
+    await acknowledgeMedia(item, packet, job.signal);
+    if (job.signal.aborted || checkExpiry()) return false;
+    acknowledgedImages.add(item.itemKey);
+    updateMediaProgress();
+    imageStatus.textContent = 'Exact image verified.';
     if (statusNode.textContent.startsWith('Image verification failed')) {
       reviewStatus('Review the complete proposal, then explicitly approve or reject it.');
     }
+    return true;
   } catch {
-    if (job.signal.aborted || checkExpiry()) return;
+    if (job.signal.aborted || checkExpiry()) return false;
     releaseMediaImage();
-    imageStatus.textContent = 'Image verification failed. This image cannot be acknowledged. Retry to load and verify it again.';
+    imageStatus.textContent = 'Image verification failed. Retry to load and verify it again.';
     reviewStatus('Image verification failed. Retry the image, reload this review or reject the proposal.');
     imageRetry.hidden = false;
+    return false;
   }
 }
-imageRetry.addEventListener('click', () => { if (retryImage) void showMediaImage(retryImage); });
+imageRetry.addEventListener('click', () => {
+  if (!retryImage) return;
+  if (mediaComplete) void showMediaImage(retryImage);
+  else void verifyRemainingImages();
+});
 function renderMediaEffects(effects, labels) {
   const names = new Map();
   for (const label of labels) {
@@ -487,27 +498,14 @@ function renderCatalogStates(effects, names, listings, creationProposal = null) 
     root.append(article);
   }
 }
-imageAck.addEventListener('click', async () => {
-  if (checkExpiry() || decisionPending || !selectedImage || imageAck.disabled) return;
-  const current = selectedImage; imageAck.disabled = true;
-  try {
-    await acknowledgeMedia(current.item, current.nonce); reviewedImages.add(current.item.itemKey); updateMediaProgress();
-    if (checkExpiry()) return;
-    if (selectedImage === current) imageStatus.textContent = 'Exact image verified and reviewed.';
-    const next = mediaReview.assetItems.find(item => !reviewedImages.has(item.itemKey)); if (next) await showMediaImage(next);
-  } catch { reviewStatus('Image confirmation failed. Reload this review or reject the proposal.'); }
-});
 window.addEventListener('pagehide', releaseMediaImage);
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   if (checkExpiry() || decisionPending) return;
   const decision = event.submitter?.value;
-  if (!csrf || !previewHash || !challenge || !['approve', 'reject'].includes(decision) || !password.value) return;
-  if (decision === 'approve' && mediaReview && (!mediaComplete || !mediaAck.checked)) {
-    statusNode.textContent = 'Review every exact image and check the image acknowledgment before approving.';
-    mediaAck.focus(); return;
-  }
+  if (!csrf || !previewHash || !challenge || !['approve', 'reject'].includes(decision)) return;
+  if (decision === 'approve' && mediaReview && !mediaComplete) return;
   if (decision === 'approve' && currencyAcknowledgementRequired && !currencyAck.checked) {
     statusNode.textContent = 'Read the currency warning and check the acknowledgment before approving.';
     currencyAck.focus(); return;
@@ -517,7 +515,7 @@ form.addEventListener('submit', async (event) => {
     const response = await fetch(`${base}/api/v1/seller/mcp/operations/${id}/approval`, {
       method: 'POST', credentials: 'same-origin', cache: 'no-store',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-      body: JSON.stringify({ operationId: id, previewHash, challenge, decision, password: password.value,
+      body: JSON.stringify({ operationId: id, previewHash, challenge, decision,
         ...(currencyAcknowledgementRequired && decision === 'approve' ? { currencyAcknowledged: true } : {}),
         ...(mediaReview && decision === 'approve' ? { mediaReviewed: true } : {}),
       }),
@@ -532,7 +530,7 @@ form.addEventListener('submit', async (event) => {
   } catch {
     reviewStatus('The decision could not be verified. Reload the proposal and try again.');
   } finally {
-    decisionPending = false; password.value = ''; updateReviewControls();
+    decisionPending = false; updateReviewControls();
   }
 });
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { reviewFixture, reviewPassword } from './helpers/mcp-review-fixture.js';
+import { reviewFixture } from './helpers/mcp-review-fixture.js';
 import { hash, secret } from '../src/mcp/credentials.js';
 
 async function fixture(t, dialect) {
@@ -32,7 +32,7 @@ for (const dialect of ['sqlite', 'postgres']) {
     const op = prepared.data.result.structuredContent, path = '/api/v1/seller/mcp/operations/' + op.operationId;
     const review = await f.call(path, 'GET', undefined, f.headers); assert.equal(review.response.status, 200);
     assert.equal((await f.call(path + '/approval', 'POST', { operationId: op.operationId, previewHash: op.previewHash,
-      challenge: review.data.challenge, decision: 'approve', password: reviewPassword }, f.headers)).response.status, 200);
+      challenge: review.data.challenge, decision: 'approve' }, f.headers)).response.status, 200);
     const before = await f.store.get('SELECT * FROM company_setting WHERE id = 1');
     // Production setup cannot switch through setupShop; direct row changes here
     // model a restored/imported database without changing the company revision.

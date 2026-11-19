@@ -9,7 +9,7 @@ import { mediaReviewFixture, sharedReviewGraph } from './helpers/mcp-media-revie
 import { reviewPassword } from './helpers/mcp-review-fixture.js';
 
 const modulePath = process.env.QA_PLAYWRIGHT_MODULE;
-for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: real HTTPS Chromium decodes and explicitly reviews every exact image before password approval`,
+for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: real HTTPS Chromium automatically acknowledges every verified image before single-tap approval`,
   { skip: !modulePath, timeout: 60000 }, async t => {
     const directory = await mkdtemp(join(tmpdir(), 'shopping-media-browser-'));
     t.after(() => rm(directory, { recursive: true, force: true }));
@@ -45,22 +45,30 @@ for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: real HTTPS Chrom
     await page.route('**/media/delivery', corruptImage);
     await page.goto(origin + '/oauth/operation?operationId=' + f.operation.operationId);
     await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Image verification failed'));
-    assert.equal(await page.locator('#approve').isDisabled(), true); assert.equal(await page.locator('#media-image-ack').isDisabled(), true);
+    assert.equal(await page.locator('#approve').isDisabled(), true);
     assert.equal(Number((await f.store.get("SELECT COUNT(*) n FROM mcp_v2_media_delivery WHERE operation_id=? AND kind='ASSET' AND ack_at IS NOT NULL", f.operation.operationId)).n), 0);
     assert.equal(await page.locator('#media-image').isVisible(), false);
     await page.unroute('**/media/delivery', corruptImage);
-    await page.locator('#media-image-retry').click();
-    await page.locator('#media-review').waitFor({ state: 'visible' });
-    await page.waitForFunction(() => !document.querySelector('#media-image-ack').disabled);
-    assert.equal(await page.locator('#approve').isDisabled(), true); assert.equal(await page.locator('#media-ack').isChecked(), false);
-    assert.match(await page.locator('#media-effects').textContent(), /Before[\s\S]*After/);
+    assert.equal(await page.locator('#media-ack, #media-image-ack, #decision input[type=password]').count(), 0);
     const count = Number((await f.store.get("SELECT COUNT(*) n FROM mcp_v2_media_asset_ref WHERE operation_id=?", f.operation.operationId)).n);
-    for (let n = 1; n <= count; n++) {
-      await page.locator('#media-image-ack').click();
-      await page.waitForFunction(expected => document.querySelector('#media-progress').textContent.startsWith(expected + ' of '), n);
-      if (n < count) await page.waitForFunction(() => !document.querySelector('#media-image-ack').disabled);
-    }
-    assert.equal(await page.locator('#approve').isDisabled(), false);
+    const finalAck = Promise.withResolvers(), release = Promise.withResolvers();
+    let attempted = 0;
+    await page.route('**/media/ack', async route => {
+      if (route.request().postDataJSON().kind === 'ASSET' && ++attempted === count) {
+        finalAck.resolve();
+        await release.promise;
+      }
+      await route.continue();
+    });
+    await page.locator('#media-image-retry').click();
+    await finalAck.promise;
+    try {
+      assert.equal(await page.locator('#approve').isDisabled(), true);
+      assert.ok(await page.locator('#media-image').evaluate(image => !image.hidden && image.naturalWidth > 0));
+    } finally { release.resolve(); }
+    await page.locator('#approve:enabled').waitFor();
+    assert.match(await page.locator('#media-effects').textContent(), /Before[\s\S]*After/);
+    assert.equal(Number((await f.store.get("SELECT COUNT(*) n FROM mcp_v2_media_delivery WHERE operation_id=? AND kind='ASSET' AND ack_at IS NOT NULL", f.operation.operationId)).n), count);
     const repeated = page.locator('.media-reference').first(); await repeated.click();
     await page.waitForFunction(() => document.querySelector('#media-image').complete && document.querySelector('#media-image').naturalWidth > 0);
     await page.evaluate(() => {
@@ -72,19 +80,13 @@ for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: real HTTPS Chrom
     });
     await page.locator('.media-reference').last().click();
     assert.equal(await page.locator('#media-image').isVisible(), false);
-    assert.equal(await page.locator('#media-image-ack').isDisabled(), true);
     await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Image verification failed'));
     assert.equal(await page.locator('#media-image').isVisible(), false);
-    assert.equal(await page.locator('#media-image-ack').isDisabled(), true);
     await page.locator('#media-image-retry').click();
     await page.waitForFunction(() => document.querySelector('#media-image').naturalWidth > 0 && !document.querySelector('#media-image').hidden);
-    assert.equal(await page.locator('#media-image-ack').isDisabled(), true);
-    await page.locator('#password').fill(reviewPassword); await page.locator('#approve').click();
-    assert.match(await page.locator('#status').textContent(), /check the image acknowledgment/);
-    await page.locator('#media-ack').check(); await page.locator('#approve').click(); await page.locator('#decision').waitFor({ state: 'hidden' });
+    await page.locator('#approve').click(); await page.locator('#decision').waitFor({ state: 'hidden' });
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?', f.operation.operationId)).state, 'APPROVED');
     assert.equal((await f.commit()).replayed, false); assert.equal((await f.commit()).replayed, true);
-    assert.equal(await page.locator('#password').inputValue(), '');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     assert.deepEqual(errors, []); assert.deepEqual(external, []);
   });

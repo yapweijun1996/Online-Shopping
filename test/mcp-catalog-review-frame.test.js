@@ -5,7 +5,7 @@ import { seedCatalogWireOperation } from './helpers/mcp-catalog-wire-fixture.js'
 import { persistMediaFrame,readMediaFrame } from '../src/mcp/media-frame-storage.js';
 import { canonicalOperationJson,operationPreviewHash } from '../src/mcp/operation-envelope.js';
 import { storeMediaPolicy } from '../src/mcp/media-storage.js';
-import { reviewFixture,reviewPassword } from './helpers/mcp-review-fixture.js';
+import { reviewFixture } from './helpers/mcp-review-fixture.js';
 import { operationEpochHash } from '../src/mcp/operation-epoch.js';
 for(const dialect of ['sqlite','postgres']){
  const options={skip:dialect==='postgres'&&!process.env.SHOP_TEST_DATABASE_URL};
@@ -42,7 +42,7 @@ for(const dialect of ['sqlite','postgres']){
   const path='/api/v1/seller/mcp/operations/'+op.id;
   assert.equal((await f.call(path,'GET',undefined,f.headers)).response.status,403);
   assert.equal((await f.call(path+'/approval','POST',{operationId:op.id,previewHash:operationPreviewHash(op.envelope),challenge:'A'.repeat(43),
-   decision:'approve',password:reviewPassword,mediaReviewed:true},f.headers)).response.status,403);
+   decision:'approve',mediaReviewed:true},f.headers)).response.status,403);
   assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?',op.id)).state,'PENDING_APPROVAL');
   for(const table of ['mcp_v2_approval','mcp_v2_approval_challenge','mcp_v2_media_delivery','mcp_v2_media_approval_evidence'])assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM '+table)).n,0);
  });

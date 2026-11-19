@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createApi } from '../src/app.js';
-import { reviewFixture, reviewPassword } from './helpers/mcp-review-fixture.js';
+import { reviewFixture } from './helpers/mcp-review-fixture.js';
 import { hash, secret } from '../src/mcp/credentials.js';
 import { catalogue } from '../src/mcp/tools.js';
 
@@ -55,7 +55,7 @@ for (const dialect of ['sqlite', 'postgres']) {
       const path = '/api/v1/seller/mcp/operations/' + op.operationId;
       const review = await f.call(path, 'GET', undefined, f.headers);
       assert.equal(review.response.status, 200); assert.equal(review.data.currencyAcknowledgementRequired, true);
-      const input = { operationId: op.operationId, previewHash: op.previewHash, challenge: review.data.challenge, decision: 'approve', password: reviewPassword };
+      const input = { operationId: op.operationId, previewHash: op.previewHash, challenge: review.data.challenge, decision: 'approve' };
       assert.equal((await f.call(path + '/approval', 'POST', input, f.headers)).response.status, 403);
       assert.equal((await f.call(path + '/approval', 'POST', { ...input, currencyAcknowledged: true }, f.headers)).response.status, 200);
       assert.equal((await f.store.get('SELECT default_currency FROM company_setting WHERE id = 1')).default_currency, 'MYR');

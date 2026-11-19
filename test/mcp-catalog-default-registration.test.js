@@ -4,7 +4,7 @@ import { createApi } from '../src/app.js';
 import { createCategory } from '../src/settings.js';
 import { hash } from '../src/mcp/credentials.js';
 import { catalogue } from '../src/mcp/tools.js';
-import { reviewFixture, reviewPassword } from './helpers/mcp-review-fixture.js';
+import { reviewFixture } from './helpers/mcp-review-fixture.js';
 import { freshCatalogAccess, legacyCatalogScopes } from './helpers/mcp-catalog-default-grant.js';
 
 const names = ['catalog.preview_create', 'catalog.commit_create', 'catalog.preview_update', 'catalog.commit_update'];
@@ -37,7 +37,7 @@ for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: default catalog 
     await f.store.run("UPDATE seller_account SET role = 'OWNER' WHERE id = ?", f.account.id);
     const review = await f.call(path, 'GET', undefined, current.headers); assert.equal(review.response.status, 200);
     assert.equal((await f.call(path + '/approval', 'POST', { operationId: op.operationId, previewHash: op.previewHash, challenge: review.data.challenge,
-      decision: 'approve', password: reviewPassword }, current.headers)).response.status, 200);
+      decision: 'approve' }, current.headers)).response.status, 200);
     const done = dto(await current.call('catalog.commit_create', { operationId: op.operationId }));
     assert.equal(done.status, 'COMMITTED'); assert.equal(dto(await current.call('catalog.commit_create', { operationId: op.operationId })).replayed, true);
     const update = dto(await current.call('catalog.preview_update', { input: { id: done.result.productId, changes: { priceMinor: 1400 } }, idempotencyKey: 'synthetic-default-update-0001' }));
@@ -45,7 +45,7 @@ for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: default catalog 
     const updatePath = '/api/v1/seller/mcp/operations/' + update.operationId;
     const updateReview = await f.call(updatePath, 'GET', undefined, current.headers); assert.equal(updateReview.response.status, 200);
     assert.equal((await f.call(updatePath + '/approval', 'POST', { operationId: update.operationId, previewHash: update.previewHash,
-      challenge: updateReview.data.challenge, decision: 'approve', password: reviewPassword }, current.headers)).response.status, 200);
+      challenge: updateReview.data.challenge, decision: 'approve' }, current.headers)).response.status, 200);
     assert.equal(dto(await current.call('catalog.commit_update', { operationId: update.operationId })).status, 'COMMITTED');
     assert.equal(dto(await current.call('catalog.commit_update', { operationId: update.operationId })).replayed, true);
     assert.equal((await f.store.get('SELECT price_minor FROM product WHERE id = ?', done.result.productId)).price_minor, 1400);

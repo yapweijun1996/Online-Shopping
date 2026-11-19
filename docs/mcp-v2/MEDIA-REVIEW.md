@@ -62,7 +62,7 @@ expired challenge and ACK replay fail. Re-delivery before ACK rotates the nonce.
 An already-ACKed image can be re-viewed after fresh checks with
 `X-Media-Acknowledged: true` and no new nonce; its proof remains unchanged.
 No nonce or challenge is placed in a URL. A persistent 240 request/account/15 minute
-bucket bounds delivery and ACK together; ordinary review and password limits remain.
+bucket bounds delivery and ACK together; ordinary review and decision limits remain.
 
 ## Browser and explicit decision
 
@@ -71,18 +71,20 @@ complete manifest root, then displays every before/after product role, own main 
 holder and ordered gallery effect. Deduplicated images retain every role and position.
 A variant's own main plus all 10 shared gallery positions remain represented.
 
-Only one full-image viewer is active. It fetches protected exact bytes, verifies SHA256
-and MIME/length, awaits `image.decode()`, then offers an explicit per-image reviewed
-button. That action sends its nonce ACK. Previous object URLs are revoked and pending
-viewer requests aborted; all image content is fetched through these first-party POSTs.
-CSP allows `blob:` for image display only. No remote image, data URL or raw HTML is used.
-Already-reviewed exact images can be selected again without renewing proof.
+The browser verifies each unique image in the full-image viewer. It fetches protected
+exact bytes, checks SHA-256 and MIME/length, awaits `image.decode()`, renders the
+image, and sends its one-use nonce ACK automatically. Previous object URLs are
+revoked and pending viewer requests aborted. Each verified image remains available
+through its role and gallery references. Reopening a verified image does not consume
+another nonce. CSP permits `blob:` for image display.
 
-Approve requires complete PAGE/ASSET ACK coverage, the separate initially unchecked
-`mediaReviewed` choice and fresh seller password. Reject requires fresh password but
-does not require image ACKs or the checkbox. Password verification stays outside both
-locks; all session/grant/account/consent/resource/frame/challenge state is re-read under
-a fresh fence afterward. A concurrent portal edit invalidates the old image review.
+Approve requires complete PAGE/ASSET ACK coverage, `mediaReviewed: true`, and a
+valid seller session with exact Origin, CSRF and the expiring session-bound
+challenge. The page sends `mediaReviewed: true` automatically for media approval.
+Reject uses the same session and challenge controls and may proceed before image
+verification finishes. The decision endpoint rejects a `password` key. The writer
+fence revalidates the account auth-version snapshot and current grant, consent,
+resource, frame and challenge. A concurrent portal edit invalidates the old proof.
 
 Approval state, approval row, challenge consumption, retained media evidence and fixed
 `MEDIA_REVIEW_ACKNOWLEDGED` APPROVE audit event are atomic. The same shared
@@ -90,7 +92,7 @@ Approval state, approval row, challenge consumption, retained media evidence and
 success. Audit failure rolls the decision and evidence back. No business mutation occurs
 at approval. Existing bounded terminal cleanup and audit retention remain unchanged.
 
-These records establish authenticated delivery/integrity/explicit browser actions;
+These records establish authenticated delivery, integrity and the explicit seller decision;
 they do not attest to human eyesight, understanding, browser integrity or remote identity.
 Bearer credentials and model arguments cannot approve.
 

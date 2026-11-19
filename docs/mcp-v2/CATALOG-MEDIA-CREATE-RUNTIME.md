@@ -25,8 +25,7 @@ the stored raw catalog/media source revisions. The byte loader retains the real
 existing target's raw B1 snapshot, distinct from the composite review revision.
 For an empty target, there is no B1 snapshot and no image delivery; the complete
 manifest still has at least one PAGE. All pages must be delivered and acknowledged
-with their one-use nonce/hash. The unchecked image-review confirmation and fresh
-seller password remain mandatory even when asset count is zero. Labels come from
+with their one-use nonce/hash. The authenticated seller session and bound challenge are still required even when asset count is zero. Labels come from
 the proposal's bound full review labels, including the new SKU.
 
 Every prepare, review, control, commit and authorized replay rechecks the current
@@ -44,7 +43,7 @@ back the flag does not undo committed products. This isolated implementation doe
 not authorize production activation, backup recovery or new media staging paths.
 
 Validation is recorded in the outside-repository worker summary. Synthetic decoder
-fixtures test actual OAuth/RPC/password/ACK handlers but do not attest native image
+fixtures test actual OAuth/RPC/approval/ACK handlers but do not attest native image
 validation or a human browser. Genuine default-factory native/HTTPS browser gates
 are recorded separately when run.
 
@@ -59,7 +58,7 @@ These are bounded acceptance checks; the broader adversarial/concurrency matrix
 and root's independent combined/full verification remain separate requirements.
 
 A separate synthetic-decoder security suite passed24/24 on both stores. It uses
-real RPC/password/ACK/consent handlers to exercise concurrent prepare/commit,
+real RPC/approval/ACK/consent handlers to exercise concurrent prepare/commit,
 current original grant/consent/epoch/RBAC/mode, different-grant control denial,
 configuration epoch/build/codec fencing, outside-lock portal changes, SKU
 occupancy, cancellation, approval expiry, redacted receipt replay/revocation, and

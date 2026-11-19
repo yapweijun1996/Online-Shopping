@@ -76,26 +76,20 @@ async function environment(t,dialect,worker,browser,seedExisting=false){
 async function reviewInBrowser(f,page,operation){
  await page.goto(operation.reviewUrl);await page.locator('#media-review').waitFor({state:'visible'});
  const assets=(await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_media_asset_ref WHERE operation_id=?',operation.operationId)).n;
- assert.equal(await page.locator('#media-ack').isChecked(),false);
- for(let index=1;index<=assets;index++){
-  await page.waitForFunction(()=>!document.querySelector('#media-image-ack').disabled);
+ await page.locator('#approve:enabled').waitFor();
+ if(Number(assets)>0){
   const image=await page.locator('#media-image').evaluate(element=>({width:element.naturalWidth,height:element.naturalHeight,complete:element.complete,src:element.currentSrc}));
   assert.ok(image.complete&&image.width>0&&image.height>0);assert.match(image.src,/^blob:/);
-  await page.locator('#media-image-ack').click();
-  await page.waitForFunction(expected=>document.querySelector('#media-progress').textContent.startsWith(expected+' of '),index);
  }
  assert.equal((await f.store.get("SELECT COUNT(*) AS n FROM mcp_v2_media_delivery WHERE operation_id=? AND kind='ASSET' AND ack_at IS NOT NULL",operation.operationId)).n,assets);
- await page.locator('#password').fill(reviewPassword);await page.locator('#approve').click();
- assert.match(await page.locator('#status').textContent(),/check the image acknowledgment/);
  assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?',operation.operationId)).state,'PENDING_APPROVAL');
- await page.locator('#media-ack').check();
  const approvalResponse=page.waitForResponse(response=>response.request().method()==='POST'&&
   response.url()===f.origin+'/api/v1/seller/mcp/operations/'+operation.operationId+'/approval');
  await page.locator('#approve').click();
  const approval=await approvalResponse;assert.equal(approval.status(),200,'Seller approval HTTP status');
  await page.locator('#decision').waitFor({state:'hidden'});
  assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?',operation.operationId)).state,'APPROVED');
- assert.equal(await page.locator('#password').inputValue(),'');
+ assert.equal(await page.locator('#decision input[type=password]').count(),0);
  assert.equal(await page.evaluate(()=>window.__mediaInjected),undefined);
 }
 async function upload(client,productId,bytes,mime,slot,key){
@@ -113,9 +107,9 @@ async function upload(client,productId,bytes,mime,slot,key){
 async function reviewMetadata(f,page,operation){
  await page.goto(operation.reviewUrl);await page.locator('#review').waitFor({state:'visible'});
  assert.equal(await page.evaluate(()=>window.__mediaInjected),undefined);
- await page.locator('#password').fill(reviewPassword);await page.locator('#approve').click();await page.locator('#decision').waitFor({state:'hidden'});
+ await page.locator('#approve').click();await page.locator('#decision').waitFor({state:'hidden'});
  assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?',operation.operationId)).state,'APPROVED');
- assert.equal(await page.locator('#password').inputValue(),'');
+ assert.equal(await page.locator('#decision input[type=password]').count(),0);
 }
 async function authorized(f){
  assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM oauth_grant')).n,0);

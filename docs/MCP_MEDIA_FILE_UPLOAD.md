@@ -68,7 +68,7 @@ cases on both SQLite and disposable PostgreSQL (18/18), actual native PNG/JPEG/W
 checks (7/7), and actual OAuth/native/Chromium approval workflows (11/11). The
 new file-tool browser cases exercise all three formats in MAIN and GALLERY on
 both stores, using a synthetic download callback and genuine native processing,
-current registry guard, OAuth grant, image ACK/password approval, commit and
+current registry guard, OAuth grant, automatic image ACKs and authenticated seller approval, commit and
 readback. They do not prove an external ChatGPT download or HTTP file handoff.
 The first extended browser fixture exceeded the unchanged five-approval address
 limit; independent per-format fixtures corrected the test arrangement without
