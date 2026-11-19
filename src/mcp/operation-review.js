@@ -3,6 +3,8 @@
 // First-party seller UI. All proposal
 // content is untrusted and is rendered only as text.
 const statusNode = document.querySelector('#status');
+const proposalRetry = document.querySelector('#proposal-retry');
+const sellerLink = document.querySelector('#seller-link');
 const reviewSection = document.querySelector('#review');
 const form = document.querySelector('#decision');
 const resultDialog = document.querySelector('#result-dialog');
@@ -16,7 +18,7 @@ const base = path?.[1] ? `/${path[1]}` : '';
 const id = new URL(location.href).searchParams.get('operationId');
 const idPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const hashPattern = /^[0-9a-f]{64}$/;
-document.querySelector('#seller-link').href = `${base}/seller/`;
+sellerLink.href = `${base}/seller/`;
 let csrf = null;
 let previewHash = null;
 let challenge = null;
@@ -69,7 +71,7 @@ function updateReviewControls() {
   for (const control of document.querySelectorAll('.media-reference')) control.disabled = disabled || !mediaComplete;
 }
 function reviewStatus(message) {
-  if (!checkExpiry()) statusNode.textContent = message;
+  if (!checkExpiry() && !decisionPending) statusNode.textContent = message;
 }
 
 function summaryText(value) {
@@ -212,16 +214,14 @@ async function load() {
       params.getAll('operationId').length !== 1 || !idPattern.test(id || '') || params.getAll('utm_source').length > 1 ||
       (params.has('utm_source') && !/^[A-Za-z0-9._~-]{1,128}$/.test(params.get('utm_source')))) throw new Error('Invalid operation.');
   const sessionResponse = await fetch(`${base}/api/v1/seller/session`, { credentials: 'same-origin', cache: 'no-store' });
-  if (sessionResponse.status === 401) {
-    const link = document.querySelector('#seller-link');
-    link.href = `${base}/seller/?reviewOperation=${id}`;
-    link.textContent = 'Sign in to review this proposal';
-    throw new Error('Sign in required.');
-  }
-  if (!sessionResponse.ok) throw new Error('Sign in required.');
+  if (sessionResponse.status === 401) throw new Error('Sign in required.');
+  if (!sessionResponse.ok) throw new Error('Session unavailable.');
   const session = await sessionResponse.json();
   if (typeof session.csrfToken !== 'string' || !session.csrfToken) throw new Error('Invalid session.');
-  const response = await fetch(`${base}/api/v1/seller/mcp/operations/${id}`, { credentials: 'same-origin', cache: 'no-store' });
+  const response = await fetch(`${base}/api/v1/seller/mcp/operations/${id}`, { credentials: 'same-origin', cache: 'no-store' })
+    .catch(() => { throw new Error('Temporary proposal failure.'); });
+  if (response.status === 401) throw new Error('Sign in required.');
+  if (response.status >= 500) throw new Error('Temporary proposal failure.');
   if (!response.ok) throw new Error('Proposal unavailable.');
   const value = await response.json();
   if (typeof value.currencyAcknowledgementRequired !== 'boolean' ||
@@ -264,12 +264,13 @@ async function load() {
   expiryNode.title = `${expiryDate.toISOString()} (UTC)`;
   document.querySelector('#fingerprint').textContent = value.previewHash;
   document.querySelector('#proposal').textContent = visible(JSON.stringify(value.proposal, null, 2));
+  statusNode.textContent = '';
+  form.querySelector('.decision-note').append(statusNode);
   reviewSection.hidden = false;
   syncDecisionHeight();
   expiresAt = expiryDate.getTime();
   document.querySelector('#pending-state').textContent = 'Pending your decision — not applied';
   scheduleExpiry(); updateReviewControls();
-  reviewStatus('');
   if (mediaReview) {
     document.querySelector('#media-review').hidden = false;
     if (document.querySelector('#business-summary').hidden) document.querySelector('#media-title').textContent = 'What will change';
@@ -754,6 +755,7 @@ form.addEventListener('submit', async (event) => {
     currencyAck.focus(); return;
   }
   decisionPending = true; updateReviewControls();
+  statusNode.textContent = decision === 'approve' ? 'Approving…' : 'Rejecting…';
   try {
     const response = await fetch(`${base}/api/v1/seller/mcp/operations/${id}/approval`, {
       method: 'POST', credentials: 'same-origin', cache: 'no-store',
@@ -772,8 +774,9 @@ form.addEventListener('submit', async (event) => {
     expiryChip.hidden = true;
     document.querySelector('#currency-warning').hidden = true;
     document.querySelector('#pending-state').textContent = approved ? 'Approved — app commit still required' : 'Rejected — not applied';
-    statusNode.textContent = approved ? 'Approved. The connected app must still commit this change.' : 'Rejected. The change was not applied.';
     statusNode.classList.add('visually-hidden');
+    proposalRetry.before(statusNode);
+    statusNode.textContent = approved ? 'Approved. The connected app must still commit this change.' : 'Rejected. The change was not applied.';
     document.querySelector('#result-title').textContent = approved ? 'Approved' : 'Rejected';
     document.querySelector('#result-description').textContent = approved
       ? 'Nothing has changed yet. Go back to Claude and ask it to apply this change.'
@@ -781,15 +784,30 @@ form.addEventListener('submit', async (event) => {
     document.querySelector('#result-check').toggleAttribute('hidden', !approved);
     resultDialog.showModal();
   } catch {
-    reviewStatus('The decision could not be verified. Reload the proposal and try again.');
+    if (!checkExpiry()) statusNode.textContent = 'We could not confirm the result. Reload this page to check the status before trying again.';
   } finally {
     decisionPending = false; updateReviewControls();
   }
 });
 
-load().catch(error => {
-  reviewSection.hidden = true;
-  statusNode.textContent = error.message === 'Sign in required.'
-    ? 'Sign in to Seller Studio to review this proposal. No change has been approved.'
-    : 'The proposal is unavailable. Ask the connected app to prepare a new preview.';
-});
+function loadReview() {
+  proposalRetry.hidden = true;
+  statusNode.textContent = 'Loading the proposal…';
+  load().catch(error => {
+    reviewSection.hidden = true;
+    if (form.contains(statusNode)) proposalRetry.before(statusNode);
+    if (error.message === 'Sign in required.') {
+      sellerLink.href = `${base}/seller/?reviewOperation=${id}`;
+      sellerLink.textContent = 'Sign in to review this proposal';
+      statusNode.textContent = 'Sign in to Seller Studio to review this proposal. No change has been approved.';
+    } else if (error.message === 'Temporary proposal failure.') {
+      statusNode.textContent = 'The proposal is unavailable. Try again to load this preview.';
+      proposalRetry.hidden = false;
+    } else {
+      statusNode.textContent = 'The proposal is unavailable. Ask the connected app to prepare a new preview.';
+    }
+  });
+}
+
+proposalRetry.addEventListener('click', loadReview);
+loadReview();

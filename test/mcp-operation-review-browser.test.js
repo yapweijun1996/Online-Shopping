@@ -1,11 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { assertDecisionClearance, catalogReviewBrowserFixture, digest, injection, operationId as id } from './helpers/mcp-operation-review-browser-fixture.js';
 
 const browserModule = process.env.QA_PLAYWRIGHT_MODULE;
+const origin = 'https://approval.test';
+const proposalPath = `/api/v1/seller/mcp/operations/${id}`;
+const sessionPath = '/api/v1/seller/session';
+const reviewUrl = `${origin}/oauth/operation?operationId=${id}`;
+
+async function serveFixture(route, respond) {
+  const request = route.request();
+  const result = await respond(new Request(request.url(), {
+    method: request.method(), headers: request.headers(), body: request.postDataBuffer(),
+  }));
+  await route.fulfill({
+    status: result.status, headers: Object.fromEntries(result.headers),
+    body: Buffer.from(await result.arrayBuffer()),
+  });
+}
+
 async function assertNamedTargets(scope) {
   const controls = scope.locator('a[href]:visible, button:visible, input:visible, summary:visible, pre[tabindex="0"]:visible');
   for (const control of await controls.all()) {
@@ -21,19 +36,6 @@ async function assertNamedTargets(scope) {
 test('first-party review prototype renders all untrusted data as text and requires an explicit decision',
   { skip: !browserModule, timeout: 60000 }, async (t) => {
     const { calls, respond } = await catalogReviewBrowserFixture();
-    const server = createServer(async (request, response) => {
-      const chunks = [];
-      for await (const chunk of request) chunks.push(chunk);
-      const result = await respond(new Request(`http://127.0.0.1${request.url}`, {
-        method: request.method, headers: request.headers,
-        ...(request.method === 'POST' ? { body: Buffer.concat(chunks) } : {}),
-      }));
-      response.writeHead(result.status, Object.fromEntries(result.headers));
-      response.end(Buffer.from(await result.arrayBuffer()));
-    });
-    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-    t.after(() => { server.closeAllConnections(); server.close(); });
-    const origin = `http://127.0.0.1:${server.address().port}`;
     const { chromium } = await import(browserModule);
     const browser = await chromium.launch({ headless: true });
     t.after(() => browser.close());
@@ -44,7 +46,7 @@ test('first-party review prototype renders all untrusted data as text and requir
       t.after(() => context.close());
       const external = [];
       await context.route('**/*', (route) => {
-        if (new URL(route.request().url()).origin === origin) return route.continue();
+        if (new URL(route.request().url()).origin === origin) return serveFixture(route, respond);
         external.push(route.request().url()); return route.abort();
       });
       const page = await context.newPage();
@@ -145,5 +147,113 @@ test('first-party review prototype renders all untrusted data as text and requir
       assert.deepEqual(call.body, { operationId: id, previewHash: digest, challenge: 'a'.repeat(43), decision });
       assert.equal(await page.locator('#decision input[type=password]').count(), 0);
       await context.close();
+    }
+  });
+
+test('review recovers from transient proposal failures and reports pending and uncertain decisions',
+  { skip: !browserModule, timeout: 60000 }, async (t) => {
+    const { respond } = await catalogReviewBrowserFixture();
+    const { chromium } = await import(browserModule);
+    const browser = await chromium.launch({ headless: true });
+    t.after(() => browser.close());
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    await context.route('**/*', route => new URL(route.request().url()).origin === origin
+      ? serveFixture(route, respond) : route.abort());
+
+    for (const failure of ['network', 503]) {
+      await t.test(`retry loads the same proposal after ${failure}`, async (t) => {
+        const page = await context.newPage();
+        t.after(() => page.close());
+        const requests = [];
+        page.on('request', request => {
+          const path = new URL(request.url()).pathname;
+          if (path.startsWith('/api/')) requests.push([request.method(), path]);
+        });
+        await page.route(origin + proposalPath, route => failure === 'network'
+          ? route.abort('failed') : route.fulfill({ status: failure }), { times: 1 });
+        await page.goto(reviewUrl);
+        const retry = page.getByRole('button', { name: 'Try again', exact: true });
+        await retry.waitFor();
+        assert.equal(await page.getByRole('status').textContent(), 'The proposal is unavailable. Try again to load this preview.');
+        assert.equal(await page.locator('#review').isVisible(), false);
+        await retry.click();
+        await page.locator('#review').waitFor();
+        assert.equal(await retry.isVisible(), false);
+        assert.equal(await page.locator('#approve').isEnabled(), true);
+        assert.equal(page.url(), reviewUrl);
+        assert.deepEqual(requests, [['GET', sessionPath], ['GET', proposalPath], ['GET', sessionPath], ['GET', proposalPath]]);
+      });
+    }
+
+    await t.test('an expired proposal asks for a new preview without a retry button', async (t) => {
+      const page = await context.newPage();
+      t.after(() => page.close());
+      await page.route(origin + proposalPath, async route => {
+        const proposal = await respond(new Request(route.request().url()));
+        await route.fulfill({ json: { ...await proposal.json(), expiresAt: new Date(Date.now() - 10000).toISOString() } });
+      });
+      await page.goto(reviewUrl);
+      await page.getByRole('status').filter({ hasText: 'Proposal expired. Ask the connected app for a new preview.' }).waitFor();
+      assert.equal(await page.locator('#proposal-retry').isVisible(), false);
+      assert.equal(await page.locator('#approve').isDisabled(), true);
+    });
+
+    for (const [name, path, failure, message] of [
+      ['session 401', sessionPath, { status: 401 }, 'Sign in to Seller Studio to review this proposal. No change has been approved.'],
+      ['proposal 401', proposalPath, { status: 401 }, 'Sign in to Seller Studio to review this proposal. No change has been approved.'],
+      ['proposal 403', proposalPath, { status: 403 }, 'The proposal is unavailable. Ask the connected app to prepare a new preview.'],
+      ['invalid proposal', proposalPath, { json: {} }, 'The proposal is unavailable. Ask the connected app to prepare a new preview.'],
+    ]) {
+      await t.test(`${name} has its own next step without a retry button`, async (t) => {
+        const page = await context.newPage();
+        t.after(() => page.close());
+        await page.route(origin + path, route => route.fulfill(failure));
+        await page.goto(reviewUrl);
+        await page.getByText(message, { exact: true }).waitFor();
+        assert.equal(await page.locator('#proposal-retry').isVisible(), false);
+        assert.equal(await page.locator('#review').isVisible(), false);
+        if (failure.status === 401) {
+          assert.equal(await page.getByRole('link', { name: 'Sign in to review this proposal' }).getAttribute('href'),
+            `/seller/?reviewOperation=${id}`);
+        }
+      });
+    }
+
+    for (const [decision, message, failure] of [['approve', 'Approving…', 'network'], ['reject', 'Rejecting…', 500]]) {
+      await t.test(`${decision} shows progress then reload guidance after ${failure}`, async (t) => {
+        const page = await context.newPage();
+        t.after(() => page.close());
+        const release = Promise.withResolvers();
+        let submissions = 0;
+        await page.route(`${origin}${proposalPath}/approval`, async route => {
+          submissions += 1;
+          await release.promise;
+          if (failure === 'network') await route.abort('failed');
+          else await route.fulfill({ status: failure });
+        });
+        await page.goto(reviewUrl);
+        const panel = page.getByRole('form', { name: 'Your decision' });
+        const approve = panel.getByRole('button', { name: 'Approve change', exact: true });
+        const reject = panel.getByRole('button', { name: 'Reject', exact: true });
+        const status = panel.getByRole('status');
+        try {
+          await (decision === 'approve' ? approve : reject).click();
+          await status.filter({ hasText: message }).waitFor();
+          assert.equal(await status.textContent(), message);
+          assert.equal(await approve.isDisabled(), true);
+          assert.equal(await reject.isDisabled(), true);
+          await reject.evaluate(button => button.form.dispatchEvent(new SubmitEvent('submit', {
+            cancelable: true, submitter: button,
+          })));
+        } finally {
+          release.resolve();
+        }
+        const reloadMessage = 'We could not confirm the result. Reload this page to check the status before trying again.';
+        await status.filter({ hasText: reloadMessage }).waitFor();
+        assert.equal(await status.textContent(), reloadMessage);
+        assert.equal(await page.getByRole('alertdialog').isVisible(), false);
+        assert.equal(await page.locator('#proposal-retry').isVisible(), false);
+        assert.equal(submissions, 1);
+      });
     }
   });

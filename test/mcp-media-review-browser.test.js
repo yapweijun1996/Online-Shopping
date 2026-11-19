@@ -135,7 +135,7 @@ for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: real HTTPS Chrom
     await page.waitForFunction(() => document.querySelector('#media-image').naturalWidth > 0 && !document.querySelector('#media-image').hidden);
     await page.route('**/approval', route => route.fulfill({ status: 500 }), { times: 1 });
     await page.locator('#approve').click();
-    await page.waitForFunction(() => document.querySelector('#status').textContent.includes('The decision could not be verified.'));
+    await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Reload this page to check the status before trying again.'));
     assert.equal(await page.locator('#result-dialog').evaluate(dialog => dialog.open), false);
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?', f.operation.operationId)).state, 'PENDING_APPROVAL');
     await page.locator('#approve').click(); await page.locator('#decision').waitFor({ state: 'hidden' });

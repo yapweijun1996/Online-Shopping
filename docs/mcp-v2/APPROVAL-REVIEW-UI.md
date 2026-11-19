@@ -16,6 +16,10 @@ The approval button reads **Approve description change**, **Approve image change
 
 ## Appearance and limits
 
+If the proposal request fails with a network or server error, **Try again** reloads the same proposal. Sellers without a session are directed to sign in. An expired or invalid proposal directs the seller to ask the connected app for a fresh preview.
+
+While a decision is pending, the decision panel announces **Approving…** or **Rejecting…** and disables both decision buttons. If the page cannot confirm the result, it asks the seller to reload and check the status before trying again.
+
 After the server confirms approval, the dialog shows **Approved** and **Nothing has changed yet. Go back to Claude and ask it to apply this change.** Rejection shows **Rejected** and **No change was made.** The inline live status is visually hidden once the dialog opens. The **Close** button or Escape closes the dialog and moves focus to that status for screen-reader access. Failed or expired decisions use the visible inline status.
 
 The decision bar stays available at the bottom while scrolling. Below 640 pixels, the page reserves the fixed bar's full height, including its device safe-area padding, plus space to scroll the last content clear of the bar. The page reserves this space as soon as the bar appears, updates it when the image summary appears, and tracks later size changes. The buttons fill the bar and field and image comparisons stack vertically. The page uses the existing seller tokens via `../shop/tokens.css` for light and dark color schemes, with visible keyboard focus and reduced-motion support. The live status announces loading, errors, expiry and decision results.

@@ -48,7 +48,7 @@ h2 { font-size: 1.25rem; line-height: 1.3; }
 h3 { font-size: 1rem; }
 h4 { font-size: .9375rem; }
 .intro, dt { color: var(--review-muted); }
-#status:not(:empty, .visually-hidden) {
+header > #status:not(:empty, .visually-hidden) {
   margin-block-start: var(--ui-space-4);
   padding: var(--ui-space-2) var(--ui-space-4);
   background: var(--review-surface);
@@ -56,6 +56,7 @@ h4 { font-size: .9375rem; }
   border-radius: var(--ui-radius-sm);
 }
 #status:empty { position: absolute; width: 1px; height: 1px; overflow: hidden; }
+#proposal-retry { margin-block-start: var(--ui-space-2); }
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -158,6 +159,7 @@ pre {
   box-shadow: var(--ui-shadow-raised);
 }
 .decision-note { color: var(--review-muted); font-size: .8125rem; }
+#decision #status:not(:empty) { margin-block-start: var(--ui-space-1); color: var(--review-text); }
 #image-change-summary { color: var(--review-text); font-weight: 650; }
 .actions { display: flex; flex-shrink: 0; gap: var(--ui-space-2); }
 button {
