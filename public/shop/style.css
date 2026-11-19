@@ -528,8 +528,6 @@ body:has(.mobile-nav-dialog[open]){overflow:hidden}
 }
 @media(prefers-reduced-motion:reduce){.shop-topbar,.mobile-navigation{transition:none}}
 
-.shop-update-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;margin-bottom:12px;border:1px solid var(--ui-control-border);background:var(--shop-selected-surface);border-radius:10px;font-size:14px}.shop-update-banner button{flex:none}.shop-update-banner[hidden]{display:none}
-.product-update-banner{margin-bottom:16px}
 .account-page{display:grid;gap:16px}
 .product-navigation{display:flex;align-items:center;gap:10px;min-height:54px;margin-bottom:14px}
 .product-navigation .product-back{margin:0 auto 0 0;min-height:44px}
@@ -555,8 +553,6 @@ body:has(.mobile-nav-dialog[open]){overflow:hidden}
  #product-view .product-main-image,#product-view .product-image-button .image-placeholder{width:100%;height:100%;aspect-ratio:1;object-fit:contain}
  #product-view .product-thumbnails{display:none}
  #product-view .product-summary{margin:0;gap:0}
- #product-view .product-update-banner{margin:0;border-inline:0;border-radius:0;flex-wrap:wrap}
- #product-view .product-update-banner button{min-height:44px}
  #product-view .product-demo-note{display:block}
  #product-view .product-heading-block{padding:18px 16px 8px}
  #product-view .product-heading-block h1{font-size:20px}
@@ -579,6 +575,7 @@ body:has(.mobile-nav-dialog[open]){overflow:hidden}
 .settings-general{display:flex;flex-direction:column;align-items:flex-start;gap:14px}
 .settings-general .shop-note,.settings-general #settings-status{margin:0}
 #settings-status:empty,.shop-update-settings [role="status"]:empty{display:none}
+body[data-shop-route=settings] .shop-update-status{display:none}
 .shop-update-settings h2{margin:0 0 12px;font-size:20px}
 .shop-update-settings p{margin:0 0 16px}
 .shop-update-settings button{margin:0 8px 0 0}
@@ -651,8 +648,6 @@ body:has(.app-modal[open]) .shop-actionbar{visibility:hidden}
 .product-heading-block{gap:8px}
 .product-price{background:transparent;padding:0;border-radius:0;line-height:1.15;letter-spacing:-.035em}
 .product-summary h1{font-size:clamp(22px,2.2vw,30px);text-wrap:pretty}
-.product-update-banner{padding:10px 14px;flex-wrap:wrap;font-size:12px;gap:8px}
-.product-update-banner button{min-height:44px;font-size:12px;white-space:normal}
 .product-demo-note{color:var(--ui-secondary-text);background:var(--shop-selected-surface);font-size:12px;line-height:1.5}
 .product-purchase .product-chat{border-color:transparent;color:var(--ui-primary)}
 .product-purchase .product-add{border-color:var(--ui-primary);color:var(--ui-primary)}
@@ -752,7 +747,6 @@ body.search-focused .header-search{width:100%;max-width:720px;margin:auto;height
  #product-view .product-chat svg{width:22px;height:22px}
  body[data-shop-route=product] .shop-main{padding-bottom:calc(100px + var(--shop-safe-bottom))}
  body[data-shop-route=product] .shop-toast{bottom:calc(82px + var(--shop-safe-bottom))}
- .product-update-banner{margin:8px 12px 0;border:1px solid var(--ui-border);border-radius:8px}
 }
 html.image-zoom-open{overflow:hidden}
 .image-zoom-stage{position:relative;min-height:0;overflow:hidden;touch-action:none;display:grid;place-items:center;outline-offset:-3px}
@@ -986,8 +980,33 @@ h1,h2{letter-spacing:-.01em}
 .order-item-link:focus-visible{outline:2px solid var(--ui-focus);outline-offset:3px;border-radius:8px}
 
 @media(min-width:761px){
- .shop-topbar{grid-template-columns:minmax(100px,auto) minmax(100px,1fr) auto auto auto auto;grid-template-areas:none}
- .shop-topbar>.theme-control{grid-column:4;grid-row:1}
- .shop-topbar>.shop-language{grid-column:5;grid-row:1}
- .shop-topbar>.shop-account{grid-column:6;grid-row:1}
+ .shop-topbar{grid-template-columns:minmax(100px,auto) minmax(100px,1fr);grid-auto-flow:column;grid-auto-columns:auto;grid-template-areas:none}
+}
+@media(max-width:1100px){
+ .shop-topbar>.topbar-update,#product-view .product-navigation>.topbar-update{padding:0}
+ .shop-topbar .topbar-update-label,#product-view .product-navigation .topbar-update-label{display:none}
+}
+@media(max-width:760px){
+ .shop-topbar{gap:4px}
+ .shop-topbar>.brand{margin-inline-end:0}
+ .shop-topbar>.theme-control,:root .shop-topbar>.shop-language{order:0;margin-inline-start:0}
+ .shop-topbar>.shop-account{display:block}
+ .shop-topbar .shop-account .language-trigger{width:44px;height:44px}
+ .shop-topbar .shop-account .utility-label{display:none}
+ .shop-account nav a,.shop-account nav button{min-height:44px}
+ .shop-topbar .header-search,body.search-focused .shop-topbar .header-search{height:46px}
+ .shop-topbar .header-search input{padding-inline:10px}
+ body.search-focused .shop-topbar>.topbar-update{display:none}
+ #product-view .product-navigation:has(>.topbar-update:not([hidden])){grid-template-columns:44px minmax(0,1fr) repeat(3,44px)}
+}
+@media(max-width:440px){
+ .shop-topbar .theme-control select{width:44px;padding:0;color:transparent}
+ .shop-topbar .theme-control option{color:var(--ui-text)}
+ .shop-topbar .theme-control>svg{inset-inline-start:13px}
+}
+@media(max-width:460px){
+ body:not(.search-focused) .shop-topbar:has(>.topbar-update:not([hidden])) .catalog-search-clear{display:none}
+}
+@media(max-width:360px){
+ body:not(.search-focused) .shop-topbar:has(>.topbar-update:not([hidden])) .header-search button[type=submit]{display:none}
 }

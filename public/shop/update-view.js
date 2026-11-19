@@ -4,7 +4,7 @@ import { confirmModal } from '../shared/modal.js';
 import { APP_VERSION } from './version.js';
 import { createTopbarUpdate, topbarMode } from '../shared/topbar-update.js';
 
-export function mountShopUpdates(guard, productBanner) {
+export function mountShopUpdates(guard) {
   const settings = document.getElementById('settings-view');
   const panel = document.createElement('section'); panel.className = 'checkout-section shop-update-settings';
   const title = document.createElement('h2');
@@ -13,21 +13,24 @@ export function mountShopUpdates(guard, productBanner) {
   const check = document.createElement('button'); check.type = 'button'; check.className = 'outline-button';
   const update = document.createElement('button'); update.type = 'button'; update.className = 'primary-button';
   panel.append(title, version, status, check, update); settings.append(panel);
-  function prepareBanner(banner) {
-    const notice = document.createElement('span'); notice.setAttribute('role', 'status');
-    const button = update.cloneNode();
-    banner.append(notice, button);
-    button.addEventListener('click', () => actions?.update());
-    return { banner, notice, button };
-  }
-  const catalogBanner = document.createElement('aside'); catalogBanner.className = 'shop-update-banner'; catalogBanner.hidden = true;
-  document.getElementById('catalog-view').before(catalogBanner);
-  const banners = [prepareBanner(catalogBanner)];
-  if (productBanner) banners.push(prepareBanner(productBanner));
+  const notice = document.createElement('p');
+  notice.className = 'sr-only shop-update-status';
+  notice.setAttribute('role', 'status');
+  document.body.append(notice);
   let state = {}, actions;
   const topbarUpdate = createTopbarUpdate({ update: () => actions?.update(), retry: () => actions?.check() });
   topbarUpdate.element.id = 'topbar-update';
-  document.querySelector('.shop-topbar #language')?.before(topbarUpdate.element);
+  const account = document.querySelector('.shop-topbar .shop-account');
+  const productView = document.getElementById('product-view');
+  const mobile = matchMedia('(max-width: 760px)');
+  function placeUpdate() {
+    const navigation = mobile.matches && document.body.dataset.shopRoute === 'product'
+      ? productView.querySelector('.product-navigation')
+      : null;
+    if (topbarUpdate.element.parentElement === (navigation || account.parentElement)) return;
+    if (navigation) navigation.insertBefore(topbarUpdate.element, navigation.querySelector('.product-share'));
+    else account.before(topbarUpdate.element);
+  }
   function render() {
     const mode = topbarMode(state);
     topbarUpdate.render(mode, mode === 'failed' ? { short: t('retry'), full: t('updateFailed') } : mode === 'busy' ? { short: t('appUpdating'), full: t('appUpdating') }
@@ -36,23 +39,23 @@ export function mountShopUpdates(guard, productBanner) {
     title.textContent = t('appUpdate');
     version.textContent = `${t('appVersion')}: Shop ${APP_VERSION}`;
     check.textContent = t('checkUpdates'); check.disabled = state.checking || state.applying || blocked;
-    status.textContent = state.statusKey ? t(state.statusKey) : '';
+    const statusText = state.statusKey ? t(state.statusKey) : '';
+    if (status.textContent !== statusText) status.textContent = statusText;
+    if (notice.textContent !== statusText) notice.textContent = statusText;
     const updateText = `${t('updateApp')}${state.available ? ` · ${state.available}` : ''}`;
     update.textContent = updateText;
     update.hidden = !state.ready;
     update.disabled = state.applying || blocked;
-    for (const { banner, notice, button } of banners) {
-      button.textContent = updateText;
-      button.disabled = state.applying || blocked;
-      banner.hidden = !state.ready || (banner === catalogBanner && document.body.dataset.shopRoute !== 'catalog');
-      notice.textContent = `${t('appVersion')}: Shop ${APP_VERSION} · ${t(state.statusKey === 'updateFailed' ? 'updateFailed' : 'updateAvailable')}`;
-    }
   }
   check.addEventListener('click', () => actions ? actions.check() : connect());
   update.addEventListener('click', () => actions?.update());
   document.addEventListener('localechange', render);
   document.addEventListener('updateguardchange', render);
-  new MutationObserver(render).observe(document.body, { attributes: true, attributeFilter: ['data-shop-route'] });
+  const placementObserver = new MutationObserver(placeUpdate);
+  placementObserver.observe(document.body, { attributes: true, attributeFilter: ['data-shop-route'] });
+  placementObserver.observe(productView, { childList: true });
+  mobile.addEventListener('change', placeUpdate);
+  placeUpdate();
   render();
   async function connect() {
     state.checking = true; render();

@@ -42,7 +42,7 @@ function image(product, className, source = product.imageUrl) {
   return revealImage(element);
 }
 
-export function mountProductDetail(root, { api, addToCart, checkout, shop, notify, updateBanner, cartQuantity = () => 0 }) {
+export function mountProductDetail(root, { api, addToCart, checkout, shop, notify, cartQuantity = () => 0 }) {
   let request = 0;
   let product = null;
   let related = [];
@@ -473,7 +473,6 @@ export function mountProductDetail(root, { api, addToCart, checkout, shop, notif
       section.append(node('summary', '', t(heading)), node('p', custom ? 'product-service-text' : '', text));
       serviceDetails.append(section);
     }
-    if (updateBanner) summary.append(updateBanner);
     summary.append(headingBlock, selectionBlock);
     if (serviceRows.length) summary.append(serviceDetails);
     layout.append(gallery, summary);

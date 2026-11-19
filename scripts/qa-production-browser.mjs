@@ -15,9 +15,9 @@ const report = { phase, pageErrors: [], unexpectedConsoleErrors: [], expectedUna
 await context.exposeBinding('recordUpdateOffer', ({ page }, version) => { const host = new URL(page.url()).host; const versions = report.offers[host] ||= []; if (!versions.includes(version)) versions.push(version); });
 await context.addInitScript(() => {
   const inspect = () => {
-    for (const button of document.querySelectorAll('.pwa-update button, .shop-update-settings .primary-button, .shop-update-banner button, #login-install-update, #install-update-button')) {
+    for (const button of document.querySelectorAll('.topbar-update, .pwa-update button, .shop-update-settings .primary-button, .shop-update-banner button, #login-install-update, #install-update-button')) {
       if (button.hidden || !button.getClientRects().length) continue;
-      const version = button.textContent.match(/\bv\d+\b/)?.[0];
+      const version = `${button.getAttribute('aria-label') || ''} ${button.textContent}`.match(/\bv\d+\b/)?.[0];
       if (version) { console.debug('QA_UPDATE_OFFER:' + version); window.recordUpdateOffer(version); }
     }
   };

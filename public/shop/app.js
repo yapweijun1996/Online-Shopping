@@ -1042,13 +1042,9 @@ checkoutPage = mountCheckout({
     location.hash = '#cart';
   },
 });
-const productUpdateBanner = document.createElement('aside');
-productUpdateBanner.className = 'shop-update-banner product-update-banner';
-productUpdateBanner.hidden = true;
 detailPage = mountProductDetail(byId('product-view'), {
   api, addToCart, checkout: beginCheckout, shop: () => shopInfo, notify: setMessage,
   cartQuantity: () => cartStore.list().reduce((sum, line) => sum + line.quantity, 0),
-  updateBanner: productUpdateBanner,
 });
 updateCount();
 updatePersistence();
@@ -1254,5 +1250,5 @@ await loadCatalog();
 showRoute();
 
 
-mountShopUpdates(() => ({ dirty: profilePage.isDirty() || addressBook.isDirty() || checkoutPage.hasPendingIntent(), busy: cartWrites > 0 || checkoutPage.isBusy(), signature: draftSignature() }), productUpdateBanner);
+mountShopUpdates(() => ({ dirty: profilePage.isDirty() || addressBook.isDirty() || checkoutPage.hasPendingIntent(), busy: cartWrites > 0 || checkoutPage.isBusy(), signature: draftSignature() }));
 finishBoot();
