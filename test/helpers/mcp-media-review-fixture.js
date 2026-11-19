@@ -6,6 +6,7 @@ import { createOperationEngine } from '../../src/mcp/operation-engine.js';
 import { mediaHash } from '../../src/mcp/media-storage.js';
 import { reviewPassword } from './mcp-review-fixture.js';
 import { hash, secret } from '../../src/mcp/credentials.js';
+import { MEDIA_LIMITS } from '../../src/mcp/media-schema.js';
 import { readMediaSnapshot } from '../../src/mcp/media-resources.js';
 
 async function freshOAuth(f) {
@@ -55,13 +56,17 @@ export async function sharedReviewGraph(f, members = 2) {
 
 // Actual coordinator/business/HTTP handlers. Decoder packet is explicitly synthetic.
 export async function mediaReviewFixture(t, dialect, options = {}) {
-  const { fixtureOptions = {}, prepareGraph, ...rest } = options;
+  const { fixtureOptions = {}, prepareGraph, source = syntheticMediaPng(), ...rest } = options;
   const f = await coordinatorFixture(t, dialect, { ...rest, fixtureOptions: { ...fixtureOptions,
-    config: { mcpMedia: { enabled: true }, mcpRedirectUris: ['https://connector.example.com/callback'], ...fixtureOptions.config } } }), source = syntheticMediaPng();
+    config: { mcpMedia: { enabled: true }, mcpRedirectUris: ['https://connector.example.com/callback'], ...fixtureOptions.config } } });
   await freshOAuth(f);
   if (prepareGraph) await prepareGraph(f);
   const begun = await f.coordinator.begin(f.bearer, await f.input(source));
-  await f.coordinator.append(f.bearer, { stageId: begun.stageId, offset: 0, dataParts: [source.toString('base64')] });
+  for (let offset = 0; offset < source.length; offset += MEDIA_LIMITS.chunkBytes) {
+    const chunk = source.subarray(offset, offset + MEDIA_LIMITS.chunkBytes);
+    const dataParts = chunk.toString('base64').match(/.{1,4096}/g);
+    await f.coordinator.append(f.bearer, { stageId: begun.stageId, offset, dataParts });
+  }
   const engine = createOperationEngine({ ...f.options, adapters: { 'media.prepare_upload': f.coordinator.uploadAdapter } });
   const operation = await engine.prepare({ bearer: f.bearer, toolName: 'media.prepare_upload', args: { stageId: begun.stageId }, idempotencyKey: 'synthetic-review-operation-0001' });
   const path = '/api/v1/seller/mcp/operations/' + operation.operationId;

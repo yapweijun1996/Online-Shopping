@@ -1,47 +1,35 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdir, readFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { assertDecisionClearance, catalogReviewBrowserFixture, digest, injection, operationId as id } from './helpers/mcp-operation-review-browser-fixture.js';
 
 const browserModule = process.env.QA_PLAYWRIGHT_MODULE;
-const id = '00000000-0000-4000-8000-000000000001', digest = 'a'.repeat(64);
-const injection = '</pre><script>window.__injected = true</script>';
+async function assertNamedTargets(scope) {
+  const controls = scope.locator('a[href]:visible, button:visible, input:visible, summary:visible, pre[tabindex="0"]:visible');
+  for (const control of await controls.all()) {
+    const snapshot = await control.ariaSnapshot();
+    // Playwright snapshots may represent a native summary by its accessible text.
+    const name = /^- [\w]+ "[^"]+"/.test(snapshot) || /^- text: \S/.test(snapshot);
+    assert.ok(name, `Control has an accessible name: ${snapshot}`);
+    const box = await control.boundingBox();
+    assert.ok(box.width >= 44 && box.height >= 44, `44px target: ${snapshot}`);
+  }
+}
 
 test('first-party review prototype renders all untrusted data as text and requires an explicit decision',
   { skip: !browserModule, timeout: 60000 }, async (t) => {
-    const assets = Object.fromEntries(await Promise.all(['html', 'js', 'css'].map(async (extension) =>
-      [extension, await readFile(new URL(`../src/mcp/operation-review.${extension}`, import.meta.url))])));
-    const calls = [];
-    const styles = {
-      '/shop/tokens.css': await readFile(new URL('../public/shared/theme.css', import.meta.url)),
-      '/shared/appearance.css': await readFile(new URL('../public/shared/appearance.css', import.meta.url)),
-    };
+    const { calls, respond } = await catalogReviewBrowserFixture();
     const server = createServer(async (request, response) => {
-      const path = new URL(request.url, 'http://localhost').pathname.replace(/^\/alpha(?=\/)/, '');
-      if (path === '/oauth/operation') {
-        response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); response.end(assets.html); return;
-      }
-      if (styles[path]) { response.writeHead(200, { 'Content-Type': 'text/css' }); response.end(styles[path]); return; }
-      if (/^\/oauth\/operation-review\.(js|css)$/.test(path)) {
-        const extension = path.endsWith('.js') ? 'js' : 'css';
-        response.writeHead(200, { 'Content-Type': extension === 'js' ? 'text/javascript' : 'text/css' }); response.end(assets[extension]); return;
-      }
-      const send = (value) => { response.writeHead(200, { 'Content-Type': 'application/json' }); response.end(JSON.stringify(value)); };
-      if (path === '/api/v1/seller/session' && request.method === 'GET') { send({ csrfToken: 'synthetic-csrf' }); return; }
-      if (path === `/api/v1/seller/mcp/operations/${id}` && request.method === 'GET') {
-        send({ currencyAcknowledgementRequired: false, currencyWarning: null, operationId: id, shopName: 'Synthetic shop', accountName: 'synthetic_owner', clientName: injection, clientId: 'synthetic-client',
-          toolName: 'catalog.preview_update', resourceType: 'product', resourceId: id, risk: 'MEDIUM', expiresAt: new Date(Date.now() + 600000).toISOString(),
-          previewHash: digest, challenge: 'a'.repeat(43), proposal: { before: { name: 'Old synthetic', sku: 'OLD', priceMinor: 123, currency: 'USD', stockQuantity: 7, active: true, category: 'Old category', description: 'Old description', options: [] },
-            after: { name: injection, sku: 'NEW', priceMinor: 456, stockQuantity: 0, active: false, category: 'New category', description: 'New description', options: [], bidi: 'A\u202eB', tail: 'Full proposal visible' } } }); return;
-      }
-      if (path === `/api/v1/seller/mcp/operations/${id}/approval` && request.method === 'POST') {
-        const chunks = []; for await (const chunk of request) chunks.push(chunk);
-        const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-        calls.push({ body, csrf: request.headers['x-csrf-token'], path: request.url });
-        send({ operationId: id, status: body.decision === 'approve' ? 'APPROVED' : 'REJECTED' }); return;
-      }
-      response.writeHead(404); response.end();
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      const result = await respond(new Request(`http://127.0.0.1${request.url}`, {
+        method: request.method, headers: request.headers,
+        ...(request.method === 'POST' ? { body: Buffer.concat(chunks) } : {}),
+      }));
+      response.writeHead(result.status, Object.fromEntries(result.headers));
+      response.end(Buffer.from(await result.arrayBuffer()));
     });
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
     t.after(() => { server.closeAllConnections(); server.close(); });
@@ -52,7 +40,7 @@ test('first-party review prototype renders all untrusted data as text and requir
     const backgrounds = new Map();
     const scenarios = [320, 360, 379, 380, 390, 768, 1440].flatMap(width => ['light', 'dark'].map(colorScheme => [width, width === 390 ? '/alpha' : '', colorScheme === 'dark' ? 'reject' : 'approve', colorScheme]));
     for (const [index, [width, base, decision, colorScheme]] of scenarios.entries()) {
-      const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme });
+      const context = await browser.newContext({ viewport: { width, height: width === 390 ? 844 : 900 }, colorScheme });
       t.after(() => context.close());
       const external = [];
       await context.route('**/*', (route) => {
@@ -62,6 +50,7 @@ test('first-party review prototype renders all untrusted data as text and requir
       const page = await context.newPage();
       await page.goto(`${origin}${base}/oauth/operation?operationId=${id}`);
       await page.locator('#review').waitFor({ state: 'visible' });
+      if (width === 390) await assertDecisionClearance(page, 'catalog');
       assert.equal(await page.evaluate(() => window.__injected), undefined);
       assert.equal(await page.locator('#proposal script').count(), 0);
       assert.equal(await page.locator('#client script').count(), 0);
@@ -71,24 +60,40 @@ test('first-party review prototype renders all untrusted data as text and requir
       for (const value of ['Old synthetic', 'OLD', '123', 'USD', '7', 'Old category', 'Old description', 'NEW', '456', 'New category', 'New description']) assert.ok(summary.includes(value), value);
       assert.match(summary, /minor units/i);
       assert.match(summary, /currency not provided/i);
-      for (const label of ['Category', 'Description']) {
-        const field = page.locator('.summary-grid > dt').filter({ hasText: new RegExp(`^${label}$`) });
-        const labelBox = await field.boundingBox();
-        if (width >= 390) assert.ok(labelBox.width >= 90, `${label} field width at ${width}px`);
-        assert.equal(await field.evaluate(node => {
-          const range = document.createRange(); range.selectNodeContents(node);
-          return range.getClientRects().length;
-        }), 1, `${label} stays readable without midword wrapping at ${width}px`);
-        if (width < 380) {
-          const beforeBox = await field.locator('xpath=following-sibling::dd[1]').boundingBox();
-          const afterBox = await field.locator('xpath=following-sibling::dd[2]').boundingBox();
-          assert.ok(beforeBox.y >= labelBox.y + labelBox.height, `${label} values below field label`);
-          assert.equal(beforeBox.y, afterBox.y);
-          assert.ok(Math.abs(labelBox.width - beforeBox.width - afterBox.width) < 1, `${label} spans both values`);
-        }
+      const description = page.locator('.summary-field').filter({ has: page.getByRole('heading', { name: 'Description Changed' }) });
+      assert.equal(await description.locator('.changed-badge').textContent(), 'Changed');
+      const before = description.locator('.comparison > div').first();
+      const after = description.locator('.comparison > div').last();
+      assert.equal(await before.locator('dt').textContent(), 'Before');
+      assert.equal(await after.locator('dt').textContent(), 'After');
+      const beforeBox = await before.boundingBox(), afterBox = await after.boundingBox();
+      if (width < 640) assert.ok(afterBox.y >= beforeBox.y + beforeBox.height, `stacked comparison at ${width}px`);
+      else assert.equal(afterBox.y, beforeBox.y);
+      const unchanged = page.locator('.unchanged-fields');
+      assert.equal(await unchanged.getAttribute('open'), null);
+      assert.match(await unchanged.locator('summary').textContent(), /^Unchanged fields \(3\)$/);
+      assert.equal(await unchanged.getByText('Options', { exact: true }).isVisible(), false);
+      if (width === 390) {
+        await page.evaluate(() => window.scrollTo(0, 0));
+        const bar = page.locator('#decision');
+        assert.equal(await bar.evaluate(node => getComputedStyle(node).position), 'fixed');
+        const box = await bar.boundingBox();
+        assert.ok(box.y > 0 && box.y + box.height <= 844, 'decision bar fits in the initial viewport');
+        assert.equal(await page.locator('#approve').evaluate(button => {
+          const box = button.getBoundingClientRect();
+          return document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2) === button;
+        }), true);
+        await page.evaluate(() => window.scrollTo(0, 120));
+        const scrolled = await bar.boundingBox();
+        assert.ok(Math.abs(scrolled.y - box.y) < 1, 'decision bar stays anchored while scrolling');
+        await assertNamedTargets(page);
+        await unchanged.locator('summary').click();
+        assert.equal(await unchanged.getByText('Options', { exact: true }).isVisible(), true);
+        await unchanged.locator('summary').click();
       }
       await page.locator('#technical-details > summary').click();
       assert.equal(await page.locator('#proposal').isVisible(), true);
+      if (width === 390) await assertNamedTargets(page);
       const displayed = await page.locator('#proposal').textContent();
       assert.ok(displayed.includes(injection));
       assert.ok(displayed.includes('Full proposal visible'));
@@ -106,12 +111,34 @@ test('first-party review prototype renders all untrusted data as text and requir
         await page.screenshot({ path: join(process.env.QA_APPROVAL_SCREENSHOT_DIR, `approval-${width}-${colorScheme}.png`), fullPage: true });
       }
       assert.equal(await page.locator('#seller-link').getAttribute('href'), `${base}/seller/`);
-      assert.equal(await page.locator('#approve').textContent(), 'Approve');
+      assert.equal(await page.locator('#approve').textContent(), 'Approve change');
       assert.equal(await page.locator('button[value="reject"]').textContent(), 'Reject');
       assert.ok((await page.locator('#approve').boundingBox()).height >= 48);
       assert.ok((await page.locator('button[value="reject"]').boundingBox()).height >= 48);
       await page.locator(`button[value="${decision}"]`).click();
-      await page.locator('#decision').waitFor({ state: 'hidden' });
+      const approved = decision === 'approve';
+      const dialog = page.getByRole('alertdialog', { name: approved ? 'Approved' : 'Rejected', exact: true });
+      await dialog.waitFor();
+      assert.equal(await dialog.evaluate(node => node.matches(':modal')), true);
+      assert.equal(await dialog.locator('#result-description').textContent(), approved
+        ? 'The product has not changed yet. Return to Claude to apply this change.'
+        : 'No change was made.');
+      assert.equal(await dialog.locator('svg').isVisible(), approved);
+      assert.equal(await page.locator('#status').textContent(), approved
+        ? 'Approved. The connected app must still commit this change.'
+        : 'Rejected. The change was not applied.');
+      assert.equal(await page.locator('#status').getAttribute('aria-live'), 'polite');
+      assert.equal(await page.locator('#status').evaluate(node => getComputedStyle(node).clipPath), 'inset(50%)');
+      const done = dialog.getByRole('button', { name: 'Done', exact: true });
+      assert.ok((await done.boundingBox()).height >= 44);
+      if (width === 390) await assertNamedTargets(dialog);
+      assert.equal(await done.evaluate(node => node === document.activeElement), true);
+      if (approved) await done.click();
+      else await page.keyboard.press('Escape');
+      await dialog.waitFor({ state: 'hidden' });
+      await page.locator('#status:focus').waitFor();
+      assert.match(await page.getByRole('status').ariaSnapshot(), approved ? /Approved/ : /Rejected/);
+      assert.equal(await page.locator('#decision').isVisible(), false);
       const call = calls.at(-1);
       assert.equal(call.path, `${base}/api/v1/seller/mcp/operations/${id}/approval`);
       assert.equal(call.csrf, 'synthetic-csrf');

@@ -52,11 +52,13 @@ test('SYNTHETIC transport C renderer verifies page labels and safely displays nu
    const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));
    await page.goto(origin+base+'/oauth/operation?operationId='+wireId(1));await page.locator('#approve:enabled').waitFor();
    const text=await page.locator('#media-effects').textContent();assert.match(text,/Did not exist before this change/);assert.match(text,/Removed by this change/);
-   assert.match(text,/Stored own main is hidden/);assert.match(text,/Old literal name/);assert.ok(text.includes('<script>window.__CInjected=true</script>'));assert.ok(text.includes('\\u202e'));
+   assert.match(text,/The main photo is hidden from shoppers/);assert.match(text,/Old literal name/);assert.ok(text.includes('<script>window.__CInjected=true</script>'));assert.ok(text.includes('\\u202e'));
    assert.equal(await page.evaluate(()=>window.__CInjected),undefined);assert.equal(await page.locator('#media-effects script').count(),0);
    const summary=await page.locator('#summary-fields').textContent();for(const value of ['Before product','After product','BEFORE-SKU','AFTER-SKU','MYR 12.34','SGD 56.78','Before category','After category','Before description','After description'])assert.ok(summary.includes(value),value);
    assert.equal(await page.locator('#media-ack, #media-image-ack, #decision input[type=password]').count(),0);
    const image=await page.locator('#media-image').evaluate(value=>({width:value.naturalWidth,height:value.naturalHeight}));assert.ok(image.width>0&&image.height>0);
+   for(const side of ['Before','After'])assert.equal(await page.locator(`#media-effects .media-reference[aria-label$=" · ${side}"] img`).count(),1);
+   assert.ok(await page.getByText('Gallery photo 1 · preview shown above',{exact:true}).count());
    const before=approvals.length;
    await page.locator('#approve').click();await page.locator('#decision').waitFor({state:'hidden'});
    assert.equal(approvals.length,before+1);assert.equal(approvals.at(-1).mediaReviewed,true);assert.equal(Object.hasOwn(approvals.at(-1),'password'),false);

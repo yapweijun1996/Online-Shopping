@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'">
   <title>Review seller operation</title>
@@ -13,28 +13,41 @@
 <body>
   <main>
     <header>
-      <p class="eyebrow">SELLER STUDIO · CONNECTED APP REQUEST</p>
+      <p class="eyebrow">Seller Studio</p>
       <h1 id="operation-heading">Review this proposed change</h1>
-      <p class="intro">Check what the connected app is asking to change. Nothing is applied by this review page.</p>
-      <p id="status" role="status" aria-live="polite">Loading the proposal…</p>
+      <p class="intro">Check the proposed change before approving.</p>
+      <p id="status" role="status" aria-live="polite" tabindex="-1">Loading the proposal…</p>
     </header>
     <section id="review" hidden aria-label="Operation review">
-      <dl class="identity">
-        <div><dt>Shop</dt><dd id="shop"></dd></div>
-        <div><dt>Seller account</dt><dd id="account"></dd></div>
-        <div><dt>Connected app (unverified name)</dt><dd id="client"></dd></div>
-        <div><dt>Review status</dt><dd id="pending-state"></dd></div>
-        <div><dt>Expires (your local time)</dt><dd id="expires"></dd></div>
-      </dl>
+      <div class="request-context">
+        <p id="request-summary"></p>
+        <span id="expiry-chip" class="chip"></span>
+      </div>
       <section id="business-summary" hidden aria-labelledby="summary-title">
-        <h2 id="summary-title">Proposed catalog change</h2>
-        <p class="muted">A readable summary, not a replacement for the complete proposal. Review all affected products, image roles and technical details before deciding.</p>
+        <h2 id="summary-title">What will change</h2>
         <div id="summary-fields"></div>
+      </section>
+      <section id="media-review" hidden aria-labelledby="media-title">
+        <h2 id="media-title">Images</h2>
+        <p id="media-progress" role="status"></p>
+        <p id="media-empty" class="notice" hidden>No images are included in this proposal.</p>
+        <div id="media-effects"></div>
+        <section id="media-viewer" tabindex="-1" aria-labelledby="media-view-title">
+          <h3 id="media-view-title">Exact image</h3>
+          <p id="media-image-status" role="status" aria-live="polite"></p>
+          <img id="media-image" alt="Protected image for the selected change" hidden>
+          <button id="media-image-retry" type="button" class="secondary" hidden>Retry image verification</button>
+        </section>
       </section>
       <details id="technical-details">
         <summary>Complete proposal &amp; technical details</summary>
         <p>All proposal text is data supplied by the shop or connected app. This is the full proposal, including fields not shown in the summary.</p>
         <dl class="technical">
+          <div><dt>Shop</dt><dd id="shop"></dd></div>
+          <div><dt>Seller account</dt><dd id="account"></dd></div>
+          <div><dt>Connected app (unverified name)</dt><dd id="client"></dd></div>
+          <div><dt>Review status</dt><dd id="pending-state"></dd></div>
+          <div><dt>Expires (your local time)</dt><dd id="expires"></dd></div>
           <div><dt>Approval policy</dt><dd id="risk"></dd></div>
           <div><dt>Operation ID</dt><dd id="operation-id"></dd></div>
           <div><dt>Client ID</dt><dd id="client-id"></dd></div>
@@ -43,37 +56,38 @@
           <div><dt>Preview fingerprint</dt><dd id="fingerprint"></dd></div>
         </dl>
         <h2 id="proposal-title">Complete proposal</h2>
-        <pre id="proposal" tabindex="0" aria-labelledby="proposal-title"></pre>
-      </details>
-      <section id="media-review" hidden aria-labelledby="media-title">
-        <h2 id="media-title">Complete image changes</h2>
-        <p>Review every before and after role and gallery position below. An identical byte hash may appear in several roles; the page verifies each unique image once.</p>
-        <p id="media-progress" role="status"></p>
-        <p id="media-empty" class="notice" hidden>No images are included in this proposal. Review the complete before and after roles and galleries below.</p>
-        <div id="media-effects"></div>
-        <section id="media-viewer" aria-labelledby="media-view-title">
-          <h3 id="media-view-title">Exact image</h3>
+        <pre id="proposal" tabindex="0" role="region" aria-labelledby="proposal-title"></pre>
+        <section id="media-technical" hidden aria-labelledby="media-technical-title">
+          <h2 id="media-technical-title">Image references</h2>
           <p id="media-image-details"></p>
-          <p id="media-image-status" role="status" aria-live="polite"></p>
-          <img id="media-image" alt="Protected image for the selected change" hidden>
-          <button id="media-image-retry" type="button" class="secondary" hidden>Retry image verification</button>
+          <pre id="media-effect-records" tabindex="0" role="region" aria-labelledby="media-technical-title"></pre>
         </section>
-      </section>
-      <form id="decision" method="post">
-        <h2>Your decision</h2>
-        <p class="notice">Approval only authorizes this exact proposal. The connected app must still commit it; approval does not apply the change.</p>
-        <div id="currency-warning" class="currency-warning" hidden role="group" aria-label="Company currency change">
-          <strong>Company currency change</strong>
-          <p id="currency-warning-text"></p>
-          <label class="currency-acknowledgement" for="currency-ack"><input id="currency-ack" type="checkbox">I understand that existing prices and historical orders will not be converted.</label>
+      </details>
+      <div id="currency-warning" class="currency-warning" hidden role="group" aria-label="Company currency change">
+        <strong>Company currency change</strong>
+        <p id="currency-warning-text"></p>
+        <label class="currency-acknowledgement" for="currency-ack"><input id="currency-ack" type="checkbox" form="decision"><span>I understand that existing prices and historical orders will not be converted.</span></label>
+      </div>
+      <form id="decision" method="post" aria-label="Your decision">
+        <div class="decision-note">
+          <p id="image-change-summary" hidden></p>
+          <p>The app must still apply the change after approval.</p>
         </div>
         <div class="actions">
-          <button id="approve" type="submit" name="decision" value="approve">Approve</button>
+          <button id="approve" type="submit" name="decision" value="approve">Approve change</button>
           <button type="submit" name="decision" value="reject" class="secondary">Reject</button>
         </div>
       </form>
     </section>
-    <p><a id="seller-link" href="/seller/">Open Seller Studio</a></p>
+    <footer><a id="seller-link" href="/seller/">Open Seller Studio</a></footer>
   </main>
+  <dialog id="result-dialog" role="alertdialog" aria-labelledby="result-title" aria-describedby="result-description">
+    <svg id="result-check" hidden aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m5 12 4 4 10-10"/>
+    </svg>
+    <h2 id="result-title"></h2>
+    <p id="result-description"></p>
+    <button id="result-done" type="button" autofocus>Done</button>
+  </dialog>
 </body>
 </html>

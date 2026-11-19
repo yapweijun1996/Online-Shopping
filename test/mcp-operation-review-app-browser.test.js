@@ -50,6 +50,7 @@ test('real HTTPS app and seller session review and reject a complete proposal in
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id = ?', op.value.operationId)).state, 'PENDING_APPROVAL');
     await page.locator('button[value="reject"]').click();
+    await page.getByRole('alertdialog', { name: 'Rejected', exact: true }).waitFor();
     await page.locator('#decision').waitFor({ state: 'hidden' });
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id = ?', op.value.operationId)).state, 'REJECTED');
     assert.equal(await page.locator('#decision input[type=password]').count(), 0);
@@ -62,13 +63,18 @@ test('real HTTPS app and seller session review and reject a complete proposal in
       proposal: { before: { defaultCurrency: 'MYR' }, after: { defaultCurrency: 'SGD' }, currencyChanged: false } });
     await page.goto(origin + '/oauth/operation?operationId=' + company.value.operationId);
     await page.locator('#currency-warning').waitFor({ state: 'visible' });
-    assert.equal(await page.locator('#currency-ack').isChecked(), false);
+    const currencyAcknowledgment = page.getByRole('checkbox', { name: 'I understand that existing prices and historical orders will not be converted.' });
+    assert.equal(await currencyAcknowledgment.isChecked(), false);
+    const checkboxBox = await currencyAcknowledgment.boundingBox();
+    assert.ok(checkboxBox.width >= 44 && checkboxBox.height >= 44);
     assert.match(await page.locator('#currency-warning-text').textContent(), /not converted/);
     await page.locator('button[value="approve"]').click();
     assert.match(await page.locator('#status').textContent(), /check the acknowledgment/);
+    assert.equal(await page.locator('#result-dialog').evaluate(dialog => dialog.open), false);
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id = ?', company.value.operationId)).state, 'PENDING_APPROVAL');
-    await page.locator('#currency-ack').check();
+    await currencyAcknowledgment.check();
     await page.locator('button[value="approve"]').click();
+    await page.getByRole('alertdialog', { name: 'Approved', exact: true }).waitFor();
     await page.locator('#decision').waitFor({ state: 'hidden' });
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id = ?', company.value.operationId)).state, 'APPROVED');
     assert.equal((await f.store.get("SELECT outcome FROM mcp_v2_event WHERE operation_id = ? AND event = 'APPROVE'", company.value.operationId)).outcome, 'CURRENCY_CHANGE_ACKNOWLEDGED');

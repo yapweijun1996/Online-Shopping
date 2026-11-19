@@ -5,6 +5,12 @@
 const statusNode = document.querySelector('#status');
 const reviewSection = document.querySelector('#review');
 const form = document.querySelector('#decision');
+const resultDialog = document.querySelector('#result-dialog');
+const expiryChip = document.querySelector('#expiry-chip');
+function syncDecisionHeight() {
+  document.documentElement.style.setProperty('--decision-height', `${form.getBoundingClientRect().height}px`);
+}
+new ResizeObserver(syncDecisionHeight).observe(form, { box: 'border-box' });
 const path = /^\/(?:([a-z0-9]{3,30})\/)?oauth\/operation\/?$/.exec(location.pathname);
 const base = path?.[1] ? `/${path[1]}` : '';
 const id = new URL(location.href).searchParams.get('operationId');
@@ -18,6 +24,8 @@ let currencyAcknowledgementRequired = false;
 let mediaReview = null, mediaComplete = false, imageUrl = null, imageJob = null;
 const imageNode = document.querySelector('#media-image');
 const acknowledgedImages = new Set();
+const thumbnailUrls = new Map();
+const thumbnails = new Map();
 const currencyAck = document.querySelector('#currency-ack');
 const imageStatus = document.querySelector('#media-image-status');
 const imageRetry = document.querySelector('#media-image-retry');
@@ -32,7 +40,9 @@ function checkExpiry() {
     const message = 'Proposal expired. Ask the connected app for a new preview.';
     document.querySelector('#pending-state').textContent = message;
     statusNode.textContent = message;
-    for (const control of form.querySelectorAll('input, button')) control.disabled = true;
+    expiryChip.textContent = 'Expired';
+    expiryChip.classList.add('expiry-warning');
+    for (const control of form.elements) control.disabled = true;
     imageRetry.disabled = true;
     for (const control of document.querySelectorAll('.media-reference')) control.disabled = true;
   }
@@ -41,11 +51,18 @@ function checkExpiry() {
 function scheduleExpiry() {
   clearTimeout(expiryTimer);
   if (expiresAt === null || checkExpiry()) return;
-  expiryTimer = setTimeout(scheduleExpiry, Math.min(expiresAt - Date.now(), 2147483647));
+  const remaining = expiresAt - Date.now();
+  expiryChip.textContent = remaining < 60000
+    ? 'Expires in less than 1 min'
+    : `Expires in ${Math.ceil(remaining / 60000)} min`;
+  const warningThreshold = 120000;
+  expiryChip.classList.toggle('expiry-warning', remaining < warningThreshold);
+  const untilWarning = remaining >= warningThreshold ? remaining - warningThreshold + 1 : Infinity;
+  expiryTimer = setTimeout(scheduleExpiry, Math.min(remaining, untilWarning, 30000));
 }
 function updateReviewControls() {
   const disabled = checkExpiry() || decisionPending || !csrf || !previewHash || !challenge;
-  for (const control of form.querySelectorAll('input, button')) control.disabled = disabled;
+  for (const control of form.elements) control.disabled = disabled;
   document.querySelector('#approve').disabled = disabled || Boolean(mediaReview && !mediaComplete);
   imageRetry.disabled = disabled;
   for (const control of document.querySelectorAll('.media-reference')) control.disabled = disabled || !mediaComplete;
@@ -72,15 +89,21 @@ function catalogSummaryFields(row, optionReview) {
     : options.every(option => typeof option.typeName === 'string' && typeof option.valueLabel === 'string')
       ? visible(options.map(option => `${option.typeName}: ${option.valueLabel}${option.typeActive === false || option.valueActive === false ? ' (inactive)' : ''}`).join('; '))
       : `${options.length} selection(s); labels not provided — see complete proposal`;
-  const category = row.category && typeof row.category === 'object'
+  const categoryValue = row.category && typeof row.category === 'object' ? row.category : row.categoryCode ?? row.category;
+  const category = categoryValue && typeof categoryValue === 'object'
     ? `${summaryText(row.category.label)} (${summaryText(row.category.code)})${row.category.active === false ? ' (inactive)' : ''}`
-    : summaryText(row.categoryCode ?? row.category);
+    : summaryText(categoryValue);
   return [
-    ['Name', summaryText(row.name)], ['SKU', summaryText(row.sku)], ['Price', price],
-    ['Stock', row.stockQuantity === null ? 'Unlimited' : summaryText(row.stockQuantity)],
-    ['Availability', row.active === true ? 'Listed' : row.active === false ? 'Not listed' : 'Not provided'],
-    ['Category', category], ['Description', summaryText(row.description)], ['Options', optionText],
-    ['Variant group', summaryText(row.variantGroup)], ['Variant label', summaryText(row.variantLabel)],
+    ['Name', summaryText(row.name), row.name],
+    ['SKU', summaryText(row.sku), row.sku],
+    ['Price', price, [row.priceMinor ?? null, row.currency ?? null]],
+    ['Stock', row.stockQuantity === null ? 'Unlimited' : summaryText(row.stockQuantity), row.stockQuantity],
+    ['Availability', row.active === true ? 'Listed' : row.active === false ? 'Not listed' : 'Not provided', row.active],
+    ['Category', category, categoryValue],
+    ['Description', summaryText(row.description), row.description],
+    ['Options', optionText, options],
+    ['Variant group', summaryText(row.variantGroup), row.variantGroup],
+    ['Variant label', summaryText(row.variantLabel), row.variantLabel],
   ];
 }
 function renderBusinessSummary(value) {
@@ -90,6 +113,8 @@ function renderBusinessSummary(value) {
     'company.preview_update': 'Review company changes',
     'inventory.preview_adjustment': 'Review stock adjustment',
     'orders.preview_decision': 'Review order decision',
+    'media.prepare_upload': 'Review image update',
+    'media.preview_layout': 'Review image layout',
   };
   const title = titles[value.toolName] || 'Review proposed seller operation';
   document.querySelector('#operation-heading').textContent = title;
@@ -104,25 +129,80 @@ function renderBusinessSummary(value) {
     const after = catalogSummaryFields(product.after, proposal.optionReview?.after);
     if (!after) continue;
     const article = document.createElement('article'); article.className = 'summary-product';
-    if (products.length > 1) {
-      const heading = document.createElement('h3');
-      heading.textContent = `Affected product ${index + 1} · ${summaryText(product.after?.sku)}`; article.append(heading);
+    const heading = document.createElement('h3');
+    heading.textContent = summaryText(product.after?.name ?? product.before?.name ?? product.after?.sku);
+    if (products.length > 1 && product.after?.sku) {
+      heading.textContent += ` · ${summaryText(product.after.sku)}`;
     }
-    const grid = document.createElement('dl'); grid.className = `summary-grid${before ? ' has-before' : ''}`;
-    const append = (tag, text, className = '') => {
-      const node = document.createElement(tag); node.textContent = text; node.className = className; grid.append(node);
-    };
-    append('dt', 'Field', 'column-title');
-    if (before) append('dd', 'Before', 'column-title');
-    append('dd', before ? 'After' : 'New product', 'column-title');
-    for (const [fieldIndex, [label, text]] of after.entries()) {
-      append('dt', label);
-      if (before) append('dd', before[fieldIndex][1]);
-      append('dd', text, before && before[fieldIndex][1] !== text ? 'changed' : '');
+    article.append(heading);
+    const unchanged = document.createElement('details');
+    const unchangedLabel = document.createElement('summary');
+    unchanged.className = 'unchanged-fields';
+    unchanged.append(unchangedLabel);
+    let changedCount = 0, unchangedCount = 0;
+    for (const [fieldIndex, [label, text, raw]] of after.entries()) {
+      const previous = before?.[fieldIndex][1];
+      if (before && previous === text && canonical(before[fieldIndex][2]) === canonical(raw)) {
+        unchanged.append(summaryField(label, [['Current value', text]]));
+        unchangedCount++;
+      } else {
+        const values = before ? [['Before', previous], ['After', text]] : [['New value', text]];
+        article.append(summaryField(label, values, Boolean(before)));
+        changedCount++;
+      }
     }
-    article.append(grid); root.append(article);
+    if (!changedCount) {
+      const message = document.createElement('p');
+      message.textContent = 'No changes to the fields shown here.';
+      article.append(message);
+    }
+    if (unchangedCount) {
+      unchangedLabel.textContent = `Unchanged fields (${unchangedCount})`;
+      article.append(unchanged);
+    }
+    root.append(article);
   }
   document.querySelector('#business-summary').hidden = root.childElementCount === 0;
+}
+
+function summaryField(label, values, changed = false) {
+  const field = document.createElement('section');
+  field.className = 'summary-field';
+  const heading = document.createElement('h4');
+  heading.textContent = label;
+  if (changed) {
+    const badge = document.createElement('span');
+    badge.className = 'chip changed-badge';
+    badge.textContent = 'Changed';
+    heading.append(' ', badge);
+  }
+  const comparison = document.createElement('dl');
+  comparison.className = 'comparison';
+  for (const [side, text] of values) {
+    const entry = document.createElement('div');
+    const term = document.createElement('dt'), value = document.createElement('dd');
+    term.textContent = side;
+    value.textContent = text;
+    entry.append(term, value);
+    comparison.append(entry);
+  }
+  field.append(heading, comparison);
+  return field;
+}
+
+function approvalLabel(toolName, proposal) {
+  if (['media.prepare_upload', 'media.preview_layout'].includes(toolName)) return 'Approve image change';
+  if (toolName === 'catalog.preview_update') {
+    if (proposal.normalizedInput) {
+      const fields = Object.keys(proposal.normalizedInput);
+      if (fields.length === 1 && fields[0] === 'description') return 'Approve description change';
+    } else if (proposal.before && proposal.after) {
+      const { description: before, ...otherBefore } = proposal.before;
+      const { description: after, ...otherAfter } = proposal.after;
+      if (before !== after && canonical(otherBefore) === canonical(otherAfter)) return 'Approve description change';
+    }
+  }
+  return 'Approve change';
 }
 
 async function load() {
@@ -155,6 +235,7 @@ async function load() {
     throw new Error('Invalid proposal.');
   }
   renderBusinessSummary(value);
+  document.querySelector('#approve').textContent = approvalLabel(value.toolName, value.proposal);
   document.querySelector('#operation-id').textContent = id;
   csrf = session.csrfToken;
   previewHash = value.previewHash;
@@ -167,6 +248,12 @@ async function load() {
   document.querySelector('#shop').textContent = visible(value.shopName);
   document.querySelector('#account').textContent = visible(value.accountName);
   document.querySelector('#client').textContent = visible(value.clientName);
+  const requestSummary = document.querySelector('#request-summary');
+  for (const [prefix, name] of [['Requested by ', value.clientName], [' for ', value.shopName], [' as ', value.accountName]]) {
+    const emphasis = document.createElement('strong');
+    emphasis.textContent = visible(name);
+    requestSummary.append(prefix, emphasis);
+  }
   document.querySelector('#client-id').textContent = visible(value.clientId);
   document.querySelector('#tool').textContent = visible(value.toolName);
   document.querySelector('#target').textContent = visible(`${value.resourceType}: ${value.resourceId || 'new resource'}`);
@@ -177,12 +264,14 @@ async function load() {
   document.querySelector('#fingerprint').textContent = value.previewHash;
   document.querySelector('#proposal').textContent = visible(JSON.stringify(value.proposal, null, 2));
   reviewSection.hidden = false;
+  syncDecisionHeight();
   expiresAt = expiryDate.getTime();
   document.querySelector('#pending-state').textContent = 'Pending your decision — not applied';
   scheduleExpiry(); updateReviewControls();
-  reviewStatus('Review the complete proposal, then explicitly approve or reject it.');
+  reviewStatus('');
   if (mediaReview) {
     document.querySelector('#media-review').hidden = false;
+    if (document.querySelector('#business-summary').hidden) document.querySelector('#media-title').textContent = 'What will change';
     if (!checkExpiry()) await loadMedia(value.toolName, value.proposal, value.resourceId, value.resourceType, value.risk)
       .catch(() => { if (csrf) reviewStatus('Image verification failed. Reload this review or reject the proposal.'); });
   }
@@ -273,7 +362,12 @@ async function loadMedia(toolName, proposal, resourceId, resourceType, risk) {
         await sha256(new TextEncoder().encode(canonical({ mime: asset.mime, byteSha256: asset.byte_sha256 }))) !== item.assetKey) throw new Error('Invalid image asset.');
   }
   if (catalog) renderCatalogMediaEffects(effects, proposal.reviewLabels, create ? proposal : null);
-  else renderMediaEffects(effects, labels);
+  else {
+    renderMediaEffects(effects, labels, proposal);
+    renderImageChangeSummary(toolName, proposal, effects);
+  }
+  document.querySelector('#media-effect-records').textContent = visible(JSON.stringify(effects, null, 2));
+  document.querySelector('#media-technical').hidden = false;
   const empty = mediaReview.assetItems.length === 0;
   document.querySelector('#media-viewer').hidden = empty;
   document.querySelector('#media-empty').hidden = !empty;
@@ -282,13 +376,17 @@ async function loadMedia(toolName, proposal, resourceId, resourceType, risk) {
 }
 function updateMediaProgress() {
   mediaComplete = acknowledgedImages.size === mediaReview.assetItems.length;
-  document.querySelector('#media-progress').textContent = `${acknowledgedImages.size} of ${mediaReview.assetItems.length} unique images verified. All ordered before and after effects are shown below.`;
+  const total = mediaReview.assetItems.length;
+  document.querySelector('#media-progress').textContent = !total ? '' : mediaComplete
+    ? `${total} ${total === 1 ? 'image' : 'images'} verified`
+    : `Verifying images (${acknowledgedImages.size} of ${total})`;
   updateReviewControls();
 }
 function releaseMediaImage() {
   if (imageJob) imageJob.abort(); imageJob = null;
   imageNode.hidden = true; imageNode.removeAttribute('src');
-  if (imageUrl) URL.revokeObjectURL(imageUrl); imageUrl = null;
+  if (imageUrl && !thumbnailUrls.has(imageUrl)) URL.revokeObjectURL(imageUrl);
+  imageUrl = null;
   document.querySelector('#media-image-details').textContent = '';
 }
 async function verifyRemainingImages() {
@@ -317,10 +415,18 @@ async function showMediaImage(item) {
     await acknowledgeMedia(item, packet, job.signal);
     if (job.signal.aborted || checkExpiry()) return false;
     acknowledgedImages.add(item.itemKey);
+    const previews = thumbnails.get(item.assetKey);
+    if (previews && !previews[0].hasAttribute('src')) {
+      thumbnailUrls.set(imageUrl, previews);
+      for (const thumbnail of previews) {
+        thumbnail.src = imageUrl;
+        thumbnail.hidden = false;
+      }
+    }
     updateMediaProgress();
     imageStatus.textContent = 'Exact image verified.';
     if (statusNode.textContent.startsWith('Image verification failed')) {
-      reviewStatus('Review the complete proposal, then explicitly approve or reject it.');
+      reviewStatus('');
     }
     return true;
   } catch {
@@ -337,39 +443,144 @@ imageRetry.addEventListener('click', () => {
   if (mediaComplete) void showMediaImage(retryImage);
   else void verifyRemainingImages();
 });
-function renderMediaEffects(effects, labels) {
+function mediaReference(key, label, side) {
+  const item = mediaReview.assetItems.find(value => value.assetKey === key);
+  if (!item) throw new Error('Missing image reference.');
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'media-reference';
+  button.disabled = true;
+  button.textContent = label;
+  button.setAttribute('aria-label', `${label} · ${side === 'before' ? 'Before' : 'After'}`);
+  const thumbnail = document.createElement('img');
+  thumbnail.alt = '';
+  thumbnail.hidden = true;
+  if (!thumbnails.has(key)) thumbnails.set(key, []);
+  thumbnails.get(key).push(thumbnail);
+  button.prepend(thumbnail);
+  button.addEventListener('click', () => {
+    showMediaImage(item).catch(() => { reviewStatus('Image unavailable. Reload the review.'); });
+    document.querySelector('#media-viewer').focus();
+  });
+  return button;
+}
+
+function mediaComparison(headingText) {
+  const article = document.createElement('article'), heading = document.createElement('h3');
+  heading.textContent = headingText;
+  const comparison = document.createElement('div');
+  comparison.className = 'comparison media-comparison';
+  article.append(heading, comparison);
+  return { article, comparison };
+}
+
+function mediaSide(side, detail) {
+  const line = document.createElement('div'), heading = document.createElement('h4');
+  line.className = 'media-state';
+  heading.textContent = side === 'before' ? 'Before' : 'After';
+  line.append(heading, detail);
+  return line;
+}
+
+function mediaNote(text) {
+  const note = document.createElement('span');
+  note.className = 'chip';
+  note.textContent = text;
+  return note;
+}
+
+function mediaPlacement(rendered, key, label, side) {
+  if (key === null) return mediaNote('No photo selected');
+  if (rendered[side].has(key)) return mediaNote(`${label} · preview shown above`);
+  const preview = mediaReference(key, label, side);
+  rendered[side].add(key);
+  return preview;
+}
+
+function mediaListingProductId(effect, effects) {
+  for (const side of ['after', 'before']) {
+    const state = effect[side];
+    if (!state) continue;
+    if (state.holderId) return state.holderId;
+    const member = effects.find(value => value.kind === 'PRODUCT' && value[side]?.listingId === effect.listingId);
+    if (member) return member.productId;
+  }
+  return null;
+}
+
+function renderImageChangeSummary(toolName, proposal, effects) {
+  const summary = document.querySelector('#image-change-summary');
+  if (toolName === 'media.prepare_upload') {
+    if (proposal.targetSlot === 'MAIN') {
+      const target = effects.find(effect => effect.kind === 'PRODUCT' && effect.productId === proposal.productId);
+      const listing = effects.find(effect => effect.kind === 'LISTING' && effect.listingId === target?.after.listingId);
+      const key = target?.after.mainAssetKey;
+      summary.textContent = '1 image changes the main product photo.';
+      if (key && key !== target.before.mainAssetKey && listing?.after.galleryAssetKeys.includes(key)) {
+        summary.textContent = listing.before.galleryAssetKeys.includes(key)
+          ? 'This image becomes the main product photo and remains in the gallery.'
+          : 'This image becomes the main product photo and is added to the gallery.';
+      }
+    }
+    if (proposal.targetSlot === 'GALLERY') summary.textContent = '1 image is added to the product gallery.';
+  } else if (proposal.removeMain) {
+    summary.textContent = 'The main product photo is removed.';
+  } else {
+    const positions = effects.filter(effect => effect.kind === 'LISTING').reduce((count, effect) => {
+      const before = effect.before.galleryAssetKeys, after = effect.after.galleryAssetKeys;
+      return count + before.filter((key, index) => key !== after[index]).length + Math.max(0, after.length - before.length);
+    }, 0);
+    if (positions) summary.textContent = positions === 1 ? '1 gallery photo position changes.' : `${positions} gallery photo positions change.`;
+  }
+  summary.hidden = !summary.textContent;
+  syncDecisionHeight();
+}
+
+function renderMediaEffects(effects, labels, proposal) {
   const names = new Map();
   for (const label of labels) {
     if (!idPattern.test(label.productId || '') || typeof label.sku !== 'string' || typeof label.name !== 'string' || names.has(label.productId)) throw new Error('Invalid image labels.');
-    names.set(label.productId, visible(`${label.sku} · ${label.name} (${label.productId})`));
+    names.set(label.productId, label);
   }
   const root = document.querySelector('#media-effects'); root.replaceChildren();
-  function reference(key) {
-    if (key === null) return document.createTextNode('No own main image');
-    const item = mediaReview.assetItems.find(value => value.assetKey === key); if (!item) throw new Error('Missing image reference.');
-    const button = document.createElement('button'); button.type = 'button'; button.className = 'media-reference'; button.textContent = key;
-    button.addEventListener('click', () => showMediaImage(item).catch(() => { reviewStatus('Image unavailable. Reload the review.'); })); return button;
-  }
-  for (const effect of effects) {
-    const article = document.createElement('article'), heading = document.createElement('h3');
-    if (effect.kind === 'PRODUCT' && !names.has(effect.productId)) throw new Error('Missing product label.');
-    heading.textContent = effect.kind === 'PRODUCT' ? names.get(effect.productId) : `Shared listing ${effect.listingId}`; article.append(heading);
+  const rendered = { before: new Set(), after: new Set() };
+  const ordered = proposal.targetSlot === 'MAIN'
+    ? effects.toSorted((a, b) => Number(b.productId === proposal.productId) - Number(a.productId === proposal.productId))
+    : effects;
+  for (const effect of ordered) {
+    const product = effect.kind === 'PRODUCT';
+    if (product && !names.has(effect.productId)) throw new Error('Missing product label.');
+    const label = names.get(product ? effect.productId : mediaListingProductId(effect, effects));
+    const heading = product ? `Main product photo · ${label.name}` : label ? `Gallery · ${label.name}` : 'Product gallery';
+    const { article, comparison } = mediaComparison(visible(heading));
     for (const side of ['before', 'after']) {
-      const state = effect[side], line = document.createElement('div'); line.className = 'media-state';
-      const title = document.createElement('strong'); title.textContent = side === 'before' ? 'Before' : 'After'; line.append(title);
-      const detail = document.createElement('div');
-      if (effect.kind === 'PRODUCT') {
-        const role = document.createElement('p'); role.textContent = `Role: ${state.role}; listing: ${state.listingId}; own main:`; detail.append(role, reference(state.mainAssetKey));
+      const state = effect[side], detail = document.createElement('div');
+      if (product) {
+        detail.append(mediaPlacement(rendered, state.mainAssetKey, 'Main product photo', side));
       } else {
-        const holder = document.createElement('p'); holder.textContent = state.holderId ? `Gallery holder: ${names.get(state.holderId) || state.holderId}` : 'Single-product gallery'; detail.append(holder);
-        const ordered = document.createElement('ol');
-        for (const key of state.galleryAssetKeys) { const item = document.createElement('li'); item.append(reference(key)); ordered.append(item); }
-        detail.append(ordered); if (!state.galleryAssetKeys.length) detail.append(document.createTextNode('Empty gallery'));
+        const holderLabel = names.get(state.holderId);
+        if (holderLabel) {
+          const shared = document.createElement('p');
+          shared.textContent = `Shared photos from ${visible(holderLabel.name)}`;
+          detail.append(shared);
+        }
+        detail.append(state.galleryAssetKeys.length ? orderedGallery(state.galleryAssetKeys, side, rendered) : mediaNote('No photo selected'));
       }
-      line.append(detail); article.append(line);
+      comparison.append(mediaSide(side, detail));
     }
     root.append(article);
   }
+}
+
+function orderedGallery(keys, side, rendered) {
+  const list = document.createElement('ol'); list.className = 'media-visible-gallery';
+  list.setAttribute('role', 'list');
+  for (const [index, key] of keys.entries()) {
+    const item = document.createElement('li');
+    item.append(mediaPlacement(rendered, key, `Gallery photo ${index + 1}`, side));
+    list.append(item);
+  }
+  return list;
 }
 
 const exactKeys = (value, keys) => value && !Array.isArray(value) && typeof value === 'object' &&
@@ -452,53 +663,76 @@ function renderCatalogMediaEffects(effects, labels, creationProposal = null) {
 }
 function renderCatalogStates(effects, names, listings, creationProposal = null) {
   const root = document.querySelector('#media-effects'); root.replaceChildren();
-  const labelText = label => visible(`${label.sku} · ${label.name}`);
-  function reference(key) {
-    const item = mediaReview.assetItems.find(value => value.assetKey === key);
-    if (!item) throw new Error('Missing catalog image reference.');
-    const button = document.createElement('button'); button.type = 'button'; button.className = 'media-reference'; button.textContent = key;
-    button.addEventListener('click', () => showMediaImage(item).catch(() => { reviewStatus('Image unavailable. Reload the review.'); })); return button;
-  }
-  function ordered(keys) {
+  const rendered = { before: new Set(), after: new Set() };
+  function ordered(keys, side) {
     if (keys.length > 11) throw new Error('Catalog visible gallery too large.');
-    const list = document.createElement('ol'); list.className = 'media-visible-gallery';
-    for (const key of keys) { const item = document.createElement('li'); item.append(reference(key)); list.append(item); }
-    return list;
+    return orderedGallery(keys, side, rendered);
   }
   for (const effect of effects) {
-    const article = document.createElement('article'), heading = document.createElement('h3');
-    heading.textContent = effect.kind === 'PRODUCT' ? `Product ${effect.productId}` : `Shared listing ${effect.listingId}`; article.append(heading);
+    const product = effect.kind === 'PRODUCT';
+    const label = names.get(product ? effect.productId : mediaListingProductId(effect, effects));
+    const listingLabel = label?.[effect.after ? 'after' : 'before'];
+    const heading = product ? `Product photos · ${visible(label.after.name)}` : listingLabel ? `Gallery · ${visible(listingLabel.name)}` : 'Product gallery';
+    const { article, comparison } = mediaComparison(heading);
     for (const side of ['before','after']) {
-      const state = effect[side], line = document.createElement('div'); line.className = 'media-state';
-      const title = document.createElement('strong'); title.textContent = side === 'before' ? 'Before' : 'After'; line.append(title);
-      const detail = document.createElement('div');
+      const state = effect[side], detail = document.createElement('div');
       if (state === null) {
         if (effect.kind !== 'LISTING' && !(creationProposal && side === 'before' && effect.productId === creationProposal.creationIdentity.productId)) throw new Error('Invalid absent product.');
         detail.textContent = effect.kind === 'PRODUCT' ? 'Not yet created.' : side === 'before' ? 'Did not exist before this change.' : 'Removed by this change.';
       } else if (effect.kind === 'PRODUCT') {
-        const literal = document.createElement('p'); literal.textContent = labelText(names.get(effect.productId)[side]); detail.append(literal);
+        const sideName = names.get(effect.productId)[side].name;
+        if (sideName !== label.after.name) {
+          const name = document.createElement('p');
+          name.textContent = visible(sideName);
+          detail.append(name);
+        }
         if (creationProposal && side === 'after' && effect.productId === creationProposal.creationIdentity.productId) {
           const options = document.createElement('p'), rows = catalogCreateOptions(creationProposal);
           options.textContent = rows.length ? visible('Options: ' + rows.map(row => `${row.typeName}: ${row.valueLabel}`).join('; ')) : 'Options: none'; detail.append(options);
         }
-        const role = document.createElement('p'); role.textContent = `Role: ${state.role}; listing: ${state.listingId}`; detail.append(role);
-        const stored = document.createElement('p'); stored.textContent = state.mainAssetKey === null ? 'No stored own main image.' : 'Stored own main image: '; if (state.mainAssetKey !== null) stored.append(reference(state.mainAssetKey)); detail.append(stored);
-        const visibility = document.createElement('p'); visibility.textContent = state.ownMainVisible ? 'Own main is visible in the shopper gallery.' : state.mainAssetKey === null ? 'Own main is absent.' : 'Stored own main is hidden in the shopper gallery.'; detail.append(visibility);
+        const main = document.createElement('p');
+        main.append(mediaPlacement(rendered, state.mainAssetKey, 'Main product photo', side));
+        detail.append(main);
+        if (state.mainAssetKey !== null && !state.ownMainVisible) {
+          const note = document.createElement('p');
+          note.textContent = 'The main photo is hidden from shoppers.';
+          detail.append(note);
+        }
         const listing = listings.get(state.listingId)?.[side]; if (!listing) throw new Error('Missing catalog listing state.');
         if (state.role === 'single' && state.ownMainVisible && !listing.galleryAssetKeys.includes(state.mainAssetKey)) throw new Error('Missing visible own main.');
-        detail.append(document.createTextNode('Shopper gallery in order:'),ordered(state.role === 'single' ? listing.galleryAssetKeys : [...(state.ownMainVisible ? [state.mainAssetKey] : []),...listing.galleryAssetKeys]));
+        detail.append(document.createTextNode('Shopper gallery in order:'),ordered(state.role === 'single' ? listing.galleryAssetKeys : [...(state.ownMainVisible ? [state.mainAssetKey] : []),...listing.galleryAssetKeys], side));
       } else {
-        const holder = document.createElement('p');
         if (state.holderId !== null && !names.has(state.holderId)) throw new Error('Missing holder label.');
-        holder.textContent = state.holderId === null ? 'Single-product gallery' : `Gallery holder: ${labelText(names.get(state.holderId)[side])} (${state.holderId})`;
-        detail.append(holder,ordered(state.galleryAssetKeys)); if (!state.galleryAssetKeys.length) detail.append(document.createTextNode('Empty gallery'));
+        if (state.holderId !== null) {
+          const shared = document.createElement('p');
+          shared.textContent = `Shared photos from ${visible(names.get(state.holderId)[side].name)}`;
+          detail.append(shared);
+        }
+        detail.append(state.galleryAssetKeys.length ? ordered(state.galleryAssetKeys, side) : mediaNote('No photo selected'));
       }
-      line.append(detail); article.append(line);
+      comparison.append(mediaSide(side, detail));
     }
     root.append(article);
   }
 }
-window.addEventListener('pagehide', releaseMediaImage);
+function releaseMedia() {
+  releaseMediaImage();
+  for (const [url, previews] of thumbnailUrls) {
+    for (const preview of previews) {
+      preview.hidden = true;
+      preview.removeAttribute('src');
+    }
+    URL.revokeObjectURL(url);
+  }
+  thumbnailUrls.clear();
+}
+window.addEventListener('pagehide', event => {
+  if (event.persisted) releaseMediaImage();
+  else releaseMedia();
+});
+
+document.querySelector('#result-done').addEventListener('click', () => resultDialog.close());
+resultDialog.addEventListener('close', () => statusNode.focus());
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -522,11 +756,21 @@ form.addEventListener('submit', async (event) => {
     });
     if (!response.ok) throw new Error('Approval failed.');
     const result = await response.json();
-    if (result.operationId !== id || result.status !== (decision === 'approve' ? 'APPROVED' : 'REJECTED')) throw new Error('Invalid result.');
-    csrf = null; previewHash = null; challenge = null; form.hidden = true; releaseMediaImage();
+    const approved = decision === 'approve';
+    if (result.operationId !== id || result.status !== (approved ? 'APPROVED' : 'REJECTED')) throw new Error('Invalid result.');
+    csrf = null; previewHash = null; challenge = null; form.hidden = true; releaseMedia();
     clearTimeout(expiryTimer); expiryTimer = null; expiresAt = null;
-    document.querySelector('#pending-state').textContent = decision === 'approve' ? 'Approved — app commit still required' : 'Rejected — not applied';
-    statusNode.textContent = decision === 'approve' ? 'Approved. The connected app must still commit this change.' : 'Rejected. The change was not applied.';
+    expiryChip.hidden = true;
+    document.querySelector('#currency-warning').hidden = true;
+    document.querySelector('#pending-state').textContent = approved ? 'Approved — app commit still required' : 'Rejected — not applied';
+    statusNode.textContent = approved ? 'Approved. The connected app must still commit this change.' : 'Rejected. The change was not applied.';
+    statusNode.classList.add('visually-hidden');
+    document.querySelector('#result-title').textContent = approved ? 'Approved' : 'Rejected';
+    document.querySelector('#result-description').textContent = approved
+      ? 'The product has not changed yet. Return to Claude to apply this change.'
+      : 'No change was made.';
+    document.querySelector('#result-check').toggleAttribute('hidden', !approved);
+    resultDialog.showModal();
   } catch {
     reviewStatus('The decision could not be verified. Reload the proposal and try again.');
   } finally {

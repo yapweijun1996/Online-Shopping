@@ -107,6 +107,8 @@ test('review expiry disables decisions despite pending media and late errors',
     async function assertDisabled(page) {
       assert.equal(await page.locator('#pending-state').textContent(), expiredMessage);
       assert.equal(await page.locator('#status').textContent(), expiredMessage);
+      assert.equal(await page.locator('#expiry-chip').textContent(), 'Expired');
+      assert.equal(await page.locator('#result-dialog').evaluate(dialog => dialog.open), false);
       for (const selector of ['#approve', 'button[value="reject"]', '#currency-ack', '#media-image-retry']) {
         assert.equal(await page.locator(selector).isDisabled(), true, selector);
       }
@@ -134,6 +136,24 @@ test('review expiry disables decisions despite pending media and late errors',
       assert.match(await page.locator('#expires').textContent(), /14:07:07/);
       assert.match(await page.locator('#summary-fields').textContent(), /Availability[\s\S]*Listed[\s\S]*Not listed/);
       await scriptedDecisions(page); assert.deepEqual(errors, []); await context.close();
+    });
+
+    await t.test('expiry chip refreshes every 30 seconds and warns below two minutes', async () => {
+      const { page, context, errors, navigate } = await open({ expiresAt: now + 150000 });
+      await navigate(); await page.locator('#review').waitFor({ state: 'visible' });
+      const chip = page.locator('#expiry-chip');
+      assert.equal(await chip.textContent(), 'Expires in 3 min');
+      assert.equal(await chip.evaluate(node => node.classList.contains('expiry-warning')), false);
+      await page.clock.runFor(30000);
+      assert.equal(await chip.textContent(), 'Expires in 2 min');
+      assert.equal(await chip.evaluate(node => node.classList.contains('expiry-warning')), false);
+      await page.clock.runFor(1);
+      assert.equal(await chip.evaluate(node => node.classList.contains('expiry-warning')), true);
+      await page.clock.runFor(90000);
+      assert.equal(await chip.textContent(), 'Expires in less than 1 min');
+      await page.clock.runFor(30000);
+      await assertDisabled(page);
+      assert.deepEqual(errors, []); await context.close();
     });
 
     await t.test('submit checks current time even when the expiry timer has not fired', async () => {
