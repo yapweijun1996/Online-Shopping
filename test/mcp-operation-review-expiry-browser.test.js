@@ -17,7 +17,7 @@ const deferred = () => {
 };
 
 // Synthetic transport exercises browser state, not server expiry/authorization enforcement.
-test('review expiry disables decisions despite pending media and late errors',
+test('review handles image disclosure and expiry despite pending media and late errors',
   { skip: !browserModule, timeout: 60000 }, async t => {
     const assets = Object.fromEntries(await Promise.all(['html', 'js', 'css'].map(async extension =>
       [extension, await readFile(new URL(`../src/mcp/operation-review.${extension}`, import.meta.url))])));
@@ -27,8 +27,10 @@ test('review expiry disables decisions despite pending media and late errors',
     const input = directWireInput(), assetKey = mediaAssetKey('image/png', mediaHash(png));
     Object.assign(input.assets[0], { byte_sha256: mediaHash(png), byte_length: png.length });
     input.graphBytes.oldBytes = png.length;
-    input.effects[0].before.mainAssetKey = input.effects[0].after.mainAssetKey = assetKey;
-    input.effects[1].before.galleryAssetKeys = input.effects[1].after.galleryAssetKeys = [assetKey];
+    input.effects[0].before.mainAssetKey = null;
+    input.effects[0].after.mainAssetKey = assetKey;
+    input.effects[1].before.galleryAssetKeys = [assetKey];
+    input.effects[1].after.galleryAssetKeys = [];
     const manifest = buildMediaManifest(input);
     const items = [...manifest.pages.map(page => ({ kind: 'PAGE', itemKey: String(page.page_index), hash: page.page_hash, pageIndex: page.page_index, assetKey: null })),
       ...manifest.assets.map(asset => ({ kind: 'ASSET', itemKey: asset.asset_key, hash: asset.byte_sha256, pageIndex: null, assetKey: asset.asset_key }))];
@@ -125,6 +127,46 @@ test('review expiry disables decisions despite pending media and late errors',
       await page.evaluate(() => {});
       assert.equal(approvalRequests.get(page).length, count);
     }
+
+    await t.test('an empty Before row and verified After preview span the comparison at every width', async () => {
+      const { page, context, errors, navigate } = await open({ media: true });
+      await page.clock.resume();
+      await navigate();
+      await page.locator('#approve:enabled').waitFor();
+      const comparison = page.locator('#media-effects article').filter({
+        has: page.getByRole('heading', { name: 'Main product photo · Synthetic image' }),
+      }).locator('.media-comparison');
+      const before = comparison.locator('.media-state').filter({ hasText: 'No photo selected' });
+      const after = comparison.locator('.media-state').filter({ has: page.getByRole('heading', { name: 'After', exact: true }) });
+      assert.equal(await before.getByRole('heading', { name: 'Before', exact: true }).count(), 1);
+      const preview = after.getByRole('button', { name: 'Main product photo · After' });
+      for (const width of [390, 768, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        const frame = await comparison.boundingBox();
+        const beforeBox = await before.boundingBox();
+        const previewBox = await preview.boundingBox();
+        assert.equal(beforeBox.width, frame.width, `Before row width at ${width}px`);
+        assert.equal(previewBox.width, frame.width, `After preview width at ${width}px`);
+        assert.ok(beforeBox.height <= 40 && beforeBox.y + beforeBox.height <= previewBox.y, `compact Before row above the preview at ${width}px`);
+      }
+      const viewer = page.locator('#media-viewer');
+      const image = viewer.locator('img');
+      const disclosure = viewer.locator('summary');
+      assert.equal(await disclosure.textContent(), 'View full-size verified image');
+      assert.equal(await viewer.getAttribute('open'), null);
+      assert.equal(await image.isVisible(), false);
+      assert.ok(await image.evaluate(node => node.naturalWidth > 0));
+      await disclosure.focus();
+      await page.keyboard.press('Enter');
+      await image.waitFor({ state: 'visible' });
+      await page.keyboard.press('Enter');
+      await image.waitFor({ state: 'hidden' });
+      await preview.click();
+      await image.waitFor({ state: 'visible' });
+      assert.equal(await disclosure.evaluate(node => node === document.activeElement), true);
+      assert.deepEqual(errors, []);
+      await context.close();
+    });
 
     await t.test('already expired: readable local expiry, UTC title, disabled controls and scripted submit blocked', async () => {
       const { page, context, errors, navigate } = await open({ expiresAt: now - 1 });

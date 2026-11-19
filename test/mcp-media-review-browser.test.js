@@ -72,9 +72,12 @@ for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: real HTTPS Chrom
     await finalAck.promise;
     try {
       assert.equal(await page.locator('#approve').isDisabled(), true);
+      assert.equal(await page.locator('#media-viewer').getAttribute('open'), null);
+      assert.equal(await page.locator('#media-image').isVisible(), false);
       assert.ok(await page.locator('#media-image').evaluate(image => !image.hidden && image.naturalWidth > 0));
     } finally { release.resolve(); }
     await page.locator('#approve:enabled').waitFor();
+    assert.equal(await page.locator('#media-viewer').getAttribute('open'), null);
     assert.equal(ackRequests.length, count);
     assert.equal(new Set(ackRequests).size, count);
     assert.match(await page.locator('#media-effects').textContent(), /Before[\s\S]*After/);

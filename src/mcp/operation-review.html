@@ -32,12 +32,12 @@
         <p id="media-progress" role="status"></p>
         <p id="media-empty" class="notice" hidden>No images are included in this proposal.</p>
         <div id="media-effects"></div>
-        <section id="media-viewer" tabindex="-1" aria-labelledby="media-view-title">
-          <h3 id="media-view-title">Exact image</h3>
+        <details id="media-viewer">
+          <summary>View full-size verified image</summary>
           <p id="media-image-status" role="status" aria-live="polite"></p>
           <img id="media-image" alt="Protected image for the selected change" hidden>
-          <button id="media-image-retry" type="button" class="secondary" hidden>Retry image verification</button>
-        </section>
+        </details>
+        <button id="media-image-retry" type="button" class="secondary" hidden>Retry image verification</button>
       </section>
       <details id="technical-details">
         <summary>Complete proposal &amp; technical details</summary>
@@ -87,7 +87,7 @@
     </svg>
     <h2 id="result-title"></h2>
     <p id="result-description"></p>
-    <button id="result-done" type="button" autofocus>Done</button>
+    <button id="result-close" type="button" autofocus>Close</button>
   </dialog>
 </body>
 </html>

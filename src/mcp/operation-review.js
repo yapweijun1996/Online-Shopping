@@ -23,6 +23,7 @@ let challenge = null;
 let currencyAcknowledgementRequired = false;
 let mediaReview = null, mediaComplete = false, imageUrl = null, imageJob = null;
 const imageNode = document.querySelector('#media-image');
+const imageViewer = document.querySelector('#media-viewer');
 const acknowledgedImages = new Set();
 const thumbnailUrls = new Map();
 const thumbnails = new Map();
@@ -369,7 +370,7 @@ async function loadMedia(toolName, proposal, resourceId, resourceType, risk) {
   document.querySelector('#media-effect-records').textContent = visible(JSON.stringify(effects, null, 2));
   document.querySelector('#media-technical').hidden = false;
   const empty = mediaReview.assetItems.length === 0;
-  document.querySelector('#media-viewer').hidden = empty;
+  imageViewer.hidden = empty;
   document.querySelector('#media-empty').hidden = !empty;
   updateMediaProgress();
   await verifyRemainingImages();
@@ -409,7 +410,7 @@ async function showMediaImage(item) {
     if (job.signal.aborted || checkExpiry()) return false;
     imageNode.hidden = false;
     document.querySelector('#media-image-details').textContent = `${asset.mime} · ${asset.byte_length} bytes · SHA256 ${item.hash}`;
-    // Let the decoded image render before acknowledging its delivery.
+    // Give the decoded image time to render if the viewer is open.
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     if (job.signal.aborted || checkExpiry()) return false;
     await acknowledgeMedia(item, packet, job.signal);
@@ -459,8 +460,9 @@ function mediaReference(key, label, side) {
   thumbnails.get(key).push(thumbnail);
   button.prepend(thumbnail);
   button.addEventListener('click', () => {
+    imageViewer.open = true;
     showMediaImage(item).catch(() => { reviewStatus('Image unavailable. Reload the review.'); });
-    document.querySelector('#media-viewer').focus();
+    imageViewer.querySelector('summary').focus();
   });
   return button;
 }
@@ -474,9 +476,10 @@ function mediaComparison(headingText) {
   return { article, comparison };
 }
 
-function mediaSide(side, detail) {
+function mediaSide(side, detail, noPhoto) {
   const line = document.createElement('div'), heading = document.createElement('h4');
   line.className = 'media-state';
+  if (noPhoto) line.classList.add('media-state-empty');
   heading.textContent = side === 'before' ? 'Before' : 'After';
   line.append(heading, detail);
   return line;
@@ -566,7 +569,8 @@ function renderMediaEffects(effects, labels, proposal) {
         }
         detail.append(state.galleryAssetKeys.length ? orderedGallery(state.galleryAssetKeys, side, rendered) : mediaNote('No photo selected'));
       }
-      comparison.append(mediaSide(side, detail));
+      const noPhoto = product ? state.mainAssetKey === null : state.galleryAssetKeys.length === 0;
+      comparison.append(mediaSide(side, detail, noPhoto));
     }
     root.append(article);
   }
@@ -676,6 +680,7 @@ function renderCatalogStates(effects, names, listings, creationProposal = null) 
     const { article, comparison } = mediaComparison(heading);
     for (const side of ['before','after']) {
       const state = effect[side], detail = document.createElement('div');
+      let noPhoto = false;
       if (state === null) {
         if (effect.kind !== 'LISTING' && !(creationProposal && side === 'before' && effect.productId === creationProposal.creationIdentity.productId)) throw new Error('Invalid absent product.');
         detail.textContent = effect.kind === 'PRODUCT' ? 'Not yet created.' : side === 'before' ? 'Did not exist before this change.' : 'Removed by this change.';
@@ -700,7 +705,10 @@ function renderCatalogStates(effects, names, listings, creationProposal = null) 
         }
         const listing = listings.get(state.listingId)?.[side]; if (!listing) throw new Error('Missing catalog listing state.');
         if (state.role === 'single' && state.ownMainVisible && !listing.galleryAssetKeys.includes(state.mainAssetKey)) throw new Error('Missing visible own main.');
-        detail.append(document.createTextNode('Shopper gallery in order:'),ordered(state.role === 'single' ? listing.galleryAssetKeys : [...(state.ownMainVisible ? [state.mainAssetKey] : []),...listing.galleryAssetKeys], side));
+        noPhoto = state.mainAssetKey === null && listing.galleryAssetKeys.length === 0;
+        if (!noPhoto) {
+          detail.append(document.createTextNode('Shopper gallery in order:'),ordered(state.role === 'single' ? listing.galleryAssetKeys : [...(state.ownMainVisible ? [state.mainAssetKey] : []),...listing.galleryAssetKeys], side));
+        }
       } else {
         if (state.holderId !== null && !names.has(state.holderId)) throw new Error('Missing holder label.');
         if (state.holderId !== null) {
@@ -708,9 +716,10 @@ function renderCatalogStates(effects, names, listings, creationProposal = null) 
           shared.textContent = `Shared photos from ${visible(names.get(state.holderId)[side].name)}`;
           detail.append(shared);
         }
+        noPhoto = state.galleryAssetKeys.length === 0;
         detail.append(state.galleryAssetKeys.length ? ordered(state.galleryAssetKeys, side) : mediaNote('No photo selected'));
       }
-      comparison.append(mediaSide(side, detail));
+      comparison.append(mediaSide(side, detail, noPhoto));
     }
     root.append(article);
   }
@@ -731,7 +740,7 @@ window.addEventListener('pagehide', event => {
   else releaseMedia();
 });
 
-document.querySelector('#result-done').addEventListener('click', () => resultDialog.close());
+document.querySelector('#result-close').addEventListener('click', () => resultDialog.close());
 resultDialog.addEventListener('close', () => statusNode.focus());
 
 form.addEventListener('submit', async (event) => {
@@ -767,7 +776,7 @@ form.addEventListener('submit', async (event) => {
     statusNode.classList.add('visually-hidden');
     document.querySelector('#result-title').textContent = approved ? 'Approved' : 'Rejected';
     document.querySelector('#result-description').textContent = approved
-      ? 'The product has not changed yet. Return to Claude to apply this change.'
+      ? 'Nothing has changed yet. Go back to Claude and ask it to apply this change.'
       : 'No change was made.';
     document.querySelector('#result-check').toggleAttribute('hidden', !approved);
     resultDialog.showModal();

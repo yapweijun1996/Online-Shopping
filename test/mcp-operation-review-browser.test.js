@@ -121,7 +121,7 @@ test('first-party review prototype renders all untrusted data as text and requir
       await dialog.waitFor();
       assert.equal(await dialog.evaluate(node => node.matches(':modal')), true);
       assert.equal(await dialog.locator('#result-description').textContent(), approved
-        ? 'The product has not changed yet. Return to Claude to apply this change.'
+        ? 'Nothing has changed yet. Go back to Claude and ask it to apply this change.'
         : 'No change was made.');
       assert.equal(await dialog.locator('svg').isVisible(), approved);
       assert.equal(await page.locator('#status').textContent(), approved
@@ -129,11 +129,11 @@ test('first-party review prototype renders all untrusted data as text and requir
         : 'Rejected. The change was not applied.');
       assert.equal(await page.locator('#status').getAttribute('aria-live'), 'polite');
       assert.equal(await page.locator('#status').evaluate(node => getComputedStyle(node).clipPath), 'inset(50%)');
-      const done = dialog.getByRole('button', { name: 'Done', exact: true });
-      assert.ok((await done.boundingBox()).height >= 44);
+      const close = dialog.getByRole('button', { name: 'Close', exact: true });
+      assert.ok((await close.boundingBox()).height >= 44);
       if (width === 390) await assertNamedTargets(dialog);
-      assert.equal(await done.evaluate(node => node === document.activeElement), true);
-      if (approved) await done.click();
+      assert.equal(await close.evaluate(node => node === document.activeElement), true);
+      if (approved || width === 390) await close.click();
       else await page.keyboard.press('Escape');
       await dialog.waitFor({ state: 'hidden' });
       await page.locator('#status:focus').waitFor();
