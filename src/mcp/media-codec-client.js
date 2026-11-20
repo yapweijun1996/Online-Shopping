@@ -1,11 +1,11 @@
 import http from 'node:http';
-import { CodecError, MAX_OUTPUT, TOTAL_MS, sha256, sourceContract, decodeOutput, CODEC_READY_PATH, CODEC_READY_TEXT, CODEC_READY_MAX_BYTES } from './media-codec-wire.js';
+import { CodecError, MAX_OUTPUT, TOTAL_MS, sha256, sourceContract, decodeOutput, CODEC_READY_PATH, CODEC_READY_TEXT, CODEC_READY_MAX_BYTES, CODEC_RETAINED_PATH } from './media-codec-wire.js';
 
 /** Transport only. Caller retains all tenant/grant/consent/staging/transaction duties. */
-export async function decodeViaSocket({ socketPath, token, bytes, mime, signal }) {
+export async function decodeViaSocket({ socketPath, token, bytes, mime, signal, retainSource = false }) {
   const digest = sha256(bytes);
   sourceContract(bytes, mime, digest);
-  if (typeof socketPath !== 'string' || !socketPath.startsWith('/') ||
+  if (typeof retainSource !== 'boolean' || typeof socketPath !== 'string' || !socketPath.startsWith('/') ||
       !/^[A-Za-z0-9_-]{43}$/.test(token)) throw new CodecError('CONFIGURATION');
   if (signal?.aborted) throw new CodecError('CANCELLED');
   return new Promise((resolve, reject) => {
@@ -15,7 +15,7 @@ export async function decodeViaSocket({ socketPath, token, bytes, mime, signal }
       settled = true; clearTimeout(timer);
       if (error) reject(error); else resolve(result);
     };
-    const request = http.request({ socketPath, path: '/v1/decode', method: 'POST', agent: false, signal,
+    const request = http.request({ socketPath, path: retainSource ? CODEC_RETAINED_PATH : '/v1/decode', method: 'POST', agent: false, signal,
       maxHeaderSize: 4096, headers: { authorization: `Bearer ${token}`, 'content-type': mime,
         'content-length': bytes.length, 'x-source-sha256': digest } }, response => {
       let count = 0;
@@ -33,7 +33,7 @@ export async function decodeViaSocket({ socketPath, token, bytes, mime, signal }
         try {
           if (count !== Number(declared)) throw 0;
           const result = decodeOutput(body, digest);
-          if (result.mime !== mime) throw 0;
+          if (result.mime !== mime || (retainSource && !result.image.equals(bytes))) throw 0;
           done(null, result);
         } catch { done(new CodecError('CODEC_FAILED')); }
       });

@@ -55,12 +55,30 @@ test('rejects APNG controls and JPEG MPF even when a still loader would ignore t
   const mpf = Buffer.concat([jpeg.subarray(0, 2), Buffer.from([255, 226, 0, 6]), Buffer.from('MPF\0'), jpeg.subarray(2)]);
   await assert.rejects(decodeImage(mpf, MIME.jpeg, sha256(mpf)), /INVALID_IMAGE/);
 });
-test('rejects fixed canonical output above512KiB without changing quality or dimensions', async () => {
+test('retained native verification preserves exact bytes when fresh canonicalization would exceed the cap', async t => {
   const pixels = Buffer.alloc(2048 * 2048 * 3); let value = 12345;
   for (let i = 0; i < pixels.length; i++) { value = (Math.imul(value, 1664525) + 1013904223) >>> 0; pixels[i] = value >>> 24; }
   const bytes = await sharp(pixels, { raw: { width: 2048, height: 2048, channels: 3 } }).jpeg({ quality: 5 }).toBuffer();
   assert.ok(bytes.length <= MAX_SOURCE);
   await assert.rejects(decodeImage(bytes, MIME.jpeg, sha256(bytes)), /INVALID_IMAGE/);
+  const dir = await mkdtemp(join(tmpdir(), 'codec-retain-'));
+  const socketPath = join(dir, 'codec.sock');
+  const token = randomBytes(32).toString('base64url');
+  const server = createCodecServer({ token, decode: decodeImage });
+  await new Promise(resolve => server.listen(socketPath, resolve));
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+    await rm(dir, { recursive: true, force: true });
+  });
+  const request = { socketPath, token, mime: MIME.jpeg, bytes };
+  await assert.rejects(decodeViaSocket(request), /CODEC_FAILED/);
+  const retained = await decodeViaSocket({ ...request, retainSource: true });
+  assert.deepEqual([retained.width, retained.height], [2048, 2048]);
+  assert.equal(retained.imageSha256, sha256(bytes));
+  assert.deepEqual(retained.image, bytes);
+  await assert.rejects(decodeViaSocket({ ...request, retainSource: true, bytes: bytes.subarray(0, 32) }), /CODEC_FAILED/);
+  await assert.rejects(decodeViaSocket({ ...request, retainSource: true, token: 'A'.repeat(43) }), /CODEC_FAILED/);
 });
 test('closed canonical response header rejects duplicate fields, unknown fields, dimensions and forged receipts', async () => {
   const bytes = await image(); const result = await decodeImage(bytes, MIME.png, sha256(bytes));

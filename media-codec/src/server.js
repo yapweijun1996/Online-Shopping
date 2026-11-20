@@ -2,7 +2,7 @@ import http from 'node:http';
 import { chmod, lstat, readFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
-import { CodecError, MAX_SOURCE, TOTAL_MS, encodeOutput, CODEC_READY_PATH, CODEC_READY_TEXT } from './contract.js';
+import { CodecError, MAX_SOURCE, TOTAL_MS, encodeOutput, CODEC_READY_PATH, CODEC_READY_TEXT, CODEC_RETAINED_PATH } from './contract.js';
 
 const ALLOWED_HEADERS = new Set(['authorization', 'content-type', 'content-length', 'x-source-sha256', 'host', 'connection']);
 function reply(response, status, code) {
@@ -32,7 +32,8 @@ export function createCodecServer({ token, decode, fatal = () => process.exit(70
         'cache-control': 'no-store', connection: 'close' });
       response.end(CODEC_READY_TEXT); return;
     }
-    if (request.method !== 'POST' || request.url !== '/v1/decode') { reply(response, 404, 'NOT_FOUND'); return; }
+    const retainSource = request.url === CODEC_RETAINED_PATH;
+    if (request.method !== 'POST' || !(retainSource || request.url === '/v1/decode')) { reply(response, 404, 'NOT_FOUND'); return; }
     const size = request.headers['content-length'];
     const mime = request.headers['content-type'];
     const digest = request.headers['x-source-sha256'];
@@ -41,7 +42,7 @@ export function createCodecServer({ token, decode, fatal = () => process.exit(70
       reply(response, 400, 'INVALID_IMAGE'); return;
     }
     if ((active ? 1 : 0) + queue.length >= 5) { reply(response, 503, 'BUSY'); return; }
-    const job = { request, response, size: Number(size), mime, digest,
+    const job = { request, response, size: Number(size), mime, digest, retainSource,
       body: Buffer.allocUnsafe(Number(size)), received: 0, ready: false, done: false };
     request.socket.codecJob = job;
     const finish = () => {
@@ -79,7 +80,7 @@ export function createCodecServer({ token, decode, fatal = () => process.exit(70
       queue.shift(); active = true; next.running = true;
       Promise.resolve().then(() => {
         const bytes = next.body; next.body = undefined;
-        return decode(bytes, next.mime, next.digest);
+        return decode(bytes, next.mime, next.digest, next.retainSource);
       })
         .then(result => {
           const bytes = encodeOutput(result);

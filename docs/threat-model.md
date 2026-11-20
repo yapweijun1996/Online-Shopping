@@ -123,6 +123,10 @@ production deployment. Those remain separate acceptance gates.
 
 ### Seller approval page entry and sign-in continuation
 
+The authenticated review GET projects the operation ID, state, unverified connected-app display name, and an optional unchanged-gallery indicator for an approved or closed review. The indicator comes from the retained immutable envelope and does not convey approval authority. The same account, current tenant/build/epoch, live original grant, consent, role capability, seller origin, and account rate limit remain required. The status response issues no challenge and exposes no proposal, protected image, or commit receipt. Approval whose window has lapsed displays expired while scheduled maintenance persists expiration.
+
+The authenticated private codec retains the bounded canonical upload path. Layout review uses a fixed retained-source path on the same Unix socket. The worker verifies source length and digest, MIME, the still-image container, and a complete bounded raster decode, then returns the exact stored image in the existing response frame. The backend verifies exact source equality before building the immutable review. Upload canonicalization, first-party delivery, and approval checks stay in their existing paths.
+
 The public operation-review shell permits only a single UUID operationId plus an
 optional bounded single utm_source. Attribution stays inert and is never reflected
 or used for authorization; API and asset query policies remain strict. A session401

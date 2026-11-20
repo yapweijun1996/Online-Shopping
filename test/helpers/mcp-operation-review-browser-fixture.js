@@ -80,6 +80,7 @@ export async function catalogReviewBrowserFixture({ descriptionOnly = false } = 
     '/oauth/operation-review.css': ['src/mcp/operation-review.css', 'text/css'],
     '/shop/tokens.css': ['public/shop/tokens.css', 'text/css'],
     '/shared/theme.css': ['public/shared/theme.css', 'text/css'],
+    '/shared/review-i18n.js': ['public/shared/review-i18n.js', 'text/javascript'],
   };
   const assets = new Map(await Promise.all(Object.entries(files).map(async ([path, [file, type]]) =>
     [path, { type, body: await readFile(new URL(`../../${file}`, import.meta.url)) }])));

@@ -9,7 +9,8 @@ sharp.unblock({ operation: ['VipsForeignLoadJpegBuffer', 'VipsForeignLoadPngBuff
 const inputOptions = { failOn: 'warning', limitInputPixels: MAX_PIXELS, unlimited: false };
 
 /** Trusted fixed codec policy. No file/URL input or caller-selected native options. */
-export async function decodeImage(bytes, mime, digest) {
+export async function decodeImage(bytes, mime, digest, retainSource = false) {
+  if (typeof retainSource !== 'boolean') throw new CodecError();
   sourceContract(bytes, mime, digest);
   requireStillContainer(bytes, mime);
   try {
@@ -25,11 +26,16 @@ export async function decodeImage(bytes, mime, digest) {
         info.height > MAX_SIDE || info.width * info.height > MAX_PIXELS ||
         data.length !== info.width * info.height * 4) throw 0;
     const raw = { width: info.width, height: info.height, channels: 4 };
-    let imagePipeline = sharp(data, { raw }).timeout({ seconds: 3 });
-    if (metadata.format === 'png') imagePipeline = imagePipeline.png({ compressionLevel: 9 });
-    if (metadata.format === 'jpeg') imagePipeline = imagePipeline.jpeg({ quality: 100, chromaSubsampling: '4:4:4' });
-    if (metadata.format === 'webp') imagePipeline = imagePipeline.webp({ lossless: true, effort: 3 });
-    const image = await imagePipeline.toBuffer();
+    // Retained assets are already stored. Validate every pixel and preserve the
+    // exact review bytes; only new uploads require canonical re-encoding.
+    let image = bytes;
+    if (!retainSource) {
+      let imagePipeline = sharp(data, { raw }).timeout({ seconds: 3 });
+      if (metadata.format === 'png') imagePipeline = imagePipeline.png({ compressionLevel: 9 });
+      if (metadata.format === 'jpeg') imagePipeline = imagePipeline.jpeg({ quality: 100, chromaSubsampling: '4:4:4' });
+      if (metadata.format === 'webp') imagePipeline = imagePipeline.webp({ lossless: true, effort: 3 });
+      image = await imagePipeline.toBuffer();
+    }
     if (!image.length || image.length > MAX_SOURCE) throw 0;
     // A fixed128px PNG preserves alpha and has a bounded raw raster, without a quality fallback.
     const thumbnail = await sharp(data, { raw }).timeout({ seconds: 3 })

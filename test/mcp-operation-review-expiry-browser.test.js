@@ -162,8 +162,12 @@ test('review handles image disclosure and expiry despite pending media and late 
       await page.keyboard.press('Enter');
       await image.waitFor({ state: 'hidden' });
       await preview.click();
-      await image.waitFor({ state: 'visible' });
-      assert.equal(await disclosure.evaluate(node => node === document.activeElement), true);
+      const lightbox = page.getByRole('dialog', { name: /Main product photo.*1 of 1/ });
+      await lightbox.waitFor();
+      assert.equal(await lightbox.locator('img').evaluate(node => node.src.startsWith('blob:') && node.naturalWidth > 0), true);
+      await page.keyboard.press('Escape');
+      await lightbox.waitFor({ state: 'hidden' });
+      assert.equal(await preview.evaluate(node => node === document.activeElement), true);
       assert.deepEqual(errors, []);
       await context.close();
     });

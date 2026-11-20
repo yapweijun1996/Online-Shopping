@@ -48,8 +48,11 @@ async function planned(reader, args, codecDigest) {
     after.listings.find(value => value.listingId === current.listingId).galleryAssetKeys = keys;
   }
   const manifest = mediaSnapshotManifest('media.preview_layout', snapshot, after, codecDigest);
-  return { snapshot, current, view, manifest, normalized: { productId: args.productId, expectedRevision: args.expectedRevision,
-    gallery: (view.role === 'variant' ? args.gallery : plan.selected.map(id => ({ id }))), removeMain: args.removeMain } };
+  const gallery = view.role === 'variant' ? args.gallery : plan.selected.map(id => ({ id }));
+  const confirmsCurrentGallery = !args.removeMain && equal(gallery, view.visible.map(({ id }) => ({ id }))) &&
+    manifest.effects.every(effect => equal(effect.before, effect.after));
+  return { snapshot, current, manifest, confirmsCurrentGallery,
+    normalized: { productId: args.productId, expectedRevision: args.expectedRevision, gallery, removeMain: args.removeMain } };
 }
 async function plan(reader, args, codecDigest) {
   try { return await planned(reader, args, codecDigest); }
@@ -60,10 +63,11 @@ async function plan(reader, args, codecDigest) {
   }
 }
 function proposal(value) {
-  try { mediaObject(value, ['productId','expectedRevision','gallery','removeMain','product','media']);
+  try { mediaObject(value, ['productId','expectedRevision','gallery','removeMain','product','media','confirmsCurrentGallery']);
     mediaObject(value.product, ['sku','name']); validateMediaDescriptor(value.media, 'media.preview_layout'); } catch { invalid(); }
   input({ productId: value.productId, expectedRevision: value.expectedRevision, gallery: value.gallery, removeMain: value.removeMain });
-  if (typeof value.product.sku !== 'string' || value.product.sku.length > 40 || typeof value.product.name !== 'string' || value.product.name.length > 120) invalid();
+  if (typeof value.confirmsCurrentGallery !== 'boolean' || typeof value.product.sku !== 'string' || value.product.sku.length > 40 ||
+      typeof value.product.name !== 'string' || value.product.name.length > 120) invalid();
 }
 const receipt = value => {
   try { mediaObject(value, ['productId','listingId','revision']); return isMediaUuid(value.productId) && isMediaUuid(value.listingId) && isMediaHash(value.revision); }
@@ -82,7 +86,7 @@ export function mediaLayoutAdapter(runtime) {
     async resolve(captured, options) {
       const native = runtime.nativeSession(options), sources = [];
       for (const source of captured.old) {
-        const decoded = await native.decode(source.bytes, source.ref.mime, source.ref.byte_sha256);
+        const decoded = await native.validateStored(source.bytes, source.ref.mime, source.ref.byte_sha256);
         sources.push({ ...source.ref, width: decoded.width, height: decoded.height });
       }
       return { context: captured.context, revision: captured.revision, codecDigest: runtime.codecDigest, sources };
@@ -101,7 +105,8 @@ export function mediaLayoutAdapter(runtime) {
         source.source_kind === ref.source_kind && source.source_id === ref.source_id && source.source_product_id === ref.source_product_id &&
         source.byte_sha256 === ref.byte_sha256 && source.mime === ref.mime && source.byte_length === ref.byte_length))) changed();
       return { resourceId: args.productId, expectedRevision: args.expectedRevision,
-        proposal: { ...prepared.normalized, product: { sku: prepared.current.sku, name: prepared.current.name } }, mediaManifest: prepared.manifest };
+        proposal: { ...prepared.normalized, confirmsCurrentGallery: prepared.confirmsCurrentGallery,
+          product: { sku: prepared.current.sku, name: prepared.current.name } }, mediaManifest: prepared.manifest };
     },
     async currentRevision(read, envelope) {
       proposal(envelope.proposal);
@@ -115,9 +120,14 @@ export function mediaLayoutAdapter(runtime) {
       const prepared = await plan(store, { productId: value.productId, expectedRevision: value.expectedRevision,
         gallery: value.gallery, removeMain: value.removeMain }, runtime.codecDigest);
       const retained = await readMediaFrame(store, identity, context.operationId, value.media);
-      if (!equal(prepared.manifest.descriptor, retained.descriptor)) changed();
+      if (!equal(prepared.manifest.descriptor, retained.descriptor) || prepared.confirmsCurrentGallery !== value.confirmsCurrentGallery) changed();
       const actor = await store.get('SELECT username FROM seller_account WHERE id=?', identity.accountId);
       if (!actor) invalid();
+      if (prepared.confirmsCurrentGallery) {
+        // Confirming the exact layout should not rewrite rows, advance clocks,
+        // or discard hidden physical images. The engine still consumes approval.
+        return { productId: prepared.current.id, listingId: prepared.current.listingId, revision: prepared.snapshot.revision };
+      }
       const patch = { gallery: value.gallery, expectedUpdatedAt: prepared.current.updatedAt };
       const result = await trackUpdate(store, value.productId, actor.username, () => value.removeMain
         ? updateProduct(store, value.productId, { ...patch, imageDataUrl: null })

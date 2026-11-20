@@ -46,9 +46,14 @@ for (const dialect of ['sqlite', 'postgres']) for (const targetSlot of ['MAIN', 
     if (targetSlot === 'GALLERY') {
       await page.goto(origin + '/oauth/operation?operationId=' + f.operation.operationId);
       await page.locator('#approve:enabled').waitFor();
-      assert.equal(await page.locator('#operation-heading').textContent(), 'Review gallery photo addition');
-      assert.equal(await page.locator('#approve').textContent(), 'Approve gallery addition');
+      assert.equal(await page.locator('#operation-heading').textContent(), 'Add 1 gallery photo');
+      assert.equal(await page.locator('#approve').textContent(), 'Approve adding 1 photo');
       assert.equal(await page.locator('#image-change-summary').textContent(), 'Add one photo to the gallery. The main product photo stays the same.');
+      assert.equal(await page.locator('#image-impact').textContent(), 'Gallery 1 → 2 photos · Main photo stays the same');
+      assert.equal(await page.locator('.gallery-additions .media-reference').count(), 1);
+      assert.equal(await page.locator('.gallery-existing').getAttribute('open'), null);
+      await page.getByText('Existing photos (1)', { exact: true }).click();
+      assert.equal(await page.getByRole('button', { name: /Main photo · Gallery photo 1/ }).isVisible(), true);
       await assertDecisionClearance(page, 'media');
       assert.deepEqual(errors, []); assert.deepEqual(external, []);
       return;
@@ -75,8 +80,9 @@ for (const dialect of ['sqlite', 'postgres']) for (const targetSlot of ['MAIN', 
       }
       await route.continue();
     });
-    const retry = page.getByRole('button', { name: 'Retry image verification', exact: true });
+    const retry = page.locator('.media-card-retry:visible, #media-image-retry:visible').first();
     const retryBox = await retry.boundingBox();
+    assert.match(await retry.getAttribute('aria-label') || await retry.textContent(), /^Retry (Main product photo|Gallery photo|image verification)/);
     assert.ok(retryBox.width >= 44 && retryBox.height >= 44);
     await retry.click();
     await finalAck.promise;
@@ -97,10 +103,15 @@ for (const dialect of ['sqlite', 'postgres']) for (const targetSlot of ['MAIN', 
     assert.match(visibleText, /Synthetic MEDIA-TARGET/);
     assert.doesNotMatch(visibleText, /[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/i);
     assert.doesNotMatch(visibleText, /Listing role|No own main image/);
-    assert.equal(await page.locator('#operation-heading').textContent(), 'Review main photo change');
+    assert.equal(await page.locator('#operation-heading').textContent(), 'Replace the main photo');
     assert.equal(await page.locator('#approve').textContent(), 'Approve main photo change');
-    assert.equal(await page.locator('#image-change-summary').textContent(), 'Replace the main product photo.');
-    assert.ok(await mediaEffects.getByRole('heading', { name: /Gallery · Synthetic/i }).count());
+    assert.match(await page.locator('#image-change-summary').textContent(), /^Replace the main product photo\./);
+    const unchanged = mediaEffects.locator('.gallery-existing');
+    if (await unchanged.getAttribute('open') !== null) await unchanged.locator('summary').click();
+    const galleryHeading = unchanged.locator('h3').filter({ hasText: /Gallery · Synthetic/i });
+    assert.equal(await galleryHeading.count(), 1);
+    assert.equal(await galleryHeading.isVisible(), false);
+    assert.match(await page.locator('#image-impact').textContent(), /main product photo/i);
     const mainPhoto = mediaEffects.locator('.media-comparison').first();
     const [before, after] = await Promise.all((await mainPhoto.locator('.media-state').all()).map(side => side.boundingBox()));
     assert.ok(after.y >= before.y + before.height, '390px image comparison is stacked');
@@ -110,8 +121,7 @@ for (const dialect of ['sqlite', 'postgres']) for (const targetSlot of ['MAIN', 
       assert.ok(urls.length > 0);
       assert.equal(new Set(urls).size, urls.length, `${side} displays each asset once`);
     }
-    assert.ok(await mediaEffects.getByText(/Main product photo · preview shown above/).count());
-    for (const button of await mediaEffects.getByRole('button').all()) {
+    for (const button of await mediaEffects.locator('.media-reference:visible').all()) {
       assert.match(await button.ariaSnapshot(), /^- button "(?:Main product photo|Gallery photo \d+) · (?:Before|After)"/);
       const box = await button.boundingBox();
       assert.ok(box.width >= 44 && box.height >= 44);
@@ -121,7 +131,7 @@ for (const dialect of ['sqlite', 'postgres']) for (const targetSlot of ['MAIN', 
     await assertDecisionClearance(page, 'media');
     for (const [width, height, cap] of [[390, 844, 240], [768, 1024, 320], [1440, 900, 320]]) {
       await page.setViewportSize({ width, height });
-      for (const image of await mediaEffects.locator('.media-reference img').all()) {
+      for (const image of await mediaEffects.locator('.media-reference:visible img').all()) {
         const box = await image.boundingBox();
         assert.ok(box.width >= 240 && box.height <= cap, `preview dimensions at ${width}×${height}`);
         assert.equal(await image.evaluate(node => getComputedStyle(node).objectFit), 'contain');
@@ -129,26 +139,25 @@ for (const dialect of ['sqlite', 'postgres']) for (const targetSlot of ['MAIN', 
     }
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(Number((await f.store.get("SELECT COUNT(*) n FROM mcp_v2_media_delivery WHERE operation_id=? AND kind='ASSET' AND ack_at IS NOT NULL", f.operation.operationId)).n), count);
-    const repeated = page.locator('.media-reference').first(); await repeated.click();
-    await page.waitForFunction(() => document.querySelector('#media-image').complete && document.querySelector('#media-image').naturalWidth > 0);
-    await page.evaluate(() => {
-      const decode = HTMLImageElement.prototype.decode;
-      HTMLImageElement.prototype.decode = function () {
-        HTMLImageElement.prototype.decode = decode;
-        return Promise.reject(new DOMException('Synthetic decoder failure', 'EncodingError'));
-      };
-    });
-    await page.locator('.media-reference').last().click();
-    assert.equal(await page.locator('#media-image').isVisible(), false);
-    await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Image verification failed'));
-    assert.equal(await page.locator('#media-image').isVisible(), false);
-    await retry.click();
-    await page.waitForFunction(() => document.querySelector('#media-image').naturalWidth > 0 && !document.querySelector('#media-image').hidden);
+    const photo = page.locator('.media-reference:visible').first();
+    await photo.click();
+    const preview = page.locator('#image-dialog');
+    await preview.waitFor({ state: 'visible' });
+    const beforeZoom = await preview.locator('img').getAttribute('src');
+    await page.keyboard.press('ArrowRight');
+    assert.notEqual(await preview.locator('img').getAttribute('src'), beforeZoom);
+    await page.keyboard.press('Escape');
+    assert.equal(await preview.isVisible(), false);
+    assert.equal(await photo.evaluate(node => node === document.activeElement), true);
+    assert.equal(ackRequests.length, count, 'enlarging verified bytes does not request new acknowledgements');
     await page.route('**/approval', route => route.fulfill({ status: 500 }), { times: 1 });
     await page.locator('#approve').click();
-    await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Reload this page to check the status before trying again.'));
+    await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Check the status before trying again.'));
     assert.equal(await page.locator('#result-dialog').evaluate(dialog => dialog.open), false);
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?', f.operation.operationId)).state, 'PENDING_APPROVAL');
+    assert.equal(await page.locator('#approve').isDisabled(), true);
+    await page.locator('#check-status').click();
+    await page.locator('#approve:enabled').waitFor();
     await page.locator('#approve').click(); await page.locator('#decision').waitFor({ state: 'hidden' });
     await page.getByRole('alertdialog', { name: 'Approved', exact: true }).waitFor();
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?', f.operation.operationId)).state, 'APPROVED');

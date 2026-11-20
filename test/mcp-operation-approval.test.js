@@ -131,7 +131,10 @@ for (const engine of ['sqlite', 'postgres']) {
 
       const approved = await approve(f.request(), op.input, 'ip-valid');
       assert.equal(approved.status, 'APPROVED');
-      await denied(review(reviewRequest, op.value.operationId));
+      assert.deepEqual(await review(reviewRequest, op.value.operationId), {
+        operationId: op.value.operationId, status: 'APPROVED', clientName: 'Synthetic client',
+      });
+      await denied(review(new Request(reviewRequest.url), op.value.operationId));
       const proof = await f.store.get('SELECT * FROM mcp_v2_approval WHERE operation_id = ?', op.value.operationId);
       assert.equal(proof.approver_id, f.account.id);
       assert.equal(proof.session_hash, hash(f.session.token));
@@ -145,6 +148,7 @@ for (const engine of ['sqlite', 'postgres']) {
 
       const revoked = await f.operation();
       await f.store.run('UPDATE oauth_grant SET revoked_at = ? WHERE id = ?', new Date().toISOString(), f.grantId);
+      await denied(review(reviewRequest, op.value.operationId));
       await denied(approve(f.request(), revoked.input, 'ip-revoked'));
       await f.store.run('UPDATE oauth_grant SET revoked_at = NULL WHERE id = ?', f.grantId);
       await f.store.run('UPDATE seller_account SET role = ? WHERE id = ?', 'STAFF', f.account.id);

@@ -54,6 +54,10 @@ test('real HTTPS app and seller session review and reject a complete proposal in
     await page.locator('#decision').waitFor({ state: 'hidden' });
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id = ?', op.value.operationId)).state, 'REJECTED');
     assert.equal(await page.locator('#decision input[type=password]').count(), 0);
+    await page.reload();
+    await page.getByRole('heading', { name: 'Review result', exact: true }).waitFor();
+    assert.equal(await page.locator('#pending-state').textContent(), 'Rejected');
+    assert.equal(await page.locator('#proposal').textContent(), '');
     await f.store.run("UPDATE oauth_grant SET scopes = 'catalog.write company.write' WHERE id = ?", f.grantId);
     await f.store.run(`INSERT INTO mcp_v2_scope_consent(grant_id, tenant_id, account_id, client_id, scope, account_auth_version, epoch_hash, consented_at)
       SELECT grant_id, tenant_id, account_id, client_id, 'company.write', account_auth_version, epoch_hash, consented_at
@@ -73,10 +77,27 @@ test('real HTTPS app and seller session review and reject a complete proposal in
     assert.equal(await page.locator('#result-dialog').evaluate(dialog => dialog.open), false);
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id = ?', company.value.operationId)).state, 'PENDING_APPROVAL');
     await currencyAcknowledgment.check();
+    await page.route(origin + '/api/v1/seller/mcp/operations/' + company.value.operationId + '/approval', async route => {
+      const applied = await route.fetch();
+      assert.equal(applied.status(), 200);
+      await route.abort('connectionclosed');
+    }, { times: 1 });
     await page.locator('button[value="approve"]').click();
-    await page.getByRole('alertdialog', { name: 'Approved', exact: true }).waitFor();
+    const checkStatus = page.getByRole('button', { name: 'Check status', exact: true });
+    await checkStatus.waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#approve').isEnabled(), false);
+    await checkStatus.click();
+    await page.locator('#pending-state').filter({ hasText: 'Approved · Waiting to be applied' }).waitFor();
     await page.locator('#decision').waitFor({ state: 'hidden' });
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id = ?', company.value.operationId)).state, 'APPROVED');
     assert.equal((await f.store.get("SELECT outcome FROM mcp_v2_event WHERE operation_id = ? AND event = 'APPROVE'", company.value.operationId)).outcome, 'CURRENCY_CHANGE_ACKNOWLEDGED');
+    await page.locator('#review-theme').selectOption('dark');
+    assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark');
+    await page.locator('#review-language').selectOption('zh-CN');
+    await page.getByRole('heading', { name: '审核结果', exact: true }).waitFor();
+    assert.equal(await page.locator('#pending-state').textContent(), '已批准 · 待应用');
+    assert.equal(await page.locator('html').getAttribute('lang'), 'zh-CN');
+    assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark');
+    assert.equal(await page.locator('#proposal').textContent(), '');
     assert.deepEqual(external, []); assert.deepEqual(errors, []);
   });

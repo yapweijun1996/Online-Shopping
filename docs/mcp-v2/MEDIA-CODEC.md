@@ -71,11 +71,22 @@ The thumbnail is intentionally resized inside128x128 without enlargement and
 encoded as PNG compression9, preserving alpha. It must be<=80KiB. Caller thumbnails
 and existing portal thumbnails are not accepted as evidence for their source image.
 
+For layout reviews of stored assets, the worker uses the same strict container,
+full raster validation, input bounds and measured thumbnail, then returns the
+exact source bytes instead of re-encoding them. The caller verifies byte equality
+before using the existing immutable review manifest. Only fresh uploads produce
+canonical output for storage. A stored source that fits the input cap may require
+more bytes if re-encoded, so the retained path verifies the bytes the seller will
+actually review without applying a second encoding.
+
 ## Private binary HTTP protocol, version1
 
-Only `POST /v1/decode` over the configured Unix socket is accepted. No redirects,
-CORS, cookies, health endpoint, alternate path/query, multipart, JSON image body,
-chunked transfer or extra headers. The allowed headers are Authorization,
+`POST /v1/decode` canonicalizes fresh source bytes. The fixed
+`POST /v1/decode-retained` path verifies stored media and returns the exact source.
+Both use the same authenticated Unix socket, header validation, byte limits, queue
+and deadline. The existing readiness probe remains separate. No redirects, CORS,
+cookies, alternate path/query, multipart, JSON image body, chunked transfer or
+extra headers. The allowed headers are Authorization,
 Content-Type, Content-Length, X-Source-Sha256 and HTTP Host/Connection. Duplicate
 headers reject. Authorization is `Bearer <43char ephemeral token>` compared using
 `timingSafeEqual`. Content-Type is an exact allowed MIME; Content-Length is1..524288;
@@ -83,7 +94,7 @@ source SHA is lowercase64hex. The body is exactly the raw source bytes.
 
 Successful responses are no-store, exact bounded Content-Length and
 `application/octet-stream`. Binary layout:4-byte unsigned big-endian JSON-header
-length, compact canonical UTF-8 JSON<=2048bytes, canonical image bytes, PNG thumbnail.
+length, compact canonical UTF-8 JSON<=2048bytes, image bytes, PNG thumbnail.
 Header has exactly these fields:
 
 ```json

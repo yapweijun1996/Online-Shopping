@@ -13,6 +13,7 @@ import { mediaInstant, mediaHash } from './media-policy.js';
 import { clearMediaChallenge } from './media-maintenance.js';
 import { mediaReviewItems, readMediaReviewState, loadMediaReviewAsset, readMediaApprovalEvidence, readMediaAcknowledgements } from './media-approval-policy.js';
 import { catalogMediaAllowed } from './catalog-media-config.js';
+import { OPERATION_TERMINAL_STATES } from './operation-maintenance.js';
 
 const APPROVAL_MS = 5 * 60 * 1000;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -55,14 +56,14 @@ function requireSafeConfig(binding, sellerOrigin, quickLogin, enabled, epoch, bu
   } catch { throw new TypeError('Operation approval requires explicit enablement, a secure seller binding and password login.'); }
 }
 
-async function humanContext(store, binding, tenantRevision, epochHash, buildDigest, session, row, mediaEnabled, catalogUpdateEnabled, catalogCreateEnabled, codecDigest) {
+async function humanAuthority(store, binding, tenantRevision, epochHash, buildDigest, session, row, mediaEnabled, catalogUpdateEnabled, catalogCreateEnabled) {
   if (!operationEpochCurrent(binding.mcpV2)) return null;
-  if (session.account.mustChangePassword || !row || row.state !== 'PENDING_APPROVAL' || row.expires_at <= stamp() || row.created_at > stamp() ||
+  if (session.account.mustChangePassword || !row || !mediaInstant(row.created_at) || !mediaInstant(row.expires_at) || row.created_at > stamp() ||
+      row.tenant_id !== binding.tenantId || row.issuer !== binding.issuer || row.resource !== binding.resource ||
       row.account_id !== session.account.id || row.tenant_revision !== tenantRevision ||
       row.epoch_hash !== epochHash || row.build_digest !== buildDigest) return null;
   const shop = await getShopSetup(store);
   if (shop.mode !== 'production') return null;
-  const envelope = readStoredOperation(row, binding);
   let policy;
   try { policy = operationAuthorityPolicy(row.tool_name, row.media_policy_id ?? null); } catch { return null; }
   const catalog = catalogMediaAllowed({catalogUpdateEnabled,catalogCreateEnabled},{toolName:row.tool_name,mediaPolicyId:row.media_policy_id,resourceType:row.resource_type});
@@ -72,7 +73,7 @@ async function humanContext(store, binding, tenantRevision, epochHash, buildDige
   if (media && mediaEnabled !== true) return null;
   const grant = await liveGrant(store, row.grant_id, binding);
   const granted = typeof grant?.scopes === 'string' ? grant.scopes.split(' ') : [];
-  if (!envelope || !policy || (!OPERATION_APPROVAL_TOOLS.includes(row.tool_name) && !media) || (policy.flow === 'RESERVED' && !catalog) || !grant ||
+  if (!policy || (!OPERATION_APPROVAL_TOOLS.includes(row.tool_name) && !media) || (policy.flow === 'RESERVED' && !catalog) || !grant ||
       !mediaInstant(grant.created_at) || !mediaInstant(grant.absolute_expires_at) || !Number.isSafeInteger(grant.account_auth_version) ||
       new Set(granted).size !== granted.length || granted.some(scope => !knownScopes.has(scope)) ||
       row.required_scope !== policy.scope || row.required_capability !== policy.capability ||
@@ -86,6 +87,16 @@ async function humanContext(store, binding, tenantRevision, epochHash, buildDige
   grant.id, binding.tenantId, grant.account_id, grant.client_id, scope, grant.account_auth_version, epochHash, grant.created_at, row.created_at);
   if (!consent || !mediaInstant(consent.consented_at)) return null;
   }
+  return { grant, policy, shop, media };
+}
+
+async function humanContext(store, binding, tenantRevision, epochHash, buildDigest, session, row, mediaEnabled, catalogUpdateEnabled, catalogCreateEnabled, codecDigest, verifiedAuthority = null) {
+  if (row?.state !== 'PENDING_APPROVAL' || row.expires_at <= stamp()) return null;
+  const envelope = readStoredOperation(row, binding);
+  if (!envelope) return null;
+  const authority = verifiedAuthority ?? await humanAuthority(store, binding, tenantRevision, epochHash, buildDigest, session, row, mediaEnabled, catalogUpdateEnabled, catalogCreateEnabled);
+  if (!authority) return null;
+  const { grant, policy, shop, media } = authority;
   const mediaContext = media ? Object.freeze({ tenantId: row.tenant_id, tenantRevision, accountId: row.account_id,
     clientId: row.client_id, grantId: row.grant_id, accountAuthVersion: grant.account_auth_version, epochHash, buildDigest,
     issuer: binding.issuer, resource: binding.resource, grantExpiresAt: grant.absolute_expires_at }) : null;
@@ -94,6 +105,25 @@ async function humanContext(store, binding, tenantRevision, epochHash, buildDige
   try { currencyAcknowledgementRequired = requiresCompanyCurrencyAcknowledgement(envelope); } catch { return null; }
   if (!operationEpochCurrent(binding.mcpV2)) return null;
   return { envelope, grant, policy, shop, currencyAcknowledgementRequired, mediaContext, mediaState };
+}
+
+async function visibleReviewStatus(store, row, binding, now) {
+  const envelope = row.redacted_at === null ? readStoredOperation(row, binding) : null;
+  if (row.redacted_at === null ? !envelope :
+    !OPERATION_TERMINAL_STATES.includes(row.state) || row.envelope_json !== null ||
+    !mediaInstant(row.redacted_at) || row.redacted_at < row.expires_at || row.redacted_at > now) forbidden();
+  let status = row.state;
+  if (row.state === 'APPROVED') {
+    const proof = await store.get(`SELECT expires_at FROM mcp_v2_approval
+      WHERE operation_id = ? AND decision = 'APPROVED' AND approver_id = ? AND preview_hash = ? AND consumed_at IS NULL`,
+    row.id, row.account_id, row.preview_hash);
+    if (!mediaInstant(proof?.expires_at)) forbidden();
+    if (row.expires_at <= now || proof.expires_at <= now) status = 'EXPIRED';
+  } else if (row.state === 'PENDING_APPROVAL' && row.expires_at <= now) status = 'EXPIRED';
+  else if (!OPERATION_TERMINAL_STATES.includes(row.state)) forbidden();
+  const confirmsCurrentGallery = ['APPROVED', 'COMMITTED'].includes(status) && row.tool_name === 'media.preview_layout' &&
+    envelope?.proposal.confirmsCurrentGallery === true;
+  return { status, ...(confirmsCurrentGallery && { confirmsCurrentGallery: true }) };
 }
 
 // An authenticated seller can review the complete stored proposal. This
@@ -115,9 +145,18 @@ export function createOperationReview({ store, binding, sellerOrigin, quickLogin
         const session = await readSession(store, token);
         if (!session) forbidden();
         const row = await store.get('SELECT * FROM mcp_v2_operation WHERE id = ?', operationId);
-        const context = await humanContext(store, binding, tenant.revision, epochHash, buildDigest, session, row, mcpMedia?.enabled, catalogUpdateEnabled, catalogCreateEnabled, mcpMedia?.codecDigest);
-        if (!context) forbidden();
+        const authority = await humanAuthority(store, binding, tenant.revision, epochHash, buildDigest, session, row, mcpMedia?.enabled, catalogUpdateEnabled, catalogCreateEnabled);
+        if (!authority) forbidden();
         const client = await store.get('SELECT client_name FROM oauth_client WHERE id = ?', row.client_id);
+        const statusAt = stamp();
+        if (row.state !== 'PENDING_APPROVAL' || row.expires_at <= statusAt) {
+          if (!client) forbidden();
+          const result = await visibleReviewStatus(store, row, binding, statusAt);
+          return { operationId: row.id, ...result, clientName: client.client_name };
+        }
+        const context = await humanContext(store, binding, tenant.revision, epochHash, buildDigest, session, row,
+          mcpMedia?.enabled, catalogUpdateEnabled, catalogCreateEnabled, mcpMedia?.codecDigest, authority);
+        if (!context) forbidden();
         const shop = context.shop;
         if (!client || !shop?.shopName) forbidden();
         const account = await store.get('SELECT oauth_auth_version FROM seller_account WHERE id = ?', session.account.id);

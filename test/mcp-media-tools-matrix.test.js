@@ -122,6 +122,37 @@ for (const dialect of ['sqlite','postgres']) {
     assert.equal(dto(await f.tool('media.commit_layout',{operationId:fresh.operationId})).replayed,true);
     assert.deepEqual((await getProduct(f.store,f.product.id,true)).galleryItems.map(({id})=>({id})),selected);
   });
+  test(`${dialect}: approving the current gallery preserves its revision and unselected images`, options, async t => {
+    const f = await mediaToolsFixture(t, dialect);
+    await addGalleryImage(f.store, f.product.id, photo(Buffer.concat([png, Buffer.from('selected')])));
+    const current = await getProduct(f.store, f.product.id, true);
+    const selected = current.galleryItems.map(({ id }) => ({ id }));
+    await addGalleryImage(f.store, f.product.id, photo(Buffer.concat([png, Buffer.from('unselected')])));
+    await f.store.run('UPDATE product SET gallery_layout_json=? WHERE id=?',
+      JSON.stringify(selected.map(({ id }) => id)), f.product.id);
+
+    const readMedia = async () => dto(await f.tool('media.list', { productId: f.product.id }));
+    const readProduct = async () => f.store.get('SELECT updated_at,gallery_layout_json FROM product WHERE id=?', f.product.id);
+    const readGallery = async () => f.store.all(
+      'SELECT id,position,mime,data,created_at,thumb_mime,thumb_data FROM product_gallery_image WHERE product_id=? ORDER BY position,id',
+      f.product.id);
+    const before = { media: await readMedia(), product: await readProduct(), gallery: await readGallery() };
+    assert.equal(before.gallery.length, 2);
+    assert.deepEqual(before.media.items[0].gallery.map(({ id }) => ({ id })), selected);
+    const operation = dto(await layout(f, f.product.id, selected, 'matrix-confirm-current-gallery'));
+    assert.equal(operation.status, 'PENDING_APPROVAL');
+    assert.equal((await f.tool('media.commit_layout', { operationId: operation.operationId })).response.status, 403);
+    await f.approve(operation);
+    const commit = dto(await f.tool('media.commit_layout', { operationId: operation.operationId }));
+    assert.equal(commit.status, 'COMMITTED');
+    assert.equal(commit.result.revision, before.media.revision);
+    assert.equal(dto(await f.tool('media.commit_layout', { operationId: operation.operationId })).replayed, true);
+    assert.deepEqual(await readMedia(), before.media);
+    assert.deepEqual(await readProduct(), before.product);
+    assert.deepEqual(await readGallery(), before.gallery);
+    assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM product_event')).n, 0);
+    assert.ok((await f.store.get('SELECT consumed_at FROM mcp_v2_approval WHERE operation_id=?', operation.operationId)).consumed_at);
+  });
   test(`${dialect}: matrix12 mid-service database failure rolls back selected identities, history and approval consumption`,options,async t=>{
     const f=await mediaToolsFixture(t,dialect);await addGalleryImage(f.store,f.product.id,photo(Buffer.concat([png,Buffer.from('rollback')])));
     const current=await getProduct(f.store,f.product.id,true),selected=current.galleryItems.map(({id})=>({id}));

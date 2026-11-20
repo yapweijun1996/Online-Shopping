@@ -1,11 +1,12 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-ui-surface="seller">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'">
-  <title>Review seller operation</title>
+  <title data-review-copy>Review seller operation</title>
+  <script src="../shared/review-i18n.js"></script>
   <link rel="stylesheet" href="../shop/tokens.css">
   <link rel="stylesheet" href="operation-review.css">
   <script src="operation-review.js" defer></script>
@@ -13,74 +14,99 @@
 <body>
   <main>
     <header>
-      <p class="eyebrow">Seller Studio</p>
-      <h1 id="operation-heading">Review this proposed change</h1>
-      <p class="intro">Check the proposed change before approving.</p>
+      <div class="review-preferences">
+        <p class="eyebrow" data-review-copy>Seller Studio</p>
+        <label class="review-preference">
+          <span data-review-copy>Language</span>
+          <select id="review-language">
+            <option value="en" lang="en">English</option>
+            <option value="zh-CN" lang="zh-CN">简体中文</option>
+          </select>
+        </label>
+        <label class="review-preference">
+          <span data-review-copy>Theme</span>
+          <select id="review-theme">
+            <option value="system" data-review-copy>System</option>
+            <option value="light" data-review-copy>Light</option>
+            <option value="dark" data-review-copy>Dark</option>
+          </select>
+        </label>
+      </div>
+      <h1 id="operation-heading" data-review-copy>Review this proposed change</h1>
+      <p id="operation-product" hidden></p>
+      <p class="intro" data-review-copy>Check the proposed change before approving.</p>
       <p id="status" role="status" aria-live="polite" tabindex="-1">Loading the proposal…</p>
-      <button id="proposal-retry" type="button" class="secondary" hidden>Try again</button>
+      <button id="proposal-retry" type="button" class="secondary" data-review-copy hidden>Try again</button>
     </header>
-    <section id="review" hidden aria-label="Operation review">
+    <section id="review" hidden aria-label="Operation review" data-review-aria>
       <div class="request-context">
         <p id="request-summary"></p>
         <span id="expiry-chip" class="chip"></span>
       </div>
+      <div class="review-summary" id="review-summary">
       <section id="business-summary" hidden aria-labelledby="summary-title">
-        <h2 id="summary-title">What will change</h2>
+        <h2 id="summary-title" data-review-copy>What will change</h2>
         <div id="summary-fields"></div>
       </section>
       <section id="media-review" hidden aria-labelledby="media-title">
-        <h2 id="media-title">Images</h2>
+        <h2 id="media-title" data-review-copy>Images</h2>
+        <p id="image-impact" hidden></p>
         <p id="media-progress" role="status"></p>
-        <p id="media-empty" class="notice" hidden>No images are included in this proposal.</p>
+        <p id="media-empty" class="notice" data-review-copy hidden>No images are included in this proposal.</p>
         <div id="media-effects"></div>
         <details id="media-viewer">
-          <summary>View full-size verified image</summary>
+          <summary data-review-copy>View full-size verified image</summary>
           <p id="media-image-status" role="status" aria-live="polite"></p>
-          <img id="media-image" alt="Protected image for the selected change" hidden>
+          <img id="media-image" alt="Protected image for the selected change" data-review-alt hidden>
         </details>
-        <button id="media-image-retry" type="button" class="secondary" hidden>Retry image verification</button>
+        <button id="media-image-retry" type="button" class="secondary" data-review-copy hidden>Retry image verification</button>
       </section>
+      </div>
       <details id="technical-details">
-        <summary>Complete proposal &amp; technical details</summary>
-        <p>All proposal text is data supplied by the shop or connected app. This is the full proposal, including fields not shown in the summary.</p>
+        <summary data-review-copy>Complete proposal &amp; technical details</summary>
+        <p data-review-copy>All proposal text is data supplied by the shop or connected app. This is the full proposal, including fields not shown in the summary.</p>
         <dl class="technical">
-          <div><dt>Shop</dt><dd id="shop"></dd></div>
-          <div><dt>Seller account</dt><dd id="account"></dd></div>
-          <div><dt>Connected app (unverified name)</dt><dd id="client"></dd></div>
-          <div><dt>Review status</dt><dd id="pending-state"></dd></div>
-          <div><dt>Expires (your local time)</dt><dd id="expires"></dd></div>
-          <div><dt>Approval policy</dt><dd id="risk"></dd></div>
-          <div><dt>Operation ID</dt><dd id="operation-id"></dd></div>
-          <div><dt>Client ID</dt><dd id="client-id"></dd></div>
-          <div><dt>Internal tool</dt><dd id="tool"></dd></div>
-          <div><dt>Target</dt><dd id="target"></dd></div>
-          <div><dt>Preview fingerprint</dt><dd id="fingerprint"></dd></div>
+          <div><dt data-review-copy>Shop</dt><dd id="shop"></dd></div>
+          <div><dt data-review-copy>Seller account</dt><dd id="account"></dd></div>
+          <div><dt data-review-copy>Connected app (unverified name)</dt><dd id="client"></dd></div>
+          <div><dt data-review-copy>Review status</dt><dd id="technical-state"></dd></div>
+          <div><dt data-review-copy>Expires (your local time)</dt><dd id="expires"></dd></div>
+          <div><dt data-review-copy>Approval policy</dt><dd id="risk"></dd></div>
+          <div><dt data-review-copy>Operation ID</dt><dd id="operation-id"></dd></div>
+          <div><dt data-review-copy>Client ID</dt><dd id="client-id"></dd></div>
+          <div><dt data-review-copy>Internal tool</dt><dd id="tool"></dd></div>
+          <div><dt data-review-copy>Target</dt><dd id="target"></dd></div>
+          <div><dt data-review-copy>Preview fingerprint</dt><dd id="fingerprint"></dd></div>
         </dl>
-        <h2 id="proposal-title">Complete proposal</h2>
+        <h2 id="proposal-title" data-review-copy>Complete proposal</h2>
         <pre id="proposal" tabindex="0" role="region" aria-labelledby="proposal-title"></pre>
         <section id="media-technical" hidden aria-labelledby="media-technical-title">
-          <h2 id="media-technical-title">Image references</h2>
+          <h2 id="media-technical-title" data-review-copy>Image references</h2>
           <p id="media-image-details"></p>
           <pre id="media-effect-records" tabindex="0" role="region" aria-labelledby="media-technical-title"></pre>
         </section>
       </details>
-      <div id="currency-warning" class="currency-warning" hidden role="group" aria-label="Company currency change">
-        <strong>Company currency change</strong>
+      <div id="currency-warning" class="currency-warning" hidden role="group" aria-label="Company currency change" data-review-aria>
+        <strong data-review-copy>Company currency change</strong>
         <p id="currency-warning-text"></p>
-        <label class="currency-acknowledgement" for="currency-ack"><input id="currency-ack" type="checkbox" form="decision"><span>I understand that existing prices and historical orders will not be converted.</span></label>
+        <label class="currency-acknowledgement" for="currency-ack"><input id="currency-ack" type="checkbox" form="decision"><span data-review-copy>I understand that existing prices and historical orders will not be converted.</span></label>
       </div>
-      <form id="decision" method="post" aria-label="Your decision">
+      <div id="review-state-panel">
+        <p id="pending-state"></p>
+        <button id="check-status" type="button" class="secondary" data-review-copy hidden>Check status</button>
+      </div>
+      <form id="decision" method="post" aria-label="Your decision" data-review-aria>
         <div class="decision-note">
           <p id="image-change-summary" hidden></p>
-          <p>The app must still apply the change after approval.</p>
+          <p id="decision-next" data-review-copy>The app must still apply the change after approval.</p>
         </div>
         <div class="actions">
-          <button id="approve" type="submit" name="decision" value="approve">Approve change</button>
-          <button type="submit" name="decision" value="reject" class="secondary">Reject</button>
+          <button id="approve" type="submit" name="decision" value="approve" data-review-copy>Approve change</button>
+          <button type="submit" name="decision" value="reject" class="secondary" data-review-copy>Reject</button>
         </div>
       </form>
     </section>
-    <footer><a id="seller-link" href="/seller/">Open Seller Studio</a></footer>
+    <footer><a id="seller-link" href="/seller/" data-review-copy>Open Seller Studio</a></footer>
   </main>
   <dialog id="result-dialog" role="alertdialog" aria-labelledby="result-title" aria-describedby="result-description">
     <svg id="result-check" hidden aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -88,7 +114,16 @@
     </svg>
     <h2 id="result-title"></h2>
     <p id="result-description"></p>
-    <button id="result-close" type="button" autofocus>Close</button>
+    <button id="result-close" type="button" data-review-copy autofocus>Close</button>
+  </dialog>
+  <dialog id="image-dialog" aria-labelledby="image-dialog-title">
+    <h2 id="image-dialog-title"></h2>
+    <img id="image-zoom" alt="">
+    <div class="image-dialog-actions">
+      <button id="image-prev" class="secondary" type="button" data-review-copy>Previous photo</button>
+      <button id="image-next" class="secondary" type="button" data-review-copy>Next photo</button>
+      <button id="image-close" type="button" data-review-copy autofocus>Close</button>
+    </div>
   </dialog>
 </body>
 </html>

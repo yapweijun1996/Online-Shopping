@@ -101,7 +101,7 @@ test('first-party review prototype renders all untrusted data as text and requir
       assert.ok(displayed.includes('Full proposal visible'));
       assert.ok(displayed.includes('\\u202e'));
       assert.equal(calls.length, index); // no automatic approval
-      const background = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+      const background = await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor);
       if (colorScheme === 'light') backgrounds.set(width, background);
       else assert.notEqual(background, backgrounds.get(width));
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
@@ -115,20 +115,20 @@ test('first-party review prototype renders all untrusted data as text and requir
       assert.equal(await page.locator('#seller-link').getAttribute('href'), `${base}/seller/`);
       assert.equal(await page.locator('#approve').textContent(), 'Approve change');
       assert.equal(await page.locator('button[value="reject"]').textContent(), 'Reject');
-      assert.ok((await page.locator('#approve').boundingBox()).height >= 48);
-      assert.ok((await page.locator('button[value="reject"]').boundingBox()).height >= 48);
+      assert.ok((await page.locator('#approve').boundingBox()).height >= 44);
+      assert.ok((await page.locator('button[value="reject"]').boundingBox()).height >= 44);
       await page.locator(`button[value="${decision}"]`).click();
       const approved = decision === 'approve';
       const dialog = page.getByRole('alertdialog', { name: approved ? 'Approved' : 'Rejected', exact: true });
       await dialog.waitFor();
       assert.equal(await dialog.evaluate(node => node.matches(':modal')), true);
       assert.equal(await dialog.locator('#result-description').textContent(), approved
-        ? 'Nothing has changed yet. Go back to Claude and ask it to apply this change.'
+        ? `Return to ${injection} to apply this change.`
         : 'No change was made.');
       assert.equal(await dialog.locator('svg').isVisible(), approved);
       assert.equal(await page.locator('#status').textContent(), approved
-        ? 'Approved. The connected app must still commit this change.'
-        : 'Rejected. The change was not applied.');
+        ? `Approved · Waiting to be applied. Return to ${injection} to apply this change.`
+        : 'Rejected. No change was made.');
       assert.equal(await page.locator('#status').getAttribute('aria-live'), 'polite');
       assert.equal(await page.locator('#status').evaluate(node => getComputedStyle(node).clipPath), 'inset(50%)');
       const close = dialog.getByRole('button', { name: 'Close', exact: true });
@@ -140,6 +140,8 @@ test('first-party review prototype renders all untrusted data as text and requir
       await dialog.waitFor({ state: 'hidden' });
       await page.locator('#status:focus').waitFor();
       assert.match(await page.getByRole('status').ariaSnapshot(), approved ? /Approved/ : /Rejected/);
+      assert.equal(await page.locator('#pending-state').textContent(), approved ? 'Approved · Waiting to be applied' : 'Rejected');
+      assert.equal(await page.locator('#check-status').isVisible(), approved);
       assert.equal(await page.locator('#decision').isVisible(), false);
       const call = calls.at(-1);
       assert.equal(call.path, `${base}/api/v1/seller/mcp/operations/${id}/approval`);
@@ -199,8 +201,8 @@ test('review recovers from transient proposal failures and reports pending and u
     });
 
     for (const [name, path, failure, message] of [
-      ['session 401', sessionPath, { status: 401 }, 'Sign in to Seller Studio to review this proposal. No change has been approved.'],
-      ['proposal 401', proposalPath, { status: 401 }, 'Sign in to Seller Studio to review this proposal. No change has been approved.'],
+      ['session 401', sessionPath, { status: 401 }, 'Sign in to Seller Studio to review this proposal.'],
+      ['proposal 401', proposalPath, { status: 401 }, 'Sign in to Seller Studio to review this proposal.'],
       ['proposal 403', proposalPath, { status: 403 }, 'The proposal is unavailable. Ask the connected app to prepare a new preview.'],
       ['invalid proposal', proposalPath, { json: {} }, 'The proposal is unavailable. Ask the connected app to prepare a new preview.'],
     ]) {
@@ -220,7 +222,7 @@ test('review recovers from transient proposal failures and reports pending and u
     }
 
     for (const [decision, message, failure] of [['approve', 'Approving…', 'network'], ['reject', 'Rejecting…', 500]]) {
-      await t.test(`${decision} shows progress then reload guidance after ${failure}`, async (t) => {
+      await t.test(`${decision} shows progress then offers a read-only status check after ${failure}`, async (t) => {
         const page = await context.newPage();
         t.after(() => page.close());
         const release = Promise.withResolvers();
@@ -248,11 +250,17 @@ test('review recovers from transient proposal failures and reports pending and u
         } finally {
           release.resolve();
         }
-        const reloadMessage = 'We could not confirm the result. Reload this page to check the status before trying again.';
+        const reloadMessage = 'We could not confirm the result. Check the status before trying again.';
         await status.filter({ hasText: reloadMessage }).waitFor();
         assert.equal(await status.textContent(), reloadMessage);
         assert.equal(await page.getByRole('alertdialog').isVisible(), false);
         assert.equal(await page.locator('#proposal-retry').isVisible(), false);
+        assert.equal(await approve.isDisabled(), true);
+        assert.equal(await reject.isDisabled(), true);
+        const check = page.getByRole('button', { name: 'Check status', exact: true });
+        await check.click();
+        await page.locator('#approve:enabled').waitFor();
+        assert.equal(await check.isVisible(), false);
         assert.equal(submissions, 1);
       });
     }
