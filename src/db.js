@@ -2,7 +2,7 @@ import { migrateStudioBudget, budgetStorageReady } from './ai-studio/budget.js';
 import { migrateProductDetail, productDetailStorageReady, assertProductDetailStorage } from './product-detail-schema.js';
 import { migrateInventory, inventoryStorageReady, migrateInventoryOrderIndex } from './inventory-schema.js';
 import { migrateAi } from './ai/schema.js';
-import { migrateAiStudio } from './ai-studio/schema.js';
+import { migrateAiStudio, migrateStudioDrafts } from './ai-studio/schema.js';
 import { migrateWhatsAppQr } from './whatsapp-qr/schema.js';
 import { shopLogoSchema } from './shop-logo.js';
 import { migrateSenderSettings } from './sender-settings.js';
@@ -14,7 +14,7 @@ import { migrateSharedGalleries } from './product-gallery.js';
 import { migrateOAuth } from './mcp/schema.js';
 import { initializeOperationStorage, operationStorageReady, upgradeMediaStorage, assertOperationStorageForUpgrade, upgradeOperationAuditStorage } from './mcp/operation-runtime.js';
 
-export const SCHEMA_VERSION = 38;
+export const SCHEMA_VERSION = 39;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -678,6 +678,10 @@ export async function migrateStore(store) {
     await store.transaction(async () => { await store.exec(shopLogoSchema(store.dialect)); await store.setSchemaVersion(38); });
     version = 38;
   }
+  if (version === 38) {
+    await store.transaction(async () => { await migrateStudioDrafts(store); await store.setSchemaVersion(39); });
+    version = 39;
+  }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
   await assertProductDetailStorage(store);
 }
@@ -700,6 +704,7 @@ export async function ready(store) {
       Array.isArray(await store.all('SELECT id FROM option_type LIMIT 0')) &&
       Array.isArray(await store.all('SELECT id, content_type, data, size, sha256, updated_at, updated_by FROM shop_logo LIMIT 0')) &&
       Array.isArray(await store.all('SELECT id, action, actor, created_at FROM shop_logo_event LIMIT 0')) &&
+      Array.isArray(await store.all('SELECT id, product_id, mime, data, style, verdict, issues_json, created_by, created_at, expires_at FROM ai_studio_draft LIMIT 0')) &&
       Array.isArray(await store.all('SELECT id FROM listing LIMIT 0')) &&
       Array.isArray(await store.all('SELECT listing_id, revision, document_json FROM listing_detail LIMIT 0')) &&
       Array.isArray(await store.all('SELECT id, listing_id, committed FROM listing_detail_image LIMIT 0')) &&

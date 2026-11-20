@@ -3,6 +3,7 @@ import { checkBudget } from './budget.js';
 import { randomUUID } from 'node:crypto';
 import { ApiError } from '../http.js';
 import { FieldError } from '../validation.js';
+import { MIN_DAILY_CALL_CAP } from './schema.js';
 
 export async function getStudioSetting(store) {
   const row = await store.get('SELECT daily_call_cap, revision FROM ai_studio_setting WHERE id = 1');
@@ -14,7 +15,7 @@ export async function updateStudioSetting(store, input) {
     throw new FieldError('aiStudioSetting', 'Enter supported settings.');
   }
   const { dailyCallCap: cap, expectedRevision: revision } = input;
-  if (!Number.isSafeInteger(cap) || cap < 1 || cap > 500) throw new FieldError('dailyCallCap', 'Use a whole number from 1 to 500.');
+  if (!Number.isSafeInteger(cap) || cap < MIN_DAILY_CALL_CAP || cap > 500) throw new FieldError('dailyCallCap', `Use a whole number from ${MIN_DAILY_CALL_CAP} to 500.`);
   if (!Number.isSafeInteger(revision) || revision < 1) throw new FieldError('expectedRevision', 'Reload and try again.');
   const updated = await store.get('UPDATE ai_studio_setting SET daily_call_cap = ?, revision = revision + 1, updated_at = ? WHERE id = 1 AND revision = ? RETURNING id',
     cap, new Date().toISOString(), revision);

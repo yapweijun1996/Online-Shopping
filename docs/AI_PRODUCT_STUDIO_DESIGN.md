@@ -1,10 +1,10 @@
 # AI Product Studio: per-seller OpenAI key, photo to draft product
 
-Status: IMPLEMENTED and released on the GCP host on 2026-11-02 (schema 29, main `f1b824f`). Not yet accepted with a real OpenAI key: the owner does that with one fictional product. Owner decisions (2026-11-02): provider OpenAI; key stored encrypted in the shop database; version 1 stops at drafts.
+The initial release shipped on 2026-11-02 (schema 29, main `f1b824f`). Schema 39 adds private image previews for published and unpublished products.
 
 ## Goal
 
-A seller uploads one product photo. The server uses **that shop's own OpenAI API key** to (1) read the photo and suggest the product details, and (2) generate several styled product images. Everything is saved as an unpublished product (`product.active = 0`). The seller reviews, edits and publishes; nothing goes live automatically and the model never sets a price.
+A seller uploads one product photo. The server uses **that shop's own OpenAI API key** to (1) read the photo and suggest the product details, and (2) generate several styled product images. New products are saved unpublished (`product.active = 0`). A seller can generate images for an existing published product and add selected previews to its gallery while the product stays live.
 
 ## Flow
 
@@ -12,13 +12,14 @@ A seller uploads one product photo. The server uses **that shop's own OpenAI API
 2. Seller chooses **New product from photo** and selects an image (PNG/JPEG/WebP).
 3. `POST /api/v1/seller/ai-studio/analyze` (image, no key in the request) returns suggested `name`, `description`, `category` (one of the shop's active category codes) and `tags`. Price, stock and SKU stay blank for the seller.
 4. Seller edits the suggestion and confirms. The server creates the product with `active = 0` and stores the original photo as its main image.
-5. `POST /api/v1/seller/ai-studio/products/:id/images` with `styles[]` (studio, hero, lifestyle, flat_lay, macro, ugc, billboard; max 7). Each style is an **independent job**: its own call, its own result, its own failure. Results are added to the product gallery as draft images the seller can keep or delete.
-6. Seller publishes the product through the existing product screen.
+5. `POST /api/v1/seller/ai-studio/products/:id/images` with `{ style }` (studio, hero, lifestyle, flat_lay, macro, ugc or billboard). Each style is an **independent job**: its own call, its own result, its own failure. Each successful job returns a private candidate ID and advisory review.
+6. `GET /api/v1/seller/ai-studio/products/:id/drafts` lists unexpired candidates after a reload. `GET /api/v1/seller/ai-studio/products/:id/drafts/:draftId` serves the private preview.
+7. The seller selects **Add to product gallery**. `POST /api/v1/seller/ai-studio/products/:id/drafts/:draftId` adds that image and returns its gallery ID. Repeated selection of the same candidate returns the original gallery image while that image remains in the gallery.
 
 ## Key custody
 
 - New table `ai_studio_credential` (single row): `provider`, `sealed` BLOB, `key_id`, `last4`, `revision`, `updated_at`. Sealing uses `src/secret-box.js` (AES-256-GCM, master key from the `INTEGRATION_KEY_FILE` Docker secret) with context `AI_STUDIO:OPENAI:<shop>` so a sealed value cannot be moved to another shop.
-- Only the Owner role can save, replace or delete. Manager and Staff can use the feature when a key exists but never see it.
+- Only the Owner role can save, replace or delete. Image jobs and selection require the existing `catalog.write` capability.
 - The key is decrypted only inside the backend for the duration of one outbound request. It never appears in responses, logs, audit rows, error messages or the browser after the first submit. Responses use `Cache-Control: no-store`.
 - The key is restricted to `https://api.openai.com`; no redirects, fixed host, 60 s per call, bounded response size.
 
@@ -27,7 +28,7 @@ A seller uploads one product photo. The server uses **that shop's own OpenAI API
 - **Drafts only.** No automatic publish, price or stock changes. Description and category are suggestions; category must be an active existing code (re-validated server side).
 - **Image text is untrusted.** The photo can contain instructions. The model output is parsed against a strict JSON schema and every field is length-limited and plain text; HTML is never rendered.
 - **Brand fidelity is not guaranteed.** An image edit prompt cannot promise exact logos or label text. Generated images are marked AI-generated in the seller UI and must be reviewed; the original photo always stays as the first gallery image. This matches the open fidelity gap in the PWA-AI-Product-Image-Studio-BYOK project (BUG-007).
-- **Cost control.** The seller pays through their own key. The UI shows how many billable calls a request will make before it runs. A per-shop daily call cap (default 20, Owner adjustable) is enforced server side; usage is stored in `ai_studio_usage` (day, actor, kind, outcome, counts). Estimates are not the provider invoice.
+- **Cost control.** The seller pays through their own key. The UI shows how many billable calls a request will make before it runs. A per-shop daily call cap (default and minimum 100, Owner adjustable up to 500) is enforced server side; usage is stored in `ai_studio_usage` (day, actor, kind, outcome, counts). Estimates are not the provider invoice.
 - **No automatic retry of an ambiguous (timeout) image call**, because it may already have been billed. The seller retries explicitly.
 - Rate limits reuse the existing seller limiter. Audit rows record actor and action, never prompts, images or the key.
 
@@ -49,13 +50,13 @@ Owner decision (2026-11-02): an agent should review the output itself before a p
 
 ## Deployment impact (important)
 
-The new tables raise the schema from 28 to 29. On the GCP deployment the automatic updater swaps images only; it does not run schema upgrades, and a release whose schema is newer than the database fails readiness. Release therefore needs the manual path used for platform activation: stop the timer, verified private cluster backup (default, platform and every tenant), restore-tested, coordinated upgrade including tenant schemas via `scripts/upgrade-platform.mjs`, readiness check, then save the new updater baseline. Failure restores from the backup. This must be rehearsed on a disposable copy first.
+Schema 39 adds `ai_studio_draft` and raises saved call caps below 100, advancing the settings revision only for changed rows. Existing galleries, provenance, usage and higher caps are preserved. Verify backup and restore coverage for the production topology and confirm schema 39 readiness before accepting the deployment.
 
 ## Verification plan
 
 - Unit tests with a local fake OpenAI server: success, refusal, timeout, oversize body, redirect, malformed JSON, prompt-injection text in the photo description, key never present in any response or log line.
-- Authorization tests: Owner-only key management; Manager/Staff can run jobs but cannot read or change the key; tenant A cannot use tenant B's key.
-- Browser test (Playwright, 375 px phone and desktop): upload, review suggestion, draft product, seven independent jobs with one forced failure, delete a generated image, publish.
+- Authorization tests: Owner-only key management; the catalog capability gates image generation, preview and gallery selection; tenant A cannot use tenant B's key.
+- Browser test (Playwright, 375 px phone and desktop): upload, review suggestion, draft product, generate private previews for a published product, recover them after reload, and select an image for the public gallery.
 - Real-provider acceptance is done by the owner with their own key on one fictional product; the agent never receives a real key.
 - **REQUIRES VERIFICATION before coding:** current OpenAI endpoint names, model ids, image-edit parameters, output formats and limits (read the vendor docs on the implementation date).
 
@@ -65,10 +66,10 @@ Auto-publish, bulk photo batches, price suggestions, Anthropic provider, WhatsAp
 
 ## As built (differences from the plan above)
 
-- **Images only for unpublished products.** A generated image is added to the product gallery, which shoppers can see, so the server refuses to generate for a product (or a listing with any published sibling) that is published. The seller unpublishes, generates, reviews, and publishes again.
+- **Private previews.** Generated candidates use separate shop-local storage and expire after 24 hours. Expired rows are inaccessible and are removed on subsequent successful generations. Only explicit gallery selection changes shopper-visible photos. For a variant listing, the main variant owns the gallery.
 - **Calls are reserved before they are made.** The daily cap check and the reservation are one transaction (PostgreSQL also takes its global write lock), so concurrent requests cannot pass the cap. Refused, unreadable and timed-out answers count as possibly billed; failures known not to be billed (key rejected, request rejected, rate limited, provider unavailable) are released. A row left PENDING by a crash counts until the day ends.
-- **One style per request.** The browser runs the styles one after another; a timeout, cap, rejected key, published product or full gallery stops the batch.
-- **Review before save.** The image is checked by the advisory review first, then the gallery image and its AI-generated record are saved in one transaction.
+- **One style per request.** The browser runs the styles one after another; a timeout, cap, rejected key or missing source photo stops the batch. Gallery capacity is checked when adding a selection.
+- **Review before save.** The image is checked by the advisory review before the private preview is saved. On selection, the gallery image and provenance commit together with removal of the private candidate.
 - **Provenance** is kept in `ai_studio_image` (style, verdict, issues); the seller page shows an AI-generated label and the verdict.
 - **Sizes and format.** WebP at quality 70; 1024x1280, 1024x1024 (flat lay) and 1536x864 (billboard). A result over the gallery limit of 512 KB is rejected after being charged and the seller is told. **Not yet measured with real provider output.**
 - **Models** are overridable defaults (`gpt-6-astra` for reading and review, `gpt-image-2.5-sunburst` for edits), read from the OpenAI documentation on 2026-11-02. OpenAI may require organization verification for the GPT Image models.

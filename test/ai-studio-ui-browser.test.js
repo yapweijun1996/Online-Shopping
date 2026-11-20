@@ -18,8 +18,8 @@ test('AI Studio page: key, photo to draft, independent styled images, phone widt
   const browser = await chromium.launch({ headless: true, executablePath: process.env.QA_CHROME_EXECUTABLE || '/usr/bin/google-chrome', args: ['--no-sandbox', '--disable-gpu'] }); t.after(() => browser.close());
   const f = await sellerFixture(); t.after(() => f.close());
   const context = await browser.newContext({ viewport: { width: 375, height: 812 }, serviceWorkers: 'block' });
-  const status = { available: true, configured: false, provider: 'OPENAI', dailyCallCap: 20, usedToday: 0, last4: null, keyRevision: 0, settingRevision: 1 };
-  const seen = { key: null, analyze: 0, images: [] };
+  const status = { available: true, configured: false, provider: 'OPENAI', dailyCallCap: 100, usedToday: 0, last4: null, keyRevision: 0, settingRevision: 1 };
+  const seen = { key: null, analyze: 0, images: [], applied: [] };
   let releaseFirst; const firstImage = new Promise((resolve) => { releaseFirst = resolve; });
   const thumb = png(8, 8);
   await context.route('**/*', async (route) => {
@@ -39,9 +39,13 @@ test('AI Studio page: key, photo to draft, independent styled images, phone widt
       const { style } = request.postDataJSON(); seen.images.push(style); status.usedToday += 2;
       if (style === 'studio') await firstImage;
       if (style === 'hero') return reply(504, { error: { code: 'AI_STUDIO_TIMEOUT', message: 'x' } });
-      return reply(201, { galleryImageId: '00000000-0000-4000-8000-000000000001', style, aiGenerated: true, verdict: 'WARN', issues: ['Logo <b>text</b> differs'], reviewed: true });
+      const draft = { draftId: '00000000-0000-4000-8000-000000000001', style, aiGenerated: true, verdict: 'WARN', issues: ['Logo <b>text</b> differs'], reviewed: true };
+      await f.app.database.run(`INSERT INTO ai_studio_draft (id, product_id, mime, data, style, verdict, issues_json, created_by, created_at, expires_at)
+        VALUES (?, ?, 'image/png', ?, ?, ?, ?, 'review_owner', ?, ?)`, draft.draftId, images[1], thumb, style, draft.verdict,
+        JSON.stringify(draft.issues), new Date().toISOString(), new Date(Date.now() + 3600_000).toISOString());
+      return reply(201, draft);
     }
-    if (/\/gallery\/[0-9a-f-]{36}$/.test(path) && url.searchParams.get('size') === 'thumb') return route.fulfill({ status: 200, contentType: 'image/png', body: thumb });
+    if (/\/drafts\/[0-9a-f-]{36}$/.test(path) && method === 'POST') seen.applied.push(path);
     return route.continue();
   });
   const page = await context.newPage();
@@ -102,11 +106,16 @@ test('AI Studio page: key, photo to draft, independent styled images, phone widt
   assert.equal(list.items.length, 1); assert.equal(list.items[0].active, false, 'the new product is an unpublished draft');
   assert.ok(await overflow() <= 0);
   await shot('3-draft-375');
-  // Styled images: one succeeds with a warning, the next times out and stops the batch
+  // Published products can generate previews without modifying their public gallery.
+  const productId = list.items[0].id;
+  const auth = await f.login();
+  assert.equal((await f.request('PATCH', `/api/v1/seller/products/${productId}`, { active: true }, auth.headers)).response.status, 200);
+  await page.goto(`${f.origin}/seller/#aistudio/${productId}`);
   await page.getByText('Selected: Canvas tote').waitFor();
   await page.locator('.ai-studio-style input[value=hero]').check();
   await page.locator('.ai-studio-style input[value=macro]').check();
-  await page.getByText(/Images: 3, AI reviews: 3, total 6 AI calls/).waitFor();
+  await page.getByText('Images: 3, AI reviews: 3, total 6 AI calls.', { exact: true }).waitFor();
+  assert.equal(await page.getByText(/calls left today/).count(), 0);
   await page.getByRole('button', { name: 'Generate images' }).click();
   await page.locator('.ai-studio-result[data-style=studio] .ai-studio-result-status', { hasText: 'Working' }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Generate images' }).isDisabled(), true, 'no second batch while one runs');
@@ -124,8 +133,11 @@ test('AI Studio page: key, photo to draft, independent styled images, phone widt
   await page.locator('.ai-studio-result[data-style=hero]').getByText(/may still have been charged/).waitFor();
   assert.deepEqual(seen.images, ['studio', 'hero'], 'a timeout stops the rest of the batch');
   assert.equal(await page.locator('.ai-studio-result[data-style=macro]').count(), 0);
+  const publicProduct = `/api/v1/products/${productId}`;
+  assert.equal((await f.request('GET', publicProduct)).data.images.length, 1);
+  assert.equal(seen.applied.length, 0);
   assert.ok(await overflow() <= 0);
-  assert.match(await page.locator('.ai-studio-usage').last().textContent(), /Used today: 5 of 20/);   // 1 photo + 2 for the first image + 2 for the timed-out one
+  assert.match(await page.locator('.ai-studio-usage').last().textContent(), /Used today: 5 of 100/);   // 1 photo + 2 for the first image + 2 for the timed-out one
   await shot('4-results-375');
   // Desktop layout and language switch keep working
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -136,6 +148,12 @@ test('AI Studio page: key, photo to draft, independent styled images, phone widt
   assert.equal(await page.locator('#page-title').innerText(), 'AI 工作室');
   assert.match(await page.locator('.ai-studio-usage').last().textContent(), /今日已用：5/);
   assert.ok(await overflow() <= 0);
+  await page.goto(`${f.origin}/seller/#aistudio/${productId}`);
+  await page.reload();
+  await page.getByRole('button', { name: /Add to product gallery|加入商品图库/ }).click();
+  await page.getByText(/Added to product gallery|已加入商品图库/).waitFor();
+  assert.equal(seen.applied.length, 1);
+  assert.equal((await f.request('GET', publicProduct)).data.images.length, 2);
 });
 
 test('AI Studio tabs: keyboard, direct routes, settings disclosure and role presentation', {skip: !modulePath}, async t => {
@@ -146,7 +164,7 @@ test('AI Studio tabs: keyboard, direct routes, settings disclosure and role pres
   let configured=true,available=true;
   await context.route('**/*',route=>{
     const u=new URL(route.request().url());if(u.origin!==f.origin)return route.abort();
-    if(u.pathname.endsWith('/api/v1/seller/ai-studio'))return route.fulfill({json:{available,configured,last4:'TEST',usedToday:3,dailyCallCap:20,keyRevision:1,settingRevision:1}});
+    if(u.pathname.endsWith('/api/v1/seller/ai-studio'))return route.fulfill({json:{available,configured,last4:'TEST',usedToday:3,dailyCallCap:100,keyRevision:1,settingRevision:1}});
     return route.continue();
   });
   const p=await context.newPage();await p.goto(f.origin+'/seller/#aistudio');await p.locator('#username').fill(f.config.username);await p.locator('#password').fill(f.config.password);await p.locator('#password').press('Enter');

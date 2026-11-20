@@ -14,7 +14,7 @@ for (const width of [375, 1280]) {
       const url = new URL(route.request().url());
       if (url.origin !== f.origin) { external.push(url.origin); return route.abort(); }
       if (url.pathname.endsWith('/api/v1/seller/ai-studio')) return route.fulfill({ json: {
-        available: true, configured: false, usedToday: 0, dailyCallCap: 20, keyRevision: 0, settingRevision: 1,
+        available: true, configured: false, usedToday: 0, dailyCallCap: 100, keyRevision: 0, settingRevision: 1,
       } });
       return route.continue();
     });

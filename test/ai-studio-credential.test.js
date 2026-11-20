@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { openDatabase, SCHEMA_VERSION, ready } from '../src/db.js';
+import { openDatabase, migrateStore, SCHEMA_VERSION, ready } from '../src/db.js';
 import { createApi } from '../src/app.js';
 import { ensureAdmin } from '../src/auth.js';
 import { parseKeyFile } from '../src/secret-box.js';
@@ -28,13 +28,26 @@ async function fixture(t, { keys = true, validate = async () => true } = {}) {
 }
 
 test('current schema and ready covers the AI Studio tables', async (t) => {
-  assert.equal(SCHEMA_VERSION, 38);
+  assert.equal(SCHEMA_VERSION, 39);
   const store = await openDatabase(':memory:'); t.after(() => store.close());
   await ensureAdmin(store, 'fixture_owner', 'FictionalPassword123!');
   assert.equal(await ready(store), true);
-  assert.deepEqual(await getStudioSetting(store), { dailyCallCap: 20, revision: 1 });
-  await store.exec('DROP TABLE ai_studio_usage');
+  assert.deepEqual(await getStudioSetting(store), { dailyCallCap: 100, revision: 1 });
+  await store.exec('DROP TABLE ai_studio_draft');
   assert.equal(await ready(store), false);
+});
+
+test('SQLite schema 38 raises a saved cap below 100 and retains usage', async (t) => {
+  const store = await openDatabase(':memory:'); t.after(() => store.close());
+  await store.exec('DROP TABLE ai_studio_draft; UPDATE ai_studio_setting SET daily_call_cap = 20, revision = 7');
+  await store.setSchemaVersion(38);
+  const day = new Date('2026-11-05T10:00:00Z');
+  await reserve(store, ['ANALYZE'], 'fixture', null, day);
+  await migrateStore(store);
+  assert.deepEqual(await getStudioSetting(store), { dailyCallCap: 100, revision: 8 });
+  assert.equal(await callsToday(store, day), 1);
+  await migrateStore(store);
+  assert.deepEqual(await getStudioSetting(store), { dailyCallCap: 100, revision: 8 });
 });
 
 test('the key is validated first, sealed at rest, bound to the shop and never returned', async (t) => {
@@ -112,28 +125,30 @@ test('input validation, roles, CSRF and host configuration are enforced', async 
 
 test('the daily call cap is enforced from the usage ledger', async (t) => {
   const f = await fixture(t);
-  const set = await f.request('/api/v1/seller/ai-studio/settings', 'PATCH', { dailyCallCap: 3, expectedRevision: 1 }, f.headers);
-  assert.equal((await set.json()).dailyCallCap, 3);
-  assert.equal((await f.request('/api/v1/seller/ai-studio/settings', 'PATCH', { dailyCallCap: 3, expectedRevision: 1 }, f.headers)).status, 409);
-  for (const cap of [0, 501, 1.5, '5']) assert.equal((await f.request('/api/v1/seller/ai-studio/settings', 'PATCH', { dailyCallCap: cap, expectedRevision: 2 }, f.headers)).status, 400);
+  const set = await f.request('/api/v1/seller/ai-studio/settings', 'PATCH', { dailyCallCap: 120, expectedRevision: 1 }, f.headers);
+  assert.equal((await set.json()).dailyCallCap, 120);
+  assert.equal((await f.request('/api/v1/seller/ai-studio/settings', 'PATCH', { dailyCallCap: 120, expectedRevision: 1 }, f.headers)).status, 409);
+  for (const cap of [0, 99, 501, 100.5, '100']) assert.equal((await f.request('/api/v1/seller/ai-studio/settings', 'PATCH', { dailyCallCap: cap, expectedRevision: 2 }, f.headers)).status, 400);
   const day = new Date('2026-11-02T10:00:00Z');
+  await reserve(f.store, Array(117).fill('ANALYZE'), 'fixture', null, day);
   const [image, review] = await reserve(f.store, ['IMAGE', 'REVIEW'], 'a', null, day);
-  assert.equal(await callsToday(f.store, day), 2);              // reserved calls count at once
+  assert.equal(await callsToday(f.store, day), 119);              // reserved calls count at once
   await settle(f.store, image, 'OK'); await settle(f.store, review, 'AMBIGUOUS');
-  assert.equal(await callsToday(f.store, day), 2);
+  assert.equal(await callsToday(f.store, day), 119);
   await assert.rejects(reserve(f.store, ['IMAGE', 'REVIEW'], 'a', null, day), { status: 429, code: 'AI_STUDIO_CAP' });
-  assert.equal(await callsToday(f.store, day), 2);              // a refused reservation leaves nothing behind
+  assert.equal(await callsToday(f.store, day), 119);              // a refused reservation leaves nothing behind
   const [last] = await reserve(f.store, ['ANALYZE'], 'a', null, day);
   await settle(f.store, last, 'ERROR');                         // known not billed: released
-  assert.equal(await callsToday(f.store, day), 2);
+  assert.equal(await callsToday(f.store, day), 119);
   await settle(f.store, last, 'OK');                            // a settled row never changes again
-  assert.equal(await callsToday(f.store, day), 2);
+  assert.equal(await callsToday(f.store, day), 119);
   assert.equal((await reserve(f.store, ['IMAGE', 'REVIEW', 'ANALYZE'], 'a', null, new Date('2026-11-03T00:00:00Z'))).length, 3);
   assert.deepEqual(['STUDIO_TIMEOUT', 'STUDIO_BAD_RESPONSE', 'STUDIO_REFUSED'].map((code) => failureOutcome({ code })), ['AMBIGUOUS', 'AMBIGUOUS', 'AMBIGUOUS']);
   assert.deepEqual(['STUDIO_KEY_REJECTED', 'STUDIO_REQUEST_REJECTED', 'STUDIO_RATE_LIMITED', 'STUDIO_UNAVAILABLE'].map((code) => failureOutcome({ code })), ['ERROR', 'ERROR', 'ERROR', 'ERROR']);
-  // Simultaneous reservations cannot both pass: cap 3, three requests of two calls each.
-  const race = await Promise.allSettled([1, 2, 3].map(() => reserve(f.store, ['IMAGE', 'REVIEW'], 'a', null, new Date('2026-11-05T10:00:00Z'))));
+  const raceDay = new Date('2026-11-05T10:00:00Z');
+  await reserve(f.store, Array(118).fill('ANALYZE'), 'fixture', null, raceDay);
+  const race = await Promise.allSettled([1, 2, 3].map(() => reserve(f.store, ['IMAGE', 'REVIEW'], 'a', null, raceDay)));
   assert.equal(race.filter((r) => r.status === 'fulfilled').length, 1);
-  assert.equal(await callsToday(f.store, new Date('2026-11-05T10:00:00Z')), 2);
+  assert.equal(await callsToday(f.store, raceDay), 120);
   assert.deepEqual(Object.keys(await f.store.get('SELECT * FROM ai_studio_usage LIMIT 1')).sort(), ['actor', 'created_at', 'day', 'id', 'kind', 'outcome', 'product_id']);
 });

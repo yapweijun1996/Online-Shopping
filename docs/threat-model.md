@@ -727,3 +727,18 @@ Owner-only `GET /api/v1/seller/ai-studio/analytics` and `PATCH /api/v1/seller/ai
 ### Schema37 structured variant identity (local repair, 2026-11-12)
 
 Structured option uniqueness is the canonical sorted set of option type/value IDs within a variant group, checked within the shared writer transaction. The display label is lossy and no longer has a unique database index. SQLite BEGIN IMMEDIATE and PostgreSQL advisory transaction locking serialize supported create/update paths; legacy free-text collisions remain checked with the prior dialect-specific comparison. Raw database writes are privileged and bypass these application uniqueness checks. Preserve this boundary in imports and future mutation paths. Existing approval/content fences remain required even when product timestamps are stale; regression fixtures explicitly simulate legacy unversioned writes. See [bug.md](../bug.md) for migration and local acceptance status.
+
+### AI Studio private image previews (schema39)
+
+The generation endpoint reserves calls before contacting the provider and
+stores the resulting preview in the resolved shop database. The preview is
+bound to a product, expires after 24 hours, and is served only through the
+catalog-authorized seller API with no-store headers. Product deletion cascades
+to previews and a subsequent successful generation prunes expired rows.
+
+The separate gallery selection uses an authenticated seller session,
+catalog capability, Origin and CSRF. The shop writer lock covers the current
+gallery ownership and capacity checks, gallery update, AI provenance and
+candidate consumption. Repeating a completed selection returns its gallery ID
+while the image remains available. This is the only candidate path to the
+public gallery, including on published listings.

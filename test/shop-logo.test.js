@@ -13,10 +13,10 @@ test('logo signatures reject unsupported content', () => {
   assert.equal(logoType(Buffer.from('RIFFxxxxWEBP')), 'image/webp');
   for (const value of ['<svg/>', 'GIF89a', '', 'RIFFxxxxNOPE']) assert.throws(() => logoType(Buffer.from(value)), { status: 415 });
 });
-test('schema 37 migrates to 38 preserving existing settings', async t => {
+test('schema 37 migrates to the current schema preserving existing settings', async t => {
   const store = await openDatabase(':memory:'); t.after(() => store.close());
   await store.exec('DROP TABLE shop_logo_event; DROP TABLE shop_logo;'); await store.setSchemaVersion(37);
-  await migrateStore(store); assert.equal(await store.schemaVersion(), 38);
+  await migrateStore(store); assert.equal(await store.schemaVersion(), 39);
   assert.ok(await store.get('SELECT id FROM company_setting WHERE id=1'));
   assert.equal(await store.get('SELECT * FROM shop_logo'), undefined);
 });
@@ -25,7 +25,7 @@ test('schema 37 migration preserves already-created logo tables', async t => {
   await store.run("INSERT INTO shop_logo_event (id, action, actor, created_at) VALUES ('existing', 'UPLOAD', 'seller', '2026-01-01')");
   await store.setSchemaVersion(37);
   await migrateStore(store);
-  assert.equal(await store.schemaVersion(), 38);
+  assert.equal(await store.schemaVersion(), 39);
   assert.equal((await store.get("SELECT actor FROM shop_logo_event WHERE id='existing'")).actor, 'seller');
 });
 test('logo routes enforce session, origin, CSRF and isolation, with revalidation and audit', async t => {

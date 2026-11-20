@@ -1,6 +1,5 @@
 import { createBudgetPanel, usd } from './budget-ui.js';
-// AI Studio page: the shop's OpenAI key (Owner), a product draft made from one photo, and styled images for a draft.
-// Everything the server or the AI returns is shown with textContent only. Nothing here publishes a product.
+// AI Studio page: the shop's OpenAI key, product drafts, and private image candidates.
 import { studioText, STUDIO_STYLES } from './ai-studio-copy.js';
 import { translate } from '../shared/i18n.js';
 import { apiUrl } from '../shared/base-path.js';
@@ -9,10 +8,11 @@ import { confirmModal } from '../shared/modal.js';
 
 const ERROR_KEYS = { AI_STUDIO_BUDGET: 'budgetReached', AI_STUDIO_BUDGET_UNCERTAIN: 'budgetUncertain', AI_STUDIO_NO_KEY: 'eNoKey', AI_STUDIO_CAP: 'eCap', AI_STUDIO_BUSY: 'eBusy', AI_STUDIO_KEY_REJECTED: 'eKeyRejected', AI_STUDIO_TIMEOUT: 'eTimeout',
   AI_STUDIO_PROVIDER_LIMIT: 'eRate', AI_STUDIO_REFUSED: 'eRefused', AI_STUDIO_BAD_RESPONSE: 'eBad', AI_STUDIO_REQUEST_REJECTED: 'eRequest',
-  AI_STUDIO_IMAGE_REJECTED: 'eImage', AI_STUDIO_VARIANT: 'eVariant', AI_STUDIO_GALLERY_FULL: 'eFull', AI_STUDIO_PUBLISHED: 'published',
+  AI_STUDIO_IMAGE_REJECTED: 'eImage', AI_STUDIO_VARIANT: 'eVariant', AI_STUDIO_GALLERY_FULL: 'eFull',
+  AI_STUDIO_MAIN_PHOTO: 'eMainPhoto', AI_STUDIO_DRAFT_MISSING: 'eDraftMissing', AI_STUDIO_DUPLICATE: 'eDuplicate',
   AI_STUDIO_UNAVAILABLE: 'eFailed', STALE_REVISION: 'eStale', RATE_LIMITED: 'eBusy' };
 // After these the remaining styles would fail the same way, so a batch stops.
-const STOPS = new Set(['AI_STUDIO_BUDGET','AI_STUDIO_BUDGET_UNCERTAIN','AI_STUDIO_NO_KEY', 'AI_STUDIO_CAP', 'AI_STUDIO_KEY_REJECTED', 'AI_STUDIO_PROVIDER_LIMIT', 'AI_STUDIO_PUBLISHED', 'AI_STUDIO_VARIANT', 'AI_STUDIO_GALLERY_FULL', 'AI_STUDIO_TIMEOUT']);
+const STOPS = new Set(['AI_STUDIO_BUDGET','AI_STUDIO_BUDGET_UNCERTAIN','AI_STUDIO_NO_KEY', 'AI_STUDIO_CAP', 'AI_STUDIO_KEY_REJECTED', 'AI_STUDIO_PROVIDER_LIMIT', 'AI_STUDIO_VARIANT', 'AI_STUDIO_MAIN_PHOTO', 'AI_STUDIO_TIMEOUT', 'NOT_FOUND']);
 const errorKey = (error) => error.status === 403 ? 'eForbidden' : ERROR_KEYS[error.code] || (error.field ? 'eField' : 'eFailed');
 const PHOTO_LIMIT = 480 * 1024;
 
@@ -56,7 +56,7 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
   const identity = csrfToken();
   const live = () => !disposed && root.isConnected && identity === csrfToken();
   const refreshers = [];
-  const state = { available: false, configured: false, last4: null, usedToday: 0, dailyCallCap: 20, keyRevision: 0, settingRevision: 1 };
+  const state = { available: false, configured: false, last4: null, usedToday: 0, dailyCallCap: 100, keyRevision: 0, settingRevision: 1 };
   let chosenProduct = null, photoData = null, currency = 'MYR', categories = [];
   let analyzing = false;
   let busy = 0, dirty = false, running = false, disposed = false, photoToken = 0;
@@ -118,7 +118,7 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
   const keyStatus = liveLine();
   keyForm.append(field('keyLabel', keyInput), keyActions, keyStatus);
   const capForm = document.createElement('form'); capForm.className = 'settings-form ai-studio-form';
-  const capInput = document.createElement('input'); capInput.type = 'number'; capInput.min = 1; capInput.max = 500; capInput.step = 1; capInput.required = true; capInput.inputMode = 'numeric';
+  const capInput = document.createElement('input'); capInput.type = 'number'; capInput.min = 100; capInput.max = 500; capInput.step = 1; capInput.required = true; capInput.inputMode = 'numeric';
   const saveCap = button('saveCap', 'secondary-button'); saveCap.type = 'submit';
   const capStatus = liveLine();
   capForm.append(field('capLabel', capInput), saveCap, capStatus);
@@ -147,7 +147,6 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
   draftForm.append(text('p', 'suggestion', 'ai-studio-note ai-studio-flag'), field('fName', inputs.name), field('fDesc', inputs.description), field('fCategory', inputs.category), field('fSku', inputs.sku), priceLabel, saveDraft, draftStatus);
   photoCard.append(text('p', 'photoHelp', 'ai-studio-note'), pickLabel, fileName, preview, readButton, photoStatus, draftForm);
 
-  // Images for a draft
   const genCard = card('genTitle');
   const searchInput = document.createElement('input'); searchInput.type = 'search'; searchInput.maxLength = 100; searchInput.autocomplete = 'off';
   const searchButton = button('searchGo', 'secondary-button');
@@ -161,7 +160,7 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
     const input = document.createElement('input'); input.type = 'checkbox'; input.value = style; input.checked = style === 'studio';
     label.append(input, text('span', `style_${style}`)); styleBox.append(label); input.addEventListener('change', paintCost); return input;
   });
-  const cost = text('p', 'cost', 'ai-studio-note', () => { const n = styleInputs.filter((input) => input.checked).length; return { n, calls: n * 2, left: Math.max(0, state.dailyCallCap - state.usedToday) }; });
+  const cost = text('p', 'cost', 'ai-studio-note', batchCost);
   const generate = button('generate', 'primary-button', 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z');
   const genStatus = liveLine();
   const results = document.createElement('ul'); results.className = 'ai-studio-results';
@@ -207,7 +206,14 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
   selectTab(activeTab, false);
   root.replaceChildren(page);
 
-  function paintCost() { cost.textContent = studioText('cost', (() => { const n = styleInputs.filter((input) => input.checked).length; return { n, calls: n * 2, left: Math.max(0, state.dailyCallCap - state.usedToday) }; })()); generate.disabled = running || !state.available || !state.configured || !chosenProduct || chosenProduct.active; }
+  function batchCost() {
+    const n = styleInputs.filter((input) => input.checked).length;
+    return { n, calls: n * 2 };
+  }
+  function paintCost() {
+    cost.textContent = studioText('cost', batchCost());
+    generate.disabled = running || !state.available || !state.configured || !chosenProduct;
+  }
   let keyEditorInitialized = false;
   function paintState() {
     unavailable.hidden = state.available;
@@ -255,7 +261,7 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
   capForm.addEventListener('submit', async (event) => {
     event.preventDefault(); if (!owner || !live()) return;
     const cap = Number(capInput.value);
-    if (!Number.isInteger(cap) || cap < 1 || cap > 500) { capStatus.show('eField', {}, true); capInput.setAttribute('aria-invalid', 'true'); return; }
+    if (!capInput.reportValidity()) return;
     capInput.removeAttribute('aria-invalid');
     try {
       const data = await api('PATCH', 'ai-studio/settings', { dailyCallCap: cap, expectedRevision: state.settingRevision });
@@ -304,7 +310,7 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
         category: inputs.category.value, priceMinor, currency, active: false, imageDataUrl: photoData });
       dirty = false; photoStatus.show('draftSaved');
       draftForm.hidden = true; photoData = null; photoToken += 1; photoInput.value = ''; preview.hidden = true; fileName.textContent = studioText('noFile');   // no second save of the same suggestion
-      choose({ id: product.id, name: product.name, active: false });
+      choose({ id: product.id, name: product.name });
       selectTab('images'); tabButtons[1].focus();
       genCard.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
     } catch (error) { draftStatus.show(errorKey(error), {}, true); if (error.field && inputs[error.field]) inputs[error.field].setAttribute('aria-invalid', 'true'); }
@@ -315,9 +321,12 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
     for (const control of [searchInput, searchButton, ...styleInputs, ...hits.querySelectorAll('button')]) control.disabled = disabled;
   }
   function choose(product) {
-    chosenProduct = product; results.replaceChildren(); genStatus.show(product.active ? 'published' : null, {}, product.active);
+    chosenProduct = product; results.replaceChildren(); genStatus.show(null);
     chosen.hidden = false; chosen.textContent = studioText('selected', { name: product.name }); styleBox.hidden = false; hits.replaceChildren();
     openProduct.hidden = false; paintCost();
+    api('GET', `ai-studio/products/${product.id}/drafts`).then(({ items }) => {
+      if (live() && chosenProduct === product) items.forEach((draft) => showDraft(product, draft));
+    }).catch((error) => { if (live() && chosenProduct === product && !running) genStatus.show(errorKey(error), {}, true); });
   }
   async function search() {
     if (!live()) return;
@@ -328,7 +337,8 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
       if (!items.length) { const none = document.createElement('li'); none.textContent = studioText('noResults'); hits.append(none); return; }
       for (const item of items) {
         const row = document.createElement('li'); const pick = document.createElement('button'); pick.type = 'button'; pick.className = 'secondary-button';
-        pick.textContent = `${item.name} · ${item.sku}`; pick.addEventListener('click', () => choose({ id: item.id, name: item.name, active: Boolean(item.active) }));
+        pick.textContent = `${item.name} · ${item.sku}`; pick.disabled = running;
+        pick.addEventListener('click', () => choose({ id: item.id, name: item.name }));
         row.append(pick); hits.append(row);
       }
     } catch (error) { genStatus.show(errorKey(error), {}, true); }
@@ -339,34 +349,75 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
 
   function resultRow(style) {
     const row = document.createElement('li'); row.className = 'ai-studio-result'; row.dataset.style = style;
-    const name = text('strong', `style_${style}`), status = text('span', 'waiting', 'ai-studio-result-status');
+    const name = text('strong', `style_${style}`), status = document.createElement('span');
+    status.className = 'ai-studio-result-status';
+    status.dataset.key = 'waiting';
+    const paintStatus = () => { status.textContent = studioText(status.dataset.key); };
+    paintStatus(); refreshers.push(paintStatus);
     const body = document.createElement('div'); body.className = 'ai-studio-result-body'; body.append(name, status);
     row.append(body); results.append(row);
-    return { row, body, setStatus(key, values) { status.textContent = studioText(key, values); status.dataset.key = key; status.classList.toggle('is-error', key.startsWith('e') || key === 'failedItem' || key === 'published'); } };
+    return { row, body, setStatus(key) { status.dataset.key = key; paintStatus(); status.classList.toggle('is-error', key.startsWith('e') || key === 'failedItem'); } };
+  }
+  const shownDrafts = new WeakMap();
+  function showDraft(product, draft, item) {
+    let shown = shownDrafts.get(product);
+    if (!shown) { shown = new Set(); shownDrafts.set(product, shown); }
+    if (shown.has(draft.draftId)) { item?.row.remove(); return; }
+    shown.add(draft.draftId);
+    item ??= resultRow(draft.style);
+    item.setStatus('done');
+    const path = `ai-studio/products/${product.id}/drafts/${draft.draftId}`;
+    const previewLink = document.createElement('a'); previewLink.href = apiUrl(`v1/seller/${path}`);
+    previewLink.target = '_blank'; previewLink.rel = 'noopener';
+    const image = document.createElement('img'); image.className = 'ai-studio-thumb'; image.loading = 'lazy'; image.alt = studioText(`style_${draft.style}`);
+    image.src = previewLink.href; previewLink.append(image);
+    const badges = document.createElement('p'); badges.className = 'ai-studio-badges';
+    const ai = text('span', 'aiLabel', 'ai-studio-badge');
+    const verdict = text('span', draft.verdict ? `v${draft.verdict}` : 'unreviewed', `ai-studio-badge verdict-${draft.verdict || 'NONE'}`);
+    badges.append(ai, verdict);
+    item.body.prepend(previewLink); item.body.append(badges);
+    if (draft.issues?.length) {
+      const issues = document.createElement('ul'); issues.className = 'ai-studio-issues';
+      for (const issue of draft.issues) { const li = document.createElement('li'); li.textContent = issue; issues.append(li); }
+      item.body.append(issues);
+    }
+    const add = button('addToGallery');
+    add.addEventListener('click', async () => {
+      if (!live() || chosenProduct !== product || add.disabled) return;
+      add.disabled = true;
+      item.setStatus('working');
+      try {
+        const { galleryImageId } = await api('POST', path, {});
+        if (!live() || chosenProduct !== product) return;
+        previewLink.href = apiUrl(`v1/seller/products/${product.id}/gallery/${galleryImageId}`);
+        image.src = previewLink.href;
+        add.remove();
+        item.setStatus('addedToGallery');
+      } catch (error) {
+        item.setStatus(errorKey(error));
+        add.disabled = error.code === 'AI_STUDIO_DRAFT_MISSING' || error.code === 'AI_STUDIO_DUPLICATE';
+      }
+    });
+    item.body.append(add);
   }
   generate.addEventListener('click', async () => {
     if (!live() || generate.disabled || !chosenProduct) return;
     const styles = styleInputs.filter((input) => input.checked).map((input) => input.value);
     if (!styles.length) { genStatus.show('ePicked', {}, true); return; }
-    const target = { ...chosenProduct };   // later clicks cannot redirect a running batch to another product
-    running = true; setGenControls(true); paintCost(); genStatus.show('working'); results.replaceChildren();
+    const target = chosenProduct;
+    running = true; setGenControls(true); paintCost(); genStatus.show('working');
+    results.querySelectorAll('li[data-job]').forEach((row) => row.remove());
     const rows = styles.map(resultRow);
+    rows.forEach(({ row }) => { row.dataset.job = ''; });
     try {
       for (let index = 0; index < styles.length; index += 1) {
-        if (!live()) break;
+        if (!live() || chosenProduct !== target) break;
         const item = rows[index]; item.setStatus('working');
         try {
           const made = await api('POST', `ai-studio/products/${target.id}/images`, { style: styles[index] });
-          if (!live()) break;
-          item.setStatus('done');
-          const image = document.createElement('img'); image.className = 'ai-studio-thumb'; image.loading = 'lazy'; image.alt = studioText(`style_${styles[index]}`);
-          image.src = apiUrl(`v1/seller/products/${target.id}/gallery/${made.galleryImageId}?size=thumb`);
-          const badges = document.createElement('p'); badges.className = 'ai-studio-badges';
-          const ai = document.createElement('span'); ai.className = 'ai-studio-badge'; ai.textContent = studioText('aiLabel');
-          const verdict = document.createElement('span'); verdict.className = `ai-studio-badge verdict-${made.verdict || 'NONE'}`; verdict.textContent = made.verdict ? studioText(`v${made.verdict}`) : studioText('unreviewed');
-          badges.append(ai, verdict);
-          item.body.prepend(image); item.body.append(badges);
-          if (made.issues?.length) { const issues = document.createElement('ul'); issues.className = 'ai-studio-issues'; for (const issue of made.issues) { const li = document.createElement('li'); li.textContent = issue; issues.append(li); } item.body.append(issues); }
+          if (!live() || chosenProduct !== target) break;
+          delete item.row.dataset.job;
+          showDraft(target, made, item);
         } catch (error) {
           item.setStatus(errorKey(error));
           if (error.status === 401 || STOPS.has(error.code)) { rows.slice(index + 1).forEach((rest) => rest.row.remove()); break; }
@@ -375,7 +426,11 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
     } finally { running = false; if (live()) { setGenControls(false); paintCost(); genStatus.show(null); reloadCounts(); } }
   });
 
-  load().then(() => { if (initialProductId && live() && state.configured) api('GET', `products/${initialProductId}`).then((p) => choose({ id: p.id, name: p.name, active: Boolean(p.active) })).catch(() => {}); });
+  load().then(() => {
+    if (initialProductId && live()) api('GET', `products/${initialProductId}`).then((p) => {
+      if (live() && !chosenProduct) choose({ id: p.id, name: p.name });
+    }).catch(() => {});
+  });
   return {
     dispose() { disposed = true; budgetPanel?.dispose(); page.remove(); },
     refreshLocale() { budgetPanel?.refresh(); translate(page); refreshers.forEach((paint) => paint()); if (chosenProduct) chosen.textContent = studioText('selected', { name: chosenProduct.name }); paintState(); },

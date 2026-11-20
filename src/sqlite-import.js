@@ -17,7 +17,7 @@ const excludedQrImportTables = ['whatsapp_qr_session', 'whatsapp_qr_auth', 'mess
 export const excludedOperationImportTables = Object.freeze([
   OPERATION_STORAGE_META, ...OPERATION_STORAGE_TABLES.filter((table) => !['mcp_v2_event', 'mcp_v2_media_event'].includes(table)),
 ]);
-export const excludedImportTables = [...excludedQrImportTables, ...excludedOperationImportTables, 'inventory_schema'];
+export const excludedImportTables = [...excludedQrImportTables, ...excludedOperationImportTables, 'inventory_schema', 'ai_studio_draft'];
 
 export function rowsDigest(rows) {
   const normalized = rows.map(row => Object.fromEntries(Object.keys(row).sort().map(key =>
@@ -33,7 +33,7 @@ export async function importSqlite(source, target) {
   if (await source.schemaVersion() !== await target.schemaVersion()) throw new Error('Schema versions do not match.');
   return target.transaction(async () => {
     if (!await operationStorageReady(source) || !await operationStorageReady(target) || !await inventoryStorageReady(source) || !await inventoryStorageReady(target)) {
-      throw new Error('Import requires compatible operation/inventory schema 38 storage.');
+      throw new Error('Import requires compatible operation/inventory schema 39 storage.');
     }
     for (const table of OPERATION_STORAGE_TABLES) {
       if (await target.get(`SELECT 1 AS found FROM ${table} LIMIT 1`)) throw new Error('Import destination must have no MCP v2 history or authority.');

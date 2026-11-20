@@ -7,6 +7,7 @@ import { ensureAdmin } from '../src/auth.js';
 import { parseKeyFile } from '../src/secret-box.js';
 import { createCategory } from '../src/settings.js';
 import { createProduct } from '../src/products.js';
+import { reserve } from '../src/ai-studio/usage.js';
 import { PRODUCT_LOCK, STYLE_IDS } from '../src/ai-studio/styles.js';
 
 const ORIGIN = 'https://seller.example.test';
@@ -83,7 +84,7 @@ test('provider failures map to safe errors and only billable outcomes count towa
   }
 });
 
-test('one style makes one image, stores provenance and an advisory review, and sends only name and category', async (t) => {
+test('one style makes a private candidate, and selection stores provenance and an advisory review, and sends only name and category', async (t) => {
   const f = await fixture(t);
   const res = await f.request(`/api/v1/seller/ai-studio/products/${f.product.id}/images`, 'POST', { style: 'macro' }, f.headers);
   assert.equal(res.status, 201);
@@ -94,13 +95,27 @@ test('one style makes one image, stores provenance and an advisory review, and s
   assert.ok(edit.prompt.startsWith(PRODUCT_LOCK)); assert.match(edit.prompt, /Canvas tote \(category: Bags\)/); assert.doesNotMatch(edit.prompt, /4990|49\.9|TOTE-1/);
   assert.equal(f.calls.review.length, 1);
   assert.equal(await used(f.store), 2);
+  const drafts = `/api/v1/seller/ai-studio/products/${f.product.id}/drafts`;
+  const preview = `${drafts}/${body.draftId}`;
+  assert.equal((await f.request(preview)).status, 401);
+  assert.equal((await f.request(preview, 'POST', {}, { cookie: f.cookie })).status, 403);
+  assert.equal((await f.request(preview, 'GET', null, { cookie: f.cookie })).headers.get('cache-control'), 'no-store');
+  assert.deepEqual((await (await f.request(drafts, 'GET', null, { cookie: f.cookie })).json()).items, [body]);
+  assert.equal((await f.store.all('SELECT id FROM product_gallery_image')).length, 0);
+  const [selected, retry] = await Promise.all(Array.from({ length: 2 }, async () => {
+    const response = await f.request(preview, 'POST', {}, f.headers);
+    assert.equal(response.status, 200);
+    return response.json();
+  }));
+  assert.deepEqual(retry, selected);
   const gallery = await f.store.all('SELECT id FROM product_gallery_image WHERE product_id = ?', f.product.id);
-  assert.deepEqual(gallery.map((row) => row.id), [body.galleryImageId]);
+  assert.deepEqual(gallery.map((row) => row.id), [selected.galleryImageId]);
+  assert.deepEqual((await (await f.request(drafts, 'GET', null, { cookie: f.cookie })).json()).items, []);
   const list = await (await f.request(`/api/v1/seller/ai-studio/products/${f.product.id}/images`, 'GET', null, { cookie: f.cookie })).json();
-  assert.deepEqual(list.items.map((item) => [item.galleryImageId, item.style, item.verdict]), [[body.galleryImageId, 'macro', 'PASS']]);
+  assert.deepEqual(list.items.map((item) => [item.galleryImageId, item.style, item.verdict]), [[selected.galleryImageId, 'macro', 'PASS']]);
   const product = await f.store.get('SELECT active FROM product WHERE id = ?', f.product.id);
   assert.equal(Number(product.active), 0);
-  await f.store.run('DELETE FROM product_gallery_image WHERE id = ?', body.galleryImageId);
+  await f.store.run('DELETE FROM product_gallery_image WHERE id = ?', selected.galleryImageId);
   assert.deepEqual((await (await f.request(`/api/v1/seller/ai-studio/products/${f.product.id}/images`, 'GET', null, { cookie: f.cookie })).json()).items, []);
 });
 
@@ -138,22 +153,44 @@ test('an image over the gallery limit is rejected after being charged and not st
   assert.equal(f.calls.review.length, 0);
 });
 
-test('images are only generated for unpublished products with room in a non-shared gallery', async (t) => {
+test('published products stay live and only the selected image becomes public', async (t) => {
   const f = await fixture(t);
-  const url = `/api/v1/seller/ai-studio/products/${f.product.id}/images`;
-  await f.store.run('UPDATE product SET active = 1 WHERE id = ?', f.product.id);
-  const live = await f.request(url, 'POST', { style: 'studio' }, f.headers);
-  assert.equal(live.status, 409); assert.equal((await live.json()).error.code, 'AI_STUDIO_PUBLISHED');
-  await f.store.run('UPDATE product SET active = 0 WHERE id = ?', f.product.id);
-  const sibling = await createProduct(f.store, { sku: 'TOTE-2', name: 'Canvas tote', description: 'A tote bag.', category: 'BAGS', priceMinor: 4990, currency: 'MYR', active: true, variantGroup: 'TOTE', variantLabel: 'Red' });
+  const productPath = `/api/v1/products/${f.product.id}`;
+  const sellerPath = `/api/v1/seller/ai-studio/products/${f.product.id}`;
+  const publish = await f.request(`/api/v1/seller/products/${f.product.id}`, 'PATCH', { active: true }, f.headers);
+  assert.equal(publish.status, 200);
+  const original = await (await f.request(productPath)).json();
+  const candidates = [];
+  for (const style of ['studio', 'hero']) {
+    const response = await f.request(`${sellerPath}/images`, 'POST', { style }, f.headers);
+    assert.equal(response.status, 201);
+    candidates.push(await response.json());
+  }
+  assert.deepEqual(await (await f.request(productPath)).json(), original);
+  const { galleryImageId } = await (await f.request(`${sellerPath}/drafts/${candidates[0].draftId}`, 'POST', {}, f.headers)).json();
+  assert.equal((await f.request(`${productPath}/gallery/${galleryImageId}`)).status, 200);
+  assert.equal((await f.request(`${productPath}/gallery/${candidates[1].draftId}`)).status, 404);
+  assert.equal((await f.store.get('SELECT active FROM product WHERE id = ?', f.product.id)).active, 1);
+  assert.equal((await f.store.all('SELECT id FROM product_gallery_image')).length, 1);
+  await f.store.run("UPDATE ai_studio_draft SET expires_at = '2000-01-01T00:00:00.000Z' WHERE id = ?", candidates[1].draftId);
+  assert.equal((await f.request(`${sellerPath}/drafts/${candidates[1].draftId}`, 'POST', {}, f.headers)).status, 404);
+});
+
+test('gallery capacity is checked when choosing a candidate and a shared sibling cannot write', async (t) => {
+  const f = await fixture(t);
+  const url = `/api/v1/seller/ai-studio/products/${f.product.id}`;
+  const sibling = await createProduct(f.store, { sku: 'TOTE-2', name: 'Canvas tote', description: 'A tote bag.', category: 'BAGS', priceMinor: 4990, currency: 'MYR', active: true });
   await f.store.run('UPDATE product SET listing_id = (SELECT listing_id FROM product WHERE id = ?) WHERE id = ?', f.product.id, sibling.id);
-  assert.equal((await f.request(url, 'POST', { style: 'studio' }, f.headers)).status, 409);
-  await f.store.run('UPDATE product SET active = 0 WHERE id = ?', sibling.id);
+  assert.equal((await f.request(`/api/v1/seller/ai-studio/products/${sibling.id}/images`, 'POST', { style: 'studio' }, f.headers)).status, 409);
+  assert.equal(f.calls.edit.length, 0);
   for (let i = 0; i < 10; i += 1) await f.store.run("INSERT INTO product_gallery_image(id, product_id, position, mime, data, created_at) VALUES (?, ?, ?, 'image/jpeg', ?, ?)", `00000000-0000-4000-8000-0000000000${String(i).padStart(2, '0')}`, f.product.id, i + 1, jpeg(), new Date().toISOString());
-  const full = await f.request(url, 'POST', { style: 'studio' }, f.headers);
-  assert.equal(full.status, 409); assert.equal((await full.json()).error.code, 'AI_STUDIO_GALLERY_FULL');
-  assert.equal(f.calls.edit.length, 0);               // nothing was charged for any refused request
-  assert.equal(await used(f.store), 0);
+  const generated = await f.request(`${url}/images`, 'POST', { style: 'studio' }, f.headers);
+  assert.equal(generated.status, 201);
+  const { draftId } = await generated.json();
+  const refused = await f.request(`${url}/drafts/${draftId}`, 'POST', {}, f.headers);
+  assert.equal(refused.status, 409);
+  assert.equal((await refused.json()).error.code, 'AI_STUDIO_GALLERY_FULL');
+  assert.equal((await f.request(`${url}/drafts/${draftId}`, 'GET', null, { cookie: f.cookie })).status, 200);
 });
 
 test('two simultaneous images for one product each keep their own style and review record', async (t) => {
@@ -165,18 +202,17 @@ test('two simultaneous images for one product each keep their own style and revi
   await new Promise((resolve) => setTimeout(resolve, 100));
   release();
   const results = await Promise.all((await Promise.all(both)).map((r) => r.json()));
-  assert.equal(new Set(results.map((r) => r.galleryImageId)).size, 2);
-  const rows = await f.store.all('SELECT gallery_image_id, style FROM ai_studio_image ORDER BY style');
+  assert.equal(new Set(results.map((r) => r.draftId)).size, 2);
+  const rows = await f.store.all('SELECT id, style FROM ai_studio_draft ORDER BY style');
   assert.deepEqual(rows.map((r) => r.style), ['hero', 'studio']);
-  assert.equal(new Set(rows.map((r) => r.gallery_image_id)).size, 2);
-  for (const result of results) assert.equal(rows.find((r) => r.gallery_image_id === result.galleryImageId).style, result.style);
+  for (const result of results) assert.equal(rows.find((r) => r.id === result.draftId).style, result.style);
 });
 
 test('simultaneous requests cannot push past the daily cap', async (t) => {
   let release; const gate = new Promise((resolve) => { release = resolve; });
   let edits = 0;
   const f = await fixture(t, { edit: async () => { edits += 1; await gate; return { mime: 'image/webp', data: webp() }; } });
-  await f.request('/api/v1/seller/ai-studio/settings', 'PATCH', { dailyCallCap: 2, expectedRevision: 1 }, f.headers);
+  await reserve(f.store, Array(98).fill('ANALYZE'), 'fixture');
   const send = (style) => f.request(`/api/v1/seller/ai-studio/products/${f.product.id}/images`, 'POST', { style }, f.headers);
   const both = [send('studio'), send('hero')];
   await new Promise((resolve) => setTimeout(resolve, 100));
@@ -188,7 +224,7 @@ test('simultaneous requests cannot push past the daily cap', async (t) => {
 
 test('the daily cap needs room for the image and its review before any call is made', async (t) => {
   const f = await fixture(t);
-  await f.request('/api/v1/seller/ai-studio/settings', 'PATCH', { dailyCallCap: 3, expectedRevision: 1 }, f.headers);
+  await reserve(f.store, Array(97).fill('ANALYZE'), 'fixture');
   assert.equal((await f.request(`/api/v1/seller/ai-studio/products/${f.product.id}/images`, 'POST', { style: 'studio' }, f.headers)).status, 201);
   const refused = await f.request(`/api/v1/seller/ai-studio/products/${f.product.id}/images`, 'POST', { style: 'hero' }, f.headers);
   assert.equal(refused.status, 429); assert.equal((await refused.json()).error.code, 'AI_STUDIO_CAP');

@@ -5,7 +5,7 @@ import { getAiSettings, updateAiSettings } from './ai/settings.js';
 import { keyStatus, saveKey, deleteKey } from './ai-studio/credential.js';
 import { getStudioSetting, updateStudioSetting, callsToday } from './ai-studio/usage.js';
 import { createOpenAiStudioProvider } from './ai-studio/provider.js';
-import { analyzePhoto, generateStyleImage, listStudioImages } from './ai-studio/jobs.js';
+import { analyzePhoto, generateStyleImage, listStudioImages, listStudioDrafts, getStudioDraftImage, addStudioDraftToGallery } from './ai-studio/jobs.js';
 import { createDemoSandbox } from './demo-sandbox.js';
 import { createQrSellerApi } from './whatsapp-qr/seller-api.js';
 import { createAnthropicProvider } from './ai/provider.js';
@@ -469,6 +469,18 @@ async function createTenantApi({ store, config, tenantId, tenantGuard, operation
       return json(200, await analyzePhoto({ store, secretBox, shopId: tenantId, studioProvider, actor: account.username, body }), { 'Cache-Control': 'no-store' });
     }
     const studioImages = /^\/api\/v1\/seller\/ai-studio\/products\/([0-9a-f-]{36})\/images$/.exec(pathname);
+    const studioDraft = /^\/api\/v1\/seller\/ai-studio\/products\/([0-9a-f-]{36})\/drafts(?:\/([0-9a-f-]{36}))?$/.exec(pathname);
+    if (studioDraft && method === 'GET') {
+      allow('catalog.write');
+      if (studioDraft[2]) return image(await getStudioDraftImage(store, studioDraft[1], studioDraft[2]));
+      return json(200, { items: await listStudioDrafts(store, studioDraft[1]) }, { 'Cache-Control': 'no-store' });
+    }
+    if (studioDraft?.[2] && method === 'POST') {
+      requireOrigin(request, expectedOrigin);
+      requireCsrf(request, session);
+      allow('catalog.write');
+      return json(200, await addStudioDraftToGallery(store, studioDraft[1], studioDraft[2], account.username, config.shopMode), { 'Cache-Control': 'no-store' });
+    }
     if (studioImages && method === 'GET') {
       allow('catalog.write');
       return json(200, { items: await listStudioImages(store, studioImages[1]) }, { 'Cache-Control': 'no-store' });
