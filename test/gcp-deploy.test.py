@@ -5,6 +5,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -82,7 +83,9 @@ class SchemaFake(Fake):
         self.secrets = activation_secrets(root)
     def source(self, sha): return u.Updater.source(self, sha)
     def runtime(self): return {'SECRETS_DIR': str(self.secrets)}
-    def command(self, argv, timeout=180):
+    def command(self, argv, timeout=180, *, capture=True):
+        if argv == [u.BACKUP_SCRIPT]:
+            assert not capture
         self.calls.append(argv)
         if self.command_failure and self.command_failure in argv:
             raise RuntimeError('private diagnostics')
@@ -209,6 +212,19 @@ class Tests(unittest.TestCase):
             count = len(f.calls)
             f.poll()
             self.assertEqual(count, len(f.calls))
+
+    def test_backup_archives_are_independent_of_the_diagnostic_output_limit(self):
+        with tempfile.TemporaryDirectory() as root:
+            archive = Path(root, 'snapshot.dump')
+            script = ("import sys; from pathlib import Path; "
+                      "Path(sys.argv[1]).write_bytes(b'x' * 2_097_152); "
+                      "sys.stdout.write('diagnostic' * 200_000)")
+            command = [sys.executable, '-c', script, str(archive)]
+            updater = u.Updater(root)
+            with self.assertRaises(RuntimeError):
+                updater.command(command)
+            self.assertEqual('', updater.command(command, capture=False))
+            self.assertEqual(2_097_152, archive.stat().st_size)
 
     def test_schema_backup_failures_leave_stack_untouched_and_do_not_retry(self):
         for failure, output in [(u.BACKUP_SCRIPT, ''), (u.RESTORE_TEST_SCRIPT, ''),

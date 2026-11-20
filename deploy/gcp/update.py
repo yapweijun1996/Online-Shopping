@@ -178,7 +178,8 @@ class Updater:
     def schema_backup(self):
         trusted(BACKUP_SCRIPT)
         trusted(RESTORE_TEST_SCRIPT)
-        self.command([BACKUP_SCRIPT], timeout=600)
+        # The backup writes archives larger than the diagnostic output limit.
+        self.command([BACKUP_SCRIPT], timeout=600, capture=False)
         output = self.command([RESTORE_TEST_SCRIPT], timeout=900)
         # The host tool reports one '<db>: RESULT ...' line per database; other lines (for example
         # PostgreSQL NOTICE output) are not results. Missing results or any difference fail closed.
@@ -206,17 +207,20 @@ class Updater:
         if actual != str(version):
             raise ValueError('Migrated database version mismatch')
 
-    def command(self, argv, timeout=180):
+    def command(self, argv, timeout=180, *, capture=True):
         # Output stays private, is never included in exceptions/logs and has a finite file cap.
         import resource
         def limits():
             resource.setrlimit(resource.RLIMIT_FSIZE, (1_048_576, 1_048_576))
         with tempfile.TemporaryFile() as output:
-            result = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=output, stderr=output,
-                                    timeout=timeout, check=False, preexec_fn=limits,
+            result = subprocess.run(argv, stdin=subprocess.DEVNULL,
+                                    stdout=output if capture else subprocess.DEVNULL, stderr=subprocess.STDOUT,
+                                    timeout=timeout, check=False, preexec_fn=limits if capture else None,
                                     env={'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'HOME': '/root'})
             if result.returncode:
                 raise RuntimeError('Command failed')
+            if not capture:
+                return ''
             output.seek(0)
             data = output.read(1_048_577)
             if len(data) > 1_048_576:
