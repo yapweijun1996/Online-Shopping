@@ -118,7 +118,12 @@ for (const dialect of ['sqlite', 'postgres']) {
     const fresh = await f.review(); assert.notEqual(fresh.challenge, review.challenge);
     assert.equal(Number((await f.store.get('SELECT COUNT(*) n FROM mcp_v2_media_delivery WHERE operation_id=?', f.operation.operationId)).n), 0);
     await f.complete(fresh); assert.equal((await f.approve(fresh, { mediaReviewed: true })).status, 200);
-    const old = await f.call(f.path, 'GET', undefined, f.headers); assert.equal(old.response.status, 403);
+    const status = await f.call(f.path, 'GET', undefined, f.headers);
+    assert.equal(status.response.status, 200);
+    assert.deepEqual(status.data, {
+      operationId: f.operation.operationId, status: 'APPROVED', clientName: fresh.clientName,
+    });
+    assert.equal((await f.deliver(fresh, fresh.mediaReview.items[0])).status, 403);
     assert.ok(await f.store.get('SELECT operation_id FROM mcp_v2_media_approval_evidence WHERE operation_id=?', f.operation.operationId));
   });
   test(`${dialect}: complete300-member graph with full shared gallery stays bounded through repeated review and commit`, { timeout: 120000 }, async t => {

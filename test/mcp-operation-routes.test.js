@@ -55,7 +55,12 @@ for (const dialect of ['sqlite', 'postgres']) {
       assert.equal(approved.response.status, 200, JSON.stringify(approved.data));
       assert.equal(approved.data.status, 'APPROVED');
       assert.equal((await f.call(op.path + '/approval', 'POST', op.input, f.headers)).response.status, 403);
-      assert.equal((await f.call(op.path, 'GET', undefined, f.headers)).response.status, 403);
+      const status = await f.call(op.path, 'GET', undefined, f.headers);
+      assert.equal(status.response.status, 200);
+      assert.deepEqual(status.data, {
+        operationId: op.value.operationId, status: 'APPROVED', clientName: op.review.data.clientName,
+      });
+      assert.equal((await f.call(op.path)).response.status, 403);
       const proof = await f.store.get('SELECT * FROM mcp_v2_approval_challenge WHERE operation_id = ?', op.value.operationId);
       assert.ok(proof.consumed_at);
       assert.equal(Number((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_approval')).n), 1);
