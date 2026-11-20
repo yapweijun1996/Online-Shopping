@@ -9,7 +9,7 @@ function png() { const header = Buffer.alloc(13); header.writeUInt32BE(16, 0); h
 
 for (const width of [375,1280]) for (const colorScheme of ['light','dark']) test(`Product editor real browser: ${width}px ${colorScheme}, independent drafts and shopper detail`, {skip:!modulePath}, async(t)=>{
   const {chromium}=await import(modulePath);
-  const browser=await chromium.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox','--disable-gpu']});t.after(()=>browser.close());
+  const browser=await chromium.launch({headless:true,executablePath:process.env.QA_CHROME_EXECUTABLE || '/usr/bin/google-chrome',args:['--no-sandbox','--disable-gpu']});t.after(()=>browser.close());
   const f=await sellerFixture();t.after(()=>f.close());
   const context=await browser.newContext({viewport:{width,height:900},colorScheme,serviceWorkers:'block'});
   // Every feature request reaches the real loopback app. External traffic is denied.
@@ -43,7 +43,17 @@ for (const width of [375,1280]) for (const colorScheme of ['light','dark']) test
   page.once('dialog', dialog=>dialog.dismiss()); await page.locator('#product-back').click();
   assert.equal(await page.locator('#product-detail-blocks textarea').inputValue(),'<img src=x onerror=window.__xss=1>Long-form product details.','detail-only dirty guard preserves draft');
   await page.locator('#product-editor-tab-basic').click();await page.locator('input[name=name]').fill('Updated example item');
+  await page.locator('#product-editor-tab-images').click();
   await page.locator('#product-save').click();await page.getByText('Product saved.',{exact:true}).waitFor();
+  const gaps = await page.evaluate(() => {
+    const bounds = (id) => document.getElementById(id).getBoundingClientRect();
+    const notice = bounds('product-form-success');
+    return [notice.top - bounds('product-editor-panel-images').bottom, bounds('product-history').top - notice.bottom];
+  });
+  assert.deepEqual(gaps, [16, 16], 'the save confirmation has equal spacing between the tab panel and change history');
+  const history = page.locator('#product-history');
+  await history.locator('summary').click();assert.equal(await history.getAttribute('open'), '');
+  await history.locator('summary').click();assert.equal(await history.getAttribute('open'), null);
   await page.locator('#product-editor-tab-detail').click();
   assert.equal(await page.locator('#product-detail-blocks textarea').inputValue(),'<img src=x onerror=window.__xss=1>Long-form product details.','saving basic information preserves detail draft');
   await page.locator('#product-detail-block-kind').selectOption('image');await page.getByRole('button',{name:'Add block',exact:true}).click();
@@ -96,7 +106,7 @@ for (const width of [375,1280]) for (const colorScheme of ['light','dark']) test
 
 
 test('Product editor new product: hidden required fields reveal their tab, save unlocks media and all locales retain drafts', {skip:!modulePath},async(t)=>{
-  const {chromium}=await import(modulePath);const browser=await chromium.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox','--disable-gpu']});t.after(()=>browser.close());
+  const {chromium}=await import(modulePath);const browser=await chromium.launch({headless:true,executablePath:process.env.QA_CHROME_EXECUTABLE || '/usr/bin/google-chrome',args:['--no-sandbox','--disable-gpu']});t.after(()=>browser.close());
   const f=await sellerFixture();t.after(()=>f.close());const page=await browser.newPage({viewport:{width:375,height:850},serviceWorkers:'block'});
   await page.goto(`${f.origin}/seller/#products/new`);await page.locator('#username').fill(f.config.username);await page.locator('#password').fill(f.config.password);await page.locator('#password').press('Enter');
   await page.locator('#product-editor-tab-images').click();assert.equal(await page.locator('#product-open-ai').isDisabled(),true);

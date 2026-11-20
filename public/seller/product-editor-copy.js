@@ -88,13 +88,13 @@ const rows = [
   ],
   [
     "aiHelp",
-    "Open AI Studio with this product selected. A saved main image is required; every variant must be inactive. Generation saves to the shared gallery and uses 2 AI calls per style.",
-    "Buka AI Studio dengan produk ini. Perlu gambar utama tersimpan; semua varian mesti tidak aktif. Hasil disimpan ke galeri bersama, 2 panggilan AI setiap gaya.",
-    "打开 AI 工作室并选中此商品。需要已保存的主图，所有款式须为未上架。生成结果保存到共用图库，每种风格使用 2 次 AI 调用。",
-    "Mở AI Studio với sản phẩm này. Cần ảnh chính đã lưu; tất cả biến thể phải ngừng bán. Ảnh được lưu vào thư viện chung, 2 lượt AI mỗi kiểu.",
-    "เปิด AI Studio พร้อมสินค้านี้ ต้องมีภาพหลักที่บันทึกแล้วและปิดขายทุกตัวเลือก ภาพจะบันทึกในแกลเลอรีร่วม ใช้ AI 2 ครั้งต่อสไตล์",
-    "この商品を選択してAI Studioを開きます。保存済みのメイン画像が必要で、全バリエーションが非公開である必要があります。生成画像は共有ギャラリーに保存され、1スタイルにつきAIを2回使います。",
-    "이 상품을 선택한 AI Studio를 엽니다. 저장된 대표 이미지가 필요하며 모든 옵션이 비활성이어야 합니다. 생성 이미지는 공유 갤러리에 저장되고 스타일당 AI 2회를 사용합니다."
+    "Use the saved main image to generate private previews in AI Studio. Add the previews you choose to the product gallery.",
+    "Gunakan gambar utama yang disimpan untuk menjana pratonton peribadi di AI Studio. Tambah pratonton pilihan ke galeri produk.",
+    "在 AI 工作室用已保存的主图生成私密预览，再把选中的照片加入商品图库。",
+    "Dùng ảnh chính đã lưu để tạo bản xem trước riêng tư trong AI Studio. Thêm ảnh bạn chọn vào thư viện sản phẩm.",
+    "ใช้ภาพหลักที่บันทึกไว้เพื่อสร้างภาพตัวอย่างส่วนตัวใน AI Studio แล้วเพิ่มภาพที่เลือกลงในแกลเลอรีสินค้า",
+    "保存済みのメイン画像を使ってAI Studioで非公開プレビューを作成し、選んだ画像を商品ギャラリーに追加します。",
+    "저장된 대표 이미지로 AI Studio에서 비공개 미리보기를 만들고 선택한 사진을 상품 갤러리에 추가하세요."
   ],
   [
     "aiHolder",

@@ -370,6 +370,7 @@ body{background:var(--ui-canvas)}
 .product-variant-config>.shop-note{margin:-4px 0 0}
 .product-variant-config .product-options-fieldset[hidden]{display:none}
 .product-history{margin:20px 0 0;padding:2px 14px}
+.product-form-success:not(:empty) ~ .product-history{margin-top:16px}
 .product-history summary{min-height:40px;font-size:14px}
 .product-editor-actions{gap:12px}
 .product-editor-actions #product-cancel{border:1px solid var(--ui-control-border);border-radius:9px;background:var(--ui-surface);color:var(--ui-text);padding-inline:18px}

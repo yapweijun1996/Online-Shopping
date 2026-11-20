@@ -154,7 +154,7 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
   const hits = document.createElement('ul'); hits.className = 'ai-studio-hits';
   const chosen = text('p', 'selected', 'ai-studio-selected', () => ({ name: chosenProduct?.name ?? '' })); chosen.hidden = true;
   const styleBox = document.createElement('fieldset'); styleBox.className = 'ai-studio-styles'; styleBox.hidden = true;
-  const legend = text('legend', 'genTitle'); styleBox.append(legend);
+  const legend = text('legend', 'imageStyles'); styleBox.append(legend);
   const styleInputs = STUDIO_STYLES.map((style) => {
     const label = document.createElement('label'); label.className = 'ai-studio-style';
     const input = document.createElement('input'); input.type = 'checkbox'; input.value = style; input.checked = style === 'studio';
@@ -163,10 +163,18 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
   const cost = text('p', 'cost', 'ai-studio-note', batchCost);
   const generate = button('generate', 'primary-button', 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z');
   const genStatus = liveLine();
+  genStatus.setAttribute('aria-atomic', 'true');
   const results = document.createElement('ul'); results.className = 'ai-studio-results';
   const openProduct = button('openProduct', 'secondary-button'); openProduct.hidden = true;
   const genNote = text('p', 'genHelp', 'ai-studio-note');
-  genCard.append(genNote, searchRow, hits, chosen, styleBox, cost, generate, genStatus, results, openProduct);
+  const productContext = document.createElement('div');
+  productContext.className = 'ai-studio-product-context';
+  productContext.hidden = true;
+  productContext.append(chosen, openProduct);
+  const generateActions = document.createElement('div');
+  generateActions.className = 'ai-studio-generate-actions';
+  generateActions.append(cost, generate);
+  genCard.append(genNote, searchRow, hits, productContext, styleBox, generateActions, genStatus, results);
   photoCard.hidden = true; genCard.hidden = true;   // shown only once the server reports a saved key
   keyForm.hidden = true; capForm.hidden = true; removeKey.hidden = true;
   const summary = document.createElement('div'); summary.className = 'ai-studio-summary'; summary.setAttribute('role', 'status');
@@ -201,7 +209,7 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
   const keyEditor = document.createElement('details'); keyEditor.className = 'ai-studio-key-editor'; const keySummary = text('summary', 'replaceKey');
   keyEditor.append(keySummary, keyForm); keyActions.removeChild(removeKey); usageCard.insertBefore(keyEditor, owner ? capForm : null); keyEditor.after(keyStatus);
   if (owner) usageCard.append(removeKey); else keyEditor.remove();
-  photoCard.insertBefore(text('p', 'reviewNote', 'ai-studio-note'), draftForm); genCard.insertBefore(intro, results);
+  photoCard.insertBefore(text('p', 'reviewNote', 'ai-studio-note'), draftForm); genCard.append(intro);
   page.append(summary, unavailable, tabs, setup, ...panels);
   selectTab(activeTab, false);
   root.replaceChildren(page);
@@ -211,8 +219,9 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
     return { n, calls: n * 2 };
   }
   function paintCost() {
-    cost.textContent = studioText('cost', batchCost());
-    generate.disabled = running || !state.available || !state.configured || !chosenProduct;
+    const estimate = batchCost();
+    cost.textContent = studioText(chosenProduct && !estimate.n ? 'ePicked' : 'cost', estimate);
+    generate.disabled = running || !state.available || !state.configured || !chosenProduct || !estimate.n;
   }
   let keyEditorInitialized = false;
   function paintState() {
@@ -323,7 +332,7 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
   function choose(product) {
     chosenProduct = product; results.replaceChildren(); genStatus.show(null);
     chosen.hidden = false; chosen.textContent = studioText('selected', { name: product.name }); styleBox.hidden = false; hits.replaceChildren();
-    openProduct.hidden = false; paintCost();
+    productContext.hidden = false; openProduct.hidden = false; paintCost();
     api('GET', `ai-studio/products/${product.id}/drafts`).then(({ items }) => {
       if (live() && chosenProduct === product) items.forEach((draft) => showDraft(product, draft));
     }).catch((error) => { if (live() && chosenProduct === product && !running) genStatus.show(errorKey(error), {}, true); });
@@ -351,12 +360,28 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
     const row = document.createElement('li'); row.className = 'ai-studio-result'; row.dataset.style = style;
     const name = text('strong', `style_${style}`), status = document.createElement('span');
     status.className = 'ai-studio-result-status';
+    const media = document.createElement('div');
+    media.className = 'ai-studio-result-media';
+    const queued = svg('M12 8v4l2.5 1.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z');
+    queued.classList.add('ai-studio-queued-icon');
+    const spinner = svg('M12 3a9 9 0 1 1-9 9');
+    spinner.classList.add('ai-studio-spinner');
+    media.append(queued, spinner);
     status.dataset.key = 'waiting';
     const paintStatus = () => { status.textContent = studioText(status.dataset.key); };
     paintStatus(); refreshers.push(paintStatus);
-    const body = document.createElement('div'); body.className = 'ai-studio-result-body'; body.append(name, status);
+    const body = document.createElement('div');
+    body.className = 'ai-studio-result-body';
+    body.append(name, media, status);
     row.append(body); results.append(row);
-    return { row, body, setStatus(key) { status.dataset.key = key; paintStatus(); status.classList.toggle('is-error', key.startsWith('e') || key === 'failedItem'); } };
+    row.dataset.state = 'waiting';
+    return { row, body, media, setStatus(key) {
+      row.dataset.state = key;
+      row.setAttribute('aria-busy', String(key === 'working'));
+      status.dataset.key = key;
+      paintStatus();
+      status.classList.toggle('is-error', key.startsWith('e') || key === 'failedItem');
+    } };
   }
   const shownDrafts = new WeakMap();
   function showDraft(product, draft, item) {
@@ -375,7 +400,7 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
     const ai = text('span', 'aiLabel', 'ai-studio-badge');
     const verdict = text('span', draft.verdict ? `v${draft.verdict}` : 'unreviewed', `ai-studio-badge verdict-${draft.verdict || 'NONE'}`);
     badges.append(ai, verdict);
-    item.body.prepend(previewLink); item.body.append(badges);
+    item.media.replaceChildren(previewLink); item.body.append(badges);
     if (draft.issues?.length) {
       const issues = document.createElement('ul'); issues.className = 'ai-studio-issues';
       for (const issue of draft.issues) { const li = document.createElement('li'); li.textContent = issue; issues.append(li); }
@@ -403,27 +428,37 @@ export function mountAiStudio(root, { csrfToken, onUnauthorized, role, onNavigat
   generate.addEventListener('click', async () => {
     if (!live() || generate.disabled || !chosenProduct) return;
     const styles = styleInputs.filter((input) => input.checked).map((input) => input.value);
-    if (!styles.length) { genStatus.show('ePicked', {}, true); return; }
     const target = chosenProduct;
-    running = true; setGenControls(true); paintCost(); genStatus.show('working');
+    running = true; setGenControls(true); paintCost();
     results.querySelectorAll('li[data-job]').forEach((row) => row.remove());
     const rows = styles.map(resultRow);
     rows.forEach(({ row }) => { row.dataset.job = ''; });
+    let ready = 0;
     try {
       for (let index = 0; index < styles.length; index += 1) {
         if (!live() || chosenProduct !== target) break;
         const item = rows[index]; item.setStatus('working');
+        genStatus.show('batchProgress', { current: index + 1, total: rows.length });
         try {
           const made = await api('POST', `ai-studio/products/${target.id}/images`, { style: styles[index] });
           if (!live() || chosenProduct !== target) break;
           delete item.row.dataset.job;
           showDraft(target, made, item);
+          ready += 1;
         } catch (error) {
           item.setStatus(errorKey(error));
-          if (error.status === 401 || STOPS.has(error.code)) { rows.slice(index + 1).forEach((rest) => rest.row.remove()); break; }
+          if (error.status === 401 || STOPS.has(error.code)) { rows.slice(index + 1).forEach((rest) => rest.setStatus('notStarted')); break; }
         }
       }
-    } finally { running = false; if (live()) { setGenControls(false); paintCost(); genStatus.show(null); reloadCounts(); } }
+    } finally {
+      running = false;
+      if (live()) {
+        setGenControls(false);
+        paintCost();
+        if (chosenProduct === target) genStatus.show('batchFinished', { ready, total: rows.length });
+        reloadCounts();
+      }
+    }
   });
 
   load().then(() => {
