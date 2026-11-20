@@ -56,12 +56,12 @@ export async function sharedReviewGraph(f, members = 2) {
 
 // Actual coordinator/business/HTTP handlers. Decoder packet is explicitly synthetic.
 export async function mediaReviewFixture(t, dialect, options = {}) {
-  const { fixtureOptions = {}, prepareGraph, source = syntheticMediaPng(), ...rest } = options;
+  const { fixtureOptions = {}, prepareGraph, source = syntheticMediaPng(), targetSlot = 'MAIN', ...rest } = options;
   const f = await coordinatorFixture(t, dialect, { ...rest, fixtureOptions: { ...fixtureOptions,
     config: { mcpMedia: { enabled: true }, mcpRedirectUris: ['https://connector.example.com/callback'], ...fixtureOptions.config } } });
   await freshOAuth(f);
   if (prepareGraph) await prepareGraph(f);
-  const begun = await f.coordinator.begin(f.bearer, await f.input(source));
+  const begun = await f.coordinator.begin(f.bearer, await f.input(source, { targetSlot }));
   for (let offset = 0; offset < source.length; offset += MEDIA_LIMITS.chunkBytes) {
     const chunk = source.subarray(offset, offset + MEDIA_LIMITS.chunkBytes);
     const dataParts = chunk.toString('base64').match(/.{1,4096}/g);

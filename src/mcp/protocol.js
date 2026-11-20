@@ -19,7 +19,7 @@ const envelope = body => Boolean(body && !Array.isArray(body) && typeof body ===
 function mediaFileArgumentMessage(args) {
   if (args && typeof args === 'object' && !Array.isArray(args)) {
     for (const [field, schema] of Object.entries(mediaFileInput.properties)) {
-      if (valid(args[field], schema)) continue;
+      if ((!Object.hasOwn(args, field) && !mediaFileInput.required.includes(field)) || valid(args[field], schema)) continue;
       if (field === 'file' && args.file && typeof args.file === 'object' && !Array.isArray(args.file)) {
         for (const [child, childSchema] of Object.entries(schema.properties)) {
           if ((Object.hasOwn(args.file, child) || schema.required.includes(child)) && !valid(args.file[child], childSchema)) {

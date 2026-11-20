@@ -16,6 +16,12 @@ for(const dialect of ['sqlite','postgres']){
     assert.equal(listed.response.status,200,JSON.stringify(listed.data));
     assert.deepEqual(listed.data.result.tools.slice(0,8),catalogue.map(({scope:_scope,...tool})=>tool));
     assert.deepEqual(listed.data.result.tools.slice(8).map(tool=>tool.name),['media.list','media.prepare_upload','media.commit_upload','media.upload_file','media.request_upload_url','media.preview_layout','media.commit_layout']);
+    for(const name of ['media.prepare_upload','media.upload_file','media.request_upload_url']){
+      const upload=listed.data.result.tools.find(tool=>tool.name===name);
+      assert.match(upload.description,/omit targetSlot or use GALLERY.*Use MAIN only when explicitly asked/);
+      const input=name==='media.prepare_upload' ? upload.inputSchema.properties.input.anyOf[0] : upload.inputSchema;
+      assert.ok(!input.required.includes('targetSlot'));
+    }
     const media=await f.tool('media.list',{productId:f.product.id});
     assert.equal(media.response.status,200,JSON.stringify(media.data));assert.equal(dto(media).items[0].productId,f.product.id);
     assert.equal(dto(media).assets[0].mime,'image/png');assert.doesNotMatch(JSON.stringify(dto(media)),/data:image|imageDataUrl|thumbDataUrl|socketPath|tokenFile|stockQuantity|priceMinor/);
@@ -27,8 +33,13 @@ for(const dialect of ['sqlite','postgres']){
   });
   test(`${dialect}: real RPC upload stage actions require protected HTTP review and commit once`,options,async t=>{
     const f=await mediaToolsFixture(t,dialect),source=Buffer.concat([png,Buffer.from('RPC-upload-new')]);
-    const begun=await prepare(f,{action:'begin',...await f.input(source)});
+    const before=dto(await f.tool('media.list',{productId:f.product.id})).items[0];
+    const {targetSlot:_slot,...intent}=await f.input(source);
+    assert.equal((await prepare(f,{action:'begin',...intent,targetSlot:null})).data.error.code,-32602);
+    const begun=await prepare(f,{action:'begin',...intent});
     assert.equal(begun.response.status,200,JSON.stringify(begun.data));const stage=dto(begun).stage;assert.ok(stage.stageId);
+    const replay=dto(await prepare(f,{action:'begin',...intent,targetSlot:'GALLERY'})).stage;
+    assert.equal(replay.stageId,stage.stageId);assert.equal(replay.replayed,true);
     const ordinary=(await f.store.get("SELECT COUNT(*) AS n FROM rate_limit_attempt WHERE bucket='mcp-call'")).n;
     const appended=await prepare(f,{action:'append',stageId:stage.stageId,offset:0,dataParts:parts(source)});
     assert.equal(appended.response.status,200,JSON.stringify(appended.data));assert.equal(dto(appended).stage.nextOffset,source.length);
@@ -37,10 +48,14 @@ for(const dialect of ['sqlite','postgres']){
     const sealed=await prepare(f,{action:'seal',stageId:stage.stageId,idempotencyKey:'synthetic-rpc-seal-0001'});
     assert.equal(sealed.response.status,200,JSON.stringify(sealed.data));const operation=dto(sealed).operation;assert.equal(operation.status,'PENDING_APPROVAL');
     assert.equal((await f.tool('media.commit_upload',{operationId:operation.operationId})).response.status,403);
-    await f.approve(operation);
+    assert.equal((await f.approve(operation)).proposal.targetSlot,'GALLERY');
     const results=await Promise.all([0,1].map(()=>f.tool('media.commit_upload',{operationId:operation.operationId})));
     assert.deepEqual(results.map(value=>dto(value)?.replayed).sort(),[false,true]);
     assert.deepEqual(Object.keys(dto(results[0]).result).sort(),['listingId','productId','revision']);
+    const after=dto(await f.tool('media.list',{productId:f.product.id})).items[0];
+    assert.equal(after.mainAssetKey,before.mainAssetKey);
+    assert.deepEqual(after.gallery.slice(0,-1),before.gallery);
+    assert.equal(after.gallery.length,before.gallery.length+1);
     assert.equal((await f.store.get("SELECT COUNT(*) AS n FROM mcp_v2_event WHERE operation_id=? AND event='COMMIT'",operation.operationId)).n,1);
   });
   test(`${dialect}: real layout RPC reorders and removes only existing owned images`,options,async t=>{

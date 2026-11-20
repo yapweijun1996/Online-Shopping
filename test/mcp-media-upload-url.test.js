@@ -23,10 +23,12 @@ for (const dialect of ['sqlite', 'postgres']) {
 
   check('raw bytes create the existing durable proposal without changing the product', async t => {
     const f = await mediaToolsFixture(t, dialect), before = await f.input(png);
-    const input = await args(f), link = await issue(f, input);
+    const bytes = Buffer.concat([png, Buffer.from('synthetic gallery addition')]);
+    const { targetSlot: _slot, ...input } = await args(f, { declaredBytes: bytes.length });
+    const link = await issue(f, input);
     assert.equal(link.method, 'PUT');
     assert.ok(Date.parse(link.expiresAt) > Date.now() && Date.parse(link.expiresAt) <= Date.now() + 300000);
-    assert.deepEqual(await issue(f, input), link);
+    assert.deepEqual(await issue(f, { ...input, targetSlot: 'GALLERY' }), link);
     const page = await f.api(new Request(link.uploadUrl));
     assert.equal(page.status, 200);
     assert.match(await page.text(), /type="file"/);
@@ -36,15 +38,15 @@ for (const dialect of ['sqlite', 'postgres']) {
       const asset = await f.api(new Request(f.binding.issuer + '/media/upload-picker.' + suffix));
       assert.equal(asset.status, 200); assert.equal(asset.headers.get('cache-control'), 'no-store');
     }
-    const response = await put(f, link), result = await response.json();
+    const response = await put(f, link, bytes), result = await response.json();
     assert.equal(response.status, 201, JSON.stringify(result));
     assert.equal(result.stageId, link.stageId);
-    assert.equal(result.sourceSha256, mediaHash(png));
-    assert.equal(result.byteLength, png.length);
+    assert.equal(result.sourceSha256, mediaHash(bytes));
+    assert.equal(result.byteLength, bytes.length);
     assert.equal(result.operation.status, 'PENDING_APPROVAL');
     const stored = await f.store.get('SELECT state,product_id,target_slot,canonical_data,source_sha256 FROM mcp_v2_media_stage WHERE id=?', link.stageId);
-    assert.equal(stored.state, 'BOUND'); assert.equal(stored.product_id, f.product.id); assert.equal(stored.target_slot, 'MAIN');
-    assert.equal(stored.source_sha256, mediaHash(png)); assert.deepEqual(Buffer.from(stored.canonical_data), png);
+    assert.equal(stored.state, 'BOUND'); assert.equal(stored.product_id, f.product.id); assert.equal(stored.target_slot, 'GALLERY');
+    assert.equal(stored.source_sha256, mediaHash(bytes)); assert.deepEqual(Buffer.from(stored.canonical_data), bytes);
     assert.equal((await f.input(png)).expectedRevision, before.expectedRevision);
     assert.equal((await f.tool('media.commit_upload', { operationId: result.operation.operationId })).response.status, 403);
     assert.equal((await put(f, link)).status, 410);

@@ -10,7 +10,7 @@ import { assertDecisionClearance } from './helpers/mcp-operation-review-browser-
 import { reviewPassword } from './helpers/mcp-review-fixture.js';
 
 const modulePath = process.env.QA_PLAYWRIGHT_MODULE;
-for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: real HTTPS Chromium automatically acknowledges every verified image before single-tap approval`,
+for (const dialect of ['sqlite', 'postgres']) for (const targetSlot of ['MAIN', 'GALLERY']) test(`${dialect}: HTTPS Chromium reviews ${targetSlot} placement before approval`,
   { skip: !modulePath || (dialect === 'postgres' && !process.env.SHOP_TEST_DATABASE_URL), timeout: 60000 }, async t => {
     const directory = await mkdtemp(join(tmpdir(), 'shopping-media-browser-'));
     t.after(() => rm(directory, { recursive: true, force: true }));
@@ -27,7 +27,7 @@ for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: real HTTPS Chrom
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     t.after(() => { server.closeAllConnections(); server.close(); });
     const origin = `https://127.0.0.1:${server.address().port}`;
-    const f = await mediaReviewFixture(t, dialect, { fixtureOptions: { config: { sellerOrigin: origin } }, prepareGraph: sharedReviewGraph }); api = f.api;
+    const f = await mediaReviewFixture(t, dialect, { fixtureOptions: { config: { sellerOrigin: origin } }, prepareGraph: targetSlot === 'MAIN' ? sharedReviewGraph : undefined, targetSlot }); api = f.api;
     const { chromium } = await import(modulePath), browser = await chromium.launch({ headless: true }); t.after(() => browser.close());
     const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 390, height: 844 } }); t.after(() => context.close());
     const login = await context.request.post(origin + '/api/v1/seller/session', { headers: { Origin: origin }, data: { username: 'synthetic_owner', password: reviewPassword } });
@@ -43,6 +43,16 @@ for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: real HTTPS Chrom
         await route.fulfill({ response, body: bytes });
       } else await route.fulfill({ response });
     };
+    if (targetSlot === 'GALLERY') {
+      await page.goto(origin + '/oauth/operation?operationId=' + f.operation.operationId);
+      await page.locator('#approve:enabled').waitFor();
+      assert.equal(await page.locator('#operation-heading').textContent(), 'Review gallery photo addition');
+      assert.equal(await page.locator('#approve').textContent(), 'Approve gallery addition');
+      assert.equal(await page.locator('#image-change-summary').textContent(), 'Add one photo to the gallery. The main product photo stays the same.');
+      await assertDecisionClearance(page, 'media');
+      assert.deepEqual(errors, []); assert.deepEqual(external, []);
+      return;
+    }
     await page.route('**/media/delivery', corruptImage);
     await page.goto(origin + '/oauth/operation?operationId=' + f.operation.operationId);
     await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Image verification failed'));
@@ -87,8 +97,9 @@ for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: real HTTPS Chrom
     assert.match(visibleText, /Synthetic MEDIA-TARGET/);
     assert.doesNotMatch(visibleText, /[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/i);
     assert.doesNotMatch(visibleText, /Listing role|No own main image/);
-    assert.equal(await page.locator('#approve').textContent(), 'Approve image change');
-    assert.equal(await page.locator('#image-change-summary').textContent(), '1 image changes the main product photo.');
+    assert.equal(await page.locator('#operation-heading').textContent(), 'Review main photo change');
+    assert.equal(await page.locator('#approve').textContent(), 'Approve main photo change');
+    assert.equal(await page.locator('#image-change-summary').textContent(), 'Replace the main product photo.');
     assert.ok(await mediaEffects.getByRole('heading', { name: /Gallery · Synthetic/i }).count());
     const mainPhoto = mediaEffects.locator('.media-comparison').first();
     const [before, after] = await Promise.all((await mainPhoto.locator('.media-state').all()).map(side => side.boundingBox()));

@@ -1,5 +1,9 @@
 # Upload a product image through MCP
 
+Omit `targetSlot` or pass `GALLERY` to add a gallery photo while retaining the
+current main photo. Pass `MAIN` explicitly to set or replace the main photo.
+The seller approval page identifies the intended placement before approval.
+
 ## Preferred upload: bytes outside MCP arguments
 
 For images over about 8 KiB, call `media.request_upload_url` with the product,
@@ -91,9 +95,9 @@ vendor-account handoff must be tested in that client.
    TEST-SKU. Read its current media revision and prepare the upload. Give me the
    Seller Approval link.” For an additional photo, ask for the gallery slot.
 4. The client resolves the SKU with `catalog.list`/`catalog.get`, reads
-   `media.list`, then calls `media.upload_file` with `productId`, `targetSlot`
-   (`MAIN` or `GALLERY`), `expectedRevision`, a new `idempotencyKey`, and the
-   file input required by the client wrapper. For a wrapper that requests an
+   `media.list`, then calls `media.upload_file` with `productId`, optional
+   `targetSlot`, `expectedRevision`, a new `idempotencyKey`, and the file input
+   required by the client wrapper. For a wrapper that requests an
    absolute path, use the real image path in that client's environment; the host
    bridge supplies the `file` descriptor object on the MCP wire. Direct MCP
    callers must provide that descriptor, not a filesystem path or bare file ID.

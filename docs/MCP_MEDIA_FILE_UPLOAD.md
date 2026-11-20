@@ -9,7 +9,7 @@ The reported incident stopped during model-orchestrated Base64 append. It did no
 prove a server parser bug. The old tool requires canonical base64, byte offsets,
 source size and source SHA-256; the backend checks complete size/hash before decode.
 The new `media.upload_file` is wired into the actual operation tool registry under
-existing media enablement. It accepts top-level `productId`, `targetSlot`,
+existing media enablement. It accepts top-level `productId`, optional `targetSlot` (defaults to `GALLERY`),
 `expectedRevision`, `idempotencyKey`, and `file`. OpenAI file parameter metadata
 marks `file` as a ChatGPT file object with required `download_url` and `file_id`,
 and optional `mime_type` / `file_name`.

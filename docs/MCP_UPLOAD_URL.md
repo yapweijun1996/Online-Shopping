@@ -1,6 +1,9 @@
 # Out-of-band MCP product image upload
 
-2026-11-17 — **READY (local acceptance). Production: NOT DEPLOYED.**
+Omitting `targetSlot` appends to the gallery. Pass `MAIN` explicitly to set or
+replace the main photo.
+
+The initial local acceptance on 2026-11-17 preceded production deployment.
 
 ## Problem and resulting behavior
 
@@ -24,7 +27,6 @@ Call `media.list` for the current product revision, then:
   "name": "media.request_upload_url",
   "arguments": {
     "productId": "<existing-product-uuid>",
-    "targetSlot": "MAIN",
     "expectedRevision": "<current-64-character-revision>",
     "sourceMime": "image/jpeg",
     "declaredBytes": 123904,

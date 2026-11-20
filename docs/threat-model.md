@@ -27,6 +27,9 @@ Source review at `41407a7bda20adf167e2825900a268f3949316cc`: [CODEBASE_BUG_REVIE
 `media.request_upload_url` delegates one raw-byte upload under the existing
 `media.write` grant and catalog capability. The closed request binds product,
 slot, current graph revision, MIME, exact byte count and optional SHA-256.
+All three MCP upload tools normalize an omitted slot to `GALLERY` before
+creating any upload intent. `MAIN` remains explicit, and the normalized slot
+is bound to the proposal and shown during seller approval.
 `src/mcp/media-upload-url.js` signs a stage ID, random nonce and five-minute
 deadline with a private per-connector HMAC key. The bounded server-side record
 binds the full original tenant/account/client/grant/auth-version/epoch/build

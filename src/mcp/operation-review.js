@@ -116,7 +116,7 @@ function renderBusinessSummary(value) {
     'company.preview_update': 'Review company changes',
     'inventory.preview_adjustment': 'Review stock adjustment',
     'orders.preview_decision': 'Review order decision',
-    'media.prepare_upload': 'Review image update',
+    'media.prepare_upload': value.proposal.targetSlot === 'GALLERY' ? 'Review gallery photo addition' : 'Review main photo change',
     'media.preview_layout': 'Review image layout',
   };
   const title = titles[value.toolName] || 'Review proposed seller operation';
@@ -194,7 +194,8 @@ function summaryField(label, values, changed = false) {
 }
 
 function approvalLabel(toolName, proposal) {
-  if (['media.prepare_upload', 'media.preview_layout'].includes(toolName)) return 'Approve image change';
+  if (toolName === 'media.prepare_upload') return proposal.targetSlot === 'GALLERY' ? 'Approve gallery addition' : 'Approve main photo change';
+  if (toolName === 'media.preview_layout') return 'Approve image change';
   if (toolName === 'catalog.preview_update') {
     if (proposal.normalizedInput) {
       const fields = Object.keys(proposal.normalizedInput);
@@ -519,14 +520,15 @@ function renderImageChangeSummary(toolName, proposal, effects) {
       const target = effects.find(effect => effect.kind === 'PRODUCT' && effect.productId === proposal.productId);
       const listing = effects.find(effect => effect.kind === 'LISTING' && effect.listingId === target?.after.listingId);
       const key = target?.after.mainAssetKey;
-      summary.textContent = '1 image changes the main product photo.';
+      const change = target?.before.mainAssetKey ? 'Replace the main product photo' : 'Set the main product photo';
+      summary.textContent = change + '.';
       if (key && key !== target.before.mainAssetKey && listing?.after.galleryAssetKeys.includes(key)) {
         summary.textContent = listing.before.galleryAssetKeys.includes(key)
-          ? 'This image becomes the main product photo and remains in the gallery.'
-          : 'This image becomes the main product photo and is added to the gallery.';
+          ? change + '. The new main photo is already in the gallery.'
+          : change + '. The new main photo also appears in the gallery.';
       }
     }
-    if (proposal.targetSlot === 'GALLERY') summary.textContent = '1 image is added to the product gallery.';
+    if (proposal.targetSlot === 'GALLERY') summary.textContent = 'Add one photo to the gallery. The main product photo stays the same.';
   } else if (proposal.removeMain) {
     summary.textContent = 'The main product photo is removed.';
   } else {

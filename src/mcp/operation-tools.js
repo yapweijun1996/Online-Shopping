@@ -9,7 +9,7 @@ import { recordMcpAudit, mcpAuditResource } from './audit.js';
 import { operationEpochHash } from './operation-epoch.js';
 import { verifyOperationAuthority, verifyMediaAuthority } from './operation-authorization.js';
 import { isMediaCoordinator, decodeMediaParts } from './media-coordinator.js';
-import { MEDIA_TOOL_CONTRACTS, mediaStageInput, mediaStageOutput, mediaReceiptSchema, mediaLayoutInput, mediaListInput, mediaListOutput } from './media-contracts.js';
+import { DEFAULT_MEDIA_UPLOAD_SLOT, MEDIA_TOOL_CONTRACTS, mediaStageInput, mediaStageOutput, mediaReceiptSchema, mediaLayoutInput, mediaListInput, mediaListOutput } from './media-contracts.js';
 import { OPERATION_CONTROL_CONTRACTS } from './operation-control-contracts.js';
 import { createOperationControls } from './operation-controls.js';
 import { catalogMediaUpdateEnabled,catalogMediaCreateEnabled,catalogMediaAllowed } from './catalog-media-config.js';
@@ -17,6 +17,7 @@ import { downloadMediaFile } from './media-file-download.js';
 import { uploadMediaFile } from './media-file-upload.js';
 import { createMediaUploadUrls } from './media-upload-url.js';
 
+const uploadIntent = args => ({ targetSlot: DEFAULT_MEDIA_UPLOAD_SLOT, ...args });
 const uuid = { type: 'string', minLength: 36, maxLength: 36, pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' };
 const object = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
 const reserved = new Set(['tenantId', 'shopId', 'accountId', 'bearer', 'config', 'adapter', 'approved', 'password', 'challenge', 'scope', 'capability', 'currencyAcknowledged', 'catalogUpdateEnabled', 'mcpCatalogMediaUpdate', 'catalogCreateEnabled', 'mcpCatalogMediaCreate']);
@@ -244,7 +245,7 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
       if(registered.kind==='control')return controls.call(name,args,bearer);
       if (registered.kind === 'uploadUrl') {
         let dto;
-        try { dto = await uploadUrls.issue(freeze(JSON.parse(canonicalOperationJson(args))), bearer); }
+        try { dto = await uploadUrls.issue(freeze(JSON.parse(canonicalOperationJson(uploadIntent(args)))), bearer); }
         catch (error) {
           if (error instanceof ApiError && error.status === 404) throw new ApiError(400, 'MEDIA_RESOURCE_NOT_FOUND', 'Media resource not found.');
           throw error;
@@ -253,7 +254,7 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
         return dto;
       }
       if (registered.kind === 'file') {
-        const safeArgs = freeze(JSON.parse(canonicalOperationJson(args)));
+        const safeArgs = freeze(JSON.parse(canonicalOperationJson(uploadIntent(args))));
         let dto;
         try {
           dto = await uploadMediaFile({ args: safeArgs, bearer, coordinator: registered.coordinator,
@@ -294,7 +295,7 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
             operation.reviewUrl = binding.issuer + '/oauth/operation?operationId=' + operation.operationId;
             dto = { action, stage: null, operation };
           } else {
-            const stage = action === 'begin' ? await registered.coordinator.begin(bearer,input)
+            const stage = action === 'begin' ? await registered.coordinator.begin(bearer,uploadIntent(input))
               : action === 'append' ? await registered.coordinator.append(bearer,input)
               : await registered.coordinator.discard(bearer,input);
             dto = { action, stage, operation: null };

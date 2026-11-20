@@ -34,19 +34,21 @@ mediaTest('file tool is discoverable and uses existing review/approval/commit wi
   assert.deepEqual(advertised.inputSchema.properties.file.required, ['download_url', 'file_id']);
   assert.deepEqual(registered.find('media.upload_file')._meta, { 'openai/fileParams': ['file'] });
   assert.deepEqual(registered.requiredScopes('media.upload_file'), ['media.write']);
-  const args = await argumentsFor(f);
+  const before = (await f.tool('media.list', { productId: f.product.id })).data.result.structuredContent;
+  const { targetSlot: _slot, ...args } = await argumentsFor(f);
   const first = await registered.call('media.upload_file', args, f.bearer);
   assert.equal(first.status, 'PENDING_APPROVAL');
   assert.equal((await f.tool('media.commit_upload', { operationId: first.operationId })).response.status, 403);
   const chunks = await f.store.all('SELECT data FROM mcp_v2_media_chunk ORDER BY "offset"');
   assert.deepEqual(Buffer.concat(chunks.map(row => Buffer.from(row.data))), bytes);
-  const repeated = await registered.call('media.upload_file', args, f.bearer);
+  const repeated = await registered.call('media.upload_file', { ...args, targetSlot: 'GALLERY' }, f.bearer);
   assert.equal(repeated.operationId, first.operationId);
   assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_operation')).n, 1);
-  await f.approve(first);
+  assert.equal((await f.approve(first)).proposal.targetSlot, 'GALLERY');
   assert.equal((await f.tool('media.commit_upload', { operationId: first.operationId })).data.result.structuredContent.status, 'COMMITTED');
   const current = (await f.tool('media.list', { productId: args.productId })).data.result.structuredContent;
-  assert.ok(current.items[0].mainAssetKey);
+  assert.equal(current.items[0].mainAssetKey, before.items[0].mainAssetKey);
+  assert.equal(current.items[0].gallery.length, before.items[0].gallery.length + 1);
   assert.notEqual(current.revision, args.expectedRevision);
 });
 
@@ -64,8 +66,8 @@ mediaTest('current authorization, foreign product and stale revision fail before
 
 mediaTest('file RPC identifies invalid fields and unsupported source hosts without exposing file capabilities', async t => {
   const f = await mediaToolsFixture(t, dialect);
-  const args = await argumentsFor(f);
-  for (const [field, value] of [['file', 'file-private'], ['productId', 'not-a-uuid'],
+  const { targetSlot: _slot, ...args } = await argumentsFor(f);
+  for (const [field, value] of [['targetSlot', null], ['file', 'file-private'], ['productId', 'not-a-uuid'],
     ['expectedRevision', 'private-revision'], ['idempotencyKey', 'short']]) {
     const response = await f.tool('media.upload_file', { ...args, [field]: value });
     assert.equal(response.data.error.code, -32602);
