@@ -781,3 +781,9 @@
 .ai-studio-style:has(input:checked) { background:var(--shop-selected-surface); }
 .ai-studio-style:focus-within { outline:2px solid var(--ui-focus);outline-offset:2px; }
 @media(max-width:540px){.ai-studio-generate-actions { align-items:stretch;flex-direction:column; }}
+
+:root[data-theme="dark"] .seller-sidebar { --sidebar-nav-selected:var(--shop-selected-surface); }
+:root[data-theme="dark"] .seller-sidebar .nav-current-indicator { background:var(--ui-primary); }
+:root[data-ui-surface="seller"] .appearance-swatch {
+  background:linear-gradient(to bottom,var(--ui-action) 50%,var(--ui-surface) 50%);
+}

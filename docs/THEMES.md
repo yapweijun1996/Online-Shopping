@@ -5,11 +5,11 @@ language menu, including on mobile and the offline fallback pages. System is the
 default and follows changes to the operating system's color scheme. Light and
 Dark override that scheme. Both PWAs retain their locked zoom viewport.
 
-`public/shared/theme.css` owns the shared color, palette and layout tokens. Dark
-uses the Platform console's forest palette. Action backgrounds and action text
-have separate roles so both white button labels and green links remain readable.
-The ten presets in Appearance settings supply light and dark accent roles.
-Dark mode uses a shared forest surface with palette-specific accents.
+`public/shared/theme.css` owns the shared color, palette and layout tokens. Seller dark mode uses charcoal surfaces and a neutral sidebar. Shop and Platform
+use forest surfaces. The ten Appearance presets supply distinct interactive
+accents in both modes. Action backgrounds and action text use separate tokens
+for readable button labels and links. Appearance previews use the same
+surface and accent tokens as the selected mode.
 `public/shop/tokens.css` remains a compatibility import. Platform resolves
 the shared files through its existing symlink layout and follows the operating
 system theme.

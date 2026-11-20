@@ -32,8 +32,11 @@ test('shared theme persists across Seller and Shop, follows System, and remains 
       assert.match(icon, mode === 'system' ? /<rect/ : mode === 'light' ? /<circle/ : /<path/);
       assert.doesNotMatch(icon, mode === 'system' ? /<circle/ : mode === 'light' ? /<rect/ : /<rect|<circle/);
       const chrome = await page.evaluate(() => ({ meta: document.querySelector('meta[name="theme-color"]').content, bar: getComputedStyle(document.querySelector('.topbar')).backgroundColor }));
-      assert.equal(chrome.meta, resolved === 'dark' ? '#202d25' : '#ffffff');
-      assert.equal(chrome.bar, resolved === 'dark' ? 'rgb(32, 45, 37)' : 'rgb(255, 255, 255)');
+      const seller = new URL(page.url()).pathname.startsWith('/seller/');
+      const darkMeta = seller ? '#1a1e25' : '#202d25';
+      const darkBar = seller ? 'rgb(26, 30, 37)' : 'rgb(32, 45, 37)';
+      assert.equal(chrome.meta, resolved === 'dark' ? darkMeta : '#ffffff');
+      assert.equal(chrome.bar, resolved === 'dark' ? darkBar : 'rgb(255, 255, 255)');
     };
     const capture = async (surface, mode) => {
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
@@ -185,7 +188,8 @@ test('ten Shop and Seller palettes retain distinct accents and preview parity in
           assert.ok(contrast(colors[foreground], colors[background]) >= minimum, `${label} ${foreground} vs ${background}`);
         }
         const barColor = await topbar.evaluate(element => getComputedStyle(element).backgroundColor);
-        assert.equal(barColor, mode === 'dark' ? 'rgb(32, 45, 37)' : 'rgb(255, 255, 255)', label);
+        const darkBar = surface === 'seller' ? 'rgb(26, 30, 37)' : 'rgb(32, 45, 37)';
+        assert.equal(barColor, mode === 'dark' ? darkBar : 'rgb(255, 255, 255)', label);
         assert.equal(barColor, colors['--ui-surface'], label);
       }
       assert.equal(accents.size, paletteIds.length, `${surface} ${mode} has a distinct accent for each palette`);

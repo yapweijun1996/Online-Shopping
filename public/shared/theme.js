@@ -11,7 +11,8 @@
     document.documentElement.dataset.theme = theme;
     document.documentElement.dataset.themePreference = mode;
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.content = theme === 'dark' ? '#202d25' : '#ffffff';
+    const darkChrome = document.documentElement.dataset.uiSurface === 'seller' ? '#1a1e25' : '#202d25';
+    if (meta) meta.content = theme === 'dark' ? darkChrome : '#ffffff';
     const artwork = {
           system: '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/>',
           light: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>',

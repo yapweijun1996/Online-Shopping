@@ -287,6 +287,26 @@
   --shop-success: #a2d6b2;
 }
 
+/* Seller work surfaces are neutral. Appearance previews use the same foundation. */
+:root[data-ui-surface="seller"][data-theme="dark"],
+.palette-preview[data-ui-surface="seller"][data-theme="dark"],
+:root[data-ui-surface="seller"][data-theme="dark"] .appearance-swatch {
+  --ui-canvas: #111317;
+  --ui-surface: #1a1e25;
+  --ui-sidebar-surface: #151920;
+  --ui-text: #f1f4f8;
+  --ui-ink: var(--ui-text);
+  --ui-muted: #acb7c6;
+  --ui-secondary-text: var(--ui-muted);
+  --ui-border: #343d4b;
+  --ui-divider: var(--ui-border);
+  --ui-control-border: #738399;
+  --shop-control-border: var(--ui-control-border);
+  --shop-price-standard: var(--ui-text);
+  --shop-price: var(--ui-text);
+  --shop-order-total: var(--ui-text);
+}
+
 @media (prefers-color-scheme: dark) {
   :root[data-ui-surface="platform"] .appearance-swatch {
     --ui-primary: var(--palette-dark-primary, #a2d6b2);

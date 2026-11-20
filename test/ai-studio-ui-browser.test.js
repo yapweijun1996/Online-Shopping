@@ -126,7 +126,7 @@ test('AI Studio page: key, photo to draft, independent styled images, phone widt
   assert.equal(await spinner.getAttribute('aria-hidden'), 'true');
   assert.equal(await page.locator('.ai-studio-result[data-state=waiting]').count(), 6);
   assert.ok(await overflow() <= 0);
-  await spinner.scrollIntoViewIfNeeded();
+  await workingFrame.scrollIntoViewIfNeeded();
   await shot('loading-mobile');
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.emulateMedia({ colorScheme: 'dark' });
