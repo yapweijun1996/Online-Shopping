@@ -1411,6 +1411,20 @@ const paletteMessages = {
 };
 for (const { code } of languages) Object.assign(messages[code], paletteMessages[code]);
 
+const newPaletteLabels = {
+  en: ['Indigo', 'Emerald', 'Rose', 'Copper'],
+  ms: ['Indigo', 'Zamrud', 'Ros', 'Tembaga'],
+  'zh-Hans': ['靛蓝', '祖母绿', '玫瑰', '铜色'],
+  vi: ['Chàm', 'Ngọc lục bảo', 'Hồng', 'Đồng'],
+  th: ['คราม', 'มรกต', 'กุหลาบ', 'ทองแดง'],
+  ja: ['インディゴ', 'エメラルド', 'ローズ', 'カッパー'],
+  ko: ['인디고', '에메랄드', '로즈', '코퍼'],
+};
+for (const { code } of languages) {
+  const [paletteIndigo, paletteEmerald, paletteRose, paletteCopper] = newPaletteLabels[code];
+  Object.assign(messages[code], { paletteIndigo, paletteEmerald, paletteRose, paletteCopper });
+}
+
 const dashboardMessages = {
   en: {
     dashboardSimulated: 'Simulated', dashboardProduction: 'Production',

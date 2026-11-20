@@ -1,15 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { runInNewContext as rawContext } from 'node:vm';
-const runInNewContext = (source, context) => rawContext(source.replace(/^import .*\n/m, ''), { scopedKey: (key) => key, ...context });
+import { paletteChoices } from '../public/shared/palette-registry.js';
 
 const stylesheet = readFileSync(new URL('../public/shared/theme.css', import.meta.url), 'utf8');
-const script = readFileSync(new URL('../public/shop/palette.js', import.meta.url), 'utf8');
 const roles = (block) => Object.fromEntries([...block.matchAll(/(--[\w-]+):\s*(#[0-9a-f]{3,6})\s*;/gi)].map(([, name, color]) => [name, color]));
 const blocks = [...stylesheet.matchAll(/([^{}]+)\{([^{}]+)\}/g)];
 const base = roles(blocks.find(([, selector]) => selector.trim().startsWith(':root,'))[2]);
-const palettes = ['evergreen-teal', 'warm-plum', 'ocean-blue', 'navy-orange', 'high-contrast', 'graphite'].map((id) => ({
+const paletteIds = ['evergreen-teal', 'warm-plum', 'ocean-blue', 'navy-orange', 'high-contrast', 'graphite', 'indigo', 'emerald', 'rose', 'copper'];
+const palettes = paletteIds.map((id) => ({
   id,
   colors: { ...base, ...roles(blocks.find(([, selector]) => selector.includes(`data-shop-palette="${id}"`))?.[2] || '') },
 }));
@@ -26,7 +25,11 @@ function contrast(colors, foreground, background) {
   return (values[0] + 0.05) / (values[1] + 0.05);
 }
 
-test('all Shop palettes keep readable text, actions, states, borders, and focus', () => {
+test('the shared catalog lists the original six and four new unique palettes', () => {
+  assert.deepEqual(paletteChoices.map(([id]) => id).sort(), [...paletteIds].sort());
+});
+
+test('all Shop light palettes keep readable text, actions, states, borders, and focus', () => {
   const pairs = [
     ['primary button text', '#ffffff', '--ui-primary', 4.5],
     ['accent button text', '#ffffff', '--shop-accent', 4.5],
@@ -63,44 +66,82 @@ test('all Shop palettes keep readable text, actions, states, borders, and focus'
   for (const role of invariant) assert.equal(new Set(palettes.map(({ colors }) => colors[role])).size, 1, `${role} must remain invariant`);
 });
 
-test('palette preference applies early, persists, validates input, and syncs tabs', () => {
-  const values = new Map([['online-shopping-shop-palette-v1', 'warm-plum']]);
-  const events = new Map();
+async function loadPalette(t, surface) {
+  const module = new URL(`../public/${surface}/palette.js`, import.meta.url);
+  module.searchParams.set('test', t.name);
+  await import(module.href);
+}
+
+function fixture(t, { values = new Map(), blocked = false, scope = '' } = {}) {
+  const events = [];
   const document = { documentElement: { dataset: {} } };
-  const window = { addEventListener(name, listener) { events.set(name, listener); } };
-  const localStorage = { getItem(key) { return values.get(key); }, setItem(key, value) { values.set(key, value); } };
-  runInNewContext(script, { document, window, localStorage });
-  assert.equal(document.documentElement.dataset.shopPalette, 'warm-plum');
-  assert.equal(window.shopPalette.choose('ocean-blue'), true);
-  assert.equal(values.get('online-shopping-shop-palette-v1'), 'ocean-blue');
-  assert.equal(window.shopPalette.choose('unknown'), false);
-  assert.equal(window.shopPalette.current(), 'ocean-blue');
-  events.get('storage')({ key: 'online-shopping-shop-palette-v1', newValue: 'evergreen-teal' });
-  assert.equal(document.documentElement.dataset.shopPalette, 'evergreen-teal');
+  const window = { addEventListener(name, listener) { if (name === 'storage') events.push(listener); } };
+  const localStorage = {
+    getItem(key) { if (blocked) throw Error('blocked'); return values.get(key) ?? null; },
+    setItem(key, value) { if (blocked) throw Error('blocked'); values.set(key, value); },
+  };
+  const globals = { document, window, localStorage, shopStorageNamespace: scope };
+  for (const [key, value] of Object.entries(globals)) {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, key);
+    Object.defineProperty(globalThis, key, { configurable: true, value });
+    t.after(() => {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else delete globalThis[key];
+    });
+  }
+  return { document, window, values, storage(event) { for (const listener of events) listener(event); } };
+}
+
+test('palette preference applies on import, persists, validates input, and syncs tabs', async t => {
+  const key = 'online-shopping-shop-palette-v1';
+  const f = fixture(t, { values: new Map([[key, 'warm-plum']]) });
+  await loadPalette(t, 'shop');
+  assert.equal(f.document.documentElement.dataset.shopPalette, 'warm-plum');
+  assert.equal(f.window.shopPalette.choose('copper'), true);
+  assert.equal(f.values.get(key), 'copper');
+  assert.equal(f.window.shopPalette.choose('unknown'), false);
+  assert.equal(f.window.shopPalette.current(), 'copper');
+  f.storage({ key, newValue: 'evergreen-teal' });
+  assert.equal(f.document.documentElement.dataset.shopPalette, 'evergreen-teal');
 });
 
-test('failed storage never reports a saved preference', () => {
-  const document = { documentElement: { dataset: {} } };
-  const window = { addEventListener() {} };
-  const localStorage = { getItem() { throw Error('blocked'); }, setItem() { throw Error('blocked'); } };
-  runInNewContext(script, { document, window, localStorage });
-  assert.equal(document.documentElement.dataset.shopPalette, 'evergreen-teal');
-  assert.equal(window.shopPalette.choose('warm-plum'), false);
-  assert.equal(document.documentElement.dataset.shopPalette, 'warm-plum');
+test('failed storage never reports a saved preference', async t => {
+  const f = fixture(t, { blocked: true });
+  await loadPalette(t, 'shop');
+  assert.equal(f.document.documentElement.dataset.shopPalette, 'evergreen-teal');
+  assert.equal(f.window.shopPalette.choose('rose'), false);
+  assert.equal(f.document.documentElement.dataset.shopPalette, 'rose');
 });
 
-test('seller and customer preferences persist independently and share all five accessible palettes', () => {
-  const values = new Map([['online-shopping-shop-palette-v1', 'warm-plum'], ['online-shopping-seller-palette-v1', 'graphite']]);
-  const events = [], document = { documentElement: { dataset: {} } };
-  const window = { addEventListener(name, fn) { events.push(fn); } };
-  const localStorage = { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) };
-  runInNewContext(script, { document, window, localStorage });
-  runInNewContext(readFileSync(new URL('../public/seller/palette.js', import.meta.url), 'utf8'), { document, window, localStorage });
-  assert.equal(window.sellerPalette.current(), 'graphite'); assert.equal(window.shopPalette.current(), 'warm-plum');
-  for (const { id } of palettes) assert.equal(window.sellerPalette.choose(id), true);
-  assert.equal(values.get('online-shopping-shop-palette-v1'), 'warm-plum');
-  assert.equal(window.sellerPalette.choose('forged'), false);
-  for (const fn of events) fn({ key: 'online-shopping-seller-palette-v1', newValue: 'high-contrast' });
-  assert.equal(document.documentElement.dataset.sellerPalette, 'high-contrast');
-  assert.equal(document.documentElement.dataset.shopPalette, 'warm-plum');
+test('seller and customer preferences persist independently for the same ten palettes', async t => {
+  const shop = 'online-shopping-shop-palette-v1';
+  const seller = 'online-shopping-seller-palette-v1';
+  const f = fixture(t, { values: new Map([[shop, 'warm-plum'], [seller, 'graphite']]) });
+  await loadPalette(t, 'shop');
+  await loadPalette(t, 'seller');
+  assert.equal(f.window.sellerPalette.current(), 'graphite');
+  assert.equal(f.window.shopPalette.current(), 'warm-plum');
+  for (const id of paletteIds) assert.equal(f.window.sellerPalette.choose(id), true);
+  assert.equal(f.values.get(shop), 'warm-plum');
+  assert.equal(f.window.sellerPalette.choose('forged'), false);
+  f.storage({ key: seller, newValue: 'high-contrast' });
+  assert.equal(f.document.documentElement.dataset.sellerPalette, 'high-contrast');
+  assert.equal(f.document.documentElement.dataset.shopPalette, 'warm-plum');
+});
+
+test('tenant palette preferences ignore default and other tenant storage', async t => {
+  const key = 'online-shopping-shop-palette-v1';
+  const scope = 't-0123456789ab';
+  const scoped = `${key}:${scope}`;
+  const other = `${key}:t-abcdef123456`;
+  const f = fixture(t, { scope, values: new Map([[key, 'warm-plum'], [other, 'graphite'], [scoped, 'indigo']]) });
+  await loadPalette(t, 'shop');
+  assert.equal(f.window.shopPalette.current(), 'indigo');
+  f.storage({ key, newValue: 'rose' });
+  f.storage({ key: other, newValue: 'rose' });
+  assert.equal(f.window.shopPalette.current(), 'indigo');
+  assert.equal(f.window.shopPalette.choose('emerald'), true);
+  assert.equal(f.values.get(key), 'warm-plum');
+  assert.equal(f.values.get(other), 'graphite');
+  assert.equal(f.values.get(scoped), 'emerald');
 });

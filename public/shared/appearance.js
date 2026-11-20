@@ -1,12 +1,16 @@
 import { t, translate } from './i18n.js';
 import { createModal } from './modal.js';
+import { paletteChoices } from './palette-registry.js';
 
-export const paletteChoices = [
-  ['evergreen-teal', 'paletteEvergreen'], ['warm-plum', 'palettePlum'],
-  ['ocean-blue', 'paletteOcean'], ['navy-orange', 'paletteNavyOrange'], ['high-contrast', 'paletteContrast'], ['graphite', 'paletteGraphite'],
-];
+function applyPreviewTheme(element, systemTheme) {
+  const root = document.documentElement;
+  const surface = root.dataset.uiSurface;
+  element.dataset.uiSurface = surface || 'seller';
+  element.dataset.theme = root.dataset.theme || (surface === 'platform' && systemTheme.matches ? 'dark' : 'light');
+}
 
 export function mountAppearance(root, surface) {
+  const systemTheme = matchMedia('(prefers-color-scheme: dark)');
   const preference = window[`${surface}Palette`];
   const titleKey = surface === 'seller' ? 'sellerAppearance' : 'paletteTitle';
   const make = (tag, key, className = '') => {
@@ -34,11 +38,18 @@ export function mountAppearance(root, surface) {
     inputs.push(input);
     const swatch = make('span', '', 'appearance-swatch palette-preview');
     swatch.dataset.palette = id; swatch.setAttribute('aria-hidden', 'true');
+    swatch.dataset.uiSurface = document.documentElement.dataset.uiSurface || surface;
     label.append(input, swatch, make('span', key));
     const preview = make('button', 'previewPalette', 'outline-button'); preview.type = 'button';
     preview.addEventListener('click', () => {
       const modal = createModal();
-      const sample = make('section', '', 'appearance-sample palette-preview'); sample.dataset.palette = id;
+      const sample = make('section', '', 'appearance-sample palette-preview');
+      sample.dataset.palette = id;
+      applyPreviewTheme(sample, systemTheme);
+      const updateTheme = () => applyPreviewTheme(sample, systemTheme);
+      const themeObserver = new MutationObserver(updateTheme);
+      themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+      systemTheme.addEventListener('change', updateTheme);
       sample.append(make('h3', key), make('p', 'paletteSample'));
       const action = make('button', 'paletteSampleButton', 'primary-button'); action.type = 'button';
       const field = make('input'); field.readOnly = true; field.value = 'MYR 14.90'; field.setAttribute('aria-label', t('price'));
@@ -46,7 +57,11 @@ export function mountAppearance(root, surface) {
       const apply = make('button', 'applyPalette', 'primary-button'); apply.type = 'button';
       apply.addEventListener('click', () => { choose(id); modal.close(); });
       modal.content.append(sample, apply);
-      modal.open(`${t('previewPalette')}: ${t(key)}`, () => modal.content.parentElement.remove());
+      modal.open(`${t('previewPalette')}: ${t(key)}`, () => {
+        themeObserver.disconnect();
+        systemTheme.removeEventListener('change', updateTheme);
+        modal.content.parentElement.remove();
+      });
     });
     row.append(label, preview); options.append(row);
   }

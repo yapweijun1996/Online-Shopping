@@ -1,4 +1,45 @@
-:root{font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ui-text, #133248);background:var(--ui-canvas, #f5f8fa);font-synthesis:none}
+/* Shared shell roles. Each surface can adapt layout without redefining the palette. */
+:root {
+  --ui-font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --ui-font-family-storefront: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --ui-topbar-font-brand-size: 18px;
+  --ui-topbar-font-brand-prominent-size: 21px;
+  --ui-topbar-font-brand-compact-size: 16px;
+  --ui-topbar-font-brand-tight-size: 15px;
+  --ui-topbar-font-brand-caption-size: 9px;
+  --ui-topbar-font-brand-line-height: 1.15;
+  --ui-topbar-font-brand-weight: 750;
+  --ui-topbar-font-control-size: var(--ui-font-md, 14px);
+  --ui-topbar-font-control-compact-size: var(--ui-font-sm, 13px);
+  --ui-topbar-font-control-weight: 650;
+  --ui-topbar-font-label-weight: 600;
+  --ui-topbar-font-label-line-height: 1.2;
+  --ui-topbar-font-emphasis-weight: 700;
+  --ui-topbar-font-caption-size: 12px;
+  --ui-topbar-font-badge-compact-size: 10px;
+  --ui-topbar-font-search-mobile-size: 16px;
+  --ui-topbar-font-navigation-line-height: 1.4286;
+  --ui-topbar-surface: var(--ui-surface, #fff);
+  --ui-topbar-text: var(--ui-text, #133248);
+  --ui-topbar-secondary-text: var(--ui-secondary-text, #52616b);
+  --ui-topbar-muted: var(--ui-muted, #536b79);
+  --ui-topbar-border: var(--ui-border, #dce7eb);
+  --ui-topbar-control-border: var(--ui-control-border, #8095a0);
+  --ui-topbar-hover: var(--ui-hover-surface, #edf5f5);
+  --ui-topbar-focus: var(--ui-focus, #067478);
+  --ui-topbar-accent: var(--ui-primary, #087f83);
+  --ui-topbar-action: var(--ui-action, var(--ui-topbar-accent));
+  --ui-topbar-on-action: var(--ui-on-action, #fff);
+  --ui-topbar-selected-surface: var(--shop-selected-surface, #e8f4f3);
+  --ui-topbar-selected-strong: var(--shop-selected-strong, #e1f4f1);
+  --ui-topbar-selected-text: var(--shop-selected-text, #205f64);
+  --ui-topbar-warning: var(--ui-warning-text, var(--shop-warning-text, #715314));
+  --ui-topbar-danger: var(--ui-danger, var(--shop-error, #aa3946));
+  font-family: var(--ui-font-family);
+  color: var(--ui-text, #133248);
+  background: var(--ui-canvas, #f5f8fa);
+  font-synthesis: none;
+}
 *{box-sizing:border-box}
 body{margin:0;min-width:280px}
 button,input,select,textarea{font:inherit}
@@ -10,18 +51,19 @@ svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke
 .ui-icon.ui-icon-more{width:24px;height:24px;fill:currentColor;stroke:none}
 .ui-icon{display:inline-block;width:1em;height:1em;flex:none;vertical-align:-.125em;stroke-width:2}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible{outline:3px solid var(--ui-focus, #42b9b5);outline-offset:2px}
-.topbar{height:72px;position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:16px;padding:0 28px;background:var(--ui-surface, #fff);border-bottom:1px solid var(--ui-border, #dce7eb)}
-.brand{text-decoration:none;font-weight:750;display:flex;align-items:center;gap:11px;white-space:nowrap}
+.topbar{height:72px;position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:16px;padding:0 28px;background:var(--ui-topbar-surface);border-bottom:1px solid var(--ui-topbar-border)}
+.topbar :focus-visible{outline-color:var(--ui-topbar-focus)}
+.brand{text-decoration:none;font-weight:var(--ui-topbar-font-brand-weight);display:flex;align-items:center;gap:11px;white-space:nowrap}
 .brand-mark{width:34px;height:34px;display:block;border-radius:10px;object-fit:contain;flex:none}
 .brand-mark.large{width:52px;height:52px;border-radius:15px}
-.language-control{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:650;color:#536b79}
-.language-control select{max-width:170px;border:1px solid #cfdee3;border-radius:10px;background:var(--ui-surface, #fff);padding:9px 10px;color:var(--ui-ink, #173950)}
+.language-control{display:flex;align-items:center;gap:8px;font-size:var(--ui-topbar-font-control-compact-size);font-weight:var(--ui-topbar-font-control-weight);color:var(--ui-topbar-muted)}
+.language-control select{max-width:170px;border:1px solid var(--ui-topbar-control-border);border-radius:10px;background:var(--ui-topbar-surface);padding:9px 10px;color:var(--ui-topbar-text)}
 .language-menu{position:relative;margin-left:auto}
-.language-trigger{width:42px;height:42px;display:grid;place-items:center;border:1px solid #cfdee3;border-radius:10px;background:var(--ui-surface, #fff);color:#1d465a}
-.language-trigger:hover,.language-trigger[aria-expanded="true"]{background:#eaf5f5;border-color:#78b8b7}
-.language-options{position:absolute;right:0;top:calc(100% + 8px);width:max-content;min-width:170px;max-width:min(260px,calc(100vw - 24px));padding:6px;border:1px solid var(--ui-border, #dce7eb);border-radius:12px;background:var(--ui-surface, #fff);box-shadow:0 16px 40px #15354c22;z-index:40}
-.language-options button{display:block;width:100%;border:0;border-radius:8px;background:transparent;padding:10px 12px;text-align:left;color:var(--ui-ink, #173950)}
-.language-options button:hover,.language-options button[aria-current="true"]{background:#e8f4f3;color:#205f64}
+.language-trigger{width:42px;height:42px;display:grid;place-items:center;border:1px solid var(--ui-topbar-control-border);border-radius:10px;background:var(--ui-topbar-surface);color:var(--ui-topbar-text)}
+.language-trigger:hover,.language-trigger[aria-expanded="true"]{background:var(--ui-topbar-hover);border-color:var(--ui-topbar-accent)}
+.language-options{position:absolute;right:0;top:calc(100% + 8px);width:max-content;min-width:170px;max-width:min(260px,calc(100vw - 24px));padding:6px;border:1px solid var(--ui-topbar-border);border-radius:12px;background:var(--ui-topbar-surface);box-shadow:0 16px 40px #15354c22;z-index:40}
+.language-options button{display:block;width:100%;border:0;border-radius:8px;background:transparent;padding:10px 12px;text-align:left;color:var(--ui-topbar-text)}
+.language-options button:hover,.language-options button[aria-current="true"]{background:var(--ui-topbar-selected-surface);color:var(--ui-topbar-selected-text)}
 .eyebrow{color:var(--ui-primary, #087f83);text-transform:uppercase;letter-spacing:.08em;font-size:12px;font-weight:800;margin:0 0 8px}
 h1{font-size:clamp(29px,3vw,40px);letter-spacing:-.035em;line-height:1.14;margin:0}
 .primary-button{border:0;border-radius:10px;background:var(--ui-primary, #087f83);color:var(--ui-surface, #fff);min-height:46px;padding:11px 18px;font-weight:700}
@@ -30,7 +72,7 @@ h1{font-size:clamp(29px,3vw,40px);letter-spacing:-.035em;line-height:1.14;margin
 .offline-main{max-width:650px;margin:clamp(30px,8vh,100px) auto;padding:30px}
 .offline-main p:not(.eyebrow){color:var(--ui-muted, #58717d);line-height:1.6}
 @media(max-width:760px){.topbar{height:64px;padding:0 13px;gap:7px}
-.brand{font-size:14px}
+.brand{font-size:var(--ui-topbar-font-control-size)}
 .language-control>span{display:none}
 .language-control select{max-width:130px;padding:7px}
 .language-trigger{width:40px;height:40px}
@@ -55,10 +97,10 @@ h1{font-size:clamp(29px,3vw,40px);letter-spacing:-.035em;line-height:1.14;margin
 @media(max-width:760px){.app-modal-confirm{width:calc(100vw - 32px);max-width:460px;height:fit-content;max-height:calc(100dvh - 32px);margin:auto;border-radius:16px}.app-modal-confirm header{padding-top:12px}.app-modal-confirm .modal-content{padding-bottom:20px}.modal-confirm-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.modal-confirm-actions button{min-width:0}}
 @media(prefers-reduced-motion:reduce){.app-modal[open],.app-modal.closing{animation:none}}
 /* Top bar update button (shared/topbar-update.js), the same in every console: visible while an update waits, installs or failed. */
-.topbar-update{position:relative;display:inline-flex;flex:none;align-items:center;justify-content:center;gap:8px;min-width:44px;min-height:44px;padding:0 12px;color:var(--ui-primary);background:var(--ui-surface);border:1px solid var(--ui-primary);border-radius:var(--ui-radius-sm, 8px);font-weight:650;cursor:pointer}
+.topbar-update{position:relative;display:inline-flex;flex:none;align-items:center;justify-content:center;gap:8px;min-width:44px;min-height:44px;padding:0 12px;color:var(--ui-topbar-accent);background:var(--ui-topbar-surface);border:1px solid var(--ui-topbar-accent);border-radius:var(--ui-radius-sm, 8px);font-weight:var(--ui-topbar-font-control-weight);cursor:pointer}
 .topbar-update .ui-icon{width:20px;height:20px}
-.topbar-update[data-state=ready]::after{content:"";position:absolute;top:-4px;right:-4px;width:9px;height:9px;background:var(--ui-warning-text, var(--shop-warning-text, #715314));border:2px solid var(--ui-surface);border-radius:50%}
-.topbar-update[data-state=failed]{color:var(--ui-danger, var(--shop-error, #aa3946));border-color:var(--ui-danger, var(--shop-error, #aa3946))}
+.topbar-update[data-state=ready]::after{content:"";position:absolute;top:-4px;right:-4px;width:9px;height:9px;background:var(--ui-topbar-warning);border:2px solid var(--ui-topbar-surface);border-radius:50%}
+.topbar-update[data-state=failed]{color:var(--ui-topbar-danger);border-color:var(--ui-topbar-danger)}
 .topbar-update:disabled{opacity:.7;cursor:progress}
 @media(max-width:719px){.topbar-update-label{display:none}.topbar-update{padding:0}}
 

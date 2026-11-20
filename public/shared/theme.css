@@ -1,3 +1,15 @@
+/* A preview replaces the active palette, including its inherited dark accents. */
+.palette-preview {
+  --palette-dark-primary: initial;
+  --palette-dark-focus: initial;
+  --palette-dark-action: initial;
+  --palette-dark-action-hover: initial;
+  --palette-dark-soft: initial;
+  --palette-dark-selected: initial;
+  --palette-dark-selected-strong: initial;
+  --palette-dark-selected-text: initial;
+}
+
 :root, .palette-preview {
   --ui-text: #202a33;
   --ui-ink: #202a33;
@@ -45,6 +57,10 @@
   --shop-accent-soft: #f7eaf2; --shop-selected-surface: #faf1f7;
   --shop-selected-strong: #f4e2ed; --shop-selected-text: #693755;
   --shop-price-standard: #332738;
+  --palette-dark-primary: #efadd8; --palette-dark-focus: #f3bde1;
+  --palette-dark-action: #85446f; --palette-dark-action-hover: #6e375d;
+  --palette-dark-soft: #422e3e; --palette-dark-selected: #483247;
+  --palette-dark-selected-strong: #593a54; --palette-dark-selected-text: #f4c2e4;
 }
 
 /* Navy brand with an orange action color: actions stand out from the brand color (white on #c2410c is 5.2:1). */
@@ -59,6 +75,10 @@
   --shop-accent-soft: #e9eef5; --shop-selected-surface: #eef2f8;
   --shop-selected-strong: #dde6f1; --shop-selected-text: #1e3a5f;
   --shop-price-standard: #172b3f;
+  --palette-dark-primary: #a4c8f7; --palette-dark-focus: #c0d9fc;
+  --palette-dark-action: #b84b1d; --palette-dark-action-hover: #9f3d17;
+  --palette-dark-soft: #2b3e55; --palette-dark-selected: #30465e;
+  --palette-dark-selected-strong: #3a5673; --palette-dark-selected-text: #c7defc;
 }
 
 :root[data-shop-palette="ocean-blue"], :root[data-seller-palette="ocean-blue"], .palette-preview[data-palette="ocean-blue"] {
@@ -72,6 +92,10 @@
   --shop-accent-soft: #e8f2fa; --shop-selected-surface: #eef5fb;
   --shop-selected-strong: #dcecf8; --shop-selected-text: #214e70;
   --shop-price-standard: #18354a;
+  --palette-dark-primary: #9acdf2; --palette-dark-focus: #b7dff9;
+  --palette-dark-action: #306a95; --palette-dark-action-hover: #285b80;
+  --palette-dark-soft: #273e50; --palette-dark-selected: #2c4559;
+  --palette-dark-selected-strong: #35566f; --palette-dark-selected-text: #bee4ff;
 }
 
 :root[data-shop-palette="high-contrast"], :root[data-seller-palette="high-contrast"], .palette-preview[data-palette="high-contrast"] {
@@ -82,6 +106,10 @@
   --ui-hover-surface: #eaf0f8; --shop-accent: #143d70; --shop-accent-hover: #102f55;
   --shop-accent-soft: #eaf0f8; --shop-selected-surface: #eaf0f8;
   --shop-selected-strong: #d9e4f3; --shop-selected-text: #143d70; --shop-price-standard: #111827;
+  --palette-dark-primary: #a7cbff; --palette-dark-focus: #d4e7ff;
+  --palette-dark-action: #2b5a9b; --palette-dark-action-hover: #244a80;
+  --palette-dark-soft: #293a53; --palette-dark-selected: #304762;
+  --palette-dark-selected-strong: #415c7e; --palette-dark-selected-text: #ddeaff;
 }
 :root[data-shop-palette="graphite"], :root[data-seller-palette="graphite"], .palette-preview[data-palette="graphite"] {
   --ui-text: #202a33; --ui-ink: #202a33; --ui-muted: #4b5563;
@@ -91,6 +119,58 @@
   --ui-hover-surface: #f0f1f3; --shop-accent: #364152; --shop-accent-hover: #202a33;
   --shop-accent-soft: #f0f1f3; --shop-selected-surface: #f0f1f3;
   --shop-selected-strong: #e3e5e9; --shop-selected-text: #364152; --shop-price-standard: #202a33;
+  --palette-dark-primary: #c8d0de; --palette-dark-focus: #edf1f7;
+  --palette-dark-action: #4b586e; --palette-dark-action-hover: #3d495b;
+  --palette-dark-soft: #363e44; --palette-dark-selected: #3a434d;
+  --palette-dark-selected-strong: #4b5765; --palette-dark-selected-text: #e4e9f2;
+}
+
+:root[data-shop-palette="indigo"], :root[data-seller-palette="indigo"], .palette-preview[data-palette="indigo"] {
+  --ui-canvas: #f6f6fc; --ui-focus: #4f46a1;
+  --ui-primary: #4f46a1; --ui-action: #4f46a1; --ui-primary-hover: #423982;
+  --ui-hover-surface: #f0effa; --shop-accent: #4f46a1; --shop-accent-hover: #423982;
+  --shop-accent-soft: #f0effa; --shop-selected-surface: #f0effa;
+  --shop-selected-strong: #e5e3f7; --shop-selected-text: #3d357f;
+  --palette-dark-primary: #bdb7fa; --palette-dark-focus: #d7d2ff;
+  --palette-dark-action: #574b9b; --palette-dark-action-hover: #493e87;
+  --palette-dark-soft: #3a3551; --palette-dark-selected: #433963;
+  --palette-dark-selected-strong: #524579; --palette-dark-selected-text: #e0dcff;
+}
+
+:root[data-shop-palette="emerald"], :root[data-seller-palette="emerald"], .palette-preview[data-palette="emerald"] {
+  --ui-canvas: #f3f8f6; --ui-focus: #187454;
+  --ui-primary: #187454; --ui-action: #187454; --ui-primary-hover: #145f45;
+  --ui-hover-surface: #e7f5ee; --shop-accent: #187454; --shop-accent-hover: #145f45;
+  --shop-accent-soft: #e7f5ee; --shop-selected-surface: #e7f5ee;
+  --shop-selected-strong: #d4ecdf; --shop-selected-text: #12573b;
+  --palette-dark-primary: #86d9b3; --palette-dark-focus: #aff0d0;
+  --palette-dark-action: #237353; --palette-dark-action-hover: #1d6045;
+  --palette-dark-soft: #28453b; --palette-dark-selected: #2b4e41;
+  --palette-dark-selected-strong: #365f4e; --palette-dark-selected-text: #b4f0d4;
+}
+
+:root[data-shop-palette="rose"], :root[data-seller-palette="rose"], .palette-preview[data-palette="rose"] {
+  --ui-canvas: #fff6f8; --ui-focus: #a33d62;
+  --ui-primary: #a33d62; --ui-action: #a33d62; --ui-primary-hover: #873150;
+  --ui-hover-surface: #fbeaf0; --shop-accent: #a33d62; --shop-accent-hover: #873150;
+  --shop-accent-soft: #fbeaf0; --shop-selected-surface: #fbeaf0;
+  --shop-selected-strong: #f6dae5; --shop-selected-text: #83314e;
+  --palette-dark-primary: #f7a8c7; --palette-dark-focus: #ffc3d9;
+  --palette-dark-action: #984060; --palette-dark-action-hover: #80344f;
+  --palette-dark-soft: #482f3a; --palette-dark-selected: #513541;
+  --palette-dark-selected-strong: #654051; --palette-dark-selected-text: #ffd2e2;
+}
+
+:root[data-shop-palette="copper"], :root[data-seller-palette="copper"], .palette-preview[data-palette="copper"] {
+  --ui-canvas: #fcf7f2; --ui-focus: #925024;
+  --ui-primary: #925024; --ui-action: #925024; --ui-primary-hover: #783f1b;
+  --ui-hover-surface: #f6ece2; --shop-accent: #925024; --shop-accent-hover: #783f1b;
+  --shop-accent-soft: #f6ece2; --shop-selected-surface: #f6ece2;
+  --shop-selected-strong: #f1dfcf; --shop-selected-text: #743e1c;
+  --palette-dark-primary: #efb081; --palette-dark-focus: #ffd0ae;
+  --palette-dark-action: #9a4d26; --palette-dark-action-hover: #823f20;
+  --palette-dark-soft: #45372f; --palette-dark-selected: #4f3d33;
+  --palette-dark-selected-strong: #634b3d; --palette-dark-selected-text: #ffd3b4;
 }
 
 /* Layout, layering, motion and safe-area tokens shared by every console (the single source for these values). */
@@ -117,7 +197,6 @@
   --ui-radius-sm: 8px;
   --ui-radius-md: 12px;
   --ui-shadow-raised: 0 8px 28px #1d465a14;
-  --ui-on-action: #fff;
   --ui-overlay: #0c294080;
   --ui-overlay-strong: #10251bc0;
   --ui-shadow-auth: 0 12px 40px #15354c12;
@@ -137,7 +216,7 @@
 }
 
 /* Seller warmth keeps the existing light palette. */
-:root[data-ui-surface="seller"]:not([data-seller-palette]), :root[data-ui-surface="platform"], :root[data-seller-palette="evergreen-teal"], .palette-preview[data-palette="evergreen-teal"] {
+:root[data-ui-surface="seller"]:not([data-seller-palette]), :root[data-ui-surface="platform"]:not([data-seller-palette]), :root[data-seller-palette="evergreen-teal"], .palette-preview[data-palette="evergreen-teal"]:where([data-ui-surface="seller"], [data-ui-surface="platform"]) {
   --ui-canvas: #f6f3eb;
   --ui-border: #dedfd5;
   --ui-control-border: #809083;
@@ -158,16 +237,17 @@
 }
 
 
-:root {
+:root, .palette-preview {
   color-scheme: light;
+  --ui-on-action: #fff;
   --ui-action-text: var(--ui-action);
   --ui-accent: var(--ui-primary);
   --ui-danger: var(--shop-error);
   --ui-surface-2: var(--ui-hover-surface);
   --shop-error-soft: #fbeceb;
 }
-/* The Platform console's forest palette, with separate text and action roles. */
-:root:root[data-theme="dark"] {
+/* Dark mode owns surfaces and statuses. The selected palette supplies its accents. */
+:root:root[data-theme="dark"], .palette-preview[data-theme="dark"], :root[data-theme="dark"] .appearance-swatch {
   color-scheme: dark;
   --ui-canvas: #17221c;
   --ui-surface: #202d25;
@@ -179,19 +259,19 @@
   --ui-divider: #46594b;
   --ui-control-border: #829789;
   --shop-control-border: #829789;
-  --ui-hover-surface: #2c4032;
-  --ui-primary: #a2d6b2;
-  --ui-focus: #b9eac5;
-  --ui-action: #346b49;
-  --ui-action-text: #a2d6b2;
-  --ui-primary-hover: #28583b;
+  --ui-hover-surface: var(--palette-dark-soft, #2c4032);
+  --ui-primary: var(--palette-dark-primary, #a2d6b2);
+  --ui-focus: var(--palette-dark-focus, #b9eac5);
+  --ui-action: var(--palette-dark-action, #346b49);
+  --ui-action-text: var(--palette-dark-primary, #a2d6b2);
+  --ui-primary-hover: var(--palette-dark-action-hover, #28583b);
   --ui-sidebar-surface: #183e29;
-  --shop-accent: #a2d6b2;
-  --shop-accent-hover: #b9eac5;
-  --shop-accent-soft: #2c4834;
-  --shop-selected-surface: #2c4032;
-  --shop-selected-strong: #2c4834;
-  --shop-selected-text: #b9eac5;
+  --shop-accent: var(--palette-dark-primary, #a2d6b2);
+  --shop-accent-hover: var(--palette-dark-focus, #b9eac5);
+  --shop-accent-soft: var(--palette-dark-soft, #2c4834);
+  --shop-selected-surface: var(--palette-dark-selected, #2c4032);
+  --shop-selected-strong: var(--palette-dark-selected-strong, #2c4834);
+  --shop-selected-text: var(--palette-dark-selected-text, #b9eac5);
   --shop-price-standard: #edf3ee;
   --shop-price: #edf3ee;
   --shop-order-total: #edf3ee;
@@ -207,18 +287,25 @@
   --shop-success: #a2d6b2;
 }
 
+@media (prefers-color-scheme: dark) {
+  :root[data-ui-surface="platform"] .appearance-swatch {
+    --ui-primary: var(--palette-dark-primary, #a2d6b2);
+    --ui-control-border: #829789;
+  }
+}
+
 .theme-control{position:relative;flex:none;display:flex;align-items:center}
-.theme-control>svg{position:absolute;inset-inline-start:10px;width:20px;height:20px;pointer-events:none;color:var(--ui-text);stroke-width:1.5}
-.theme-control select{appearance:none;width:112px;min-height:44px;padding:8px 10px 8px 36px;border:1px solid var(--ui-control-border);border-radius:9px;background:var(--ui-surface);color:var(--ui-text);font-size:14px;cursor:pointer}
-.theme-control select:hover{background:var(--ui-hover-surface)}
-.theme-control select:focus-visible{outline:2px solid var(--ui-focus);outline-offset:2px}
+.theme-control>svg{position:absolute;inset-inline-start:10px;width:20px;height:20px;pointer-events:none;color:var(--ui-topbar-text,var(--ui-text));stroke-width:1.5}
+.theme-control select{appearance:none;width:112px;min-height:44px;padding:8px 10px 8px 36px;border:1px solid var(--ui-topbar-control-border,var(--ui-control-border));border-radius:9px;background:var(--ui-topbar-surface,var(--ui-surface));color:var(--ui-topbar-text,var(--ui-text));font-size:var(--ui-topbar-font-control-size);cursor:pointer}
+.theme-control select:hover{background:var(--ui-topbar-hover,var(--ui-hover-surface))}
+.theme-control select:focus-visible{outline:2px solid var(--ui-topbar-focus,var(--ui-focus));outline-offset:2px}
 :root[data-theme="dark"] .sidebar,:root[data-theme="dark"] .sidebar-head{background:var(--ui-sidebar-surface)}
 :root[data-theme="dark"] .primary-button{background:var(--ui-action);color:var(--ui-on-action)}
 :root[data-theme="dark"] .primary-button:hover{background:var(--ui-primary-hover)}
 :root[data-theme="dark"] .language-trigger{color:var(--ui-text)}
 :root[data-theme="dark"] .language-options button:hover,:root[data-theme="dark"] .language-options button[aria-current=true]{background:var(--shop-selected-surface);color:var(--shop-selected-text)}
 @media(max-width:760px){
- .topbar .theme-control select{width:98px;font-size:13px}
+ .topbar .theme-control select{width:98px;font-size:var(--ui-topbar-font-control-compact-size)}
  .topbar .theme-control>svg{width:18px;height:18px}
  .topbar .top-actions{gap:6px}
  .shop-topbar>.theme-control{margin-inline-start:8px;order:2}

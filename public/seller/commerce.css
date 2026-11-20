@@ -2,9 +2,8 @@
 
 body{background:var(--ui-canvas)}
 :focus-visible{outline:2px solid var(--ui-focus);outline-offset:3px}
-.topbar{border-bottom:1px solid var(--ui-border);background:var(--ui-surface)}
 .topbar .brand-mark,.sidebar-brand .brand-mark,.sidebar-brand-static .brand-mark{background:transparent}
-.shop-context{margin:0;min-width:0;max-width:45%;font-weight:700;font-size:14px;color:var(--ui-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.shop-context{margin:0;min-width:0;max-width:45%;font-weight:var(--ui-topbar-font-emphasis-weight);font-size:var(--ui-topbar-font-control-size);color:var(--ui-topbar-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sidebar{--sidebar-nav-hover:#ffffff16;--sidebar-nav-selected:#ffffff20;background:var(--ui-primary);border-right:0;color:#fff;padding-inline:15px}
 .sidebar-head{margin-inline:-15px;padding-inline:20px;border-color:#ffffff26;min-height:76px}
 .sidebar-brand,.sidebar-brand-static{color:#fff;font-size:16px;letter-spacing:-.025em}
@@ -185,14 +184,14 @@ body{background:var(--ui-canvas)}
  .sidebar-head{min-height:64px}
  .sidebar-brand-static{font-size:17px}
 
- .shop-context{max-width:45%;font-size:13px}
+ .shop-context{max-width:45%;font-size:var(--ui-topbar-font-control-compact-size)}
  .seller-signed-in .topbar .brand>span{display:none}
 }
 @media(max-width:760px){
 
  .page-heading h1{font-size:27px}
  .page-heading .eyebrow{font-size:9px}
- .shop-context{max-width:39%;font-size:12px}
+ .shop-context{max-width:39%;font-size:var(--ui-topbar-font-caption-size)}
  .top-actions{gap:7px}
  .account-button{gap:6px;padding:4px}
  .account-button>span[data-i18n]{display:none}

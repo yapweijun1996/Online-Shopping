@@ -1,0 +1,1 @@
+../../shared/palette-registry.js

@@ -2,13 +2,14 @@ import { icon } from './shared/icons.js';
 import { initPwaShell, markReady, mountAppSection, mountMenuUpdate, mountSignInUpdate } from './pwa-shell.js';
 import { draftSignature } from './shared/update-guard.js';
 import { tableRows, safeLink } from './table.js';
-import { mountAppearance, paletteChoices } from './shared/appearance.js';
+import { mountAppearance } from './shared/appearance.js';
+import { defaultPalette, paletteChoices } from './shared/palette-registry.js';
 import { containDialogFocus, confirmModal } from './shared/modal.js';
 import { sellerEmailTemplate } from './email-template.js';
 const paletteListeners = new Set();
 window.sellerPalette = {
   choose(id) { if (!paletteChoices.some(([key]) => key === id)) return false; document.documentElement.dataset.sellerPalette = id; for (const listener of paletteListeners) listener(id); return false; },
-  subscribe(listener) { paletteListeners.add(listener); listener(document.documentElement.dataset.sellerPalette || 'evergreen-teal'); return () => paletteListeners.delete(listener); }
+  subscribe(listener) { paletteListeners.add(listener); listener(document.documentElement.dataset.sellerPalette || defaultPalette); return () => paletteListeners.delete(listener); }
 };
 function drawer(open) {
   document.querySelector('#sidebar').hidden = session?.stage !== 'FULL' || (!open && !matchMedia('(min-width:1024px)').matches); document.querySelector('#drawer-backdrop').hidden = !open;

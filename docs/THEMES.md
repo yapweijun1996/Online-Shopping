@@ -8,16 +8,19 @@ Dark override that scheme. Both PWAs retain their locked zoom viewport.
 `public/shared/theme.css` owns the shared color, palette and layout tokens. Dark
 uses the Platform console's forest palette. Action backgrounds and action text
 have separate roles so both white button labels and green links remain readable.
-Existing light brand palettes remain available in Appearance settings; dark mode
-overrides their page tokens. `public/shop/tokens.css` remains a compatibility
-import. Platform resolves the shared file through its existing symlink layout.
+The ten presets in Appearance settings supply light and dark accent roles.
+Dark mode uses a shared forest surface with palette-specific accents.
+`public/shop/tokens.css` remains a compatibility import. Platform resolves
+the shared files through its existing symlink layout and follows the operating
+system theme.
 
 `public/shared/theme.js` is a classic external script loaded before styles. It sets
 `data-theme="light|dark"` and `data-theme-preference="system|light|dark"` on the root
 before the page paints, then mounts the accessible native select controls at DOM
-ready. Icons use inline 24px outline SVG with currentColor. The theme-color meta
-matches the top bar surface. No inline executable script or CSP relaxation is
-needed.
+ready. Icons use inline 24px outline SVG with currentColor. The theme-color meta matches the neutral Topbar surface. Topbar styles
+consume shared semantic color and typography tokens from `public/shared/base.css`.
+Brand, utility, search, and count styles use reusable font roles. See
+[Shop palettes](SHOP_PALETTES.md) for appearance preferences.
 
 The `online-shopping-theme-v1` localStorage preference is shared across Seller,
 Shop and shop prefixes on the same origin. It contains only a display preference;

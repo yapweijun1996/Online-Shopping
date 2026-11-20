@@ -73,8 +73,10 @@ test('seller and shop main/offline shells resolve theme before styles, lock zoom
 });
 
 test('forest dark tokens meet WCAG AA for primary, muted, status and action text', () => {
-  const block = css.split(':root:root[data-theme="dark"] {')[1].split('}')[0];
-  const tokens = Object.fromEntries([...block.matchAll(/(--[\w-]+):\s*(#[\da-f]{6});/g)].map(([, name, value]) => [name, value]));
+  const block = css.match(/:root:root\[data-theme="dark"\][^{]*\{([^}]+)\}/)?.[1];
+  assert.ok(block, 'shared dark theme definition');
+  const values = [...block.matchAll(/(--[\w-]+):\s*(?:var\(--[\w-]+,\s*)?(#[\da-f]{6})\)?;/g)];
+  const tokens = Object.fromEntries(values.map(([, name, value]) => [name, value]));
   tokens['--ui-on-action'] = '#ffffff';
   const luminance = hex => hex.slice(1).match(/../g).map(n => parseInt(n, 16) / 255).map(n => n <= .04045 ? n / 12.92 : ((n + .055) / 1.055) ** 2.4).reduce((sum, n, i) => sum + n * [.2126, .7152, .0722][i], 0);
   const pairs = [['--ui-text', '--ui-surface'], ['--ui-muted', '--ui-surface'], ['--ui-secondary-text', '--ui-canvas'], ['--ui-primary', '--ui-surface'], ['--ui-action-text', '--ui-surface'], ['--shop-error', '--ui-surface'], ['--shop-success', '--shop-selected-surface'], ['--shop-warning-text', '--shop-warning-background'], ['--ui-on-action', '--ui-action']];
@@ -82,5 +84,4 @@ test('forest dark tokens meet WCAG AA for primary, muted, status and action text
     const [high, low] = [tokens[foreground], tokens[background]].map(luminance).sort((a, b) => b - a);
     assert.ok((high + .05) / (low + .05) >= 4.5, `${foreground} on ${background}`);
   }
-  assert.match(css, /:root:root\[data-theme="dark"\]/); // Outranks both seller and shop palette attributes.
 });

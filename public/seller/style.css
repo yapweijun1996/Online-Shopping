@@ -6,17 +6,18 @@
 .seller-signed-in .topbar{margin-left:248px}
 .seller-signed-in.seller-nav-collapsed .topbar{margin-left:74px}
 .seller-signed-in .topbar .brand{display:none}
-.topbar .brand{font-size:18px;color:var(--ui-text)}
-.topbar .brand-mark{width:39px;height:39px;border-radius:11px;background:var(--shop-accent);font-size:14px}
+.topbar .brand{font-size:var(--ui-topbar-font-brand-size);color:var(--ui-topbar-text)}
+.topbar .brand-mark{width:39px;height:39px;border-radius:11px;background:var(--shop-accent);font-size:var(--ui-topbar-font-control-size)}
 .top-actions{margin-left:auto;display:flex;align-items:center;gap:18px}
 .account-wrap{position:relative}
 .account-button,.icon-button,.collapse-button{border:0;background:transparent;color:var(--ui-text)}
-.account-button{display:flex;align-items:center;gap:9px;padding:7px;border-radius:10px;font-weight:650}
-.account-button:hover,.icon-button:hover,.collapse-button:hover{background:var(--ui-hover-surface)}
-.avatar{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--shop-selected-strong);color:var(--ui-primary);font-size:13px}
-.account-menu{position:absolute;right:0;top:calc(100% + 8px);min-width:185px;background:var(--ui-surface);border:1px solid var(--ui-border);box-shadow:0 16px 40px #15354c22;border-radius:12px;padding:6px;z-index:40}
-.account-menu button{display:block;width:100%;border:0;background:transparent;text-align:left;padding:11px 12px;border-radius:8px;color:var(--ui-text)}
-.account-menu button:hover{background:var(--ui-hover-surface)}
+.account-button{color:var(--ui-topbar-text);display:flex;align-items:center;gap:9px;padding:7px;border-radius:10px;font-weight:var(--ui-topbar-font-control-weight)}
+.icon-button:hover,.collapse-button:hover{background:var(--ui-hover-surface)}
+.account-button:hover{background:var(--ui-topbar-hover)}
+.avatar{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--ui-topbar-selected-strong);color:var(--ui-topbar-selected-text);font-size:var(--ui-topbar-font-control-compact-size)}
+.account-menu{position:absolute;right:0;top:calc(100% + 8px);min-width:185px;background:var(--ui-topbar-surface);border:1px solid var(--ui-topbar-border);box-shadow:0 16px 40px #15354c22;border-radius:12px;padding:6px;z-index:40}
+.account-menu button{display:block;width:100%;border:0;background:transparent;text-align:left;padding:11px 12px;border-radius:8px;color:var(--ui-topbar-text)}
+.account-menu button:hover{background:var(--ui-topbar-hover)}
 /* Grow the seller menu to its labels, bounded by the viewport. */
 #account-wrap #account-menu{right:2px;width:max-content;max-width:calc(100vw - 24px)}
 #account-wrap #account-menu button,#account-wrap #seller-current-version{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -24,12 +25,12 @@
 @media(max-width:320px){#account-wrap #account-menu button{padding-inline:8px}}
 #account-wrap #check-updates-status{width:0;min-width:calc(100% - 16px);overflow-wrap:anywhere}
 
-.account-menu p{margin:0 8px;padding:0 4px;color:var(--ui-muted);font-size:12px;line-height:1.4}
+.account-menu p{margin:0 8px;padding:0 4px;color:var(--ui-topbar-muted);font-size:var(--ui-topbar-font-caption-size);line-height:1.4}
 .account-menu p:empty{display:none}
-.account-menu-update{margin-top:6px;padding-top:6px;border-top:1px solid var(--ui-border)}
-.account-menu-update #seller-current-version{margin-bottom:2px;font-size:13px}
-.account-menu-update #check-updates-button{color:var(--ui-primary);font-weight:600}
-.account-menu-update p[role=status]{padding-bottom:4px;font-size:13px}
+.account-menu-update{margin-top:6px;padding-top:6px;border-top:1px solid var(--ui-topbar-border)}
+.account-menu-update #seller-current-version{margin-bottom:2px;font-size:var(--ui-topbar-font-control-compact-size)}
+.account-menu-update #check-updates-button{color:var(--ui-topbar-accent);font-weight:var(--ui-topbar-font-label-weight)}
+.account-menu-update p[role=status]{padding-bottom:4px;font-size:var(--ui-topbar-font-control-compact-size)}
 .sidebar{position:fixed;top:0;left:0;width:248px;height:100vh;height:100dvh;background:var(--ui-surface);border-right:1px solid var(--ui-border);padding:0 13px 16px;display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden;z-index:15;transition:width var(--ui-motion-fast) ease}
 .sidebar-head{position:sticky;top:0;z-index:1;background:var(--ui-primary);flex:none;min-height:72px;margin-inline:-13px;padding:0 16px;border-bottom:1px solid var(--ui-border);display:flex;align-items:center;justify-content:space-between;gap:6px}
 .sidebar-brand{min-width:0;width:100%;display:flex;align-items:center;gap:10px;border:0;background:transparent;border-radius:10px;padding:6px 3px;text-align:left;color:var(--ui-text);font-size:15px;font-weight:750}
@@ -382,8 +383,8 @@
 .product-editor-actions button{min-width:0}
 .product-editor-actions #product-cancel{flex:0 0 auto;padding-inline:12px;border:1px solid var(--ui-control-border);border-radius:9px;color:var(--ui-text)}
 .product-editor-actions #product-save{flex:1}
-.topbar .brand{font-size:16px}
-.topbar .brand-mark{width:34px;height:34px;font-size:12px}
+.topbar .brand{font-size:var(--ui-topbar-font-brand-compact-size)}
+.topbar .brand-mark{width:34px;height:34px;font-size:var(--ui-topbar-font-caption-size)}
 .top-actions{gap:8px}
 .account-button>span:not(.avatar){display:none}
 .account-button{padding:4px}
