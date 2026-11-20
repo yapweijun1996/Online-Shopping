@@ -168,7 +168,7 @@
     'Add {count} gallery photos': '新增 {count} 张相册照片',
     'Approve adding 1 photo': '批准新增 1 张照片',
     'Approve adding {count} photos': '批准新增 {count} 张照片',
-    'Gallery {before} → {after} photos · Main photo stays the same': '相册 {before} → {after} 张 · 保留主图',
+    'Gallery goes from {before} to {after} photos · Main photo stays the same': '相册由 {before} 张增至 {after} 张 · 保留主图',
     'Add one photo to the gallery. The main product photo stays the same.': '新增 1 张相册照片，保留商品主图。',
     'Add {count} photos to the gallery. The main product photo stays the same.': '新增 {count} 张相册照片，保留商品主图。',
     'Replace the main product photo.': '更换商品主图。',

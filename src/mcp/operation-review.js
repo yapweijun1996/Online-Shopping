@@ -626,7 +626,7 @@ function imageChangeSummary(toolName, proposal, effects) {
     return { kind: 'add', listing, main: mainAfter,
       title: count === 1 ? t('Add 1 gallery photo') : t('Add {count} gallery photos', values),
       approval: count === 1 ? t('Approve adding 1 photo') : t('Approve adding {count} photos', values),
-      impact: t('Gallery {before} → {after} photos · Main photo stays the same', values),
+      impact: t('Gallery goes from {before} to {after} photos · Main photo stays the same', values),
       decision: count === 1 ? t('Add one photo to the gallery. The main product photo stays the same.')
         : t('Add {count} photos to the gallery. The main product photo stays the same.', values) };
   }

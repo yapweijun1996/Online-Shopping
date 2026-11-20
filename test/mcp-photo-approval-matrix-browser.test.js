@@ -103,7 +103,7 @@ test('Chromium: approving five current gallery photos works across Seller themes
     }, fixture.product.id);
     assert.equal(await page.locator('h1').textContent(), 'Add 4 gallery photos');
     assert.equal(await approve.textContent(), 'Approve adding 4 photos');
-    assert.match(await summary.textContent(), /Gallery 1 → 5 photos · Main photo stays the same/);
+    assert.match(await summary.textContent(), /Gallery goes from 1 to 5 photos · Main photo stays the same/);
     assert.equal(await images.count(), 4);
     assert.ok(await images.evaluateAll(nodes => nodes.every(node => node.src.startsWith('blob:'))));
     assert.equal(await page.locator('.gallery-existing').getAttribute('open'), null);
