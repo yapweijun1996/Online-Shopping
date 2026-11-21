@@ -76,7 +76,7 @@ test('first-party review prototype renders all untrusted data as text and requir
       assert.match(await unchanged.locator('summary').textContent(), /^Unchanged fields \(3\)$/);
       assert.equal(await unchanged.getByText('Options', { exact: true }).isVisible(), false);
       if (width === 390) {
-        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.locator('main').evaluate(main => main.scrollTo(0, 0));
         const bar = page.locator('#decision');
         assert.equal(await bar.evaluate(node => getComputedStyle(node).position), 'fixed');
         const box = await bar.boundingBox();
@@ -85,9 +85,37 @@ test('first-party review prototype renders all untrusted data as text and requir
           const box = button.getBoundingClientRect();
           return document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2) === button;
         }), true);
-        await page.evaluate(() => window.scrollTo(0, 120));
+        const scrollTop = await page.locator('main').evaluate(main => {
+          main.scrollTo(0, 120);
+          return main.scrollTop;
+        });
+        assert.ok(scrollTop > 0, 'the review content scrolled');
         const scrolled = await bar.boundingBox();
         assert.ok(Math.abs(scrolled.y - box.y) < 1, 'decision bar stays anchored while scrolling');
+        for (const locator of [unchanged.locator('summary'), page.locator('#technical-details > summary')]) {
+          const geometry = await locator.evaluate(summary => {
+            const main = summary.closest('main');
+            const panelTop = document.querySelector('#decision').getBoundingClientRect().top;
+            summary.scrollIntoView({ block: 'center' });
+            const centered = summary.getBoundingClientRect();
+            summary.scrollIntoView({ block: 'end' });
+            const end = summary.getBoundingClientRect();
+            main.scrollTo(0, 0);
+            summary.focus();
+            const focused = summary.getBoundingClientRect();
+            return {
+              centeredTop: centered.top, centeredBottom: centered.bottom, endTop: end.top, endBottom: end.bottom,
+              focusedTop: focused.top, focusedBottom: focused.bottom, panelTop,
+              scrollportTop: main.getBoundingClientRect().top,
+            };
+          });
+          assert.ok(geometry.centeredTop >= geometry.scrollportTop && geometry.centeredBottom <= geometry.panelTop,
+            'the collapsed label is fully visible after scrolling to the center');
+          assert.ok(geometry.endTop >= geometry.scrollportTop && geometry.endBottom <= geometry.panelTop,
+            `end alignment places the collapsed label at ${geometry.endTop}–${geometry.endBottom}px above the panel at ${geometry.panelTop}px`);
+          assert.ok(geometry.focusedTop >= geometry.scrollportTop && geometry.focusedBottom <= geometry.panelTop,
+            'focus scrolls the entire collapsed label into view above the decision panel');
+        }
         await assertNamedTargets(page);
         await unchanged.locator('summary').click();
         assert.equal(await unchanged.getByText('Options', { exact: true }).isVisible(), true);
@@ -105,6 +133,7 @@ test('first-party review prototype renders all untrusted data as text and requir
       if (colorScheme === 'light') backgrounds.set(width, background);
       else assert.notEqual(background, backgrounds.get(width));
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      if (width < 640) assert.equal(await page.locator('main').evaluate(main => main.scrollWidth <= main.clientWidth), true);
       assert.match(await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content'), /object-src 'none'/);
       assert.deepEqual(external, []);
       if (process.env.QA_APPROVAL_SCREENSHOT_DIR) {
@@ -112,7 +141,9 @@ test('first-party review prototype renders all untrusted data as text and requir
         await page.locator('#technical-details > summary').click();
         await page.screenshot({ path: join(process.env.QA_APPROVAL_SCREENSHOT_DIR, `approval-${width}-${colorScheme}.png`), fullPage: true });
       }
-      assert.equal(await page.locator('#seller-link').getAttribute('href'), `${base}/seller/`);
+      const sellerLink = page.getByRole('link', { name: 'Open Seller Studio' });
+      assert.equal(await sellerLink.getAttribute('href'), `${base}/seller/`);
+      assert.ok((await sellerLink.boundingBox()).height >= 44, `Seller Studio link is at least 44px high at ${width}px`);
       assert.equal(await page.locator('#approve').textContent(), 'Approve change');
       assert.equal(await page.locator('button[value="reject"]').textContent(), 'Reject');
       assert.ok((await page.locator('#approve').boundingBox()).height >= 44);

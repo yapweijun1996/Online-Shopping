@@ -7,15 +7,16 @@ export const injection = '</pre><script>window.__injected = true</script>';
 
 export async function assertDecisionClearance(page, fixture) {
   async function measure(scenario) {
-    const { footerBottom, panelTop, atBottom, panelHeight, safeArea, summaryLines, approveHeight } = await page.evaluate(() => {
-      const scroller = document.scrollingElement;
-      window.scrollTo(0, scroller.scrollHeight);
+    const { footerBottom, panelTop, scrollportBottom, atBottom, panelHeight, safeArea, summaryLines, approveHeight } = await page.evaluate(() => {
+      const scroller = document.querySelector('main');
+      scroller.scrollTo(0, scroller.scrollHeight);
       const panel = document.querySelector('#decision');
       const panelBox = panel.getBoundingClientRect();
       const summary = document.querySelector('#image-change-summary');
       return {
         footerBottom: document.querySelector('footer').getBoundingClientRect().bottom,
         panelTop: panelBox.top,
+        scrollportBottom: scroller.getBoundingClientRect().bottom,
         panelHeight: panelBox.height,
         safeArea: parseFloat(getComputedStyle(panel).getPropertyValue('--ui-safe-bottom')),
         summaryLines: summary.getBoundingClientRect().height / parseFloat(getComputedStyle(summary).lineHeight),
@@ -24,6 +25,8 @@ export async function assertDecisionClearance(page, fixture) {
       };
     });
     assert.ok(atBottom, `${fixture} (${scenario}) reached maximum scroll`);
+    assert.ok(Math.abs(scrollportBottom - panelTop) < 1,
+      `${fixture} (${scenario}) reserves exactly the panel height below the scrollport`);
     assert.ok(panelTop - footerBottom >= 16,
       `Last ${fixture} content ends at ${footerBottom}px, panel starts at ${panelTop}px (${scenario}, 16px required)`);
     return { panelHeight, safeArea, summaryLines, approveHeight };

@@ -258,6 +258,7 @@ a { color: var(--ui-action-text); }
   display: inline-flex;
   align-items: center;
   min-height: 44px;
+  padding-block: var(--ui-space-2);
   font-size: .875rem;
   text-underline-offset: .2em;
 }
@@ -401,7 +402,6 @@ button.media-card-retry {
 }
 @media (width < 640px) {
   :root { --review-inset: var(--ui-space-3); }
-  main { padding-bottom: calc(max(var(--decision-height), var(--ui-safe-bottom)) + var(--ui-space-5)); }
   header { padding-block-start: 0; }
   .comparison, .technical { grid-template-columns: minmax(0, 1fr); }
   .media-reference img { max-height: 14rem; }
@@ -416,9 +416,21 @@ button.media-card-retry {
   .actions button { padding-inline: var(--ui-space-2); }
   #image-zoom { max-height: 55dvh; }
 }
+@media (width < 640px) and (height >= 380px) {
+  body { padding: 0; }
+  /* Keep the scrollport above the fixed panel, including its safe-area padding. */
+  main {
+    height: calc(100dvh - var(--decision-height));
+    overflow: auto;
+    padding: max(var(--ui-space-3), var(--ui-safe-top))
+      max(var(--review-inset), var(--ui-safe-right))
+      calc(var(--ui-space-5) + max(0px, var(--ui-safe-bottom) - var(--decision-height)))
+      max(var(--review-inset), var(--ui-safe-left));
+    scroll-padding-block: var(--ui-space-3);
+  }
+}
 @media (height < 380px) {
   #decision { position: static; }
-  main { padding-bottom: calc(var(--ui-space-5) + var(--ui-safe-bottom)); }
   :root { scroll-padding-block-end: var(--ui-space-3); }
 }
 @media (prefers-reduced-motion: reduce) {

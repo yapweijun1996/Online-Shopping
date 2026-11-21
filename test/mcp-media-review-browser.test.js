@@ -49,7 +49,7 @@ for (const dialect of ['sqlite', 'postgres']) for (const targetSlot of ['MAIN', 
       assert.equal(await page.locator('#operation-heading').textContent(), 'Add 1 gallery photo');
       assert.equal(await page.locator('#approve').textContent(), 'Approve adding 1 photo');
       assert.equal(await page.locator('#image-change-summary').textContent(), 'Add one photo to the gallery. The main product photo stays the same.');
-      assert.equal(await page.locator('#image-impact').textContent(), 'Gallery 1 → 2 photos · Main photo stays the same');
+      assert.equal(await page.locator('#image-impact').textContent(), 'Gallery goes from 1 to 2 photos · Main photo stays the same');
       assert.equal(await page.locator('.gallery-additions .media-reference').count(), 1);
       assert.equal(await page.locator('.gallery-existing').getAttribute('open'), null);
       await page.getByText('Existing photos (1)', { exact: true }).click();
