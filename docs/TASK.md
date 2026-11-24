@@ -192,8 +192,8 @@ Source and status evidence: [CLIENT_REQUIREMENTS_2026_11.md](CLIENT_REQUIREMENTS
 ### Phase 2: Taobao-style detail page and buyer accounts (R4, R5)
 
 - [ ] T2.1 Design and screenshot-review the storefront product detail page (long image-rich description, gallery, specs, SKU selector); mobile PWA, no zoom, SVG icons.
-- [ ] T2.2 Buyer accounts with email or phone login (OTP); decide delivery channel.
-- [ ] T2.3 Verified-purchase buyer reviews with moderation by the seller.
+- [ ] T2.2 Buyer accounts with email verification-code login (owner decision 2026-11-24); phone OTP is a later task.
+- [ ] T2.3 Verified-purchase buyer reviews shown automatically; the seller can hide a review (owner decision 2026-11-24).
 
 ### Phase 3: Courier exports through MCP (R2)
 
@@ -208,11 +208,12 @@ Source and status evidence: [CLIENT_REQUIREMENTS_2026_11.md](CLIENT_REQUIREMENTS
 ### Phase 5: Custom domains and AI site design (R8)
 
 - [ ] T5.0 Security gate: written design and independent review for AI-written custom HTML (slots only, sandbox or separate origin, strict CSP, rollback, audit log). Nothing in T5.3 ships before this is checked.
-- [ ] T5.1 Tenant custom-domain registry, DNS verification and automatic HTTPS (Caddy on-demand TLS with an ask endpoint).
+- [ ] T5.1a Tenant subdomains first (for example tenant.pomelostem.com) with automatic HTTPS.
+- [ ] T5.1b Tenant-owned custom domains: registry, DNS verification and automatic HTTPS (Caddy on-demand TLS with an ask endpoint), after T5.1a.
 - [ ] T5.2 Default templates by business type and festival theme presets (CSS tokens).
 - [ ] T5.3 MCP tools for tenants to design the brand page and shop pages; core shop functions stay platform-owned.
 
 ### Phase 6: Services and email drafting (R6)
 
 - [ ] T6.1 Service package and booking order model with no shipping.
-- [ ] T6.2 AI-drafted confirmation emails.
+- [ ] T6.2 AI-drafted confirmation emails, sent through tenant-configured SMTP (owner decision 2026-11-24); respect provider sending limits; SMTP credentials use the existing secret handling and are never shown to AI clients.

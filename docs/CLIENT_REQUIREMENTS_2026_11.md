@@ -12,6 +12,10 @@ Source: owner meeting with a prospective client, recorded 2026-11-24. This docum
 | Priority | 1) MCP parity and CSV import first |
 | CSV import | One platform standard format exposed through MCP; AI clients map any client file to it; no client-specific parsers |
 | Couriers | Generic export first; no courier-native claims without a real template (owner has none) |
+| Buyer login | Email verification code first; phone OTP later |
+| Domains | Tenant subdomain first (for example tenant.pomelostem.com), then tenant-owned custom domains with DNS verification |
+| Reviews | Verified-purchase reviews show automatically; the seller can hide them |
+| Email sending | SMTP (for example Gmail) per tenant configuration; mind sending limits and store credentials with the existing secret handling |
 | Payments | No merchant account yet; research first, simplest set-up for Singapore and Malaysia; see [PAYMENT_GATEWAY_RESEARCH_MY_SG.md](PAYMENT_GATEWAY_RESEARCH_MY_SG.md) |
 
 ## Requirements and current status
