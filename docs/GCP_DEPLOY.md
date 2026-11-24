@@ -85,7 +85,7 @@ The service is root owned because Docker control is root equivalent; access to i
 
 The updater trusts the exact repository's main HEAD and **latest** successful completed `verify.yml` push run for that SHA. An older successful attempt cannot override a newer failed/in-progress rerun. Main and CI are rechecked after pulls, before activation. Candidate SHA must be full lowercase hex. Repository maintainers able to change main and its verification workflow remain trusted: configure branch protections/reviews in GitHub; this code cannot establish that policy.
 
-Automatic activation changes backend/frontend immutable digest references with `compose up --no-deps --no-build`; it never restarts/replaces PostgreSQL, restores backups, deletes data, prunes volumes, or updates its own controller. The host Compose and runtime env remain fixed outside release directories and their hashes must match initialized state. A forward shop-schema upgrade also executes the exact candidate's verified migration script inside a restricted one-shot candidate container, never as host Python or a shell command.
+Automatic activation changes backend/frontend immutable digest references with `compose up --no-deps --no-build`; it never restarts/replaces PostgreSQL, restores backups, deletes business data, prunes volumes, or updates its own controller. The host Compose and runtime env remain fixed outside release directories and their hashes must match initialized state. A forward shop-schema upgrade also executes the exact candidate's verified migration script inside a restricted one-shot candidate container, never as host Python or a shell command.
 
 Changes to repository paths do not themselves block activation. The updater compares the candidate `SCHEMA_VERSION` with the deployed baseline. A lower version stops with `schema_downgrade_refused`. An equal version follows the existing image-only deployment and rollback path. A higher version automatically runs this sequence under the shared update lock:
 
@@ -654,6 +654,14 @@ service/timer pairs from `deploy/gcp/`; retain root ownership and no group/world
 write permission throughout their ancestors. The local fingerprint includes the
 installed controller, base Compose and runtime, plus the overlay/supervisor/hygiene
 wrapper when the profile is ON. Changes require an explicit reviewed state update.
+Install the reaper's `update.py` and `media-codec.py` as a reviewed pair; an
+ordinary image release does not replace either installed file. For this host
+policy update, stop the update, recovery and maintenance timers and their
+services. Hold `update.lock` across verification, backup of both files and
+`state.json`, installation and rebaselining. Require no pending release and a
+matching pre-install fingerprint. After installation, verify only those two
+fingerprints changed and the accepted release remains healthy before recording
+the new fingerprint and resuming the timers.
 `src/mcp/`, `media-codec/`, adapter origin handling and host/release configuration
 are protected source boundaries: the ordinary poller reports manual release
 required when these change; the agent resolves the stop using the protected release procedure. All mounted source and codec hash inputs are checked
@@ -673,14 +681,33 @@ All lifecycle actions hold the same `update.lock`. Before stopping anything, the
 controller verifies the complete immutable tuple, epoch permissions, installed
 policy and supervisor `preflight(..., reserve_generations=2)`. This reserves one
 fresh generation for the candidate and one for rollback. Rollback uses reserve 1.
-The supervisor checks exact existing ownership and bounded generation inventory;
-unknown owners fail closed. A full 64-generation inventory reports
-`manual_maintenance_required` while the accepted service continues running.
-There is no automatic purge. Agent pruning must first pause all three timers,
-hold `update.lock`, close owned frontend ingress, stop every backend instance and
-retire only the proven-owned worker; retain current/pending generations and
-private failure evidence until their mounts and containers are proven absent.
-Never chmod a sealed directory back to writable or reuse a retired generation.
+The supervisor checks exact existing ownership and a bounded generation inventory.
+Before checking the 64-directory cap, it reclaims only directories older than 24
+hours (using the later of directory mtime and ctime), oldest first, and always
+keeps the newest eight. It also keeps the codec state generation and any pins in
+the accepted current, previous (rollback), or pending release records, even if
+older than the newest eight. The updater records the accepted generation as
+`codec_generation` and can backfill the legacy current pin from an exact match to
+the codec receipt. Older previous releases never recorded a directory; the
+controller does not guess a pin for them. Rollback always creates a fresh
+sealed generation from the pinned image and never reuses a retired directory.
+
+Reaping needs no ingress pause: the supervisor first checks an unfiltered Docker
+container inventory for references by codec name, generation label, or bind
+mount of a generation, its members, or an ancestor. Stopped, paused and restarting
+containers protect their references too. A pause marker alone is never proof that
+reaping is safe. Host agents must honor `update.lock` and use the canonical
+supervisor paths for codec mounts; out-of-band Docker/host changes are outside
+this guarantee. Deletion accepts only the expected token/socket layout (possibly
+incomplete after a crash), uses directory descriptors, and refuses symlinks,
+mount crossings, and unexpected entries. It never reads tokens or unseals a
+directory. Reaper diagnostics are fixed reason codes without paths or Docker output.
+
+If too few directories can safely be removed, the preflight still reports
+`manual_maintenance_required` before stopping the accepted service. The agent
+reconciles unexpected filesystem entries or Docker references through the
+coordinated recovery procedure, or retries when the retention window permits;
+this is a safety stop, not an approval gate.
 
 During a transition the controller writes `mcp-codec/paused`, stops only the
 application frontend, drains/stops **all** Compose backend instances and proves
@@ -738,8 +765,10 @@ rejects ON before any image pull, pause marker or container/state mutation. Afte
 the disabled installation has a stable accepted current release and `images.env`,
 the agent-reviewed enable procedure must validate exact main/CI and all
 artifacts, then **save the candidate as durable pending intent before calling
-`activate(candidate)`**. This allows a fresh process to identify a partially
-started codec and apply only the explicit disabled compatibility fallback. Keep
+`activate(candidate)`**. On acceptance, save the current release with the
+returned generation using `with_codec_generation(candidate, generation)`.
+Durable intent allows a fresh process to identify a partially started codec
+and apply only the explicit disabled compatibility fallback. Keep
 all timers paused and hold the shared lock throughout. Stopping current services
 always uses base Compose, independent of target ON variables or stale generation
 paths; the mandatory ON overlay is parsed only after verified generation and

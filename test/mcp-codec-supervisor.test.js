@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const script=fileURLToPath(new URL('./mcp-codec-supervisor.test.py',import.meta.url));
-test('supervisor manifest grammar fails closed without Docker or privileged fixtures',()=>{
- const result=spawnSync('python3',[script,'Validation'],{encoding:'utf8',timeout:10000});
+test('supervisor manifest grammar and generation reaping fail closed without Docker or privileged fixtures',()=>{
+ const result=spawnSync('python3',[script,'Validation','Reaping'],{encoding:'utf8',timeout:10000});
  assert.equal(result.status,0,result.stderr);
 });
 test('owned root supervisor fault recovery and actual native generation lifecycle', {skip:process.env.MEDIA_CODEC_SUPERVISOR_TEST!=='1'},()=>{

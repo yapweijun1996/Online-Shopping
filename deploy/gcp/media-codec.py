@@ -8,11 +8,12 @@ never rebuild backend containers; the authorized controller owns that phase.
 
 preflight(manifest, reserve_generations=2) must run before the controller stops
 ingress/backend: it verifies the local immutable artifact and reserves capacity
-for forward and rollback generations (it creates no generation). replace itself
-checks one free generation before stopping a worker. At 64 retained generations,
-fail closed with MANUAL_MAINTENANCE_REQUIRED. A trusted operator must coordinate
-drain and manually prune only identified inactive generation directories; this
-helper never unseals, reuses or automatically deletes an old generation.
+for forward and rollback generations. Under update.lock it can reclaim old,
+unreferenced generations after proving no Docker container references them.
+It keeps the newest eight, release/codec state pins, and at least 24 hours of
+history. A pause marker alone never authorizes deletion. If capacity is still
+insufficient, fail closed with MANUAL_MAINTENANCE_REQUIRED. No generation is
+unsealed or reused, including during rollback.
 
 Install this reviewed file at a root-owned non-release path; controllers import
 CodecSupervisor and validate_manifest there, pinning its local SHA256. Public
@@ -23,6 +24,7 @@ registry manifest digest. A replacement requires rebuilding all backend runtimes
 """
 import argparse
 import base64
+from contextlib import contextmanager
 import fcntl
 import hashlib
 import json
@@ -43,7 +45,12 @@ IMAGE_ID = re.compile(r'sha256:[0-9a-f]{64}\Z')
 HEX = re.compile(r'[0-9a-f]{64}\Z')
 REVISION = re.compile(r'[0-9a-f]{40}\Z')
 GENERATION = re.compile(r'g-[0-9a-f]{32}\Z')
+GENERATION_LIMIT = 64
+GENERATION_KEEP = 8
+GENERATION_MIN_AGE_NS = 24 * 60 * 60 * 10**9
+DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 LABEL = 'shopping.mcp-codec.owner'
+GENERATION_LABEL = 'shopping.mcp-codec.generation'
 READY = b'{"version":1,"status":"ready","codec":"sharp/0.35.5/policy-1"}'
 MEMORY = 192 * 1024 * 1024
 FILE_HASH_PROGRAM = "import fs from 'node:fs';import{createHash}from'node:crypto';const h=p=>createHash('sha256').update(fs.readFileSync(p)).digest('hex');console.log(JSON.stringify({wireSha256:h('/src/mcp/media-codec-wire.js'),clientSha256:h('/src/mcp/media-codec-client.js'),lockSha256:h('/codec/package-lock.json')}));"
@@ -103,6 +110,72 @@ def read_private(path):
         with os.fdopen(fd, 'r', closefd=False) as source: return json.load(source)
     finally: os.close(fd)
 
+
+def inode(info):
+    return info.st_dev, info.st_ino
+
+
+def generation_age_stamp(info):
+    # Either recent writes to the directory or a recent metadata change keep it.
+    return max(info.st_mtime_ns, info.st_ctime_ns)
+
+
+def mount_id(fd):
+    # st_dev alone does not detect same-filesystem bind mounts on Linux.
+    if sys.platform != 'linux':
+        return os.fstat(fd).st_dev
+    with open('/proc/self/fdinfo/' + str(fd)) as info:
+        for line in info:
+            if line.startswith('mnt_id:'):
+                return int(line.split()[1])
+    raise CodecFailure('CODEC_REAP_UNSAFE_GENERATION')
+
+
+@contextmanager
+def reap_directory(parent_fd, name, expected):
+    fd = os.open(name, DIRECTORY_FLAGS, dir_fd=parent_fd)
+    try:
+        check(inode(os.fstat(fd)) == inode(expected) and mount_id(fd) == mount_id(parent_fd),
+              'CODEC_REAP_UNSAFE_GENERATION')
+        yield fd
+    finally:
+        os.close(fd)
+
+
+def reap_entries(fd, allowed):
+    found = {}
+    with os.scandir(fd) as entries:
+        for entry in entries:
+            check(entry.name in allowed, 'CODEC_REAP_UNSAFE_GENERATION')
+            found[entry.name] = os.lstat(entry.name, dir_fd=fd)
+    return found
+
+
+def remove_generation(root_fd, name, expected):
+    # Only the supervisor's fixed layout (or a partial one after a crash) is
+    # deletable. Validate it before any unlink, and never open the token/socket.
+    check(GENERATION.fullmatch(name), 'CODEC_REAP_UNSAFE_GENERATION')
+    current = os.lstat(name, dir_fd=root_fd)
+    check(stat.S_ISDIR(current.st_mode) and inode(current) == inode(expected) and
+          generation_age_stamp(current) == generation_age_stamp(expected), 'CODEC_REAP_UNSAFE_GENERATION')
+    with reap_directory(root_fd, name, current) as folder:
+        entries = reap_entries(folder, {'socket', 'token'})
+        token = entries.get('token')
+        check(token is None or (stat.S_ISREG(token.st_mode) and token.st_nlink == 1), 'CODEC_REAP_UNSAFE_GENERATION')
+        socket_dir = entries.get('socket')
+        if socket_dir is not None:
+            check(stat.S_ISDIR(socket_dir.st_mode), 'CODEC_REAP_UNSAFE_GENERATION')
+            with reap_directory(folder, 'socket', socket_dir) as sockets:
+                sock = reap_entries(sockets, {'codec.sock'}).get('codec.sock')
+                if sock is not None:
+                    check(stat.S_ISSOCK(sock.st_mode), 'CODEC_REAP_UNSAFE_GENERATION')
+                    os.unlink('codec.sock', dir_fd=sockets)
+            os.rmdir('socket', dir_fd=folder)
+        if token is not None:
+            os.unlink('token', dir_fd=folder)
+    os.rmdir(name, dir_fd=root_fd)
+
+
 class CodecSupervisor:
     def __init__(self, root, lock_file, test_mode=False):
         check(os.geteuid() == 0, 'ROOT_REQUIRED')
@@ -147,7 +220,7 @@ class CodecSupervisor:
 
     def state(self):
         value = read_private(self.state_path)
-        check(value.get('version') == 1 and GENERATION.fullmatch(value.get('generation', '')) and
+        check(type(value) is dict and value.get('version') == 1 and GENERATION.fullmatch(value.get('generation', '')) and
               re.fullmatch('[0-9a-f]{32}', value.get('owner', '')) and value.get('container') == 'shopping-mcp-codec-' + value['generation'][2:], 'STATE')
         validate_manifest(value['manifest'], self.test_mode)
         return value
@@ -172,7 +245,7 @@ class CodecSupervisor:
         check(image['Config']['User'] == '10001:1000' and image['Config']['WorkingDir'] == '/codec' and image['Config']['Cmd'] == ['node', 'src/main.js'], 'IMAGE_RUNTIME')
 
     def _container_args(self, state):
-        args = ['--name', state['container'], '--label', LABEL + '=' + state['owner'], '--label', 'shopping.mcp-codec.generation=' + state['generation'],
+        args = ['--name', state['container'], '--label', LABEL + '=' + state['owner'], '--label', GENERATION_LABEL + '=' + state['generation'],
                 '--network=none', '--read-only', '--user=10001:1000', '--cap-drop=ALL', '--security-opt=no-new-privileges:true', '--cgroupns=private', '--init',
                 '--memory=192m', '--memory-swap=192m', '--cpus=0.5', '--pids-limit=32', '--shm-size=1m', '--ulimit=core=0:0', '--ulimit=nofile=64:64', '--restart=no', '--log-driver=none',
                 '--env', 'NODE_ENV=production', '--env', 'NODE_OPTIONS=--max-old-space-size=32']
@@ -209,7 +282,7 @@ class CodecSupervisor:
         value = json.loads(self.docker('inspect', '--format={{json .}}', identity))
         labels = value['Config'].get('Labels') or {}
         check(value['Id'] == identity and value['Name'] == '/' + state['container'] and labels.get(LABEL) == state['owner'] and
-              labels.get('shopping.mcp-codec.generation') == state['generation'] and value['Image'] == state['manifest']['imageId'], 'CONTAINER_OWNER')
+              labels.get(GENERATION_LABEL) == state['generation'] and value['Image'] == state['manifest']['imageId'], 'CONTAINER_OWNER')
         return value
 
     def _retire(self, state):
@@ -218,7 +291,7 @@ class CodecSupervisor:
             value = self._identity(state, identity)
             self.docker('rm', '-f', value['Id'])
         # Only a successful exact-name empty query, or deletion of a proven owned
-        # ID, permits this receipt to advance. Keep all previous generation files.
+        # ID, permits this receipt to advance. Retention is separate from stop.
         state['status'] = 'stopped'; self._save(state)
         return self._public(state)
 
@@ -293,22 +366,127 @@ class CodecSupervisor:
         finally: transport.close()
         return self._public(state)
 
+    def _release_pins(self):
+        try:
+            state = read_private(self.root / 'state.json')
+        except FileNotFoundError:
+            return set()  # Standalone supervisor or first installation.
+        check(type(state) is dict, 'CODEC_REAP_RELEASE_PINS_UNVERIFIED')
+        pins = set()
+        for key in ('current', 'previous', 'pending'):
+            release = state.get(key)
+            if release is None:
+                continue
+            check(type(release) is dict, 'CODEC_REAP_RELEASE_PINS_UNVERIFIED')
+            if 'codec_generation' in release:
+                name = release['codec_generation']
+                check(isinstance(name, str) and GENERATION.fullmatch(name), 'CODEC_REAP_RELEASE_PINS_UNVERIFIED')
+                pins.add(name)
+        return pins
+
+    def _container_pins(self, candidates):
+        # Include stopped, paused and restarting containers as well as running
+        # ones. A restart cannot introduce a reference missing from this list.
+        # Managed creation and mount changes are serialized by update.lock.
+        ids = self.docker('ps', '-a', '--no-trunc', '--format={{.ID}}').splitlines()
+        remaining = set(ids)
+        check(len(ids) <= 256 and len(remaining) == len(ids) and
+              all(re.fullmatch('[a-f0-9]{64}', identity) for identity in ids), 'CODEC_REAP_DOCKER_UNVERIFIED')
+        if not ids:
+            return set()
+        template = ('--format=[{{json .Id}},{{json .Name}},{{json (index .Config.Labels "' + GENERATION_LABEL +
+                    '")}},{{if .Mounts}}{{json .Mounts}}{{else}}[]{{end}}]')
+        rows = self.docker('inspect', '--type=container', template, *ids).splitlines()
+        pins = set()
+        root = self.generations.parts
+        for row in rows:
+            identity, name, label, mounts = json.loads(row)
+            check(identity in remaining and isinstance(name, str) and name.startswith('/') and
+                  isinstance(label, str) and isinstance(mounts, list), 'CODEC_REAP_DOCKER_UNVERIFIED')
+            remaining.remove(identity)
+            if label in candidates:
+                pins.add(label)
+            if name.startswith('/shopping-mcp-codec-'):
+                pins.add('g-' + name.removeprefix('/shopping-mcp-codec-'))
+            for mount in mounts:
+                kind = mount['Type']
+                check(kind in ('bind', 'volume', 'tmpfs', 'image'), 'CODEC_REAP_DOCKER_UNVERIFIED')
+                if kind != 'bind':
+                    continue
+                source = Path(mount['Source'])
+                check(source.anchor == '/' and '..' not in source.parts, 'CODEC_REAP_DOCKER_UNVERIFIED')
+                parts = source.parts
+                if root[:len(parts)] == parts:
+                    pins.update(candidates)  # An ancestor bind can access every candidate.
+                elif parts[:len(root)] == root:
+                    pins.add(parts[len(root)])  # Includes mounts of individual members.
+        check(not remaining, 'CODEC_REAP_DOCKER_UNVERIFIED')
+        return pins
+
+    def _reap(self, root_fd, inventory, current):
+        cutoff = time.time_ns() - GENERATION_MIN_AGE_NS
+        ordered = sorted(inventory, key=lambda name: (generation_age_stamp(inventory[name]), name), reverse=True)
+        candidates = {name for name in ordered[GENERATION_KEEP:] if generation_age_stamp(inventory[name]) < cutoff}
+        if current is not None:
+            candidates.discard(current['generation'])
+        if not candidates:
+            return 0
+        try:
+            candidates -= self._release_pins()
+        except (CodecFailure, OSError, ValueError, TypeError):
+            print('CODEC_REAP_RELEASE_PINS_UNVERIFIED', file=sys.stderr)
+            return 0
+        if not candidates:
+            return 0
+        try:
+            candidates -= self._container_pins(candidates)
+        except (CodecFailure, OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+            print('CODEC_REAP_DOCKER_UNVERIFIED', file=sys.stderr)
+            return 0
+        reaped = 0
+        skipped = False
+        for name in reversed(ordered):
+            if name not in candidates:
+                continue
+            try:
+                remove_generation(root_fd, name, inventory[name])
+                reaped += 1
+            except (CodecFailure, OSError, ValueError):
+                skipped = True
+        if skipped:
+            print('CODEC_REAP_UNSAFE_GENERATION', file=sys.stderr)
+        if reaped:
+            print('CODEC_GENERATIONS_REAPED', file=sys.stderr)
+        return reaped
+
     def preflight(self, manifest, reserve_generations=2):
         self._lock(); manifest = validate_manifest(manifest, self.test_mode)
         check(type(reserve_generations) is int and reserve_generations in [1, 2], 'GENERATION_RESERVE')
         check(len(os.fsencode(self.generations / ('g-' + '0' * 32) / 'socket/codec.sock')) < 108, 'SOCKET_PATH_LIMIT')
-        if self.state_path.exists():
+        try:
+            self.state_path.lstat()
+        except FileNotFoundError:
+            current = None
+        else:
             current = self.state(); identity = self._lookup(current)
             if identity is not None: self._identity(current, identity)
         self._image(manifest)
         self._image_files(manifest)
-        count = 0
-        with os.scandir(self.generations) as entries:
-            for entry in entries:
-                count += 1
-                check(count <= 64 and GENERATION.fullmatch(entry.name) and entry.is_dir(follow_symlinks=False), 'MANUAL_MAINTENANCE_REQUIRED')
-        check(count + reserve_generations <= 64, 'MANUAL_MAINTENANCE_REQUIRED')
-        return {'version': 1, 'status': 'preflight_ok', 'capacityRemaining': 64 - count, 'reservedGenerations': reserve_generations,
+        trusted(self.generations, directory=True)
+        root_fd = os.open(self.generations, DIRECTORY_FLAGS)
+        try:
+            inventory = {}
+            with os.scandir(root_fd) as entries:
+                for entry in entries:
+                    info = os.lstat(entry.name, dir_fd=root_fd)
+                    check(len(inventory) < 2 * GENERATION_LIMIT and GENERATION.fullmatch(entry.name) and
+                          stat.S_ISDIR(info.st_mode), 'MANUAL_MAINTENANCE_REQUIRED')
+                    inventory[entry.name] = info
+            count = len(inventory) - self._reap(root_fd, inventory, current)
+        finally:
+            os.close(root_fd)
+        check(count + reserve_generations <= GENERATION_LIMIT, 'MANUAL_MAINTENANCE_REQUIRED')
+        return {'version': 1, 'status': 'preflight_ok', 'capacityRemaining': GENERATION_LIMIT - count, 'reservedGenerations': reserve_generations,
                 'image': manifest['image'], 'imageId': manifest['imageId'], 'codecDigest': manifest['imageId'][7:], 'revision': manifest['revision']}
 
     def prepare(self, manifest):
@@ -401,4 +579,4 @@ if __name__ == '__main__':
     except (CodecFailure, OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
         code = error.args[0] if isinstance(error, CodecFailure) else 'FAILED'
         check_code = code if isinstance(code, str) and re.fullmatch('[A-Z_]{1,64}', code) else 'FAILED'
-        print(json.dumps({'version': 1, 'ready': False, 'status': 'manualmaintenance_required' if check_code == 'MANUAL_MAINTENANCE_REQUIRED' else 'failed', 'code': check_code}), file=sys.stderr); sys.exit(1)
+        print(json.dumps({'version': 1, 'ready': False, 'status': 'manual_maintenance_required' if check_code == 'MANUAL_MAINTENANCE_REQUIRED' else 'failed', 'code': check_code}), file=sys.stderr); sys.exit(1)

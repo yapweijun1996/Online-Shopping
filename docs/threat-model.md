@@ -508,6 +508,18 @@ Claim-off behavior is **not byte-identical** to the pre-claim implementation:
 - Setup routes reject claim-off requests. The app explicitly intercepts `/api/v1/setup` and adds privacy headers to setup-related 404 responses.
 - Explicit `--with-claim` runs platform-only migration, bypassing the normal backup/report/tenant workflow. A separately restore-tested backup is mandatory. Runtime acceptance of v2 with claim off does not make the unflagged target-1 upgrade runner accept v2.
 
+Under the same `update.lock`, the installed GCP codec supervisor can remove old
+inactive generations during preflight. It keeps the newest eight, at least 24
+hours of generations, and current/previous/pending state and container references.
+Docker inventory must be complete (including stopped containers); a pause marker
+is not deletion authority. The root-only generations parent, canonical Docker
+mounts, and lock-serialized host lifecycle are trust assumptions. Deletion is
+fd-relative and limited to the expected token/socket layout without following
+symlinks or crossing mounts; unexpected content and uncertain references are
+retained. Rollback always creates a fresh generation. Insufficient safe capacity
+still blocks the release before ingress drain; diagnostics contain only fixed
+reason codes.
+
 GCP provisioning readiness runs an inline Node `pg` probe inside the running backend over the container network to `postgres`: `platform_app` to `platform`, `platform_provisioner` to maintenance database `postgres`. For each role a wrong-password negative control must receive SQLSTATE 28P01, then the mounted credential must authenticate with the expected identity. Trust/ignored-password paths fail readiness. Missing, unreadable, empty or invalid mounted files fail explicitly. Platform secrets mount only into the backend, not PostgreSQL; no database recreation is needed. Credentials stay in backend memory, never argv or output; only fixed JSON statuses leave the probe. Failures require private reconciliation without password resets. `provision --check` is read-only, not a schema/application readiness check. Apply also requires the explicit migration command to succeed. Role/database creation can partially commit and requires serial operator execution.
 
 The GCP tenant crawler matcher additionally requires the exact shop host. Seller root and tenant roots redirect to seller even for crawler agents; shop default/tenant roots retain previews. `scripts/qa-gcp-caddy-routing.mjs` executes the actual GCP Caddyfile using disposable pinned Caddy containers and copied public assets; this local route proof does not establish gateway TLS/header overwrite or production activation.

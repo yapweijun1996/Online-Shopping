@@ -26,6 +26,7 @@ CODEC_FILES = {'wireSha256': 'src/mcp/media-codec-wire.js', 'clientSha256': 'src
 MCP_FLAGS = ('MCP_V2_ENABLED', 'MCP_V2_MEDIA_ENABLED', 'MCP_V2_CATALOG_MEDIA_UPDATE_ENABLED', 'MCP_V2_CATALOG_MEDIA_CREATE_ENABLED')
 PROFILE = 'seller-operations-v1'
 IMAGE_ID = re.compile(r'sha256:[0-9a-f]{64}')
+CODEC_GENERATION = re.compile(r'g-[0-9a-f]{32}')
 PROJECT_PREFIX = 'ghcr.io/yapweijun1996/online-shopping-'
 PROJECT_REF = re.compile(re.escape(PROJECT_PREFIX) + r'[a-z0-9]+(?:[._-][a-z0-9]+)*'
                          r'(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}|@sha256:[0-9a-f]{64})')
@@ -492,6 +493,17 @@ class Updater:
             raise ValueError('Backend artifact mapping changed')
         supervisor = self.supervisor()
         supervisor.preflight(profile['codec'], reserve_generations=1 if getattr(self, '_rollback', False) else 2)
+        current = self.state.get('current')
+        if current and 'mcp' in current and 'codec_generation' not in current:
+            # Upgrade a legacy accepted release's pin before prepare can replace
+            # the codec receipt. Older release records never stored a path.
+            try:
+                receipt = supervisor.state()
+            except FileNotFoundError:
+                pass
+            else:
+                if receipt['manifest'] == current['mcp']['codec']:
+                    self.save(self.state['status'], current=self.with_codec_generation(current, receipt['generation']))
         return supervisor
 
     def restore(self, release):
@@ -503,7 +515,7 @@ class Updater:
             # runtime after an initial disabled-image compatibility fallback.
             self.save('disabled_profile_fallback', profile_fallback=True)
         self._rollback = True
-        try: self.activate(release)
+        try: return self.activate(release)
         finally: self._rollback = False
 
     def recover_codec(self):
@@ -533,10 +545,10 @@ class Updater:
         self.save('codec_recovering', pending=current, pending_kind='codec-recovery', codec_recoveries=attempts + [now])
         # Same accepted build, same epoch, fresh sealed generation. No old socket
         # directory is ever reused and no incompatible image rollback is attempted.
-        self.activate(current)
+        generation = self.activate(current)
         self.health(current)
         self.unpause()
-        self.save('codec_recovered', pending=None, pending_kind=None)
+        self.save('codec_recovered', current=self.with_codec_generation(current, generation), pending=None, pending_kind=None)
 
     def activate(self, release, initial=False):
         self.validate_release(release)
@@ -577,7 +589,7 @@ class Updater:
                 if generation != checked or checked.get('ready') is not True:
                     raise ValueError('Codec generation readiness changed')
                 expected = str(self.root / 'mcp-codec/generations' / checked.get('generation', ''))
-                if (not re.fullmatch(r'g-[0-9a-f]{32}', checked.get('generation', '')) or
+                if (not CODEC_GENERATION.fullmatch(checked.get('generation', '')) or
                         checked.get('generationPath') != expected or checked.get('imageId') != media['codec']['imageId'] or
                         checked.get('image') != media['codec']['image'] or checked.get('revision') != release['sha']):
                     raise ValueError('Codec generation mapping changed')
@@ -609,6 +621,7 @@ class Updater:
             self.docker(*compose, 'up', '-d', '--no-build', '--no-deps', '--force-recreate', 'frontend')
         else:
             self.docker(*args)
+        return generation['generation'] if generation else None
 
     def backend_probe(self, release):
         body = json.loads(self.docker('exec', 'online-shopping-gcp-backend-1', 'node', '-e',
@@ -655,8 +668,18 @@ class Updater:
                 if attempt == 17: raise failure('readiness_failed', 'Backend readiness validation failed') from None
                 time.sleep(5)
 
+    def with_codec_generation(self, release, generation):
+        if 'mcp' not in release:
+            return release
+        if not isinstance(generation, str) or not CODEC_GENERATION.fullmatch(generation):
+            raise ValueError('Invalid codec generation pin')
+        return dict(release, codec_generation=generation)
+
     def validate_release(self, release):
         revision(release['sha'])
+        if 'codec_generation' in release and ('mcp' not in release or
+                not isinstance(release['codec_generation'], str) or not CODEC_GENERATION.fullmatch(release['codec_generation'])):
+            raise ValueError('Invalid codec generation pin')
         for component in ('backend', 'frontend') + (('whatsapp-qr',) if 'whatsapp-qr' in release else ()):
             image = release[component]
             if not DIGEST.fullmatch(image) or '/online-shopping-' + component + '@' not in image:
@@ -814,10 +837,11 @@ class Updater:
             self.save('codec_manual_maintenance_required'); return
         if self.state.get('pending'):
             failed = self.state['pending']['sha']
-            self.restore(previous)
+            generation = self.restore(previous)
             self.health(previous)
             self.unpause()
-            self.save('recovered', pending=None, failed_sha=failed)
+            previous = self.with_codec_generation(previous, generation)
+            self.save('recovered', current=previous, pending=None, failed_sha=failed)
         if self.state.get('profile_fallback'):
             self.save('manual_profile_resume_required'); return
         if self.paused():
@@ -867,7 +891,7 @@ class Updater:
                 self.save('schema_migration_failed', failed_sha=sha, pending=None, last_reason='schema_migration_failed'); return
         self.save('deploying', pending=candidate)
         try:
-            self.activate(candidate)
+            generation = self.activate(candidate)
             self.health(candidate)
         except Exception:
             if upgrading:
@@ -875,13 +899,15 @@ class Updater:
                           last_reason='schema_release_failed')
                 raise failure('schema_release_failed', 'Schema release failed') from None
             self.save('rolling_back', failed_sha=sha)
-            self.restore(previous)
+            generation = self.restore(previous)
             self.health(previous)
             self.unpause()
-            self.save('rolled_back', pending=None, last_reason='rolled_back')
+            self.save('rolled_back', current=self.with_codec_generation(previous, generation), pending=None, last_reason='rolled_back')
             raise failure('rolled_back', 'Application update rolled back') from None
         self.unpause()
-        self.save('deployed', current=candidate, previous=previous, pending=None, failed_sha=None)
+        # preflight_mcp may have added a pin to the legacy accepted release.
+        self.save('deployed', current=self.with_codec_generation(candidate, generation),
+                  previous=self.state['current'], pending=None, failed_sha=None)
         self.cleanup_images(sha)
 
 

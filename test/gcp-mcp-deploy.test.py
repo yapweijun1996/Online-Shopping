@@ -53,6 +53,10 @@ class Tests(unittest.TestCase):
     def test_closed_codec_and_backend_release_binding(self):
         with tempfile.TemporaryDirectory() as root:
             f=u.Updater(root); f.validate_release(release())
+            f.validate_release(f.with_codec_generation(release(), 'g-'+'2'*32))
+            for pin in (None, '../outside', 'g-'+'A'*32):
+                with self.assertRaisesRegex(ValueError, 'Invalid codec generation pin'):
+                    f.validate_release(dict(release(), codec_generation=pin))
             for field,value in [('image','evil/image:latest'),('imageId','latest'),('revision','b'*40),('platform','linux/arm64'),('wireSha256','3'*63)]:
                 r=release(); r['mcp']['codec'][field]=value
                 with self.assertRaises(ValueError): f.validate_release(r)
@@ -116,7 +120,11 @@ class Tests(unittest.TestCase):
         self.assertIn('target: /run/mcp-control\n',overlay)
 
 class Supervisor:
-    def __init__(self, calls, root): self.calls=calls; self.root=Path(root); self.ready=True; self.capacity=False
+    def __init__(self, calls, root):
+        self.calls=calls; self.root=Path(root); self.ready=True; self.capacity=False; self.receipt=None
+    def state(self):
+        if self.receipt is None: raise FileNotFoundError
+        return self.receipt
     def preflight(self, manifest, reserve_generations=2):
         self.calls.append(('preflight',reserve_generations))
         if self.capacity: raise RuntimeError('MANUAL_MAINTENANCE_REQUIRED')
@@ -172,8 +180,36 @@ class Lifecycle(unittest.TestCase):
         self.assertNotIn('postgres',up);self.assertTrue(self.f.paused())
         frontend=[i for i,c in enumerate(self.calls) if c[0]=='docker' and 'up' in c[1] and c[1][-1]=='frontend'][0]
         self.assertLess(self.calls.index(('backend-ready',SHA)),frontend)
+    def test_successful_poll_preserves_legacy_accepted_generation_as_previous(self):
+        legacy=release(); legacy['sha']='b'*40; legacy['mcp']['codec']['revision']=legacy['sha']
+        candidate=release(); legacy['baseline']=candidate['baseline']={'schema': 34}
+        self.sup.receipt={'manifest': legacy['mcp']['codec'], 'generation': 'g-'+'7'*32}
+        self.f.state.update(current=legacy, status='deployed', local={})
+        with patch.object(self.f,'local_fingerprint',return_value={}),patch.object(self.f,'head',return_value=SHA), \
+                patch.object(self.f,'approved',return_value=True),patch.object(self.f,'source',return_value=(candidate['baseline'],{})), \
+                patch.object(self.f,'release',return_value=candidate),patch.object(self.f,'health'),patch.object(self.f,'cleanup_images'):
+            self.f.poll()
+        state=u.Updater(self.root).state
+        self.assertEqual('deployed',state['status'])
+        self.assertEqual('g-'+'7'*32,state['previous']['codec_generation'])
+        self.assertEqual(self.sup.probe()['generation'],state['current']['codec_generation'])
+        self.assertNotIn('codec_generation',candidate)
+
+    def test_interrupted_forward_rollback_rebinds_current_without_replacing_previous_pin(self):
+        older=dict(release(), codec_generation='g-'+'7'*32)
+        current=dict(release(), codec_generation='g-'+'8'*32)
+        self.f.state.update(current=current, previous=older, pending={'sha':'b'*40}, local={})
+        with patch.object(self.f,'local_fingerprint',return_value={}),patch.object(self.f,'head',return_value=SHA), \
+                patch.object(self.f,'health'):
+            self.f.poll()
+        state=u.Updater(self.root).state
+        self.assertEqual('recovered',state['status'])
+        self.assertEqual(older,state['previous'])
+        self.assertEqual(self.sup.probe()['generation'],state['current']['codec_generation'])
+        self.assertIn(('preflight',1),self.calls)
+
     def test_rollback_reserves_one_rotates_then_retires_and_never_reuses_generation(self):
-        self.f.restore(release())
+        self.assertEqual(self.sup.probe()['generation'], self.f.restore(release()))
         self.assertIn(('preflight',1),self.calls)
         self.assertLess(self.calls.index(('epoch',True)),self.calls.index(('retire',True)))
         self.assertFalse(self.f._rollback)
@@ -218,6 +254,7 @@ class Lifecycle(unittest.TestCase):
         with patch.object(self.f,'local_fingerprint',return_value={}),patch.object(self.f,'health'):
             self.f.recover_codec()
         self.assertEqual('codec_recovered',self.f.state['status'])
+        self.assertEqual(self.sup.probe()['generation'],self.f.state['current']['codec_generation'])
         self.assertNotIn(('epoch',True),self.calls);self.assertFalse(self.f.paused())
 
     def test_failed_recovery_keeps_pause_and_pending_without_image_or_epoch_rollback(self):

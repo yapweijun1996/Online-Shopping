@@ -2,13 +2,16 @@
 import copy
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
 import shutil
+import socket
 import stat
 import subprocess
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 import sys
@@ -31,6 +34,202 @@ class Validation(unittest.TestCase):
         for key, bad in [('image', value['image'].replace('online-shopping-backend', 'other')), ('imageId', '1'*64), ('platform', 'linux/arm64'), ('version', True), ('extra', 1)]:
             changed = dict(value); changed[key] = bad
             with self.assertRaises(module.CodecFailure): module.validate_manifest(changed)
+
+class Reaping(unittest.TestCase):
+    """Real filesystem operations; only the root installation and Docker are stubbed."""
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory(prefix='c-', dir='/tmp')
+        self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name).resolve()
+        self.s = object.__new__(module.CodecSupervisor)
+        self.s.root = self.root
+        self.s.base = self.root / 'mcp-codec'
+        self.s.generations = self.s.base / 'generations'
+        self.s.generations.mkdir(parents=True)
+        self.s.state_path = self.s.base / 'state.json'
+        self.s.paused_path = self.s.base / 'paused'
+        self.s.lock_file = (self.root / 'update.lock').open('w')
+        self.addCleanup(self.s.lock_file.close)
+        fcntl.flock(self.s.lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        self.s.test_mode = True
+        self.containers = {}
+        self.start = time.time_ns() + 3600 * 10**9
+        self.now = self.start + 2 * module.GENERATION_MIN_AGE_NS
+        self.log = io.StringIO()
+        for target, attribute, options in [
+            (module, 'trusted', dict(side_effect=lambda path, **opts: Path(path))),
+            (module.sys, 'stderr', dict(new=self.log)),
+            (module.time, 'time_ns', dict(return_value=self.now)),
+            (self.s, '_image', {}), (self.s, '_image_files', {}),
+            (self.s, 'docker', dict(side_effect=self.docker)),
+        ]:
+            mock = patch.object(target, attribute, **options)
+            mock.start()
+            self.addCleanup(mock.stop)
+
+    def docker(self, *args):
+        if args == ('ps', '-a', '--no-trunc', '--format={{.ID}}'):
+            return '\n'.join(self.containers)
+        if args[:3] == ('ps', '-a', '--no-trunc') and '--filter' in args:
+            return ''  # Exact-name lookup for the synthetic, stopped state receipt.
+        self.assertEqual(args[:2], ('inspect', '--type=container'))
+        self.assertEqual(set(args[3:]), set(self.containers))
+        return '\n'.join(json.dumps([identity, *row]) for identity, row in self.containers.items())
+
+    def generation(self, index):
+        return self.s.generations / ('g-' + format(index, '032x'))
+
+    def populate(self, count):
+        for index in range(count):
+            self.generation(index).mkdir(mode=0o700)
+            self.age(index)
+
+    def age(self, index, ns=None):
+        stamp = ns if ns is not None else self.start + index * 10**9
+        os.utime(self.generation(index), ns=(stamp, stamp))
+
+    def survivors(self):
+        return sorted(int(path.name[2:], 16) for path in self.s.generations.iterdir())
+
+    def test_preflight_reaps_oldest_inactive_and_reserves_forward_and_rollback(self):
+        self.populate(64)
+        # Exercise the exact layout, including a real Unix socket, without reading the token.
+        old = self.generation(2)
+        (old / 'socket').mkdir(mode=0o710)
+        (old / 'token').write_text('synthetic fixture')
+        with socket.socket(socket.AF_UNIX) as worker:
+            worker.bind(str(old / 'socket/codec.sock'))
+        self.age(2)
+        current = self.generation(0).name
+        self.s._save(dict(version=1, generation=current, owner='1'*32, status='stopped',
+                          container='shopping-mcp-codec-' + current[2:], manifest=manifest()))
+        module.atomic(self.root / 'state.json', {
+            'current': {'codec_generation': self.generation(1).name},
+            'previous': {'codec_generation': self.generation(3).name},
+            'pending': {'codec_generation': self.generation(4).name},
+        })
+        self.assertFalse(self.s.paused_path.exists())
+        receipt = self.s.preflight(manifest())
+        self.assertEqual(self.survivors(), [0, 1, 3, 4, *range(56, 64)])
+        self.assertEqual(receipt['capacityRemaining'], 52)
+        self.assertEqual(receipt['reservedGenerations'], 2)
+        self.assertEqual(self.s.state()['generation'], current)
+        self.assertEqual(self.log.getvalue(), 'CODEC_GENERATIONS_REAPED\n')
+
+    def test_busy_update_lock_prevents_reaping(self):
+        self.populate(12)
+        fcntl.flock(self.s.lock_file, fcntl.LOCK_UN)
+        with (self.root / 'update.lock').open('w') as other:
+            fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with self.assertRaisesRegex(module.CodecFailure, '^UPDATE_BUSY$'):
+                self.s.preflight(manifest())
+        self.assertEqual(self.survivors(), list(range(12)))
+        self.s.docker.assert_not_called()
+
+    def test_recent_or_future_generation_is_kept_even_outside_newest_eight(self):
+        self.populate(12)
+        cutoff = self.now - module.GENERATION_MIN_AGE_NS
+        for index in range(3, 12):
+            self.age(index, cutoff + index * 10**9)
+        self.age(2, cutoff - 1)
+        self.age(11, self.now + 10**9)
+        self.s.preflight(manifest())
+        self.assertEqual(self.survivors(), list(range(3, 12)))
+
+    def test_mount_name_and_label_pin_containers_even_with_pause_marker(self):
+        self.populate(16)
+        self.s.paused_path.write_text('paused\n')
+        # Includes the backend's whole generation bind and the worker's socket
+        # or token bind. Neither needs a recognized container label or name.
+        self.containers = {
+            'a'*64: ['/unlabelled-backend', '', [{'Type': 'bind', 'Source': str(self.generation(0))}]],
+            'b'*64: ['/unlabelled-worker', '', [{'Type': 'bind', 'Source': str(self.generation(1) / 'socket')}]],
+            'c'*64: ['/other-worker', self.generation(2).name, []],
+            'd'*64: ['/shopping-mcp-codec-' + self.generation(3).name[2:], '', []],
+            'e'*64: ['/unrelated', '', [{'Type': 'bind', 'Source': str(self.generation(4)) + '-other'}]],
+        }
+        self.s.preflight(manifest())
+        self.assertEqual(self.survivors(), [0, 1, 2, 3, *range(8, 16)])
+
+    def test_capacity_fails_closed_when_all_generations_are_in_use(self):
+        self.populate(64)
+        self.containers = {'a'*64: ['/backend', '', [{'Type': 'bind', 'Source': str(self.generation(i))}
+                                                     for i in range(64)]]}
+        for reserve in (1, 2):
+            with self.assertRaisesRegex(module.CodecFailure, '^MANUAL_MAINTENANCE_REQUIRED$'):
+                self.s.preflight(manifest(), reserve)
+        self.assertEqual(self.survivors(), list(range(64)))
+
+    def test_ancestor_mount_preserves_entire_inventory(self):
+        self.populate(12)
+        self.containers = {'a'*64: ['/backend', '', [{'Type': 'bind', 'Source': str(self.s.base)}]]}
+        self.s.preflight(manifest())
+        self.assertEqual(self.survivors(), list(range(12)))
+
+    def test_incomplete_docker_inventory_or_bad_pin_cannot_authorize_deletion(self):
+        self.populate(64)
+        commands = [('a'*64, ''), ('a'*64, subprocess.TimeoutExpired('private args', 1)), ('private output',)]
+        for outputs in commands:
+            with self.subTest(outputs=outputs), patch.object(self.s, 'docker', side_effect=outputs):
+                with self.assertRaisesRegex(module.CodecFailure, '^MANUAL_MAINTENANCE_REQUIRED$'):
+                    self.s.preflight(manifest())
+        module.atomic(self.root / 'state.json', {'previous': {'codec_generation': 'private invalid pin'}})
+        with self.assertRaisesRegex(module.CodecFailure, '^MANUAL_MAINTENANCE_REQUIRED$'):
+            self.s.preflight(manifest())
+        self.assertEqual(self.survivors(), list(range(64)))
+        self.assertEqual(self.log.getvalue().splitlines(),
+                         ['CODEC_REAP_DOCKER_UNVERIFIED'] * 3 + ['CODEC_REAP_RELEASE_PINS_UNVERIFIED'])
+
+    def test_top_level_symlink_and_odd_name_fail_closed_before_deletion(self):
+        self.populate(12)
+        target = self.root / 'outside'
+        target.mkdir(); (target / 'token').write_text('do not touch')
+        link = self.generation(12)
+        link.symlink_to(target, target_is_directory=True)
+        odd = self.s.generations / 'unexpected'
+        for entry in (link, odd):
+            if entry == odd: odd.mkdir()
+            with self.assertRaisesRegex(module.CodecFailure, '^MANUAL_MAINTENANCE_REQUIRED$'):
+                self.s.preflight(manifest())
+            self.assertTrue(entry.exists())
+            self.assertTrue(all(self.generation(i).is_dir() for i in range(12)))
+            self.assertEqual((target / 'token').read_text(), 'do not touch')
+            if entry == link: link.unlink()
+
+    def test_nested_symlinks_and_unexpected_entries_preserve_candidates(self):
+        self.populate(16)
+        target = self.root / 'outside'
+        target.mkdir(); (target / 'token').write_text('do not touch')
+        (self.generation(0) / 'socket').symlink_to(target, target_is_directory=True)
+        (self.generation(1) / 'token').symlink_to(target / 'token')
+        (self.generation(2) / 'unexpected').mkdir()
+        (self.generation(3) / 'socket').mkdir()
+        (self.generation(3) / 'socket/codec.sock').symlink_to(target / 'token')
+        sockets = self.generation(4) / 'socket'
+        sockets.mkdir()
+        with socket.socket(socket.AF_UNIX) as worker:
+            worker.bind(str(sockets / 'codec.sock'))
+        (sockets / 'unexpected').touch()
+        for index in range(5): self.age(index)
+        self.s.preflight(manifest())
+        self.assertEqual(self.survivors(), [0, 1, 2, 3, 4, *range(8, 16)])
+        self.assertTrue((sockets / 'codec.sock').is_socket())
+        self.assertEqual((target / 'token').read_text(), 'do not touch')
+        self.assertEqual(self.log.getvalue().splitlines(), ['CODEC_REAP_UNSAFE_GENERATION', 'CODEC_GENERATIONS_REAPED'])
+
+    def test_same_device_mount_boundary_preserves_the_candidate(self):
+        self.populate(12)
+        nested = self.generation(0) / 'socket'
+        nested.mkdir()
+        (self.generation(0) / 'token').write_text('synthetic fixture')
+        self.age(0)
+        identity = module.inode(nested.lstat())
+        with patch.object(module, 'mount_id', side_effect=lambda fd: int(module.inode(os.fstat(fd)) == identity)):
+            self.s.preflight(manifest())
+        self.assertEqual(self.survivors(), [0, *range(4, 12)])
+        self.assertTrue(nested.is_dir())
+        self.assertTrue((self.generation(0) / 'token').is_file())
+
 
 class Fake(module.CodecSupervisor):
     """Only failure injection. Actual isolation/readiness is tested separately below."""
