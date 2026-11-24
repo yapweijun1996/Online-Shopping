@@ -294,7 +294,6 @@ body{background:var(--ui-canvas)}
 .product-list-shell[hidden]{display:none}
 .product-list-shell .product-list{border:0;border-radius:0;overflow:visible}
 .product-list-shell .product-list-heading{border-radius:0}
-.product-list-shell .product-bulk{margin:0;border:0;border-bottom:1px solid var(--ui-border);border-radius:0}
 .product-list-shell .product-select-note{border-bottom:1px solid var(--ui-border)}
 .product-list-heading{position:relative}
 .product-list-heading .product-select-all{position:absolute;left:20px;top:50%;transform:translateY(-50%);width:44px;padding:0}

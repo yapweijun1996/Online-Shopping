@@ -732,11 +732,12 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   bulkClear.dataset.labelKey = 'bulkClear';
   bulkBar.append(bulkCount, ...bulkButtons, bulkClear, bulkMessage);
   listHeading.prepend(selectBar);
-  list.before(variantsNote, bulkBar);
+  list.before(variantsNote);
+  listShell.before(bulkBar);
   function refreshBulk() {
     const eligible = items.filter((product) => product.variantCount <= 1);
     const selectedCount = eligible.filter((product) => selected.has(product.id)).length;
-    listShell.hidden = !items.length && !bulkMessageKey;
+    listShell.hidden = !items.length;
     listHeading.hidden = !items.length;
     selectBar.hidden = list.hidden || !items.length;
     variantsNote.hidden = list.hidden || !items.some((product) => product.variantCount > 1);
