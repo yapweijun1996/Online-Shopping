@@ -419,9 +419,11 @@ async function createTenantApi({ store, config, tenantId, tenantGuard, operation
       }
     }
     if (method === 'GET' && pathname === '/api/v1/seller/products') {
+      allow('catalog.write');
       return json(200, await listProducts(store, url.searchParams, true, config.shopMode));
     }
     if (method === 'GET' && pathname === '/api/v1/seller/categories') {
+      allow('catalog.write');
       return json(200, { items: await listCategories(store) });
     }
     if (pathname === '/api/v1/seller/ai-settings' && (method === 'GET' || method === 'PATCH')) {
@@ -506,6 +508,7 @@ async function createTenantApi({ store, config, tenantId, tenantGuard, operation
       return json(200, { ok: true });
     }
     if (method === 'GET' && pathname === '/api/v1/seller/company-settings') {
+      allow('settings.write');
       return json(200, await getCompanySettings(store));
     }
     if ((method === 'POST' && pathname === '/api/v1/seller/categories') ||
@@ -526,7 +529,10 @@ async function createTenantApi({ store, config, tenantId, tenantGuard, operation
     const optionRoute = optionTypePath.exec(pathname);
     if (optionRoute) {
       const [, typeId, valuesPart, valueId] = optionRoute;
-      if (method === 'GET' && !typeId) return json(200, { items: await listOptionTypes(store), limits: OPTION_LIMITS });
+      if (method === 'GET' && !typeId) {
+        allow('catalog.write');
+        return json(200, { items: await listOptionTypes(store), limits: OPTION_LIMITS });
+      }
       if (['POST', 'PATCH'].includes(method)) {
         requireOrigin(request, expectedOrigin);
         requireCsrf(request, session);
@@ -628,15 +634,20 @@ async function createTenantApi({ store, config, tenantId, tenantGuard, operation
     }
     const sellerProduct = sellerProductIdPath.exec(pathname);
     if (method === 'GET' && sellerProduct && !sellerProduct[2]) {
+      allow('catalog.write');
       const product = await getProduct(store, sellerProduct[1], true, config.shopMode);
       if (!product) throw new ApiError(404, 'NOT_FOUND', 'Not found.');
       return json(200, presentCatalogCopy(product, config.shopMode));
     }
     if (method === 'GET' && sellerProduct?.[2] === 'image') {
+      allow('catalog.write');
       return image(await getProductImage(store, sellerProduct[1], true, url.searchParams.get('size') === 'thumb'));
     }
     if (galleryImage?.[1]) {
-      if (method === 'GET') return image(await getGalleryImage(store, galleryImage[2], galleryImage[3], true, url.searchParams.get('size') === 'thumb'));
+      if (method === 'GET') {
+        allow('catalog.write');
+        return image(await getGalleryImage(store, galleryImage[2], galleryImage[3], true, url.searchParams.get('size') === 'thumb'));
+      }
       if (method === 'DELETE') {
         requireOrigin(request, expectedOrigin);
         requireCsrf(request, session);
