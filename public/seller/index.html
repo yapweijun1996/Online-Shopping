@@ -17,6 +17,7 @@
   <script type="module" src="./bootstrap.js"></script>
   <link rel="stylesheet" href="./order-print.css">
   <link rel="stylesheet" href="./commerce.css">
+  <link rel="stylesheet" href="./table-skeleton.css">
   <link rel="stylesheet" href="./brand.css">
   <link rel="stylesheet" href="./budget.css">
 </head>
@@ -182,7 +183,24 @@
       <p id="product-form-error" class="message" role="alert"></p>
       <button id="product-save" type="submit" class="primary-button" data-i18n="saveProduct">Save product</button>
     </form>
-    <p id="product-status" class="message" role="status"></p>
+    <p id="product-status" class="message sr-only" role="status" aria-live="polite"></p>
+    <template id="product-skeleton-template">
+      <div class="product-card product-skeleton">
+        <span class="product-select"><span class="img-reveal"></span></span>
+        <span class="product-placeholder"><span class="img-reveal"></span></span>
+        <div class="product-card-main">
+          <div class="product-row-identity">
+            <h3><span class="img-reveal"></span></h3>
+            <p class="product-card-identity"><span class="img-reveal"></span></p>
+          </div>
+          <p class="product-row-sku"><span class="img-reveal"></span></p>
+          <p class="product-card-price"><span class="img-reveal"></span></p>
+          <p class="product-card-identity product-row-stock"><span class="img-reveal"></span></p>
+          <span class="product-status-chip"><span class="img-reveal"></span></span>
+        </div>
+        <div class="product-card-actions"><span class="img-reveal"></span><span class="img-reveal"></span></div>
+      </div>
+    </template>
     <div id="product-list" class="product-list"></div>
     <button id="product-more" type="button" class="secondary-button" data-i18n="loadMore" hidden>Load more</button>
   </template>

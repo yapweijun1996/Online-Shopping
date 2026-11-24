@@ -16,6 +16,8 @@
     "test:customer-profile-address": "node scripts/qa-customer-profile-address.mjs",
     "test:seller-catalog-state": "node scripts/qa-seller-catalog-state.mjs",
     "test:seller-bulk-bar-shots": "node scripts/qa-seller-bulk-bar.mjs",
+    "test:seller-table-skeleton": "node --test test/seller-table-skeleton.test.js",
+    "test:seller-table-skeleton-shots": "node scripts/qa-seller-table-skeleton.mjs",
     "test:seller-session-ui": "node scripts/qa-seller-session-ui.mjs",
     "test:seller-boot-loader": "node --test test/seller-boot-loader.test.js",
     "test:usability-palette": "node scripts/qa-usability-palette.mjs",

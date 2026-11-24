@@ -1,0 +1,20 @@
+/* Keep the export hint's space before the first result count arrives. */
+.product-export-scope{min-height:1lh}
+@media(max-width:767px){.product-export-scope{min-height:2lh}}
+
+/* Leave the polite status region available even before it has text. */
+#product-status.sr-only{display:block;min-height:0}
+.product-list.is-replacing>.product-card{display:none}
+/* Use the .img-reveal gradient and animation without blurring the shapes. */
+.product-skeleton .img-reveal{max-width:100%;filter:none;transition:none}
+.product-skeleton .product-select>.img-reveal{width:20px;height:20px;border-radius:4px}
+.product-skeleton :is(h3,p)>.img-reveal{display:inline-block;vertical-align:middle;width:5ch;height:.7em;border-radius:4px}
+.product-skeleton h3>.img-reveal{width:13ch}
+.product-skeleton .product-row-identity p>.img-reveal{width:8ch}
+.product-skeleton :is(.product-card-price,.product-row-stock)>.img-reveal{width:7ch}
+.product-skeleton :is(.product-placeholder,.product-status-chip){background:none;padding:0;border:0}
+.product-skeleton :is(.product-placeholder,.product-status-chip)>.img-reveal{display:block;width:100%;height:100%;border-radius:inherit}
+.product-skeleton .product-status-chip{width:52px;height:calc(1lh + 10px)}
+.product-skeleton .product-card-actions>.img-reveal{width:44px;height:44px;border-radius:8px}
+.product-skeleton .product-card-actions>.img-reveal:first-child{width:56px}
+@media(prefers-reduced-motion:reduce){.product-skeleton .img-reveal{background:var(--ui-divider)}}

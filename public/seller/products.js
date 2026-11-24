@@ -74,6 +74,10 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   const error = find('#product-form-error');
   const search = find('#product-search');
   const list = find('#product-list');
+  const skeletonTemplate = find('#product-skeleton-template');
+  const loadingRows = document.createElement('div');
+  loadingRows.className = 'product-loading-rows';
+  loadingRows.setAttribute('aria-hidden', 'true');
   const more = find('#product-more');
   const preview = find('#product-image-preview');
   const imagePanel = find('#product-image-panel');
@@ -379,7 +383,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   function setStatus(key, productName = '') {
     statusKey = key;
     statusProductName = productName;
-    status.classList.remove('sr-only');
+    status.classList.toggle('sr-only', !key || key === 'loading');
     status.textContent = key ? `${productName ? `${productName}: ` : ''}${t(key)}` : '';
   }
   function setError(key) { formErrorKey = key; error.textContent = key ? t(key) : ''; }
@@ -737,17 +741,17 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   function refreshBulk() {
     const eligible = items.filter((product) => product.variantCount <= 1);
     const selectedCount = eligible.filter((product) => selected.has(product.id)).length;
-    listShell.hidden = !items.length;
-    listHeading.hidden = !items.length;
-    selectBar.hidden = list.hidden || !items.length;
-    variantsNote.hidden = list.hidden || !items.some((product) => product.variantCount > 1);
+    const replacing = list.classList.contains('is-replacing');
+    listShell.hidden = !items.length && !replacing;
+    listHeading.hidden = selectBar.hidden = listShell.hidden;
+    variantsNote.hidden = replacing || !items.some((product) => product.variantCount > 1);
     variantsNote.textContent = t('bulkVariantsNote');
-    selectAll.disabled = bulkBusy || !eligible.length;
+    selectAll.disabled = replacing || bulkBusy || !eligible.length;
     selectAll.checked = eligible.length > 0 && selectedCount === eligible.length;
     selectAll.indeterminate = selectedCount > 0 && selectedCount < eligible.length;
     selectText.textContent = t('bulkSelectLoaded');
     for (const box of list.querySelectorAll('[data-action="select"]')) box.disabled = bulkBusy;
-    bulkBar.hidden = list.hidden || (selected.size === 0 && !bulkMessageKey);
+    bulkBar.hidden = replacing || (selected.size === 0 && !bulkMessageKey);
     bulkCount.textContent = selected.size ? t('bulkSelected').replace('{count}', selected.size) : '';
     for (const control of [...bulkButtons, bulkClear]) { control.textContent = t(control.dataset.labelKey); control.hidden = selected.size === 0; control.disabled = bulkBusy; }
     const tooMany = selected.size > 100;
@@ -818,6 +822,7 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
   }
 
   function renderList() {
+    const showingSkeleton = loadingRows.parentNode === list;
     list.replaceChildren();
     for (const id of [...selected]) if (!items.some((product) => product.id === id && product.variantCount <= 1)) selected.delete(id);
     for (const product of items) {
@@ -911,7 +916,12 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       }
       list.append(card);
     }
-    more.hidden = nextOffset === null;
+    if (showingSkeleton) list.append(loadingRows);
+    refreshListControls();
+  }
+
+  function refreshListControls() {
+    more.hidden = nextOffset === null || list.classList.contains('is-replacing');
     refreshBulk();
   }
 
@@ -942,17 +952,19 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
     const queryStock = reset ? stockFilter.value : appliedStock;
     const querySort = reset ? sortFilter.value : appliedSort;
     const filtersChanged = reset && (query !== appliedSearch || queryStatus !== appliedStatus || queryCategory !== appliedCategory || queryStock !== appliedStock || querySort !== appliedSort);
-    if (filtersChanged) { selected.clear(); removedUndo.hidden = true; refreshBulk(); }
+    if (filtersChanged) removedUndo.hidden = true;
     const offset = reset ? 0 : nextOffset;
-    if (reset && (list.hidden || filtersChanged)) {
-      list.hidden = true;
-      selectBar.hidden = true;
-      variantsNote.hidden = true;
-      bulkBar.hidden = true;
-    }
+    list.setAttribute('aria-busy', 'true');
+    // Keep settled rows in place for background refreshes and append placeholders for pagination.
+    const replacing = reset && (!items.length || filtersChanged);
+    const count = replacing ? 3 : reset ? 0 : Math.max(1, Math.min(3, matchingTotal - offset));
+    list.classList.toggle('is-replacing', replacing);
+    loadingRows.remove();
+    loadingRows.replaceChildren(...Array.from({ length: count }, () => skeletonTemplate.content.cloneNode(true)));
+    if (count) list.append(loadingRows);
+    refreshListControls();
     more.disabled = true;
     find('#product-export').disabled = true;
-    list.setAttribute('aria-busy', 'true');
     retryList.hidden = true;
     clearSearch.hidden = true;
     setStatus('loading');
@@ -989,9 +1001,10 @@ export function mountProducts(root, { csrfToken, onUnauthorized, onNavigate, onS
       if (sequence === loadSequence && isCurrent()) {
         more.disabled = false;
         find('#product-export').disabled = false;
+        loadingRows.remove();
+        list.classList.remove('is-replacing');
         list.setAttribute('aria-busy', 'false');
-        list.hidden = false;
-        refreshBulk();
+        refreshListControls();
       }
     }
   }
