@@ -19,3 +19,5 @@ Payment, inventory/shipping automation, customer accounts/OTP and cross-device r
 ## Client requirements (2026-11-24)
 
 A prospective client asked for AI-first operation (MCP with ChatGPT and Claude Code), MCP/backend parity, CSV import, courier exports, a Taobao-style detail page, buyer accounts, Malaysia payments, tenant custom domains with AI-designed sites, and later service businesses. Requirements, verified status, owner decisions and phased tasks are in [CLIENT_REQUIREMENTS_2026_11.md](CLIENT_REQUIREMENTS_2026_11.md) and [TASK.md](TASK.md). These supersede the "outside these milestones" note above for payment, customer accounts and custom domains once each phase is scheduled.
+
+Phase 1 status (2026-11-24): MCP category creation, public-URL image upload and the MCP/backend parity test are released (main 102cbf4, schema 40). Next: T1.3 MCP CSV import with the standard format, T1.4 rich product detail via MCP, T1.6 import format document.

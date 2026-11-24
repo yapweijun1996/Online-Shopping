@@ -182,11 +182,11 @@ Source and status evidence: [CLIENT_REQUIREMENTS_2026_11.md](CLIENT_REQUIREMENTS
 
 ### Phase 1: MCP parity and CSV import (R1, R3)
 
-- [ ] T1.1 Merge and release MCP category creation (branch `pi/mcp-category-create-20261124`); plan the production schema 39 to 40 migration with a verified backup and restore test first.
-- [ ] T1.2 Merge and release MCP image upload by public URL fetch (branch `pi/mcp-image-upload-20261124`); then upload the Proton Saga main image.
+- [x] T1.1 MCP category creation released 2026-11-24 (102cbf4, schema 40 migration; live revision verified). Creating the Toys category still needs seller approval via shop-mcp.
+- [x] T1.2 MCP image upload by public HTTPS URL released 2026-11-24 (102cbf4). Open: upload the Proton Saga main image (collage must be split into a single image first).
 - [ ] T1.3 MCP bulk CSV import, owner decision 2026-11-24: the platform publishes ONE standard import format (downloadable template, field list with types, UOM and product-type enumerations, variants rules) as an MCP resource/tool so AI clients can read it. Clients either fill our template in the Seller backend, or give any messy file to ChatGPT or Claude Code, which maps it to our standard and calls MCP import preview then commit (per-row validation report, SKU match, seller approval like other writes). No client-specific CSV parsing on our side. Acceptance: a messy 1000-row sample is mapped by an AI client and imported with a per-row report.
 - [ ] T1.4 MCP read and write for the rich product detail document, including images.
-- [ ] T1.5 Publish the parity matrix check as a test or script so backend and MCP drift is caught. Implemented in `test/mcp-parity.test.js` and the verify workflow; release pending.
+- [x] T1.5 Publish the parity matrix check as a test or script so backend and MCP drift is caught. Released 2026-11-24 in `test/mcp-parity.test.js` and the verify workflow.
 - [ ] T1.6 Document the standard import format (single source of truth shared by the Seller template and the MCP resource) and test it with a deliberately messy sample.
 
 ### Phase 2: Taobao-style detail page and buyer accounts (R4, R5)
