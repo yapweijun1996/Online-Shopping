@@ -74,7 +74,7 @@ test('real HTTPS app and seller session review and reject a complete proposal in
     assert.match(await page.locator('#currency-warning-text').textContent(), /not converted/);
     await page.locator('button[value="approve"]').click();
     assert.match(await page.locator('#status').textContent(), /check the acknowledgment/);
-    assert.equal(await page.locator('#result-dialog').evaluate(dialog => dialog.open), false);
+    assert.equal(await page.locator('dialog[open]').count(), 0);
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id = ?', company.value.operationId)).state, 'PENDING_APPROVAL');
     await currencyAcknowledgment.check();
     await page.route(origin + '/api/v1/seller/mcp/operations/' + company.value.operationId + '/approval', async route => {
@@ -89,6 +89,7 @@ test('real HTTPS app and seller session review and reject a complete proposal in
     await checkStatus.click();
     await page.locator('#pending-state').filter({ hasText: 'Approved · Waiting to be applied' }).waitFor();
     await page.locator('#decision').waitFor({ state: 'hidden' });
+    assert.equal(await page.locator('dialog[open]').count(), 0, 'status recovery does not replay the approval modal');
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id = ?', company.value.operationId)).state, 'APPROVED');
     assert.equal((await f.store.get("SELECT outcome FROM mcp_v2_event WHERE operation_id = ? AND event = 'APPROVE'", company.value.operationId)).outcome, 'CURRENCY_CHANGE_ACKNOWLEDGED');
     await page.locator('#review-theme').selectOption('dark');

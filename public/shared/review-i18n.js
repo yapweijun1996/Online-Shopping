@@ -264,5 +264,6 @@
       applyTheme();
     });
   }, { once: true });
-  window.operationReviewLanguage = Object.freeze({ t, reviewLocale: () => language, applyReviewLanguage, setReviewLocale });
+  window.operationReviewLanguage = Object.freeze({ t, reviewLocale: () => language,
+    preferredLocale: () => read(languageKey) ?? navigator.language, applyReviewLanguage, setReviewLocale });
 })();

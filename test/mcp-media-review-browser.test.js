@@ -153,13 +153,15 @@ for (const dialect of ['sqlite', 'postgres']) for (const targetSlot of ['MAIN', 
     await page.route('**/approval', route => route.fulfill({ status: 500 }), { times: 1 });
     await page.locator('#approve').click();
     await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Check the status before trying again.'));
-    assert.equal(await page.locator('#result-dialog').evaluate(dialog => dialog.open), false);
+    assert.equal(await page.locator('dialog[open]').count(), 0);
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?', f.operation.operationId)).state, 'PENDING_APPROVAL');
     assert.equal(await page.locator('#approve').isDisabled(), true);
     await page.locator('#check-status').click();
     await page.locator('#approve:enabled').waitFor();
     await page.locator('#approve').click(); await page.locator('#decision').waitFor({ state: 'hidden' });
-    await page.getByRole('alertdialog', { name: 'Approved', exact: true }).waitFor();
+    const success = page.getByRole('dialog', { name: 'Approved', exact: true });
+    await success.waitFor();
+    assert.equal(await success.locator('p').textContent(), 'Main photo change · Synthetic MEDIA-TARGET');
     assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?', f.operation.operationId)).state, 'APPROVED');
     assert.equal((await f.commit()).replayed, false); assert.equal((await f.commit()).replayed, true);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);

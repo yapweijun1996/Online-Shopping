@@ -7,6 +7,7 @@ import { buildMediaManifest,mediaAssetKey } from '../src/mcp/media-manifest.js';
 import { mediaHash } from '../src/mcp/media-storage.js';
 import { createWireInput,createWireIdentity,createWireBinding,createWireProposal } from './helpers/mcp-catalog-create-wire-fixture.js';
 import { wireId } from './helpers/mcp-catalog-wire-fixture.js';
+import { approvalSuccessAsset } from './helpers/mcp-operation-review-browser-fixture.js';
 test('SYNTHETIC transport CREATE renderer verifies null BEFORE/options/page ACK, not actual CREATE authorization',
  {skip:!process.env.QA_PLAYWRIGHT_MODULE,timeout:60000},async t=>{
  const assets=Object.fromEntries(await Promise.all(['html','js','css'].map(async extension=>[extension,await readFile(new URL('../src/mcp/operation-review.'+extension,import.meta.url))]))),png=await readFile(new URL('../public/shop/icons/icon-192.png',import.meta.url));
@@ -18,6 +19,7 @@ test('SYNTHETIC transport CREATE renderer verifies null BEFORE/options/page ACK,
   if(path==='/oauth/operation'){response.writeHead(200,{'Content-Type':'text/html'});response.end(assets.html);return;}
   if(/^\/oauth\/operation-review\.(js|css)$/.test(path)){const extension=path.endsWith('.js')?'js':'css';response.writeHead(200,{'Content-Type':extension==='js'?'text/javascript':'text/css'});response.end(assets[extension]);return;}
   if(styles[path]){response.writeHead(200,{'Content-Type':'text/css'});response.end(styles[path]);return;}
+  const successAsset=await approvalSuccessAsset(path);if(successAsset){response.writeHead(200,{'Content-Type':successAsset.type});response.end(successAsset.body);return;}
   if(path==='/api/v1/seller/session'){json({csrfToken:'synthetic-csrf'});return;}
   if(path==='/api/v1/seller/mcp/operations/'+wireId(99)&&request.method==='GET'){
    const proposal=structuredClone(current.proposal);if(corrupt)proposal.reviewLabels.find(row=>row.before===null).after.name='Unbound current name';
@@ -57,6 +59,10 @@ test('SYNTHETIC transport CREATE renderer verifies null BEFORE/options/page ACK,
   if(process.env.QA_APPROVAL_SCREENSHOT_DIR){await mkdir(process.env.QA_APPROVAL_SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:join(process.env.QA_APPROVAL_SCREENSHOT_DIR,existing?'approval-create-exact-image-390.png':'approval-create-no-images-1280.png'),fullPage:true});}
   const before=approvals.length;
   await page.locator('#approve').click();await page.locator('#decision').waitFor({state:'hidden'});
+  const success=page.getByRole('dialog',{name:'Approved',exact:true});await success.waitFor();
+  assert.equal(await success.locator('p').textContent(),'Product creation · <script>window.__DInjected=true</script> A\\u202eB');
+  assert.equal(await success.locator('script').count(),0);
+  await success.getByRole('button',{name:'Continue',exact:true}).click();await success.waitFor({state:'hidden'});
   assert.equal(approvals.length,before+1);assert.equal(approvals.at(-1).mediaReviewed,true);
   assert.equal(Object.hasOwn(approvals.at(-1),'password'),false);assert.deepEqual(errors,[]);assert.deepEqual(external,[]);await context.close();
  }

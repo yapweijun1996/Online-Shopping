@@ -65,6 +65,7 @@ for (const dialect of ['sqlite', 'postgres']) for (const base of ['', '/alpha'])
       const page = await context.newPage(), external = [], errors = [];
       const styles = new Map([
         [base + '/shop/tokens.css', await readFile(new URL('../public/shop/tokens.css', import.meta.url), 'utf8')],
+        [base + '/seller/approval-success.css', await readFile(new URL('../public/seller/approval-success.css', import.meta.url), 'utf8')],
       ]);
       const styleResponses = [];
       page.on('response', response => {
@@ -114,7 +115,7 @@ for (const dialect of ['sqlite', 'postgres']) for (const base of ['', '/alpha'])
         request.url() === origin + base + '/api/v1/seller/mcp/operations/' + op.operationId + '/approval');
       await page.locator('#approve').click();
       const approvedRequest = await approvalRequest;
-      await page.getByRole('alertdialog', { name: 'Approved', exact: true }).waitFor();
+      await page.getByRole('dialog', { name: 'Approved', exact: true }).waitFor();
       await page.locator('#decision').waitFor({ state: 'hidden' });
       assert.equal((await f.store.get('SELECT state FROM mcp_v2_operation WHERE id=?', op.operationId)).state, 'APPROVED');
       assert.equal(approvedRequest.postDataJSON().mediaReviewed, true);

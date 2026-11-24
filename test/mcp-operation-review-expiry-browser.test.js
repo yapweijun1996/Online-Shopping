@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { buildMediaManifest, mediaAssetKey } from '../src/mcp/media-manifest.js';
 import { mediaHash } from '../src/mcp/media-storage.js';
 import { directWireInput, wireId } from './helpers/mcp-catalog-wire-fixture.js';
+import { approvalSuccessAsset } from './helpers/mcp-operation-review-browser-fixture.js';
 
 const browserModule = process.env.QA_PLAYWRIGHT_MODULE;
 const operationId = wireId(1), now = Date.parse('2030-04-05T06:07:08.000Z');
@@ -41,6 +42,8 @@ test('review handles image disclosure and expiry despite pending media and late 
       if (path === '/oauth/operation') { response.writeHead(200, { 'Content-Type': 'text/html' }); response.end(assets.html); return; }
       if (path === '/shop/tokens.css') { response.writeHead(200, { 'Content-Type': 'text/css' }); response.end(tokens); return; }
       if (path === '/shared/appearance.css') { response.writeHead(200, { 'Content-Type': 'text/css' }); response.end(appearance); return; }
+      const successAsset = await approvalSuccessAsset(path);
+      if (successAsset) { response.writeHead(200, { 'Content-Type': successAsset.type }); response.end(successAsset.body); return; }
       if (/^\/oauth\/operation-review\.(js|css)$/.test(path)) {
         const extension = path.endsWith('.js') ? 'js' : 'css';
         response.writeHead(200, { 'Content-Type': extension === 'js' ? 'text/javascript' : 'text/css' }); response.end(assets[extension]); return;
@@ -110,7 +113,7 @@ test('review handles image disclosure and expiry despite pending media and late 
       assert.equal(await page.locator('#pending-state').textContent(), expiredMessage);
       assert.equal(await page.locator('#status').textContent(), expiredMessage);
       assert.equal(await page.locator('#expiry-chip').textContent(), 'Expired');
-      assert.equal(await page.locator('#result-dialog').evaluate(dialog => dialog.open), false);
+      assert.equal(await page.locator('dialog[open]').count(), 0);
       for (const selector of ['#approve', 'button[value="reject"]', '#currency-ack', '#media-image-retry']) {
         assert.equal(await page.locator(selector).isDisabled(), true, selector);
       }
