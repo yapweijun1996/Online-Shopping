@@ -26,7 +26,7 @@ The fixed Linux development launcher policy requires host uid/gid1000, private b
 | Name | Scope / capability | Behavior |
 | --- | --- | --- |
 | media.list | media.read / catalog.write | Bounded current graph revision and paginated member/image identities. No image bytes, URL, stock/price or customer data. Default5/max25 members; source300 products,32old content keys/16MiB physical bytes. Oversized metadata page rejects503; reduce limit, no truncation. |
-| media.prepare_upload | media.write / catalog.write | Root object `{input:<one closed command>}`. `begin` binds existing product/slot/revision and immutable intent; `append` carries canonical parts and offset; `seal` creates the durable HIGH image operation; `discard` aborts an unbound stage. |
+| media.prepare_upload | media.write / catalog.write | Root object `{input:<one closed command>}`. `begin` binds existing product/slot/revision and immutable intent; `append` carries canonical parts and offset; `seal` creates the durable HIGH image operation; `discard` aborts an unbound stage. `fetch` prepares the same operation using a direct public HTTPS image URL. |
 | media.upload_file | media.write / catalog.write | Top-level owned product/slot/revision/idempotency key and ChatGPT file object. Restricted download and exact source hashing feed existing staged preparation. Returns the existing first-party approval proposal, never approval or commit. |
 | media.commit_upload | media.write / catalog.write | Only operationId. Current authority, policy, frame, pin, native-derived thumbnail, full graph, human review evidence and actual bytes are rechecked. |
 | media.preview_layout | media.write / catalog.write | Existing product/revision, gallery UUIDs or literal main, explicit removeMain boolean. Outer normal preview idempotencyKey. All before/after product/listing effects are immutable HIGH review metadata. No new image payloads or cross-product selection. |
@@ -35,6 +35,51 @@ The fixed Linux development launcher policy requires host uid/gid1000, private b
 All legacy8 tool definition objects, input schemas and response contracts remain unchanged. Fresh per-scope evidence/current RBAC/tenant/mode/grant/epoch/build are checked at the actual boundary, never supplied by a model argument. Write preparation is not approval. Human password,challenge,nonce,mediaReviewed and identity fields are not MCP input properties.
 
 Stage output is a fixed `{action,stage,operation}` object: exactly one nullable payload is populated. Seal supplies the first-party review URL and operation ID; nonce/password never enter a URL. Both commit tools return only productId,listingId,revision receipts on success. Caller-selected idempotency keys identify exact immutable intent, never authority.
+
+## Fetch a public image when PUT is blocked
+
+Use `media.list` to get the current product revision. If the image already has
+an authorized, publicly readable URL, call:
+
+```json
+{
+  "name": "media.prepare_upload",
+  "arguments": {
+    "input": {
+      "action": "fetch",
+      "productId": "<existing-product-uuid>",
+      "expectedRevision": "<current-lowercase-64-character-revision>",
+      "sourceUrl": "https://images.example.com/product.jpg",
+      "idempotencyKey": "product-image-intent-001"
+    }
+  }
+}
+```
+
+`targetSlot` is optional: omitted or `GALLERY` adds to the gallery and retains
+its current main photo; set `MAIN` explicitly to set or replace the main photo.
+`GALLERY` still requires an existing main and the correct gallery holder.
+The URL must directly serve PNG, JPEG or WebP (HTTP 200, matching image
+Content-Type, no compression, up to 524,288 bytes) on a public DNS hostname
+using HTTPS on port 443. No redirects, IP literals, credentials, query strings,
+fragments or local paths. Do not publish a private attachment just to use this
+option. For a local-only file use the existing PUT/file picker if reachable, or
+use `media.upload_file` if the connector provides a supported ChatGPT file.
+
+Fetch sends no image bytes in the MCP request. The shop calculates the SHA-256,
+stages the exact bytes and runs the existing native codec. A successful call
+returns `{action: "fetch", stage: null, operation: {operationId, status,
+previewHash, expiresAt, replayed, reviewUrl}}`. The review link is first-party;
+the source URL is not part of the proposal. A new proposal is `PENDING_APPROVAL`
+and has not changed the product. A separate authenticated seller decision with
+complete review acknowledgments is required before `media.commit_upload`.
+
+A retry downloads the image again. Use the same idempotency key and target with
+unchanged source bytes and current revision to resume or replay the pending
+proposal. A changed image under the same key conflicts; use a new key for a
+new intent. A stale revision is rejected, not refreshed automatically. The
+[threat model](../threat-model.md#public-https-image-preparation-through-mcp)
+describes network limits and the remaining egress assumptions.
 
 ## Limits and transaction ordering
 

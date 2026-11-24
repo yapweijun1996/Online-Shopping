@@ -15,8 +15,10 @@ authenticate arbitrary Azure attachments. Neither is a PostgreSQL limitation.
 `media.request_upload_url` returns a Shop-issued capability. A client uploads
 the actual file outside MCP arguments, or the seller opens a file picker at the
 same URL. PUT automatically prepares the same durable review as Base64 `seal`.
-The product's current image remains unchanged. No external download URL is
-accepted or fetched, and no provider ownership claim is invented.
+The product's current image remains unchanged. The PUT route does not fetch an
+external URL or attest provider ownership. If the client cannot reach the
+seller host for PUT and the image already has a public HTTPS URL, use
+[`media.prepare_upload` with action `fetch`](mcp-v2/MEDIA-TOOLS.md#fetch-a-public-image-when-put-is-blocked).
 
 ## Tool and HTTP contract
 

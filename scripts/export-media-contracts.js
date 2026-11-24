@@ -13,6 +13,7 @@ const examples={
   {input:{action:'append',stageId,offset:0,dataParts:['iQ==']}},
   {input:{action:'seal',stageId,idempotencyKey:'documented-seal-shape-0001'}},
   {input:{action:'discard',stageId}},
+  {input:{action:'fetch',productId,expectedRevision:sha,sourceUrl:'https://images.example.com/product.jpg',idempotencyKey:'documented-fetch-shape-0001'}},
  ],
  'media.commit_upload':[{operationId}],
  'media.preview_layout':[{input:{productId,expectedRevision:sha,gallery:[{id:'main'}],removeMain:false},idempotencyKey:'documented-layout-shape-0001'}],

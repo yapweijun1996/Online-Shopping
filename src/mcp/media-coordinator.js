@@ -102,17 +102,18 @@ export function createMediaCoordinator({ store, binding, tenantGuard, epoch, bui
     if (slot === 'GALLERY' && !target.mainAssetKey) throw new ApiError(400, 'MEDIA_MAIN_REQUIRED', 'Add a main image first.');
     return snapshot;
   };
-  // requestedId is server-owned URL-upload state, never part of the tool input.
-  const begin = async (bearer, input, requestedId) => {
+  // The optional upload ID and pre-transfer authority snapshot are server-owned.
+  const begin = async (bearer, input, { requestedId, expectedContext } = {}) => {
     await reserve(bearer, false);
     shape(input, ['productId','targetSlot','expectedRevision','sourceSha256','sourceMime','declaredBytes','idempotencyKey']);
     input = { ...input };
     if (!isMediaUuid(input.productId) || !['MAIN','GALLERY'].includes(input.targetSlot) || !isMediaHash(input.expectedRevision)) invalid();
     return write(bearer, async (writer, context, reader) => {
+      if (expectedContext !== undefined && canonicalOperationJson(expectedContext) !== canonicalOperationJson(context)) denied();
       const stage = await writer.begin({ ...input, codecDigest: codec.digest }, requestedId);
-      // Invalid new targets roll back their stage/quota/audit atomically. Existing
-      // immutable begin intent remains replayable after later portal changes.
-      if(!stage.replayed)await inspectTarget(reader, input.productId, input.targetSlot, input.expectedRevision);
+      // Recheck the fetch target after network I/O, even on replay. Ordinary
+      // begin preserves its existing immutable-intent replay behavior.
+      if (!stage.replayed || expectedContext !== undefined) await inspectTarget(reader, input.productId, input.targetSlot, input.expectedRevision);
       return auditStage(writer,context,stage,'BEGIN');
     });
   };

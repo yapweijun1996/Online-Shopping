@@ -27,7 +27,7 @@ Source review at `41407a7bda20adf167e2825900a268f3949316cc`: [CODEBASE_BUG_REVIE
 `media.request_upload_url` delegates one raw-byte upload under the existing
 `media.write` grant and catalog capability. The closed request binds product,
 slot, current graph revision, MIME, exact byte count and optional SHA-256.
-All three MCP upload tools normalize an omitted slot to `GALLERY` before
+All MCP upload transports normalize an omitted slot to `GALLERY` before
 creating any upload intent. `MAIN` remains explicit, and the normalized slot
 is bound to the proposal and shown during seller approval.
 `src/mcp/media-upload-url.js` signs a stage ID, random nonce and five-minute
@@ -63,6 +63,36 @@ routes default and tenant-prefixed upload paths only on the seller host and
 redacts upload capability paths from runtime logs. Any additional upstream
 gateway/access logging must retain that redaction. See [the contract and local
 acceptance evidence](MCP_UPLOAD_URL.md); this addition does not authorize deployment.
+
+### Public HTTPS image preparation through MCP
+
+The `fetch` action of `media.prepare_upload` adds an outbound trust boundary:
+clients with current `media.write` consent and `catalog.write` capability can
+supply a direct public image URL. Existing tenant, product, slot and full
+revision preflight runs before DNS. Before staging, the same authority context
+and current revision are checked again under the existing fences. The source
+URL supplies bytes only. It is not stored in the stage, proposal or audit, nor
+returned in the result or error.
+
+The shop makes one direct, certificate-verified HTTPS GET on port 443. The URL
+must have a DNS hostname, with no IP literal, local hostname, userinfo, query or
+fragment. It resolves the absolute name once, rejects the whole DNS result if
+any answer is not allowed (including private, loopback, link-local, mapped and
+known metadata/platform addresses), and pins one validated IP while retaining
+the original TLS hostname. The request does not forward shop credentials,
+use a proxy agent or follow redirects. HTTP 200 and a PNG, JPEG or WebP
+Content-Type matching the bytes' signature are required; compressed responses
+are rejected. A ten-second deadline covers DNS, TLS and streaming. The
+512 KiB cap applies regardless of Content-Length, and the four process-wide
+download permits are shared with the ChatGPT transport. An abandoned DNS
+lookup holds its permit until it settles; it cannot start a late socket.
+
+A public source can observe the backend's egress IP and change its content.
+Publicly numbered addresses routed privately by the deployment are outside
+address classification; network egress isolation remains defense in depth.
+The native codec validates the exact SHA-256-bound source bytes via the
+existing staged pipeline. Seller review, approval and separate commit remain
+unchanged. See [the tool contract](mcp-v2/MEDIA-TOOLS.md#fetch-a-public-image-when-put-is-blocked).
 
 ### ChatGPT file-based media preparation (isolated implementation, 2026-11-10)
 

@@ -20,14 +20,24 @@ export async function uploadMediaFile({ args, bearer, coordinator, prepare, down
   return uploadMediaBytes({ args, bearer, coordinator, prepare, bytes: downloaded.bytes, mime: downloaded.mime });
 }
 
-// Both transports share exactly the same stage, native decoder and approval path.
-export async function uploadMediaBytes({ args, bearer, coordinator, prepare, bytes: source, mime, stageId }) {
+export async function uploadMediaSource({ args, bearer, coordinator, prepare, downloadSource }) {
+  const { productId, targetSlot, expectedRevision, idempotencyKey, sourceUrl } = args;
+  const expectedContext = await coordinator.preflight(bearer, { productId, targetSlot, expectedRevision });
+  const { bytes, mime } = await downloadSource(sourceUrl);
+  // Source URL is a locator, not proposal data. The stage binds the actual bytes.
+  return uploadMediaBytes({ args: { productId, targetSlot, expectedRevision,
+    idempotencyKey: mediaHash('media.prepare_upload:fetch:' + idempotencyKey) },
+  bearer, coordinator, prepare, bytes, mime, expectedContext });
+}
+
+// Alternate transports share exactly the same stage, native decoder and approval path.
+export async function uploadMediaBytes({ args, bearer, coordinator, prepare, bytes: source, mime, stageId, expectedContext }) {
   const { productId, targetSlot, expectedRevision, idempotencyKey } = args;
   if (!(source instanceof Uint8Array) || !source.byteLength || source.byteLength > MEDIA_LIMITS.sourceBytes ||
       !['image/jpeg','image/png','image/webp'].includes(mime)) throw new ApiError(400, 'MEDIA_FILE_INVALID', 'Invalid image file.');
   const bytes = Buffer.from(source), sourceSha256 = mediaHash(bytes);
   const stage = await coordinator.begin(bearer, { productId, targetSlot, expectedRevision, idempotencyKey,
-    sourceSha256, sourceMime: mime, declaredBytes: bytes.length }, stageId);
+    sourceSha256, sourceMime: mime, declaredBytes: bytes.length }, { requestedId: stageId, expectedContext });
   if (!['UPLOADING','VALIDATING','BOUND'].includes(stage.state) || !Number.isSafeInteger(stage.nextOffset) ||
       stage.nextOffset < 0 || stage.nextOffset > bytes.length ||
       (stage.nextOffset !== bytes.length && stage.nextOffset % MEDIA_LIMITS.chunkBytes !== 0) ||
