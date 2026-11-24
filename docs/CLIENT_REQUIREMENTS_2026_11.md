@@ -22,7 +22,7 @@ Source: owner meeting with a prospective client, recorded 2026-11-24. This docum
 
 | ID | Requirement | Current status (verified from repo) | Gap |
 | --- | --- | --- | --- |
-| R1 | AI-first: ChatGPT and Claude Code connect through MCP and do back-office work (bulk CSV import of e.g. 1000 SKUs with UOM and types, catalog set-up, data analysis, delivery arrangement) | MCP v2 live: `catalog.*`, `media.*`, `inventory.*`, `orders.*`, `analytics.*`, `company.*` tools with preview/commit and seller approval. CSV import exists in the Seller UI (`src/product-import.js`, SKU-matched update/create) | No MCP tool for CSV import; UOM and product-type handling in import is **unverified**; category creation missing (branch `pi/mcp-category-create-20261124`, unmerged) |
+| R1 | AI-first: ChatGPT and Claude Code connect through MCP and do back-office work (bulk CSV import of e.g. 1000 SKUs with UOM and types, catalog set-up, data analysis, delivery arrangement) | MCP v2 live: `catalog.*`, `media.*`, `inventory.*`, `orders.*`, `analytics.*`, `company.*` tools with preview/commit and seller approval. CSV import exists in the Seller UI (`src/product-import.js`, SKU-matched update/create) | No MCP tool for CSV import; UOM and product-type handling in import is **unverified**; category creation is implemented locally; release remains unverified |
 | R2 | Delivery with several couriers (Ninja Van, SPS, NSS, EasyParcel); export the courier CSV, e.g. EasyParcel | Generic shipping-list export (CSV and Excel) and tracking CSV import implemented (`src/order-shipping-export.js`, `src/tracking-import.js`); Ninja webhook exists. [BULK_TRACKING_DESIGN.md](BULK_TRACKING_DESIGN.md): EasyParcel-native template is not proven | Provider-native profiles for EasyParcel, SPS, NSS are **unverified/missing**; no MCP tool for shipping export or tracking import |
 | R3 | Backend and MCP have the same capabilities (listing, images, details, ...) | Partial: parity matrix below | Close the gaps in the matrix |
 | R4 | Taobao-style product detail page, AI-generated images allowed in details | Rich product detail document v1 exists ([PRODUCT_RICH_DETAIL.md](PRODUCT_RICH_DETAIL.md), `src/product-detail*.js`) | Storefront visual redesign to Taobao-style layout (long image-rich description, gallery, specs, SKU selector) is **unverified/missing**; MCP write path for detail with images is missing |
@@ -35,17 +35,19 @@ Source: owner meeting with a prospective client, recorded 2026-11-24. This docum
 
 | Capability | Seller backend | MCP | Gap |
 | --- | --- | --- | --- |
-| List, get, history, low stock | yes | `catalog.list/get/history/low_stock` | none |
-| Create and update product | yes | `catalog.preview/commit_create/update` | none for basic fields; verify variants and options |
-| Create category | yes (category codes) | no | branch `pi/mcp-category-create-20261124` |
-| Product images | yes | `media.*`; upload needs single-use PUT URL or file bridge | branch `pi/mcp-image-upload-20261124` (fetch by public URL) |
-| Rich product detail | yes | not found | MCP read/write for detail document |
+| List, get, history, low stock | yes | `catalog.list`, `catalog.get`, `catalog.history`, `catalog.low_stock` | none |
+| Create and update product | yes | `catalog.preview_create`, `catalog.commit_create`, `catalog.preview_update`, `catalog.commit_update` | none for basic fields; verify variants and options |
+| Create category | yes (category codes) | `catalog.preview_create_category`, `catalog.commit_create_category` | implemented locally; seller approval required; release unverified |
+| Product images | yes | `media.list`, `media.prepare_upload`, `media.commit_upload`, `media.preview_layout`, `media.commit_layout`, `media.upload_file`, `media.request_upload_url` | public HTTPS fetch is implemented locally through `media.prepare_upload`; release unverified |
+| Rich product detail | yes | no | MCP read/write for detail document |
 | Bulk CSV import and export | yes (UI) | no | MCP import preview/commit |
-| Inventory adjust and movements | yes | `inventory.*` | none |
-| Orders list, get, decide | yes | `orders.*` | none |
+| Inventory adjust and movements | yes | `inventory.summary`, `inventory.movements`, `inventory.preview_adjustment`, `inventory.commit_adjustment` | none |
+| Orders list, get, decide | yes | `orders.list`, `orders.get`, `orders.preview_decision`, `orders.commit_decision` | none |
 | Shipping export, tracking import | yes (UI) | no | MCP tools |
-| Analytics | yes | `analytics.*` | none |
-| Company settings | yes | `company.*` | none |
+| Analytics | yes | `analytics.summary`, `analytics.sales_trend`, `analytics.top_products`, `analytics.inventory_risk` | none |
+| Company settings | yes | `company.get`, `company.preview_update`, `company.commit_update` | none |
+
+The executable parity check in `test/mcp-parity.test.js` reads this table and compares every explicitly listed tool with the actual default registry with media enabled. Use exact backtick-quoted tool names or `no` in the MCP column; the check does not claim that unlisted backend capabilities are covered or that a feature is deployed.
 
 ## Feasibility notes (GCP and domains)
 

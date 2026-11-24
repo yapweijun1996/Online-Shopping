@@ -28,6 +28,12 @@ export const connectorPath = (path) => /^\/(?:mcp$|media\/(?:upload\/|upload-pic
 const operationPath = (path) => path === '/oauth/operation' || /^\/oauth\/operation-review\.(?:js|css)$/.test(path) || /^\/api\/v1\/seller\/mcp\/(?:operations(?:\/|$)|approval(?:\/|$))/.test(path);
 const reviewCsp = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export function defaultOperationEntries({ mediaOptions, runtime, catalogUpdateEnabled, catalogCreateEnabled, mediaEnabled }) {
+  return [companyReadTool(),companyMutationTool(),catalogCreateEnabled ? catalogMediaCreateTool(runtime) : catalogCreateTool(),
+    catalogUpdateEnabled ? catalogMediaUpdateTool(runtime) : catalogUpdateTool(), catalogCreateCategoryTool(),
+    analyticsSalesTrendTool(),analyticsTopProductsTool(),analyticsInventoryRiskTool(),inventorySummaryTool(),inventoryMovementsTool(),inventoryAdjustmentTool(),orderDecisionTool(),...operationControlTools(),
+    ...(MEDIA_TOOLS_ACCEPTED && mediaEnabled ? mediaTools(mediaOptions,runtime) : [])];
+}
 function validReviewQuery(params) {
   // Attribution belongs only to the public shell; it never reaches authority or API arguments.
   const keys = [...params.keys()];
@@ -55,10 +61,8 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
     else {
       const mediaOptions = {store,binding:oauth.binding,config,tenantGuard,quickLogin};
       const runtime = (MEDIA_TOOLS_ACCEPTED && config.mcpMedia?.enabled === true) || catalogUpdateEnabled || catalogCreateEnabled ? createMediaRuntime(mediaOptions) : null;
-      registrations = [companyReadTool(),companyMutationTool(),catalogCreateEnabled ? catalogMediaCreateTool(runtime) : catalogCreateTool(),
-        catalogUpdateEnabled ? catalogMediaUpdateTool(runtime) : catalogUpdateTool(), catalogCreateCategoryTool(),
-        analyticsSalesTrendTool(),analyticsTopProductsTool(),analyticsInventoryRiskTool(),inventorySummaryTool(),inventoryMovementsTool(),inventoryAdjustmentTool(),orderDecisionTool(),...operationControlTools(),
-        ...(MEDIA_TOOLS_ACCEPTED && config.mcpMedia?.enabled === true ? mediaTools(mediaOptions,runtime) : [])];
+      registrations = defaultOperationEntries({ mediaOptions, runtime, catalogUpdateEnabled, catalogCreateEnabled,
+        mediaEnabled: config.mcpMedia?.enabled === true });
     }
   }
   const extensions = createOperationTools({ store, binding: oauth.binding, config, tenantGuard, quickLogin, entries: registrations });
