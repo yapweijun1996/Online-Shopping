@@ -10,6 +10,9 @@ Source: owner meeting with a prospective client, recorded 2026-11-24. This docum
 | Payments first | Malaysia: DuitNow and Touch 'n Go |
 | Tenant site design by AI | Allow AI-written custom HTML (see risk R8 below; safeguards are mandatory) |
 | Priority | 1) MCP parity and CSV import first |
+| CSV import | One platform standard format exposed through MCP; AI clients map any client file to it; no client-specific parsers |
+| Couriers | Generic export first; no courier-native claims without a real template (owner has none) |
+| Payments | No merchant account yet; research first, simplest set-up for Singapore and Malaysia; see [PAYMENT_GATEWAY_RESEARCH_MY_SG.md](PAYMENT_GATEWAY_RESEARCH_MY_SG.md) |
 
 ## Requirements and current status
 
@@ -64,7 +67,7 @@ See [TASK.md](TASK.md) section "Client requirements, November 2026" for checkbox
 
 ## Open questions
 
-- Exact CSV import shape from the client (columns, UOM, product types, variants) and one real sample file.
-- Which couriers have a real downloadable bulk-upload template available to us (EasyParcel, SPS, NSS).
-- Which aggregator or direct DuitNow/Touch 'n Go route, and merchant onboarding requirements.
+- Final wording of the standard import format (UOM and product-type enumerations).
+- Real courier templates (EasyParcel, SPS, NSS) once an account exists.
+- Payment gateway choice and a sandbox account (owner), then verification of fees and webhooks.
 - Whether buyer login uses email, phone OTP, or both first, and the OTP delivery channel.
