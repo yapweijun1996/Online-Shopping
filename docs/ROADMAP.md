@@ -15,3 +15,7 @@
 The Docker, PostgreSQL and multi-tenant production path is planned in [MULTI_TENANT_PRODUCTION_PLAN.md](MULTI_TENANT_PRODUCTION_PLAN.md). Post-MVP candidates and their prerequisites are reviewed in [SELLER_PANEL_REVIEW.md](SELLER_PANEL_REVIEW.md) (seller panel gaps) and [INTEGRATIONS.md](INTEGRATIONS.md) (WhatsApp and couriers). The list below is the original exclusion list and still applies until the owner schedules those items.
 
 Payment, inventory/shipping automation, customer accounts/OTP and cross-device recovery, outbound WhatsApp automation, courier/AWB/tracking, and CSV/Excel batch export are outside these milestones. Verify any external platform/import contract before adding an integration milestone.
+
+## Client requirements (2026-11-24)
+
+A prospective client asked for AI-first operation (MCP with ChatGPT and Claude Code), MCP/backend parity, CSV import, courier exports, a Taobao-style detail page, buyer accounts, Malaysia payments, tenant custom domains with AI-designed sites, and later service businesses. Requirements, verified status, owner decisions and phased tasks are in [CLIENT_REQUIREMENTS_2026_11.md](CLIENT_REQUIREMENTS_2026_11.md) and [TASK.md](TASK.md). These supersede the "outside these milestones" note above for payment, customer accounts and custom domains once each phase is scheduled.

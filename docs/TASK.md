@@ -174,3 +174,45 @@ The owner's fresh instruction authorizes scoped tested fixes and publishing the 
 | SEL-07 | P2 / Implemented locally 2026-10-09 (not deployed) | SEL-04 | Internal order notes, product change history (who, when, from and to) and bulk activate or deactivate of products (ungrouped products; products with variants are switched inside the product). Schema 24. Covered by `test/seller-notes-history.test.js` and its PostgreSQL twin. Product CSV export is done too (`test/product-export.test.js`). Product CSV import is done (rules chosen by the owner: update or create by SKU, preview first, all or nothing, price/stock/active/name/description/category only; `test/product-import.test.js`). Still open: shipping fees and promo codes. |
 | SEL-05 | P1 / Implemented locally 2026-10-09 (not deployed); tests in `test/erase-contact.test.js`, SQLite and PostgreSQL | DEC-07 | Seller-initiated permanent deletion of an order's buyer contact and delivery data with confirmation and an audit event; tests prove nothing else about the order is lost. |
 | TEN-00 | P0 / Plan recorded 2026-10-05 | owner open items | [MULTI_TENANT_PRODUCTION_PLAN.md](MULTI_TENANT_PRODUCTION_PLAN.md): phases 0 to 8 for Docker, PostgreSQL, tenants at `/s/{shop-code}/`, SuperAdmin with TOTP, manual deletion, backups and a seeded Demo. Each phase is separately merged. |
+
+
+## Client requirements, November 2026
+
+Source and status evidence: [CLIENT_REQUIREMENTS_2026_11.md](CLIENT_REQUIREMENTS_2026_11.md). Owner decisions (2026-11-24): physical-goods client first, Malaysia payments first, AI-written custom HTML allowed with mandatory safeguards. Work in this order; each item needs a verified release before it is checked.
+
+### Phase 1: MCP parity and CSV import (R1, R3)
+
+- [ ] T1.1 Merge and release MCP category creation (branch `pi/mcp-category-create-20261124`); plan the production schema 39 to 40 migration with a verified backup and restore test first.
+- [ ] T1.2 Merge and release MCP image upload by public URL fetch (branch `pi/mcp-image-upload-20261124`); then upload the Proton Saga main image.
+- [ ] T1.3 MCP bulk CSV import: preview (row validation, SKU match, UOM and product-type mapping) then commit, with seller approval like other writes. Acceptance: a 1000-row sample imports through ChatGPT or Claude Code with a per-row report.
+- [ ] T1.4 MCP read and write for the rich product detail document, including images.
+- [ ] T1.5 Publish the parity matrix check as a test or script so backend and MCP drift is caught.
+- [ ] T1.6 Obtain a real client CSV sample and record its column contract (open question).
+
+### Phase 2: Taobao-style detail page and buyer accounts (R4, R5)
+
+- [ ] T2.1 Design and screenshot-review the storefront product detail page (long image-rich description, gallery, specs, SKU selector); mobile PWA, no zoom, SVG icons.
+- [ ] T2.2 Buyer accounts with email or phone login (OTP); decide delivery channel.
+- [ ] T2.3 Verified-purchase buyer reviews with moderation by the seller.
+
+### Phase 3: Courier exports through MCP (R2)
+
+- [ ] T3.1 MCP tools for shipping-list export and tracking import.
+- [ ] T3.2 Obtain real bulk-upload templates for EasyParcel, SPS and NSS; add provider profiles behind `src/integration-*.js`; do not claim compatibility until validated.
+
+### Phase 4: Malaysia payments (R7)
+
+- [ ] T4.1 Compare DuitNow and Touch 'n Go routes (aggregators and direct); record unknowns; owner picks one.
+- [ ] T4.2 Implement the chosen gateway with webhook verification and order-state integration; then evaluate Singapore PayNow.
+
+### Phase 5: Custom domains and AI site design (R8)
+
+- [ ] T5.0 Security gate: written design and independent review for AI-written custom HTML (slots only, sandbox or separate origin, strict CSP, rollback, audit log). Nothing in T5.3 ships before this is checked.
+- [ ] T5.1 Tenant custom-domain registry, DNS verification and automatic HTTPS (Caddy on-demand TLS with an ask endpoint).
+- [ ] T5.2 Default templates by business type and festival theme presets (CSS tokens).
+- [ ] T5.3 MCP tools for tenants to design the brand page and shop pages; core shop functions stay platform-owned.
+
+### Phase 6: Services and email drafting (R6)
+
+- [ ] T6.1 Service package and booking order model with no shipping.
+- [ ] T6.2 AI-drafted confirmation emails.
