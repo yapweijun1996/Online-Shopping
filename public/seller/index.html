@@ -13,13 +13,22 @@
   <meta name="apple-mobile-web-app-title" content="OS Seller">
   <script src="../shared/theme.js"></script>
   <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./boot-loader.css">
   <script type="module" src="./bootstrap.js"></script>
   <link rel="stylesheet" href="./order-print.css">
   <link rel="stylesheet" href="./commerce.css">
   <link rel="stylesheet" href="./brand.css">
   <link rel="stylesheet" href="./budget.css">
 </head>
-<body>
+<body class="seller-booting">
+  <div id="seller-boot-loader" class="seller-boot-overlay" role="status" aria-live="polite">
+    <div class="seller-boot-content">
+      <picture class="seller-boot-placeholder" aria-hidden="true"><img class="placeholder-light" src="/shared/brand/pomelo-placeholder-loader.svg" alt=""><img class="placeholder-dark" src="/shared/brand/pomelo-placeholder-loader-dark.svg" alt=""><img class="placeholder-static-light" src="/shared/brand/pomelo-placeholder-static.svg" alt=""><img class="placeholder-static-dark" src="/shared/brand/pomelo-placeholder-static-dark.svg" alt=""></picture>
+      <h2>Seller Studio</h2>
+      <p data-i18n="loading">Loading…</p>
+      <span class="seller-boot-progress" aria-hidden="true"></span>
+    </div>
+  </div>
   <header class="topbar">
     <button class="icon-button mobile-only" id="open-menu" type="button" data-i18n-aria="openMenu" aria-controls="sidebar" aria-expanded="false">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>

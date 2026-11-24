@@ -23,6 +23,7 @@ import { mountCategories, mountCompanySettings } from './settings.js';
 import { mountAiStudio } from './ai-studio.js';
 import { mountOptions } from './options.js';
 import { mountTabIcon } from '../shared/tab-icon.js';
+import { hideBootLoader, showBootLoader } from './boot-loader.js';
 
 const byId = (id) => document.getElementById(id);
 // Single-purpose first-party continuation. Never accept a URL, hostname or arbitrary return path.
@@ -151,6 +152,7 @@ function applyRoute() {
   // Old `#review` links, and pages this role cannot open, are rewritten to the address that is actually shown.
   if (location.hash.slice(1).startsWith('review') || (location.hash.length > 1 && !allowedRoute(location.hash.slice(1)))) history.replaceState(history.state, '', `#${currentRoute}`);
   renderView();
+  if (currentView !== 'dashboard') hideBootLoader();
 }
 
 function activePage() {
@@ -278,10 +280,10 @@ function setPasswordVisible(visible) {
   toggle.setAttribute('aria-label', t(toggle.dataset.i18nAria));
 }
 
-function showLogin(messageKey = '', clearHint = true) {
+function showLogin(messageKey = '') {
   sessionViewSequence++;
   const leavingWorkspace = !workspace.hidden;
-  if (clearHint) sessionHint(false);
+  sessionHint(false);
   messageBadge?.dispose();
   messageBadge = null;
   settingsPage?.dispose?.();
@@ -307,6 +309,7 @@ function showLogin(messageKey = '', clearHint = true) {
   setPasswordVisible(false);
   setLoginMessage(messageKey);
   closeDrawer(false);
+  hideBootLoader();
   if (leavingWorkspace) byId('username').focus();
 }
 
@@ -361,6 +364,7 @@ function showWorkspace(session) {
   // A temporary password (new account or reset) must be replaced before anything else works.
   if (session.mustChangePassword) {
     openPasswordDialog({ forced: true, csrfToken: () => csrfToken, onUnauthorized: () => showLogin('authError'), onDone: () => showWorkspace({ ...session, mustChangePassword: false }) });
+    hideBootLoader();
   }
 }
 
@@ -620,6 +624,9 @@ async function renderDashboard(content) {
     retry.type = 'button';
     retry.addEventListener('click', () => renderDashboard(content));
     shell.replaceChildren(message, retry);
+  } finally {
+    // The dashboard is painted once its shell is ready; its panels load independently.
+    if (isCurrent()) hideBootLoader();
   }
 }
 
@@ -888,8 +895,11 @@ byId('login-form').addEventListener('submit', async (event) => {
       setLoginMessage('authError');
       return;
     }
-    showWorkspace(await response.json());
+    const session = await response.json();
+    showBootLoader();
+    showWorkspace(session);
   } catch {
+    hideBootLoader();
     setLoginMessage('networkError');
   } finally {
     submit.disabled = false;
@@ -914,7 +924,6 @@ document.addEventListener('localechange', () => {
 });
 
 if (sessionHint() || reviewOperation) {
-  showLogin('loading', false);
   const restoreView = sessionViewSequence;
   const ownsRestore = () => restoreView === sessionViewSequence;
   fetch(apiUrl('v1/seller/session')).then(async (response) => {
