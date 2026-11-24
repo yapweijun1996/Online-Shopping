@@ -2,6 +2,7 @@
 """Root-installed, anonymous, main + CI gated image deployment and schema upgrades."""
 import argparse
 import base64
+from datetime import datetime
 import fcntl
 import hashlib
 import importlib.util
@@ -25,9 +26,29 @@ CODEC_FILES = {'wireSha256': 'src/mcp/media-codec-wire.js', 'clientSha256': 'src
 MCP_FLAGS = ('MCP_V2_ENABLED', 'MCP_V2_MEDIA_ENABLED', 'MCP_V2_CATALOG_MEDIA_UPDATE_ENABLED', 'MCP_V2_CATALOG_MEDIA_CREATE_ENABLED')
 PROFILE = 'seller-operations-v1'
 IMAGE_ID = re.compile(r'sha256:[0-9a-f]{64}')
+PROJECT_PREFIX = 'ghcr.io/yapweijun1996/online-shopping-'
+PROJECT_REF = re.compile(re.escape(PROJECT_PREFIX) + r'[a-z0-9]+(?:[._-][a-z0-9]+)*'
+                         r'(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}|@sha256:[0-9a-f]{64})')
+IMAGE_CREATED = re.compile(r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.\d{1,9})?(Z|[+-]\d{2}:\d{2})')
+DISK_RESERVE = 3 * 1024 ** 3
+IMAGE_MIN_AGE = 24 * 60 * 60
+FAILURE_REASONS = frozenset({'insufficient_disk_reserve', 'command_failed', 'readiness_failed',
+                             'schema_backup_failed', 'schema_migration_failed', 'schema_release_failed',
+                             'rolled_back', 'unexpected_error'})
 BACKUP_SCRIPT = '/opt/online-shopping-backup/backup.sh'
 RESTORE_TEST_SCRIPT = '/opt/online-shopping-backup/restore-test.sh'
 UPGRADE_SCRIPT = 'scripts/upgrade-database.mjs'
+
+
+def failure(reason, message):
+    error = RuntimeError(message)
+    error.updater_reason = reason
+    return error
+
+
+def failure_reason(error, fallback='unexpected_error'):
+    reason = getattr(error, 'updater_reason', None)
+    return reason if type(reason) is str and reason in FAILURE_REASONS else fallback
 
 
 def revision(value):
@@ -129,6 +150,13 @@ class Updater:
         self.state.update(fields, status=status)
         atomic(self.state_path, json.dumps(self.state, sort_keys=True).encode())
 
+    def record_failure(self, error):
+        # Update only the durable state. A failed state transition may have
+        # changed self.state before its atomic write failed.
+        state = json.loads(self.state_path.read_text()) if self.state_path.exists() else {}
+        state['last_reason'] = failure_reason(error)
+        atomic(self.state_path, json.dumps(state, sort_keys=True).encode())
+
     def head(self):
         return revision(api('/git/ref/heads/main')['object']['sha'])
 
@@ -212,28 +240,115 @@ class Updater:
         import resource
         def limits():
             resource.setrlimit(resource.RLIMIT_FSIZE, (1_048_576, 1_048_576))
-        with tempfile.TemporaryFile() as output:
-            result = subprocess.run(argv, stdin=subprocess.DEVNULL,
-                                    stdout=output if capture else subprocess.DEVNULL, stderr=subprocess.STDOUT,
-                                    timeout=timeout, check=False, preexec_fn=limits if capture else None,
-                                    env={'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'HOME': '/root'})
-            if result.returncode:
-                raise RuntimeError('Command failed')
-            if not capture:
-                return ''
-            output.seek(0)
-            data = output.read(1_048_577)
-            if len(data) > 1_048_576:
-                raise RuntimeError('Command output limit')
-            return data.decode()
+        try:
+            with tempfile.TemporaryFile() as output:
+                result = subprocess.run(argv, stdin=subprocess.DEVNULL,
+                                        stdout=output if capture else subprocess.DEVNULL, stderr=subprocess.STDOUT,
+                                        timeout=timeout, check=False, preexec_fn=limits if capture else None,
+                                        env={'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'HOME': '/root'})
+                if result.returncode:
+                    raise failure('command_failed', 'Command failed')
+                if not capture:
+                    return ''
+                output.seek(0)
+                data = output.read(1_048_577)
+                if len(data) > 1_048_576:
+                    raise failure('command_failed', 'Command output limit')
+                return data.decode()
+        except (OSError, subprocess.SubprocessError, UnicodeError):
+            raise failure('command_failed', 'Command failed') from None
 
     def docker(self, *args, timeout=180):
         return self.command(['docker', '--config', str(self.root / 'docker-anonymous'), *args], timeout)
 
+    def cleanup_images(self, candidate_sha):
+        # Keep rollback/pending pins and all candidate tags, including the codec.
+        try:
+            keep_shas = {revision(candidate_sha)}
+            keep_digests, keep_ids = set(), set()
+            for key in ('current', 'previous', 'pending'):
+                release = self.state.get(key)
+                if release is None:
+                    continue
+                self.validate_release(release)
+                keep_shas.add(release['sha'])
+                keep_digests.update(release[c] for c in ('backend', 'frontend', 'whatsapp-qr') if c in release)
+                if 'mcp' in release:
+                    profile = release['mcp']
+                    keep_digests.add(profile['codec']['image'])
+                    keep_ids.update((profile['backendIdentity'], profile['codec']['imageId']))
+
+            listed = self.docker('image', 'ls', '--no-trunc', '--filter', 'reference=' + PROJECT_PREFIX + '*',
+                                 '--format', '{{.ID}}', timeout=10)
+            ids = sorted(set(listed.splitlines()) - keep_ids)
+            if not ids or not all(IMAGE_ID.fullmatch(image_id) for image_id in ids):
+                return
+            # Only inspect the needed metadata; do not capture config or labels.
+            rows = self.docker('image', 'inspect', '--format',
+                               '[{{json .Id}},{{json .RepoTags}},{{json .RepoDigests}},{{json .Created}}]',
+                               *ids, timeout=15).splitlines()
+            if len(rows) != len(ids):
+                return
+            # Docker timestamps can have nanoseconds. Compare whole seconds
+            # strictly below a rounded-down cutoff so we never remove early.
+            cutoff = int(time.time()) - IMAGE_MIN_AGE
+            removable = []
+            for expected, row in zip(ids, rows):
+                image_id, tags, digests, created = json.loads(row)
+                if image_id != expected:
+                    return
+                tags = [] if tags is None else tags
+                digests = [] if digests is None else digests
+                if (not isinstance(tags, list) or not isinstance(digests, list) or not (tags or digests) or
+                        not all(isinstance(ref, str) and PROJECT_REF.fullmatch(ref) for ref in tags + digests)):
+                    continue
+                if (keep_digests.intersection(digests) or
+                        any(tag.rsplit(':', 1)[-1].removeprefix('media-codec-') in keep_shas for tag in tags)):
+                    continue
+                stamp = IMAGE_CREATED.fullmatch(created) if isinstance(created, str) else None
+                if stamp:
+                    created_at = datetime.fromisoformat(stamp[1] + stamp[2].replace('Z', '+00:00')).timestamp()
+                    if 0 < created_at < cutoff:
+                        removable.append(image_id)
+            if not removable:
+                return
+
+            # ps reports the configured image reference, not the actual image ID.
+            # Inspect all containers, including stopped ones and other projects.
+            containers = self.docker('ps', '--all', '--quiet', '--no-trunc', timeout=10).splitlines()
+            used = set()
+            if containers:
+                if not all(re.fullmatch(r'[0-9a-f]{64}', container) for container in containers):
+                    return
+                # Image mounts may expose only a path or mutable reference in
+                # inspect, so skip cleanup if their actual image IDs are unknown.
+                fields = '{{.Id}} {{.Image}}{{range .Mounts}}{{if eq .Type "image"}} image-mount{{end}}{{end}}'
+                rows = self.docker('container', 'inspect', '--format', fields, *containers, timeout=15).splitlines()
+                if len(rows) != len(containers):
+                    return
+                for container, row in zip(containers, rows):
+                    parts = row.split(' ')
+                    if len(parts) != 2 or parts[0] != container or not IMAGE_ID.fullmatch(parts[1]):
+                        return
+                    used.add(parts[1])
+            unused = [image_id for image_id in removable if image_id not in used]
+            if unused:
+                # Full IDs avoid deleting a retagged image. Never force or
+                # remove untagged parents; Docker can still refuse a removal.
+                self.docker('rmi', '--no-prune', *unused, timeout=45)
+        except Exception:
+            # Fail closed on incomplete inventory; deletion is best effort.
+            # Do not log Docker output or let cleanup mask the reserve check.
+            return
+
+    def require_disk_reserve(self, sha):
+        self.cleanup_images(sha)
+        if shutil.disk_usage(self.root).free < DISK_RESERVE:
+            raise failure('insufficient_disk_reserve', 'Insufficient disk reserve')
+
     def image(self, component, sha):
-        if shutil.disk_usage(self.root).free < 3 * 1024 ** 3:
-            raise RuntimeError('Insufficient disk reserve')
-        tag = 'ghcr.io/yapweijun1996/online-shopping-' + component + ':' + revision(sha)
+        tag = PROJECT_PREFIX + component + ':' + revision(sha)
+        self.require_disk_reserve(sha)
         self.docker('pull', '--platform', 'linux/amd64', tag, timeout=300)
         info = json.loads(self.docker('image', 'inspect', '--format', '{{json .}}', tag))
         label = (info.get('Config', {}).get('Labels') or {}).get('org.opencontainers.image.revision')
@@ -269,9 +384,8 @@ class Updater:
         return release
 
     def codec_image(self, sha, content):
-        if shutil.disk_usage(self.root).free < 3 * 1024 ** 3:
-            raise RuntimeError('Insufficient disk reserve')
-        tag = 'ghcr.io/yapweijun1996/online-shopping-backend:media-codec-' + revision(sha)
+        tag = PROJECT_PREFIX + 'backend:media-codec-' + revision(sha)
+        self.require_disk_reserve(sha)
         self.docker('pull', '--platform', 'linux/amd64', tag, timeout=300)
         info = json.loads(self.docker('image', 'inspect', '--format', '{{json .}}', tag))
         labels = info.get('Config', {}).get('Labels') or {}
@@ -538,7 +652,7 @@ class Updater:
                 self.verify_mcp_backend(release)
                 self.backend_probe(release); return
             except (RuntimeError, ValueError, subprocess.TimeoutExpired):
-                if attempt == 17: raise RuntimeError('Backend readiness validation failed') from None
+                if attempt == 17: raise failure('readiness_failed', 'Backend readiness validation failed') from None
                 time.sleep(5)
 
     def validate_release(self, release):
@@ -590,7 +704,7 @@ class Updater:
             except (RuntimeError, ValueError, subprocess.TimeoutExpired):
                 pass
             time.sleep(5)
-        raise RuntimeError('Readiness validation failed')
+        raise failure('readiness_failed', 'Readiness validation failed')
 
     def runtime(self):
         values = {}
@@ -660,7 +774,7 @@ class Updater:
         return {name: hashlib.sha256(trusted(self.root / name).read_bytes()).hexdigest() for name in names}
 
     def initialize(self, sha):
-        if self.state:
+        if self.state.keys() - {'last_reason'}:
             raise ValueError('Already initialized')
         if self.mcp_enabled():
             raise ValueError('Initialize requires the disabled MCP v2 profile')
@@ -675,6 +789,7 @@ class Updater:
         self.health(candidate)
         self.unpause()
         self.save('initialized', current=candidate, previous=None, pending=None, local=self.local_fingerprint())
+        self.cleanup_images(sha)
 
     def poll(self):
         if not self.state.get('current'):
@@ -690,9 +805,10 @@ class Updater:
         if (self.state.get('migrated_schema') is not None and
                 self.state['migrated_schema'] > previous['baseline']['schema']):
             if self.state.get('pending'):
-                self.save('schema_release_failed', failed_sha=self.state['pending']['sha'], pending=None)
+                self.save('schema_release_failed', failed_sha=self.state['pending']['sha'], pending=None,
+                          last_reason='schema_release_failed')
             elif self.state.get('status') == 'schema_migrating':
-                self.save('schema_migration_failed', pending=None)
+                self.save('schema_migration_failed', pending=None, last_reason='schema_migration_failed')
             return
         if self.state.get('pending') and self.state.get('pending_kind') == 'codec-recovery':
             self.save('codec_manual_maintenance_required'); return
@@ -720,14 +836,19 @@ class Updater:
         if upgrading:
             try: self.schema_backup()
             except Exception:
-                self.save('schema_backup_failed', failed_sha=sha); return
+                self.save('schema_backup_failed', failed_sha=sha, last_reason='schema_backup_failed'); return
             try: script = self.schema_script(sha)
             except Exception:
-                self.save('schema_migration_failed', failed_sha=sha, pending=None); return
+                self.save('schema_migration_failed', failed_sha=sha, pending=None, last_reason='schema_migration_failed'); return
         try: candidate = self.release(sha, baseline, content)
-        except Exception:
+        except Exception as error:
             if not upgrading: raise
-            self.save('schema_migration_failed', failed_sha=sha, pending=None); return
+            reason = failure_reason(error, 'schema_migration_failed')
+            self.save('schema_migration_failed', failed_sha=sha, pending=None, last_reason=reason)
+            # Keep the existing failed-SHA policy, but surface a known staging
+            # failure (especially low disk) instead of reducing it to a schema status.
+            if reason != 'schema_migration_failed': raise
+            return
         if self.head() != sha or not self.approved(sha):
             self.save('trust_changed')
             return
@@ -743,23 +864,25 @@ class Updater:
             self.save('schema_migrating', failed_sha=sha, pending=None, migrated_schema=baseline['schema'])
             try: self.migrate_schema(candidate, script)
             except Exception:
-                self.save('schema_migration_failed', failed_sha=sha, pending=None); return
+                self.save('schema_migration_failed', failed_sha=sha, pending=None, last_reason='schema_migration_failed'); return
         self.save('deploying', pending=candidate)
         try:
             self.activate(candidate)
             self.health(candidate)
         except Exception:
             if upgrading:
-                self.save('schema_release_failed', failed_sha=sha, pending=None, migrated_schema=baseline['schema'])
-                raise RuntimeError('Schema release failed') from None
+                self.save('schema_release_failed', failed_sha=sha, pending=None, migrated_schema=baseline['schema'],
+                          last_reason='schema_release_failed')
+                raise failure('schema_release_failed', 'Schema release failed') from None
             self.save('rolling_back', failed_sha=sha)
             self.restore(previous)
             self.health(previous)
             self.unpause()
-            self.save('rolled_back', pending=None)
-            raise RuntimeError('Application update rolled back') from None
+            self.save('rolled_back', pending=None, last_reason='rolled_back')
+            raise failure('rolled_back', 'Application update rolled back') from None
         self.unpause()
         self.save('deployed', current=candidate, previous=previous, pending=None, failed_sha=None)
+        self.cleanup_images(sha)
 
 
 def main():
@@ -787,16 +910,24 @@ def main():
             except BlockingIOError:
                 return
             updater = Updater(root, lock)
-            if args.action == 'initialize':
-                updater.initialize(revision(args.sha))
-            elif args.action == 'recover-codec':
-                updater.recover_codec()
-            else:
-                updater.poll()
+            try:
+                if args.action == 'initialize':
+                    updater.initialize(revision(args.sha))
+                elif args.action == 'recover-codec':
+                    updater.recover_codec()
+                else:
+                    updater.poll()
+            except Exception as error:
+                try:
+                    updater.record_failure(error)
+                except Exception:
+                    # Still report the original reason if state cannot be written.
+                    pass
+                raise
         print('GCP updater:', updater.state.get('status', 'unchanged'))
     except Exception as error:
         # Never emit command output, URLs, config, secrets or external exception text.
-        print('GCP updater failed:', type(error).__name__, file=sys.stderr)
+        print('GCP updater failed:', type(error).__name__, 'reason=' + failure_reason(error), file=sys.stderr)
         raise SystemExit(1) from None
 
 

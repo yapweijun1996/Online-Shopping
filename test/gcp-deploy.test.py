@@ -10,7 +10,10 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-from collections import namedtuple
+from contextlib import redirect_stderr, redirect_stdout
+from datetime import datetime, timezone
+from io import StringIO
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('gcp_update', ROOT / 'deploy/gcp/update.py')
@@ -55,6 +58,7 @@ class Fake(u.Updater):
     def head(self): return self.remote
     def approved(self, sha): return self.ci
     def source(self, sha): return self.baseline, {}
+    def cleanup_images(self, sha): pass
     def release(self, sha, baseline, content):
         self.calls.append('pull')
         return dict(release(sha), baseline=baseline)
@@ -165,6 +169,7 @@ class Tests(unittest.TestCase):
                 f.poll()
             self.assertEqual(A, f.state['current']['sha'])
             self.assertEqual('rolled_back', f.state['status'])
+            self.assertEqual('rolled_back', json.loads(Path(root, 'state.json').read_text())['last_reason'])
             self.assertEqual([('activate', B), ('activate', A)], [c for c in f.calls if isinstance(c, tuple) and c[0] == 'activate'])
             count = len(f.calls)
             f.poll()
@@ -236,6 +241,7 @@ class Tests(unittest.TestCase):
                 f.command_failure, f.restore_output = failure, output
                 f.poll()
                 self.assertEqual('schema_backup_failed', f.state['status'])
+                self.assertEqual('schema_backup_failed', f.state['last_reason'])
                 self.assertEqual(B, f.state['failed_sha'])
                 self.assertNotIn('pull', f.calls)
                 self.assertFalse(Path(root, 'releases').exists())
@@ -288,6 +294,23 @@ class Tests(unittest.TestCase):
             f.poll()
             self.assertEqual(count, len(f.calls))
 
+    def test_low_disk_during_schema_staging_surfaces_reason_without_changing_failed_sha_policy(self):
+        with tempfile.TemporaryDirectory() as root:
+            f = SchemaFake(root)
+            with patch.object(f, 'release', side_effect=lambda *args: f.require_disk_reserve(B)), \
+                    patch.object(u.shutil, 'disk_usage', return_value=SimpleNamespace(free=0)):
+                with self.assertRaisesRegex(RuntimeError, '^Insufficient disk reserve$') as error:
+                    f.poll()
+            self.assertEqual('insufficient_disk_reserve', u.failure_reason(error.exception))
+            self.assertEqual('insufficient_disk_reserve', f.state['last_reason'])
+            self.assertEqual('schema_migration_failed', f.state['status'])
+            self.assertEqual(B, f.state['failed_sha'])
+            self.assertIsNone(f.state['pending'])
+            self.assertNotIn('migrated_schema', f.state)
+            count = len(f.calls)
+            f.poll()
+            self.assertEqual(count, len(f.calls))
+
     def test_schema_migration_failure_never_activates_or_retries(self):
         for output, version, failure in [(' {"version":24}', '25', None), ('', '25', None),
                                           ('not json', '25', None), ('{"version":25,"extra":1}', '25', None),
@@ -320,6 +343,7 @@ class Tests(unittest.TestCase):
                     restore.assert_not_called()
                     unpause.assert_not_called()
                 self.assertEqual('schema_release_failed', f.state['status'])
+                self.assertEqual('schema_release_failed', f.state['last_reason'])
                 self.assertEqual(25, f.state['migrated_schema'])
                 self.assertEqual(B, f.state['failed_sha'])
                 self.assertIsNone(f.state['pending'])
@@ -392,12 +416,12 @@ class Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             f = u.Updater(root)
             info = {'Architecture': 'amd64', 'Os': 'linux', 'Config': {'Labels': {'org.opencontainers.image.revision': A}}, 'RepoDigests': [release(A)['backend']]}
-            with patch.object(f, 'docker', side_effect=['', json.dumps(info)]) as docker:
+            with patch.object(f, 'cleanup_images'), patch.object(f, 'docker', side_effect=['', json.dumps(info)]) as docker:
                 self.assertEqual(release(A)['backend'], f.image('backend', A))
                 self.assertEqual(('pull', '--platform', 'linux/amd64', 'ghcr.io/yapweijun1996/online-shopping-backend:' + A), docker.call_args_list[0].args)
             for label in (B, None):
                 info['Config']['Labels']['org.opencontainers.image.revision'] = label
-                with patch.object(f, 'docker', side_effect=['', json.dumps(info)]):
+                with patch.object(f, 'cleanup_images'), patch.object(f, 'docker', side_effect=['', json.dumps(info)]):
                     with self.assertRaises(ValueError): f.image('backend', A)
 
     @unittest.skipUnless(shutil.which('node'), 'Node is required for the HTTP virtual-host fixture')
@@ -421,14 +445,177 @@ class Tests(unittest.TestCase):
             else:
                 self.assertEqual('', result.stdout)
 
-    def test_disk_low_water_blocks_pull(self):
+    def test_cleanup_keeps_used_pinned_candidate_young_and_unrelated_images(self):
         with tempfile.TemporaryDirectory() as root:
             f = u.Updater(root)
-            disk = namedtuple('Disk', 'total used free')(20 * 1024 ** 3, 18 * 1024 ** 3, 2 * 1024 ** 3)
-            with patch.object(u.shutil, 'disk_usage', return_value=disk), patch.object(f, 'docker') as docker:
-                with self.assertRaisesRegex(RuntimeError, '^Insufficient disk reserve$'):
-                    f.image('backend', A)
-                docker.assert_not_called()
+            backend = u.PROJECT_PREFIX + 'backend'
+            now = 1_750_000_000
+            def stamp(age):
+                return datetime.fromtimestamp(now - age, timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.123456789Z')
+            def ident(n): return f'sha256:{n:064x}'
+            def digest(n): return backend + '@' + ident(n)
+            cutoff = 24 * 60 * 60
+            old = stamp(cutoff + 60)
+            current = {**release(A), 'whatsapp-qr': u.PROJECT_PREFIX + 'whatsapp-qr@' + ident(8)}
+            current['mcp'] = dict(version=1, profile=u.PROFILE, backendIdentity=ident(30),
+                                  codec=dict(version=1, image=digest(9), imageId=ident(31), revision=A,
+                                             platform='linux/amd64', **{key: 'c' * 64 for key in u.CODEC_FILES}))
+            pending = {**release('d' * 40), 'backend': digest(10)}
+            f.state.update(current=current, previous=release(B), pending=pending)
+            candidate = 'e' * 40
+            def stale(n): return f'{backend}:retired-{n}'
+            images = {
+                1: ([stale(1)], [digest(1)], old),
+                2: (None, [digest(2)], '2001-01-01T00:00:00+02:00'),  # eligible by digest only
+                3: ([stale(3)], [], old),                            # running container
+                4: ([stale(4)], [], old),                            # stopped container
+                5: ([stale(5)], [current['backend']], old),          # current digest despite unrelated tag
+                6: ([stale(6)], [f.state['previous']['backend']], old),
+                7: ([stale(7)], [pending['backend']], old),
+                8: ([stale(8)], [current['whatsapp-qr']], old),
+                9: ([stale(9)], [current['mcp']['codec']['image']], old),
+                10: ([backend + ':' + candidate], [], old),
+                11: ([backend + ':media-codec-' + candidate], [], old),
+                12: ([stale(12)], [], stamp(cutoff - 1)),            # young
+                13: ([stale(13)], [], stamp(cutoff)),                # not strictly older than cutoff
+                14: (['postgres:16-alpine'], [], old),
+                15: (['caddy:2-alpine'], [], old),
+                16: (['ghcr.io/someone/online-shopping-backend:stale'], [], old),
+                17: ([stale(17), 'some-other-project:shared'], [], old),
+                18: ([stale(18)], ['ghcr.io/someone/shared@' + ident(18)], old),
+                19: ([stale(19)], [], None),                         # age unknown
+                20: ([], [], old),                                   # ownership unknown
+                21: ([stale(21)], [], '0001-01-01T00:00:00Z'),        # zero timestamp
+                30: ([stale(30)], [], old),                          # pinned MCP backend ID
+                31: ([stale(31)], [], old),                          # pinned MCP codec ID
+            }
+            ids = [ident(n) for n in images if n not in (30, 31)]
+            running, stopped = 'a' * 64, 'b' * 64
+            # Include foreign rows in the fixture to verify ownership independently of the list filter.
+            with patch.object(u.time, 'time', return_value=now), patch.object(f, 'docker', side_effect=[
+                    '\n'.join(ident(n) for n in reversed(images)),
+                    '\n'.join(json.dumps([ident(n), *images[n]]) for n in images if n not in (30, 31)),
+                    f'{running}\n{stopped}\n', f'{running} {ident(3)}\n{stopped} {ident(4)}\n', '']) as docker:
+                f.cleanup_images(candidate)
+            calls = [call.args for call in docker.call_args_list]
+            self.assertEqual(5, len(calls))
+            self.assertIn('reference=' + u.PROJECT_PREFIX + '*', calls[0])
+            self.assertEqual(tuple(ids), calls[1][4:])
+            self.assertEqual(('ps', '--all', '--quiet', '--no-trunc'), calls[2])
+            self.assertEqual(('container', 'inspect', '--format'), calls[3][:3])
+            self.assertIn('{{.Id}} {{.Image}}', calls[3][3])
+            self.assertIn('eq .Type "image"', calls[3][3])
+            self.assertEqual((running, stopped), calls[3][4:])
+            self.assertEqual(('rmi', '--no-prune', ident(1), ident(2)), calls[4])
+
+    def test_cleanup_skips_deletion_if_container_inventory_is_incomplete(self):
+        with tempfile.TemporaryDirectory() as root:
+            f = u.Updater(root)
+            image_id = 'sha256:' + '1' * 64
+            row = json.dumps([image_id, [u.PROJECT_PREFIX + 'backend:old'], [], '2001-01-01T00:00:00Z'])
+            container_id = 'a' * 64
+            for incomplete in ('', f'{container_id} {image_id} image-mount', RuntimeError('private Docker output')):
+                with self.subTest(incomplete=incomplete), patch.object(
+                        f, 'docker', side_effect=[image_id, row, container_id, incomplete]) as docker:
+                    f.cleanup_images(B)
+                self.assertEqual(4, docker.call_count)
+                self.assertNotIn('rmi', [call.args[0] for call in docker.call_args_list])
+
+    def test_cleanup_runs_before_both_reserve_checks_and_still_blocks_pull_when_low(self):
+        for codec in (False, True):
+            for outcome in ('reserve_met', 'still_low', 'timeout'):
+                with self.subTest(codec=codec, outcome=outcome), tempfile.TemporaryDirectory() as root:
+                    f = u.Updater(root)
+                    reserve = 3 * 1024 ** 3
+                    free = reserve - 1
+                    frees_space = outcome == 'reserve_met'
+                    image_id = 'sha256:' + '1' * 64
+                    info = json.dumps([image_id, [u.PROJECT_PREFIX + 'backend:old'], [], '2001-01-01T00:00:00Z'])
+                    order = []
+                    def docker(*args, **kw):
+                        nonlocal free
+                        order.append(args[0])
+                        if args[:2] == ('image', 'ls'): return image_id
+                        if args[:2] == ('image', 'inspect'): return info
+                        if args[0] == 'ps': return ''
+                        if args[0] == 'rmi':
+                            if outcome == 'timeout':
+                                raise subprocess.TimeoutExpired(['docker', 'private-value'], kw['timeout'])
+                            if frees_space:
+                                free = reserve
+                            return ''
+                        # Stop after confirming the pull was reached; provenance has dedicated tests.
+                        self.assertEqual('pull', args[0])
+                        raise RuntimeError('pull reached')
+                    def disk_usage(path):
+                        order.append('disk')
+                        return SimpleNamespace(free=free)
+                    with patch.object(u.shutil, 'disk_usage', side_effect=disk_usage), patch.object(f, 'docker', side_effect=docker):
+                        with self.assertRaisesRegex(RuntimeError, '^pull reached$' if frees_space else '^Insufficient disk reserve$') as error:
+                            f.codec_image(A, {}) if codec else f.image('backend', A)
+                    self.assertEqual(['image', 'image', 'ps', 'rmi', 'disk', *(['pull'] if frees_space else [])], order)
+                    if not frees_space:
+                        self.assertEqual('insufficient_disk_reserve', u.failure_reason(error.exception))
+
+    def test_post_activation_cleanup_uses_durable_current_and_previous(self):
+        with tempfile.TemporaryDirectory() as root:
+            f = Fake(root)
+            def cleanup(sha):
+                state = json.loads(Path(root, 'state.json').read_text())
+                self.assertEqual(B, sha)
+                self.assertEqual([('activate', B), ('health', B)], f.calls[-2:])
+                self.assertEqual('deployed', state['status'])
+                self.assertEqual(B, state['current']['sha'])
+                self.assertEqual(A, state['previous']['sha'])
+                self.assertIsNone(state['pending'])
+            with patch.object(f, 'cleanup_images', side_effect=cleanup) as prune:
+                f.poll()
+                f.poll()
+            prune.assert_called_once_with(B)
+
+    def test_cli_failure_logs_and_preserves_only_allowlisted_reason_in_durable_state(self):
+        noisy = 'https://example.invalid/private?token=fixture-secret\nDOCKER_CONFIG=private'
+        for error, expected in [(u.failure('insufficient_disk_reserve', noisy), 'insufficient_disk_reserve'),
+                                (RuntimeError(noisy), 'unexpected_error'),
+                                (u.failure(noisy, noisy), 'unexpected_error'),
+                                (u.failure([noisy], noisy), 'unexpected_error')]:
+            with self.subTest(expected=expected), tempfile.TemporaryDirectory() as root:
+                path = Path(root)
+                f = Fake(root)
+                f.save('waiting_for_ci')  # A legacy state without last_reason.
+                prior = json.loads(f.state_path.read_text())
+                f.state.update(status='deploying', pending=release(B))   # A failed, unwritten transition.
+                record_failure = f.record_failure
+                def record_under_lock(raised):
+                    with (path / 'update.lock').open('a') as other:
+                        with self.assertRaises(BlockingIOError):
+                            u.fcntl.flock(other, u.fcntl.LOCK_EX | u.fcntl.LOCK_NB)
+                    record_failure(raised)
+                stderr = StringIO()
+                with patch.object(u.sys, 'argv', ['update.py', '--root', root, 'run']), \
+                        patch.object(u.os, 'geteuid', return_value=0), patch.object(u.os, 'umask'), \
+                        patch.object(u, 'trusted', side_effect=lambda p, **kw: Path(p)), \
+                        patch.object(u, 'Updater', return_value=f), patch.object(f, 'poll', side_effect=error), \
+                        patch.object(f, 'record_failure', side_effect=record_under_lock), \
+                        redirect_stderr(stderr), redirect_stdout(StringIO()):
+                    with self.assertRaises(SystemExit) as result:
+                        u.main()
+                self.assertEqual(1, result.exception.code)
+                self.assertEqual(f'GCP updater failed: RuntimeError reason={expected}\n', stderr.getvalue())
+                self.assertEqual(dict(prior, last_reason=expected), json.loads(f.state_path.read_text()))
+
+    def test_diagnostic_only_state_does_not_prevent_initialization_retry(self):
+        with tempfile.TemporaryDirectory() as root:
+            f = Fake(root)
+            f.record_failure(u.failure('command_failed', 'Command failed'))
+            f.state = u.Updater(root).state
+            self.assertEqual({'last_reason': 'command_failed'}, f.state)
+            with patch.object(f, 'runtime', return_value={}):
+                f.initialize(B)
+                with self.assertRaisesRegex(ValueError, 'Already initialized'):
+                    f.initialize(B)
+            self.assertEqual('initialized', f.state['status'])
+            self.assertEqual('command_failed', f.state['last_reason'])
 
     def test_no_secret_output_from_command_failure(self):
         with tempfile.TemporaryDirectory() as root:
@@ -436,6 +623,7 @@ class Tests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, '^Command failed$') as error:
                 f.command(['/bin/sh', '-c', 'echo private-value; exit 1'])
             self.assertNotIn('private-value', str(error.exception))
+            self.assertEqual('command_failed', u.failure_reason(error.exception))
             self.assertNotIn('shell=True', (ROOT / 'deploy/gcp/update.py').read_text())
 
     def test_whatsapp_qr_worker_release_activation_and_health(self):
@@ -543,8 +731,9 @@ class Tests(unittest.TestCase):
                             return '{"Running":false}' if args[2] == '{{json .State}}' else worker
                         return docker(*args, **kwargs)
                     with patch.object(f, 'docker', side_effect=broken), patch.object(u.time, 'sleep'):
-                        with self.assertRaisesRegex(RuntimeError, 'Readiness'):
+                        with self.assertRaisesRegex(RuntimeError, 'Readiness') as error:
                             f.health(item)
+                        self.assertEqual('readiness_failed', u.failure_reason(error.exception))
             for workers in (['whatsapp-qr-slot1'], ['whatsapp-qr', 'whatsapp-qr'], ['other']):
                 with self.assertRaises(ValueError):
                     f.validate_release({**release(A), 'whatsapp-qr': worker, 'qr_workers': workers})

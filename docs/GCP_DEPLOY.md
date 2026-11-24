@@ -142,9 +142,17 @@ If a step fails, keep the timer stopped and investigate; preserve the rollback c
 
 ## Operations and limitations
 
-Inspect status via `systemctl status online-shopping-update.timer`, `journalctl -u online-shopping-update.service`, and private `state.json`. Never publish `docker inspect`, rendered Compose config, runtime logs, DB dumps or secret contents. State records image digests and release metadata, not passwords. Application JSON logs are rotated at 2 × 5 MiB per service. Before every application image pull the updater requires at least 3 GiB free on the deployment filesystem; low space aborts before activation and leaves the current release running. This is a reserve guard, not a bound on image growth or protection from other writers. Check disk use frequently: this version deliberately performs **no image/release cleanup**, so a 20 GiB disk has a finite release capacity. Agents may remove only reviewed unused app images/releases while retaining current/previous/pending images; never prune DB volumes. Budget checks, encrypted off-host backups, alerts and disk cleanup are operational responsibilities and are not implemented by this image updater.
+Inspect status via `systemctl status online-shopping-update.timer`, `journalctl -u online-shopping-update.service`, and private `state.json`. Never publish `docker inspect`, rendered Compose config, runtime logs, DB dumps or secret contents. State records image digests and release metadata, not passwords. Application JSON logs are rotated at 2 × 5 MiB per service.
 
-Offline verification: `python3 test/gcp-deploy.test.py`; the new image publication workflow runs these tests before publishing each image. Tests cover latest CI scope/reruns, idempotency, failed readiness rollback and failed rollback intent, crash recovery, forward-schema backup/migration success and failures, downgrade refusal, schema crash fences, local configuration gates, malicious path/revision/image/config inputs, secret-safe command failures, anonymous digest resolution, and Compose isolation. Live deployment and public TLS/route checks must be recorded by the agent separately.
+### Image cleanup and disk reserve
+
+Before each image pull and after saving a successful activation, the updater makes a bounded, best-effort cleanup pass under the update lock. It uses non-forced `docker rmi --no-prune` by full image ID only for images created more than 24 hours ago whose references are exclusively under `ghcr.io/yapweijun1996/online-shopping-`. It keeps images used by any container (running or stopped), images pinned by current, previous or pending release state, and candidate tags (including the codec). It never removes PostgreSQL, Caddy, other projects' images, volumes, networks, build cache, release directories or backups. Serialize other maintenance on these images with the same lock. Docker can still refuse a removal; incomplete inventory is not grounds to delete anything.
+
+Each pull still requires at least 3 GiB free on the deployment filesystem **after** cleanup. If the reserve is not met, the pull is refused and the running release is not replaced. This is not a bound on image growth or a guarantee of recovery from disk exhaustion. Monitor disk use and manage backups, release directories, budget checks and alerts separately.
+
+Thrown failures log the exception type and a fixed code (for example `GCP updater failed: RuntimeError reason=insufficient_disk_reserve`), never exception text, command output or configuration. The optional `state.json` key `last_reason` retains the most recent recorded failure, including those reported by existing schema failure statuses. It is not cleared on success. If the updater cannot safely open or write state, only the journal is available. Codes are `insufficient_disk_reserve`, `command_failed`, `readiness_failed`, `schema_backup_failed`, `schema_migration_failed`, `schema_release_failed`, `rolled_back` and `unexpected_error`. Existing state without this key needs no migration. This behavior requires installing the reviewed controller using the procedure above; a normal image release does not replace it.
+
+Offline verification: `python3 test/gcp-deploy.test.py`; the new image publication workflow runs these tests before publishing each image. Tests cover latest CI scope/reruns, idempotency, failed readiness rollback and failed rollback intent, crash recovery, forward-schema backup/migration success and failures, downgrade refusal, schema crash fences, local configuration gates, malicious path/revision/image/config inputs, secret-safe command failures, anonymous digest resolution, image retention and low-disk cleanup, and Compose isolation. Live deployment and public TLS/route checks must be recorded by the agent separately.
 
 Real local GCP edge verification (Docker context `orbstack`, no application images or production access):
 
@@ -566,12 +574,10 @@ the requested commit and CI-approved, pulls the CI-built image digests), `releas
 the timer. No data migration happens, so no isolated restore test is needed; a release that changes the schema must
 still follow the full procedure above. Result: state `deployed` at `c9218ee`, previous `4ae1b8e`, all services healthy.
 
-**Disk reserve (2026-10-22 incident).** The Updater refuses to pull images when less than 3 GiB is free
-(`Insufficient disk reserve`, which only shows as a repeating `GCP updater failed: RuntimeError` in the journal and a
-state stuck at `waiting_for_ci`). Each release leaves three tagged images (about 0.9 GiB) plus a ~170 MiB cluster dump
-under `rollback-*`. After a release, remove tagged `online-shopping-*` images other than `current` and `previous` from
-`state.json` (`docker rmi`; images in use are refused) and delete superseded `rollback-*` dumps once a newer verified one
-exists. Check `df -h /` before and after a release.
+**Disk reserve (2026-10-22 incident).** The then-installed controller refused pulls below 3 GiB free, but the
+journal showed only `GCP updater failed: RuntimeError`. At the time, tagged release images and cluster dumps under
+`rollback-*` accumulated without cleanup. See [Image cleanup and disk reserve](#image-cleanup-and-disk-reserve)
+for the current controller behavior; backup retention is still separate.
 
 After release: both workers idle (~40 MiB each), slot 1 reports `QR_REVOKED` until SuperAdmin enables policy for
 the shop, host MemAvailable ~1.1 GB, `/internal/*` 404 publicly. The slot-1 capacity drill under real pairing and

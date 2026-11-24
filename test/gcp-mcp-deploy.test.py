@@ -68,13 +68,13 @@ class Tests(unittest.TestCase):
             for name,key in [('wire','wireSha256'),('client','clientSha256'),('lock','lockSha256')]:
                 labels['shopping.media.'+name+'.sha256']=hashlib.sha256(content[u.CODEC_FILES[key]]).hexdigest()
             info=dict(Id=ID,Os='linux',Architecture='amd64',Config=dict(Labels=labels),RepoDigests=[manifest()['image']])
-            with patch.object(f,'docker',side_effect=['',json.dumps(info)]) as docker:
+            with patch.object(f,'cleanup_images'),patch.object(f,'docker',side_effect=['',json.dumps(info)]) as docker:
                 actual=f.codec_image(SHA,content)
             self.assertEqual(ID,actual['imageId']);self.assertEqual(SHA,actual['revision'])
             self.assertEqual('ghcr.io/yapweijun1996/online-shopping-backend:media-codec-'+SHA,docker.call_args_list[0].args[-1])
             for key in labels:
                 bad=json.loads(json.dumps(info));bad['Config']['Labels'][key]='wrong'
-                with patch.object(f,'docker',side_effect=['',json.dumps(bad)]):
+                with patch.object(f,'cleanup_images'),patch.object(f,'docker',side_effect=['',json.dumps(bad)]):
                     with self.assertRaises(ValueError): f.codec_image(SHA,content)
 
     def test_source_verifies_every_boundary_blob_without_commit_tree_sha_assumption(self):
