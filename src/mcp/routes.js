@@ -16,6 +16,7 @@ import { createOperationTools } from './operation-tools.js';
 import { maintainOperations } from './operation-maintenance.js';
 import { companyReadTool, companyMutationTool } from './company-tools.js';
 import { catalogCreateTool, catalogUpdateTool } from './catalog-tools.js';
+import { catalogCreateCategoryTool } from './category-tools.js';
 import { analyticsSalesTrendTool, analyticsTopProductsTool, analyticsInventoryRiskTool } from './analytics-tools.js';
 import { MEDIA_TOOLS_ACCEPTED, mediaTools } from './media-tools.js';
 import { catalogMediaUpdateEnabled, catalogMediaCreateEnabled } from './catalog-media-config.js';
@@ -55,7 +56,7 @@ export function createConnector({ store, config, tenantId, tenantGuard, quickLog
       const mediaOptions = {store,binding:oauth.binding,config,tenantGuard,quickLogin};
       const runtime = (MEDIA_TOOLS_ACCEPTED && config.mcpMedia?.enabled === true) || catalogUpdateEnabled || catalogCreateEnabled ? createMediaRuntime(mediaOptions) : null;
       registrations = [companyReadTool(),companyMutationTool(),catalogCreateEnabled ? catalogMediaCreateTool(runtime) : catalogCreateTool(),
-        catalogUpdateEnabled ? catalogMediaUpdateTool(runtime) : catalogUpdateTool(),
+        catalogUpdateEnabled ? catalogMediaUpdateTool(runtime) : catalogUpdateTool(), catalogCreateCategoryTool(),
         analyticsSalesTrendTool(),analyticsTopProductsTool(),analyticsInventoryRiskTool(),inventorySummaryTool(),inventoryMovementsTool(),inventoryAdjustmentTool(),orderDecisionTool(),...operationControlTools(),
         ...(MEDIA_TOOLS_ACCEPTED && config.mcpMedia?.enabled === true ? mediaTools(mediaOptions,runtime) : [])];
     }

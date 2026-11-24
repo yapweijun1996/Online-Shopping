@@ -1,3 +1,4 @@
+import { CATEGORY_CODE_PATTERN } from '../settings.js';
 import { stamp } from './credentials.js';
 import { readStoredOperation } from './operation-envelope.js';
 import { operationAuthorityPolicy, OPERATION_SCOPE_POLICIES } from './operation-policy.js';
@@ -12,6 +13,7 @@ const resources = Object.freeze({
   'company.preview_update': Object.freeze({ type: 'company', id: '1' }),
   'catalog.preview_create': Object.freeze({ type: 'catalog', id: 'catalog' }),
   'catalog.preview_update': Object.freeze({ type: 'product', id: null }),
+  'catalog.preview_create_category': Object.freeze({ type: 'category' }),
   'media.prepare_upload': Object.freeze({ type: 'product', id: null }),
   'media.preview_layout': Object.freeze({ type: 'product', id: null }),
   'inventory.preview_adjustment': Object.freeze({ type: 'inventory', id: null }),
@@ -21,8 +23,10 @@ const resources = Object.freeze({
 // Source-owned binding, not a model-selected resource type or operation capability.
 export function operationResourceBinding(row) {
   const rule = row && Object.hasOwn(resources, row.tool_name) && resources[row.tool_name];
-  if (!rule || row.resource_type !== rule.type || (rule.id === null ? !uuid.test(row.resource_id || '') : row.resource_id !== rule.id) ||
-      !digest.test(row.expected_revision || '')) return null;
+  if (!rule || row.resource_type !== rule.type) return null;
+  if (rule.type === 'category') {
+    if (!CATEGORY_CODE_PATTERN.test(row.resource_id || '') || row.expected_revision !== null) return null;
+  } else if ((rule.id === null ? !uuid.test(row.resource_id || '') : row.resource_id !== rule.id) || !digest.test(row.expected_revision || '')) return null;
   return Object.freeze({ resourceType: rule.type, resourceId: row.resource_id });
 }
 
@@ -32,7 +36,7 @@ export function operationResourceBinding(row) {
 export async function readOperationRecord(store, row, { binding, tenantRevision, epochHash, buildDigest, grant, context, expected }) {
   let policy;
   try { policy = operationAuthorityPolicy(row?.tool_name, row?.media_policy_id ?? null); } catch { return null; }
-  if (policy.mediaPolicyId === 'catalog-media-v1' && !operationResourceBinding(row)) return null;
+  if ((policy.mediaPolicyId === 'catalog-media-v1' || row?.tool_name === 'catalog.preview_create_category') && !operationResourceBinding(row)) return null;
   if (!row || !expected || !grant || !uuid.test(row.id || '') || !uuid.test(row.account_id || '') ||
       !uuid.test(row.grant_id || '') || !uuid.test(row.correlation_id || '') ||
       row.tenant_id !== binding.tenantId || row.issuer !== binding.issuer || row.resource !== binding.resource ||

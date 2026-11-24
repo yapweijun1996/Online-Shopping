@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { restoreSchema39AuditFixture } from './helpers/legacy-audit-fixture.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
@@ -113,6 +114,7 @@ for (const dialect of ['sqlite','postgres']) {
     const tables=importTables.filter(table=>!['listing_detail','listing_detail_image','shop_logo','shop_logo_event'].includes(table));
     const snapshot=async()=>Object.fromEntries(await Promise.all(tables.map(async table=>[table,rowsDigest(await f.store.all(`SELECT * FROM ${table}`))])));
     const before=await snapshot();
+    await restoreSchema39AuditFixture(f.store);
     await f.store.exec('DROP TABLE listing_detail_image; DROP TABLE listing_detail; DROP TABLE shop_logo_event; DROP TABLE shop_logo;');await f.store.setSchemaVersion(34);
     const migrate=()=>dialect==='sqlite'?migrateStore(f.store):f.store.transaction(()=>upgradePostgres(f.store,34));
     await migrate();assert.equal(await f.store.schemaVersion(),SCHEMA_VERSION);assert.equal(await ready(f.store),true);assert.deepEqual(await snapshot(),before);
@@ -120,6 +122,7 @@ for (const dialect of ['sqlite','postgres']) {
     // Isolated pre-traffic rollback rehearsal only: no schema35 business rows.
     assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM listing_detail')).n,0);
     assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM listing_detail_image')).n,0);
+    await restoreSchema39AuditFixture(f.store);
     await f.store.exec('DROP TABLE listing_detail_image; DROP TABLE listing_detail; DROP TABLE shop_logo_event; DROP TABLE shop_logo;');await f.store.setSchemaVersion(34);
     assert.equal(await operationStorageReady(f.store),true);assert.equal(await inventoryStorageReady(f.store),true);assert.deepEqual(await snapshot(),before);
     await migrate();assert.deepEqual(await snapshot(),before);assert.equal(await ready(f.store),true);

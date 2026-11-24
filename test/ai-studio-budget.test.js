@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { restoreSchema39AuditFixture } from './helpers/legacy-audit-fixture.js';
 import assert from 'node:assert/strict';
 import pg from 'pg';
 import { randomUUID } from 'node:crypto';
@@ -39,7 +40,7 @@ for(const dialect of ['sqlite','postgres']) {
  });
  test(`${dialect}: additive35 to36 migration preserves usage, is idempotent and readiness checks fields`,options,async t=>{
  const s=await fixture(t,dialect);const [id]=await reserve(s,['ANALYZE'],'owner',null,now);await settle(s,id,'OK');const before=await s.all('SELECT * FROM ai_studio_usage');await s.exec('DROP TABLE ai_studio_cost; DROP TABLE ai_studio_budget_event; DROP TABLE ai_studio_budget');assert.equal(await budgetStorageReady(s),false);await s.setSchemaVersion(35);
- if(dialect==='postgres')await s.transaction(()=>upgradePostgres(s,35));else{await migrateStudioBudget(s);await s.setSchemaVersion(36)}assert.deepEqual(await s.all('SELECT * FROM ai_studio_usage'),before);await migrateStudioBudget(s);assert.equal(await budgetStorageReady(s),true);assert.equal((await budgetStatus(s,now)).today.unknownCalls,1);
+ if(dialect==='postgres')await s.transaction(async()=>{await restoreSchema39AuditFixture(s);await upgradePostgres(s,35);});else{await migrateStudioBudget(s);await s.setSchemaVersion(36)}assert.deepEqual(await s.all('SELECT * FROM ai_studio_usage'),before);await migrateStudioBudget(s);assert.equal(await budgetStorageReady(s),true);assert.equal((await budgetStatus(s,now)).today.unknownCalls,1);
  });
 }
 test('price snapshots reject missing, unknown and unsupported token details',()=>{

@@ -1,5 +1,6 @@
 import { dropInventoryForLegacyFixture } from './helpers/inventory-fixture.js';
 import test from 'node:test';
+import { restoreSchema39AuditFixture } from './helpers/legacy-audit-fixture.js';
 import assert from 'node:assert/strict';
 import pg from 'pg';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -47,6 +48,7 @@ test('postgres: a schema 28 database upgrades with current defaults, and the bas
 test('postgres: schema 38 preserves a higher cap and published gallery selection is atomic', options, async (t) => {
   const store = await database(t);
   await store.exec('DROP TABLE ai_studio_draft; UPDATE ai_studio_setting SET daily_call_cap = 250, revision = 7');
+  await restoreSchema39AuditFixture(store);
   await store.setSchemaVersion(38);
   await store.transaction(() => upgradePostgres(store, 38));
   assert.deepEqual(await getStudioSetting(store), { dailyCallCap: 250, revision: 7 });

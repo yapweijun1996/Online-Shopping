@@ -56,7 +56,7 @@ const scopeDescriptions = {
   'analytics.read': 'Read the sales summary.',
   'company.read': 'Read company settings; may contain seller-entered business information.',
   'company.write': 'Propose changes to company settings, including currency. Requires separate approval for each change.',
-  'catalog.write': 'Propose product and listing changes, including prices. Requires separate approval for each change.',
+  'catalog.write': 'Propose product and listing changes, including prices, and new product categories. Requires separate approval for each change.',
   'media.read': 'Read catalog media and layout information.',
   'media.write': 'Propose product image uploads, replacement and layout changes. Requires separate visual review and approval.',
   'inventory.read': 'Read inventory quantities and movements.',

@@ -6,7 +6,7 @@ const integer=(minimum,maximum)=>({type:'integer',minimum,maximum});
 const nullable=value=>({anyOf:[{type:'null'},value]});
 const state={type:'string',enum:['PREPARED','PENDING_APPROVAL','APPROVED','COMMITTED','REJECTED','EXPIRED','CANCELLED','CONFLICT','FAILED'],minLength:1,maxLength:32};
 const instant=string(24,24);
-const metadata=object({operationId:uuid,status:state,toolName:{...string(1,64),enum:Object.keys(OPERATION_SCOPE_POLICIES)},resourceType:{...string(1,16),enum:['company','catalog','product','inventory','order']},
+const metadata=object({operationId:uuid,status:state,toolName:{...string(1,64),enum:Object.keys(OPERATION_SCOPE_POLICIES)},resourceType:{...string(1,16),enum:['company','catalog','product','inventory','order','category']},
   resourceId:string(1,128),risk:{...string(1,8),enum:['MEDIUM','HIGH']},createdAt:instant,expiresAt:instant,receiptExpiresAt:instant,
   proposalRedacted:{type:'boolean'},proposalExpired:{type:'boolean'},receiptAvailable:{type:'boolean'},inventoryReason:nullable({...string(1,32),enum:['COUNT_CORRECTION','RECEIPT','DAMAGE','OTHER']})});
 const auditItem=object({id:uuid,at:instant,source:{...string(1,16),enum:['LIFECYCLE','MCP']},sequence:integer(1,Number.MAX_SAFE_INTEGER),

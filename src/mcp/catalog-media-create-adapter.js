@@ -7,7 +7,7 @@ import { plannedProductCreationIdentity } from '../listings.js';
 import { trackCreate } from '../product-history.js';
 import { withInventoryContext } from '../inventory.js';
 import { canonicalOperationJson } from './operation-envelope.js';
-import { catalogCreateTool,catalogProductMetadataSchema } from './catalog-tools.js';
+import { catalogCreateTool,catalogProductMetadataSchema,withCategoryAvailabilityHint } from './catalog-tools.js';
 import { readCatalogCreateMediaMetadata,readCatalogCreateMediaState } from './catalog-create-media-state.js';
 import { projectCatalogMediaCreate } from './catalog-media-projection.js';
 import { buildCatalogCreateReviewManifest } from './catalog-media-review-manifest.js';
@@ -72,7 +72,8 @@ export async function readCatalogMediaCreateReview(read,value,codecDigest,expect
  const metadata=await readCatalogCreateMediaMetadata(read,value);
  if(expectedSource&&metadata.revision!==expectedSource.catalogRevision)changed();
  await catalogNormalizationPreflight(read);
- const state=await controlled(()=>readCatalogCreateMediaState(read,value));
+ const readState=()=>readCatalogCreateMediaState(read,value);
+ const state=await controlled(()=>expectedSource ? readState() : withCategoryAvailabilityHint(read,readState));
  if(state.catalogRevision!==metadata.revision||expectedSource&&state.mediaRevision!==expectedSource.mediaRevision)changed();
  const projection=await projectCatalogMediaCreate(read,state),built=buildCatalogCreateReviewManifest({state,projection,codecDigest});
  const proposal=parseCatalogMediaCreateProposal({kind:'create',normalizedInput:state.normalizedInput,creationIdentity:state.creationIdentity,before:null,after:state.after,optionReview:state.optionReview,

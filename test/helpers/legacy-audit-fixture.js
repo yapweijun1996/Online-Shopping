@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mcpAuditSchema } from '../../src/mcp/audit-schema.js';
+import { mcpAuditSchema, mcpAuditToolCheck } from '../../src/mcp/audit-schema.js';
 import { operationEventSchema } from '../../src/mcp/operation-schema.js';
 import { operationStorageDdl, operationStorageMetaSchema, operationStorageManifestSql } from '../../src/mcp/operation-runtime.js';
 const sha=value=>createHash('sha256').update(value).digest('hex');
@@ -9,6 +9,21 @@ DROP TABLE mcp_audit;
 ${mcpAuditSchema(dialect,{version:33})}
 INSERT INTO mcp_audit(${auditColumns}) SELECT ${auditColumns} FROM mcp_audit_fixture_rows;
 DROP TABLE mcp_audit_fixture_rows;`;
+
+// For tests that construct a 34–39 schema by stepping back from the current baseline.
+export async function restoreSchema39AuditFixture(store) {
+  if (store.dialect === 'postgres') {
+    await store.exec(`ALTER TABLE mcp_audit DROP CONSTRAINT mcp_audit_tool_name_check,
+      ADD CONSTRAINT mcp_audit_tool_name_check CHECK(${mcpAuditToolCheck(34)});`);
+  } else {
+    const columns = `${auditColumns},operation_id,sequence`;
+    await store.exec(`CREATE TEMP TABLE audit_fixture_rows AS SELECT ${columns} FROM mcp_audit;
+      DROP TABLE mcp_audit;
+      ${mcpAuditSchema('sqlite', { version: 34 })}
+      INSERT INTO mcp_audit(${columns}) SELECT ${columns} FROM audit_fixture_rows;
+      DROP TABLE audit_fixture_rows;`);
+  }
+}
 
 // Tests that start from today's fresh baseline must restore actual pre34 audit
 // DDL, not only lower schema_meta. All historical columns/UUIDs are preserved.

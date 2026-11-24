@@ -1,5 +1,6 @@
 import { mcpOperationRuntimeEnabled, mcpMediaRuntimeEnabled } from './deployment-profile.js';
 import { ApiError } from '../http.js';
+import { DUPLICATE_CATEGORY_MESSAGE } from '../settings.js';
 import { randomUUID } from 'node:crypto';
 import { canonicalOperationJson } from './operation-envelope.js';
 import { createOperationEngine } from './operation-engine.js';
@@ -197,7 +198,7 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
       previewHash: { type: 'string', minLength: 64, maxLength: 64, pattern: '^[0-9a-f]{64}$' },
       expiresAt: { type: 'string', minLength: 24, maxLength: 24 }, replayed: { type: 'boolean' }, reviewUrl: { type: 'string', minLength: 1, maxLength: 8192 } });
     const commitOutput = { oneOf: [object({ operationId: uuid, status: { const: 'COMMITTED' }, result: receiptSchema, replayed: { type: 'boolean' } }),
-      object({ operationId: uuid, error: { enum: ['EXPIRED', 'STALE_REVISION'] } })] };
+      object({ operationId: uuid, error: { enum: entry.commitName === 'catalog.commit_create_category' ? ['EXPIRED'] : ['EXPIRED', 'STALE_REVISION'] } })] };
     for (const [kind, name, schema, outputSchema] of [
       ['preview', entry.previewName, object({ input: inputSchema, idempotencyKey: { type: 'string', minLength: 16, maxLength: 128, pattern: '^[A-Za-z0-9._~-]+$' } }), previewOutput],
       ['commit', entry.commitName, object({ operationId: uuid }), commitOutput],
@@ -311,6 +312,10 @@ export function createOperationTools({ store, binding, config, tenantGuard, quic
         ? await engine.prepare({ bearer, toolName: name, args: args.input, idempotencyKey: args.idempotencyKey })
         : await engine.commit({ bearer, toolName: name, operationId: args.operationId });
       if (registered.kind === 'preview') dto.reviewUrl = binding.issuer + '/oauth/operation?operationId=' + dto.operationId;
+      // The category revision is an absence check; its only stale case is a duplicate.
+      if (name === 'catalog.commit_create_category' && dto.error === 'STALE_REVISION') {
+        throw new ApiError(409, 'DUPLICATE_CATEGORY', DUPLICATE_CATEGORY_MESSAGE);
+      }
       if (!valid(dto, registered.tool.outputSchema) || Buffer.byteLength(JSON.stringify(dto)) > 65536) throw new TypeError('Invalid operation tool output.');
       return dto;
     },

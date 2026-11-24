@@ -12,6 +12,7 @@ import { verifyOperationAuthority } from '../src/mcp/operation-authorization.js'
 import { OPERATION_SCOPES, OPERATION_SCOPE_POLICIES } from '../src/mcp/operation-policy.js';
 import { catalogue } from '../src/mcp/tools.js';
 import proposedContracts from '../docs/mcp-v2/03-TOOL-CONTRACTS.proposed.json' with { type: 'json' };
+import categoryContracts from '../docs/mcp-v2/03-CATEGORY-IMPLEMENTED.json' with { type: 'json' };
 
 const base = process.env.SHOP_TEST_DATABASE_URL;
 if (base && (process.env.NODE_ENV !== 'test' || !/test/i.test(new URL(base).pathname))) {
@@ -177,9 +178,11 @@ test('operation DDL rejects an unsupported dialect', () => {
   assert.throws(() => operationSchema('unknown'), TypeError);
 });
 
-test('draft policy matches proposed contracts and does not change the active read registry', () => {
+test('operation policy matches documented contracts and does not change the legacy read registry', () => {
+  const documented = { ...proposedContracts['x-toolPolicies'], ...categoryContracts['x-toolPolicies'] };
   for (const [tool, policy] of Object.entries(OPERATION_SCOPE_POLICIES)) {
-    assert.deepEqual(proposedContracts['x-toolPolicies'][tool], policy, tool);
+    const entry = documented[tool];
+    assert.deepEqual(entry && { scope: entry.scope, capability: entry.capability }, policy, tool);
     assert.ok(OPERATION_SCOPES.includes(policy.scope));
   }
   for (const name of ['operations.get', 'operations.cancel', 'operations.audit']) {

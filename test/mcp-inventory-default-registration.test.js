@@ -15,7 +15,7 @@ for(const dialect of ['sqlite','postgres'])test(`${dialect}: default four invent
  const read=await freshCatalogAccess(f,legacyCatalogScopes+' inventory.read');assert.deepEqual((await read.rpc('tools/list',{})).data.result.tools.slice(8).map(tool=>tool.name),names.slice(0,2));
  const adjust=await freshCatalogAccess(f,legacyCatalogScopes+' inventory.adjust');assert.deepEqual((await adjust.rpc('tools/list',{})).data.result.tools.slice(8).map(tool=>tool.name),names.slice(2));
  const all=await freshCatalogAccess(f,inventoryScopes+' company.read company.write catalog.write analytics.extended'),allNames=(await all.rpc('tools/list',{})).data.result.tools.map(tool=>tool.name);
- assert.deepEqual(allNames,[...base.map(tool=>tool.name),'company.get','company.preview_update','company.commit_update','catalog.preview_create','catalog.commit_create','catalog.preview_update','catalog.commit_update','analytics.sales_trend','analytics.top_products','analytics.inventory_risk',...names]);
+ assert.deepEqual(allNames,[...base.map(tool=>tool.name),'company.get','company.preview_update','company.commit_update','catalog.preview_create','catalog.commit_create','catalog.preview_update','catalog.commit_update','catalog.preview_create_category','catalog.commit_create_category','analytics.sales_trend','analytics.top_products','analytics.inventory_risk',...names]);
 });
 test('explicit empty, null, default-off, demo and production constructor boundaries expose no inventory authority',async t=>{
  const f=await inventoryToolFixture(t,'sqlite'),base=catalogue.map(({scope:_scope,...tool})=>tool);

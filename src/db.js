@@ -12,9 +12,10 @@ import { migrateLegacyVariants } from './options.js';
 import { migrateListings } from './listings.js';
 import { migrateSharedGalleries } from './product-gallery.js';
 import { migrateOAuth } from './mcp/schema.js';
+import { migrateCategoryAuditStorage } from './mcp/audit-storage.js';
 import { initializeOperationStorage, operationStorageReady, upgradeMediaStorage, assertOperationStorageForUpgrade, upgradeOperationAuditStorage } from './mcp/operation-runtime.js';
 
-export const SCHEMA_VERSION = 39;
+export const SCHEMA_VERSION = 40;
 
 // Column lists of the tables rebuilt by migration 5, as created by migration 3.
 const rebuildColumns = {
@@ -681,6 +682,10 @@ export async function migrateStore(store) {
   if (version === 38) {
     await store.transaction(async () => { await migrateStudioDrafts(store); await store.setSchemaVersion(39); });
     version = 39;
+  }
+  if (version === 39) {
+    await store.transaction(async () => { await migrateCategoryAuditStorage(store); await store.setSchemaVersion(40); });
+    version = 40;
   }
   if (version !== SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}.`);
   await assertProductDetailStorage(store);

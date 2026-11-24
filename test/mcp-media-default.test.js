@@ -9,7 +9,7 @@ for(const dialect of ['sqlite','postgres']){
   const off=await mediaToolsFixture(t,dialect,{config:{mcpMedia:{enabled:false}},entries:undefined});
   const listed=await off.rpc('tools/list',{});assert.equal(listed.response.status,200,JSON.stringify(listed.data));
   assert.deepEqual(listed.data.result.tools.map(tool=>tool.name),[...legacy.map(tool=>tool.name),
-   'catalog.preview_create','catalog.commit_create','catalog.preview_update','catalog.commit_update']);
+   'catalog.preview_create','catalog.commit_create','catalog.preview_update','catalog.commit_update','catalog.preview_create_category','catalog.commit_create_category']);
   assert.deepEqual(listed.data.result.tools.slice(0,8),legacy);
   assert.equal((await off.tool('media.list',{productId:off.product.id})).data.error.code,-32602);
   const empty=await mediaToolsFixture(t,dialect,{entries:[]});

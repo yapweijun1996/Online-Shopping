@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createApi } from '../src/app.js';
 import { ensureAdmin } from '../src/auth.js';
-import { openDatabase, migrateStore } from '../src/db.js';
+import { openDatabase, migrateStore, SCHEMA_VERSION } from '../src/db.js';
+import { restoreSchema39AuditFixture } from './helpers/legacy-audit-fixture.js';
 import { logoType } from '../src/shop-logo.js';
 
 const png = await readFile(new URL('../public/shop/icons/icon-192.png', import.meta.url));
@@ -15,17 +16,19 @@ test('logo signatures reject unsupported content', () => {
 });
 test('schema 37 migrates to the current schema preserving existing settings', async t => {
   const store = await openDatabase(':memory:'); t.after(() => store.close());
+  await restoreSchema39AuditFixture(store);
   await store.exec('DROP TABLE shop_logo_event; DROP TABLE shop_logo;'); await store.setSchemaVersion(37);
-  await migrateStore(store); assert.equal(await store.schemaVersion(), 39);
+  await migrateStore(store); assert.equal(await store.schemaVersion(), SCHEMA_VERSION);
   assert.ok(await store.get('SELECT id FROM company_setting WHERE id=1'));
   assert.equal(await store.get('SELECT * FROM shop_logo'), undefined);
 });
 test('schema 37 migration preserves already-created logo tables', async t => {
   const store = await openDatabase(':memory:'); t.after(() => store.close());
   await store.run("INSERT INTO shop_logo_event (id, action, actor, created_at) VALUES ('existing', 'UPLOAD', 'seller', '2026-01-01')");
+  await restoreSchema39AuditFixture(store);
   await store.setSchemaVersion(37);
   await migrateStore(store);
-  assert.equal(await store.schemaVersion(), 39);
+  assert.equal(await store.schemaVersion(), SCHEMA_VERSION);
   assert.equal((await store.get("SELECT actor FROM shop_logo_event WHERE id='existing'")).actor, 'seller');
 });
 test('logo routes enforce session, origin, CSRF and isolation, with revalidation and audit', async t => {

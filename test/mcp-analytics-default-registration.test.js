@@ -25,7 +25,7 @@ for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: gated default an
       assert.equal((await f.store.get("SELECT COUNT(*) AS n FROM mcp_audit WHERE event = 'READ' AND tool_name = ? AND outcome = 'OK'", name)).n, 1);
     }
     const all = await freshCatalogAccess(f, legacyCatalogScopes + ' company.read company.write catalog.write analytics.extended');
-    assert.equal((await all.rpc('tools/list', {})).data.result.tools.length, 18);
+    assert.equal((await all.rpc('tools/list', {})).data.result.tools.length, 20);
     assert.equal((await old.rpc('tools/list', {})).data.result.tools.length, 8);
     assert.equal((await client.rpc('tools/list', {})).data.result.tools.length, 11);
     assert.equal(Number((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_operation')).n), 0);

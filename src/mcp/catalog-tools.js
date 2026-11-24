@@ -2,7 +2,8 @@ import { assertNoProtectedRichDetail } from '../product-detail.js';
 import { withInventoryContext } from '../inventory.js';
 import { createHash } from 'node:crypto';
 import { ApiError } from '../http.js';
-import { FieldError } from '../validation.js';
+import { FieldError, boundedText } from '../validation.js';
+import { activeCategoryCodePage, UnavailableCategoryError } from '../settings.js';
 import { prepareProductCreate, prepareProductUpdate, requireUniqueProductSku, requireUniqueVariantLabel, createProduct, updateProduct } from '../products.js';
 import { prepareProductOptions, requireGroupOptions } from '../options.js';
 import { trackCreate, trackUpdate } from '../product-history.js';
@@ -202,8 +203,27 @@ function checkedProposal(proposal, kind) {
   const json = canonicalOperationJson(proposal); if (Buffer.byteLength(json) > CATALOG_LIMITS.proposalBytes) tooLarge();
   return proposal;
 }
+// This hint runs only inside an authorized product preview. Legacy category
+// codes can contain arbitrary text; quote assignable codes and cap the list.
+export async function withCategoryAvailabilityHint(read, work) {
+  try { return await work(); }
+  catch (error) {
+    if (!(error instanceof UnavailableCategoryError)) throw error;
+    const limit = 25, rows = await activeCategoryCodePage(read, limit + 1);
+    const codes = rows.slice(0, limit).map(row => row.code).filter(code => {
+      try { return code.isWellFormed() && boundedText(code, 'category', 80) === code; }
+      catch (error) { if (error instanceof FieldError) return false; throw error; }
+    });
+    const list = JSON.stringify(codes).replace(/[\p{Cf}\p{Zl}\p{Zp}]/gu, char => char.split('').map(unit => '\\u' + unit.charCodeAt(0).toString(16).padStart(4, '0')).join(''));
+    const reason = error.exists ? 'The product category is inactive.' : 'The product category does not exist.';
+    const more = rows.length > limit ? ' This list is limited to 25 entries.' : '';
+    const hint = error.exists ? '' : ' To add a new code, use catalog.preview_create_category.';
+    throw new ApiError(400, 'PRODUCT_CATEGORY_UNAVAILABLE', `${reason} Valid active category codes: ${list}.${more} See catalog.categories for the category list.${hint}`);
+  }
+}
+
 async function draftCreate(read, input) {
-  const normalized = await prepareProductCreate(read, input);
+  const normalized = await withCategoryAvailabilityHint(read, () => prepareProductCreate(read, input));
   await requireUniqueProductSku(read, normalized.sku);
   await requireUniqueVariantLabel(read, normalized.variantGroup, normalized.variantLabel);
   if (normalized.variantGroup && await read.get('SELECT id FROM product WHERE variant_group = ? LIMIT 1', normalized.variantGroup)) unsupported();

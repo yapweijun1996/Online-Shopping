@@ -1,5 +1,6 @@
 import { operationEpochCurrent } from './operation-epoch.js';
 import { ApiError, json, readBody } from '../http.js';
+import { DUPLICATE_CATEGORY_MESSAGE } from '../settings.js';
 import { audit, hash, liveGrant, stamp, SCOPES, V2_SCOPES } from './credentials.js';
 import { callTool, catalogue, error, valid } from './tools.js';
 import { fail } from './oauth.js';
@@ -119,9 +120,15 @@ export function createProtocol({ store, config, binding, limit, operationTools =
         return new Response(encoded, { headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
       } catch (e) {
         if (e instanceof ApiError && e.status === 403) fail('access_denied', 403);
-        if (e instanceof ApiError && e.status === 400) return rpcError(body.id, -32602,
-          extension.name === 'media.upload_file' ? mediaFileFailureMessage(e) : 'Invalid params');
-        if (e instanceof ApiError && e.status === 409) return rpcError(body.id, -32009, 'Operation conflict');
+        if (e instanceof ApiError && e.status === 400) {
+          if (extension.name === 'catalog.preview_create' && e.code === 'PRODUCT_CATEGORY_UNAVAILABLE') return rpcError(body.id, -32602, e.message);
+          if (extension.name === 'catalog.preview_create_category' && e.code === 'CATEGORY_CREATE_INPUT') return rpcError(body.id, -32602,
+            'Invalid category details. Use an uppercase code starting with a letter (letters, digits, underscores or hyphens), a nonempty label, and optional boolean active. Code and label are limited to 80 characters.');
+          return rpcError(body.id, -32602, extension.name === 'media.upload_file' ? mediaFileFailureMessage(e) : 'Invalid params');
+        }
+        if (e instanceof ApiError && e.status === 409) return rpcError(body.id, -32009,
+          ['catalog.preview_create_category', 'catalog.commit_create_category'].includes(extension.name) && e.code === 'DUPLICATE_CATEGORY'
+            ? DUPLICATE_CATEGORY_MESSAGE : 'Operation conflict');
         if (e instanceof ApiError && [429, 503].includes(e.status)) fail('temporarily_unavailable', e.status);
         return rpcError(body.id, -32603, 'Internal error');
       } finally {

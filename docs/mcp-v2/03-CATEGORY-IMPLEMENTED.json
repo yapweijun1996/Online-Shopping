@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:online-shopping:mcp-v2:category:implemented",
+  "$defs": {
+    "catalog.preview_create_category.input": {
+      "type": "object",
+      "properties": {
+        "input": {
+          "additionalProperties": false,
+          "properties": {
+            "active": {
+              "type": "boolean"
+            },
+            "code": {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            "label": {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "label"
+          ],
+          "type": "object"
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._~-]+$"
+        }
+      },
+      "required": [
+        "input",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "catalog.preview_create_category.output": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "status": {
+          "enum": [
+            "PREPARED",
+            "PENDING_APPROVAL",
+            "APPROVED",
+            "REJECTED",
+            "COMMITTED",
+            "EXPIRED",
+            "CANCELLED",
+            "CONFLICT",
+            "FAILED"
+          ]
+        },
+        "previewHash": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "expiresAt": {
+          "type": "string",
+          "minLength": 24,
+          "maxLength": 24
+        },
+        "replayed": {
+          "type": "boolean"
+        },
+        "reviewUrl": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
+        }
+      },
+      "required": [
+        "operationId",
+        "status",
+        "previewHash",
+        "expiresAt",
+        "replayed",
+        "reviewUrl"
+      ],
+      "additionalProperties": false
+    },
+    "catalog.commit_create_category.input": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        }
+      },
+      "required": [
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "catalog.commit_create_category.output": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operationId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36,
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "status": {
+              "const": "COMMITTED"
+            },
+            "result": {
+              "additionalProperties": false,
+              "properties": {
+                "active": {
+                  "type": "boolean"
+                },
+                "code": {
+                  "maxLength": 80,
+                  "minLength": 1,
+                  "pattern": "^[A-Z][A-Z0-9_-]{0,79}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "active"
+              ],
+              "type": "object"
+            },
+            "replayed": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "operationId",
+            "status",
+            "result",
+            "replayed"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operationId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36,
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "error": {
+              "enum": [
+                "EXPIRED"
+              ]
+            }
+          },
+          "required": [
+            "operationId",
+            "error"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "x-toolPolicies": {
+    "catalog.preview_create_category": {
+      "scope": "catalog.write",
+      "capability": "catalog.write",
+      "risk": "MEDIUM"
+    },
+    "catalog.commit_create_category": {
+      "scope": "catalog.write",
+      "capability": "catalog.write",
+      "risk": "MEDIUM"
+    }
+  }
+}

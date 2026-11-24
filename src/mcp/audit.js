@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { CATEGORY_CODE_PATTERN } from '../settings.js';
 import { OPERATION_SCOPE_POLICIES, OPERATION_MUTATION_PAIRS } from './operation-policy.js';
 import { mediaPolicyForTool } from './media-policy.js';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -33,6 +34,7 @@ function validResource(tool, resource) {
   if (tool.startsWith('company.')) return resource === '1';
   if (tool.startsWith('analytics.')) return resource === null;
   if (['catalog.preview_create','catalog.commit_create'].includes(tool)) return resource === 'catalog';
+  if (['catalog.preview_create_category','catalog.commit_create_category'].includes(tool)) return CATEGORY_CODE_PATTERN.test(resource || '');
   return uuid.test(resource || '');
 }
 // Closed metadata, written inside the same transaction as the returned result.

@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { restoreSchema39AuditFixture } from './helpers/legacy-audit-fixture.js';
 import assert from 'node:assert/strict';
 import {inventoryFixture} from './helpers/inventory-fixture.js';
 import {listProducts} from '../src/products.js';
@@ -53,6 +54,7 @@ for(const dialect of ['sqlite','postgres'])test(`${dialect}: schema36 label inde
  const f=await inventoryFixture(t,dialect),p=await f.product({variantGroup:'OLD',variantLabel:'Existing'});
  await f.store.exec(`DROP INDEX product_variant_option; CREATE UNIQUE INDEX product_variant_option ON product(variant_group, ${dialect==='sqlite'?'variant_label COLLATE NOCASE':'lower(variant_label)'});`);
  await f.store.exec('DROP TABLE shop_logo_event; DROP TABLE shop_logo');
+ await restoreSchema39AuditFixture(f.store);
  await f.store.setSchemaVersion(36);
  const upgrade=()=>dialect==='sqlite'?migrateStore(f.store):f.store.transaction(()=>upgradePostgres(f.store,36));
  await upgrade();assert.equal(await f.store.schemaVersion(),SCHEMA_VERSION);assert.equal((await getProduct(f.store,p.id,true)).variantLabel,'Existing');

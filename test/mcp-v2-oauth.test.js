@@ -15,6 +15,7 @@ import { verifyOperationAuthority } from '../src/mcp/operation-authorization.js'
 import { catalogue } from '../src/mcp/tools.js';
 import { companyReadContract } from '../src/mcp/company-tools.js';
 import { catalogCreateTool, catalogUpdateTool } from '../src/mcp/catalog-tools.js';
+import { catalogCreateCategoryTool } from '../src/mcp/category-tools.js';
 
 const base = process.env.SHOP_TEST_DATABASE_URL;
 if (base && (process.env.NODE_ENV !== 'test' || !/test/i.test(new URL(base).pathname))) throw new Error('Disposable PostgreSQL test database required.');
@@ -134,6 +135,7 @@ for (const engine of ['sqlite', 'postgres']) {
     const selected = [...staged.data.matchAll(/name="scope" value="([^"]+)" checked/g)].map((match) => match[1]);
     assert.deepEqual([...selected].sort(), [...requested].sort());
     assert.match(staged.data, /Uncheck any permissions you do not want/);
+    assert.match(staged.data, /new product categories\. Requires separate approval/);
     assert.doesNotMatch(staged.data, /unchecked permission|Each scope is unchecked/);
     assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM oauth_grant')).n, 0);
     const signed = await f.login(staged);
@@ -201,22 +203,24 @@ for (const engine of ['sqlite', 'postgres']) {
     assert.match(grant.staged.data, /Scope consent is not approval of an individual change/);
     const listed = (await f.rpc(grant.access_token, 'tools/list')).data.result.tools;
     assert.deepEqual(listed.map((tool) => tool.name), ['catalog.list', 'catalog.get', 'catalog.categories', 'catalog.history', 'catalog.low_stock',
-      'orders.list', 'orders.get', 'analytics.summary', 'company.get', 'catalog.preview_create', 'catalog.commit_create', 'catalog.preview_update', 'catalog.commit_update', 'inventory.preview_adjustment', 'inventory.commit_adjustment']);
+      'orders.list', 'orders.get', 'analytics.summary', 'company.get', 'catalog.preview_create', 'catalog.commit_create', 'catalog.preview_update', 'catalog.commit_update', 'catalog.preview_create_category', 'catalog.commit_create_category', 'inventory.preview_adjustment', 'inventory.commit_adjustment']);
     assert.deepEqual(listed.slice(0, 8), legacyTools);
     assert.deepEqual(listed[8].inputSchema, companyReadContract.inputSchema);
     assert.deepEqual(listed[8].outputSchema, companyReadContract.outputSchema);
     const object = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
     const uuid = { type: 'string', minLength: 36, maxLength: 36, pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' };
-    for (const [index, entry] of [[9, catalogCreateTool()], [11, catalogUpdateTool()], [13, inventoryAdjustmentTool()]]) {
-      assert.deepEqual(listed[index].inputSchema, object({ input: entry.inputSchema,
+    for (const entry of [catalogCreateTool(), catalogUpdateTool(), catalogCreateCategoryTool(), inventoryAdjustmentTool()]) {
+      const preview = listed.find(tool => tool.name === entry.previewName), commit = listed.find(tool => tool.name === entry.commitName);
+      assert.deepEqual(preview.inputSchema, object({ input: entry.inputSchema,
         idempotencyKey: { type: 'string', minLength: 16, maxLength: 128, pattern: '^[A-Za-z0-9._~-]+$' } }));
-      assert.deepEqual(listed[index].outputSchema, object({ operationId: uuid,
+      assert.deepEqual(preview.outputSchema, object({ operationId: uuid,
         status: { enum: ['PREPARED', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'COMMITTED', 'EXPIRED', 'CANCELLED', 'CONFLICT', 'FAILED'] },
         previewHash: { type: 'string', minLength: 64, maxLength: 64, pattern: '^[0-9a-f]{64}$' },
         expiresAt: { type: 'string', minLength: 24, maxLength: 24 }, replayed: { type: 'boolean' }, reviewUrl: { type: 'string', minLength: 1, maxLength: 8192 } }));
-      assert.deepEqual(listed[index + 1].inputSchema, object({ operationId: uuid }));
-      assert.deepEqual(listed[index + 1].outputSchema, { oneOf: [object({ operationId: uuid, status: { const: 'COMMITTED' }, result: entry.receiptSchema, replayed: { type: 'boolean' } }),
-        object({ operationId: uuid, error: { enum: ['EXPIRED', 'STALE_REVISION'] } })] });
+      assert.deepEqual(commit.inputSchema, object({ operationId: uuid }));
+      const errors = entry.previewName === 'catalog.preview_create_category' ? ['EXPIRED'] : ['EXPIRED', 'STALE_REVISION'];
+      assert.deepEqual(commit.outputSchema, { oneOf: [object({ operationId: uuid, status: { const: 'COMMITTED' }, result: entry.receiptSchema, replayed: { type: 'boolean' } }),
+        object({ operationId: uuid, error: { enum: errors } })] });
     }
     assert.deepEqual((await f.rpc(legacy.access_token, 'tools/list')).data.result.tools, legacyTools);
     assert.equal((await f.rpc(grant.access_token, 'tools/call', { name: 'catalog.commit_create', arguments: {} })).data.error.code, -32602);

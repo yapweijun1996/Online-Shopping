@@ -146,6 +146,7 @@ function catalogSummaryFields(row, optionReview) {
 function renderBusinessSummary(value) {
   const titles = {
     'catalog.preview_create': 'Review product creation',
+    'catalog.preview_create_category': 'Review category creation',
     'catalog.preview_update': 'Review product changes',
     'company.preview_update': 'Review company changes',
     'inventory.preview_adjustment': 'Review stock adjustment',
@@ -169,8 +170,17 @@ function renderBusinessSummary(value) {
     node.textContent = `${visible(product.name)} · ${visible(product.sku)}`;
     node.hidden = false;
   }
-  if (!['catalog.preview_create', 'catalog.preview_update'].includes(value.toolName)) return;
   const proposal = value.proposal, root = document.querySelector('#summary-fields');
+  if (value.toolName === 'catalog.preview_create_category') {
+    const category = proposal.after;
+    root.replaceChildren(...[
+      ['Category code', summaryText(category.code)], ['Display name', summaryText(category.label)],
+      ['Availability', category.active ? t('Active') : t('Inactive')],
+    ].map(([label, text]) => summaryField(label, [[t('New value'), text]])));
+    document.querySelector('#business-summary').hidden = false;
+    return;
+  }
+  if (!['catalog.preview_create', 'catalog.preview_update'].includes(value.toolName)) return;
   const products = Array.isArray(proposal.catalogReview?.products) ? proposal.catalogReview.products
     : [{ before: proposal.before, after: proposal.after }];
   root.replaceChildren();
@@ -246,6 +256,7 @@ function summaryField(label, values, changed = false) {
 }
 
 function approvalLabel(toolName, proposal) {
+  if (toolName === 'catalog.preview_create_category') return 'Approve category creation';
   if (toolName === 'media.prepare_upload') return proposal.targetSlot === 'GALLERY' ? 'Approve gallery addition' : 'Approve main photo change';
   if (toolName === 'media.preview_layout') return 'Approve image change';
   if (toolName === 'catalog.preview_update') {

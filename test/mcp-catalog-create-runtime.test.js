@@ -40,6 +40,14 @@ for(const dialect of ['sqlite','postgres']){
   assert.deepEqual(Object.keys(dto(committed).result).sort(),['listingId','productId','revision']);
   assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_media_stage')).n,0);
  });
+ test(`${dialect}: full CREATE reports missing category codes before native work`,options,async t=>{
+  const f=await catalogCreateRuntimeFixture(t,dialect);
+  const response=await f.client.call('catalog.preview_create',{input:input({category:'Toys'}),idempotencyKey:'full-create-missing-category'});
+  assert.equal(response.data.error.code,-32602);
+  assert.match(response.data.error.message,/does not exist.*Valid active category codes: \["SYNTHETIC"\]/);
+  assert.equal(f.decodes(),0);
+  assert.equal((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_operation')).n,0);
+ });
  test(`${dialect}: CREATE original dual consent, role and closed authority fields are enforced before native work`,options,async t=>{
   const f=await catalogCreateRuntimeFixture(t,dialect),before=await commerce(f.store);
   for(const scope of ['catalog.write','media.write']){const client=await freshCatalogAccess(f,legacyCatalogScopes+' '+scope),listed=await client.rpc('tools/list',{});

@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
-import { mcpAuditSchema, MCP_AUDIT_TOOLS } from './audit-schema.js';
+import { mcpAuditSchema, mcpAuditToolCheck } from './audit-schema.js';
 const legacy = Object.freeze({ sqlite: 'e087465d8086577057a47e85406e61e3b4d5ca6ce7e2902417c377b6255370cc', postgres: '8536efe90ed79edc1fb5ae9181ad6081b59c86811d65156521c7ad9b6140a914' });
-const current = Object.freeze({ sqlite: 'a2ae15cd2f4703d620d9df4454a8ea78bade651390b57ed5bbb5b229aecbced9', postgres: '0bc8b42038d0075b129f7059af203c20ad27b1d7e07fbeb29d2f1c8b73b844e8' });
+const schema34 = Object.freeze({ sqlite: 'a2ae15cd2f4703d620d9df4454a8ea78bade651390b57ed5bbb5b229aecbced9', postgres: '0bc8b42038d0075b129f7059af203c20ad27b1d7e07fbeb29d2f1c8b73b844e8' });
+const schema40 = Object.freeze({ sqlite: '9f2300789f1b16d1a23cbb8901de64e07dfeef10e9f94c400f58857d8939486c', postgres: '1e3a07d890076a24dc174a33a226eb8b88bc6b79de3d24788f37655fdfd8f638' });
 const oldColumns = 'id,at,tenant_id,account_id,client_id,grant_id,correlation_id,event,tool_name,resource_id,outcome,duration_ms,result_count';
 
 // Only physical storage metadata; never includes audit record values.
@@ -20,11 +21,12 @@ export async function mcpAuditFingerprint(store) {
 }
 export async function assertMcpAuditUpgradeSource(store) {
   const fingerprint = await mcpAuditFingerprint(store);
-  if (![legacy[store.dialect], current[store.dialect]].includes(fingerprint)) throw new Error('Incompatible schema33 MCP audit storage.');
+  if (![legacy[store.dialect], schema34[store.dialect]].includes(fingerprint)) throw new Error('Incompatible schema33 MCP audit storage.');
   return fingerprint === legacy[store.dialect] ? 'LEGACY' : 'CURRENT';
 }
 export async function assertMcpAuditStorage(store) {
-  if (await mcpAuditFingerprint(store) !== current[store.dialect]) throw new Error('Incompatible MCP audit storage.');
+  const version = await store.schemaVersion();
+  if (await mcpAuditFingerprint(store) !== (version >= 40 ? schema40 : schema34)[store.dialect]) throw new Error('Incompatible MCP audit storage.');
 }
 export async function resetAuditSequence(store, table) {
   if (store.dialect !== 'postgres' || !['mcp_audit', 'mcp_v2_event'].includes(table)) throw new TypeError('Unsupported audit sequence.');
@@ -33,15 +35,15 @@ export async function resetAuditSequence(store, table) {
 // Joins the explicit global33->34 migration transaction; never repairs unknown DDL.
 export async function migrateMcpAuditStorage(store) {
   const fingerprint = await mcpAuditFingerprint(store);
-  if (fingerprint === current[store.dialect]) return;
+  if (fingerprint === schema34[store.dialect]) return;
   if (fingerprint !== legacy[store.dialect]) throw new Error('Incompatible schema33 MCP audit storage.');
   if (store.dialect === 'sqlite') {
     if (await store.get("SELECT name FROM sqlite_schema WHERE name='mcp_audit_next34'")) throw new Error('Partial MCP audit migration.');
-    await store.exec(mcpAuditSchema('sqlite', { table: 'mcp_audit_next34', indexes: false }));
+    await store.exec(mcpAuditSchema('sqlite', { version: 34, table: 'mcp_audit_next34', indexes: false }));
     await store.exec(`INSERT INTO mcp_audit_next34(${oldColumns}) SELECT ${oldColumns} FROM mcp_audit ORDER BY at,id;
       DROP TABLE mcp_audit; ALTER TABLE mcp_audit_next34 RENAME TO mcp_audit;`);
   } else await migratePostgresAudit(store);
-  await store.exec(mcpAuditSchema(store.dialect));
+  await store.exec(mcpAuditSchema(store.dialect, { version: 34 }));
   await assertMcpAuditStorage(store);
 }
 async function migratePostgresAudit(store) {
@@ -55,8 +57,32 @@ async function migratePostgresAudit(store) {
     ALTER TABLE mcp_audit ALTER COLUMN sequence ADD GENERATED ALWAYS AS IDENTITY;
     ALTER TABLE mcp_audit ADD CONSTRAINT mcp_audit_pkey PRIMARY KEY(sequence);
     ALTER TABLE mcp_audit DROP CONSTRAINT mcp_audit_tool_name_check;
-    ALTER TABLE mcp_audit ADD CONSTRAINT mcp_audit_tool_name_check CHECK(tool_name IS NULL OR tool_name IN (${MCP_AUDIT_TOOLS.map(name => `'${name}'`).join(',')}));
+    ALTER TABLE mcp_audit ADD CONSTRAINT mcp_audit_tool_name_check CHECK(${mcpAuditToolCheck(34)});
     ALTER TABLE mcp_audit DROP CONSTRAINT mcp_audit_event_check;
     ALTER TABLE mcp_audit ADD CONSTRAINT mcp_audit_event_check CHECK(event IN ('AUTHORIZE','ISSUE','REVOKE','READ','DENY','INVALIDATE','CALL'));`);
   await resetAuditSequence(store, 'mcp_audit');
+}
+
+// Joins the global 39->40 writer transaction. Only the tool-name allowlist
+// changes; retain every identity and the sequence watermark even after pruning.
+export async function migrateCategoryAuditStorage(store) {
+  if (await store.schemaVersion() !== 39 || await mcpAuditFingerprint(store) !== schema34[store.dialect]) {
+    throw new Error('Incompatible schema39 MCP audit storage.');
+  }
+  if (store.dialect === 'sqlite') {
+    if (await store.get("SELECT name FROM sqlite_schema WHERE name='mcp_audit_next40'")) throw new Error('Partial MCP audit migration.');
+    const columns = `${oldColumns},operation_id,sequence`;
+    await store.exec(mcpAuditSchema('sqlite', { table: 'mcp_audit_next40', indexes: false }));
+    await store.exec(`INSERT INTO mcp_audit_next40(${columns}) SELECT ${columns} FROM mcp_audit;
+      INSERT INTO sqlite_sequence(name,seq) SELECT 'mcp_audit_next40',seq FROM sqlite_sequence
+        WHERE name='mcp_audit' AND NOT EXISTS(SELECT 1 FROM sqlite_sequence WHERE name='mcp_audit_next40');
+      UPDATE sqlite_sequence SET seq=MAX(seq,COALESCE((SELECT seq FROM sqlite_sequence WHERE name='mcp_audit'),0))
+        WHERE name='mcp_audit_next40';
+      DROP TABLE mcp_audit; ALTER TABLE mcp_audit_next40 RENAME TO mcp_audit;`);
+    await store.exec(mcpAuditSchema('sqlite'));
+  } else {
+    await store.exec(`ALTER TABLE mcp_audit DROP CONSTRAINT mcp_audit_tool_name_check,
+      ADD CONSTRAINT mcp_audit_tool_name_check CHECK(${mcpAuditToolCheck(40)});`);
+  }
+  if (await mcpAuditFingerprint(store) !== schema40[store.dialect]) throw new Error('Incompatible schema40 MCP audit storage.');
 }

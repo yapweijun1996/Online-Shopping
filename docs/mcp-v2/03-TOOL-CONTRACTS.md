@@ -1,6 +1,6 @@
 # MCP v2 tool contracts
 
-Current source implements 32 names: original 8 plus company3/catalog4/media5/inventory4/order2/analytics3/operations3. Original8 schemas/scopes remain unchanged. All new flags default OFF; independent development profiles remain supported, while production requires the complete reviewed `seller-operations-v1` profile. Existing grants gain no new scope; explicit seller consent/current RBAC and each business commit's exact-proposal first-party approval remain mandatory. [Production activation](13-PRODUCTION-ACTIVATION.md) is pending integrated business/native/TLS, artifact/lifecycle canary and exact-main CI/release gates; [historical isolated validation](10-FINAL-VALIDATION-REPORT.md) is separate evidence. Real vendor account OAuth is owner-only NOT RUN.
+Current source implements 36 names: the original 8 plus 3 company, 6 catalog, 7 media, 4 inventory, 2 order, 3 analytics and 3 operation-control tools. Original8 schemas/scopes remain unchanged. All new flags default OFF; independent development profiles remain supported, while production requires the complete reviewed `seller-operations-v1` profile. Existing grants gain no new scope; explicit seller consent/current RBAC and each business commit's exact-proposal first-party approval remain mandatory. [Production activation](13-PRODUCTION-ACTIVATION.md) is pending integrated business/native/TLS, artifact/lifecycle canary and exact-main CI/release gates; [historical isolated validation](10-FINAL-VALIDATION-REPORT.md) is separate evidence. Real vendor account OAuth is owner-only NOT RUN.
 
 The implemented/exported bundles below define the current contracts. Historical proposed candidates at the end of this file do not define runtime inputs, policies or completion status.
 
@@ -14,11 +14,30 @@ The actual company revision is a SHA-256 string; preview arguments wrap `{input:
 
 Four preview/commit descriptors use the actual schemas and examples in [03-CATALOG-SAFE-IMPLEMENTED.json](03-CATALOG-SAFE-IMPLEMENTED.json). [CATALOG-SAFE-SUBSET.md](CATALOG-SAFE-SUBSET.md) defines supported fields, complete shared-listing/option review, bounded revision scans, current-service reuse, errors, receipts and deferred media/inventory dependencies. A real preview captures authoritative state; commit protects edits made after that preview. It does not assert freshness against every earlier model read.
 
-The safe development factory registers these four tools after explicit opt-in; independent full-suite and actual Chromium approval/default-registration evidence is recorded in the validation report. This restricted profile rejects existing-stock keys, group joins/moves and gallery-holder-changing renames. Full CREATE/UPDATE below add the accepted catalog/media policies; production requires both full profiles. Existing-stock adjustments remain separate inventory operations. Historical catalog candidates below are design history; their numeric revisions, full-object receipts and argument shapes are superseded by the applicable implemented bundle.
+The safe development factory registers these four product tools and the separate category pair below after explicit opt-in. Independent full-suite and actual Chromium approval/default-registration evidence is recorded in the validation report. This restricted profile rejects existing-stock keys, group joins/moves and gallery-holder-changing renames. Full CREATE/UPDATE below add the accepted catalog/media policies; production requires both full profiles. Existing-stock adjustments remain separate inventory operations. Historical catalog candidates below are design history; their numeric revisions, full-object receipts and argument shapes are superseded by the applicable implemented bundle.
 
 The full UPDATE successor keeps the two argument/receipt schemas and requires both catalog.write and media.write, HIGH risk and complete metadata/image review for every update. [UPDATE schemas/policies/examples](03-CATALOG-MEDIA-UPDATE-IMPLEMENTED.json) come from the actual factory/registry; `node docs/mcp-v2/export-catalog-media-update-contracts.mjs --check` verifies drift. One server-selected pair exists per mode; no model argument chooses a profile. See [UPDATE runtime](CATALOG-MEDIA-UPDATE-RUNTIME.md).
 
 Full CREATE has an independent flag and [actual exported schemas/policies/examples](03-CATALOG-MEDIA-CREATE-IMPLEMENTED.json), checked by `node docs/mcp-v2/export-catalog-media-create-contracts.mjs --check`. [CREATE runtime](CATALOG-MEDIA-CREATE-RUNTIME.md) defines fields, catalog/catalog binding, server identity, HIGH dual consent, immutable null-BEFORE/full-AFTER review, errors, receipts, idempotency/concurrency/audit and acceptance. It uses the shared state/projector/assembler and existing product/history/inventory services. Empty creation still requires PAGE ACK and authenticated seller approval; existing groups require old-image review. Uploads follow separately approved product creation. Both full profiles always require HIGH policy and `catalog.write` plus `media.write`, including image-free CREATE and metadata-only UPDATE, with no MEDIUM fallback. Neither flag enables the other in development; both default off and the complete production profile requires both. [Validation](10-FINAL-VALIDATION-REPORT.md) records historical proof limits; current production evidence belongs in the activation record.
+
+## Implemented category creation
+
+Both tools require current `catalog.write` OAuth consent and the `catalog.write` seller capability. They are available in the enabled MCP v2 registry in both the safe and full catalog profiles and do not require `media.write`. Use the [discovered schemas](03-CATEGORY-IMPLEMENTED.json) (generate with `node docs/mcp-v2/export-category-contracts.mjs`).
+
+| Tool | Arguments | Structured success result |
+| --- | --- | --- |
+| `catalog.preview_create_category` | `{input: {code, label, active?}, idempotencyKey}` | `{operationId, status, previewHash, expiresAt, reviewUrl, replayed}` |
+| `catalog.commit_create_category` | `{operationId}` (UUID) | `{operationId, status: "COMMITTED", result: {code, active}, replayed}` |
+
+The shared Seller API validator trims and NFC-normalizes `code` and `label`; both must contain 1–80 characters after normalization. The code must start with `A`–`Z` and use only uppercase letters, digits, underscores or hyphens. `active` is an optional boolean, defaulting to `true`. For example:
+
+```json
+{"input":{"code":"TOYS","label":"Toys","active":true},"idempotencyKey":"catalog-category-toys-1"}
+```
+
+Preview creates a MEDIUM-risk operation, not a category. Reuse the same 16–128 character URL-safe key and identical arguments to retry; using the key for a different request conflicts. Review the exact code, label and availability at `reviewUrl` and approve through the first-party seller session before calling commit. Commit checks that both the code and label are still unused (including inactive categories). A duplicate returns RPC `-32009` with `Category code or label already exists.` An expired approval can return `{operationId,error:"EXPIRED"}`; an authorized retry of a committed operation returns the same receipt with `replayed: true`. The category, operation state, and commit audit are transactional. The tools do not edit or reactivate existing categories.
+
+Use the active code, not its display label, in `catalog.preview_create`. Both product-create profiles distinguish a missing code from an inactive one and return up to 25 valid active codes. Use `catalog.categories` with `catalog.read` to page through the category dictionary.
 
 ## Implemented analytics (default-off)
 

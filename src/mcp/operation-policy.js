@@ -28,6 +28,7 @@ const scopeByTool = {
   'company.get': 'company.read', 'company.preview_update': 'company.write', 'company.commit_update': 'company.write',
   'catalog.preview_create': 'catalog.write', 'catalog.commit_create': 'catalog.write',
   'catalog.preview_update': 'catalog.write', 'catalog.commit_update': 'catalog.write',
+  'catalog.preview_create_category': 'catalog.write', 'catalog.commit_create_category': 'catalog.write',
   'media.list': 'media.read', 'media.prepare_upload': 'media.write', 'media.commit_upload': 'media.write',
   'media.preview_layout': 'media.write', 'media.commit_layout': 'media.write',
   'inventory.summary': 'inventory.read', 'inventory.movements': 'inventory.read',
@@ -46,6 +47,7 @@ export const OPERATION_MUTATION_PAIRS = Object.freeze({
   'company.preview_update': 'company.commit_update',
   'catalog.preview_create': 'catalog.commit_create',
   'catalog.preview_update': 'catalog.commit_update',
+  'catalog.preview_create_category': 'catalog.commit_create_category',
   'inventory.preview_adjustment': 'inventory.commit_adjustment',
   'orders.preview_decision': 'orders.commit_decision',
 });
@@ -56,6 +58,7 @@ export const OPERATION_PREVIEW_RISKS = Object.freeze({
   'company.preview_update': 'HIGH',
   'catalog.preview_create': 'MEDIUM',
   'catalog.preview_update': 'MEDIUM',
+  'catalog.preview_create_category': 'MEDIUM',
   'inventory.preview_adjustment': 'HIGH',
   'orders.preview_decision': 'HIGH',
 });

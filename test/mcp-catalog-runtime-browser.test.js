@@ -17,7 +17,7 @@ async function product(f,sku,group,label,image){return createProduct(f.store,{sk
 async function clientAndPage(f){
  const client=await f.authorize(f.allScopes),listed=await client.rpc('tools/list',{});
  assert.deepEqual(listed.data.result.tools.map(row=>row.name),[...catalogue.map(row=>row.name),
-  'catalog.preview_create','catalog.commit_create','catalog.preview_update','catalog.commit_update','operations.get','operations.cancel','operations.audit',
+  'catalog.preview_create','catalog.commit_create','catalog.preview_update','catalog.commit_update','catalog.preview_create_category','catalog.commit_create_category','operations.get','operations.cancel','operations.audit',
   'media.list','media.prepare_upload','media.commit_upload','media.upload_file','media.request_upload_url','media.preview_layout','media.commit_layout']);
  assert.deepEqual(listed.data.result.tools.slice(0,8),catalogue.map(({scope:_scope,...row})=>row));
  const page=await f.context.newPage(),errors=[],external=[];page.on('pageerror',error=>errors.push(error.message));

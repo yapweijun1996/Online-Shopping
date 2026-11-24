@@ -7,7 +7,7 @@ import { catalogue } from '../src/mcp/tools.js';
 import { reviewFixture } from './helpers/mcp-review-fixture.js';
 import { freshCatalogAccess, legacyCatalogScopes } from './helpers/mcp-catalog-default-grant.js';
 
-const names = ['catalog.preview_create', 'catalog.commit_create', 'catalog.preview_update', 'catalog.commit_update'];
+const names = ['catalog.preview_create', 'catalog.commit_create', 'catalog.preview_update', 'catalog.commit_update', 'catalog.preview_create_category', 'catalog.commit_create_category'];
 const draft = { sku: 'SYNTHETIC-DEFAULT', name: 'Synthetic default product', description: 'Synthetic default description', category: 'SYNTHETIC', priceMinor: 1200, active: true, stockQuantity: 4 };
 const dto = result => { assert.equal(result.response.status, 200, JSON.stringify(result.data)); assert.ok(result.data.result, JSON.stringify(result.data)); return result.data.result.structuredContent; };
 for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: default catalog registration requires fresh consent and actual first-party approval`,
@@ -24,7 +24,7 @@ for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: default catalog 
     const issued = await f.store.get('SELECT grant_id, issued_at FROM oauth_token WHERE token_hash = ?', hash(current.bearer));
     assert.equal(evidence[0].grant_id, issued.grant_id); assert.ok(evidence[0].consented_at <= issued.issued_at);
     const listed = (await current.rpc('tools/list', {})).data.result.tools;
-    assert.equal(listed.length, 12); assert.deepEqual(listed.slice(0, 8), catalogue.map(({ scope: _scope, ...tool }) => tool));
+    assert.equal(listed.length, 14); assert.deepEqual(listed.slice(0, 8), catalogue.map(({ scope: _scope, ...tool }) => tool));
     assert.deepEqual(listed.slice(8).map(tool => tool.name), names);
     assert.equal((await old.rpc('tools/list', {})).data.result.tools.length, 8);
     const op = dto(await current.call('catalog.preview_create', { input: draft, idempotencyKey: 'synthetic-default-create-0001' }));
@@ -51,9 +51,9 @@ for (const dialect of ['sqlite', 'postgres']) test(`${dialect}: default catalog 
     assert.equal((await f.store.get('SELECT price_minor FROM product WHERE id = ?', done.result.productId)).price_minor, 1400);
     const all = await freshCatalogAccess(f, legacyCatalogScopes + ' company.read company.write catalog.write');
     const allListed = (await all.rpc('tools/list', {})).data.result.tools;
-    assert.equal(allListed.length, 15);
+    assert.equal(allListed.length, 17);
     assert.deepEqual(allListed.slice(8).map(tool => tool.name), ['company.get', 'company.preview_update', 'company.commit_update', ...names]);
-    assert.equal((await current.rpc('tools/list', {})).data.result.tools.length, 12);
+    assert.equal((await current.rpc('tools/list', {})).data.result.tools.length, 14);
 
     assert.equal((await current.call('catalog.preview_update', { input: { id: done.result.productId, changes: { stockQuantity: 1 } }, idempotencyKey: 'synthetic-default-stock-0001' })).data.error.code, -32602);
     assert.equal((await f.store.get('SELECT stock_quantity FROM product WHERE id = ?', done.result.productId)).stock_quantity, 4);

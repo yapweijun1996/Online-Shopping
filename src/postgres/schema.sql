@@ -1,4 +1,4 @@
--- PostgreSQL baseline matching SQLite schema 39. Timestamps stay ISO text to preserve API snapshots.
+-- PostgreSQL baseline matching SQLite schema 40. Timestamps stay ISO text to preserve API snapshots.
 CREATE TABLE admin (
         id BIGINT PRIMARY KEY CHECK (id = 1),
         username TEXT NOT NULL UNIQUE,
@@ -327,7 +327,7 @@ CREATE TABLE ai_studio_image (
  created_by TEXT NOT NULL, created_at TEXT NOT NULL
 );
 CREATE INDEX ai_studio_image_product ON ai_studio_image(product_id);
-INSERT INTO schema_meta VALUES (1, 39);
+INSERT INTO schema_meta VALUES (1, 40);
 INSERT INTO order_sequence VALUES (1, 0);
 INSERT INTO company_setting(id, default_currency, updated_at) VALUES (1, 'MYR', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 INSERT INTO shop_setup(id, mode, shop_name) VALUES (1, NULL, 'Online Shopping');
@@ -391,7 +391,7 @@ CREATE TABLE IF NOT EXISTS mcp_audit (
  id TEXT NOT NULL UNIQUE, at TEXT NOT NULL, tenant_id TEXT NOT NULL, account_id TEXT, client_id TEXT, grant_id TEXT,
  correlation_id TEXT NOT NULL,
  event TEXT NOT NULL CHECK (event IN ('AUTHORIZE','ISSUE','REVOKE','READ','DENY','INVALIDATE','CALL')),
- tool_name TEXT CHECK (tool_name IS NULL OR tool_name IN ('catalog.list','catalog.get','catalog.history','catalog.categories','catalog.low_stock','orders.list','orders.get','analytics.summary','company.get','company.preview_update','company.commit_update','catalog.preview_create','catalog.commit_create','catalog.preview_update','catalog.commit_update','media.list','media.prepare_upload','media.commit_upload','media.preview_layout','media.commit_layout','inventory.summary','inventory.movements','inventory.preview_adjustment','inventory.commit_adjustment','orders.preview_decision','orders.commit_decision','analytics.sales_trend','analytics.top_products','analytics.inventory_risk','operations.get','operations.audit','operations.cancel')),
+ tool_name TEXT CHECK (tool_name IS NULL OR tool_name IN ('catalog.list','catalog.get','catalog.history','catalog.categories','catalog.low_stock','orders.list','orders.get','analytics.summary','company.get','company.preview_update','company.commit_update','catalog.preview_create','catalog.commit_create','catalog.preview_update','catalog.commit_update','catalog.preview_create_category','catalog.commit_create_category','media.list','media.prepare_upload','media.commit_upload','media.preview_layout','media.commit_layout','inventory.summary','inventory.movements','inventory.preview_adjustment','inventory.commit_adjustment','orders.preview_decision','orders.commit_decision','analytics.sales_trend','analytics.top_products','analytics.inventory_risk','operations.get','operations.audit','operations.cancel')),
  resource_id TEXT, outcome TEXT NOT NULL,
  duration_ms BIGINT NOT NULL CHECK (duration_ms >= 0), result_count BIGINT NOT NULL CHECK (result_count >= 0),
  operation_id TEXT, sequence BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY

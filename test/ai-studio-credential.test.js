@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { openDatabase, migrateStore, SCHEMA_VERSION, ready } from '../src/db.js';
+import { restoreSchema39AuditFixture } from './helpers/legacy-audit-fixture.js';
 import { createApi } from '../src/app.js';
 import { ensureAdmin } from '../src/auth.js';
 import { parseKeyFile } from '../src/secret-box.js';
@@ -28,8 +29,8 @@ async function fixture(t, { keys = true, validate = async () => true } = {}) {
 }
 
 test('current schema and ready covers the AI Studio tables', async (t) => {
-  assert.equal(SCHEMA_VERSION, 39);
   const store = await openDatabase(':memory:'); t.after(() => store.close());
+  assert.equal(await store.schemaVersion(), SCHEMA_VERSION);
   await ensureAdmin(store, 'fixture_owner', 'FictionalPassword123!');
   assert.equal(await ready(store), true);
   assert.deepEqual(await getStudioSetting(store), { dailyCallCap: 100, revision: 1 });
@@ -40,6 +41,7 @@ test('current schema and ready covers the AI Studio tables', async (t) => {
 test('SQLite schema 38 raises a saved cap below 100 and retains usage', async (t) => {
   const store = await openDatabase(':memory:'); t.after(() => store.close());
   await store.exec('DROP TABLE ai_studio_draft; UPDATE ai_studio_setting SET daily_call_cap = 20, revision = 7');
+  await restoreSchema39AuditFixture(store);
   await store.setSchemaVersion(38);
   const day = new Date('2026-11-05T10:00:00Z');
   await reserve(store, ['ANALYZE'], 'fixture', null, day);

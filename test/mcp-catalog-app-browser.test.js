@@ -7,12 +7,11 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createApi } from '../src/app.js';
 import { serveStatic } from '../src/static.js';
-import { createCategory } from '../src/settings.js';
 import { reviewFixture } from './helpers/mcp-review-fixture.js';
 import { freshCatalogAccess } from './helpers/mcp-catalog-default-grant.js';
 
 const browserModule = process.env.QA_PLAYWRIGHT_MODULE;
-test('real HTTPS catalog default tools create through Chromium review and replay once', { skip: !browserModule, timeout: 60000 }, async t => {
+test('real HTTPS catalog default tools create a category and product through Chromium review and replay once', { skip: !browserModule, timeout: 60000 }, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'shopping-catalog-browser-')); await chmod(directory, 0o700);
   t.after(() => rm(directory, { recursive: true, force: true }));
   const key = join(directory, 'key.pem'), cert = join(directory, 'cert.pem');
@@ -33,7 +32,6 @@ test('real HTTPS catalog default tools create through Chromium review and replay
   const f = await reviewFixture(t, 'sqlite', { operationTools: undefined, config: { sellerOrigin: origin, publicOrigin: origin,
     mcpRedirectUris: ['https://client.example.com/catalog-callback'] } });
   api = await createApi({ store: f.store, config: f.config, serveStatic });
-  await createCategory(f.store, { code: 'SYNTHETIC', label: 'Synthetic browser category' });
   const { chromium } = await import(browserModule), browser = await chromium.launch({ headless: true });
   t.after(() => browser.close());
   const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 390, height: 900 } }); t.after(() => context.close());
@@ -47,7 +45,21 @@ test('real HTTPS catalog default tools create through Chromium review and replay
     return { response: { status: response.status(), headers: new Headers(response.headers()) }, data };
   };
   const client = await freshCatalogAccess(f, undefined, call);
-  const listed = await client.rpc('tools/list', {}); assert.equal(listed.data.result.tools.length, 12);
+  const listed = await client.rpc('tools/list', {}); assert.equal(listed.data.result.tools.length, 14);
+  const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
+  const label = '</pre><script>window.__categoryInjected=1</script>';
+  const category = await client.call('catalog.preview_create_category', { input: { code: 'SYNTHETIC', label }, idempotencyKey: 'synthetic-browser-category-0001' });
+  assert.equal(category.response.status, 200, JSON.stringify(category.data));
+  const categoryOp = category.data.result.structuredContent;
+  await page.goto(categoryOp.reviewUrl); await page.locator('#review').waitFor({ state: 'visible' });
+  assert.match(await page.locator('#operation-heading').textContent(), /Review category creation/);
+  assert.ok((await page.locator('#summary-fields').textContent()).includes(label));
+  assert.equal(await page.locator('#summary-fields script').count(), 0);
+  assert.equal(await page.evaluate(() => window.__categoryInjected), undefined);
+  await page.locator('button[value="approve"]').click();
+  await page.locator('#decision').waitFor({ state: 'hidden' });
+  const newCategory = await client.call('catalog.commit_create_category', { operationId: categoryOp.operationId });
+  assert.deepEqual(newCategory.data.result.structuredContent.result, { code: 'SYNTHETIC', active: true });
   const injection = '</pre><script>window.__catalogInjected=true</script> Synthetic browser description';
   const prepared = await client.call('catalog.preview_create', { input: { sku: 'SYNTHETIC-BROWSER', name: 'Synthetic browser product',
     description: injection, category: 'SYNTHETIC', priceMinor: 1200, active: true, stockQuantity: 4 }, idempotencyKey: 'synthetic-browser-create-0001' });
@@ -55,7 +67,6 @@ test('real HTTPS catalog default tools create through Chromium review and replay
   const op = prepared.data.result.structuredContent;
   assert.equal((await client.call('catalog.commit_create', { operationId: op.operationId })).response.status, 403);
   assert.equal(Number((await f.store.get('SELECT COUNT(*) AS n FROM product')).n), 0);
-  const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
   await page.goto(op.reviewUrl); await page.locator('#review').waitFor({ state: 'visible' });
   assert.equal(await page.evaluate(() => window.__catalogInjected), undefined); assert.equal(await page.locator('#proposal script').count(), 0);
   assert.ok((await page.locator('#proposal').textContent()).includes(injection));

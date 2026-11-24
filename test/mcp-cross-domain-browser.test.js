@@ -14,7 +14,7 @@ const productionProxy = process.env.MCP_CROSS_DOMAIN_PRODUCTION_PROXY_TEST === '
 const enabled = (productionProxy || process.env.MCP_CROSS_DOMAIN_NATIVE_BROWSER_TEST === '1') && Boolean(process.env.QA_PLAYWRIGHT_MODULE);
 const expectedNames = [
   'company.get', 'company.preview_update', 'company.commit_update',
-  'catalog.preview_create', 'catalog.commit_create', 'catalog.preview_update', 'catalog.commit_update',
+  'catalog.preview_create', 'catalog.commit_create', 'catalog.preview_update', 'catalog.commit_update', 'catalog.preview_create_category', 'catalog.commit_create_category',
   'analytics.sales_trend', 'analytics.top_products', 'analytics.inventory_risk',
   'inventory.summary', 'inventory.movements', 'inventory.preview_adjustment', 'inventory.commit_adjustment',
   'orders.preview_decision', 'orders.commit_decision', 'operations.get', 'operations.cancel', 'operations.audit',
@@ -82,7 +82,7 @@ async function businessState(store) {
   return Promise.all(tables.map(async name => [name, hash(JSON.stringify(await store.all(`SELECT * FROM ${name} ORDER BY ${name === 'inventory_state' ? 'product_id' : 'id'}`)))]));
 }
 
-test(productionProxy ? 'production profile default32 cross-domain actual Node/Caddy/TLS/OAuth/native/QA browser on SQLite and PostgreSQL' : 'actual default24 cross-domain OAuth/native/HTTPS browser acceptance on SQLite and PostgreSQL',
+test(productionProxy ? 'production profile default36 cross-domain actual Node/Caddy/TLS/OAuth/native/QA browser on SQLite and PostgreSQL' : 'actual default cross-domain OAuth/native/HTTPS browser acceptance on SQLite and PostgreSQL',
   { skip: !enabled, timeout: 240000 }, async t => {
     assert.ok(process.env.SHOP_TEST_DATABASE_URL, 'Both disposable databases are required.');
     const image = (await readFile(new URL('../.local/media-codec-image-id', import.meta.url), 'utf8')).trim();
@@ -154,9 +154,11 @@ test(productionProxy ? 'production profile default32 cross-domain actual Node/Ca
         };
         let productId, orderId, adjustment, decision;
         const original = syntheticMediaPng(17), replacement = syntheticMediaPng(91);
-        await db.test('1 full CREATE inactive -> native upload -> full UPDATE publish with actual storefront SHA', async () => {
+        await db.test('1 create category -> full CREATE inactive -> native upload -> full UPDATE publish with actual storefront SHA', async () => {
+          const category = await call('catalog.preview_create_category', { input: { code: 'CROSS_CATEGORY', label: 'Synthetic cross-domain category', active: true }, idempotencyKey: 'cross-category-create-0001' });
+          assert.deepEqual(await commit('catalog.commit_create_category', category), { code: 'CROSS_CATEGORY', active: true });
           const op = await call('catalog.preview_create', { input: { sku: 'CROSS-DOMAIN', name: 'Synthetic cross-domain product', description: 'Literal <script>window.__crossInjected=1</script>',
-            category: 'SYNTHETIC', priceMinor: 1200, stockQuantity: 12, active: false }, idempotencyKey: 'cross-full-create-0001' });
+            category: 'CROSS_CATEGORY', priceMinor: 1200, stockQuantity: 12, active: false }, idempotencyKey: 'cross-full-create-0001' });
           assert.equal((await f.store.get('SELECT media_policy_id FROM mcp_v2_operation WHERE id=?', op.operationId)).media_policy_id, 'catalog-media-v1');
           productId = (await commit('catalog.commit_create', op)).productId;
           assert.equal((await f.call('/api/v1/products/' + productId)).response.status, 404);

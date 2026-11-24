@@ -22,7 +22,7 @@ const socketFixtureAvailable = process.platform === 'linux' && process.getuid() 
 const legacyNames = ['catalog.list', 'catalog.get', 'catalog.categories', 'catalog.history', 'catalog.low_stock',
   'orders.list', 'orders.get', 'analytics.summary'];
 const extensionNames = ['company.get', 'company.preview_update', 'company.commit_update',
-  'catalog.preview_create', 'catalog.commit_create', 'catalog.preview_update', 'catalog.commit_update',
+  'catalog.preview_create', 'catalog.commit_create', 'catalog.preview_update', 'catalog.commit_update', 'catalog.preview_create_category', 'catalog.commit_create_category',
   'analytics.sales_trend', 'analytics.top_products', 'analytics.inventory_risk',
   'inventory.summary', 'inventory.movements', 'inventory.preview_adjustment', 'inventory.commit_adjustment',
   'orders.preview_decision', 'orders.commit_decision', 'operations.get', 'operations.cancel', 'operations.audit',
@@ -69,7 +69,7 @@ async function listed(client) {
 }
 
 async function contractUnion() {
-  const files = ['COMPANY', 'CATALOG-SAFE', 'ANALYTICS', 'INVENTORY', 'ORDERS', 'OPERATIONS', 'MEDIA'];
+  const files = ['COMPANY', 'CATALOG-SAFE', 'CATEGORY', 'ANALYTICS', 'INVENTORY', 'ORDERS', 'OPERATIONS', 'MEDIA'];
   const bundles = await Promise.all(files.map(name => readFile(new URL(`../docs/mcp-v2/03-${name}-IMPLEMENTED.json`, import.meta.url), 'utf8').then(JSON.parse)));
   const union = new Map();
   for (const bundle of bundles) {
@@ -105,13 +105,13 @@ for (const dialect of ['sqlite', 'postgres']) {
   const options = { skip: !socketFixtureAvailable ? 'Requires the real Linux UID1000/private-socket ownership harness.' :
     dialect === 'postgres' && !process.env.SHOP_TEST_DATABASE_URL ? 'Disposable PostgreSQL not configured.' : false };
 
-  test(`${dialect}: fresh full consent exposes the actual default 34 and exact seven-contract schema union`, options, async t => {
+  test(`${dialect}: fresh full consent exposes the actual default 36 and exact eight-contract schema union`, options, async t => {
     const f = await defaultFixture(t, dialect);
     assert.equal(Number((await f.store.get('SELECT COUNT(*) AS n FROM oauth_grant')).n), 0);
     assert.equal(Number((await f.store.get('SELECT COUNT(*) AS n FROM mcp_v2_scope_consent')).n), 0);
     assert.deepEqual(catalogue.map(tool => tool.name), legacyNames);
     const client = await freshCatalogAccess(f, allScopes.join(' ')), tools = await listed(client), contracts = await contractUnion();
-    assert.equal(tools.length, 34);
+    assert.equal(tools.length, 36);
     assert.deepEqual(tools.map(tool => tool.name), allNames);
     assert.deepEqual(tools.slice(0, 8), legacy);
     for (const tool of tools.slice(8)) {
@@ -144,7 +144,7 @@ for (const dialect of ['sqlite', 'postgres']) {
   test(`${dialect}: legacy consent remains exactly eight and catalog-only consent cannot enter media or reserved catalog arguments`, options, async t => {
     const f = await defaultFixture(t, dialect), old = await freshCatalogAccess(f, legacyCatalogScopes);
     assert.deepEqual(await listed(old), legacy);
-    for (const name of ['company.commit_update', 'catalog.commit_create', 'catalog.commit_update', 'inventory.commit_adjustment',
+    for (const name of ['company.commit_update', 'catalog.commit_create', 'catalog.commit_update', 'catalog.commit_create_category', 'inventory.commit_adjustment',
       'orders.commit_decision', 'operations.cancel', 'media.commit_upload', 'media.commit_layout']) {
       const denied = await old.call(name, { operationId: id });
       assert.equal(denied.response.status, 403, name + ' ' + JSON.stringify(denied.data));
@@ -152,7 +152,7 @@ for (const dialect of ['sqlite', 'postgres']) {
     }
     const catalog = await freshCatalogAccess(f, legacyCatalogScopes + ' catalog.write');
     assert.deepEqual((await listed(catalog)).map(tool => tool.name), [...legacyNames,
-      'catalog.preview_create', 'catalog.commit_create', 'catalog.preview_update', 'catalog.commit_update']);
+      'catalog.preview_create', 'catalog.commit_create', 'catalog.preview_update', 'catalog.commit_update', 'catalog.preview_create_category', 'catalog.commit_create_category']);
     assert.equal((await catalog.call('media.list', { productId: id })).response.status, 403);
     for (const changes of [{ imageDataUrl: 'data:image/png;base64,iQ==' }, { mediaPolicyId: 'catalog-media-v1' }]) {
       const denied = await catalog.call('catalog.preview_update', { input: { id, changes }, idempotencyKey: 'synthetic-default-closed-0001' });

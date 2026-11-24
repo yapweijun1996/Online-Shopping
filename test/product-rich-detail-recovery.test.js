@@ -12,6 +12,7 @@ import { openPostgresStore } from '../src/postgres-store.js';
 import { openPostgresDatabase } from '../src/postgres-db.js';
 import { ready, SCHEMA_VERSION } from '../src/db.js';
 import { upgradePostgres } from '../src/postgres/upgrade.js';
+import { mcpAuditToolCheck } from '../src/mcp/audit-schema.js';
 import { ensureAdmin } from '../src/auth.js';
 import { createCategory } from '../src/settings.js';
 import { createProduct } from '../src/products.js';
@@ -20,6 +21,8 @@ import { getProductDetail, saveProductDetail, stageProductDetailImage, getProduc
 const base=process.env.SHOP_TEST_DATABASE_URL;
 const options={skip:!base,timeout:30000};
 const sha=data=>createHash('sha256').update(data).digest('hex');
+const historicalBaseline=async()=> (await readFile(new URL('../src/postgres/schema.sql',import.meta.url),'utf8'))
+ .replace(mcpAuditToolCheck(40),mcpAuditToolCheck(34));
 const tables=importTables.filter(table=>!['listing_detail','listing_detail_image','ai_studio_budget','ai_studio_cost','ai_studio_budget_event','shop_logo','shop_logo_event'].includes(table));
 const snapshot=async store=>Object.fromEntries(await Promise.all(tables.map(async table=>[table,rowsDigest(await store.all(`SELECT * FROM ${table}`))])));
 const photo='data:image/png;base64,'+(await readFile(new URL('../public/shop/icons/icon-192.png',import.meta.url))).toString('base64');
@@ -39,8 +42,8 @@ test('real PostgreSQL schema34 dump restores separately and upgrades with origin
  const directory=await mkdtemp(join(tmpdir(),'shopping-detail34-recovery-'));t.after(()=>rm(directory,{recursive:true,force:true}));
  // Strip ONLY the additive35 section and its two metadata strings. This exact
  // source hash is the real dfe0692 schema34 baseline, independent of git depth.
- const current=await readFile(new URL('../src/postgres/schema.sql',import.meta.url),'utf8');
- const old=current.split('\n-- Listing-owned rich product detail (schema 35).')[0].replace('CREATE INDEX product_variant_option', 'CREATE UNIQUE INDEX product_variant_option').replace('matching SQLite schema 39','matching SQLite schema 34').replace('INSERT INTO schema_meta VALUES (1, 39);','INSERT INTO schema_meta VALUES (1, 34);');
+ const current=await historicalBaseline();
+ const old=current.split('\n-- Listing-owned rich product detail (schema 35).')[0].replace('CREATE INDEX product_variant_option', 'CREATE UNIQUE INDEX product_variant_option').replace('matching SQLite schema 40','matching SQLite schema 34').replace('INSERT INTO schema_meta VALUES (1, 40);','INSERT INTO schema_meta VALUES (1, 34);');
  assert.equal(sha(old),'d0067a35d523accff71d4d6d61848f5f5a4d203adf3338c4b0d051bbf007f449');
  const source=openPostgresStore(original.url);dbs.stores.push(source);await source.exec(old);
  assert.equal(await source.schemaVersion(),34);assert.equal((await source.get("SELECT to_regclass('public.listing_detail') AS table_name")).table_name,null);
@@ -60,8 +63,8 @@ test('real PostgreSQL schema34 dump restores separately and upgrades with origin
 
 test('real PostgreSQL35 dump preserves rich document and encoded bytes independently of later original edits',options,async t=>{
  const dbs=await databases(t),original=await dbs.create();
- const current=await readFile(new URL('../src/postgres/schema.sql',import.meta.url),'utf8');
- const schema35=current.split('\n-- AI Studio application budgets (schema36).')[0].replace('CREATE INDEX product_variant_option', 'CREATE UNIQUE INDEX product_variant_option').replace('matching SQLite schema 39','matching SQLite schema 35').replace('INSERT INTO schema_meta VALUES (1, 39);','INSERT INTO schema_meta VALUES (1, 35);');
+ const current=await historicalBaseline();
+ const schema35=current.split('\n-- AI Studio application budgets (schema36).')[0].replace('CREATE INDEX product_variant_option', 'CREATE UNIQUE INDEX product_variant_option').replace('matching SQLite schema 40','matching SQLite schema 35').replace('INSERT INTO schema_meta VALUES (1, 40);','INSERT INTO schema_meta VALUES (1, 35);');
  assert.equal(sha(schema35),'d07494125ee0398ed807108d7578d4f4bfbc4f026eff0396523dc392f117f151');
  const store=openPostgresStore(original.url);dbs.stores.push(store);await store.exec(schema35);assert.equal(await store.schemaVersion(),35);
  await ensureAdmin(store,'synthetic_owner','SyntheticDetailRestorePassword123!');await createCategory(store,{code:'SYNTHETIC',label:'Synthetic'});

@@ -4,6 +4,8 @@ import { FieldError, boundedText } from './validation.js';
 import { normalizeContactPhone } from './phone.js';
 
 const categoryType = 'PRODUCT_CATEGORY';
+export const CATEGORY_CODE_PATTERN = /^[A-Z][A-Z0-9_-]{0,79}$/;
+export const DUPLICATE_CATEGORY_MESSAGE = 'Category code or label already exists.';
 
 export async function listCategories(database, page = null) {
   return (await database.all(`SELECT code, label, active FROM general_code
@@ -12,15 +14,25 @@ export async function listCategories(database, page = null) {
     .map((row) => ({ ...row, active: Boolean(row.active) }));
 }
 
-export async function requireActiveCategory(database, code) {
-  if (!await database.get(`SELECT 1 FROM general_code WHERE type = ? AND code = ? AND active = 1`, categoryType, code)) {
-    throw new FieldError('category', 'Choose an active product category.');
+export class UnavailableCategoryError extends FieldError {
+  constructor(exists) {
+    super('category', 'Choose an active product category.');
+    this.exists = exists;
   }
+}
+
+export async function requireActiveCategory(database, code) {
+  const row = await database.get('SELECT active FROM general_code WHERE type = ? AND code = ?', categoryType, code);
+  if (row?.active !== 1) throw new UnavailableCategoryError(Boolean(row));
+}
+
+export async function activeCategoryCodePage(database, limit) {
+  return database.all('SELECT substr(code, 1, 81) AS code FROM general_code WHERE type = ? AND active = 1 AND length(code) BETWEEN 1 AND 80 ORDER BY general_code.code LIMIT ?', categoryType, limit);
 }
 
 function categoryInput(input, partial = false) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new FieldError('category', 'Enter category details.');
-  const allowed = partial ? ['label', 'active'] : ['code', 'label'];
+  const allowed = partial ? ['label', 'active'] : ['code', 'label', 'active'];
   if (!Object.keys(input).length || Object.keys(input).some((key) => !allowed.includes(key))) {
     throw new FieldError('category', 'Enter supported category details.');
   }
@@ -30,9 +42,12 @@ function categoryInput(input, partial = false) {
   const result = {};
   if (Object.hasOwn(input, 'code')) {
     result.code = boundedText(input.code, 'code', 80);
-    if (!/^[A-Z][A-Z0-9_\-]*$/.test(result.code)) throw new FieldError('code', 'Use uppercase letters, digits, hyphens or underscores.');
+    if (!CATEGORY_CODE_PATTERN.test(result.code)) throw new FieldError('code', 'Use uppercase letters, digits, hyphens or underscores.');
   }
-  if (Object.hasOwn(input, 'label')) result.label = boundedText(input.label, 'label', 80);
+  if (Object.hasOwn(input, 'label')) {
+    result.label = boundedText(input.label, 'label', 80);
+    if (!result.label.isWellFormed()) throw new FieldError('label', 'Enter valid text.');
+  }
   if (Object.hasOwn(input, 'active')) {
     if (typeof input.active !== 'boolean') throw new FieldError('active', 'Choose category availability.');
     result.active = input.active;
@@ -40,18 +55,26 @@ function categoryInput(input, partial = false) {
   return result;
 }
 
+export function normalizeCategoryCreate(input) {
+  return { active: true, ...categoryInput(input) };
+}
+
+export async function categoryCreateConflicts(database, { code, label }) {
+  return Boolean(await database.get('SELECT 1 FROM general_code WHERE type = ? AND (code = ? OR label = ?) LIMIT 1', categoryType, code, label));
+}
+
 export async function createCategory(database, input) {
   return database.transaction(async () => {
-  const category = categoryInput(input);
-  const now = new Date().toISOString();
-  try {
-    await database.run(`INSERT INTO general_code(type, code, label, active, created_at, updated_at)
-      VALUES (?, ?, ?, 1, ?, ?)`, categoryType, category.code, category.label, now, now);
-  } catch (error) {
-    if (error.code === '23505' || String(error.message).includes('UNIQUE constraint failed')) throw new ApiError(409, 'DUPLICATE_CATEGORY', 'Category code or label already exists.');
-    throw error;
-  }
-  return { ...category, active: true };
+    const category = normalizeCategoryCreate(input);
+    const now = new Date().toISOString();
+    try {
+      await database.run(`INSERT INTO general_code(type, code, label, active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)`, categoryType, category.code, category.label, Number(category.active), now, now);
+    } catch (error) {
+      if (error.code === '23505' || String(error.message).includes('UNIQUE constraint failed')) throw new ApiError(409, 'DUPLICATE_CATEGORY', DUPLICATE_CATEGORY_MESSAGE);
+      throw error;
+    }
+    return category;
   });
 }
 

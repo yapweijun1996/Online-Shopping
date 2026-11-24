@@ -55,6 +55,8 @@
             "catalog.commit_create",
             "catalog.preview_update",
             "catalog.commit_update",
+            "catalog.preview_create_category",
+            "catalog.commit_create_category",
             "media.list",
             "media.prepare_upload",
             "media.commit_upload",
@@ -83,7 +85,8 @@
             "catalog",
             "product",
             "inventory",
-            "order"
+            "order",
+            "category"
           ]
         },
         "resourceId": {
@@ -287,6 +290,8 @@
                   "catalog.commit_create",
                   "catalog.preview_update",
                   "catalog.commit_update",
+                  "catalog.preview_create_category",
+                  "catalog.commit_create_category",
                   "media.list",
                   "media.prepare_upload",
                   "media.commit_upload",

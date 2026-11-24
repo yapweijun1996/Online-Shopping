@@ -281,7 +281,7 @@ The owner requested eight read tools; the original section-5 catalogue specified
 | sales_summary | `analytics.summary` | Existing UTC+8, 30-day, per-currency figures. |
 | low_stock | `catalog.low_stock` | PageInput plus `threshold?:integer[0,1000000]` (default 5); page of ProductSummary. Variant-level tracked stock ≤ threshold, including inactive variants; untracked/null stock excluded. Product domain owns the query; no page-walking. |
 
-Every advertised input/output object is closed; schemas and DTO validation share the same definitions. No write, accounts, settings, export, erasure, messages, password or generic API/SQL tool exists. Product/item free text is retained as inert data and can contain seller-entered PII; this is not complete anonymization.
+Every advertised input/output object is closed; schemas and DTO validation share the same definitions. This historical P1 catalogue is read-only. The gated v2 registry now includes [category creation](mcp-v2/03-TOOL-CONTRACTS.md#implemented-category-creation) under `catalog.write`; it uses the Seller API's category service and separate seller-session approval. Product/item free text is retained as inert data and can contain seller-entered PII; this is not complete anonymization.
 
 ### Routing and retention
 

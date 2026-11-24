@@ -121,6 +121,25 @@ Local synthetic transport and SQLite evidence does not establish live download
 host compatibility, real image decoding, PostgreSQL, real-browser review or
 production deployment. Those remain separate acceptance gates.
 
+### Seller MCP category creation (schema 40)
+
+`catalog.preview_create_category` and `catalog.commit_create_category` extend
+`/mcp` under the existing `catalog.write` scope and seller capability. Preview
+validates the normalized code and label and stores a MEDIUM-risk proposal;
+it cannot change the category dictionary. First-party review renders the label
+as text. Commit rechecks original-grant authority, the seller-session approval,
+and absence of both the code and label within the tenant writer transaction.
+The existing unique constraints and Seller API writer enforce the same rules
+at insertion. Idempotent retries cannot create another category. The typed
+call audit retains category code and operation identifiers, not the label or
+raw inputs. Schema 40 widens the audit allowlist on both stores without
+rewriting audit identities or reusing insertion sequence numbers.
+
+The product-create category error lists only a bounded, quoted sample of
+active codes after write authorization. It does not echo the rejected input,
+labels, credentials, or database errors. Existing approval policies, including
+full catalog media consent and PAGE/ASSET proofs, are unchanged.
+
 ### Seller approval page entry and sign-in continuation
 
 The authenticated review GET projects the operation ID, state, unverified connected-app display name, and an optional unchanged-gallery indicator for an approved or closed review. The indicator comes from the retained immutable envelope and does not convey approval authority. The same account, current tenant/build/epoch, live original grant, consent, role capability, seller origin, and account rate limit remain required. The status response issues no challenge and exposes no proposal, protected image, or commit receipt. Approval whose window has lapsed displays expired while scheduled maintenance persists expiration.
