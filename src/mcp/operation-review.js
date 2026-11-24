@@ -33,7 +33,7 @@ let csrf = null;
 let previewHash = null;
 let challenge = null;
 let currencyAcknowledgementRequired = false;
-let clientName = '', galleryConfirmation = false, terminalStatus = null;
+let clientName = '', galleryConfirmation = false, terminalStatus = null, approvalSummary = null;
 let unknownDecision = false, reviewLoading = false;
 let mediaReview = null, mediaComplete = false, imageUrl = null, imageJob = null;
 const imageNode = document.querySelector('#media-image');
@@ -156,6 +156,14 @@ function renderBusinessSummary(value) {
   const title = t(titles[value.toolName] || 'Review proposed seller operation');
   setTitle(title);
   const product = value.proposal.product ?? value.proposal.after;
+  const labels = value.mediaReview?.labels;
+  const name = value.resourceType === 'inventory' ? value.proposal.before?.product?.name
+    : (value.resourceType === 'product' || value.toolName === 'catalog.preview_create')
+      ? product?.name ?? value.proposal.before?.name ??
+        (Array.isArray(labels) ? labels.find(label => label?.productId === value.resourceId)?.name : null)
+      : null;
+  approvalSummary = { toolName: value.toolName, targetSlot: value.proposal.targetSlot,
+    productName: typeof name === 'string' ? visible(name) : '' };
   if (product && typeof product.name === 'string' && typeof product.sku === 'string') {
     const node = document.querySelector('#operation-product');
     node.textContent = `${visible(product.name)} · ${visible(product.sku)}`;
@@ -274,8 +282,7 @@ async function load() {
         (value.confirmsCurrentGallery === true && exactKeys(value, ['operationId', 'status', 'clientName', 'confirmsCurrentGallery'])))) {
     clientName = value.clientName;
     galleryConfirmation = value.confirmsCurrentGallery === true;
-    showTerminalState(value.status);
-    return;
+    return showTerminalState(value.status);
   }
   if (typeof value.currencyAcknowledgementRequired !== 'boolean' ||
       (value.currencyAcknowledgementRequired ? typeof value.currencyWarning !== 'string' || !value.currencyWarning : value.currencyWarning !== null) ||
@@ -1001,6 +1008,7 @@ function resetReview() {
   document.querySelector('#image-impact').hidden = true;
   imageViewer.open = false;
   galleryConfirmation = false;
+  approvalSummary = null;
 }
 
 function outcomeCopy(state) {
@@ -1022,7 +1030,7 @@ function outcomeCopy(state) {
   }
 }
 
-function showTerminalState(state, modal = false) {
+async function showTerminalState(state, modal = false) {
   const fresh = reviewSection.hidden;
   const copy = outcomeCopy(state);
   csrf = null; previewHash = null; challenge = null;
@@ -1042,18 +1050,30 @@ function showTerminalState(state, modal = false) {
   proposalRetry.before(statusNode);
   statusNode.textContent = modal ? `${copy.state}. ${copy.detail}` : copy.detail;
   statusNode.classList.toggle('visually-hidden', modal);
+  const summary = approvalSummary;
+  approvalSummary = null;
   if (!modal) return;
+  if (state === 'APPROVED') {
+    try {
+      const { showApprovalSuccess } = await import('../seller/approval-success.js');
+      showApprovalSuccess({ ...summary, galleryConfirmation,
+        preference: language?.preferredLocale?.() ?? navigator.language, onClose: restoreResultFocus });
+      return;
+    } catch { /* If the enhancement is unavailable, keep the confirmed outcome and show the plain result. */ }
+  }
   document.querySelector('#result-title').textContent = copy.title;
   document.querySelector('#result-description').textContent = copy.detail;
   document.querySelector('#result-check').toggleAttribute('hidden', state !== 'APPROVED');
   resultDialog.showModal();
 }
 
-document.querySelector('#result-close').addEventListener('click', () => resultDialog.close());
-resultDialog.addEventListener('close', () => {
+function restoreResultFocus() {
+  // The submitter is now hidden; return to the visible result in the review instead.
   statusNode.classList.remove('visually-hidden');
   statusNode.focus();
-});
+}
+document.querySelector('#result-close').addEventListener('click', () => resultDialog.close());
+resultDialog.addEventListener('close', restoreResultFocus);
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -1081,7 +1101,7 @@ form.addEventListener('submit', async (event) => {
     const state = decision === 'approve' ? 'APPROVED' : 'REJECTED';
     if (result.operationId !== id || result.status !== state) throw new Error('Invalid result.');
     if (decision === 'reject' && !mediaComplete) releaseMediaImage();
-    showTerminalState(state, true);
+    await showTerminalState(state, true);
   } catch {
     unknownDecision = true;
     checkStatus.hidden = false;

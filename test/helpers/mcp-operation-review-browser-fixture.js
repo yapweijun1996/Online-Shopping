@@ -5,6 +5,13 @@ export const operationId = '00000000-0000-4000-8000-000000000001';
 export const digest = 'a'.repeat(64);
 export const injection = '</pre><script>window.__injected = true</script>';
 
+export async function approvalSuccessAsset(path) {
+  if (!/^\/(?:seller\/approval-success(?:-copy)?\.(?:js|css)|shared\/(?:i18n|modal)\.js)$/.test(path)) return null;
+  const type = path.endsWith('.css') ? 'text/css' : 'text/javascript';
+  const body = await readFile(new URL('../../public' + path, import.meta.url));
+  return { type, body };
+}
+
 export async function assertDecisionClearance(page, fixture) {
   async function measure(scenario) {
     const { footerBottom, panelTop, scrollportBottom, atBottom, panelHeight, safeArea, summaryLines, approveHeight } = await page.evaluate(() => {
@@ -100,7 +107,7 @@ export async function catalogReviewBrowserFixture({ descriptionOnly = false } = 
   const review = '/api/v1/seller/mcp/operations/' + operationId;
   async function respond(request) {
     const path = new URL(request.url).pathname.replace(/^\/alpha(?=\/)/, '');
-    const asset = assets.get(path);
+    const asset = assets.get(path) ?? await approvalSuccessAsset(path);
     if (asset) return new Response(asset.body, { headers: { 'Content-Type': asset.type } });
     if (path === '/api/v1/seller/session' && request.method === 'GET') return Response.json({ csrfToken: 'synthetic-csrf' });
     if (path === review && request.method === 'GET') {

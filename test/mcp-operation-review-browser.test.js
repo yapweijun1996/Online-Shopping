@@ -150,23 +150,38 @@ test('first-party review prototype renders all untrusted data as text and requir
       assert.ok((await page.locator('button[value="reject"]').boundingBox()).height >= 44);
       await page.locator(`button[value="${decision}"]`).click();
       const approved = decision === 'approve';
-      const dialog = page.getByRole('alertdialog', { name: approved ? 'Approved' : 'Rejected', exact: true });
+      const dialog = page.getByRole(approved ? 'dialog' : 'alertdialog', { name: approved ? 'Approved' : 'Rejected', exact: true });
       await dialog.waitFor();
       assert.equal(await dialog.evaluate(node => node.matches(':modal')), true);
-      assert.equal(await dialog.locator('#result-description').textContent(), approved
-        ? `Return to ${injection} to apply this change.`
-        : 'No change was made.');
-      assert.equal(await dialog.locator('svg').isVisible(), approved);
+      if (approved) {
+        assert.equal(await dialog.getAttribute('aria-modal'), 'true');
+        const detail = dialog.locator('#approval-success-detail');
+        assert.equal(await dialog.getAttribute('aria-describedby'), 'approval-success-detail');
+        assert.equal(await detail.textContent(), `Product changes · ${injection}`);
+        assert.equal(await detail.locator('script').count(), 0);
+        assert.equal(await dialog.locator('.approval-success-mark').getAttribute('aria-hidden'), 'true');
+        assert.equal(await page.locator('main').evaluate(main => getComputedStyle(main).overflow), 'hidden');
+      } else {
+        assert.equal(await dialog.locator('#result-description').textContent(), 'No change was made.');
+        assert.equal(await page.locator('#approval-success-dialog').count(), 0);
+      }
       assert.equal(await page.locator('#status').textContent(), approved
         ? `Approved · Waiting to be applied. Return to ${injection} to apply this change.`
         : 'Rejected. No change was made.');
       assert.equal(await page.locator('#status').getAttribute('aria-live'), 'polite');
       assert.equal(await page.locator('#status').evaluate(node => getComputedStyle(node).clipPath), 'inset(50%)');
-      const close = dialog.getByRole('button', { name: 'Close', exact: true });
+      const close = dialog.getByRole('button', { name: approved ? 'Continue' : 'Close', exact: true });
+      await dialog.evaluate(node => Promise.all(node.getAnimations({ subtree: true }).map(animation => animation.finished)));
       assert.ok((await close.boundingBox()).height >= 44);
       if (width === 390) await assertNamedTargets(dialog);
       assert.equal(await close.evaluate(node => node === document.activeElement), true);
-      if (approved || width === 390) await close.click();
+      if (approved) {
+        for (const key of ['Tab', 'Shift+Tab']) {
+          await page.keyboard.press(key);
+          assert.equal(await close.evaluate(node => node === document.activeElement), true, `${key} stays in the modal`);
+        }
+      }
+      if (width === 390 || (approved && width !== 1440)) await close.click();
       else await page.keyboard.press('Escape');
       await dialog.waitFor({ state: 'hidden' });
       await page.locator('#status:focus').waitFor();
@@ -180,6 +195,65 @@ test('first-party review prototype renders all untrusted data as text and requir
       assert.deepEqual(call.body, { operationId: id, previewHash: digest, challenge: 'a'.repeat(43), decision });
       assert.equal(await page.locator('#decision input[type=password]').count(), 0);
       await context.close();
+    }
+  });
+
+test('approval confirmation uses the seller language and honors reduced motion',
+  { skip: !browserModule, timeout: 60000 }, async (t) => {
+    const { respond } = await catalogReviewBrowserFixture({ descriptionOnly: true });
+    const { chromium } = await import(browserModule);
+    const browser = await chromium.launch({ headless: true });
+    t.after(() => browser.close());
+    for (const [locale, title, action, operation] of [
+      ['en', 'Approved', 'Continue', 'Product changes'],
+      ['ms', 'Diluluskan', 'Teruskan', 'Perubahan produk'],
+      ['zh-Hans', '已批准', '继续', '商品变更'],
+      ['vi', 'Đã phê duyệt', 'Tiếp tục', 'Thay đổi sản phẩm'],
+      ['th', 'อนุมัติแล้ว', 'ดำเนินการต่อ', 'เปลี่ยนแปลงสินค้า'],
+      ['ja', '承認しました', '続ける', '商品の変更'],
+      ['ko', '승인 완료', '계속', '상품 변경'],
+    ]) {
+      const reducedMotion = locale === 'en' ? 'no-preference' : 'reduce';
+      const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion });
+      try {
+        await context.addInitScript(value => localStorage.setItem('online-shopping-language', value), locale);
+        await context.route('**/*', route => new URL(route.request().url()).origin === origin
+          ? serveFixture(route, respond) : route.abort());
+        const page = await context.newPage();
+        await page.goto(reviewUrl);
+        assert.equal(await page.locator('dialog[open]').count(), 0);
+        await page.locator('#approve').click();
+        const dialog = page.getByRole('dialog', { name: title, exact: true });
+        await dialog.waitFor();
+        assert.equal(await dialog.getAttribute('lang'), locale);
+        assert.equal(await dialog.getByRole('button', { name: action, exact: true }).isVisible(), true);
+        assert.equal(await dialog.locator('p').textContent(), operation + (locale === 'ja' ? '：' : ' · ') + 'Field Day Canvas Tote');
+        const motion = await dialog.evaluate(node => ({
+          card: getComputedStyle(node).animationDuration,
+          strokes: getComputedStyle(node.querySelector('.approval-success-tick')).strokeDasharray,
+        }));
+        assert.deepEqual(motion, reducedMotion === 'reduce' ? { card: '0s', strokes: 'none' } : { card: '0.76s', strokes: '1px, 2px' });
+        if (locale === 'en') {
+          const screenshotDir = process.env.QA_APPROVAL_SCREENSHOT_DIR;
+          if (screenshotDir) await mkdir(screenshotDir, { recursive: true });
+          for (const [width, height] of [[390, 844], [1440, 900]]) {
+            await page.setViewportSize({ width, height });
+            const colors = [];
+            for (const colorScheme of ['light', 'dark']) {
+              await page.emulateMedia({ colorScheme });
+              await page.locator(`html[data-theme="${colorScheme}"]`).waitFor();
+              colors.push(await dialog.evaluate(node => getComputedStyle(node).backgroundColor));
+              const box = await dialog.boundingBox();
+              assert.ok(box.x >= 0 && box.x + box.width <= width && box.y >= 0 && box.y + box.height <= height);
+              if (screenshotDir) await page.screenshot({ path: join(screenshotDir, `approval-success-${width}-${colorScheme}.png`), animations: 'disabled' });
+            }
+            assert.notEqual(colors[0], colors[1]);
+          }
+        }
+        await page.keyboard.press('Escape');
+        await dialog.waitFor({ state: 'hidden' });
+        await page.locator('#status:focus').waitFor();
+      } finally { await context.close(); }
     }
   });
 
@@ -229,6 +303,7 @@ test('review recovers from transient proposal failures and reports pending and u
       await page.getByRole('status').filter({ hasText: 'Proposal expired. Ask the connected app for a new preview.' }).waitFor();
       assert.equal(await page.locator('#proposal-retry').isVisible(), false);
       assert.equal(await page.locator('#approve').isDisabled(), true);
+      assert.equal(await page.locator('dialog[open]').count(), 0);
     });
 
     for (const [name, path, failure, message] of [
@@ -252,7 +327,10 @@ test('review recovers from transient proposal failures and reports pending and u
       });
     }
 
-    for (const [decision, message, failure] of [['approve', 'Approving…', 'network'], ['reject', 'Rejecting…', 500]]) {
+    for (const [decision, message, failure] of [
+      ['approve', 'Approving…', 'network'], ['approve', 'Approving…', 403], ['approve', 'Approving…', 'expired'],
+      ['approve', 'Approving…', 'wrong operation'], ['reject', 'Rejecting…', 500],
+    ]) {
       await t.test(`${decision} shows progress then offers a read-only status check after ${failure}`, async (t) => {
         const page = await context.newPage();
         t.after(() => page.close());
@@ -262,6 +340,8 @@ test('review recovers from transient proposal failures and reports pending and u
           submissions += 1;
           await release.promise;
           if (failure === 'network') await route.abort('failed');
+          else if (failure === 'expired') await route.fulfill({ json: { operationId: id, status: 'EXPIRED' } });
+          else if (failure === 'wrong operation') await route.fulfill({ json: { operationId: '00000000-0000-4000-8000-000000000002', status: 'APPROVED' } });
           else await route.fulfill({ status: failure });
         });
         await page.goto(reviewUrl);
@@ -284,7 +364,7 @@ test('review recovers from transient proposal failures and reports pending and u
         const reloadMessage = 'We could not confirm the result. Check the status before trying again.';
         await status.filter({ hasText: reloadMessage }).waitFor();
         assert.equal(await status.textContent(), reloadMessage);
-        assert.equal(await page.getByRole('alertdialog').isVisible(), false);
+        assert.equal(await page.locator('dialog[open]').count(), 0);
         assert.equal(await page.locator('#proposal-retry').isVisible(), false);
         assert.equal(await approve.isDisabled(), true);
         assert.equal(await reject.isDisabled(), true);

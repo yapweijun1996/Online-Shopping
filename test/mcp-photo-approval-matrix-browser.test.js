@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { addGalleryImage } from '../src/products.js';
 import { mediaToolsFixture } from './helpers/mcp-media-tools-fixture.js';
 import { syntheticMediaPng } from './helpers/mcp-media-hooks-fixture.js';
+import { approvalSuccessAsset } from './helpers/mcp-operation-review-browser-fixture.js';
 
 const browserModule = process.env.QA_PLAYWRIGHT_MODULE;
 const screenshotDir = process.env.PHOTO_APPROVAL_SCREENSHOTS;
@@ -59,6 +60,8 @@ test('Chromium: approving five current gallery photos works across Seller themes
         const body = await readFile(new URL(asset[0], import.meta.url));
         return route.fulfill({ contentType: asset[1], body });
       }
+      const successAsset = await approvalSuccessAsset(url.pathname);
+      if (successAsset) return route.fulfill({ contentType: successAsset.type, body: successAsset.body });
       const method = request.method();
       const response = await fixture.api(new Request(url, {
         method, headers: await request.allHeaders(), ...(method !== 'GET' && { body: request.postDataBuffer() }),
@@ -246,7 +249,9 @@ test('Chromium: approving five current gallery photos works across Seller themes
     assert.ok(await firstImage.evaluate(element => element === document.activeElement));
 
     await approve.click();
-    await page.locator('#result-dialog').waitFor();
+    const success = page.getByRole('dialog', { name: '已批准', exact: true });
+    await success.waitFor();
+    assert.match(await success.locator('p').textContent(), /^相册确认 · /);
     const status = () => fixture.store.get('SELECT state FROM mcp_v2_operation WHERE id=?', operation.operationId);
     assert.equal((await status()).state, 'APPROVED');
     assert.deepEqual(await list(), before);
