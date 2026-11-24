@@ -15,6 +15,7 @@
     "test:customer-discovery": "node scripts/qa-customer-discovery.mjs",
     "test:customer-profile-address": "node scripts/qa-customer-profile-address.mjs",
     "test:seller-catalog-state": "node scripts/qa-seller-catalog-state.mjs",
+    "test:seller-bulk-bar-shots": "node scripts/qa-seller-bulk-bar.mjs",
     "test:seller-session-ui": "node scripts/qa-seller-session-ui.mjs",
     "test:seller-boot-loader": "node --test test/seller-boot-loader.test.js",
     "test:usability-palette": "node scripts/qa-usability-palette.mjs",
